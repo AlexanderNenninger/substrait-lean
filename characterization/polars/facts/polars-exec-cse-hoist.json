@@ -19,7 +19,9 @@
   },
   "description": [
     "A lazy query collects with common-subexpression elimination on. When two expressions share a subexpression, CSE computes it once in a `WITH_COLUMNS` below the projection, on every row. That includes a strict cast inside `when(c).then(...)`: the cast now runs on the rows `c` excludes and raises there, although `when/then` alone masks the branch (polars-exec-when-eager). Two columns `when(x == '1').then(x.cast(Int64) + 1)` and `when(x == '1').then(x.cast(Int64) + 2)` over `x = ['1', 'a']` raise `InvalidOperationError` on both engines; with `comm_subexpr_elim=False` they give `[(2, 3), (None, None)]`, and so does an eager `DataFrame.select`, which skips CSE.",
-    "So whether a query raises depends on the optimizer. PL-6 records it upstream."
+    "So whether a query raises depends on the optimizer. PL-6 records it upstream.",
+    "The docs are silent on common-subexpression elimination: the lazy optimizations guide lists common subplan elimination and leaves it out, and `comm_subexpr_elim` says only that it elides duplicate expressions: a docs gap. The `when` docstring says every branch runs on every row, which documents the CSE outcome; the masking CSE undoes is the undocumented part (PL-13).",
+    "No upstream test pins this; it may change between versions."
   ],
   "reference": "The reference evaluates a `CASE` branch only on the rows that reach it, so a plan whose casts are guarded by their conditions is error-free; sverify's Polars route collects lazily with CSE on, so such a plan can raise (ST-12, #604).",
   "status": "deviation",
@@ -36,6 +38,75 @@
         {"url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/cse/csee.rs#L74-L94", "note": "CSE visits ternary branches outside group-by contexts"}
       ],
       "notes": "s-when-cse-lazy: raises with CSE on, in-memory and streaming; [(2, 3), (None, None)] with it off. s-when-cse-cast: the eager in-memory run (no CSE) masks; the streaming run (lazy, CSE on) raises. A single when/then with a cast (s-when-masks-cast) masks on both engines."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/cse/csee.rs#L540-L620",
+          "note": "Select/HStack: the common subexpressions go into a with_columns below the projection, computed on every input row"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/mod.rs#L294-L355",
+          "note": "is_fallible_top_level, used by predicate pushdown; csee.rs never consults it, so a strict cast is a CSE candidate like any other"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.when.html",
+          "note": "Warnings: all expressions are computed and filtered afterwards, each must be valid on its own; this documents the CSE outcome, not the masking"
+        },
+        {
+          "url": "https://docs.pola.rs/user-guide/lazy/optimizations/",
+          "note": "the optimizations table omits common subexpression elimination"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/lazyframe/opt_flags.py#L240-L244",
+          "note": "comm_subexpr_elim: 'Elide duplicate expressions and caches their outputs', silent on errors"
+        }
+      ],
+      "notes": "Added to the description: CSE is missing from the optimizations guide's table, and the `when` warning documents the CSE outcome."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_cse.py#L625-L644",
+          "note": "test_cse_11958: CSE hoists a subexpression shared by a when condition and its then branch (lazy, both engines in CI); no upstream test of a fallible shared subexpression"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "sql": "lf = pl.LazyFrame({'x': ['1', 'a']}); q = lf.select(pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 1).alias('a'), pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 2).alias('b')); q.collect(engine=e) and q.collect(engine=e, optimizations=pl.QueryOptFlags(comm_subexpr_elim=False)) for e in ('in-memory', 'streaming'); POLARS_IDEAL_MORSEL_SIZE=64",
+          "observed": "with CSE: InvalidOperationError on both engines; without: [(2, 3), (None, None)] on both; a single such column (no shared subexpression): [(2,), (None,)] (Polars 2.1.0, macOS arm64)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "sql": "PL-6's repro, collect(engine=e) for e in ('in-memory', 'streaming'), with and without comm_subexpr_elim; POLARS_IDEAL_MORSEL_SIZE=64",
+          "observed": "with CSE: InvalidOperationError on both; without: [(2, 3), (None, None)] (Polars 2.1.0, macOS arm64)"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-6, which this fact records."
     }
   ],
   "issues": [

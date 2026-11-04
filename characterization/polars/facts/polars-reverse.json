@@ -67,6 +67,28 @@
         "Streaming gives what in memory gives on every probe and observation cited here.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.str.reverse.html",
+          "note": "example: 'man\\u0303ana' reverses to 'anañam', the combining tilde stays on its n"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/string/test_string.py#L2164-L2181",
+          "note": "test_string_reverse: 'man\\u0303ana' → 'anan\\u0303am' (grapheme clusters, in-memory)"
+        }
+      ]
     }
   ]
 }

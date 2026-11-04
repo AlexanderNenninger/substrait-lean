@@ -20,7 +20,8 @@
     "The reference's issue analysis already allows most of this: filter and join conditions are evaluated on `Rel.loose`, the input with filters removed and inner joins widened to cross joins (`SubstraitLean/Safety.lean`), so a `WHERE` over an inner or left join covers every row of each input, and a merged filter covers the rows the lower filter would remove. The gap left is an empty other input: the loose cross product is then empty and the reference reports no issue, while DuckDB evaluates the pushed filter on every row of the side it was pushed into. So `SELECT … FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` with `b` empty appears to raise on `a.x = 0`. This is from reading the code: a probe must confirm it (the hash join may skip the probe side when the build side is empty).",
     "The other way round, DuckDB can raise less than the reference: a `LIMIT` stops the scan, so `WHERE s::INT = 10 LIMIT 1` does not raise on the unconvertible rows after the first match (DuckDB's test). That keeps the no-error guarantee.",
     "Round 3 (engine tests): test_barrier.test pins it: with `join_filter_pushdown` off, `SELECT … FROM secrets JOIN allowed ON … WHERE s::INT = 42` raises on the secret row the join removes, and `__internal_barrier` keeps the filter above the join. A `LIMIT` above a raising scan filter stops the scan before the bad rows (test_throwing_filter_pushdown.test).",
-    "Round 4 (probes): with `b` empty, `SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` raises `Division by zero` on `a`'s row with `x = 0`; so do the cast `a.s::INTEGER > 1` and `b LEFT JOIN a` with the filter on `a` (the filter makes the join inner). `EXPLAIN` shows the filter in `a`'s scan. With `b = {2}`, the row `k = 1, x = 0` is removed by the dynamic join filter in the scan before the division runs, and nothing raises; with `join_filter_pushdown` disabled it raises, on a row the reference's loose model also evaluates. So the empty other input is the case outside the reference."
+    "Round 4 (probes): with `b` empty, `SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` raises `Division by zero` on `a`'s row with `x = 0`; so do the cast `a.s::INTEGER > 1` and `b LEFT JOIN a` with the filter on `a` (the filter makes the join inner). `EXPLAIN` shows the filter in `a`'s scan. With `b = {2}`, the row `k = 1, x = 0` is removed by the dynamic join filter in the scan before the division runs, and nothing raises; with `join_filter_pushdown` disabled it raises, on a row the reference's loose model also evaluates. So the empty other input is the case outside the reference.",
+    "No upstream test pins a raising filter pushed below a join whose other input is empty; it may change between versions."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's DuckDB SQL writes a filter over a join as a `WHERE` over the join, which the optimizer is then free to push.",
   "status": "open",
@@ -168,6 +169,15 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Confirms the gap round 2 read: the pushed filter runs although the other input is empty."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/dialect/order_preservation", "note": "silent on which rows a pushed-down, raising filter is evaluated on"}
+      ],
+      "notes": "No upstream test covers a raising filter pushed below a join with an empty other side (the probe of round 4 is the only evidence)."
     }
   ]
 }

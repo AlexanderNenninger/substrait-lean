@@ -164,7 +164,8 @@
       ],
       "notes": [
         "Streaming gives what in memory gives on every probe and observation cited here.",
-        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64.",
+        "join-nan-zero-null's recorded differ 1 is a tie order: `sort('y')` ties the rows 0.0 and -0.0 (both y = 2), and the engines list them in different orders. The join results are the same set of rows on both engines; it is no engine difference."
       ]
     }
   ],

@@ -19,8 +19,9 @@
   "description": [
     "`product`, `kahan_sum`, `favg`, `sem`, `kurtosis`, `kurtosis_pop` and `skewness` take DOUBLE only, so an integer converts. `product` is NULL without values and does not raise: `inf` past the range, NaN with a NaN.",
     "`mad` takes DOUBLE, FLOAT and DECIMAL (a DECIMAL result), and dates, times and timestamps (an INTERVAL result); a BIGINT converts to DOUBLE. Of NaN it is NaN; an infinity does not change it when the median is finite.",
-    "`histogram(x)` is a `MAP(x's type, UBIGINT)` of the counts, NULLs skipped. `weighted_avg(x, w)` (`wavg`) is a DOUBLE, skipping rows where `x` or `w` is NULL; NaN where the weights sum to 0, and `inf` for weights summing to 0 from both signs.",
-    "`bit_count(x)` counts the 1 bits of `x` at its own width, as a TINYINT: `bit_count(-1::INTEGER)` is 32, `bit_count(-1::BIGINT)` 64."
+    "`histogram(x)` is a `MAP(x's type, UBIGINT)` of the counts, NULLs skipped. `weighted_avg(x, w)` (`wavg`) is a DOUBLE, skipping rows where `x` or `w` is NULL; It is the macro `SUM(x * w) / SUM(w)` over the rows with a non-NULL `x`, so where the weights sum to 0 it divides by 0: NaN where `SUM(x * w)` is 0 too (every weight 0), otherwise ±inf with the sign of `SUM(x * w)` (`-inf` for (1.0, 1.0), (2.0, -1.0), `inf` for (2.0, 1.0), (1.0, -1.0)). (Corrected 2026-11-04: this said `inf` for weights summing to 0 from both signs.)",
+    "`bit_count(x)` counts the 1 bits of `x` at its own width, as a TINYINT: `bit_count(-1::INTEGER)` is 32, `bit_count(-1::BIGINT)` 64.",
+    "The docs are silent on `product`'s overflow, zero weights in `weighted_avg`, `histogram`'s count type and `bit_count`'s width and result type: a docs gap. No upstream test pins `product` past the double range or with NaN, or `mad` with NaN or infinities; it may change between versions."
   ],
   "reference": [
     "`product` and `mad` of doubles (integers converted) are black boxes (#326), not NULL over values; `mad` is at least `+0.0`. `mad` of a DECIMAL or a temporal type is refused. `histogram` (the model has no MAP) and `weighted_avg` (black-box aggregates take one argument) are refused, naming #326. `bit_count` is a black box of a BIGINT, in [0, 64], that Lean evaluates; narrower integers are refused, as their count depends on the width."
@@ -44,6 +45,48 @@
         {"sql": "SELECT bit_count(7), bit_count(-1), typeof(bit_count(-1::INTEGER)), bit_count(-1::BIGINT)", "observed": "3, 32, TINYINT, 64"},
         {"test": "python/tests/test_black_box.py::test_bit_count_keeps_its_laws_on_random_data"}
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/product.cpp#L14-L46", "note": "product: DOUBLE only, plain multiplication from 1, no overflow check, NULL when unset"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/holistic/mad.cpp#L291-L362", "note": "mad overloads: FLOAT, DOUBLE, DECIMAL, DATE, TIMESTAMP(_TZ), TIME(_TZ)"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/nested/histogram.cpp#L169", "note": "histogram: MAP(type, UBIGINT)"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/catalog/default/default_functions.cpp#L157-L159", "note": "weighted_avg macro: SUM(value * weight) / SUM(CASE WHEN value IS NOT NULL THEN weight ELSE 0 END); zero weights divide by 0"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L293-L345", "note": "bit_count: one overload per integer width, TINYINT result"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "product, weighted_avg, histogram, mad: entries silent on overflow, zero weights, the count type"},
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric", "note": "bit_count: 'Returns the number of bits that are set'; silent on width and result type"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_weighted_avg.test#L14-L21", "note": "weighted_avg(3, 0) and (3, 0.0) → nan; (0, 3) → 0.0"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_bit_count.test#L5-L16", "note": "bit_count of negatives at TINYINT, SMALLINT, INTEGER, BIGINT → 4, 14, 24, 49"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_product.test#L10-L18", "note": "product(NULL) → NULL, product(1) → 1; no overflow or NaN test"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass (duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {"sql": "SELECT weighted_avg(x, w), wavg(x, w) FROM (VALUES (1.0, 1.0), (2.0, -1.0)) t(x, w)", "observed": "-inf, -inf"},
+        {"sql": "SELECT weighted_avg(x, w) FROM (VALUES (2.0, 1.0), (1.0, -1.0)) t(x, w)", "observed": "inf"},
+        {"sql": "SELECT weighted_avg(x, w) FROM (VALUES (3.0, 0.0)) t(x, w)", "observed": "nan"}
+      ],
+      "notes": "Corrected the description: weights summing to 0 give ±inf with the sign of SUM(x * w), NaN when that is 0 too; it said `inf`."
     }
   ],
   "issues": [

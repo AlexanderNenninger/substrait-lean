@@ -36,7 +36,8 @@
   "description": [
     "Shim. `SUM(BIGINT)` returns `HUGEINT` and never overflows at 64 bits, so DuckDB alone answers where the reference raises. `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan already guards this and raises (`test_sum.test:68`).",
     "`avg` of integers returns `DOUBLE` in DuckDB (duckdb-avg-int). sverify's written SQL computes an `i64` average as the exact `HUGEINT` sum `//` the count (`int_avg` in `python/src/sverify/sql/duckdb.py`). DataFusion's `avg` is a double, so it refuses an integer one.",
-    "Round 4 (probes): `sum` of TINYINT and SMALLINT is a HUGEINT, so 127 + 126 = 253 and 32767 + 32766 = 65533 without an error."
+    "Round 4 (probes): `sum` of TINYINT and SMALLINT is a HUGEINT, so 127 + 126 = 253 and 32767 + 32766 = 65533 without an error.",
+    "The docs are silent on `sum`'s result type, a HUGEINT for integers, and on overflow: a docs gap."
   ],
   "reference": [
     "Substrait and the reference: `sum` of `i8`…`i64` returns `i64?`; with `overflow` omitted, a sum outside `i64` raises.",
@@ -150,6 +151,14 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates.html", "note": "sum: no result type, HUGEINT or overflow stated (docs gap)"}
+      ]
     }
   ],
   "issues": [

@@ -23,7 +23,9 @@
   },
   "description": [
     "`time + duration` is refused (`SchemaError`, no supertype). `replace_time_zone` raises on a local time in a DST gap (`non_existent='null'` gives NULL). `str.to_date` raises on an invalid date such as 2024-02-30 and, with `strict=False`, gives NULL; it accepts `2024-2-3` for `%Y-%m-%d`.",
-    "Months only exist in `dt.offset_by` (`pl.duration` has none), and `offset_by` accepts `Date` and `Datetime`: on a `Time` column it raises `InvalidOperationError` (`expected Date or Datetime, got time`). `Time ± Duration` finds no supertype, so `TIME ± INTERVAL` with or without months is refused when the plan is resolved."
+    "Months only exist in `dt.offset_by` (`pl.duration` has none), and `offset_by` accepts `Date` and `Datetime`: on a `Time` column it raises `InvalidOperationError` (`expected Date or Datetime, got time`). `Time ± Duration` finds no supertype, so `TIME ± INTERVAL` with or without months is refused when the plan is resolved.",
+    "The docs are silent on `time + duration` being refused and `2024-2-3` parsing: a docs gap.",
+    "No upstream test pins `time + duration`, `offset_by` on `Time`, `2024-02-30` or `2024-2-3`; they may change between versions."
   ],
   "reference": "`TIME ± INTERVAL` is refused (`time_interval_months`); time zones are outside the model.",
   "status": "open",
@@ -83,6 +85,47 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/temporal/string/mod.rs#L205-L240",
+          "note": "str.to_date: fast parser, then chrono NaiveDate::parse_from_str (accepts 2024-2-3, rejects 2024-02-30); failure NULL, raised under strict"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.dt.replace_time_zone.html",
+          "note": "non_existent: 'raise' (default) or 'null'"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/functions/api/polars.duration.html",
+          "note": "weeks … nanoseconds; no months"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_temporal.py#L1268-L1277",
+          "note": "replace_time_zone non_existent='null' gives None in the DST gap (in-memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/test_strptime.py#L124-L140",
+          "note": "to_date strict=False gives None, strict=True raises (in-memory)"
+        }
+      ]
     }
   ],
   "rows": [

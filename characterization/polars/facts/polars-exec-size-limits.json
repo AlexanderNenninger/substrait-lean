@@ -16,13 +16,15 @@
   ],
   "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
-    "`Decimal` is a 128-bit type with at most 38 digits of precision (also the default when the precision is not given) and a non-negative scale. The page does not say what an overflow does.",
+    "`Decimal` is a 128-bit type with at most 38 digits of precision (also the default when the precision is not given) and a non-negative scale. The page does not say what an overflow does; Polars's tests pin that it raises `ComputeError: overflow in decimal …`.",
     "Source at py-2.1.0: strings and binaries are binary views whose `length` is a `u32`. The builder asserts `bytes.len() <= u32::MAX` (`push_value_into_buffer`), so a longer value panics (a `PanicException` in Python) where it would be an error elsewhere. Lists are `ListArray<i64>`, with 64-bit offsets checked on push (`Offsets::try_push` returns an `overflow` error). Row indices are `IdxSize`, a `u32` in the default `polars-runtime-32` that `pip install polars` brings; `polars[rt64]` switches to `u64` (`bigidx`). Past 2^32 - 1 rows the default runtime reports \"Polars' maximum length reached. Consider installing 'polars[rt64]'.\", as an error at most sites and a panic at some (`expect(LENGTH_LIMIT_MSG)`).",
-    "Leads: py-polars/tests/unit/datatypes/test_decimal.py for decimal overflow (polars-decimal-arith covers arithmetic)."
+    "Leads: py-polars/tests/unit/datatypes/test_decimal.py for decimal overflow (polars-decimal-arith covers arithmetic).",
+    "The docs are silent on the `u32` string length and the `u32` row limit of the default runtime: a docs gap.",
+    "No upstream test pins a string over `u32::MAX` bytes or a list offset overflow; it may change between versions."
   ],
   "reference": "The reference caps decimals at 38 digits and raises past them; it has no limit on string, blob or list lengths.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -74,6 +76,29 @@
         {
           "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-error/src/constants.rs#L12-L17",
           "note": "LENGTH_LIMIT_MSG"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L683-L687",
+          "note": "`test_decimal_raise_oob_precision`: Decimal(76, 38) raises InvalidOperationError"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L1345-L1363",
+          "note": "Decimal(38, 0) +, -, * past 38 digits raise ComputeError 'overflow in decimal' (eager)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L1118-L1126",
+          "note": "`test_decimal_sum_overflow_28585`, streaming and in-memory: sum overflow raises"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/io/test_iceberg.py#L6070-L6078",
+          "note": "row count 2^32 raises ComputeError with the rt64 hint (default runtime). No test of over-long strings or list offset overflow"
         }
       ]
     }

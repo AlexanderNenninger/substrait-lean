@@ -23,7 +23,8 @@
   },
   "description": [
     "`min` and `max` of doubles combine values with Rust's `f32::min`/`f64::min` (`max`) and the SIMD kernel's `simd_min`/`simd_max`, which give either zero when the operands are 0.0 and -0.0. On macOS arm64 `min` over {0.0, -0.0} is -0.0 and `max` is 0.0 in either input order, for `Float32` and `Float64`, grouped or not, on both engines. Another target can give the other zero.",
-    "With the column's sorted flag set, `min` returns the first non-null value and `max` the last, so it returns the zero the sort put first, and the sort holds the two zeros equal (polars-zero-order)."
+    "With the column's sorted flag set, `min` returns the first non-null value and `max` the last, so it returns the zero the sort put first, and the sort holds the two zeros equal (polars-zero-order).",
+    "No upstream test pins this; it may change between versions."
   ],
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere, so `MIN` and `MAX` over zeros are `0.0`.",
   "status": "open",
@@ -79,6 +80,17 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "No guarantee on the sign of zero (data-types-and-structures.md L180-L184); Expr.min/max docstrings silent. No upstream test pins the sign of min/max over 0.0 and -0.0."
+        }
+      ]
     }
   ],
   "issues": [

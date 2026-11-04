@@ -2,7 +2,10 @@
 expressions on edge cases against Lean's outcomes under each candidate option,
 the observations, and what `characterization/polars/probes.json` records."""
 
+import ast
 import json
+import re
+from collections.abc import Callable
 
 import polars as pl
 import pytest
@@ -98,3 +101,78 @@ def test_engine_diff_compares_streaming_with_in_memory():
         "in-memory": "3", "streaming": "3",
     }  # fmt: skip
     assert probe_polars.ENGINE == "in-memory"
+
+
+def _runs(mem: str, stream: str) -> bool:
+    """A float aggregate's distinct results over five runs: at least one each."""
+    return all(isinstance(v := ast.literal_eval(x), list) and len(v) >= 1 for x in (mem, stream))
+
+
+def _rows(observed: str) -> list[list[str]]:
+    """The rows of each list of an observation's lists of rows, sorted."""
+    return [sorted(re.findall(r"\([^()]*\)", x)) for x in re.findall(r"\[\(.*?\)\]", observed)]
+
+
+def _one_of(mem: str, *stream: str) -> Callable[[str, str], bool]:
+    return lambda m, s: m == mem and s in stream
+
+
+#: Observations whose result varies from run to run, and the property each
+#: keeps (of the in-memory and the streaming result). Scheduling decides the
+#: order of a float sum's partials (on a few rows, each row may be a morsel of
+#: its own), of a sort's ties and of the groups.
+VARYING: dict[str, Callable[[str, str], bool]] = {
+    "s-fsum-runs": _runs,
+    "s-group-fsum-runs": _runs,
+    "s-var-runs": _runs,
+    "s-sort-ties-large": lambda m, s: m in ("True", "False") and s in ("True", "False"),
+    "s-group-order": lambda m, s: len(ast.literal_eval(m)) == len(ast.literal_eval(s)) == 8,
+    # Ties of the sort key `y` (0.0 and -0.0) in either order.
+    "join-nan-zero-null": lambda m, s: _rows(m) == _rows(s) and len(_rows(m)) == 2,
+    "s-group-fsum-cancel": _one_of("2.0", "0.0", "1.0", "2.0"),
+    "s-group-fsum-f32": _one_of("16777218.0", "16777216.0", "16777218.0"),
+    "s-group-mean-cancel": _one_of("0.5", "0.0", "0.25", "0.5"),
+    "s-group-var": lambda m, s: m == "1.6666666666666667" and abs(float(s) - float(m)) < 1e-8,
+}
+#: Observations over frames of 30,000 rows or more, left out to keep the test
+#: small; `python -m sverify_dev.probe_polars --diff` runs them.
+LARGE = {
+    "s-first-last-grouped", "s-implode-order", "s-group-order", "s-quantile-median",
+    "s-window-order", "s-zero-key-first",
+}  # fmt: skip
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not probe_polars.OUT_STREAMING.is_file(),
+    reason="characterization/ of the repository is not here",
+)
+def test_probes_streaming_json_is_current():
+    """`probes-streaming.json` is what `engine_diff` finds now (rerun
+    `python -m sverify_dev.probe_polars --diff --write` after a Polars
+    change), but for the `LARGE` observations; the `VARYING` ones keep their
+    property."""
+    recorded = json.loads(probe_polars.OUT_STREAMING.read_text())
+    assert recorded["polars"] == pl.__version__
+    observations = [
+        o
+        for o in (*probe_polars.OBSERVATIONS, *probe_polars.STREAMING_OBSERVATIONS)
+        if o.construct not in LARGE
+    ]
+    now = probe_polars.engine_diff(observations=observations, log=lambda _: None)
+    then = [r for r in recorded["probes"] if r["construct"] not in LARGE]
+
+    def verdicts(found: list[dict]) -> list[tuple]:
+        return [
+            (r["construct"], r["differ"])
+            if "code" not in r
+            else (r["construct"],)
+            if r["construct"] in VARYING
+            else (r["construct"], r["differ"], r["in-memory"], r["streaming"])
+            for r in found
+        ]
+
+    assert verdicts(now) == verdicts(then)
+    for r in (*now, *then):
+        if keeps := VARYING.get(r["construct"]):
+            assert keeps(r["in-memory"], r["streaming"]), r

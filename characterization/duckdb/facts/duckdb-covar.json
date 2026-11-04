@@ -18,11 +18,12 @@
   "settings": {},
   "description": [
     "The co-moment is updated online (Schubert and Gertz 2018, eq. 4.3): `C += dx * (y - meany_new)`, where `dx` uses the old mean of x. Partial states merge with means `(n_s * mean_s + n_t * mean_t) / n` and `C = C_s + C_t + dx * dy * n_s * n_t / n`.",
-    "No pairs is NULL; the sample covariance of fewer than two pairs is NULL."
+    "No pairs is NULL; the sample covariance of fewer than two pairs is NULL.",
+    "The docs are silent on the algorithm and on NULL below two pairs: a docs gap."
   ],
   "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -37,6 +38,23 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "covar_pop, covar_samp: definitions only; silent on the algorithm and on NULL below two pairs"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/test_covar_export_state.test#L12-L34", "note": "state {count, meanx, meany, co_moment} = {3, 22.67, 20.00, 240.0}; covar_samp → 120.0"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_covar.test#L31-L47", "note": "COVAR_POP(3, 3) → 0, COVAR_SAMP(3, 3) → NULL"}
+      ]
     }
   ],
   "issues": [

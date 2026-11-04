@@ -26,7 +26,10 @@
       false
     ]
   },
-  "description": "0 for shifts below 0 or beyond 63 (`-5 >> 64` too).",
+  "description": [
+    "0 for shifts below 0 or beyond 63 (`-5 >> 64` too).",
+    "The docs are silent on out-of-range shifts: a docs gap. No upstream test pins this below HUGEINT (DuckDB's test puts it in one `statement error` with `<<`); it may change between versions."
+  ],
   "reference": "`shift_right` raises on shifts below 0 or beyond 63.",
   "status": "shimmed",
   "evidence": "probe",
@@ -58,6 +61,31 @@
         }
       ],
       "notes": "One template for every width, with the range relative to the width: at i8, `x >> 8` is 0 (also for a negative `x`), and inside the range the shift is arithmetic (a narrow operand is promoted to `int` first). sverify's reference states the range for 64 bits."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": ">> 'Bitwise shift right'; out-of-range shifts unstated"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_bitwise_ops.test#L35-L50", "note": "out-of-range >> shares a statement error with <<, so its 0 result is not pinned"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/hugeint/test_hugeint_bitwise.test#L71-L99", "note": "HUGEINT only: >> -1 → 0, negative >> 200 → 0"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT -5::BIGINT >> 64, -5::BIGINT >> -1", "observed": "0, 0"}
+      ]
     }
   ],
   "issues": [

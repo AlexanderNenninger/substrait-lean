@@ -117,6 +117,21 @@
         "The ties at zero digits are exact in `Float32`, so the test pins round half to even (and half away from zero by option) for `fp32` as for `fp64`.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L1497-L1525",
+          "note": "`test_decimal_rounding_widens_precision`: Decimal(2, 1) [9.5, -9.5, 0.5].round(0) == [10.0, -10.0, 0.0] (half to even), mode='half_away_from_zero' == [10.0, -10.0, 1.0], eager, in memory."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L384-L390",
+          "note": "#[test] `test_round_series`: [1.003, 2.23222, 3.4352].round(2, default) gives 1.0 first (assert_eq!, exact)."
+        }
+      ]
     }
   ],
   "issues": [

@@ -1,0 +1,38 @@
+{
+  "id": "PL-9",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "A bug in the documentation, or in `round`: the docs and the kernel disagree. Reproduces on Polars 2.1.0 (Python, macOS arm64), both engines; the docstring is unchanged on main (35a2cb73, 2026-11-04). No matching issue found on pola-rs/polars (2026-11-04); #12812 (closed) was about `round` in `f32`.",
+  "upstream": [
+    "https://github.com/pola-rs/polars/issues/12812"
+  ],
+  "summary": [
+    "The documentation of `Expr.round` (https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.round.html, py-polars/src/polars/expr/expr.py#L2001-L2025 at py-2.1.0) says strategies starting with `half_` \"round all values to the *nearest* rounded value, only using the strategy to break ties when a value falls exactly between two rounded values\".",
+    "`round(d)` rounds `x * 10^d`, itself rounded, and divides back (crates/polars-ops/src/series/ops/round.rs#L100-L136), so a double just below a decimal tie can round up. The double 2.675 is 2.67499999999999982236…, nearer 2.67, and Polars gives 2.68 in both `half_` modes; 1835.665 (1835.66499999999996362…) gives 1835.67 with `half_away_from_zero`. Polars's own `test_round` (py-polars/tests/unit/lazyframe/test_lazyframe.py#L564) expects 1835.67 for the default mode, gets 1835.66, and passes only on its `rel_tol` of 1e-5."
+  ],
+  "repro": "import polars as pl\npl.Series([2.675, 1835.665]).round(2).to_list()                               # [2.68, 1835.66]\npl.Series([2.675, 1835.665]).round(2, mode=\"half_away_from_zero\").to_list()  # [2.68, 1835.67]\n# 2.675 is 2.67499999999999982236…, 1835.665 is 1835.66499999999996362…:\n# neither is a tie, the nearest values are 2.67 and 1835.66 (Python's round gives both).",
+  "handling": "Nothing to work around: sverify follows the engine's behaviour, which the facts record. The fix is in Polars's documentation. Suggested fix: say that a decimal text's ties may round either way (as Python's `round` docs warn), or round the exact value in the kernel.",
+  "found_by": "the Polars characterization reverse pass (2026-11-04): the docstrings and user guide at py-2.1.0 checked against each open fact",
+  "issues": [
+    444
+  ],
+  "files": [
+    "characterization/polars/facts/polars-round-digits.json",
+    "characterization/polars/facts/polars-ulp-round.json"
+  ],
+  "facts": [
+    "polars-round-digits",
+    "polars-ulp-round"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "Probe on both engines (POLARS_IDEAL_MORSEL_SIZE=64): `round(2)` of [2.675, 1835.665, 0.285, 1.005] is [2.68, 1835.66, 0.28, 1.0], with `half_away_from_zero` [2.68, 1835.67, 0.28, 1.0]. Main at 35a2cb73: the wording is at expr.py#L2016-L2017. Duplicate search for \"round nearest docs 2.675\", \"round half_to_even 2.675\" and \"round decimals incorrect\": no matching issue."
+    }
+  ]
+}

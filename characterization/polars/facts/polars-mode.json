@@ -17,7 +17,11 @@
       "streaming"
     ]
   },
-  "description": "`mode` returns all the values tied for most frequent, as several rows (a list per group); their order is not documented. `mode().first()` picks one.",
+  "description": [
+    "`mode` returns all the values tied for most frequent, as several rows (a list per group); with `maintain_order=True` in order of first occurrence, otherwise in an unspecified order. NULL counts as a value (`[None, None, True].mode()` is `[None]`), on both engines. `mode().first()` picks one.",
+    "The docs are silent on the default order and on NULL counting as a value: a docs gap.",
+    "No upstream test pins the streaming engine's tie order; it may change between versions."
+  ],
   "reference": "`MODE` returns one value, any of the tie (`tie_pick`). A writer takes one element of Polars's list.",
   "status": "open",
   "evidence": "probe",
@@ -56,6 +60,54 @@
         "Streaming gives what in memory gives on every probe and observation cited here.",
         "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/mode.rs#L4-L37",
+          "note": "in memory: group_tuples(parallel, maintain_order), keep every group of maximal size in group order; NULL is a group"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L988-L1052",
+          "note": "streaming ungrouped: group_by(value).agg(len), filter(count == max(count)); tie order from the streaming group_by unless maintain_order"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.mode.html",
+          "note": "may return several values; maintain_order parameter; silent on the default order and on NULL counting as a value"
+        }
+      ],
+      "notes": "Corrected the description: it said the order of the modes is not documented; the docs offer `maintain_order` and are silent on the default. Added NULL counting as a value."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_mode.py#L7-L37",
+          "note": "`test_mode`: ties [\"B\", \"C\"] (order checked only with maintain_order), [1, 2, 3] all tied, [None, None, True] → [None] (eager, in memory)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "pl.LazyFrame({'x': [None, None, True]}).select(pl.col('x').mode()).collect(engine='streaming') is [None]: NULL counts as a value on the streaming engine too (polars 2.1.0)"
+        }
       ]
     }
   ]

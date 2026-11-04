@@ -24,7 +24,9 @@
     "Still eager: a non-elementwise branch (aggregations, windows, `map_batches` without `is_elementwise=True`), which both engines compute on every row; every branch under `group_by().agg` or `over()`, where `evaluate_on_groups` runs all three operands with no masking; a branch whose inputs are only literals; and an elementwise branch that turns NULL into a raising value, such as `x.fill_null('bad').cast(t)`.",
     "`coalesce` is an ordinary function whose arguments are all evaluated on every row before it folds them, and `&` and `|` evaluate both sides on every row (in parallel). This is the operand order ST-12 records, and the soundness bug #604.",
     "The raising expressions in Polars are strict casts (polars-cast-int, polars-cast-double-to-int, polars-cast-string), string parsing and temporal errors (polars-temporal-errors); integer division by zero gives NULL and integer overflow wraps (polars-int-divide, polars-int-arith).",
-    "To probe: common subexpression elimination descends into ternary branches outside group_by and may hoist a subexpression that occurs twice into a column computed on every row, which would undo the masking; and a strict cast in a `then` branch, a later `coalesce` argument and under `group_by().agg`, on the streaming engine."
+    "To probe: common subexpression elimination descends into ternary branches outside group_by and may hoist a subexpression that occurs twice into a column computed on every row, which would undo the masking; and a strict cast in a `then` branch, a later `coalesce` argument and under `group_by().agg`, on the streaming engine.",
+    "The docs are stricter than the code, and Polars's own tests pin the masking (test_when_then.py#L916-L960): PL-13 asks Polars to document it.",
+    "No upstream test pins an unmasked branch under `group_by().agg` or `over`; it may change between versions."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's Polars translation would need its `CASE` written so that a raising branch only sees its rows, or the issue analysis to treat Polars's `CASE` as eager.",
   "status": "open",
@@ -170,6 +172,17 @@
       "notes": [
         "Streaming agrees with memory: `when(x == '1').then(x.cast(Int64))` does not raise on the masked rows; `&` and `coalesce` evaluate the strict cast on every row and raise on both engines (only the error's counts differ, per morsel); a cast after a filter sees the filtered rows only. The CSE cases are in polars-exec-cse-hoist and PL-6.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/functions/whenthen.py#L48-L51",
+          "note": "docs say every branch is computed on every row; the code masks elementwise branches (ternary.rs#L110-L203), and test_when_then.py#L916-L960 pins the masking on both engines: the docs are stricter than the code"
+        }
       ]
     }
   ],

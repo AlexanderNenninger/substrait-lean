@@ -1,0 +1,38 @@
+{
+  "id": "PL-13",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "A bug in the documentation, low priority: the docs are stricter than the code, so a reader who follows them is safe. Reproduces on Polars 2.1.0 (Python, macOS arm64), both engines; the warning is unchanged on main (35a2cb73, 2026-11-04). Related: #25457 (open) asks to clarify that `when-then-otherwise` filters at the end.",
+  "upstream": [
+    "https://github.com/pola-rs/polars/issues/25457"
+  ],
+  "summary": [
+    "The documentation of `pl.when` (https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.when.html, py-polars/src/polars/functions/whenthen.py#L48-L51 and #L80 at py-2.1.0) says \"Polars computes all expressions passed to `when-then-otherwise` in parallel and filters afterwards. This means each expression must be valid on its own\" and \"Note that `when-then` always executes all expressions.\"",
+    "An elementwise branch is evaluated with its input columns masked to NULL on the rows its condition excludes (crates/polars-expr/src/expressions/ternary.rs#L110-L203), on both engines, so a strict cast in such a branch does not raise there. Polars's own tests pin the masking (py-polars/tests/unit/functions/test_when_then.py#L916-L960). The masking has limits the docs could state: non-elementwise branches, branches under `group_by().agg` or `over`, and a subexpression that common-subexpression elimination hoists out of two branches (PL-6)."
+  ],
+  "repro": "import polars as pl\npl.LazyFrame({\"x\": [\"1\", \"a\"]}).select(\n    pl.when(pl.col(\"x\") == \"1\").then(pl.col(\"x\").cast(pl.Int64))\n).collect().rows()\n# [(1,), (None,)] on both engines; the docs predict an InvalidOperationError",
+  "handling": "sverify relies on the masking for elementwise branches (polars-exec-when-eager) and on the facts' limits for the rest. The fix is in Polars's documentation: document the masking and its limits, or state that it is not guaranteed.",
+  "found_by": "the Polars characterization reverse pass (2026-11-04): the docstrings and user guide at py-2.1.0 checked against each open fact",
+  "issues": [
+    444
+  ],
+  "files": [
+    "characterization/polars/facts/polars-exec-when-eager.json",
+    "characterization/polars/facts/polars-exec-cse-hoist.json"
+  ],
+  "facts": [
+    "polars-exec-when-eager",
+    "polars-exec-cse-hoist"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "Repro on both engines (POLARS_IDEAL_MORSEL_SIZE=64). Main at 35a2cb73: whenthen.py#L49 and #L80 keep the warning. Duplicate search for \"when then docs computes all expressions\": #25457 (open, related: an aggregation in a branch computed over all rows)."
+    }
+  ]
+}

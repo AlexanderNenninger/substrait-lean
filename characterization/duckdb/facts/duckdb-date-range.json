@@ -39,7 +39,8 @@
   "description": [
     "Date arithmetic is not limited to 0001-01-01 … 9999-12-31: `DATE '9999-12-31' + 1` is `10000-01-01`, `DATE '0001-01-01' - 1` is `0001-12-31 (BC)` (year 0), and an interval of months or a second past a timestamp's last one carry on. `year(DATE '0001-01-01' - 1)` is 0.",
     "DuckDB's dates run from 5877642-06-25 BC to 5881580-07-10; a day past either raises `Out of Range Error: Date out of range`. `DATE + INTERVAL` gives a timestamp, whose range is narrower (to 294247-01-10): past it, `Conversion Error: Date and time not in timestamp range`.",
-    "`TIMESTAMPTZ + INTERVAL` (and `-`) is the ICU extension's: it sets an ICU calendar (proleptic Gregorian, in the `TimeZone` setting) to the instant, adds months and days, then hours, minutes, seconds and milliseconds (lowest first when any part is negative), and reads the instant back. Nothing checks 0001-01-01 … 9999-12-31; it raises (`Conversion Error: ICU date overflows timestamp range`) only when the result leaves the 64-bit microsecond range, and an infinite timestamp passes through. Round 2 reading, not probed."
+    "`TIMESTAMPTZ + INTERVAL` (and `-`) is the ICU extension's: it sets an ICU calendar (proleptic Gregorian, in the `TimeZone` setting) to the instant, adds months and days, then hours, minutes, seconds and milliseconds (lowest first when any part is negative), and reads the instant back. Nothing checks 0001-01-01 … 9999-12-31; it raises (`Conversion Error: ICU date overflows timestamp range`) only when the result leaves the 64-bit microsecond range, and an infinite timestamp passes through. Round 2 reading, not probed.",
+    "The docs are silent on the DATE range and the `Date out of range` error: a docs gap. No upstream test pins `DATE '9999-12-31' + 1`; it may change between versions."
   ],
   "reference": "`date_range`: date arithmetic whose operand or result leaves 0001-01-01 … 9999-12-31 raises (#251), reported by `verify`. The written SQL checks the result against the reference's dates and raises \"outside the reference's dates\" (`sql/core/_base.py`), so DuckDB's wider range is never returned; with constant operands the check is made when the plan is written.",
   "status": "shimmed",
@@ -127,6 +128,32 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `TIMESTAMPTZ + INTERVAL` computes far outside 0001-01-01 … 9999-12-31 (years BC around 290309) and raises only past the 64-bit microsecond range; infinities pass through. This confirms round 2's reading for `timestamp_tz`. The tests need the ICU extension and run in America/Los_Angeles."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L37-L44", "note": "date + int: TryAddOperator, else OutOfRangeException 'Date out of range'"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L166-L178", "note": "TryAddOperator(date_t, int32_t): infinities pass through; only int32 overflow and an infinite result fail; no 9999 bound"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/date/date_limits.test#L46-L64", "note": "min date + 1 → 5877642-06-26 (BC); one below the minimum - 1, - 365, - 2147483647 → error"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/date", "note": "no DATE range stated (docs gap)"},
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/date#date-operators", "note": "no range or 'Date out of range' error stated"}
+      ]
     }
   ],
   "issues": [

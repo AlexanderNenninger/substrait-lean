@@ -93,9 +93,11 @@
   },
   "description": [
     "On the streaming engine `var` and `std` run `VarState`. Ungrouped, each morsel's chunks go through the 128-value two-pass blocks and merge by Chan's formula into their pipeline's state, and the pipelines' states merge in turn. Block boundaries follow the morsels and the merge order follows scheduling, so the result can change in the last bits between runs: five runs over 300 000 values gave 4.440337823592621, …622 and …623 (in memory always 4.440337823592626).",
-    "Grouped, each value goes through `insert_one` (Welford) and pipelines merge by Chan's formula; on four values near 1e8 it agrees with the in-memory engine (1.6666666666666667).",
+    "Grouped, each value goes through `insert_one` (Welford) and pipelines merge by Chan's formula; on four values near 1e8 the recorded run agrees with the in-memory engine (1.6666666666666667). That is one outcome among several: the four rows stream as one-row morsels on a 10-thread machine, so which pipelines' states merge, and in what order, changes between runs, and the result varies by run (the counts were not recorded; the one-thread value was not recorded either).",
     "Integers and decimals become doubles first (`as f64`, `dec128_to_f64`); the result is `Float64` (`Float32` for `Float32` input). `ddof` is the divisor's offset: SAMPLE is `ddof=1`, POPULATION `ddof=0`; a weight at most `ddof` is NULL, and `VarState::finalize` clamps a negative variance to 0. The in-memory engine's algorithms are in polars-var-std.",
-    "Algorithm and error (sum_order does not apply; `stat_algo`): ungrouped, each run of up to 128 values (`chunk_as_float`, values widened to `f64`) is a two-pass block: the mean by `alg_sum_f64`, then the sum of squared deviations by `alg_sum_f64`, and blocks merge by Schubert and Gertz's update (Chan's pairwise formula), chained per pipeline and then across pipelines. `alg_sum_f64` folds with `algebraic_add` in the `nightly` build the wheels use (`default = [\"full\", \"nightly\"]`), which lets the compiler reassociate, so the order inside a block is unspecified. Grouped, Welford's update per value and the same merge. Error: the two-pass formula has a relative error of order n·u + n²u²κ² for the condition number κ (Higham §1.9), with n ≤ 128 per block here; the chained merges add errors of order u·κ per merge (Higham §1.9 for the updating formulas), unbounded in the number of merges; no tighter bound is stated. For the Lean side this is a WELFORD_CHAN-like algorithm, which `StatAlgo` treats as GENERIC: the generic properties hold, and no error bound is used."
+    "Algorithm and error (sum_order does not apply; `stat_algo`): ungrouped, each run of up to 128 values (`chunk_as_float`, values widened to `f64`) is a two-pass block: the mean by `alg_sum_f64`, then the sum of squared deviations by `alg_sum_f64`, and blocks merge by Schubert and Gertz's update (Chan's pairwise formula), chained per pipeline and then across pipelines. `alg_sum_f64` folds with `algebraic_add` in the `nightly` build the wheels use (`default = [\"full\", \"nightly\"]`), which lets the compiler reassociate, so the order inside a block is unspecified. Grouped, Welford's update per value and the same merge. Error: the two-pass formula has a relative error of order n·u + n²u²κ² for the condition number κ (Higham §1.9), with n ≤ 128 per block here; the chained merges add errors of order u·κ per merge (Higham §1.9 for the updating formulas), unbounded in the number of merges; no tighter bound is stated. For the Lean side this is a WELFORD_CHAN-like algorithm, which `StatAlgo` treats as GENERIC: the generic properties hold, and no error bound is used.",
+    "The docs are silent on the algorithm, the variation between runs, the clamp to 0 and NULL for a weight at most `ddof`: a docs gap.",
+    "No upstream test pins the streaming order, the clamp or that NULL; they may change between versions."
   ],
   "reference": "Substrait's `variance` and `std_dev` with `distribution`; the reference states the generic properties (non-negative, NULL for a weight at most `ddof`) and leaves the algorithm to the engine profile.",
   "status": "open",
@@ -117,7 +119,8 @@
       ],
       "notes": [
         "s-var-runs: streaming gave three values over five runs, in memory one; s-group-var: both engines 1.6666666666666667.",
-        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64.",
+        "Corrected (thread-count runs): s-group-var's recorded agreement (differ 0) is one outcome among several; the regression-test runs on 10 threads saw it vary by run."
       ]
     },
     {
@@ -192,6 +195,48 @@
         }
       ],
       "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.var.html",
+          "note": "ddof is the divisor's offset N - ddof; silent on algorithm, variation, clamp and NULL for a weight at most ddof"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.std.html",
+          "note": "same as var"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L729-L751",
+          "note": "`test_var` (crate): Int32 [5, 8, 9, 5, 0] with and without nulls, var(1) = 12.3 exactly, std(1) within 1e-9 of 3.5071355833500366 (in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_scalar_window.py#L84",
+          "note": "streaming std/var over windows compared with in memory under check_exact=False. No test pins the streaming bits"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "regression-test runs on macOS arm64, 10 threads (reported to the characterization pipeline)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-var"
+        }
+      ],
+      "notes": "Corrected the description: it gave the 4-row grouped variance as matching in memory. On 10 threads it varies by run, as the grouped sum and mean do; the recorded differ 0 is one outcome."
     }
   ],
   "supersedes": [

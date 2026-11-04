@@ -38,7 +38,8 @@
   },
   "description": [
     "NaN outside the domain, `-inf` for a logarithm of 0.",
-    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged."
+    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged.",
+    "The docs are silent on the domains of `ln`, `log`, `sqrt`, `asin` and the others (the setting is documented): a docs gap."
   ],
   "reference": "Outside the domain, the reference raises.",
   "status": "shimmed",
@@ -91,6 +92,32 @@
         }
       ],
       "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L23-L42", "note": "BindIEEEFloatingUnary/Binary: the setting picks the bare std:: operator or the raising one"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1468-L1494", "note": "ln: LnOperator raises on 0 and negatives; IEEELnOperator is std::log"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1414-L1439", "note": "sqrt: raising and IEEE operators"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L127-L157", "note": "FLOAT and DOUBLE: sqrt/ln/log10/log2(-1) → nan, ln/log10/log2(0) → -inf, asin/acos/atanh(2) → nan, gamma(-1) → nan"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "no domain stated for ln, log, log10, log2, sqrt, asin"}
+      ]
     }
   ],
   "issues": [

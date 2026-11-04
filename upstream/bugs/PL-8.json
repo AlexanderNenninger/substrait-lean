@@ -1,0 +1,46 @@
+{
+  "id": "PL-8",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "A bug in the documentation. The engine's behaviour is PL-3. Reproduces on Polars 2.1.0 (Python, macOS arm64); the `truediv` Notes and the user guide's paragraph are unchanged on main (35a2cb73, 2026-11-04). No matching docs issue found on pola-rs/polars (2026-11-04); #23741 and #14596 (closed) discuss the reciprocal's ulp errors, not the docs.",
+  "upstream": [
+    "https://github.com/pola-rs/polars/issues/23741",
+    "https://github.com/pola-rs/polars/issues/14596",
+    "https://github.com/pola-rs/polars/issues/30398"
+  ],
+  "summary": [
+    "The documentation says float division follows IEEE 754, and division by a literal or one-row divisor does not. Pages: `Expr.truediv` (https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.truediv.html, py-polars/src/polars/expr/expr.py#L6928-L6933 at py-2.1.0), Notes: \"Zero-division behaviour follows IEEE-754\", with 0/0 NaN and n/0 ±infinity; and the user guide (https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers, docs/source/user-guide/concepts/data-types-and-structures.md#L176-L190): Polars \"generally follows the IEEE 754 floating point standard\", with NaN ordering and the sign of zero or NaN as the listed exceptions.",
+    "With a length-1 divisor, `/`, `//` and `%` multiply by the reciprocal (crates/polars-compute/src/arithmetic/float.rs#L78-L119, PL-3). A nonzero finite divisor then creates NaN and infinity: `0.0 / 1e-310` is NaN (IEEE 0.0), `1e-300 / 1e-310` is inf (IEEE 1e10), and `49.0 % 49.0` is 49.0, outside `[0, |y|)`. The user guide's accuracy paragraph (\"does not provide guarantees on the error\") covers the ulp in `49.0 / 49.0 = 0.9999999999999999`; it does not cover a NaN from two finite nonzero operands. Integer `/` casts to `Float64` first, so it takes the reciprocal too.",
+    "Secondary: the `floordiv` docstring (expr.py#L6702-L6745) says Polars \"first does the floating-point division ... and then performs the flooring\". With a literal divisor that is `floor(x * (1 / c))`: `pl.col(\"x\") // 49.0` on `x = 49.0` is 0.0 on a frame of two rows or more."
+  ],
+  "repro": [
+    "import polars as pl\npl.DataFrame({\"x\": [49.0, 0.0, 1e-300]}).select(\n    pl.col(\"x\") / 1e-310, (pl.col(\"x\") // 49.0).alias(\"fd\"), (pl.col(\"x\") % 49.0).alias(\"m\")\n).to_dict(as_series=False)\n# {'x': [inf, nan, inf], 'fd': [0.0, 0.0, 0.0], 'm': [49.0, 0.0, 1e-300]}\npl.DataFrame({\"a\": [49, 5]}).select(pl.col(\"a\") / 49, pl.col(\"a\") / 3)\n# 49 / 49 = 0.9999999999999999, 5 / 3 = 1.6666666666666665",
+    "On the streaming engine, a frame shorter than the thread count streams as one-row morsels and gives the IEEE values, so which result a row gets depends on the morsel length (polars-double-scalar-divisor)."
+  ],
+  "handling": "Nothing to work around: sverify follows the engine's behaviour, which the facts record. The fix is in Polars's documentation. Suggested fix: list the reciprocal for a scalar divisor among the user guide's exceptions, with the subnormal case, or drop the reciprocal for divisors whose reciprocal overflows.",
+  "found_by": "the Polars characterization reverse pass (2026-11-04): the docstrings and user guide at py-2.1.0 checked against each open fact",
+  "issues": [
+    444
+  ],
+  "files": [
+    "characterization/polars/facts/polars-double-scalar-divisor.json",
+    "characterization/polars/facts/polars-double-divide.json",
+    "characterization/polars/facts/polars-int-true-divide.json"
+  ],
+  "facts": [
+    "polars-double-scalar-divisor",
+    "polars-double-divide",
+    "polars-int-true-divide"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "Repro on Polars 2.1.0 (macOS arm64). Main at 35a2cb73: expr.py#L6931 still reads \"Zero-division behaviour follows IEEE-754\", the user guide's IEEE paragraph is at data-types-and-structures.md#L178, and `floordiv` still says Polars \"first does the floating-point division\" (expr.py#L6715). Duplicate search for \"truediv reciprocal\", \"division scalar reciprocal precision\", \"division by literal not IEEE\" and \"x / 49.0 0.9999999999999999\": no docs issue."
+    }
+  ]
+}
