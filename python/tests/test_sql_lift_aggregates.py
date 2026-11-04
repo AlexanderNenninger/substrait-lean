@@ -46,6 +46,15 @@ QUERIES = [
     "SELECT SUM('inf'::DOUBLE), SUM('-inf'::DOUBLE), SUM('nan'::DOUBLE)",
     "SELECT customer, sum(2.5::DOUBLE) AS s, avg(CAST(1 AS DOUBLE)) AS a FROM orders"
     " GROUP BY customer",
+    # The variance family (#433), of integers and doubles; each engine's own
+    # algorithm, with the reference's generic properties.
+    "SELECT customer, stddev_samp(amount) AS sd, stddev_pop(price) AS sp, var_samp(qty) AS vs,"
+    " var_pop(amount) AS vp, stddev(price) AS s, variance(amount) AS v"
+    " FROM orders GROUP BY customer",
+    "SELECT covar_samp(amount, price) AS cs, covar_pop(qty, amount) AS cp, corr(price, qty) AS r"
+    " FROM orders",
+    "SELECT customer, qty, stddev_samp(amount) AS sd, count(*) AS n FROM orders"
+    " GROUP BY ROLLUP (customer, qty)",
 ]
 
 
@@ -73,6 +82,13 @@ def test_the_reference_lift_is_checked_too(query):
         (
             "SELECT amount + 1 AS amount FROM orders GROUP BY amount HAVING amount = 5",
             "both an input column and an output alias",
+        ),
+        ("SELECT stddev_samp(cost) FROM orders", "of a DECIMAL is not supported"),
+        ("SELECT var_pop(customer) FROM orders", "variance of"),
+        ("SELECT corr(customer, amount) FROM orders", "corr of"),
+        (
+            "SELECT var_pop(amount) OVER (PARTITION BY customer) FROM orders",
+            "over a window is not supported",
         ),
     ],
 )
@@ -138,3 +154,21 @@ def test_covariance_of_a_double_constant_is_of_that_double():
     )
     assert lean == [(0.0,)]
     assert run_plan(con, plan).to_pylist() == [{"c": 0.0}]
+
+
+def test_stddev_samp_of_an_integer_is_proved_as_ibiss():
+    # The issue's repro: what Ibis's `t.duration_s.std()` proves, the SQL
+    # lift proves too (#433).
+    import ibis
+
+    import sverify as sv
+
+    jobs = ibis.table({"workflow": "!string", "duration_s": "int64"}, name="jobs")
+    query = "SELECT workflow, stddev_samp(duration_s) AS sd FROM jobs GROUP BY workflow"
+    report = sv.verify(query, tables={"jobs": jobs})
+    assert report.facts["sd"] == "a double ≥ 0.0 or NULL", report
+    ibis_report = sv.verify(jobs.group_by("workflow").aggregate(sd=jobs.duration_s.std()))
+    assert report.facts == ibis_report.facts
+    plan = lift(query, {"jobs": jobs.schema()}).plan
+    measure = plan["relations"][0]["root"]["input"]["aggregate"]["measures"][0]["measure"]
+    assert measure["options"] == [{"name": "distribution", "preference": ["SAMPLE"]}]

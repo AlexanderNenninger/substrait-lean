@@ -433,7 +433,23 @@ _AGGREGATES: dict[type, str] = {
     sge.Avg: "avg",
     sge.Min: "min",
     sge.Max: "max",
+    # The variance family (#433), as the Ibis producer writes them (#54):
+    # each engine's own algorithm, of doubles or of integers converted.
+    sge.Variance: "variance",
+    sge.VariancePop: "variance",
+    sge.Stddev: "std_dev",
+    sge.StddevSamp: "std_dev",
+    sge.StddevPop: "std_dev",
+    sge.CovarSamp: "covar_samp",
+    sge.CovarPop: "covar_pop",
+    sge.Corr: "corr",
 }
+
+#: The variance family's population measures; the others are a sample's.
+_POPULATION = (sge.VariancePop, sge.StddevPop)
+
+#: Aggregates of a pair of values.
+_PAIRED = {"covar_samp", "covar_pop", "corr"}
 
 #: Joins with a condition, by SQLGlot's (side, kind).
 #: The arguments of a table or subquery in FROM that the lift reads.
@@ -910,6 +926,9 @@ class _Lift:
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
                     raise Unsupported("nth_value needs a positive integer constant")
                 args.append(literal(k.value, dt.int64))
+        elif _AGGREGATES.get(type(f)) in ("variance", "std_dev", *_PAIRED):
+            # Lean's `parseWindow` refuses them too.
+            raise Unsupported(f"{_shown(f)} over a window is not supported")
         elif type(f) in _AGGREGATES:
             # Each measure over the window, with its type (DuckDB's AVG of a
             # DECIMAL is a DOUBLE).
@@ -1110,6 +1129,14 @@ class _Lift:
         if isinstance(node, sge.Count) and (arg is None or isinstance(arg, sge.Star)):
             args: list[E] = []
             out: Any = dt.int64
+        elif name in _PAIRED:
+            if distinct:
+                raise Unsupported(f"{_shown(node)}: DISTINCT is not supported")
+            args = [self.expr(a, scope, bound) for a in (arg, node.expression)]
+            for a in args:
+                if not (a.type.is_integer() or a.type.is_float64()):
+                    raise Unsupported(f"{name} of {a.type} is not supported")
+            out = dt.float64
         else:
             if not isinstance(node, sge.Count) and node.expressions:
                 raise Unsupported(f"{_shown(node)} takes one argument")
@@ -1127,6 +1154,10 @@ class _Lift:
                 out = t
             elif not _numeric(t):
                 raise Unsupported(f"{name} of {t} is not supported")
+            elif name in ("variance", "std_dev"):
+                if t.is_decimal():
+                    raise Unsupported(f"{_shown(node)}: {name} of a DECIMAL is not supported yet")
+                out = dt.float64
             elif name == "sum":
                 # DuckDB sums integers as HUGEINTs; the plan's 64-bit sum
                 # raises where one leaves 64 bits (#202), as the written
@@ -1163,6 +1194,11 @@ class _Lift:
                     "arguments": [{"value": a.json} for a in args],
                     "outputType": type_json(out),
                     **({"options": _overflow(self, out)} if name == "sum" else {}),
+                    **(
+                        {"options": [_distribution(isinstance(node, _POPULATION))]}
+                        if name in ("variance", "std_dev")
+                        else {}
+                    ),
                     "invocation": invocation,
                 }
             ]
@@ -1313,6 +1349,11 @@ def _overflow(lf: _Lift, t: Any) -> list[Json]:
     """`overflow` for exact arithmetic (integers, decimals) at the declared
     width; doubles have none."""
     return [] if t.is_float64() else [_option("overflow", lf.profile.overflow)]
+
+
+def _distribution(population: bool) -> Json:
+    """The variance family's `distribution`: a sample's or a population's."""
+    return _option("distribution", "POPULATION" if population else "SAMPLE")
 
 
 def _bool_json(lf: _Lift, e: E) -> Json:
