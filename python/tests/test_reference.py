@@ -22,6 +22,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engine import substrait_json as lift_json
+from sverify.errors import PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.sql_lift import lift
@@ -740,8 +741,12 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
-    with pytest.raises(Exception, match="overflow"):
+    # Refused before the run: the assumption is checked on the data first,
+    # on Polars as on DuckDB.
+    with pytest.raises(PreconditionError, match="stays finite.*refused before the run"):
         ref.run(con, engine)
+    with pytest.raises(Exception, match="overflow"):
+        ref.run(con, engine, check_inputs=False)
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])

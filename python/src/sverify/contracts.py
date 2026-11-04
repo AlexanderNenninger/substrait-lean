@@ -1080,18 +1080,20 @@ class Report:
                     raise PreconditionError(
                         f"{n} row(s) of {t} violate {label(c)}: refused before the run"
                     )
-        if any(_sum(i) for i in self.assumed) and self.plan is not None:
-            # The proved DuckDB translation checks each SUM as it adds up; it
-            # runs first, so a batch whose SUM leaves its type is refused
-            # before the plan runs on any engine.
+        if self.assumed and self.plan is not None:
+            # The proved DuckDB translation checks each assumption as it runs:
+            # a SUM as it adds up, an operation on finite doubles as it gives
+            # its result (#575). It runs first, so a batch that breaks one is
+            # refused before the plan runs on any engine, Polars included.
             try:
                 run_plan(con, written_plan(self.plan), "duckdb")
             except Exception as e:
-                if "overflow in SUM" not in str(e):
+                message = str(e)
+                if "overflow in SUM" not in message and "overflow to infinity" not in message:
                     raise
-                sums = ", ".join(f"SUM of {i.what} {_sum_assumed(i)}" for i in self.assumed)
+                broken = ", ".join(_assumption(i) for i in self.assumed)
                 raise PreconditionError(
-                    f"the batch breaks an assumed precondition, {sums}: refused before the run"
+                    f"the batch breaks an assumed precondition, {broken}: refused before the run"
                 ) from e
 
     def run(
