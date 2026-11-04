@@ -535,28 +535,112 @@ theorem AVal.mayFinite_of_mem {a : AVal} {i : Int} (h : a.Mem (.int i))
     decide_eq_true_eq]
   exact ⟨fun l hl => by have := hm.1 l hl; omega, fun u hu => by have := hm.2 u hu; omega⟩
 
-/-- May the call overflow to `±∞` (`UnFn.infIssue`)? Only where its argument
-may be finite: the checker has no bound on what `exp` gives. -/
+set_option exponentiation.threshold 1100 in
+/-- `exp` of a finite double at most `709` is finite (#582): `709 < 1023 · ln 2`,
+and `exp` is the platform's `libm`, within one ulp. Trusted, as the facts of
+`FloatCode.add_scaled` …; proved for native doubles as `NativeLink.core_exp`
+in `float-bounds/FloatBounds/Arith.lean`, from `NativeLink.exp`. -/
+axiom FloatCode.exp_fin {a r : Int} (ha : FloatCode.IsFin a)
+    (h : FloatCode.scaled a ≤ 709 * 2 ^ 1074) (hr : FMath.apply .exp a = some r) : FloatCode.IsFin r
+
+set_option exponentiation.threshold 1100 in
+/-- Do the argument's bounds keep it at most `709`, so that `exp` of a finite
+one is finite? -/
+def expFinite (aa : AVal) : Bool :=
+  match aa.int with
+  | some ⟨_, some h⟩ => decide (FloatCode.scaled h ≤ 709 * 2 ^ 1074)
+  | _ => false
+
+/-- May the call overflow to `±∞` (`UnFn.infIssue`)? Where its argument may
+be finite and its bounds do not keep `exp` below the largest double. -/
 def UnFn.mayInf (f : UnFn) (aa : AVal) : List Issue :=
   match f with
-  | .fmath .exp => if aa.mayFinite then [.infinite] else []
+  | .fmath .exp => if aa.mayFinite && !expFinite aa then [.infinite] else []
   | _ => []
 
+/-- The bound of a double operation's result (`faddBound` …), `top` for the
+others. -/
+def BinFn.fBound : BinFn → Bound → Bound → Bound
+  | .fadd, x, y => faddBound false x y
+  | .fsub, x, y => faddBound true x y
+  | .fmul, x, y => fmulBound x y
+  | .fdiv, x, y => fdivBound x y
+  | _, _, _ => Bound.top
+
+/-- Do the arguments' bounds show the result finite (#582)? -/
+def BinFn.finiteResult (f : BinFn) (aa ab : AVal) : Bool :=
+  match aa.int, ab.int with
+  | some x, some y => match f.fBound x y with
+    | ⟨some l, some h⟩ => decide (FloatCode.negInf < l) && decide (h < FloatCode.posInf)
+    | _ => false
+  | _, _ => false
+
 /-- May the call overflow to `±∞` (`BinFn.infIssue`)? Where both arguments
-may be finite: the checker has no bound on a double operation's result. -/
+may be finite and their bounds do not show the result finite. -/
 def BinFn.mayInf (f : BinFn) (aa ab : AVal) : List Issue :=
-  if f.makesInf && aa.mayFinite && ab.mayFinite then [.infinite] else []
+  if f.makesInf && aa.mayFinite && ab.mayFinite && !f.finiteResult aa ab then [.infinite] else []
+
+theorem BinFn.fBound_mem (f : BinFn) {x y : Bound} {a b r : Int} (hx : x.Mem a) (hy : y.Mem b)
+    (hr : f.apply (.int a) (.int b) = .int r) : (f.fBound x y).Mem r := by
+  cases f <;> simp only [BinFn.fBound] <;> try exact Bound.mem_top _
+  all_goals simp only [BinFn.apply, Value.int.injEq] at hr; subst hr
+  · exact faddBound_mem' false hx hy (fun _ => rfl) (fun h => by cases h)
+  · exact faddBound_mem' true hx hy (fun h => by cases h) (fun _ => rfl)
+  · exact fmulBound_mem hx hy
+  · exact fdivBound_mem hx hy
+
+theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
+    (ha : aa.Mem (.int a)) (hb : ab.Mem (.int b)) (hr : f.apply (.int a) (.int b) = .int r)
+    (hinf : isInfCode r = true) : f.finiteResult aa ab = false := by
+  obtain ⟨x, hx, hxm⟩ := ha
+  obtain ⟨y, hy, hym⟩ := hb
+  have hm := f.fBound_mem hxm hym hr
+  unfold BinFn.finiteResult
+  rw [hx, hy]
+  dsimp only
+  split
+  · rename_i l h heq
+    rw [heq] at hm
+    have h1 := hm.1 l rfl
+    have h2 := hm.2 h rfl
+    simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at hinf
+    simp only [Bool.and_eq_false_iff, decide_eq_false_iff_not]
+    rcases hinf with rfl | rfl <;> omega
+  · rfl
+
+set_option exponentiation.threshold 1100 in
+theorem expFinite_false {aa : AVal} {a r : Int} (ha : aa.Mem (.int a))
+    (hfin : isFiniteCode a = true) (hr : FMath.apply .exp a = some r) (hinf : isInfCode r = true) :
+    expFinite aa = false := by
+  obtain ⟨x, hx, hxm⟩ := ha
+  unfold expFinite
+  rw [hx]
+  split
+  · rename_i l h heq
+    cases heq
+    have h2 := hxm.2 h rfl
+    simp only [decide_eq_false_iff_not]
+    intro c3
+    simp only [isFiniteCode, Bool.and_eq_true, decide_eq_true_eq] at hfin
+    have hf := FloatCode.exp_fin (a := a) ⟨hfin.1, hfin.2⟩
+      (Int.le_trans (FloatCode.scaled_mono h2) c3) hr
+    simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at hinf
+    obtain ⟨f1, f2⟩ := hf
+    rcases hinf with rfl | rfl <;> omega
+  · rfl
 
 theorem UnFn.mayInf_sound (f : UnFn) {aa : AVal} {v : Value} {k : Issue} (ha : aa.Mem v)
     (hk : f.infIssue v = some k) : k ∈ f.mayInf aa := by
   have := UnFn.infIssue_eq hk; subst this
   unfold UnFn.infIssue at hk
   split at hk
-  · rename_i a r _
+  · rename_i a r heq
     split at hk
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
-      simp [UnFn.mayInf, AVal.mayFinite_of_mem ha hc.1]
+      have hr : FMath.apply .exp a = some r := by
+        simp only [UnFn.apply] at heq; split at heq <;> simp_all
+      simp [UnFn.mayInf, AVal.mayFinite_of_mem ha hc.1, expFinite_false ha hc.1 hr hc.2]
     · simp at hk
   · simp at hk
 
@@ -565,11 +649,12 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
   have := BinFn.infIssue_eq hk; subst this
   unfold BinFn.infIssue at hk
   split at hk
-  · rename_i a b r _
+  · rename_i a b r heq
     split at hk
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
-      simp [BinFn.mayInf, hc.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.2, AVal.mayFinite_of_mem hb hc.1.2]
+      simp [BinFn.mayInf, hc.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.2, AVal.mayFinite_of_mem hb hc.1.2,
+        BinFn.finiteResult_false f ha hb heq hc.2]
     · simp at hk
   · simp at hk
 

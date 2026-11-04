@@ -1527,3 +1527,20 @@ Polars needs a guard for such plans and no shim.
 A second example: a constant subexpression that raises (`1 // 0 = 1`)
 counts as raising for the whole plan (#609, under D19), since DuckDB may
 evaluate it when it plans the query.
+
+### D22. Four route classes, and tolerances are observations
+
+A route's class is one of four: `exact` (every result the engine gives is one
+the reference allows), `observed` (equal to such a result under an
+observation the postcondition states), `shim` (either of those after the
+translation's shim) and `refused`. The classes `refines`, `refines` up to an
+observation and `approx` of [Classes of an engine's functions](#classes-of-an-engines-functions)
+map to `exact`, `observed` and `observed`. User-facing docs say
+"observation", or "observation model" in prose, and never `q`.
+
+Why: a tolerance is an observation of doubles. `sv.within` is already a
+component of `sv.equivalent` (`floats=sv.within(...)`), ordered by
+refinement with the other components (D18, item 4). Tolerances differ from
+the other observations only in how they compose, by adding their `ε`, and
+the checker's propagation of `ε` through a plan handles that. A separate
+`approx` class told the user nothing the observation did not.

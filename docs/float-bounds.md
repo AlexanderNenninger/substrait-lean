@@ -248,11 +248,35 @@ to the difference `Δ` of the exact results. With `|a| ≤ ma`, `|b| ≤ mb`:
 | `a / b`, `b` the same on both sides, `|b| ≥ lb > 0` (`rule_div`) | `(εa / lb)(1 + u) + 2u (ma / lb + tiny)` |
 | Polars's `a / b` by a literal, `fl(a · fl(1/b))` (`rule_div_recip`) | `(εa / lb)(1 + u)² + (3u + u²) ma / lb + (u (1 + u)(ma + εa) + 2u) tiny` |
 
-Elementary functions other than `sqrt` are the platform's `libm`, which
-IEEE 754 does not require to round correctly: their bounds stay probed, not
-proved. The checker evaluates the formulas in doubles; every term is
-nonnegative, so each rounding is relative, and a factor `1 + 2⁻⁴⁰` covers
-them.
+`exp` is the platform's `libm` on both sides, which IEEE 754 does not
+require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's
+manual states and the probes measured (0.502 ulp on macOS,
+[duckdb-ulp-libm](../characterization/duckdb/facts/duckdb-ulp-libm.json)), and
+`rule_exp` bounds `exp a`, `a ≤ ha`, by
+`εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
+functions stay probed, not proved. The checker evaluates the formulas in
+doubles; every term is nonnegative, so each rounding is relative, and a
+factor `1 + 2⁻⁴⁰` covers them.
+
+### One operation's bounds and overflow (#582)
+
+The checker bounds a double `+`, `-`, `*` and `/` from its inputs' bounds
+(`faddBound`, `fmulBound`, `fdivBound` in `SubstraitLean/Contracts.lean`), so
+chains such as `(a + b) * c` have bounds, and a result the bounds keep below
+the largest double needs no "stays finite" precondition on the data
+(`BinFn.mayInf`). The core trusts one fact per operation on scaled values,
+which [`Arith.lean`](../float-bounds/FloatBounds/Arith.lean) proves for native
+doubles decoded within `2u` of the codes' values:
+
+| Core fact | Theorem | Where | Result, against the exact one |
+|---|---|---|---|
+| `FloatCode.add_scaled`, `sub_scaled` | `core_add`, `core_sub` | `\|A\| + \|B\| ≤ 2¹⁰²³` | finite, within `(\|A\| + \|B\|) / 2⁵¹ + u · tiny` |
+| `FloatCode.mul_scaled` | `core_mul` | `\|A B\| ≤ 2¹⁰²³` | finite, within `\|A B\| / 2⁵⁰ + u · tiny` |
+| `FloatCode.div_scaled` | `core_div` | `B ≠ 0`, `\|A / B\| ≤ 2¹⁰²³` | finite, within `\|A / B\| / 2⁵⁰ + u · tiny` |
+| `FloatCode.exp_fin` | `core_exp` | `A ≤ 709` | finite (`709 < 1023 · ln 2`) |
+
+Scaled by `2¹⁰⁷⁴`, `u · tiny` is `1/2`, which the core's integer forms round
+up to `1`.
 
 ## The generic properties of statistical aggregates
 
