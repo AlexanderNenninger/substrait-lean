@@ -4606,11 +4606,16 @@ theorem EnvMem.window {env : List AVal} {part : List Nat} {b a : List Row} {x : 
 /-- **The size hypothesis for relations** (trusted, #202): every relation a
 window reads has fewer than `2⁶²` rows, which every engine's memory
 guarantees. It bounds `ROW_NUMBER` and the ranks by `Text.rowCap`, so that
-`ROW_NUMBER() - 1` is proved not to overflow. -/
+`ROW_NUMBER() - 1` is proved not to overflow. Every relation an aggregate
+reads has fewer than `2⁶³` rows (#437): `COUNT(*)` of a group is a BIGINT,
+in the reference and in every engine. It bounds a group's `SUM` by its
+rows (`Rel.sumRows`), so that a `SUM` of values in `[-1, 1]` is proved to
+fit 64 bits. -/
 def Rel.Small (cat : Catalog) : Rel → Prop
   | .read _ | .values _ _ => True
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
-  | .unnest r _ | .aggregate r _ _ => r.Small cat
+  | .unnest r _ => r.Small cat
+  | .aggregate r _ _ => (r.eval cat).length < 2 ^ 63 ∧ r.Small cat
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => a.Small cat ∧ b.Small cat
   | .window r _ _ _ => (r.eval cat).length < 2 ^ 62 ∧ r.Small cat
 
@@ -4686,13 +4691,13 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
   | .aggregate r gs ms, hwf, hs, row, h => by
       obtain ⟨k, grp, rfl, hgrp, hk, hne, hglen⟩ := mem_aggregateEval_len h
       have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T sz) y ∧ FactsHold (r.facts cat F T) y :=
-        fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 hs y (hgrp y hy),
+        fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 (fun h => (hs h).2) y (hgrp y hy),
           Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
       have hm := EnvMem.measures hall ms (!gs.isEmpty) (fun hg => hne (by simpa using hg))
         (rows := r.maxRows) (fun n hn => Nat.le_trans hglen (Rel.maxRows_sound hn))
       rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
       · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
-      · exact (EnvMem.mapD (aeval_sound hcat hA hF hT hwf.1 hs x hx)
+      · exact (EnvMem.mapD (aeval_sound hcat hA hF hT hwf.1 (fun h => (hs h).2) x hx)
           (Rel.facts_sound hcat hF hT hwf.1 x hx) gs).append hm (by simp)
   | .unionAll a b, hwf, hs, row, h => by
       simp only [eval, List.mem_append] at h
@@ -4720,7 +4725,7 @@ theorem Rel.ratioPart_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
       FactsHold (r.ratioPart cat A F T sz) row
   | .aggregate r gs ms, hwf, hs, row, h => by
       obtain ⟨k, grp, rfl, hgrp, hk, -⟩ := mem_aggregateEval_nonempty h
-      refine ratioFacts_sound ?_ fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 hs y (hgrp y hy),
+      refine ratioFacts_sound ?_ fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 (fun h => (hs h).2) y (hgrp y hy),
         Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
       rcases hk with ⟨rfl, rfl⟩ | ⟨z, _, rfl⟩ <;> simp [groupKey]
   | .read _, _, _, _, _ | .values _ _, _, _, _, _ | .filter _ _, _, _, _, _

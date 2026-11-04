@@ -1902,6 +1902,10 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         if largest == 0:
             return None
         rows = (2**63 - 1) // largest
+        if rows >= 2**63 - 1:
+            # A group has fewer than 2^63 rows (`Rel.sumRows`, #437): the
+            # sum fits, and Lean proves it.
+            return None
         return (
             f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
             f"{rows:,} rows; {capped(rows)}"
