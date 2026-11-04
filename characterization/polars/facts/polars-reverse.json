@@ -1,0 +1,44 @@
+{
+  "id": "polars-reverse",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`str.reverse` reverses grapheme clusters",
+  "verdict": "graphemes, where the reference reverses code points",
+  "area": "strings",
+  "constructs": [
+    "str.reverse"
+  ],
+  "settings": {},
+  "description": "`str.reverse` reverses extended grapheme clusters (`unicode_reverse`): a letter keeps its combining accent (`e\\u0301x` becomes `xe\\u0301`) and a flag's two regional indicators stay together. It agrees with the reference on ASCII and on precomposed text.",
+  "reference": "`reverse` reverses the code points (`String.toList.reverse`), so a combining accent moves to the other side of its letter.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.reverse()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "reverse-graphemes"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/reverse.rs#L1-L9"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}

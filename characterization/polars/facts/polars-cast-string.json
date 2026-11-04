@@ -1,0 +1,53 @@
+{
+  "id": "polars-cast-string",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Casts from and to strings",
+  "verdict": "strict parsing; shortest round-trip for doubles; no string → bool or date",
+  "area": "casts",
+  "constructs": [
+    "cast"
+  ],
+  "settings": {},
+  "description": [
+    "Text to an integer accepts an optional sign and digits only (` 2`, `3.0`, `1e2`, `0x10` fail); text to a double accepts `nan`, `inf`, `-Infinity`, `.5`, `5.` and rounds `1e400` to inf. Failures raise with `strict=True` and are NULL with `strict=False`.",
+    "A double becomes its shortest round-trip text, with an exponent at 1e16 (`1e+16`) and at 1e-7 (`1e-7`), without one at 1e15 and 1e-5, `-0.0`, `inf` and `NaN`. Booleans become `true` and `false`; integers and doubles become booleans by `!= 0` (NaN is true).",
+    "Text to `Boolean` or to `Date` is refused (`InvalidOperationError`); `str.to_date` parses dates."
+  ],
+  "reference": "Casts to and from strings follow the reference's `cast` rules; `cast_failure` as stated.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-string-to-int"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-string-to-double"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-double-to-string"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-bool"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-string-to-bool"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-string-to-date"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

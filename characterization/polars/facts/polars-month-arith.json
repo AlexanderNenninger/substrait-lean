@@ -1,0 +1,29 @@
+{
+  "id": "polars-month-arith",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`offset_by('1mo')` clamps to the month's end",
+  "verdict": "end-of-month clamping",
+  "area": "temporal",
+  "constructs": [
+    "dt.offset_by"
+  ],
+  "settings": {},
+  "description": "Adding months keeps the day where it exists and otherwise takes the month's last day: 2024-01-31 plus a month is 2024-02-29, 2024-02-29 plus a year is 2025-02-28, 2023-03-31 minus a month is 2023-02-28. `pl.duration` has no months; calendar steps go through `offset_by`.",
+  "reference": "Adding months keeps the day of month, or takes the month's last day where it is shorter (`Time.addMonths`: 2024-01-31 + 1 month is 2024-02-29).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "date-month-arith"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

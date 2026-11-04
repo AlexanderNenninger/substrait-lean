@@ -1,0 +1,35 @@
+{
+  "id": "polars-string-functions-missing",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "No `levenshtein`, digests, `repeat`, `ascii` or `LIKE` on expressions",
+  "verdict": "missing from `pl.Expr.str`",
+  "area": "strings",
+  "constructs": [
+    "levenshtein",
+    "md5",
+    "sha256",
+    "repeat",
+    "ascii",
+    "like",
+    "ilike"
+  ],
+  "settings": {},
+  "description": "`pl.Expr.str` has no `levenshtein`, `md5`, `sha256`, `repeat`, `ascii`, `like` or `ilike`. `LIKE` exists in Polars's SQL interface; through expressions it is a regex (`str.contains`) with the pattern translated. `hash` is Polars's own hash, unrelated to the digests.",
+  "reference": "Each is a Substrait function (or sverify's black box) the reference evaluates.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "string-functions-missing"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

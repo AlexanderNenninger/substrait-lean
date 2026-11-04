@@ -116,3 +116,28 @@ means Polars's own expression gives the reference result.
 | `rank`, `dense_rank`, `row_number` | | SQL's; NULLs ranked | `rank('min')`, `'dense'`, `'ordinal'`; NULL's rank is NULL; no `ntile`, `percent_rank`, `cume_dist` | [rank](facts/polars-rank.json) |
 | `lag`, `first_value`, windowed sums | `tie_order` | the window's order | `.over` in input order | [window-values](facts/polars-window-values.json) |
 | `i64` vs `fp64` comparison | | a cast first | compares as `Float64` | [int-float-compare](facts/polars-int-float-compare.json) |
+
+### Strings, dates and casts
+
+| Function (types) | Option | Reference | Polars | Fact |
+|---|---|---|---|---|
+| `substring` | `negative_start` | `WRAP_FROM_END`, 1-based | `str.slice`, 0-based, `WRAP_FROM_END` | [substring](facts/polars-substring.json) |
+| `strpos` | | 1-based characters, 0 when absent | `str.find`: 0-based bytes, NULL when absent | [strpos](facts/polars-strpos.json) |
+| `upper`, `lower` | `char_set` | `UTF8` (Rust's mappings) | native | [case](facts/polars-case.json) |
+| `character_length` | | code points | native | [length](facts/polars-length.json) |
+| `reverse` | | code points | grapheme clusters | [reverse](facts/polars-reverse.json) |
+| `btrim` | | spaces | `strip_chars(' ')` native; `strip_chars()` trims all whitespace | [trim](facts/polars-trim.json) |
+| `str_concat` | `null_handling` | `ACCEPT_NULLS` | native; `ignore_nulls=True` for `IGNORE_NULLS` | [concat](facts/polars-concat.json) |
+| `starts_with`, `ends_with`, `replace` | `case_sensitivity` | `CASE_SENSITIVE` | native | [match-functions](facts/polars-match-functions.json) |
+| `regexp_extract`, `regexp_replace` | | RE2; `''` without a match | Rust `regex`; NULL without a match; `$1` replacements | [regex](facts/polars-regex.json) |
+| `levenshtein`, `md5`, `sha256`, `repeat`, `ascii`, `like`, `ilike` | | defined | no expression | [string-functions-missing](facts/polars-string-functions-missing.json) |
+| date arithmetic | `date_range` | raise outside 0001 … 9999 | computes past them; huge day counts panic ([PL-2](../../upstream/bugs/PL-2.json)) | [date-range](facts/polars-date-range.json) |
+| date + months | | the month's last day where shorter | native | [month-arith](facts/polars-month-arith.json) |
+| timestamps | precision | microseconds | `Datetime('us')` | [timestamp-unit](facts/polars-timestamp-unit.json) |
+| `date_part`, `date_trunc` | | ISO weeks, floor before 1970 | native | [date-parts](facts/polars-date-parts.json) |
+| `strftime` | | opaque | chrono's specifiers | [strftime](facts/polars-strftime.json) |
+| `TIME ± INTERVAL`, time zones, invalid dates | `time_interval_months` | refused | refused or raises | [temporal-errors](facts/polars-temporal-errors.json) |
+| `cast` `fp64` → integer | `float_to_int` | `TRUNCATE` | native | [cast-double-to-int](facts/polars-cast-double-to-int.json) |
+| `cast` (numbers) | `cast_failure` | as stated | `strict=True` throws, `strict=False` returns NULL; `wrap_numerical` wraps integers, saturates doubles | [cast-int](facts/polars-cast-int.json), cast-double-to-int |
+| `cast` `i64` → `fp64`, `fp64` → `fp32` | | nearest | native | [cast-to-double](facts/polars-cast-to-double.json) |
+| `cast` from and to strings | | the reference's rules | strict parsing; shortest round-trip text; no text to bool or date | [cast-string](facts/polars-cast-string.json) |

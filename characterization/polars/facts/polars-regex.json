@@ -1,0 +1,87 @@
+{
+  "id": "polars-regex",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Regexes are Rust's `regex` crate: no backreferences or lookaround, Unicode classes",
+  "verdict": "`regex` crate syntax; `extract` is NULL without a match; `$1` in replacements",
+  "area": "strings",
+  "constructs": [
+    "str.contains",
+    "str.extract",
+    "str.replace",
+    "str.replace_all"
+  ],
+  "settings": {},
+  "description": [
+    "Patterns are the Rust `regex` crate's: no lookaround and no backreferences (both raise `ComputeError` when the query runs), `\\d` and `\\w` are Unicode (`\\d` matches `٣`), POSIX classes are ASCII. An invalid pattern raises.",
+    "`str.extract(p, g)` is NULL where the pattern does not match or the group did not take part; DuckDB's `regexp_extract` gives `''` there. `replace_all` replaces every match, including empty ones (`b*` in `aaa` gives `-a-a-a-`), and its replacement names groups as `$1` or `${1}`; `\\1` is literal. `replace` replaces the first match.",
+    "On ASCII, `replace_all` agrees with `regexp_replace(…, 'g')` on the probe's patterns, and `extract` with `regexp_extract` wherever the pattern matches."
+  ],
+  "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround either; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.extract('^(a+)(b)?', 2)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.extract('(a|ab)(c|bcd)?', 0)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.extract('(a*)*', 1)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.extract('x(?:a)(y)', 1)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.extract('.$', 0)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.extract('(b)', 1)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.replace_all('a+', '-')"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.replace_all('b*', '-')"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.replace_all('$', '!')"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "regex-syntax"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "regex-invalid"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "regex-replace-refs"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "regex-extract-nomatch"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    50
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "polars-strpos",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`str.find`: a 0-based byte offset, NULL when absent",
+  "verdict": "byte offset from 0; NULL where `strpos` is 0",
+  "area": "strings",
+  "constructs": [
+    "str.find"
+  ],
+  "settings": {},
+  "description": "`str.find(t)` returns the byte offset of the first match, from 0, or NULL when there is none: `find('héllo', 'l')` is 3 (the character position is 2), and `find('', 'a')` is NULL. The empty pattern is found at 0.",
+  "reference": "`strpos(s, t)` is the 1-based character position of the first match, 0 when there is none (#209). A writer adds 1 and maps NULL to 0, and on text that is not ASCII it needs the character position (the bytes before the match are not the characters).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.find('a', literal=True)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.find('b', literal=True)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.find('', literal=True)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "find-bytes"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/namespace.rs#L455-L492"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}
