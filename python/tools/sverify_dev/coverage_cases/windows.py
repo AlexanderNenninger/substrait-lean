@@ -8,7 +8,6 @@ from sverify_dev.coverage_cases._common import (
     FRAME_DOUBLES,
     NO_ROW_ORDER,
     Case,
-    R,
     V,
     case,
     t,
@@ -36,7 +35,7 @@ CASES: list[Case] = [
     case(
         "windows",
         "rolling mean (rows)",
-        R,
+        V,
         lambda: t.mutate(
             m=t.amount.mean().over(ibis.window(order_by="ts", preceding=2, following=0))
         ),
@@ -44,7 +43,7 @@ CASES: list[Case] = [
     case(
         "windows",
         "rolling mean (interval)",
-        R,
+        V,
         lambda: t.mutate(
             m=t.amount.mean().over(
                 ibis.range_window(order_by="ts", preceding=ibis.interval(minutes=5), following=0)
@@ -111,13 +110,13 @@ CASES: list[Case] = [
     case(
         "windows",
         "min over a sliding frame",
-        R,
+        V,
         lambda: t.mutate(a=t.qty.min().over(ibis.window(order_by="ts", preceding=1, following=1))),
     ),
     case(
         "windows",
         "window sum of an expression",
-        R,
+        V,
         lambda: t.mutate(s=(t.qty * 2).sum().over(group_by="name")),
     ),
 ]
@@ -135,6 +134,10 @@ REFUSED: dict[str, dict[str, str]] = {
     "rolling sum (range)": NO_ROW_ORDER,
     "rolling sum (interval)": NO_ROW_ORDER,
     "running mean": FRAME_DOUBLES,
+    "rolling mean (rows)": FRAME_DOUBLES,
+    "rolling mean (interval)": FRAME_DOUBLES,
+    "min over a sliding frame": NO_ROW_ORDER,
+    "window sum of an expression": NO_ROW_ORDER,
     "last, nth": NO_ROW_ORDER,
     "max, count over frame": NO_ROW_ORDER,
 }
@@ -152,4 +155,5 @@ TIE_FREE = {
     "rolling sum (interval)",
     "last, nth",
     "max, count over frame",
+    "min over a sliding frame",
 }

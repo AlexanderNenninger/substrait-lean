@@ -240,11 +240,11 @@
  },
  "fin-bollinger": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
+  "detail": "error: unsupported window function: std_dev",
   "native": "runs",
   "as_double": {
    "checker": "rejected",
-   "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
+   "detail": "error: unsupported window function: std_dev",
    "native": "runs"
   }
  },
@@ -993,9 +993,14 @@
   }
  },
  "ts-rolling-time-window": {
-  "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+  }
  },
  "ts-rolling-7day-calendar": {
   "checker": "verified",
@@ -1685,9 +1690,14 @@
   }
  },
  "win-moving-average": {
-  "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+  }
  },
  "win-percent-of-total": {
   "checker": "verified",

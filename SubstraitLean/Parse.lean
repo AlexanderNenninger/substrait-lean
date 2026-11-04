@@ -2285,16 +2285,13 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       let m := match m.fn, m.arg with
         | .sum, .un (.decimal _ _) x => if issueFree x then { m with arg := x } else m
         | _, _ => m
-      if !issueFree m.arg then throw "window aggregates of expressions are not supported; use a column"
+      -- An argument that is an expression is computed under the window
+      -- (`parseWindowProject`).
       let fr ← parseFrame cols sort w
-      -- DataFusion slides a frame by retracting the rows that leave it: a
-      -- sum of doubles then rounds differently from adding up the frame, an
-      -- average of a frame that has become empty is NaN, and a `MIN` of one
-      -- with only NULLs left is the last minimum.
+      -- A sliding frame (one not from UNBOUNDED PRECEDING) is refused on
+      -- DataFusion only (`Rel.slidingFrames`).
       if m.fn matches .var _ _ || m.fn matches .cov _ || m.fn matches .corr then
         throw s!"{n} over a window is not supported"
-      if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
-        throw s!"{n} over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).
       if decAvg.isSome then
@@ -2361,6 +2358,23 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
     (es : List Json) : J Rel := do
   let n := cols.length
   let uses ← (es.flatMap windowsIn).mapM (parseWindow fns cols bits)
+  -- Window aggregates take columns (`issueFree`): an argument that is an
+  -- expression is computed by a projection under the windows (each distinct
+  -- one once), so its issues are a projection's, and the aggregate reads
+  -- its column. An emit drops these columns again.
+  let hoisted := uses.foldl (init := ([] : List Expr)) fun hs (_, _, fs, _) =>
+    fs.foldl (init := hs) fun hs f => match f with
+      | .agg m _ _ => if issueFree m.arg || hs.contains m.arg then hs else hs ++ [m.arg]
+      | _ => hs
+  let hoist (f : WinFn) : WinFn := match f with
+    | .agg m sort fr => match hoisted.idxOf? m.arg with
+      | some j => .agg { m with arg := .field (n + j) } sort fr
+      | none => f
+    | f => f
+  let uses := uses.map fun (part, sort, fs, d) => (part, sort, fs.map hoist, d)
+  let inp := if hoisted.isEmpty then inp else Rel.project inp hoisted
+  -- The windows' columns start after the input's and the hoisted ones.
+  let n' := n + hoisted.length
   -- Group the uses: (partition, sort, functions), in order of first use. A
   -- use has one function, or two for a decimal `AVG` (its `SUM`, `COUNT`).
   let groups := uses.foldl (init := ([] : List (List Nat × List SortKey × List WinFn)))
@@ -2376,7 +2390,7 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
     let some (part, sort, _, _) := uses[k]? | return 0
     let before := (((uses.take k).filter fun (p', s', _, _) => p' == part && s' == sort).map
       (·.2.2.1.length)).sum
-    let mut off := n
+    let mut off := n'
     for (p', s', fs) in groups do
       if p' == part && s' == sort then return off + before
       off := off + fs.length
@@ -2387,9 +2401,9 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
   let avgs := uses.zipIdx.filterMap fun ((_, _, _, d), k) =>
     d.map fun (p, s, dbl) => (column k, p, s, dbl)
   -- An `AVG` with a double result is a double in the expressions over it.
-  let wcols := avgs.foldl (init := cols ++ (windowed.kinds []).drop n) fun ks (c, _, _, dbl) =>
-    if dbl then ks.set c .float else ks
-  let wbits := bits ++ (windowed.bits []).drop n
+  let wcols := avgs.foldl (init := cols ++ hoisted.map (·.kind cols) ++ (windowed.kinds []).drop n')
+    fun ks (c, _, _, dbl) => if dbl then ks.set c .float else ks
+  let wbits := bits ++ hoisted.map (·.bits bits) ++ (windowed.bits []).drop n'
   let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s, dbl) =>
     let (total, count) := (Expr.field c, Expr.field (c + 1))
     -- A double: the sum as a double by the count, NULL without values.
@@ -2400,15 +2414,15 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
   -- after the windows.
   let parsed ← rewritten.mapM fun e => do
     match withAvgs (← parseExpr fns wcols wbits e) with
-    | .field i => if n ≤ i then pure (Sum.inl i) else pure (Sum.inr (Expr.field i))
+    | .field i => if n' ≤ i then pure (Sum.inl i) else pure (Sum.inr (Expr.field i))
     | e => pure (Sum.inr e)
   let scalars := parsed.filterMap fun p => match p with | .inr e => some e | .inl _ => none
   let (mapping, _) := parsed.foldl (init := (([] : List Nat), 0))
     fun (m, j) p => match p with
     | .inl i => (m ++ [i], j)
-    | .inr _ => (m ++ [n + width + j], j + 1)
+    | .inr _ => (m ++ [n' + width + j], j + 1)
   let full := List.range n ++ mapping
-  if scalars.isEmpty && full == List.range (n + width) then return windowed
+  if scalars.isEmpty && full == List.range (n' + width) then return windowed
   let core := if scalars.isEmpty then windowed else Rel.project windowed scalars
   return .emit core full
 

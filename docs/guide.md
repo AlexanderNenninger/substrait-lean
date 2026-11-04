@@ -56,13 +56,13 @@ In order of day-to-day value:
    goes, a left join on a NOT NULL foreign key becomes an inner join). See
    [docs/optimizations.md](optimizations.md).
 
-What it doesn't do (yet). Rolling means, `MIN` over a sliding frame,
-correlated scalar subqueries and parameters (`ibis.param`) are not in the
-model. Incremental maintenance covers filters, projections, inner, cross,
-semi and anti joins, `UNION ALL`, `DISTINCT`, and `COUNT`, exact `SUM` and
-`AVG`, `MIN` and `MAX` per group; another aggregate recomputes only the
-groups a batch touches, and a window only the partitions it touches. Other
-views (left joins) are recomputed and diffed instead, and `node.status()`
+What it doesn't do (yet). Correlated scalar subqueries and parameters
+(`ibis.param`) are not in the model. Incremental maintenance covers filters,
+projections, inner, cross, semi and anti joins, `UNION ALL`, `DISTINCT`, and
+`COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group; another aggregate
+recomputes only the groups a batch touches, and a window only the partitions
+it touches. Other views (left joins) are recomputed and diffed instead, and
+`node.status()`
 says so. [The Ibis coverage table](../README.md#ibis-coverage) has the full
 list.
 
