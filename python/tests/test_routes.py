@@ -167,3 +167,102 @@ def test_installed_versions_are_the_probed_ones() -> None:
     """The pinned engines match their profiles' facts; bump the facts with the pins."""
     for engine, prof in routes.PROFILES.items():
         assert routes.installed_version(engine) in prof.versions, engine
+
+
+def _classed_tables(monkeypatch: pytest.MonkeyPatch, polars_rows: list[dict]) -> None:
+    tables = {
+        "groups": {},
+        "choices": {"reference": [], "duckdb": [], "polars": polars_rows},
+    }
+    monkeypatch.setattr(routes, "_options_json", lambda: tables)
+
+
+def _row(option: str, cls: str, q: dict | None = None, shim: str | None = None, ev: str = "proved"):
+    return {
+        "group": None,
+        "option": option,
+        "choice": {"kind": "oneOf", "behaviours": ["X"]},
+        "class": cls,
+        "q": q,
+        "shim": shim,
+        "evidence": ev,
+        "facts": [f"polars-{option}"],
+    }
+
+
+def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    report.depends = [{"group": None, "option": "a"}, {"group": None, "option": "b"}]
+    _classed_tables(
+        monkeypatch, [_row("a", "refines"), _row("b", "shim", shim="CASE", ev="tested")]
+    )
+    r = routes.choose(report, "polars")
+    assert (r.kind, r.cls, r.evidence, r.shims) == ("reference", "shim", "tested", ("b: CASE",))
+    assert "[shim, tested]" in str(r)
+    _classed_tables(monkeypatch, [_row("a", "refines"), _row("b", "refused")])
+    r = routes.choose(report, "polars")
+    assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.reason
+
+
+def test_q_refinement_against_the_postcondition(monkeypatch, con) -> None:
+    """D18's check: an engine equal to the reference up to `canon` meets a
+    postcondition that observes zeros only if it says `zeros="canon"`, or
+    through the row's shim."""
+    t = con.table("t")
+    exact = sv.verify(t.select("k"))
+    canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
+    for report in (exact, canon):
+        report.depends = [{"group": None, "option": "zero_sign"}]
+    _classed_tables(monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"})])
+    r = routes.choose(exact, "polars")
+    assert r.refused and "observes its zeros" in r.reason and "sv.equivalent" in r.reason
+    assert routes.choose(canon, "polars").cls == "refines_up_to"
+    _classed_tables(
+        monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"}, shim="canon")]
+    )
+    assert routes.choose(exact, "polars").cls == "shim"
+    # A tolerance: the engine's ε must be within the stated one.
+    _classed_tables(
+        monkeypatch, [_row("sum_order", "approx", q={"rows": "multiset", "floats": {"rel": 1e-12}})]
+    )
+    for report, ok in (
+        (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))]), True),
+        (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))]), False),
+        (exact, False),
+    ):
+        report.depends = [{"group": None, "option": "sum_order"}]
+        r = routes.choose(report, "polars")
+        assert (r.cls == "approx") is ok, r
+
+
+def test_unsupported_functions_are_refused(con) -> None:
+    t = con.table("t")
+    report = sv.verify(t.select(h=t.k.cast("string").hexdigest("md5")))
+    r = routes.choose(report, "polars")
+    assert r.refused and r.cls == "refused" and "see #271" in r.reason
+
+
+def test_inputs_are_checked_before_the_run(con) -> None:
+    t = con.table("t")
+    report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i <= 2]})
+    with pytest.raises(sv.errors.PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
+        report.run(con, "polars", route="auto")
+    report.run(con, "polars")  # without a route, as before
+
+
+def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
+    """Polars's `sum_order`: `q` bounds the doubles per plan, and the
+    contract's `ε` must be within the postcondition's tolerance (B1)."""
+    t = con.table("t")
+    _classed_tables(monkeypatch, [_row("sum_order", "approx", q={"floats": {"bound": "plan"}})])
+    loose = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))])
+    tight = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))])
+    for report in (loose, tight):
+        report.depends = [{"group": None, "option": "sum_order"}]
+        report.epsilon = {"total": {"rel": 1e-12}, "k": {}}
+    assert routes.choose(loose, "polars").cls == "approx"
+    r = routes.choose(tight, "polars")
+    assert r.refused and "total is within within(rel=1e-12)" in r.reason
+    loose.epsilon = None
+    assert "no per-plan bound" in routes.choose(loose, "polars").reason

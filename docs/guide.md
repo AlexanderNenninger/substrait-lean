@@ -1071,7 +1071,13 @@ plan verified under another engine's profile, or by checking it again under
 the engine's profile. Otherwise the run raises `sverify.routes.RouteError`
 with the reason, such as the options where the two profiles choose
 differently. `report.routes` records each engine's route, and
-`route="native"` (or another route) takes that one or refuses.
+`route="native"` (or another route) takes that one or refuses. Each route
+names the plan's class on the engine (`route.cls`: `refines`,
+`refines_up_to`, `approx`, `shim` or `refused`, from
+[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)).
+Before the plan runs, the preconditions, the inferred bounds and the
+assumed `SUM`s are checked on the data, and a batch that breaks one raises
+`PreconditionError` with the precondition.
 `deterministic=True` refuses a plan whose result is not determined up to
 row order. Each engine profile names the versions its facts were probed at
 (DuckDB 2.0.0, Polars 2.1.0): another version warns, another major version
@@ -1094,8 +1100,8 @@ means.observation.equal(duckdb_result, polars_result)  # True
 ```
 
 Rows are a multiset and values exact by default. `sv.equivalent` also takes
-`zeros="canon"`, `timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
-`errors="kind"`; `Observation.refines` orders observations component by
+`elements="multiset"`, `zeros="canon"`, `timestamps="ms"`, `strings="nfc"`,
+`decimals="value"` and `errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
 `CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the

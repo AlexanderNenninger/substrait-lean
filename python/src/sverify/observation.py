@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 import struct
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -44,6 +44,7 @@ Decimals = Literal["exact", "value"]
 Errors = Literal["exact", "kind"]
 
 _ROWS: tuple[str, ...] = ("sequence", "multiset")
+_ELEMENTS: tuple[str, ...] = ("sequence", "multiset")
 _ZEROS: tuple[str, ...] = ("exact", "canon")
 _PRECISIONS: tuple[str, ...] = ("ns", "us", "ms", "s")
 _STRINGS: tuple[str, ...] = ("exact", "nfc")
@@ -53,6 +54,7 @@ _ERRORS: tuple[str, ...] = ("exact", "kind")
 #: exact, then tolerances, ordered by `Within.refines`).
 _COMPONENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("rows", _ROWS),
+    ("elements", _ELEMENTS),
     ("floats", ()),
     ("zeros", _ZEROS),
     ("timestamps", _PRECISIONS),
@@ -156,6 +158,9 @@ class Observation:
     """`"value"`: `1.50` equals `1.5`; the scale is ignored."""
     errors: Errors = "exact"
     """`"kind"`: two errors of the same kind are equal, whatever their messages."""
+    elements: Rows = "sequence"
+    """`"multiset"`: the order of a list's elements is ignored (a `collect`
+    or `string_agg` without an order); `"sequence"`: it counts."""
 
     def __post_init__(self) -> None:
         for name, allowed in _COMPONENTS:
@@ -232,6 +237,11 @@ class Observation:
         ):
             unit = {"us": "microsecond", "ms": "millisecond", "s": "second"}[self.timestamps]
             return pc.call_function("floor_temporal", [c], pc.RoundTemporalOptions(unit=unit))
+        if pa.types.is_list(t) and self.elements == "multiset":
+            return pa.chunked_array(
+                [[None if v is None else sorted(v, key=_order_key) for v in c.to_pylist()]],
+                type=t,
+            )
         if (pa.types.is_string(t) or pa.types.is_large_string(t)) and self.strings == "nfc":
             return pa.chunked_array(
                 [[None if v is None else unicodedata.normalize("NFC", v) for v in c.to_pylist()]],
@@ -284,7 +294,7 @@ class Observation:
             f"{f}={getattr(self, f)!r}"
             if not isinstance(getattr(self, f), Within)
             else f"{f}={getattr(self, f)}"
-            for f in ("rows", "floats", "zeros", "timestamps", "strings", "decimals", "errors")
+            for f, _levels in _COMPONENTS
             if getattr(self, f) != getattr(EXACT_MULTISET, f)
         ]
         return f"equivalent({', '.join(parts)})"
@@ -292,6 +302,32 @@ class Observation:
     @property
     def label(self) -> str:
         return str(self)
+
+
+def _order_key(v: Any) -> tuple:
+    """A total order on list elements: NULLs last, NaN after numbers."""
+    if v is None:
+        return (2, 0)
+    if isinstance(v, float) and math.isnan(v):
+        return (1, 0)
+    return (0, v)
+
+
+def from_json(q: Mapping[str, Any] | None) -> Observation:
+    """An observation as the checker writes it (`q` of a choices row, D15):
+    component levels, a float tolerance as `{"abs", "rel", "ulps"}`; an
+    absent component is exact, rows and elements included."""
+    q = dict(q or {})
+    floats = q.pop("floats", "exact")
+    if isinstance(floats, Mapping):
+        floats = Within(floats.get("abs"), floats.get("rel"), floats.get("ulps"))
+    known = {name for name, _ in _COMPONENTS}
+    unknown = set(q) - known
+    if unknown:
+        raise ValueError(f"unknown components of an observation: {sorted(unknown)}")
+    return Observation(
+        **{"rows": "sequence", "elements": "sequence", **q, "floats": floats}  # type: ignore[arg-type]
+    )
 
 
 def _sortable(t: pa.DataType) -> bool:
@@ -313,6 +349,7 @@ def equivalent(
     strings: Strings = "exact",
     decimals: Decimals = "exact",
     errors: Errors = "exact",
+    elements: Rows = "sequence",
 ) -> Observation:
     """A postcondition naming what the result's consumer observes (#444, D11).
 
@@ -333,6 +370,8 @@ def equivalent(
         strings: `"nfc"` compares strings after Unicode normalisation.
         decimals: `"value"` ignores a decimal's scale (`1.50` equals `1.5`).
         errors: `"kind"` ignores an error's message.
+        elements: `"multiset"` ignores the order of a list's elements, as a
+            `collect` without an order leaves it.
 
     Returns:
         An `Observation`, for `ensures`.
@@ -347,7 +386,7 @@ def equivalent(
             return t.group_by("k").aggregate(avg=t.x.mean())
         ```
     """
-    return Observation(rows, floats, zeros, timestamps, strings, decimals, errors)
+    return Observation(rows, floats, zeros, timestamps, strings, decimals, errors, elements)
 
 
 def split(ensures: Sequence[Any]) -> tuple[Observation | None, list[Any]]:
@@ -376,7 +415,12 @@ def _component(dtype: Any) -> str | None:
 
 
 def dependencies(
-    observation: Observation, cond: Any, columns: Mapping[str, Any], read: Sequence[str] | None
+    observation: Observation,
+    cond: Any,
+    columns: Mapping[str, Any],
+    read: Sequence[str] | None,
+    open_columns: Mapping[str, str] | None = None,
+    order_free: Collection[str] = (),
 ) -> list[str]:
     """The components `observation` ignores that `cond`, a condition of
     `ensures`, depends on (D12). Empty when the condition cannot tell
@@ -396,14 +440,26 @@ def dependencies(
         columns: The output's columns by name, with Ibis types.
         read: The columns `cond` reads; None if unknown, which counts as
             every column.
+        open_columns: Output columns whose value the reference leaves open
+            (D1): `"picks"` for `first` or `last` without an order (which
+            row's value), `"elements"` for a `collect` without one (the
+            order of the elements). A condition that reads one depends on
+            that choice, unless it reads a list only through functions that
+            ignore its order (`order_free`).
+        order_free: The columns `cond` reads only through such functions
+            (`length`, `contains`, `min`, `max`, `sum`, `sort`, …).
     """
     from sverify.contracts import Approx
 
-    ignored = set(observation.ignored()) - {"rows", "zeros", "errors"}
-    if not ignored:
-        return []
-    names = columns if read is None else [n for n in read if n in columns]
+    names = list(columns) if read is None else [n for n in read if n in columns]
     out: list[str] = []
+    for n in names:
+        why_open = (open_columns or {}).get(n)
+        if why_open == "elements" and n in order_free:
+            continue
+        if why_open is not None and why_open not in out:
+            out.append(why_open)
+    ignored = set(observation.ignored()) - {"rows", "zeros", "errors", "elements"}
     for n in names:
         comp = _component(columns[n])
         if comp is None or comp not in ignored or comp in out:
@@ -416,4 +472,17 @@ def dependencies(
 
 def why(components: Sequence[str]) -> str:
     """How a report names what a condition depends on."""
-    return f"depends on {', '.join(components)}, which the observation ignores"
+    opened = [c for c in components if c in ("picks", "elements")]
+    ignored = [c for c in components if c not in opened]
+    parts = []
+    if opened:
+        names = {
+            "picks": "which row FIRST or LAST picks",
+            "elements": "the order of a list's elements",
+        }
+        parts.append(
+            f"depends on {' and '.join(names[c] for c in opened)}, which the plan leaves open"
+        )
+    if ignored:
+        parts.append(f"depends on {', '.join(ignored)}, which the observation ignores")
+    return "; ".join(parts)

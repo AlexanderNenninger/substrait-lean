@@ -695,14 +695,19 @@ def approx(cond: Any, rel: float = 1e-6) -> Approx:
     return Approx(cond, rel)
 
 
-Semantics = Literal["reference", "duckdb"]
-"""What a check's SQL means: sverify's reference semantics (the default) or
-DuckDB's (#411)."""
+Semantics = Literal["reference", "duckdb", "polars"]
+"""The profile a check is under: sverify's reference semantics (the
+default), DuckDB's (#411), whose SQL also means what DuckDB computes, or
+Polars's, for Ibis transformations (#444)."""
+
+#: The profiles the checker is asked for by name (`"profile"` in a
+#: `--contract` request): those beyond the reference and DuckDB's lift.
+_PROFILE_REQUESTS = frozenset({"polars"})
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    if semantics not in ("reference", "duckdb"):
-        raise ValueError(f"semantics must be 'reference' or 'duckdb', not {semantics!r}")
+    if semantics not in ("reference", "duckdb", "polars"):
+        raise ValueError(f"semantics must be 'reference', 'duckdb' or 'polars', not {semantics!r}")
     return semantics  # type: ignore[return-value]
 
 
@@ -999,6 +1004,47 @@ class Report:
     """The request the checker proved, for a check under another profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types."""
+    epsilon: dict[str, dict[str, float]] | None = field(default=None, repr=False, compare=False)
+    """How far each double output column may be from a result the reference
+    allows on an engine whose summation order differs (`{"abs", "rel"}` per
+    column, #568), as the checker computes it for this plan; None where it
+    does not."""
+    conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    """The preconditions per input table, as conditions: `requires` and
+    the bounds inferred (`inferred`). `check_inputs` checks them on data."""
+
+    def check_inputs(self, con: Connection) -> None:
+        """Check the preconditions (`requires`, the inferred bounds among
+        them) and the `SUM`s assumed to fit (`assumed`) on the tables of
+        `con`, before anything runs: a batch that breaks one is refused
+        with the precondition as the message (#444, goal 1).
+
+        Raises:
+            PreconditionError: A precondition or an assumed `SUM` does not
+                hold on the data.
+        """
+        for t, conds in self.conditions.items():
+            if not con.has(t):
+                continue
+            table = con.table(t)
+            for c in conds:
+                if n := violations(table, c):
+                    raise PreconditionError(
+                        f"{n} row(s) of {t} violate {label(c)}: refused before the run"
+                    )
+        if self.assumed and self.plan is not None:
+            # The proved DuckDB translation checks each SUM as it adds up; it
+            # runs first, so a batch whose SUM leaves its type is refused
+            # before the plan runs on any engine.
+            try:
+                run_plan(con, written_plan(self.plan), "duckdb")
+            except Exception as e:
+                if "overflow in SUM" not in str(e):
+                    raise
+                sums = ", ".join(f"SUM of {i.what} {_sum_assumed(i)}" for i in self.assumed)
+                raise PreconditionError(
+                    f"the batch breaks an assumed precondition, {sums}: refused before the run"
+                ) from e
 
     def run(
         self,
@@ -1073,6 +1119,7 @@ class Report:
             self.routes[chosen.engine] = chosen
             if chosen.refused:
                 raise routes.RouteError(chosen)
+            self.check_inputs(con)
         return run_plan(con, written_plan(self.plan), engine)
 
     @property
@@ -1863,6 +1910,8 @@ def verify(
             operation that would create a NaN raises; or `"duckdb"`, what
             DuckDB computes, NaN and ±inf included. An `sv.sql` expression
             inside an Ibis transformation keeps its own `semantics`.
+            `"polars"` checks an Ibis transformation under Polars's
+            profile (#444); the checker refuses it until it has one.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -1962,26 +2011,109 @@ def infer_bounds(
     report = _infer_bounds(
         transform, requires, ensures, tables, counterexamples, params, infer, inputs, semantics
     )
-    if observed is None:
+    conditions = {t: list(cs) for t, cs in requires.items()}
+    _merge(conditions, report.inferred)
+    report.conditions = conditions
+    opened = {} if report.deterministic or isinstance(transform, str) else _open_columns(transform)
+    if observed is None and not opened:
         return report
-    return _observed(report, observed, ensures)
+    return _observed(report, observed or Observation(), ensures, opened)
 
 
-def _observed(report: Report, observed: Observation, ensures: Sequence[Condition]) -> Report:
+def _observed(
+    report: Report,
+    observed: Observation,
+    ensures: Sequence[Condition],
+    opened: Mapping[str, str],
+) -> Report:
     """`report` with the observation, and each postcondition marked with the
-    components it depends on that the observation ignores (D12)."""
+    components it depends on that the observation ignores, or that the plan
+    leaves open (`opened`, D1, D12). A proved condition holds for every
+    choice the plan leaves open, so only an unproved one is marked with
+    those."""
     checked = [
         replace(
             c,
             ignores=tuple(
                 _observation.dependencies(
-                    observed, cond, report.output, _reads(cond, report.output)
+                    observed,
+                    cond,
+                    report.output,
+                    _reads(cond, report.output),
+                    {} if c.proved else opened,
+                    _order_free(cond, report.output, opened),
                 )
             ),
         )
         for cond, c in zip(ensures, report.ensures, strict=True)
     ]
     return replace(report, ensures=checked, observation=observed)
+
+
+def _open_columns(expr: ir.Table) -> dict[str, str]:
+    """The output columns of aggregates whose value the reference leaves
+    open: `"picks"` for `first`, `last` or `arbitrary` without an order,
+    `"elements"` for `collect` without one."""
+    out: dict[str, str] = {}
+    for agg in expr.op().find(ops.Aggregate):
+        if not isinstance(agg, ops.Aggregate):
+            continue
+        for name, metric in agg.metrics.items():
+            if (
+                isinstance(metric, ops.First | ops.Last)
+                and not metric.order_by
+                or isinstance(metric, ops.Arbitrary)
+            ):
+                out[name] = "picks"
+            elif isinstance(metric, ops.ArrayCollect) and not metric.order_by:
+                out[name] = "elements"
+    names = set(expr.columns)
+    return {n: why for n, why in out.items() if n in names}
+
+
+#: Functions of a list that ignore the order of its elements.
+_ORDER_FREE = (
+    ops.ArrayLength,
+    ops.ArrayContains,
+    ops.ArrayMin,
+    ops.ArrayMax,
+    ops.ArraySum,
+    ops.ArrayMean,
+    ops.ArraySort,
+    ops.ArrayDistinct,
+    ops.ArrayAll,
+    ops.ArrayAny,
+)
+
+
+def _order_free(cond: Condition, columns: Mapping[str, Any], opened: Mapping[str, str]) -> set[str]:
+    """The open list columns `cond` reads only through functions that ignore
+    the order of the elements."""
+    lists = {n for n, why in opened.items() if why == "elements"}
+    if not lists or isinstance(cond, str | TableCondition) or not columns:
+        return set()
+    if isinstance(cond, Approx):
+        return _order_free(cond.cond, columns, opened)
+    try:
+        expr = resolve(cond, ibis.table(ibis.schema(dict(columns)), name="t"))
+    except Exception:  # noqa: BLE001 - an unreadable condition reads every column
+        return set()
+    bare: set[str] = set()
+
+    def walk(node: Any, guarded: bool) -> None:
+        if isinstance(node, ops.Field):
+            if not guarded:
+                bare.add(node.name)
+            return
+        if isinstance(node, Node):
+            inner = guarded or isinstance(node, _ORDER_FREE)
+            for arg in node.__args__:
+                for child in arg if isinstance(arg, tuple) else (arg,):
+                    walk(child, inner)
+
+    walk(expr.op(), False)
+    read = set(_reads(cond, columns) or ())
+    return {n for n in lists & read if n not in bare}
 
 
 def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
@@ -2078,6 +2210,15 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
+    if semantics in _PROFILE_REQUESTS and (
+        isinstance(transform, str)
+        or any(isinstance(c, str) for cs in requires.values() for c in cs)
+        or any(isinstance(c, str) for c in ensures)
+    ):
+        raise ValueError(
+            f"semantics={semantics!r} checks Ibis transformations and conditions; "
+            "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
+        )
     schemas = {
         name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
         for name, s in (tables or {}).items()
@@ -2158,10 +2299,16 @@ def _verify_once(
         "rows_per": per_key,
     }
 
+    if semantics in _PROFILE_REQUESTS:
+        contract["profile"] = semantics
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise ValueError(f"substrait-check --contract failed: {stderr.strip()}")
     out = json.loads(stdout)
+    if semantics in _PROFILE_REQUESTS and out.get("profile") != semantics:
+        raise ValueError(
+            f"this checker has no Profile.{semantics} to check under yet (#444, step 3a)"
+        )
     # SQL's types come from the lift, so a timestamp is described as one (#452).
     from sverify.ibis_substrait import sql_model_schema
 
@@ -2250,6 +2397,7 @@ def _verify_once(
         implied=_implied_sql(out.get("implied", []), schemas),
         plan=json.dumps(transform_plan),
         depends=out.get("depends"),
+        epsilon=out.get("epsilon"),
         contract=contract,
         output=dtypes,
     )
