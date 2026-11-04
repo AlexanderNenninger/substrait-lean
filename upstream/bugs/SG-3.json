@@ -1,0 +1,30 @@
+{
+  "id": "SG-3",
+  "project": "sqlglot",
+  "version": "30.27.0",
+  "status": "confirmed",
+  "status_note": "confirmed in part on 30.29.0 (`min(x, n)` becomes `LEAST`); held, since the mirror case [#8541](https://github.com/tobymao/sqlglot/issues/8541) was closed as out of scope",
+  "upstream": [
+    "https://github.com/tobymao/sqlglot/issues/8541"
+  ],
+  "summary": "DuckDB → DataFusion transpiling rewrites some functions with another meaning: `strftime`, top-n `min(x, n)`, `POSITIONAL`/`ASOF` joins, `TRY`.",
+  "repro": "see `tools/sverify_dev/slt.py`'s refusal list",
+  "handling": "Obsolete for sverify: the replay no longer transpiles (#264). File only if still present upstream.",
+  "found_by": "sqllogictest replay (#201)",
+  "prs": [
+    201,
+    264
+  ],
+  "files": [
+    "python/tools/sverify_dev/slt.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

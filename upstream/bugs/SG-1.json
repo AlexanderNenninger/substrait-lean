@@ -1,0 +1,23 @@
+{
+  "id": "SG-1",
+  "project": "sqlglot",
+  "version": "30.27.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 30.29.0, now in `HAVING` only (`WHERE` and `GROUP BY` resolve to the column since 30.22)",
+  "summary": "`qualify` resolves a name in `WHERE`/`GROUP BY`/`HAVING` that is both an input column and an output alias as the **alias**; DuckDB resolves it as the **column**.",
+  "repro": "`select a + 1 as a from t group by a having a = 42` with `t(a) = [42]`: DuckDB returns 43, the qualified tree returns nothing.",
+  "handling": "The lift refuses such names (#252, b387dcd).",
+  "found_by": "sqllogictest replay through the lift (#252)",
+  "prs": [
+    252
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

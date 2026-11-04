@@ -161,7 +161,7 @@ def test_set_operations_keep_duckdbs_multiplicities(a, b):
     ],
 )
 def test_table_shorthand(sql, expanded):
-    """SQLGlot does not parse DuckDB's `TABLE t` (upstream/LEDGER.md, SG-6)."""
+    """SQLGlot does not parse DuckDB's `TABLE t` (upstream/bugs/SG-6.json)."""
     from sverify.sql_lift import expand_table_shorthand
 
     assert expand_table_shorthand(sql) == expanded

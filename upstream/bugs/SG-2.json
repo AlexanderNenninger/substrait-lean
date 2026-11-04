@@ -1,0 +1,27 @@
+{
+  "id": "SG-2",
+  "project": "sqlglot",
+  "version": "30.27.0",
+  "status": "not a bug",
+  "status_note": "not a bug: out of scope upstream ([#8531](https://github.com/tobymao/sqlglot/issues/8531), [comment](https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6030704299))",
+  "upstream": [
+    "https://github.com/tobymao/sqlglot/issues/8531",
+    "https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6030704299"
+  ],
+  "summary": "Transpiling between dialects keeps the text of an operator whose meaning differs: `transpile(\"select 7/2\", read=\"postgres\", write=\"duckdb\")` gives `SELECT 7 / 2` (3 in Postgres, 3.5 in DuckDB). With a schema plus `annotate_types`, it becomes `CAST(TRUNC(a / b) AS BIGINT)` (right value, BIGINT where Postgres gives INTEGER).",
+  "repro": "as stated in the summary",
+  "handling": "sverify never uses SQLGlot's transpiler for semantics (#231); the lift's profiles decide. May be a known limitation upstream, not a bug: check their docs and issues first.",
+  "found_by": "#231 findings",
+  "issues": [
+    231
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

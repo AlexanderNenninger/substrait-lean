@@ -240,7 +240,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("target", choices=sorted(TARGETS))
     parser.add_argument("--budget", type=float, default=60.0, help="seconds (default 60)")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--out", type=Path, default=slt.LEDGER)
+    parser.add_argument("--out", type=Path, default=slt.REPLAY_DIR)
     args = parser.parse_args(argv)
     found, checked = search(args.target, args.budget, args.seed)
     path = write(args.target, duckdb.__version__, found, checked, args.out)

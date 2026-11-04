@@ -375,7 +375,7 @@ def test_iceberg_refreshes_match_the_arrow_path(catalog, monkeypatch):
 
 def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
     """Parquet statistics leave NaN out, and DuckDB 2.0 trusts them on a raw
-    `read_parquet` column (upstream/LEDGER.md DD-4): the scan's columns hide
+    `read_parquet` column (upstream/bugs/DD-4.json): the scan's columns hide
     them, so a NaN stays above every double."""
     path = tmp_path / "t"
     write_deltalake(path, pa.table({"id": [1, 2], "x": [0.5, float("nan")]}), configuration=CDF)

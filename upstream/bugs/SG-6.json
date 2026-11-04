@@ -1,0 +1,27 @@
+{
+  "id": "SG-6",
+  "project": "sqlglot",
+  "version": "30.22.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 30.29.0, also in the `postgres` and `mysql` dialects",
+  "summary": "DuckDB's `TABLE t` (`SELECT * FROM t`) does not parse: as a set operation's operand it fails, and on its own it parses as an alias.",
+  "repro": "`SELECT 1 EXCEPT ALL TABLE t`: \"Required keyword: 'expression' missing for Except\"; `(TABLE a EXCEPT ALL TABLE b)`: \"Expecting )\"; `TABLE t` gives `Alias(Column)`.",
+  "handling": "The lift and the replay write it out as `(SELECT * FROM t)` on SQLGlot's own tokens before parsing (`sql_lift.expand_table_shorthand`, #344).",
+  "found_by": "sqllogictest replay through the lift (#344), `setops/`",
+  "issues": [
+    344
+  ],
+  "files": [
+    "python/src/sverify/sql_lift/_base.py",
+    "python/tests/test_sql_lift_relations.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

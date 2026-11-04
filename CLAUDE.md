@@ -255,7 +255,15 @@ DuckDB diff table are in `characterization/duckdb/README.md`.
 ## Upstream bugs
 
 When you find a bug in SQLGlot, an engine, Ibis or Substrait's tooling, add
-an entry to `upstream/LEDGER.md` in the same PR as the workaround: the
-version, a minimal reproduction, and how sverify handles it. We file them
-upstream in batches. Documented engine behaviour that only differs from the
-reference model goes into the engine's characterization, not the ledger.
+a document `upstream/bugs/<id>.json` in the same PR as the workaround, in the
+format of `upstream/bug.schema.json`: the version, a status, a minimal
+reproduction, how sverify handles it, and what it was last checked against
+(`checked`). The id is the project's prefix and the next free number (`SG-8`,
+`DD-5`; `upstream/README.md` lists the prefixes); the file is named after it.
+Link the files of the workaround (`files`) and the engine facts that record
+it (`facts`). We file them upstream in batches, with the `upstream-report`
+skill. Documented engine behaviour that only differs from the reference model
+goes into the engine's characterization.
+
+`python -m sverify_dev.bugs` checks the documents and the lift's backlog
+`python/tests/lift_backlog.json` (`tests/test_bugs.py` does too).

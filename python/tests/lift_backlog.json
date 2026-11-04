@@ -1,0 +1,69 @@
+{
+  "description": "Tests that wait on SQL the lift (`sverify.sql_lift`) does not read yet: the M2 backlog (#240). Each entry is a pytest node id (from python/) and what it waits on; see tests/conftest.py. A listed test that the lift refuses is an expected failure; one that passes fails until its entry is removed. `python -m sverify_dev.bugs` checks that each names an existing test.",
+  "tests": [
+    {
+      "test": "tests/test_backend_semantics.py::test_translators_agree[SELECT s, s LIKE 'a\\\\b', s LIKE 'a\\\\\\\\b' FROM ss]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_backend_semantics.py::test_translators_agree_or_refuse_on_opaque_functions[SELECT array_length(regexp_match(s, '\\\\d')) FROM u-u-rows2]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_backend_semantics.py::test_translators_agree_or_refuse_on_opaque_functions[SELECT array_length(regexp_match(s, '\\\\s')) FROM u-u-rows3]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_relations.py::test_bags_match_duckdb[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a AND t.b > 0]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_relations.py::test_bags_match_duckdb[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_sql_spark.py::test_date_trunc_matches_lean",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[microsecond]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[millisecond]",
+      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+    },
+    {
+      "test": "tests/test_reference.py::test_float_arithmetic_is_refused[SELECT CAST(d AS FLOAT) AS y FROM s-casts to FLOAT]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_float_arithmetic_is_refused[SELECT sqrt(x) AS r FROM s-sqrt of FLOAT]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_float_arithmetic_is_refused[SELECT x + x AS s FROM s-add of FLOAT]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT CAST(0.1 AS FLOAT) AS t FROM s LIMIT 1-expected4]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT CAST(x AS DOUBLE) AS y FROM s-expected1]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT sum(x) AS t FROM s-expected3]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT x * d AS m FROM s-expected2]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    },
+    {
+      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT x > 0.1 AS b FROM s-expected0]",
+      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
+    }
+  ]
+}

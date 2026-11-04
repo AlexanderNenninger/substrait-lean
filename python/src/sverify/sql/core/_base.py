@@ -3760,7 +3760,7 @@ class _Writer:
                 body = d.canon(d.float_var(m.fn, v))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
                 # A NaN passes through; DuckDB's VAR_POP of one NaN is 0.0
-                # (upstream/LEDGER.md).
+                # (upstream/bugs/DD-3.json).
                 nans = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))})"
                 nan = f"{nans} > {d.int_lit(0)}"
                 value = d.case_when(
