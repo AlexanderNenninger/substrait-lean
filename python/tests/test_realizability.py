@@ -134,3 +134,21 @@ def test_clustered_is_a_sort():
         if seen and seen[-1] != p:
             assert p not in seen, prices
         seen.append(p)
+
+
+def test_evidence_levels(table):
+    """Each row has a level; a row the Polars lemmas cover is `proof`, a row
+    with no fact `missing`, and a fact's level is its strongest check."""
+    for engine, e in table.items():
+        for r in e["rows"]:
+            assert realizability.row_level(engine, r) in realizability.LEVELS
+    rows = {(r["group"], r["option"]): r for r in table["polars"]["rows"]}
+    assert realizability.row_level("polars", rows[("int.div", "division_type")]) == "proof"
+    assert realizability.row_level("duckdb", {"facts": []}) == "missing"
+    assert (
+        realizability.row_level(
+            "duckdb", {"evidence": "proved", "theorem": "Choice.le_sound", "facts": []}
+        )
+        == "missing"
+    )
+    assert realizability.fact_level("duckdb", "duckdb-R1") in realizability.LEVELS[1:5]

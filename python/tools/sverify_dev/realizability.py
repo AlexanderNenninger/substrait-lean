@@ -55,11 +55,61 @@ def table() -> dict[str, Any]:
 
 def _fact_link(engine: str, ident: str) -> str:
     """A fact id as a link to its document; a test id or another id as code."""
+    path = _fact_path(engine, ident)
+    if path is None:
+        return f"`{ident}`"
+    return f"[{ident}](../{path.relative_to(ROOT).as_posix()})"
+
+
+#: Evidence levels, weakest first (#444's facts pipeline): `docs` < `source` <
+#: `probe` < `fuzz`, then `proof` where a Lean lemma covers the row; `missing`
+#: where no fact does.
+LEVELS = ("missing", "docs", "source", "probe", "fuzz", "proof")
+
+#: A fact's level from its checks' `provenance.method`, until each fact
+#: states its own `evidence` (which `fact_level` prefers once it does).
+METHOD_LEVELS = {
+    "docs": "docs",
+    "source-reading": "source",
+    "probe": "probe",
+    "manual-repro": "probe",
+    "replay": "probe",
+    "fuzz": "fuzz",
+}
+
+#: Theorems that relate the tables, not what the engine does: a row resting
+#: only on one of these has no evidence of the engine's behaviour.
+TABLE_THEOREMS = ("Choice.le_sound",)
+
+
+def _fact_path(engine: str, ident: str) -> Path | None:
     for e in (engine, *ENGINES):
         path = ROOT / "characterization" / e / "facts" / f"{ident}.json"
         if path.exists():
-            return f"[{ident}](../characterization/{e}/facts/{ident}.json)"
-    return f"`{ident}`"
+            return path
+    return None
+
+
+def fact_level(engine: str, ident: str) -> str:
+    """The strongest check of a fact: its `evidence` field where it has one,
+    else the best `provenance.method` of its checks; `missing` for no fact."""
+    path = _fact_path(engine, ident)
+    if path is None:
+        return "missing"
+    doc = json.loads(path.read_text())
+    if doc.get("evidence") in LEVELS:
+        return doc["evidence"]
+    found = [METHOD_LEVELS.get(p.get("method"), "missing") for p in doc.get("provenance") or []]
+    return max(found, key=LEVELS.index, default="missing")
+
+
+def row_level(engine: str, row: dict[str, Any]) -> str:
+    """`proof` where a Lean lemma about the engine covers the row, else the
+    strongest level among its facts, `missing` where it has none."""
+    if row.get("evidence") == "proved" and row.get("theorem") not in TABLE_THEOREMS:
+        return "proof"
+    levels = [fact_level(engine, f) for f in row.get("facts") or []]
+    return max(levels, key=LEVELS.index, default="missing")
 
 
 def _q(q: dict[str, Any]) -> str:
@@ -135,7 +185,11 @@ def render(t: dict[str, Any]) -> str:
         "option, other than the default, that the engine does not give as it is.",
         "",
         "Evidence is the Lean theorem a row rests on, or the facts and tests that record",
-        "what the engine does. The shim count per engine is D9's measure of few shims.",
+        "what the engine does. A row's level is `proof` where a Lean lemma about the",
+        "engine covers it (its trusted model rests on the facts it cites), else the",
+        "strongest check among its facts (`docs` < `source` < `probe` < `fuzz`), and",
+        "`missing` where no fact records the engine's behaviour; `Choice.le_sound` relates",
+        "the tables only. The shim count per engine is D9's measure of few shims.",
         "",
         "## Summary",
         "",
@@ -150,6 +204,20 @@ def render(t: dict[str, Any]) -> str:
         out.append(
             f"| {ENGINES.get(name, name)} | {e['version']} | `{e['theorem']}` | "
             f"{len(e['shims'])} | " + " | ".join(cells) + f" | {len(e['refused_functions'])} |"
+        )
+    out += [
+        "",
+        "Rows per evidence level:",
+        "",
+        "| Engine | " + " | ".join(LEVELS[::-1]) + " |",
+        "|---|" + "---|" * len(LEVELS),
+    ]
+    for name, e in t.items():
+        levels = [row_level(name, r) for r in e["rows"]]
+        out.append(
+            f"| {ENGINES.get(name, name)} | "
+            + " | ".join(str(levels.count(lv)) for lv in LEVELS[::-1])
+            + " |"
         )
     out += ["", "## Shims", "", "| Engine | Shim | Cost | Options |", "|---|---|---|---|"]
     for name, e in t.items():
@@ -177,14 +245,15 @@ def render(t: dict[str, Any]) -> str:
             f"{len(e['shims'])} shims ({by_cost}). The translation as a whole rests on "
             f"`{e['theorem']}`.",
             "",
-            f"| Group | Option | Reference's tool | Reference | {title} | Case | Evidence |",
-            "|---|---|---|---|---|---|---|",
+            "| Group | Option | Reference's tool | Reference | "
+            f"{title} | Case | Level | Evidence |",
+            "|---|---|---|---|---|---|---|---|",
         ]
         for r in e["rows"]:
             out.append(
                 f"| {r['group'] or 'every'} | `{r['option']}` | {r['tool']} | "
                 f"{_behaviours(r['reference'])} | {_behaviours(r['engine'])} | "
-                f"{case_cell(r)} | {evidence_cell(name, r)} |"
+                f"{case_cell(r)} | {row_level(name, r)} | {evidence_cell(name, r)} |"
             )
         if e["refused_functions"]:
             out += ["", f"Refused on {title}, with no expression there:", ""]
