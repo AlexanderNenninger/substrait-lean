@@ -286,6 +286,14 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
   -- The lambda runs on every element.
   | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues [x]
 
+-- `AND` and `OR` evaluate both operands (D19, #604): `x <> 0 AND 10 / x > 1`
+-- divides by zero on `x = 0`; guarding the division with a `CASE` does not.
+#guard (Expr.issues [.int 0] (.bin .and (.un .not (.bin .eq (.field 0) (.lit (.int 0))))
+  (.bin .lt (.lit (.int 1)) (.bin .idiv (.lit (.int 10)) (.field 0))))).length == 1
+#guard (Expr.issues [.int 0] (.bin .lt (.lit (.int 1))
+  (.ifThen (.un .not (.bin .eq (.field 0) (.lit (.int 0)))) (.bin .idiv (.lit (.int 10)) (.field 0))
+    (.lit .null)))).isEmpty
+
 /-! ## What may go wrong, abstractly -/
 
 def rangeMay (lo hi : Int) (aa ar : AVal) : List Issue :=

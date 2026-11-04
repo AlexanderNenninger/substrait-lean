@@ -1889,6 +1889,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if ["add", "subtract", "multiply", "negate", "divide"].contains (baseName name) && w < 64 &&
           call.kind cols == .int then
         return .un (.wrap w) call
+      -- `ABS(MIN)` neither (#616): its branch that negates, as the writer
+      -- writes it and reads it back.
+      if baseName name == "abs" && w < 64 && call.kind cols == .int then
+        if let .ifThen c t e := call then return .ifThen c (.un (.wrap w) t) e
       return call
   | ("ifThen", t) =>
     -- A `CASE` without `ELSE` is `ELSE NULL`.

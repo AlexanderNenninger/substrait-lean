@@ -1,0 +1,42 @@
+{
+  "id": "polars-zero-add",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`x + 0.0` and `0.0 - x` keep or flip a zero's sign",
+  "verdict": "`zero_sign`: not IEEE either, so up to one zero (`canon`)",
+  "area": "doubles",
+  "options": [
+    "zero_sign"
+  ],
+  "constructs": [
+    "+",
+    "-"
+  ],
+  "settings": {},
+  "description": "`-0.0 + 0.0` is `-0.0` and `0.0 - 0.0` (as `0.0 - x`) is `-0.0`, where IEEE 754 gives `+0.0` for both under round-to-nearest; `-0.0 - 0.0` is `-0.0`, as IEEE gives. The sign of a zero result of `+` and `-` is therefore Polars's own (polars-zero-sign).",
+  "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere, so the translation canonicalises (`one_zero`) where a result's zeros are observed.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session frosty-bassi-b2cf7d (#444 step 3a, PR #590)",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [-0.0, -0.0]}).select(pl.col('x') + 0.0)",
+          "observed": "[-0.0, -0.0]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [0.0, 0.0]}).select(pl.lit(0.0) - pl.col('x'))",
+          "observed": "[-0.0, -0.0]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [-0.0, -0.0]}).select(pl.col('x') - 0.0)",
+          "observed": "[-0.0, -0.0]"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) on macOS arm64."
+    }
+  ]
+}

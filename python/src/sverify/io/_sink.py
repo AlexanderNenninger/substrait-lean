@@ -31,6 +31,7 @@ from sverify.io._common import (
     sink_schema,
     view_contract_record,
 )
+from sverify.observation import Observation
 
 if TYPE_CHECKING:
     from sverify.incremental import IncrementalView
@@ -147,11 +148,18 @@ class Sink:
             `"sverify:<name>"`.
         location: Where the table is, for reports and errors. Default:
             `name`.
+        reproducible: What a rerun of a state must reproduce
+            (`sv.equivalent(...)`, #444 D20): the sink commits each epoch
+            once, so a rerun has to give the same rows up to this. Default:
+            rows as a multiset with exact values. A sink whose consumers
+            accept doubles within a tolerance states it, for example
+            `sv.equivalent(floats=sv.within(rel=1e-12))`.
 
     Attributes:
         name: The stored table's name in the plans that read it.
         app_id: Identifies the writer.
         location: Where the table is.
+        reproducible: What a rerun must reproduce.
 
     Examples:
         A sink that writes each state as a Parquet file, and keeps the
@@ -199,6 +207,7 @@ class Sink:
     name: str
     app_id: str
     location: str
+    reproducible: Observation = Observation()
     view: IncrementalView | None = None
     _written: int | None = None
     keeps_retired = False
@@ -214,10 +223,19 @@ class Sink:
     """The view's serial and the contract of a write that raised: its commit
     may have landed before the error (reading the version back, say)."""
 
-    def __init__(self, name: str, *, app_id: str | None = None, location: str | None = None):
+    def __init__(
+        self,
+        name: str,
+        *,
+        app_id: str | None = None,
+        location: str | None = None,
+        reproducible: Observation | None = None,
+    ):
         self.name = name
         self.app_id = app_id or f"sverify:{name}"
         self.location = location or name
+        if reproducible is not None:
+            self.reproducible = reproducible
 
     # -- what a sink implements ---------------------------------------------
 
@@ -370,8 +388,16 @@ class _TableSink[T](Sink, ABC):
     _commit_errors: ClassVar[tuple[type[Exception], ...]] = ()
     """What a commit raises when another writer committed first."""
 
-    def __init__(self, name: str, *, app_id: str | None, location: str, compact_every: int | None):
-        super().__init__(name, app_id=app_id, location=location)
+    def __init__(
+        self,
+        name: str,
+        *,
+        app_id: str | None,
+        location: str,
+        compact_every: int | None,
+        reproducible: Observation | None = None,
+    ):
+        super().__init__(name, app_id=app_id, location=location, reproducible=reproducible)
         if compact_every is not None and compact_every < 1:
             raise ValueError(f"compact_every must be at least 1, got {compact_every}")
         self.compact_every = compact_every

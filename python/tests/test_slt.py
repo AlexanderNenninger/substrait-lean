@@ -202,6 +202,9 @@ def test_replay(replayed):
     assert (overflow.cls, overflow.side) == ("disagree", "lean")
     assert overflow.lean == '[["9223372036854775808"]]'
     assert overflow.engine.startswith("error: Out of Range Error")
+    # `verify` without inference reports the overflow the test expects, which
+    # an inferred precondition would absorb (#619).
+    assert (overflow.reason or "").startswith("verify: overflow"), overflow.reason
     # Lean's division by zero is NULL; DuckDB 2.0 raises (and so does the
     # written plan, guarded); the verifier flags it.
     div = _result(replayed, "SELECT i // 0")
@@ -328,3 +331,90 @@ def test_large_queries_are_condensed(tmp_path):
     assert (r.cls, r.reason) == ("agree", f"condensed to {slt.MAX_ROWS} rows")
     # Lean counted the condensed join, not the test's full one.
     assert r.lean == f'[["{slt.MAX_ROWS // 2}"]]'
+
+
+def test_tables_of_128_bit_integers_out_of_arrow_range_are_refused(tmp_path):
+    """DuckDB exports `UHUGEINT` to Arrow as `decimal128(38, 0)`, its maximum
+    as -1 (DD-5): the harness refuses such tables rather than mirror them
+    (#618). Values Arrow holds mirror as they are."""
+    path = tmp_path / "huge.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE u AS SELECT '340282366920938463463374607431768211455'::UHUGEINT AS i
+
+            query R
+            SELECT i::DOUBLE FROM u
+            ----
+            340282366920938463463374607431768211455
+
+            statement ok
+            CREATE TABLE h AS SELECT [1::HUGEINT] AS l
+
+            query I
+            SELECT l[1] FROM h
+            ----
+            1
+
+            statement ok
+            CREATE TABLE k AS SELECT 5::HUGEINT AS k UNION ALL SELECT NULL
+
+            query I
+            SELECT k FROM k WHERE k IS NOT NULL
+            ----
+            5
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/huge.test")
+    assert [r.cls for r in results] == ["refused", "refused", "agree"]
+    assert all("DD-5" in (r.reason or "") for r in results[:2])
+
+
+def test_a_domain_error_is_the_verifiers(tmp_path):
+    """`Rel.eval` gives NULL on a row that raises, and `verify` reports the
+    error: `sin` of infinity raises in the reference, where DuckDB gives NaN
+    (`duckdb-R15-math-domain`, #617)."""
+    path = tmp_path / "trig.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            query I
+            select sin('inf'::DOUBLE)
+            ----
+            nan
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/trig.test")
+    # DuckDB prints the NaN of sin(inf) as -nan on Linux, nan on macOS.
+    assert (r.cls, r.lean) == ("disagree", '[["NULL"]]')
+    assert r.duckdb in ('[["nan"]]', '[["-nan"]]'), r.duckdb
+    assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
+
+
+def test_a_time_of_24_00_is_refused(tmp_path):
+    """Python's `datetime.time`, through which the rows reach Lean, has no
+    `24:00:00`: it became midnight (#619)."""
+    path = tmp_path / "t24.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE times AS SELECT t::TIME AS t FROM (VALUES ('24:00:00'), ('13:00:00')) v(t)
+
+            query I
+            SELECT t FROM times
+            ----
+            24:00:00
+            13:00:00
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/t24.test")
+    assert (r.cls, r.reason) == (
+        "refused",
+        "tables: column t of times holds 24:00:00, "
+        "which the rows inlined for Lean (Python times) cannot",
+    )

@@ -117,6 +117,24 @@ def test_division_states_its_meaning():
     assert lift(query, SCHEMAS).schema == ibis.schema({"r": "float64", "q": "int64"})
 
 
+def test_constants_compared_with_a_narrow_column_take_its_type():
+    """`v >= -127` on a TINYINT compares `v` itself, as DuckDB binds it, so
+    a contract's precondition bounds the column (#616); a constant that does
+    not fit casts the column."""
+    plan = lift(
+        "SELECT * FROM t WHERE v >= -127 AND v < 300", {"t": ibis.schema({"v": "int8"})}
+    ).plan
+    cond = plan["relations"][0]["root"]["input"]["filter"]["condition"]
+    fits, wide = (
+        a["value"]["scalarFunction"]["arguments"] for a in cond["scalarFunction"]["arguments"]
+    )
+    assert fits[0]["value"] == {
+        "selection": {"directReference": {"structField": {"field": 0}}, "rootReference": {}}
+    }
+    assert fits[1]["value"] == {"literal": {"i8": -127}}
+    assert "cast" in wide[0]["value"] and wide[1]["value"] == {"literal": {"i32": 300}}
+
+
 def test_duckdb_types_literals_and_decimals_its_own_way():
     schema = lift(
         "SELECT 1 AS i, 3000000000 AS b, 1.5 AS d, 1e3 AS f, qty + 1 AS q,"

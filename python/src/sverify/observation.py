@@ -36,14 +36,15 @@ from typing import Any, Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 
-Rows = Literal["sequence", "multiset"]
+Rows = Literal["sequence", "ties permuted", "multiset"]
+Elements = Literal["sequence", "multiset"]
 Exactness = Literal["exact", "canon"]
 Precision = Literal["ns", "us", "ms", "s"]
 Strings = Literal["exact", "nfc"]
 Decimals = Literal["exact", "value"]
 Errors = Literal["exact", "kind"]
 
-_ROWS: tuple[str, ...] = ("sequence", "multiset")
+_ROWS: tuple[str, ...] = ("sequence", "ties permuted", "multiset")
 _ELEMENTS: tuple[str, ...] = ("sequence", "multiset")
 _ZEROS: tuple[str, ...] = ("exact", "canon")
 _PRECISIONS: tuple[str, ...] = ("ns", "us", "ms", "s")
@@ -144,7 +145,9 @@ class Observation:
     components, each from exact to coarse. Use it in `ensures`."""
 
     rows: Rows = "multiset"
-    """`"multiset"`: the order of the rows is ignored; `"sequence"`: it counts."""
+    """`"multiset"`: the order of the rows is ignored; `"sequence"`: it counts;
+    `"ties permuted"`: the order counts up to permutations of rows that tie
+    in the sort (an engine's run-to-run variation, `tie_order`)."""
     floats: Floats = "exact"
     """`"exact"` or a tolerance (`within`)."""
     zeros: Exactness = "exact"
@@ -158,7 +161,7 @@ class Observation:
     """`"value"`: `1.50` equals `1.5`; the scale is ignored."""
     errors: Errors = "exact"
     """`"kind"`: two errors of the same kind are equal, whatever their messages."""
-    elements: Rows = "sequence"
+    elements: Elements = "sequence"
     """`"multiset"`: the order of a list's elements is ignored (a `collect`
     or `string_agg` without an order); `"sequence"`: it counts."""
 
@@ -349,7 +352,7 @@ def equivalent(
     strings: Strings = "exact",
     decimals: Decimals = "exact",
     errors: Errors = "exact",
-    elements: Rows = "sequence",
+    elements: Elements = "sequence",
 ) -> Observation:
     """A postcondition naming what the result's consumer observes (#444, D11).
 

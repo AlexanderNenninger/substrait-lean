@@ -106,6 +106,7 @@ from sverify.io._common import (
     q,
 )
 from sverify.io._sink import _UNREAD, SinkChange, _TableSink
+from sverify.observation import Observation
 
 CONTRACT = "Iceberg contract"
 KEY = "sverify.contract"
@@ -1147,6 +1148,9 @@ class IcebergSink(_TableSink[Table]):
             the gap between their refreshes. Default: None, no expiry.
         min_snapshots: The newest snapshots of the table's history an
             expiry keeps, however old. Default: 1.
+        reproducible: What a rerun of a state must reproduce
+            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset
+            with exact values.
 
     Raises:
         ValueError: A transform of `partition_by` is unknown, or
@@ -1199,12 +1203,19 @@ class IcebergSink(_TableSink[Table]):
         compact_every: int | None = None,
         snapshot_retention: timedelta | None = None,
         min_snapshots: int = 1,
+        reproducible: Observation | None = None,
     ):
         self.catalog, self.identifier = catalog, identifier
         name = name or identifier.rsplit(".", 1)[-1]
         if min_snapshots < 1:
             raise ValueError(f"min_snapshots must be at least 1, got {min_snapshots}")
-        super().__init__(name, app_id=app_id, location=identifier, compact_every=compact_every)
+        super().__init__(
+            name,
+            app_id=app_id,
+            location=identifier,
+            compact_every=compact_every,
+            reproducible=reproducible,
+        )
         self.table_location = location
         self.partition_by = _partition_fields(partition_by or [])
         self.properties = {str(k): str(v) for k, v in (properties or {}).items()}

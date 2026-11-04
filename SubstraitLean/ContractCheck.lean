@@ -180,6 +180,9 @@ structure Report where
   /-- The plan's constant errors (`Rel.constIssues`, #609, D21), also in
   `issues`: they raise on any data, so no precondition rules them out. -/
   constant : List (Issue × Expr) := []
+  /-- The issues' expressions that sit inside an operand of an `AND` or `OR`
+  (`Expr.underAndOr`): untrusted, for the report's suggestion (#604). -/
+  underAndOr : List Expr := []
   /-- At most this many output rows, on inputs within their caps
   (`Rel.maxRows_sound` of the capped plan). -/
   rows : Option Nat := none
@@ -233,6 +236,38 @@ partial def _root_.Substrait.Rel.marksJson (r : Rel) (m : Marks) : Json :=
   Json.mkObj [("node", Lean.toJson r.nodeName), ("slots", Lean.toJson m.slots),
     ("inputs", Json.arr (r.inputs.zipIdx.map fun (x, i) => x.marksJson (m.input i)).toArray)]
 
+/-- Does `e` occur in `t`? -/
+partial def _root_.Substrait.Expr.hasSub (e : Expr) (t : Expr) : Bool :=
+  t == e || match t with
+    | .un _ a => e.hasSub a
+    | .bin _ a b => e.hasSub a || e.hasSub b
+    | .ifThen c x y => e.hasSub c || e.hasSub x || e.hasSub y
+    | .hof _ l b => e.hasSub l || e.hasSub b
+    | _ => false
+
+/-- Is `e` inside an operand of an `AND` or `OR` of `t`? Both operands are
+evaluated (#604, D19), so a guard in the other operand does not keep `e`'s
+error away: the report suggests a `CASE`. -/
+partial def _root_.Substrait.Expr.underAndOr (e : Expr) (t : Expr) : Bool :=
+  match t with
+    | .bin .and a b | .bin .or a b => e.hasSub a || e.hasSub b
+    | .un _ a => e.underAndOr a
+    | .bin _ a b => e.underAndOr a || e.underAndOr b
+    | .ifThen c x y => e.underAndOr c || e.underAndOr x || e.underAndOr y
+    | .hof _ l b => e.underAndOr l || e.underAndOr b
+    | _ => false
+
+/-- Every expression of a plan. -/
+partial def _root_.Substrait.Rel.allExprs : Rel → List Expr
+  | .read _ | .values _ _ => []
+  | .filter r c => c :: r.allExprs
+  | .project r es => es ++ r.allExprs
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ | .window r _ _ _ =>
+    r.allExprs
+  | .cross a b | .unionAll a b => a.allExprs ++ b.allExprs
+  | .join a b _ on | .semi a b _ on => on :: a.allExprs ++ b.allExprs
+  | .aggregate r gs ms => gs ++ ms.flatMap Measure.exprs ++ r.allExprs
+
 def Report.json (r : Report) : Json :=
   Json.mkObj [
     ("ensures", Json.arr ((r.ensures.zip (r.suggestions ++
@@ -253,6 +288,7 @@ def Report.json (r : Report) : Json :=
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
         ("expr", Lean.toJson e.render),
         ("constant", Lean.toJson (r.constant.contains (i, e))),
+        ("under_and_or", Lean.toJson (r.underAndOr.contains e)),
         ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
@@ -348,6 +384,14 @@ def relationBounds (cat : Catalog) (A : String → List AVal) (F : String → Li
     | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       relationBounds cat A F K caps P (d + 1) a ++ relationBounds cat A F K caps P (d + 1) b
   here :: rest
+
+/-- The issues' expressions under an `AND` or `OR` of the plan. -/
+def issuesUnderAndOr (transform : Option Plan) (issues : List (Issue × Expr)) : List Expr :=
+  match transform with
+  | some p =>
+    let all := p.root.allExprs
+    issues.filterMap fun (_, e) => if all.any (e.underAndOr ·) then some e else none
+  | none => []
 
 def check (input : Json) : Except String Report := do
   let ensures ← ((input.getObjValAs? (Array Json) "ensures").toOption.getD #[]).toList.mapM
@@ -480,6 +524,7 @@ def check (input : Json) : Except String Report := do
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
     constant
+    underAndOr := issuesUnderAndOr transform issues
     unchecked }
 
 end Substrait.ContractCheck

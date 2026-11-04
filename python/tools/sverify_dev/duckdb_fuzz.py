@@ -96,6 +96,28 @@ def aimed(target: Target) -> Iterator[Any]:
         fuzz._KINDS.update(saved[2])
 
 
+#: The DuckDB settings that change what the fuzzed queries compute, recorded
+#: in each ledger (#619): a ledger of 2026-11-01 ran with `integer_division`
+#: on, which made `d / d` of doubles a `//`.
+SETTINGS = (
+    "integer_division",
+    "ieee_floating_point_ops",
+    "error_on_division_by_zero",
+    "default_null_order",
+    "default_order",
+)
+
+
+def settings_of(db: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    """`SETTINGS` on the connection `check` runs DuckDB on."""
+    return {name: db.sql(f"SELECT current_setting('{name}')").fetchall()[0][0] for name in SETTINGS}
+
+
+def connect() -> duckdb.DuckDBPyConnection:
+    """The connection `check` runs each query on: DuckDB's defaults."""
+    return duckdb.connect()
+
+
 @dataclass
 class Outcome:
     sql: str
@@ -145,7 +167,7 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
         lean = _rows(lean_rows)
     except subprocess.CalledProcessError as e:
         lean = "error: " + slt._clip(((e.stderr or "") + (e.output or "")).strip()[-200:], 200)
-    db = duckdb.connect()
+    db = connect()
     for name, table in s.con.arrow.items():
         db.register(name, table)
     duck_rows: list[tuple] | None = None
@@ -230,7 +252,13 @@ def write(target: str, version: str, found: list[Outcome], checked: int, out: Pa
     ]
     summary = {"agree": checked - len(found), "disagree": len(found), "refused": 0, "skipped": 0}
     source = "sverify_dev.duckdb_fuzz (generated queries, no DuckDB tests)"
-    head = {"source": source, "license": None, "summary": summary, "checked": checked}
+    head = {
+        "source": source,
+        "license": None,
+        "summary": summary,
+        "checked": checked,
+        "settings": settings_of(connect()),
+    }
     path = slt.write_ledger(f"fuzz/{target}", version, results, {}, out, head)
     return path
 

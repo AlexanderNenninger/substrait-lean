@@ -36,6 +36,10 @@ QUERIES = [
     " cume_dist() OVER (ORDER BY id) AS cd, lag(amount * 2) OVER (ORDER BY id) AS l2 FROM orders",
     "SELECT customer, sum(amount) AS s, rank() OVER (ORDER BY sum(amount) DESC) AS r,"
     " avg(sum(amount)) OVER () AS a FROM orders GROUP BY customer",
+    # A plain ranking ignores the frame, empty or not (#625).
+    "SELECT id, rank() OVER (ORDER BY customer ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING) AS r,"
+    " cume_dist() OVER (ORDER BY customer ROWS BETWEEN 3 FOLLOWING AND 1 FOLLOWING) AS c"
+    " FROM orders",
     # Computed window partitions.
     "SELECT id, rank() OVER (PARTITION BY amount % 2 ORDER BY -amount, id) AS r FROM orders",
 ]
@@ -62,6 +66,19 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
         ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
         ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
+        # A ranking with its own ORDER BY ranks within the frame (#625).
+        *(
+            (
+                f"SELECT id, {f}(ORDER BY id) OVER (ORDER BY customer {frame}) FROM orders",
+                "its own ORDER BY",
+            )
+            for f in ("rank", "percent_rank", "cume_dist", "row_number", "dense_rank")
+            for frame in (
+                "ROWS BETWEEN 3 FOLLOWING AND 1 FOLLOWING",
+                "ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING",
+                "",
+            )
+        ),
     ],
 )
 def test_refusals_say_what(query, message):

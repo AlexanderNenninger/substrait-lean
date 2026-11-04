@@ -1,0 +1,37 @@
+{
+  "id": "ST-11",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0",
+  "status": "unverified",
+  "status_note": "Unspecified in substrait-extensions 0.106.0; not yet checked against Substrait's main branch or raised upstream.",
+  "summary": "`power` of `i64` (`functions_arithmetic.yaml`) returns `i64` and takes only `overflow`. Nothing says what a negative exponent gives, whose result is not an integer: `power(2, -1)` could be `0` (truncated), an error, or a domain error, and the integer implementation has no `on_domain_error`.",
+  "repro": [
+    "`power(2::i64, -1::i64)` and `power(-2::i64, -3::i64)`: the YAML's description, \"Take the power with x as the base and y as exponent\", defines neither.",
+    "Polars 2.1: a negative integer exponent raises (`InvalidOperationError`, fact polars-int-arith); sverify's reference raises (`Issue.negExponent`)."
+  ],
+  "handling": [
+    "The reference raises on a negative exponent (`Issue.negExponent`, `SubstraitLean/Safety.lean`), an inferred precondition. The core allows raising anywhere (D2), so no option of the catalogue names it; `Profile.substrait` accepts any `on_domain_error` preference for integer `power`, which the YAML does not give it.",
+    "Could be expressed as: `on_domain_error: [NULL, ERROR]` on the integer implementations of `power`, as integer `divide` has, with a negative exponent as its domain error, or a sentence in the description."
+  ],
+  "found_by": "writing Profile.substrait (#444 step 2), SubstraitLean/SubstraitProfile.lean",
+  "issues": [
+    444
+  ],
+  "files": [
+    "SubstraitLean/SubstraitProfile.lean",
+    "SubstraitLean/Safety.lean"
+  ],
+  "facts": [
+    "polars-int-arith"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "functions_arithmetic.yaml: power(i64, i64) has `overflow` only; the fp implementations have no options"
+    }
+  ]
+}
