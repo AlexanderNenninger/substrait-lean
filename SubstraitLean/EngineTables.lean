@@ -2,6 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.Observations
 import SubstraitLean.AllowedP
 import SubstraitLean.Profile
+import SubstraitLean.SubstraitProfile
 
 /-!
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
@@ -413,17 +414,20 @@ def tablesJson : Json :=
   optionsJson
     |>.setObjVal! "choices" (Json.mkObj ([
         ("reference", profileRowsJson Profile.reference.table Profile.reference.obs true),
-        ("core", choicesJson Profile.core.table)] ++
+        ("core", choicesJson Profile.core.table),
+        ("substrait", profileRowsJson Profile.substrait.table Profile.substrait.obs false)] ++
       engineTables.map fun (t, obs) => (t.name, profileRowsJson t obs false)))
     |>.setObjVal! "profiles" (Json.mkObj ([
         ("reference", Json.mkObj [("engine", Json.null)]),
-        ("core", Json.mkObj [("engine", Json.null)])] ++
+        ("core", Json.mkObj [("engine", Json.null)]),
+        ("substrait", Json.mkObj [("engine", Json.null), ("yaml", toJson Profile.substrait.table.version)])] ++
       engineTables.map fun (t, _) => (t.name, Json.mkObj [
         ("engine", toJson t.name), ("versions", toJson [t.version]),
         ("executes", toJson (if t.name == "polars" then "streaming" else "")),
         ("missing", Json.arr <| (t.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))
-    |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs)] ++
+    |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs),
+        ("substrait", obsTableJson Profile.substrait.obs)] ++
       engineTables.map fun (t, obs) => (t.name, obsTableJson obs)))
     |>.setObjVal! "versions" (Json.mkObj (engineTables.map fun (t, _) => (t.name, toJson t.version)))
     |>.setObjVal! "tools" toolsJson

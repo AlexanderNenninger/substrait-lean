@@ -695,14 +695,24 @@ def approx(cond: Any, rel: float = 1e-6) -> Approx:
     return Approx(cond, rel)
 
 
-Semantics = Literal["reference", "duckdb", "polars"]
+Semantics = Literal["reference", "duckdb", "polars", "substrait"]
 """The profile a check is under: sverify's reference semantics (the
-default), DuckDB's (#411), whose SQL also means what DuckDB computes, or
-Polars's, for Ibis transformations (#444)."""
+default), DuckDB's (#411), whose SQL also means what DuckDB computes,
+Polars's, for Ibis transformations, or Substrait's own, as its extension
+YAMLs state it (#444)."""
 
 #: The profiles the checker is asked for by name (`"profile"` in a
 #: `--contract` request): those beyond the reference and DuckDB's lift.
-_PROFILE_REQUESTS = frozenset({"polars"})
+_PROFILE_REQUESTS = frozenset({"polars", "substrait"})
+
+
+def _transfer_failure(f: Mapping[str, Any]) -> str:
+    """Why the reference's proof does not carry over to Substrait at one option."""
+    where = f"{f['group']}'s {f['option']}" if f.get("group") else f["option"]
+    return (
+        f"not proved under Profile.substrait: {where} allows "
+        f"{', '.join(f['substrait'])}, the reference only {', '.join(f['reference']) or 'nothing'}"
+    )
 
 
 def _expr_semantics(transform: Transform) -> Semantics:
@@ -720,8 +730,10 @@ def _expr_semantics(transform: Transform) -> Semantics:
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    if semantics not in ("reference", "duckdb", "polars"):
-        raise ValueError(f"semantics must be 'reference', 'duckdb' or 'polars', not {semantics!r}")
+    if semantics not in ("reference", "duckdb", "polars", "substrait"):
+        raise ValueError(
+            f"semantics must be 'reference', 'duckdb', 'polars' or 'substrait', not {semantics!r}"
+        )
     return semantics  # type: ignore[return-value]
 
 
@@ -997,9 +1009,9 @@ class Report:
     the bounds Lean proves on its rows and, for an aggregate, on the rows
     of a group (#219)."""
     semantics: Semantics = "reference"
-    """What the SQL the report lifted means (`verify(semantics=...)`):
-    `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
-    computes (#411)."""
+    """The profile the report is under (`verify(semantics=...)`):
+    `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
+    computes (#411); `"polars"`; or `"substrait"`, Substrait's own (#444)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
     plan: str | None = field(default=None, repr=False, compare=False)
@@ -1020,6 +1032,12 @@ class Report:
     by engine name."""
     contract: dict | None = field(default=None, repr=False, compare=False)
     """The request the checker proved, for a check under another profile."""
+    transfer: list[dict] | None = field(default=None, repr=False, compare=False)
+    """Under `semantics="substrait"`, the options where Substrait allows more
+    than the reference, so that the reference's proof does not carry over:
+    `{"group", "option", "preferences", "substrait", "reference"}` rows, each
+    with the behaviours the profile allows. Empty when it carries over; None
+    under every other profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types."""
     epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
@@ -1166,8 +1184,9 @@ class Report:
     def proved(self) -> bool:
         """Every postcondition holds and no runtime error is possible. With
         an observation (`sv.equivalent`), no postcondition depends on what
-        it ignores."""
-        return all(c.portable for c in self.ensures) and not self.errors
+        it ignores. Under `semantics="substrait"`, the reference's proof
+        also carries over (`transfer` is empty)."""
+        return all(c.portable for c in self.ensures) and not self.errors and not self.transfer
 
     @property
     def errors(self) -> list[Issue]:
@@ -1238,6 +1257,7 @@ class Report:
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
         lines.append(f"semantics: {self.semantics}")
+        lines += [f"  {_transfer_failure(f)}" for f in self.transfer or ()]
         if self.observation != Observation():
             lines.append(f"observes: {self.observation}")
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
@@ -1954,6 +1974,11 @@ def verify(
             `sv.sql(..., semantics="duckdb")`, else `"reference"`.
             `"polars"` checks an Ibis transformation under Polars's
             profile (#444); the checker refuses it until it has one.
+            `"substrait"` checks an Ibis transformation under Substrait's
+            own semantics (`Profile.substrait`, #444): the proof under the
+            reference holds there where Substrait allows nothing more at
+            the options the plan meets, and `Report.transfer` names the
+            options where it allows more.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -2451,6 +2476,7 @@ def _verify_once(
         depends=out.get("depends"),
         epsilon=out.get("epsilon"),
         contract=contract,
+        transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
     )
     if not isinstance(transform, str) and report.issues:
