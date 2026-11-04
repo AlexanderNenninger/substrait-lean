@@ -8,7 +8,7 @@
   "summary": "A sort field's direction is required (`relations/basics.md`), and the directions it lists are the four of NULL placement, a custom function and clustered. `SORT_DIRECTION_UNSPECIFIED`, the enum's default value, is not described: an error, or a direction the consumer picks?",
   "repro": "A `SortRel` whose field has `direction: SORT_DIRECTION_UNSPECIFIED` over a column with NULLs.",
   "handling": [
-    "The core reads it as the NULL placement left open (docs/core-semantics.md, D6); the reference and each engine fix one (DuckDB: NULLs last). The parser refuses it until #444's step 1c.",
+    "The core reads it as ascending with the NULL placement left open (docs/core-semantics.md, D6); the reference and each engine fix one (the reference and DuckDB: NULLs last, D8). The parser reads it in a `SortRel` (SubstraitLean/Parse.lean, `parseSortKey`; #444 step 1c) and refuses it in a window's or a measure's order.",
     "Could be expressed as: Say whether `SORT_DIRECTION_UNSPECIFIED` is invalid or means a consumer-chosen direction and NULL placement."
   ],
   "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
@@ -16,7 +16,8 @@
     444
   ],
   "files": [
-    "docs/core-semantics.md"
+    "docs/core-semantics.md",
+    "SubstraitLean/Parse.lean"
   ],
   "facts": [
     "duckdb-F2",

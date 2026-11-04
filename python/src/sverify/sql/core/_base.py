@@ -2392,9 +2392,15 @@ class _Parser:
             "SORT_DIRECTION_ASC_NULLS_LAST": (False, False),
             "SORT_DIRECTION_DESC_NULLS_FIRST": (True, True),
             "SORT_DIRECTION_DESC_NULLS_LAST": (True, False),
+            # Ascending with NULLs last, the reference's choice (D6, D8 of
+            # `docs/core-semantics.md`); a sort realizes a clustered key. Lean
+            # reads both only in a `SortRel`.
+            "SORT_DIRECTION_UNSPECIFIED": (False, False),
+            "SORT_DIRECTION_CLUSTERED": (False, False),
         }
+        d = d or "SORT_DIRECTION_UNSPECIFIED"
         if d not in dirs:
-            raise Unsupported(f"unsupported sort direction: {'unspecified' if d is None else d}")
+            raise Unsupported(f"unsupported sort direction: {d}")
         return SortKey(col, *dirs[d])
 
     def window(self, w: dict, cols: _Cols) -> tuple[tuple[int, ...], tuple[SortKey, ...], WinFn]:

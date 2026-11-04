@@ -829,7 +829,9 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
       ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
 
 def writeSortKey (cols : List WKind) (k : SortKey) : Json :=
-  let dir : Json := match k.desc, k.nullsFirst with
+  let dir : Json := if k.clustered then "SORT_DIRECTION_CLUSTERED"
+    else if k.nullsOpen && !k.desc then "SORT_DIRECTION_UNSPECIFIED"
+    else match k.desc, k.firstNulls with
     | false, true => "SORT_DIRECTION_ASC_NULLS_FIRST"
     | false, false => "SORT_DIRECTION_ASC_NULLS_LAST"
     | true, true => "SORT_DIRECTION_DESC_NULLS_FIRST"

@@ -216,12 +216,22 @@ structure SortKey where
   col : Nat
   desc : Bool := false
   nullsFirst : Bool := false
+  /-- The plan left the NULL placement open (`SORT_DIRECTION_UNSPECIFIED`,
+  D6): each profile picks one (`null_order`), the reference NULLs last (D8),
+  whatever `nullsFirst` says. -/
+  nullsOpen : Bool := false
+  /-- `SORT_DIRECTION_CLUSTERED`: rows with equal keys adjacent, the groups in
+  any order. `Rel.eval` sorts them in the key's direction, one such order. -/
+  clustered : Bool := false
   deriving Repr, BEq, DecidableEq
+
+/-- NULLs first: as the key states, last where it leaves it open. -/
+def SortKey.firstNulls (k : SortKey) : Bool := k.nullsFirst && !k.nullsOpen
 
 /-- Where NULLs go: before (`0`) or after (`1`) the other values. -/
 def SortKey.nullRank (k : SortKey) : Value → Nat
-  | .null => if k.nullsFirst then 0 else 1
-  | _ => if k.nullsFirst then 1 else 0
+  | .null => if k.firstNulls then 0 else 1
+  | _ => if k.firstNulls then 1 else 0
 
 def SortKey.valLe (k : SortKey) (a b : Value) : Bool :=
   if k.desc then b.le a else a.le b
@@ -254,6 +264,60 @@ def sortLe : List SortKey → Row → Row → Bool
 theorem sortLe_totalPre : ∀ ks, TotalPre (sortLe ks)
   | [] => ⟨fun _ _ _ _ _ => rfl, fun _ _ => rfl⟩
   | k :: ks => k.le_totalPre.lex (sortLe_totalPre ks)
+
+/-! ## Orders a profile allows
+
+A profile picks the NULL placement of an open key (`nf`), and the order of a
+clustered key's groups: any total order of the values (`ValidCmp`), which
+`Rel.eval` takes to be `Value.le`. -/
+
+/-- NULLs before (`0`) or after (`1`) the other values, when `nf` puts them first. -/
+def nullRankOf (nf : Bool) : Value → Nat
+  | .null => if nf then 0 else 1
+  | _ => if nf then 1 else 0
+
+theorem nullRankOf_firstNulls (k : SortKey) : nullRankOf k.firstNulls = k.nullRank := by
+  funext v; cases v <;> rfl
+
+/-- A key's order on values, a clustered key's groups ordered by `cmp`. -/
+def SortKey.valWith (k : SortKey) (cmp : Value → Value → Bool) (a b : Value) : Bool :=
+  if k.clustered then (if k.desc then cmp b a else cmp a b) else k.valLe a b
+
+theorem SortKey.valWith_le (k : SortKey) : k.valWith Value.le = k.valLe := by
+  funext a b; unfold valWith valLe; cases k.clustered <;> cases k.desc <;> rfl
+
+/-- Order rows by one key, NULLs first when `nf`. -/
+def SortKey.leWith (cmp : Value → Value → Bool) (nf : Bool) (k : SortKey) : Row → Row → Bool :=
+  lexLe (fun x y => natLe (nullRankOf nf (x.getD k.col .null)) (nullRankOf nf (y.getD k.col .null)))
+    (fun x y => k.valWith cmp (x.getD k.col .null) (y.getD k.col .null))
+
+/-- Order rows by keys with their NULL placements, lexicographically. -/
+def sortLeWith (cmp : Value → Value → Bool) : List (SortKey × Bool) → Row → Row → Bool
+  | [] => fun _ _ => true
+  | (k, nf) :: ks => lexLe (k.leWith cmp nf) (sortLeWith cmp ks)
+
+theorem sortLeWith_le : ∀ ks : List SortKey,
+    sortLeWith Value.le (ks.map fun k => (k, k.firstNulls)) = sortLe ks
+  | [] => rfl
+  | k :: ks => by
+    simp only [List.map_cons, sortLeWith, sortLe, sortLeWith_le ks, SortKey.leWith, SortKey.le,
+      nullRankOf_firstNulls, SortKey.valWith_le]
+
+/-- An order a clustered key's groups may take: total, and telling every
+two values apart. -/
+def ValidCmp (cmp : Value → Value → Bool) : Prop :=
+  TotalPre cmp ∧ ∀ a b, cmp a b = true → cmp b a = true → a = b
+
+theorem Value.le_validCmp : ValidCmp Value.le := ⟨Value.le_totalPre, fun _ _ => Value.le_antisymm⟩
+
+/-- The orders the reference allows for `keys`: each key's NULL placement as
+it states (last where open), each clustered key's groups in any order. -/
+def SortAllowed (keys : List SortKey) (out : Relation) : Prop :=
+  ∃ cmp, ValidCmp cmp ∧ out.Pairwise (sortLeWith cmp (keys.map fun k => (k, k.firstNulls)) · · = true)
+
+theorem SortAllowed.of_sorted {keys : List SortKey} {out : Relation}
+    (h : out.Pairwise (sortLe keys · · = true)) : SortAllowed keys out :=
+  ⟨Value.le, Value.le_validCmp, by rw [sortLeWith_le]; exact h⟩
 
 /-- Rows in sort order, by the first key: for non-NULL integers (and
 timestamps, and float codes), ascending keys give `y ≤ x`. -/

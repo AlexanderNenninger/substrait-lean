@@ -2146,13 +2146,18 @@ class Translator:
             return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
         raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
-    def sorted(self, lf: pl.LazyFrame, ex: Exprs, sorts: list[dict]) -> pl.LazyFrame:
+    def sorted(
+        self, lf: pl.LazyFrame, ex: Exprs, sorts: list[dict], rel: bool = False
+    ) -> pl.LazyFrame:
         """`mergeSort (sortLe keys)`: stable, each key with its direction and
         NULL placement, values in `Value.le` order (strings by code point,
         which is UTF-8 byte order, as Polars sorts them)."""
         by, desc, nulls_last = [], [], []
         for s in sorts:
             d = shims.null_order(s.get("direction"))
+            # A `SortRel`'s clustered key: a sort realizes it (D6).
+            if d is None and rel and s.get("direction") == "SORT_DIRECTION_CLUSTERED":
+                d = (False, True)
             if d is None:
                 raise Unsupported(f"unsupported sort direction {s.get('direction')}")
             key = self.column(ex, s["expr"])
@@ -2166,7 +2171,7 @@ class Translator:
     def sort(self, r: dict) -> Frame:
         """`Rel.orderBy`."""
         lf, dtypes = self.rel(r["input"])
-        return self.sorted(lf, self.exprs(dtypes), r.get("sorts", [])), dtypes
+        return self.sorted(lf, self.exprs(dtypes), r.get("sorts", []), rel=True), dtypes
 
     def aggregate(self, r: dict) -> Frame:
         """`Rel.distinct` (a grouping by every column in order, no measures) or
