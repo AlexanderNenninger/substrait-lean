@@ -9,7 +9,12 @@
     "tie_order"
   ],
   "rows": [
-    {"option": "tie_order", "types": ["any"]}
+    {
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
   ],
   "constructs": [
     "sort",
@@ -20,6 +25,14 @@
     "maintain_order": [
       true,
       false
+    ],
+    "POLARS_IDEAL_MORSEL_SIZE": [
+      "100000 (default)",
+      "64"
+    ],
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": [
+      "33554432 (default)",
+      "1024"
     ]
   },
   "description": [
@@ -64,6 +77,18 @@
       "notes": [
         "Carried over from polars-sort-stability's round-2 reading, which the probe now confirms for the unordered path."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (probe_polars --diff, small morsels)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-sort-ties-large"
+        }
+      ],
+      "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
     }
   ],
   "supersedes": [

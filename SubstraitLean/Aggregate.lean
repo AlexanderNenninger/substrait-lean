@@ -283,8 +283,10 @@ def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × In
 def clampTo (l h r : Int) : Int := min (max r l) h
 
 /-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
-kept between `l` and `h`: rounding may leave them by an ulp, and `−∞`
-with `+∞` gives NaN (`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
+kept between `l` and `h`: rounding may leave them by an ulp. `−∞` with
+`+∞` gives NaN, which the clamp makes `+∞`; the reference raises there
+(`AggFn.makesNan`, #561), so no verified plan sees that value
+(`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
 def interpolate (l h w : Int) : Int :=
   clampTo l h (FloatCode.lift₂ (· + ·)
     (FloatCode.lift₂ (· * ·) l (FloatCode.lift₂ (· - ·) (FloatCode.ofInt 1) w))

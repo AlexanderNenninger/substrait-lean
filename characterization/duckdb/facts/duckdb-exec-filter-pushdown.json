@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "Filter pushdown: a raising filter crosses a join, and runs on one input even when the other is empty",
-  "verdict": "raising filters kept above projections; pushed into join inputs, outside the reference's loose model only when the other input is empty (to probe)",
+  "verdict": "raising filters kept above projections; pushed into join inputs, outside the reference's loose model only when the other input is empty (probed: it raises)",
   "area": "execution",
   "options": [
     "evaluation_order"
@@ -19,11 +19,12 @@
     "An inner join is turned into a cross product whose conditions and the filters above it are pushed to the side they reference, with no `CanThrow` test (`pushdown_inner_join.cpp`, `pushdown_cross_product.cpp`); a left join pushes its left-side filters the same way (`pushdown_left_join.cpp`), and the join order optimizer moves filters to the lowest join that binds them. A filter over a filter merges both conjunct lists, the upper one first.",
     "The reference's issue analysis already allows most of this: filter and join conditions are evaluated on `Rel.loose`, the input with filters removed and inner joins widened to cross joins (`SubstraitLean/Safety.lean`), so a `WHERE` over an inner or left join covers every row of each input, and a merged filter covers the rows the lower filter would remove. The gap left is an empty other input: the loose cross product is then empty and the reference reports no issue, while DuckDB evaluates the pushed filter on every row of the side it was pushed into. So `SELECT … FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` with `b` empty appears to raise on `a.x = 0`. This is from reading the code: a probe must confirm it (the hash join may skip the probe side when the build side is empty).",
     "The other way round, DuckDB can raise less than the reference: a `LIMIT` stops the scan, so `WHERE s::INT = 10 LIMIT 1` does not raise on the unconvertible rows after the first match (DuckDB's test). That keeps the no-error guarantee.",
-    "Round 3 (engine tests): test_barrier.test pins it: with `join_filter_pushdown` off, `SELECT … FROM secrets JOIN allowed ON … WHERE s::INT = 42` raises on the secret row the join removes, and `__internal_barrier` keeps the filter above the join. A `LIMIT` above a raising scan filter stops the scan before the bad rows (test_throwing_filter_pushdown.test)."
+    "Round 3 (engine tests): test_barrier.test pins it: with `join_filter_pushdown` off, `SELECT … FROM secrets JOIN allowed ON … WHERE s::INT = 42` raises on the secret row the join removes, and `__internal_barrier` keeps the filter above the join. A `LIMIT` above a raising scan filter stops the scan before the bad rows (test_throwing_filter_pushdown.test).",
+    "Round 4 (probes): with `b` empty, `SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` raises `Division by zero` on `a`'s row with `x = 0`; so do the cast `a.s::INTEGER > 1` and `b LEFT JOIN a` with the filter on `a` (the filter makes the join inner). `EXPLAIN` shows the filter in `a`'s scan. With `b = {2}`, the row `k = 1, x = 0` is removed by the dynamic join filter in the scan before the division runs, and nothing raises; with `join_filter_pushdown` disabled it raises, on a row the reference's loose model also evaluates. So the empty other input is the case outside the reference."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's DuckDB SQL writes a filter over a join as a `WHERE` over the join, which the optimizer is then free to push.",
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -139,6 +140,34 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. test_barrier.test pins the gap round 2 read: a raising `WHERE` over an inner join is pushed to one side and raises on a row the join removes (the test disables `join_filter_pushdown`, the dynamic join filter, to show it). constant_mark_join.test shows a join skipping its probe-side expressions when the build side is empty; that is a join condition, and no test covers a pushed filter with an empty other side, so that case still wants a probe."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "exec-pushdown-empty-join"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "exec-pushdown-empty-join-cast"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "exec-pushdown-empty-left-join"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "exec-pushdown-join"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "exec-pushdown-join-no-join-filter"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Confirms the gap round 2 read: the pushed filter runs although the other input is empty."
     }
   ]
 }

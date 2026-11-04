@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from datetime import datetime
 
 import ibis
@@ -50,11 +51,27 @@ def test_unknown_level_raises() -> None:
         sv.within()
 
 
-@given(st.floats(allow_nan=False, allow_infinity=False, width=64))
+@given(
+    st.floats(allow_nan=False, allow_infinity=False, width=64).filter(
+        lambda x: x < sys.float_info.max
+    )
+)
 def test_one_ulp_apart(x: float) -> None:
     y = math.nextafter(x, math.inf)
     assert sv.within(ulps=1).close(x, y)
     assert not sv.within(ulps=0).close(x, y) or x == y
+
+
+@pytest.mark.parametrize("big", [sys.float_info.max, -sys.float_info.max])
+def test_a_finite_value_is_never_close_to_an_infinity(big: float) -> None:
+    """One ulp past the largest double is an infinity, and no tolerance
+    makes a finite value close to it: a run that turns a finite value into
+    ±inf creates a non-finite value (D-goal 2)."""
+    inf = math.copysign(math.inf, big)
+    assert math.nextafter(big, inf) == inf
+    for w in (sv.within(ulps=1), sv.within(rel=1.0), sv.within(abs=sys.float_info.max)):
+        assert not w.close(big, inf)
+        assert not w.close(inf, big)
 
 
 def test_equal_up_to_the_observation() -> None:

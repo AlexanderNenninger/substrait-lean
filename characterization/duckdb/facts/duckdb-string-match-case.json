@@ -6,16 +6,12 @@
   "verdict": "`CASE_SENSITIVE` under the default `BINARY` collation",
   "area": "strings",
   "options": [
-    "case_sensitivity"
+    "case_sensitivity",
+    "string_positions"
   ],
   "rows": [
-    {
-      "group": "str.match",
-      "option": "case_sensitivity",
-      "types": [
-        "string"
-      ]
-    }
+    {"group": "str.match", "option": "case_sensitivity", "types": ["string"]},
+    {"group": "str.match", "option": "string_positions", "types": ["string"], "evidence": "engine_test"}
   ],
   "constructs": [
     "LIKE",
@@ -32,17 +28,22 @@
     "replace"
   ],
   "settings": {
-    "default_collation": "BINARY (the default)"
+    "default_collation": [
+      "BINARY (the default)",
+      "nocase"
+    ]
   },
   "description": [
     "`LIKE` and `like_escape` match case-sensitively; `ILIKE` and `ilike_escape` case-insensitively, \"according to the active locale\". Strings compare by their binary UTF-8 contents under the default `BINARY` collation, so `'hello' = 'hElLO'` is FALSE; the `NOCASE` collation, per expression, per column or as `default_collation`, compares regardless of case.",
     "`contains` and `suffix` (`ends_with`) state that collations are not supported. For `starts_with`, `instr` (`strpos`, `position`) and `replace` the docs say nothing about case or collations; their case sensitivity rests on the binary default. Whether `default_collation = NOCASE` reaches `LIKE` or these functions is for round 2 (source).",
     "Round 2 (source): `LIKE` (`~~`) matches bytes (`LikeOperatorFunction`). `LIKE`, `NOT LIKE`, `like_escape`, `ILIKE`, `starts_with` (`^@`), `contains` and `instr` (`strpos`, `position`) push combinable collations (`PUSH_COMBINABLE_COLLATIONS`), so an argument typed `VARCHAR COLLATE NOCASE` wraps both sides in `lower` and the match ignores case; the docs' note that `contains` supports no collation does not match this. `prefix`, `suffix` (`ends_with`) and `replace` keep the default handling, which pushes nothing, so they compare bytes under any collation. The push reads only a collation carried by an argument's type and returns early when there is none, so by this reading `default_collation` alone does not reach these functions; a probe should confirm it.",
-    "Round 3 (engine tests): DuckDB's tests pin `strpos('HELLO', 'el') = 0`, `LIKE` matching case-sensitively without a collation, `replace` keeping the other case, and `contains`, `starts_with`, `strpos` and `LIKE` ignoring case for a `NOCASE` argument. No test runs them under `default_collation` alone."
+    "Round 3 (engine tests): DuckDB's tests pin `strpos('HELLO', 'el') = 0`, `LIKE` matching case-sensitively without a collation, `replace` keeping the other case, and `contains`, `starts_with`, `strpos` and `LIKE` ignoring case for a `NOCASE` argument. No test runs them under `default_collation` alone.",
+    "Round 4 (probes): under `SET default_collation = 'nocase'`, `'Hello' = 'hello'` is true (literals and a column), `ORDER BY` sorts A, a, b, B and `count(DISTINCT …)` of a, A, b, B is 2. `LIKE 'h%'`, `contains(v, 'ELL')`, `starts_with(v, 'he')`, `strpos(v, 'EL')` (0), `ends_with`, `prefix` and `replace` still match bytes, case-sensitively, and `ILIKE` ignores case as always. So the setting changes equality, sorting and grouping, and leaves `LIKE` and the string functions case-sensitive.",
+    "Positions (round 5, replay): `strpos`, `instr` and `position` count code points from 1 and give 0 without a match (`ONE_BASED_CHARS`): `instr(s, 'ñ')` is 5 and `instr(s, '🦆 end')` 20 in `test_instr_utf8.test`, `instr(s, 'h')` is 0 where `s` has no `h`; the replay agrees with the reference on each."
   ],
   "reference": "`case_sensitivity`: the reference is `CASE_SENSITIVE` (docs/core-semantics.md); `ilike` is a function of its own (`str.opaque`). F4 records that the replay skips queries under a collation.",
   "status": "no-finding",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -155,6 +156,49 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin case-sensitive `strpos`, `LIKE` and `replace` under the default `BINARY` collation, and the `NOCASE` push for `LIKE`, `strpos`, `contains` and `starts_with` (so the docs' note on `contains` is out of date). No test at v2.0.0 runs `LIKE` or these functions under `default_collation` alone (test_default_collations.test and settings/setting_collation.test check `=` and `ORDER BY`), so round 2's reading that it does not reach them still wants a probe."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-nocase"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-nocase-literals"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-nocase-sort"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-binary"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Confirms round 2's reading that `default_collation` alone does not reach the match functions."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "replay",
+      "checked_by": "characterization pipeline session (string_positions rows)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_instr_utf8.test#L21-L83",
+          "note": "INSTR and POSITION of 'á', 'ñ', '你好世界', '🦆 end' in UTF-8 strings: code point positions, 0 without a match"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_instr.test#L12-L74",
+          "note": "instr, position: 1-based, 0 without a match, NULL for NULL"
+        },
+        {
+          "file": "characterization/duckdb/function__string.json",
+          "note": "test_instr_utf8.test lines 21-83 and test_instr.test lines 12-74: agree"
+        }
+      ]
     }
   ]
 }

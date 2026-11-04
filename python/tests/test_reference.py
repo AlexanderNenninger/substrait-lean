@@ -795,3 +795,21 @@ def test_abs_of_the_smallest_integer_raises_at_its_width(dtype, lo):
         run_plan(con, written_plan(plan), "duckdb")
     with pytest.raises(Exception, match="(?i)overflow|out of range"):
         duckdb_sql(con, "SELECT abs(a) AS q FROM i")
+
+
+def test_quantile_cont_between_opposite_infinities_is_a_domain_error():
+    """`QUANTILE_CONT` interpolating between `-inf` and `+inf` creates a NaN
+    (IEEE and DuckDB give NaN, the model's clamp gave `+inf`, #561): the
+    reference raises there (D21), a precondition rules it out, and the
+    written plan raises on DuckDB. Neighbours of one infinity interpolate."""
+    tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
+    sql = "SELECT quantile_cont(x, 0.5) AS m FROM f"
+    assert "domain error" in [i.kind for i in verify(sql, tables).issues]
+    assert "domain error" not in [i.kind for i in verify(sql, tables, ["x < 1e300"]).issues]
+    con = connect()
+    put_table(con, "q", pa.table({"x": [None, INF, -INF]}))
+    plan = written_plan(substrait_json(con, "SELECT quantile_cont(x, 0.5) AS m FROM q"))
+    with pytest.raises(Exception, match="domain error"):
+        run_plan(con, plan, "duckdb")
+    put_table(con, "q", pa.table({"x": [-INF, -INF, 0.0, INF]}))
+    assert run_plan(con, plan, "duckdb").column("m").to_pylist() == [-INF]

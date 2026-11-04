@@ -9,7 +9,15 @@
     "quantile_interp"
   ],
   "rows": [
-    {"group": "agg.quant", "option": "quantile_interp", "types": ["i64", "fp64", "decimal"]}
+    {
+      "group": "agg.quant",
+      "option": "quantile_interp",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
   ],
   "constructs": [
     "quantile_cont",
@@ -22,7 +30,7 @@
   ],
   "reference": [
     "`AggFn.quantile true num scale` (`contValue`, #53): for the exact `q = num / 10^scale`, the doubles at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` in order; the one value where they coincide, else DuckDB's `lo·(1 − d) + hi·d` kept between `lo` and `hi` (`interpolate`). The reference allows any double between the two neighbours (`contAllowed`, `AggFn.Allowed`), so contracts know the result lies within the argument's range. Integers are converted to doubles first; DECIMAL, DATE and TIMESTAMP arguments are refused.",
-    "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf (NaN, where the reference keeps +inf). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]`, which gives the model's +inf there."
+    "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf: there DuckDB gives NaN and the reference raises (a NaN created from numbers, `AggFn.makesNan`, D21; before, the reference kept +inf, #561). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]` and raises where the interpolation is NaN and no value is."
   ],
   "status": "shimmed",
   "evidence": "probe",

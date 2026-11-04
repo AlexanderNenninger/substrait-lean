@@ -21,7 +21,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 * Doubles have one zero and one NaN, as the float codes of
   `SubstraitLean/Float.lean` do: `-inf < … < 0.0 < … < inf < NaN`, `-0.0` is
   `0.0` and NaN equals itself. Comparisons, join keys, window partitions and
-  sort keys use an integer key with that order (`_float_key`), and doubles
+  sort keys use a key with that order (`_float_key`: the one zero and the
+  one positive NaN, which Polars orders and compares that way), and doubles
   read from a table or made by an operation that can give `-0.0` go through
   `canon`.
 * Integers are unbounded in Lean. Columns are widened to `Int64` on read.
@@ -55,6 +56,7 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import re
@@ -69,7 +71,6 @@ from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 
 try:
-    import numpy as np
     import polars as pl
 except ImportError as e:
     raise ImportError("the Polars engine needs polars: pip install 'sverify[polars]'") from e
@@ -155,15 +156,25 @@ class InfiniteResult(RuntimeIssue):
     issue = "overflow to infinity"
 
 
+class SubnormalDivisor(RuntimeIssue):
+    """A double divided by a subnormal: the translation's precondition for
+    Polars's division, which goes through the divisor's reciprocal (PL-3,
+    polars-double-scalar-divisor) and is within 2 ulps of IEEE's otherwise;
+    the reciprocal of a subnormal overflows."""
+
+    issue = "subnormal divisor"
+
+
 #: The issues `guards=True` checks: every one.
 ALL_GUARDS = frozenset(
     {"overflow", "SUM overflow", "division by zero", "negative exponent", "cast out of range",
-     "invalid regular expression", "domain error", "raised by a guard", "overflow to infinity"}
+     "invalid regular expression", "domain error", "raised by a guard", "overflow to infinity",
+     "subnormal divisor"}
 )  # fmt: skip
 #: `guards=False`: the checks of the preconditions a `guard_free` report
 #: assumes (`Issue.assumed`): integer `SUM`s fit, and no operation on finite
 #: doubles gives `±∞` (#575).
-NO_GUARDS = frozenset({"SUM overflow", "overflow to infinity"})
+NO_GUARDS = frozenset({"SUM overflow", "overflow to infinity", "subnormal divisor"})
 
 
 def col(i: int) -> str:
@@ -177,23 +188,13 @@ def col(i: int) -> str:
 canon = shims.one_zero
 
 
-def _order_bits(s: pl.Series) -> pl.Series:
-    """IEEE bits mapped so that integer order is the model's: `-0.0` is
-    `0.0`, and every NaN is one NaN above `inf`. Nulls are masked by the
-    caller."""
-    x = s.cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64) + 0.0
-    bits = x.view(np.int64)
-    key = np.where(bits < 0, bits ^ np.int64(I64_MAX), bits)
-    key = np.where(np.isnan(x), np.int64(I64_MAX), key)
-    return pl.Series(key, dtype=pl.Int64)
-
-
 def _float_key(e: pl.Expr) -> pl.Expr:
-    return (
-        pl.when(e.is_null())
-        .then(pl.lit(None, pl.Int64))
-        .otherwise(e.map_batches(_order_bits, return_dtype=pl.Int64, is_elementwise=True))
-    )
+    """A double with the model's order and equality: `-0.0` is `0.0`, and
+    every NaN is the one positive NaN, which Polars puts above `inf` and
+    makes equal to itself in sorts, comparisons, groups and joins
+    (polars-nan-order, polars-nan-equality, on both engines). Each step names
+    `e` once."""
+    return canon(e).fill_nan(math.nan)
 
 
 #: `BinFn.greatest`/`least`, as Lean writes them (and as DataFusion does).
@@ -381,51 +382,92 @@ def arith_type(name: str, a: DType, b: DType) -> DType:
     return out
 
 
-def _ieee_divide(s: pl.Series) -> pl.Series:
-    x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return pl.Series(np.divide(x, y), dtype=pl.Float64)
+def _numpy() -> Any:
+    """numpy, for the two operations of doubles Polars cannot do exactly
+    (`fdiv`, `fmod`); imported only when a plan has them."""
+    try:
+        import numpy as np
+    except ImportError as e:
+        raise ImportError(
+            "dividing doubles on Polars needs numpy: pip install 'sverify[polars]'"
+        ) from e
+    return np
+
+
+#: The smallest normal double, 2⁻¹⁰²².
+MIN_NORMAL = 2.0**-1022
 
 
 def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
-    """IEEE division. Polars divides a column by a constant by multiplying with
-    its reciprocal, which rounds differently (`1.0000000000000004e16 / 10`);
-    numpy divides each pair."""
+    """Division of doubles, Polars's own. Where the divisor is a constant
+    (a literal, or a column made from one), Polars multiplies by its
+    reciprocal (PL-3, polars-double-scalar-divisor): `49.0 / 49.0` is
+    `0.9999999999999999`. The reference's division is `approx` there, within
+    2 ulps per division, given a divisor that is not subnormal
+    (`subnormal_divisor`, checked on the data)."""
+    return x / y
+
+
+def _exact_divide(s: pl.Series) -> pl.Series:
+    np = _numpy()
+    x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        return pl.Series(np.divide(x, y), dtype=pl.Float64)
+
+
+def exact_div(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """IEEE division of each pair, by numpy: for `ROUND(x, d)`, whose
+    division by `10^d` must round once (`FloatCode.roundTo`), and `log(x, b)`
+    (`ln x / ln b`, `logb?`), where Polars's reciprocal (`fdiv`) would be an
+    ulp off."""
     both = pl.struct(x.alias("x"), y.alias("y"))
-    q = both.map_batches(_ieee_divide, return_dtype=pl.Float64, is_elementwise=True)
+    q = both.map_batches(_exact_divide, return_dtype=pl.Float64, is_elementwise=True)
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(q)
 
 
+def subnormal_divisor(y: pl.Expr) -> pl.Expr:
+    """Is `y` a subnormal double (not zero), whose reciprocal overflows?"""
+    return (y != 0.0) & (y.abs() < MIN_NORMAL)
+
+
 def _fmod(s: pl.Series) -> pl.Series:
+    np = _numpy()
     x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
     y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         return pl.Series(np.fmod(x, y), dtype=pl.Float64)
 
 
 def fmod(x: pl.Expr, y: pl.Expr) -> pl.Expr:
-    """C's `fmod` (`FloatCode.fmod`), the sign of `x`. Polars' `%` floors (the
-    sign of `y`) and makes `x % inf` NaN; numpy's `fmod` is C's."""
+    """C's `fmod` (`FloatCode.fmod`), the sign of `x`, which is exact. Polars'
+    `%` floors (the sign of `y`), makes `x % inf` NaN, and goes through the
+    reciprocal of a constant divisor (PL-3: `49.0 % 49.0` is `49.0`); no
+    Polars expression gives an exact remainder, and numpy's `fmod` is C's."""
     both = pl.struct(x.alias("x"), y.alias("y"))
     r = both.map_batches(_fmod, return_dtype=pl.Float64, is_elementwise=True)
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(r)
 
 
-def _ipow(s: pl.Series) -> pl.Series:
-    """`BinFn.ipow` where it is defined and fits 64 bits, else NULL."""
-    out = []
-    for a, b in zip(s.struct.field("a").to_list(), s.struct.field("b").to_list(), strict=True):
-        ok = a is not None and b is not None and b >= 0 and (b <= 64 or abs(a) <= 1)
-        p = a**b if ok else None
-        out.append(p if p is not None and I64_MIN <= p <= I64_MAX else None)
-    return pl.Series(out, dtype=pl.Int64)
+def _ipow(a: pl.Expr, b: pl.Expr) -> pl.Expr:
+    """`BinFn.ipow` where it is defined and fits 64 bits, else NULL. For
+    `|a| ≥ 2` a power past `2^64.5` (by `b · log2 |a|`, far from the
+    boundary in doubles) overflows; below it Polars's `pow` on 128 bits is
+    exact and the range is checked. `|a| ≤ 1` takes any exponent: `a`'s
+    power by the exponent's parity."""
+    tiny = a.is_between(-1, 1)
+    huge = ~tiny & (a.cast(pl.Float64).abs().log(2) * b.cast(pl.Float64) > 64.5)
+    e = pl.when(tiny | huge | (b < 0)).then(0).otherwise(b).clip(0, 127).cast(pl.UInt32)
+    small = pl.when(b == 0).then(1).when(a == 1).then(1).when(a == 0).then(0)
+    small = small.otherwise(1 - 2 * (b % 2))
+    p = pl.when(tiny).then(small.cast(pl.Int128)).otherwise(a.cast(pl.Int128).pow(e))
+    ok = a.is_not_null() & b.is_not_null() & (b >= 0) & ~huge & p.is_between(I64_MIN, I64_MAX)
+    return pl.when(ok).then(p).cast(pl.Int64)
 
 
 def ipow(a: Val, b: Val) -> Val:
     """Integer powers. Exponents beyond 64 overflow unless `|a| ≤ 1`."""
-    both = pl.struct(a.expr.alias("a"), b.expr.alias("b"))
-    value = both.map_batches(_ipow, return_dtype=pl.Int64, is_elementwise=True)
+    value = _ipow(a.expr.cast(pl.Int64), b.expr.cast(pl.Int64))
     known = a.expr.is_not_null() & b.expr.is_not_null()
     negative = known & (b.expr < 0)
     return Val(
@@ -526,7 +568,7 @@ def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
     # `power`: a negative base, finite or `-inf` (`negInfPow`: IEEE's `+inf`
     # or `0`, Polars's NaN for `** 0.5`), to a finite power that is not a
     # whole number.
-    return (x < 0.0) & y.is_finite() & (y.floor() != y)
+    return shims.fractional_power_of_negative(x, y)
 
 
 #: `BitOp.name`.
@@ -713,61 +755,38 @@ def _days(v: Val) -> pl.Expr:
     return v.expr.to_physical().cast(pl.Int64)
 
 
-def _month_index(d: Any) -> tuple[Any, Any]:
-    """`Time.monthIndex` of days `d` (`12 · year + month - 1`), and the day
-    of the month from 0: the civil calendar in integer arithmetic (on NumPy
-    arrays, floor division as Lean's)."""
-    z = d + 719468
-    era = z // 146097
-    doe = z - era * 146097
-    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
-    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
-    mp = (5 * doy + 2) // 153
-    dom = doy - (153 * mp + 2) // 5
-    # March-based years: months from March, so January and February are 10, 11.
-    return 12 * (yoe + era * 400) + mp + 2, dom
-
-
-def _month_start(i: Any) -> Any:
-    """`Time.monthStart`: the first day of month `i`."""
-    y, mp = (i - 2) // 12, (i - 2) % 12
-    era = y // 400
-    yoe = y - era * 400
-    doe = yoe * 365 + yoe // 4 - yoe // 100 + (153 * mp + 2) // 5
-    return era * 146097 + doe - 719468
-
-
-def _on_days(f: Any, d: pl.Expr) -> pl.Expr:
-    """`f` on an `Int64` expression of days, as one NumPy step (NULLs kept)."""
-
-    def apply(s: pl.Series) -> pl.Series:
-        nulls = s.is_null()
-        out = pl.Series(f(s.fill_null(0).to_numpy().astype(np.int64)), dtype=pl.Int64)
-        return pl.select(pl.when(nulls).then(None).otherwise(out)).to_series()
-
-    return d.cast(pl.Int64).map_batches(apply, return_dtype=pl.Int64)
+def _as_date(d: pl.Expr) -> pl.Expr:
+    return d.cast(pl.Int32).cast(pl.Date)
 
 
 def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
-    """`Time.addMonths`: the same day `m` months later, or that month's last."""
-
-    def f(x: Any) -> Any:
-        i, dom = _month_index(x)
-        return np.minimum(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
-
-    return _on_days(f, d)
+    """`Time.addMonths`: the same day `m` months later, or that month's last,
+    as Polars's `offset_by` clamps it (polars-month-arith). Polars raises past
+    the years chrono represents and evaluates every branch, so a day whose
+    result could leave them is NULL before the call: a non-NULL day that
+    gives NULL is out of range (`add_months` flags it)."""
+    lo = CHRONO_DAY_MIN + 31 * (max(0, -m) + 1)
+    hi = CHRONO_DAY_MAX - 31 * (max(0, m) + 1)
+    if lo > hi:
+        return pl.lit(None, pl.Int64)
+    d = d.cast(pl.Int64)
+    safe = pl.when((d >= lo) & (d <= hi)).then(d)
+    return _as_date(safe).dt.offset_by(f"{m}mo").cast(pl.Int64)
 
 
 def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
-    """`Time.truncDay`."""
+    """`Time.truncDay`, by Polars's calendar for months, quarters and years.
+    `d` must be within the years chrono represents (the caller's range)."""
     if unit == "day":
         return d
     if unit == "week":
         return d - (d + 3) % 7
-    k = {"month": 1, "quarter": 3, "year": 12}.get(unit)
-    if k is None:
+    every = {"month": "1mo", "quarter": "1q", "year": "1y"}.get(unit)
+    if every is None:
         raise Unsupported(f"date_trunc of a date to a {unit} is not supported")
-    return _on_days(lambda x: _month_start(_month_index(x)[0] // k * k), d)
+    d = d.cast(pl.Int64)
+    safe = pl.when((d >= CHRONO_DAY_MIN) & (d <= CHRONO_DAY_MAX)).then(d)
+    return _as_date(safe).dt.truncate(every).cast(pl.Int64)
 
 
 def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -> Val:
@@ -796,10 +815,15 @@ def day_part(part: str, v: Val) -> Val:
 def add_months(m: int, v: Val) -> Val:
     """`UnFn.addMonths` of a date or a timestamp, with its `rangeIssue`."""
     if v.dtype == pl.Date:
-        return date_range(v, add_months_days(m, _days(v)), DAY_MIN, DAY_MAX, "adding months")
+        days = add_months_days(m, _days(v))
+        # A day `add_months_days` cannot take: out of range.
+        days = pl.when(v.expr.is_not_null() & days.is_null()).then(DAY_MAX + 1).otherwise(days)
+        return date_range(v, days, DAY_MIN, DAY_MAX, "adding months")
     us = wide(v)
-    r = add_months_days(m, us // US_PER_DAY) * US_PER_DAY + us % US_PER_DAY
-    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX)
+    shifted = add_months_days(m, us // US_PER_DAY)
+    r = shifted * US_PER_DAY + us % US_PER_DAY
+    lost = us.is_not_null() & shifted.is_null()
+    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX) | lost
     value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
     message = "adding months outside the years chrono represents"
     return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
@@ -1278,7 +1302,8 @@ class Exprs:
             bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
-            return self.domain(bad, canon(fdiv(sx.log(), sy.log())), pl.Float64, name, a, b)
+            # `logb?` divides once, exactly: no reciprocal (`exact_div`).
+            return self.domain(bad, canon(exact_div(sx.log(), sy.log())), pl.Float64, name, a, b)
         if name in BITWISE:
             if unify(ta, tb, name) not in (pl.Int64, pl.Null):
                 raise Unsupported(f"{name} of {ta} and {tb}")
@@ -1299,8 +1324,10 @@ class Exprs:
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             x, y = a.expr, b.expr
-            # A sum or difference is never -0.0 here; the others can be.
-            ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
+            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
+            # in-memory engine (polars-zero-sign), so a sum or difference can
+            # be `-0.0` too.
+            ops = {"add": canon(x + y), "subtract": canon(x - y), "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
@@ -1314,7 +1341,12 @@ class Exprs:
             # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
-            return Val(ops[name], pl.Float64, (*issues(a, b), zero, nan, *inf))
+            tiny = (
+                (issue(x.is_not_null() & subnormal_divisor(y), SubnormalDivisor,
+                       "divide by a subnormal double"),)
+                if name == "divide" else ()
+            )  # fmt: skip
+            return Val(ops[name], pl.Float64, (*issues(a, b), zero, *tiny, nan, *inf))
         if name in ("add", "subtract") and ta == pl.Time:
             raise Unsupported(
                 "a time of day plus an interval is not yet supported on Polars; see #271"
@@ -1395,9 +1427,22 @@ class Exprs:
             t = unify(t, v.dtype, name)
         if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
             raise Unsupported(f"{name} of {t}")
-        keys = [ordered(v.expr, t) for v in vals]
-        best = pl.max_horizontal(keys) if name.startswith("greatest") else pl.min_horizontal(keys)
-        e = pl.coalesce([pl.when(k == best).then(v.expr) for k, v in zip(keys, vals, strict=True)])
+        if t == pl.Null:
+            return Val(pl.lit(None), t, issues(*vals))
+        # The first extreme's index in the list of keys: `arg_max` and
+        # `arg_min` skip NULLs and NaN, and give the first of equal values;
+        # NaN is the greatest double here (polars-min-max-nan). One list, so
+        # the expression grows with the arguments, not their square.
+        keys = pl.concat_list([ordered(v.expr, t) for v in vals])
+        idx = keys.list.arg_max() if name.startswith("greatest") else keys.list.arg_min()
+        if t == pl.Float64:
+            nans = keys.list.eval(pl.element().is_nan())
+            first_nan = pl.when(nans.list.any()).then(nans.list.arg_max())
+            if name.startswith("greatest"):
+                idx = pl.coalesce(first_nan, idx)
+            else:
+                idx = pl.coalesce(idx, first_nan)
+        e = pl.concat_list([v.expr.cast(t) for v in vals]).list.get(idx, null_on_oob=True)
         return Val(e, t, issues(*vals))
 
     def string(self, name: str, a: Val, b: Val) -> Val:
@@ -1450,14 +1495,17 @@ class Exprs:
             m = math.inf
         x, ml = a.expr, pl.lit(m, pl.Float64)
         if d >= 0:
-            r, fallback = fdiv(shims.round_half_away(x * ml), ml), x
+            r, fallback = exact_div(shims.round_half_away(x * ml), ml), x
         else:
-            r, fallback = shims.round_half_away(fdiv(x, ml)) * ml, pl.lit(0.0, pl.Float64)
+            r, fallback = shims.round_half_away(exact_div(x, ml)) * ml, pl.lit(0.0, pl.Float64)
         out = pl.when(~x.is_finite()).then(x).when(~r.is_finite()).then(fallback).otherwise(r)
         return Val(canon(out), pl.Float64, a.issues)
 
 
 # --- Relations ---------------------------------------------------------------
+
+
+_FLAG_IDS = itertools.count()
 
 
 def _raise_issues(issues: tuple[Issue, ...]):
@@ -1478,10 +1526,14 @@ def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS
     found = tuple(i for i in issues(*vals) if i.kind.issue in checks)
     if not found:
         return lf
-    flags = pl.struct([i.flag.alias(f"i{k}") for k, i in enumerate(found)])
+    # Each flag is a column of its own: one expression holding all of them
+    # can outgrow what Polars's plan formatter takes (`fallback_nodes`).
+    names = [f"__sv_flag{next(_FLAG_IDS)}" for _ in found]
+    lf = lf.with_columns([i.flag.alias(n) for i, n in zip(found, names, strict=True)])
+    flags = pl.struct([pl.col(n).alias(f"i{k}") for k, n in enumerate(names)])
     return lf.filter(
         flags.map_batches(_raise_issues(found), return_dtype=pl.Boolean, is_elementwise=True)
-    )
+    ).drop(names)
 
 
 Frame = tuple[pl.LazyFrame, list[DType]]
@@ -1666,32 +1718,79 @@ class Measure:
         def apply(s: pl.Series) -> pl.Series:
             return pl.Series([_aggregate(fn, distinct, vs) for vs in s.to_list()], dtype=out)
 
+        if fn == "collect":
+            # `ARRAY_AGG` of no values is NULL; Polars's list is empty.
+            return pl.when(values.list.len() == 0).then(None).otherwise(values)
         r = values.map_batches(apply, return_dtype=out)
         return r.cast(self.arg.dtype) if physical else r
 
     def native(self, name: str) -> NativeAgg | None:
         """The measure as Polars's own aggregation of the column `name` (the
-        argument on the kept rows), with the reference's shims; None where it
-        runs row by row (`result`)."""
-        if self.distinct:
+        argument on the kept rows), with the reference's shims: the
+        aggregations of the input `v`, and the result read from the
+        aggregated column `r` of the same name. None for `ARRAY_AGG`, whose
+        list `result` reads."""
+        v = r = pl.col(name)
+        if self.fn == "collect":
             return None
-        v = pl.col(name)
+        if self.distinct:
+            # `dedup` by `Value` equality: one zero and one NaN for doubles.
+            # Integers to be summed are widened first: `unique` must be the
+            # last step before the reduction for it to stream.
+            if self.arg.dtype == pl.Float64:
+                v = _float_key(v)
+            elif self.fn in ("sum", "iavg"):
+                v = v.cast(pl.Int128)
+            v = v.unique()
         if self.fn == "sum":
+            total = shims.int_sum(v)
             return NativeAgg(
-                {name: shims.int_sum(v)},
-                pl.when(shims.sum_leaves_i64(v)).then(None).otherwise(v).cast(pl.Int64),
-                ((shims.sum_leaves_i64(v), SumOverflow, "SUM leaves 64 bits"),),
+                {name: total},
+                pl.when(shims.sum_leaves_i64(r)).then(None).otherwise(r).cast(pl.Int64),
+                ((shims.sum_leaves_i64(r), SumOverflow, "SUM leaves 64 bits"),),
             )
         if self.fn == "iavg":
-            return NativeAgg({name: shims.avg_int_declared(v)}, v)
+            return NativeAgg({name: shims.avg_int_declared(v)}, r)
         if self.fn in ("fsum", "avg"):
             nan, inf = f"{name}_nan", f"{name}_inf"
             agg = shims.float_sum(v) if self.fn == "fsum" else shims.float_avg(v)
             return NativeAgg(
                 {name: agg, nan: shims.sum_makes_nan(v),
                  inf: shims.agg_makes_infinite(v.sum(), v)},
-                v,
+                r,
                 ((pl.col(nan), DomainError, f"{self.fn} of +inf and -inf would make a NaN"),
+                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+            )  # fmt: skip
+        if self.fn == "count":
+            return NativeAgg({name: v.count().cast(pl.Int64)}, r)
+        if self.fn in ("min", "max"):
+            # `pickFold`: equal values are the same value, so which of them
+            # is kept does not show. Times aggregate as their integers.
+            agg = v.min() if self.fn == "min" else v.max()
+            temporal = self.arg.dtype in (US, pl.Date)
+            return NativeAgg({name: agg}, r.cast(self.arg.dtype) if temporal else r)
+        if self.fn in ("bit_and", "bit_or", "bit_xor"):
+            # `AggFn.bit`; NULL for no values, as Polars gives.
+            agg = {"bit_and": v.bitwise_and(), "bit_or": v.bitwise_or(),
+                   "bit_xor": v.bitwise_xor()}[self.fn]  # fmt: skip
+            return NativeAgg({name: shims.sum_empty_null(agg, v)}, r)
+        if self.fn == "fmax":
+            # By the codes' order NaN is the greatest double; Polars's `max`
+            # skips it (polars-min-max-nan).
+            agg = pl.when(v.is_nan().any()).then(pl.lit(math.nan)).otherwise(v.max())
+            return NativeAgg({name: canon(agg)}, r)
+        if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
+            # `AggFn.var` (#54) with Polars's algorithm (`stat_algo = GENERIC`
+            # allows it); a sample of one is NULL in both. An infinity makes
+            # a deviation NaN (#257); finite values may overflow (#575).
+            ddof = 1 if self.fn.endswith("_samp") else 0
+            agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
+            bad, inf = f"{name}_bad", f"{name}_inf"
+            return NativeAgg(
+                {name: canon(agg), bad: v.is_infinite().any(),
+                 inf: shims.agg_makes_infinite(agg, v)},
+                r,
+                ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
                  (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
             )  # fmt: skip
         return None
@@ -2052,7 +2151,8 @@ class Translator:
             name = ex.function(w.get("functionReference"))
             args = [a["value"] for a in w.get("arguments", [])]
             if name == "row_number" and not args:
-                e: pl.Expr = pl.int_range(1, pl.len() + 1, dtype=pl.Int64)
+                # A running count, which streams; a bare `int_range` does not.
+                e: pl.Expr = pl.repeat(1, pl.len(), dtype=pl.Int64).cum_sum()
                 t: DType = pl.Int64
             elif name in ("lag", "lead") and 1 <= len(args) <= 3:
                 arg = self.column(ex, args[0])
@@ -2233,7 +2333,12 @@ class Translator:
                     nulls_last=[n for _, _, n in m.sorts],
                     maintain_order=True,
                 )
-            values.append(v.drop_nulls())
+            v = v.drop_nulls()
+            if m.distinct:
+                # The first of equal values, in order (`dedup`).
+                key = _float_key(v) if m.arg.dtype == pl.Float64 else v
+                v = key.unique(maintain_order=True)
+            values.append(v)
         if groups:
             firsts = [pl.col(f"__sv_v{k}").first() for k in range(len(groups))]
             out = lf.group_by(keys, maintain_order=True).agg(firsts + values + aggs)
@@ -2520,34 +2625,105 @@ def collect_streaming(lf: pl.LazyFrame, **kwargs: Any) -> pl.DataFrame:
     `POLARS_ENGINE_AFFINITY`, `POLARS_FORCE_STREAMING` and
     `POLARS_AUTO_STREAMING` (`LazyFrame::collect_with_engine`). Operators the
     streaming engine lacks still run on the in-memory engine inside the
-    streaming plan (`streaming_fallbacks`)."""
+    streaming plan (`fallback_nodes`)."""
     return lf.collect(engine="streaming", **kwargs)
 
 
 #: The colour Polars's physical plan gives a node the streaming engine runs
-#: on the in-memory engine (`polars-stream`'s `NodeStyle::InMemoryFallback`).
+#: on the in-memory engine (`polars-stream`'s `NodeStyle::InMemoryFallback`:
+#: `InMemoryMap`, `InMemoryJoin`, `ColumnarFunction`, `Recursive`).
 _FALLBACK_COLOUR = '"0.0 0.3 1.0"'
 _NODE = re.compile(r'^\d+ \[label="(.*)",style=filled,fillcolor=(".*")\];$')
+#: The optimizations sverify runs a plan with (`collect`). Predicate pushdown
+#: would move `guard`s below the filters before them, onto rows the plan never
+#: evaluates there. Common-subexpression elimination hoists an expression two
+#: `when/then` branches share into a column computed on every row, so a
+#: guarded cast or division would run on the rows its `CASE` excludes and
+#: raise (PL-6, polars-exec-cse-hoist).
+_OPTIMIZATIONS = pl.QueryOptFlags(predicate_pushdown=False, comm_subexpr_elim=False)
 
 
-def streaming_fallbacks(lf: pl.LazyFrame) -> list[str]:
-    """The nodes of `lf`'s streaming plan that run on the in-memory engine
-    (`in-memory-map`, `in-memory-join`, `columnar-function`, …), by their
-    first label line."""
-    dot = lf.show_graph(engine="streaming", plan_stage="physical", raw_output=True, show=False)
+@dataclass(frozen=True)
+class Fallback:
+    """An allowed node of a streaming plan that runs on the in-memory engine:
+    an operation Polars 2.1.0 cannot stream, or sverify does not yet."""
+
+    name: str
+    kind: str
+    """The node's kind (`in-memory-map`, `columnar-function`, …)."""
+    pattern: str
+    """A regular expression the node's label matches."""
+    reason: str
+    fact: str
+
+
+#: The fallbacks sverify's plans may have; any other one is a regression
+#: (`tests/conftest.py` checks every plan the Polars tests run).
+ALLOWED_FALLBACKS: tuple[Fallback, ...] = (
+    Fallback("ordered list", "in-memory-map", r"\.implode\(",
+             "an order-keeping list per group (`ARRAY_AGG`): Polars 2.1.0 has no streaming "
+             "reduction for `implode` with `maintain_order` (`lower_group_by.rs`)",
+             "polars-exec-streaming-fallback"),
+    Fallback("window frames", "in-memory-map", r"OPAQUE_PYTHON",
+             "window functions over frames, ranks and NTILE (`python_windows`): sverify "
+             "computes them in Python on the whole frame (`LazyFrame.map_batches`)",
+             "polars-exec-streaming-fallback"),
+)  # fmt: skip
+
+
+def fallback_nodes(lf: pl.LazyFrame) -> list[str]:
+    """The nodes of `lf`'s streaming plan, as `collect` runs it, that run on
+    the in-memory engine: each node's kind and label, one line each
+    (`in-memory-map: AGGREGATE[…] …`)."""
+    try:
+        dot = lf.show_graph(
+            engine="streaming",
+            plan_stage="physical",
+            raw_output=True,
+            show=False,
+            optimizations=_OPTIMIZATIONS,
+        )
+    except BaseException as e:  # noqa: BLE001 - pyo3's PanicException is not an Exception
+        if type(e).__name__ != "PanicException":
+            raise
+        # Polars's formatter takes expressions of at most 65 535 characters
+        # (`polars-stream`'s `fmt.rs`); the nodes are then unknown.
+        return [UNINSPECTABLE]
     out = []
     for line in str(dot).splitlines():
         if (m := _NODE.match(line)) and m[2] == _FALLBACK_COLOUR:
-            out.append(m[1].split("\\n")[0])
+            kind, _, label = m[1].replace("\\n", " ").partition(" ")
+            out.append(f"{kind}: {label.strip()}")
     return out
 
 
+#: `fallback_nodes` of a plan Polars cannot describe: no allowed fallback.
+UNINSPECTABLE = "unknown: Polars cannot describe the streaming plan (an expression too long)"
+
+
+def plan_fallbacks(plan: str | dict, tables: Tables, *, guards: Guards = True) -> list[str]:
+    """`fallback_nodes` of a plan in Lean's written form, as `run` would run
+    it over `tables`."""
+    lf, _ = _translate(plan, tables, guards)
+    return fallback_nodes(lf)
+
+
+def disallowed_fallbacks(lf: pl.LazyFrame) -> list[str]:
+    """`fallback_nodes` that no entry of `ALLOWED_FALLBACKS` covers."""
+    return [
+        n
+        for n in fallback_nodes(lf)
+        if not any(
+            n.startswith(f.kind + ":") and re.search(f.pattern, n) for f in ALLOWED_FALLBACKS
+        )
+    ]
+
+
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:
-    """Run a translated plan on the streaming engine (`collect_streaming`).
-    Predicate pushdown would move `guard`s (and filters) below the filters
-    that come before them, onto rows the plan never evaluates there, so it
-    is off."""
-    return collect_streaming(lf, optimizations=pl.QueryOptFlags(predicate_pushdown=False))
+    """Run a translated plan on the streaming engine (`collect_streaming`),
+    without predicate pushdown and common-subexpression elimination
+    (`_OPTIMIZATIONS`)."""
+    return collect_streaming(lf, optimizations=_OPTIMIZATIONS)
 
 
 def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:

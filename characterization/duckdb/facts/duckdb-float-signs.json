@@ -10,13 +10,54 @@
     "nan_kind"
   ],
   "rows": [
-    {"group": "fp.neg", "option": "zero_sign", "types": ["fp32"]},
-    {"group": "fp.div", "option": "zero_sign", "types": ["fp32", "fp64"]},
-    {"group": "cmp", "option": "zero_sign", "types": ["fp32", "fp64"]},
-    {"option": "nan_kind", "types": ["fp32", "fp64"]},
-    {"group": "fp.arith", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"},
-    {"group": "fp.neg", "option": "zero_sign", "types": ["fp64"], "evidence": "source"},
-    {"group": "fp.mod", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"}
+    {
+      "group": "fp.arith",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.neg",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "option": "nan_kind",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ],
+      "evidence": "engine_test"
+    }
   ],
   "constructs": [
     "+",
@@ -40,11 +81,12 @@
     "Comparisons see one zero. `=`, `<`, `>` and `>=` on floats are C++ `==`, `<`, `>` after the NaN cases, so `-0.0 = 0.0` is true and neither is below the other. Hashing (GROUP BY, joins, DISTINCT) maps `-0.0` to `+0.0` and every NaN to the quiet NaN, and the sort key encodes both zeros alike, so ORDER BY treats them as peers, and the next key or the input order decides. ORDER BY carries FLOAT and DOUBLE columns in the payload, since the key loses the sign.",
     "`least` and `greatest` on DOUBLE keep the first argument among equals (`least(-0.0, 0.0)` is `-0.0`, `least(0.0, -0.0)` is `0.0`). On FLOAT there is no direct instantiation: they compare sort keys and decode the winner from its key, so a zero comes out as `+0.0` and a NaN as the positive quiet NaN. Builds with `DUCKDB_SMALLER_BINARY` route DOUBLE the same way.",
     "A NaN's sign survives arithmetic, negation and the FLOAT-to-DOUBLE cast (a plain conversion), and `signbit` has a FLOAT overload that reads it (`std::signbit`). Hashing and the FLOAT `least`/`greatest` drop it.",
-    "DuckDB's own test notes that a checkpoint loses the sign of zero in storage (DuckDB issue 25580), unrelated to ORDER BY."
+    "DuckDB's own test notes that a checkpoint loses the sign of zero in storage (DuckDB issue 25580), unrelated to ORDER BY.",
+    "Round 4 (probes): IEEE signs on both widths, from constants and from table columns: `-0.0 + -0.0 = -0.0`, `-0.0 + 0.0 = 0.0 - 0.0 = 1 - 1 = +0.0`, `-1 * 0 = -0.0`, `-0.0 * 1 = -0.0`, `d - d = +0.0` and `-d = +0.0` for `d = -0.0`; `%` takes the dividend's sign (`-4 % 2 = -0.0`, `4 % -2 = +0.0`, `-0.0 % 1 = -0.0`). ORDER BY treats the zeros as peers and keeps their signs (duckdb-R14). `least` and `greatest` on DOUBLE keep the first argument among equal zeros; on FLOAT they return `+0.0` for any zero winner and the positive NaN for `-NaN`, also from table columns (`least(f, g)` with both `-0.0`): DD-6. `least(f, f)` is simplified to `f` and keeps the sign."
   ],
   "reference": "`zero_sign: ONE_ZERO` and `nan_kind: ONE_NAN` (#89, docs/core-semantics.md); Substrait is IEEE. sverify's SQL canonicalises `-0.0` on every read and after each operation that can make it (`Dialect.canon`, duckdb-R14), so DuckDB's IEEE zeros never reach a result. Lean refuses FLOAT arithmetic (duckdb-R12).",
   "status": "shimmed",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -173,6 +215,50 @@
         }
       ],
       "notes": "The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly. So only `signbit`, a `::text` cast, a comparison's boolean or an infinity pins a sign. No test runs `least` or `greatest` on FLOAT zeros or NaNs: their decoding to `+0.0` and the positive NaN rests on the source reading. No test makes a zero by `+`, `-`, `*` or `%`, or negates a DOUBLE zero and reads its sign, so those rows stay at the source reading. No test sorts -0.0 and 0.0 without a tiebreak key."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-sign-arith"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-sign-arith-columns"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-sign-mod"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-negative-first"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-positive-first"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-float"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "least-greatest-zero"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "least-greatest-zero-columns"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "least-greatest-nan-sign"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Write `-0.0::DOUBLE` (the cast binds first, then the negation) or `'-0.0'::DOUBLE`: `(-0.0)::DOUBLE` negates the decimal 0.0, which is 0, and gives `+0.0`."
     }
   ]
 }

@@ -1,0 +1,90 @@
+{
+  "id": "duckdb-window-sum-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Windowed `SUM`/`AVG` of doubles: a segment tree of fanout 16, or per-thread partials",
+  "verdict": "a tree of sequential nodes (fanout 16) for framed windows; per-thread sequential partials for a whole-partition frame",
+  "area": "windows",
+  "options": [
+    "sum_order",
+    "rounding"
+  ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "sum OVER",
+    "avg OVER"
+  ],
+  "settings": {},
+  "description": [
+    "A windowed `sum` or `avg` of doubles picks its aggregator in order: DISTINCT a merge sort tree; a frame that is the whole partition (`OVER ()`, or unbounded on both sides, or `CURRENT ROW` in RANGE mode without ORDER BY) `WindowConstantAggregator`; otherwise `WindowSegmentTree` (`sum` has no custom window callback). The constant aggregator adds each thread's rows of a partition in turn to a local state and combines the local states into the partition's state. The segment tree sums each run of 16 rows in turn into a leaf state, and each level combines 16 states of the level below in turn; a frame's state takes the ragged leaf values on its left, then whole nodes level by level, then the ragged right parts, each added in turn. All of it is the aggregate's `+=` and combine (duckdb-sum-double), in `DOUBLE`.",
+    "Order class: (a) a tree whose nodes add their children in turn: fanout 16 for framed windows, with the frame's own node adding up to 15 leaf values and 30 nodes per level; per-thread sequential partials combined in finishing order for whole-partition frames. (b) Any tree: |ŝ − s| ≤ γ_h Σ|x_i| with h the most additions on one value's path (Higham §4.2); h ≤ n − 1 always, and for a framed window of n rows h grows with 45·⌈log₁₆ n⌉ (15 in each node on the way up, up to 30 in the frame's node per level), an estimate from the code's shape. `avg` divides once more. Within #85's bounds. (c) The source below; a probe at one thread gives 0.9999999999999999 for a running sum and an `OVER ()` sum of ten 0.1, the same as adding them in turn. (d) ANY (`FloatSums`): a framed window's sum is a tree sum of the frame's values, which SEQUENTIAL does not cover for frames over 16 rows. A whole-partition frame at one thread is SEQUENTIAL."
+  ],
+  "reference": "`sum_order` over the frame: any order and grouping within #85's bound (`FloatSums`), as for `SUM` of doubles.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_aggregate_function.cpp#L54-L85",
+          "note": "aggregator choice: distinct, constant, custom, segment tree, naive"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_constant_aggregator.cpp#L97-L162",
+          "note": "WindowConstantAggregator::CanAggregate: whole-partition frames"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_constant_aggregator.cpp#L285-L297",
+          "note": "Finalize: local state combined into the global one"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_segment_tree.cpp#L14-L31",
+          "note": "WindowSegmentTree::CanAggregate"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_segment_tree.cpp#L66-L67",
+          "note": "TREE_FANOUT = 16"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_segment_tree.cpp#L208-L229",
+          "note": "FlushStates: update or combine callbacks"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_segment_tree.cpp#L543-L640",
+          "note": "EvaluateUpperLevels: left parts, whole nodes, right parts in order"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_segment_tree.cpp#L642-L700",
+          "note": "EvaluateLeaves: ragged leaf values"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "sql": "SET threads = 1; SELECT sum(v) OVER (ORDER BY i ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)::VARCHAR FROM (SELECT 0.1::DOUBLE v, i FROM range(10) r(i)) QUALIFY i = 9; SELECT sum(v) OVER ()::VARCHAR FROM (SELECT 0.1::DOUBLE v, i FROM range(10) r(i)) LIMIT 1",
+          "observed": "0.9999999999999999 and 0.9999999999999999"
+        }
+      ],
+      "notes": "DuckDB 2.0.0 (Python, macOS arm64), a scratch script. Ten rows fit one leaf, so this shows the sequential leaf; a frame over more than 16 rows that tells the tree from the sequential sum is still to probe."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

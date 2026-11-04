@@ -10,10 +10,54 @@
     "on_domain_error"
   ],
   "rows": [
-    {"group": "int.pow", "option": "overflow", "types": ["i64"]},
-    {"group": "int.pow", "option": "on_domain_error", "types": ["i32"]},
-    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "source"},
-    {"group": "int.pow", "option": "on_domain_error", "types": ["i8", "i16", "i64"], "evidence": "source"}
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16"
+      ]
+    },
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i64"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i32"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i8",
+        "i16"
+      ]
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i32"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i64"
+      ],
+      "evidence": "source"
+    }
   ],
   "constructs": [
     "power",
@@ -30,11 +74,12 @@
   "description": [
     "`pow`, `power`, `**` and `^` are one function with a single signature, `(DOUBLE, DOUBLE) -> DOUBLE`. Integer arguments are cast to DOUBLE, so `2 ** 3` is the double `8.0`, a BIGINT above 2⁵³ loses digits on the way in, and a result outside 64 bits is a large double or `inf`. Nothing checks integer overflow.",
     "The body is C's `std::pow`. With `ieee_floating_point_ops` on (the default) it raises nothing: a negative exponent gives a fraction (`2 ** -1 = 0.5`) and `0 ** -1` gives `inf`. With it off, `0 ** negative` raises `zero raised to a negative power is undefined` and the rest is unchanged.",
-    "So the `int.pow` rows have no native DuckDB answer: sverify's SQL never calls `POWER` for `BinFn.ipow`. It writes the power out as repeated checked BIGINT multiplication, which raises `Overflow in multiplication` exactly when a partial product leaves 64 bits (duckdb-R1), and raises on a negative exponent itself."
+    "So the `int.pow` rows have no native DuckDB answer: sverify's SQL never calls `POWER` for `BinFn.ipow`. It writes the power out as repeated checked BIGINT multiplication, which raises `Overflow in multiplication` exactly when a partial product leaves 64 bits (duckdb-R1), and raises on a negative exponent itself.",
+    "Round 4 (probes): `**` of TINYINT and of SMALLINT is a DOUBLE: `2 ** 7 = 128.0` and `2 ** 15 = 32768.0` leave the argument's range without an error, `2 ** -1 = 0.5` and `0 ** -1 = inf`."
   ],
   "reference": "`power` on integers keeps the integer type; a result outside the width raises (`overflow: ERROR`), and `on_domain_error` never applies (docs/core-semantics.md). Lean's `BinFn.ipow` raises on a negative exponent. The SQL lift reads DuckDB's `**` as the double `power` (`sql_lift/core.py`, `_pow`), as DuckDB computes it.",
   "status": "shimmed",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -95,6 +140,18 @@
         }
       ],
       "notes": "These pin the kind of result (a fraction, a double past 2⁶³, an error only for 0 to a negative power with IEEE off), not its last digits. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly. No test raises a TINYINT or SMALLINT base, so i8 and i16 stay at the source reading."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "int-pow-narrow"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
     }
   ]
 }

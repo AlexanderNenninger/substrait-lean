@@ -7,10 +7,12 @@
   "area": "aggregates",
   "options": [
     "nonfinite_aggregates",
-    "nan_creation"
+    "nan_creation",
+    "float_overflow"
   ],
   "rows": [
-    {"group": "agg.fsum", "option": "nan_creation", "types": ["fp32", "fp64"]}
+    {"group": "agg.fsum", "option": "nan_creation", "types": ["fp32", "fp64"]},
+    {"group": "agg.fsum", "option": "float_overflow", "types": ["fp32", "fp64"]}
   ],
   "constructs": [
     "sum",
@@ -26,7 +28,8 @@
   },
   "description": [
     "A `sum` or `mean` over both infinities is NaN, and `std`, `var` over a group with an infinity are NaN.",
-    "`Float32` takes the same generic code in single precision, so a `Float32` sum of inf and -inf is NaN too, on both engines, grouped and not. Nothing checks for the infinities; the Kahan step keeps its error term only while it is finite, so it adds no NaN of its own."
+    "`Float32` takes the same generic code in single precision, so a `Float32` sum of inf and -inf is NaN too, on both engines, grouped and not. Nothing checks for the infinities; the Kahan step keeps its error term only while it is finite, so it adds no NaN of its own.",
+    "A `sum` of finite values that overflows is `±inf` without raising: `sum` of 1e308 and 1e308 (`Float64`) and of 3e38 and 3e38 (`Float32`, summed in `Float32`) is inf, grouped and not, on both engines. `mean` of the `Float64` pair is inf; `mean` of the `Float32` pair sums in `f64` and is the finite 3.0000000054977558e+38."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`). ST-3 and ST-5 record that Substrait leaves both open.",
   "status": "open",
@@ -78,6 +81,16 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline session (float_overflow rows), polars 2.1.0",
+      "evidence": [
+        {
+          "note": "pl.LazyFrame({'g': [1, 1], 'x': [big, big]}) with x Float64 (big 1e308) and Float32 (big 3e38); select x.sum(), x.mean(), and group_by('g').agg the same; pl.LazyFrame(...).collect(engine=e) for e in ('in-memory', 'streaming'), polars 2.1.0 → Float64: (inf, inf) ungrouped and grouped; Float32: (inf, 3.0000000054977558e+38) ungrouped and grouped; streaming the same"
+        }
+      ]
     }
   ],
   "issues": [

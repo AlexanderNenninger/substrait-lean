@@ -70,6 +70,9 @@ def relEps (k : Nat) : Float :=
   let γ := ku / (1.0 - ku)
   2.0 * γ / (1.0 - γ) * 1.000001
 
+/-- As `upJson`, `0` for zero. -/
+def upJsonZ (f : Float) : Json := if f == 0.0 then toJson (0 : Nat) else upJson f
+
 /-- The bound for a double measure over rows described by `env`, at most
 `rows` of them: absolute, and relative where the values have one sign. -/
 def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
@@ -135,6 +138,170 @@ def epsilon (input : Json) : Except String Json := do
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
   return Json.mkObj cols
+
+/-! ## Per engine: the error carried through arithmetic
+
+`epsilon` above is the summation order's share, the same for every engine.
+`epsilonByEngine` carries it, and each engine's own per-operation error,
+through the double arithmetic between the aggregates and the output, from
+the ranges the preconditions give (#568's propagation):
+
+* `+`, `-`: `ε' = (εa + εb)(1 + u) + 2u·(|a| + |b|)` once an input is off;
+* `*`: `ε' = |a|εb + |b|εa + εaεb`, plus `2u` of the result's bound;
+* `/` by an exact divisor bounded away from 0: `ε' = εa / min|b|`, plus `2u`;
+* each engine's operations that differ from the reference's (the
+  characterization's round 5): Polars's `/` by a literal multiplies by the
+  reciprocal (`fl(x · fl(1/y))`, within `3u` of IEEE's quotient,
+  polars-scalar-divisor), its `log10`, `log2` and `log(b)` are `ln / ln`
+  (2.1 ulp), DuckDB's `log(b, x)` 1.4 ulp. `+ - * /` and `sqrt` are correctly
+  rounded on both, as are integer-to-double conversions;
+* other elementary functions are the platform's `libm` (macOS `tan` up to
+  2.4 ulp, glibc `cos` and `tan` far more near zeros of `cos`): unbounded
+  here where an input is off, and their rows stay `tested`.
+
+None of this is proved in Lean (`proved` false): the per-operation constants
+are probed, not modelled, and the propagation is the standard one. -/
+
+/-- The unit roundoff of a double. -/
+def unitRound : Float := Float.scaleB 1.0 (-53)
+
+/-- A bound on `|e|` from the preconditions, for a double expression. -/
+def magOf (env : List AVal) (e : Expr) : Option Float := do
+  let a := e.absD env []
+  guard a.intsOnly
+  let b ← a.int
+  let lo ← b.lo
+  let hi ← b.hi
+  return unscale (max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs)
+
+/-- The least `|e|` from the preconditions, where `0` is outside its range. -/
+def minAbsOf (env : List AVal) (e : Expr) : Option Float := do
+  let a := e.absD env []
+  guard a.intsOnly
+  let b ← a.int
+  let lo ← b.lo
+  let hi ← b.hi
+  let (l, h) := (FloatCode.scaled lo, FloatCode.scaled hi)
+  if 0 < l then return unscale l.natAbs
+  else if h < 0 then return unscale h.natAbs
+  else none
+
+/-- A bound on `|e|`: from the preconditions, else from its operation (a
+quotient by a divisor bounded away from 0, a logarithm of a finite double). -/
+def resultMag (env : List AVal) (e : Expr) : Option Float :=
+  (magOf env e).orElse fun _ => match e with
+    | .bin .fdiv a b => do return (← magOf env a) / (← minAbsOf env b)
+    | .un (.fmath .log10) _ => some 309.0
+    | .un (.fmath .log2) _ => some 1075.0
+    | _ => none
+
+/-- An engine's own error at one call, beyond the reference's, relative to
+`u` and the result's bound: Polars's `/` by a literal, its logarithms by
+`ln / ln`, DuckDB's `log(b, x)`. -/
+def opExtra (engine : String) : Expr → Option Float
+  | .bin .fdiv _ (.lit _) => if engine == "polars" then some 3.0 else some 0.0
+  | .un (.fmath .log10) _ | .un (.fmath .log2) _ =>
+    if engine == "polars" then some (2.0 * (2.1 + 1.0)) else some 0.0
+  | .bin .flogb _ _ =>
+    some (2.0 * ((if engine == "polars" then 2.1 else 1.4) + 1.0))
+  | _ => some 0.0
+
+/-- How far an engine's value of `e` may be from the reference's, from the
+columns' errors `cols` (`none`: not bounded). -/
+def exprEps (engine : String) (env : List AVal) (cols : List (Option Float)) :
+    Expr → Option Float
+  | .lit _ => some 0.0
+  | .field i => cols.getD i none
+  | e@(.un .fneg a) => exprEps engine env cols a |>.map fun x => x + 0.0 * (magOf env e).getD 0.0
+  | .un .itof a => (exprEps engine env cols a).bind fun x => if x == 0.0 then some 0.0 else none
+  | e@(.bin f a b) => do
+    let ea ← exprEps engine env cols a
+    let eb ← exprEps engine env cols b
+    let extra ← opExtra engine e
+    let own ← if extra == 0.0 then pure 0.0 else (resultMag env e).map (extra * unitRound * ·)
+    if ea == 0.0 && eb == 0.0 then return own
+    match f with
+    | .fadd | .fsub =>
+      let ma ← magOf env a
+      let mb ← magOf env b
+      return (ea + eb) * (1.0 + unitRound) + 2.0 * unitRound * (ma + mb) + own
+    | .fmul =>
+      let ma ← magOf env a
+      let mb ← magOf env b
+      return ma * eb + mb * ea + ea * eb + 2.0 * unitRound * (ma + ea) * (mb + eb) + own
+    | .fdiv =>
+      guard (eb == 0.0)
+      let lb ← minAbsOf env b
+      let mq ← resultMag env e
+      return ea / lb + 2.0 * unitRound * mq + own
+    | _ => none
+  | e@(.un _ a) => do
+    let ea ← exprEps engine env cols a
+    let extra ← opExtra engine e
+    if ea == 0.0 && extra == 0.0 then return 0.0
+    if ea == 0.0 then return extra * unitRound * (← resultMag env e)
+    none
+  | .ifThen _ t f => do
+    let et ← exprEps engine env cols t
+    let ef ← exprEps engine env cols f
+    return max et ef
+  | .hof _ _ _ => none
+
+/-- Each column's error on `engine`, for plans of projections, filters,
+sorts and one aggregate over reads. -/
+def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) : Rel → Option (List (Option Float))
+  | .read t => some ((List.range (cat t).arity).map fun _ => some 0.0)
+  | .values n _ => some ((List.range n).map fun _ => some 0.0)
+  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r => colEps engine cat A F T r
+  | .emit r m => (colEps engine cat A F T r).map fun cs => m.map (cs.getD · none)
+  | .project r es => (colEps engine cat A F T r).map fun cs =>
+      cs ++ es.map (exprEps engine (r.aeval cat A F T) cs)
+  | .aggregate r gs ms => (colEps engine cat A F T r).map fun cs =>
+      let env := r.aeval cat A F T
+      gs.map (fun _ => some 0.0) ++ ms.map fun m => do
+        let ea ← exprEps engine env cs m.arg
+        match m.fn with
+        | .fsum | .avg =>
+          let (order, _) ← measureEps env m r.maxRows
+          let n ← r.maxRows
+          return order + (if m.fn = .avg then ea else Float.ofNat n * ea)
+        | .count => return 0.0
+        | .min | .max => return ea
+        | _ => if ea == 0.0 then some 0.0 else none
+  | _ => none
+
+/-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
+output column, how far the engine's value may be from one the reference
+allows, `{"abs": …, "proved": {"abs": false}}` (`null`: not bounded). -/
+def epsilonByEngine (input : Json) (engines : List String) : Except String Json := do
+  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
+  let plan ← parseJsonPlan tj
+  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
+    parseJsonPlan
+  let tables : Tables := (plan :: requires).flatMap (·.tables)
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  let schemas : String → List AVal := fun t => match tables.lookup t with
+    | some (_, s) => schemaEnv s
+    | none => []
+  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
+  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
+  let A := fun t => tableEnv (schemas t) (preOf t)
+  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let root := plan.root.capReads caps
+  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
+  let names := if plan.names.length == kinds.length then plan.names
+    else (List.range kinds.length).map (s!"#{·}")
+  return Json.mkObj <| engines.map fun engine =>
+    let cols := colEps engine cat A F T root
+    (engine, Json.mkObj <| ((names.zip kinds).zipIdx.filter (·.1.2 == .float)).map
+      fun ((name, _), i) => (name, Json.mkObj [
+        ("abs", match cols.bind (·.getD i none) with | some e => upJsonZ e | none => Json.null),
+        ("proved", Json.mkObj [("abs", toJson false)])]))
 
 /-! ## The dependency report of a contract
 
