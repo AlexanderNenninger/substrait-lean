@@ -174,6 +174,10 @@ structure Report where
   /-- Does every window order its partitions totally (`Rel.windowsTotal`), and
   every `FETCH` take rows an `ORDER BY` on a key fixes (`Rel.fetchesTotal`)? -/
   deterministic : Bool := true
+  /-- Does every window order its partitions totally? A `FETCH` over ties
+  keeps every proof (it takes some rows of an allowed order) and the written
+  SQL breaks its ties by input order; only a rerun may differ. -/
+  windowsTotal : Bool := true
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
@@ -277,6 +281,7 @@ def Report.json (r : Report) : Json :=
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
+    ("windows_total", Lean.toJson r.windowsTotal),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
     ("relations", Json.arr (r.relations.map fun (op, d, n, g) =>
       Json.mkObj [("op", Lean.toJson op), ("depth", Lean.toJson d),
@@ -454,14 +459,15 @@ def check (input : Json) : Except String Report := do
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
   -- Windows that order their partitions totally, and `FETCH`es below an
   -- `ORDER BY` on a key: otherwise a rerun may give other rows (D10).
-  let deterministic := transform.all fun p =>
-    p.root.windowsTotal cat A F inputKeys && p.root.fetchesTotal cat A F inputKeys
+  let windowsDet := transform.all (·.root.windowsTotal cat A F inputKeys)
+  let deterministic := windowsDet && transform.all (·.root.fetchesTotal cat A F inputKeys)
   let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
   let keys ← match transform with
     | some p =>
       if !p.root.checkWF cat then throw "the transformation plan is not well-formed"
       let derived := p.root.keys cat A F inputKeys
-      pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
+      -- A key holds on whichever rows a `FETCH` takes: windows decide it.
+      pure (wanted.map fun k => (k, windowsDet && derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
   let raw := match transform with
     | some p => if p.root.checkWF cat then p.root.mayIssues cat A F T false else []
@@ -509,6 +515,7 @@ def check (input : Json) : Except String Report := do
     facts
     keys
     deterministic
+    windowsTotal := windowsDet
     issues
     rows
     relations

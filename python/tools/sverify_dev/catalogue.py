@@ -364,7 +364,7 @@ def probe_contract(
     inputs = tables(schemas, q.dataset, profile) if isinstance(query, str) else None
     report = sverify.verify(query, requires=requires, ensures=ensures, tables=inputs)
     out: dict[str, Any] = {"proved": report.proved, "guard_free": report.guard_free}
-    if not report.deterministic:
+    if not report.windows_total:
         # Rows may tie in a window, and the engine breaks the ties its own way.
         out["deterministic"] = False
     if unproved := [c.label for c in report.unproved]:
