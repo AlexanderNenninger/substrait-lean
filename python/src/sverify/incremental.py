@@ -1906,6 +1906,7 @@ class Pipeline:
         checked: list[Discharged] = []
         states: dict[str, State] = {}
         in_place: dict[str, pa.Table] = {}
+        before: dict[str, pa.Table] = {}
         # The tables whose new contents a recomputed view reads.
         rerun = set(stale)
         read_new: set[str] = set()
@@ -1949,11 +1950,13 @@ class Pipeline:
             keyed = any(isinstance(c, Unique | MaxRows) for c in v.checked)
             if isinstance(v.state, Resident) and not audit and v.name not in read_new and not keyed:
                 # Only the state rows the change touches, merged with it.
-                merged = v._merge(matching(v.state, delta), delta)
+                old = matching(v.state, delta)
+                merged = v._merge(old, delta)
                 if v.store.has_negative(merged):
                     raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
                 checked += v._check_change(delta, None)
                 in_place[v.name] = arrow_of(merged)
+                before[v.name] = old
                 continue
             merged = v._merge(v.state, delta, keep=v.store.keep)
             if v.store.has_negative(merged):
@@ -1970,6 +1973,7 @@ class Pipeline:
             found,
             in_place,
             changed,
+            before=before,
             latest=latest,
             checked=checked,
             touched=touched,
@@ -1979,29 +1983,66 @@ class Pipeline:
         )
 
     def _commit(self, pending: _Commit) -> None:
-        """Replace the tables, views and versions with their new state."""
+        """Replace the tables, views and versions with their new state, all
+        or nothing.
+
+        The Python side changes first, with the old values kept (references,
+        no copies); DuckDB's in-place update of the resident states runs
+        last, in its own transaction. An exception anywhere restores the
+        old values, and puts the state rows the change touched back
+        (`_Commit.before`), so a retry in the same process applies the
+        batch once (#515)."""
         views = self.views
-        if pending.in_place:
-            # One transaction: every view's state changes, or none does.
-            updates = []
-            for name, merged in pending.in_place.items():
-                state = views[name].state
-                assert isinstance(state, Resident)
-                updates.append((state, pending.deltas[name], merged))
-            DuckDBStore().apply(updates)
-            for name in pending.in_place:
-                views[name]._publish()
-        for t in pending.changes:
-            put_table(self.con, t, pending.new_tables[t])
-        self.versions.update(pending.versions)
-        self.latest.update(pending.latest)
-        for name, state in pending.states.items():
-            views[name].state = state
-            put_table(self.con, name, pending.new_tables[name])
-        for name, delta in pending.deltas.items():
-            views[name]._record(delta)
-        for name, g in pending.groups.items():
-            views[name].groups = g
+        touched = [*pending.changes, *pending.in_place, *pending.states]
+        tables = {t: self.con.get(t) for t in touched}
+        versions, latest = dict(self.versions), dict(self.latest)
+        names = {*pending.in_place, *pending.states, *pending.deltas, *pending.groups}
+        saved = {
+            n: (views[n].state, views[n].serial, views[n]._log, views[n].groups) for n in names
+        }
+        try:
+            for t in pending.changes:
+                put_table(self.con, t, pending.new_tables[t])
+            self.versions.update(pending.versions)
+            self.latest.update(pending.latest)
+            for name, state in pending.states.items():
+                views[name].state = state
+                put_table(self.con, name, pending.new_tables[name])
+            for name, delta in pending.deltas.items():
+                views[name]._record(delta)
+            for name, g in pending.groups.items():
+                views[name].groups = g
+            if pending.in_place:
+                # The published rows are a DuckDB view of the state table,
+                # so they show the update once it commits.
+                for name in pending.in_place:
+                    views[name]._publish()
+                # One transaction: every view's state changes, or none does.
+                updates = []
+                for name, merged in pending.in_place.items():
+                    state = views[name].state
+                    assert isinstance(state, Resident)
+                    updates.append((state, pending.deltas[name], merged))
+                try:
+                    DuckDBStore().apply(updates)
+                except BaseException:
+                    # Committed or not, the rows the change touches go back
+                    # to the ones `_prepare` read.
+                    DuckDBStore().apply(
+                        [
+                            (s, d, pending.before[n])
+                            for n, (s, d, _) in zip(pending.in_place, updates, strict=True)
+                        ]
+                    )
+                    raise
+        except BaseException:
+            for t, table in tables.items():
+                put_table(self.con, t, table)
+            self.versions, self.latest = versions, latest
+            for n, (state, serial, log, groups) in saved.items():
+                v = views[n]
+                v.state, v.serial, v._log, v.groups = state, serial, log, groups
+            raise
 
 
 @dataclass
@@ -2019,6 +2060,9 @@ class _Commit:
     touches, merged with it."""
     deltas: dict[str, pa.Table] = field(default_factory=dict)
     """Each changed view's change, as a weighted table."""
+    before: dict[str, pa.Table] = field(default_factory=dict)
+    """For each view in `in_place`, the state rows the change touches, as
+    they are before the commit: what a failed commit puts back."""
     latest: dict[tuple[str, str], object] = field(default_factory=dict)
     """The largest time seen after the batch, per `arrives_within`."""
     checked: list[Discharged] = field(default_factory=list)
