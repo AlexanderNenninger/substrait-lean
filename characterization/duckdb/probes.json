@@ -7330,15 +7330,19 @@
   {
    "construct": "float-div-nonfinite",
    "area": "doubles",
-   "setup": [],
-   "sql": "SELECT typeof('inf'::FLOAT / 'inf'::FLOAT), ('inf'::FLOAT / 'inf'::FLOAT)::VARCHAR, (0::FLOAT * 'inf'::FLOAT)::VARCHAR, ('inf'::FLOAT - 'inf'::FLOAT)::VARCHAR, (1::FLOAT / 0::FLOAT)::VARCHAR, (0::FLOAT / 0::FLOAT)::VARCHAR, (-1::FLOAT / 0::FLOAT)::VARCHAR",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END"
+   ],
+   "sql": "SELECT typeof('inf'::FLOAT / 'inf'::FLOAT), nan_text('inf'::FLOAT / 'inf'::FLOAT), nan_text(0::FLOAT * 'inf'::FLOAT), nan_text('inf'::FLOAT - 'inf'::FLOAT), nan_text(1::FLOAT / 0::FLOAT), nan_text(0::FLOAT / 0::FLOAT), nan_text(-1::FLOAT / 0::FLOAT)",
    "observed": "'FLOAT', 'nan', 'nan', 'nan', 'inf', 'nan', '-inf'"
   },
   {
    "construct": "float-mod",
    "area": "doubles",
-   "setup": [],
-   "sql": "SELECT typeof(-7::FLOAT % 3::FLOAT), (-7::FLOAT % 3::FLOAT)::VARCHAR, (7::FLOAT % -3::FLOAT)::VARCHAR, (-7.5::FLOAT % 2::FLOAT)::VARCHAR, (1::FLOAT % 0::FLOAT)::VARCHAR, ('inf'::FLOAT % 1::FLOAT)::VARCHAR",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END"
+   ],
+   "sql": "SELECT typeof(-7::FLOAT % 3::FLOAT), nan_text(-7::FLOAT % 3::FLOAT), nan_text(7::FLOAT % -3::FLOAT), nan_text(-7.5::FLOAT % 2::FLOAT), nan_text(1::FLOAT % 0::FLOAT), nan_text('inf'::FLOAT % 1::FLOAT)",
    "observed": "'FLOAT', '-1.0', '1.0', '-1.5', 'nan', 'nan'"
   },
   {
@@ -7424,8 +7428,10 @@
   {
    "construct": "sum-infinities",
    "area": "aggregates",
-   "setup": [],
-   "sql": "SELECT sum(d)::VARCHAR, sum(f)::VARCHAR, typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE, 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END"
+   ],
+   "sql": "SELECT nan_text(sum(d)), nan_text(sum(f)), typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE, 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)",
    "observed": "'nan', 'nan', 'DOUBLE'"
   },
   {

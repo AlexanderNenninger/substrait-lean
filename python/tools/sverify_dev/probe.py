@@ -304,6 +304,10 @@ def _o(construct: str, area: str, sql: str, *setup: str) -> Observation:
     return Observation(construct, area, sql, setup)
 
 
+#: A macro printing a double as text with any NaN as `nan`, whatever its sign.
+_NAN_TEXT = ("CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END",)
+
+
 #: Two bags with duplicates, NULLs, both NaNs and both zeros, for the set
 #: operations and the NaN keys.
 _BAGS = (
@@ -624,15 +628,17 @@ OBSERVATIONS: list[Observation] = [
        "SELECT signbit(-4::FLOAT % 2::FLOAT), signbit(4::FLOAT % -2::FLOAT),"
        " signbit(-0.0::FLOAT % 1::FLOAT), signbit(-4::DOUBLE % 2::DOUBLE),"
        " signbit(4::DOUBLE % -2::DOUBLE), signbit(-0.0::DOUBLE % 1::DOUBLE)"),
+    # A NaN an operation creates is negative on x86-64 and positive on arm64
+    # (duckdb-exec-platform): `nan_text` prints either as `nan`.
     _o("float-div-nonfinite", "doubles",
-       "SELECT typeof('inf'::FLOAT / 'inf'::FLOAT), ('inf'::FLOAT / 'inf'::FLOAT)::VARCHAR,"
-       " (0::FLOAT * 'inf'::FLOAT)::VARCHAR, ('inf'::FLOAT - 'inf'::FLOAT)::VARCHAR,"
-       " (1::FLOAT / 0::FLOAT)::VARCHAR, (0::FLOAT / 0::FLOAT)::VARCHAR,"
-       " (-1::FLOAT / 0::FLOAT)::VARCHAR"),
+       "SELECT typeof('inf'::FLOAT / 'inf'::FLOAT), nan_text('inf'::FLOAT / 'inf'::FLOAT),"
+       " nan_text(0::FLOAT * 'inf'::FLOAT), nan_text('inf'::FLOAT - 'inf'::FLOAT),"
+       " nan_text(1::FLOAT / 0::FLOAT), nan_text(0::FLOAT / 0::FLOAT),"
+       " nan_text(-1::FLOAT / 0::FLOAT)", *_NAN_TEXT),
     _o("float-mod", "doubles",
-       "SELECT typeof(-7::FLOAT % 3::FLOAT), (-7::FLOAT % 3::FLOAT)::VARCHAR,"
-       " (7::FLOAT % -3::FLOAT)::VARCHAR, (-7.5::FLOAT % 2::FLOAT)::VARCHAR,"
-       " (1::FLOAT % 0::FLOAT)::VARCHAR, ('inf'::FLOAT % 1::FLOAT)::VARCHAR"),
+       "SELECT typeof(-7::FLOAT % 3::FLOAT), nan_text(-7::FLOAT % 3::FLOAT),"
+       " nan_text(7::FLOAT % -3::FLOAT), nan_text(-7.5::FLOAT % 2::FLOAT),"
+       " nan_text(1::FLOAT % 0::FLOAT), nan_text('inf'::FLOAT % 1::FLOAT)", *_NAN_TEXT),
     # Narrow integers.
     _o("int-mod-narrow", "integers",
        "SELECT -7::TINYINT % 3::TINYINT, 7::TINYINT % -3::TINYINT,"
@@ -668,8 +674,8 @@ OBSERVATIONS: list[Observation] = [
        "SELECT sum(x)::VARCHAR, fsum(x)::VARCHAR FROM (VALUES (1e16::DOUBLE), (1::DOUBLE),"
        " (1::DOUBLE)) t(x)"),
     _o("sum-infinities", "aggregates",
-       "SELECT sum(d)::VARCHAR, sum(f)::VARCHAR, typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE,"
-       " 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)"),
+       "SELECT nan_text(sum(d)), nan_text(sum(f)), typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE,"
+       " 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)", *_NAN_TEXT),
     _o("sum-empty", "aggregates",
        "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM"
        " (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f,"
