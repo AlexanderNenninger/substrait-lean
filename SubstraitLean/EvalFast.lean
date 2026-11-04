@@ -50,21 +50,6 @@ instance : Hashable Value := ⟨Value.hashV⟩
 
 /-! ## Distinct elements with a hash set -/
 
-theorem dedupN_eq_dedup {α : Type} [DecidableEq α] : ∀ (n : Nat) (l : List α), l.length ≤ n → dedupN n l = dedup l
-  | _, [], _ => by cases ‹Nat› <;> simp [dedupN, dedup]
-  | 0, _ :: _, h => by simp at h
-  | n + 1, x :: xs, h => by
-    have hf : (xs.filter (· != x)).length ≤ n := by
-      have := List.length_filter_le (· != x) xs; simp at h; omega
-    have hf' : (xs.filter (· != x)).length ≤ xs.length := List.length_filter_le _ _
-    simp only [dedup, dedupN, List.length_cons]
-    rw [dedupN_eq_dedup n _ hf, dedupN_eq_dedup xs.length _ hf']
-
-theorem dedup_cons {α : Type} [DecidableEq α] (x : α) (xs : List α) : dedup (x :: xs) = x :: dedup (xs.filter (· != x)) := by
-  conv => lhs; unfold dedup
-  simp only [List.length_cons, dedupN]
-  rw [dedupN_eq_dedup _ _ (List.length_filter_le _ _)]
-
 section Dedup
 
 variable {α : Type} [DecidableEq α] [Hashable α]

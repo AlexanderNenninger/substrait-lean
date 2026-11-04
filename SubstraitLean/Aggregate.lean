@@ -1,4 +1,5 @@
 import SubstraitLean.Order
+import SubstraitLean.Dedup
 
 /-!
 # Aggregation
@@ -29,43 +30,6 @@ and the others are NULL. Checked against DataFusion 51:
 -/
 
 namespace Substrait
-
-/-! ## Distinct elements -/
-
-/-- The first occurrence of every element, in order (`n` bounds the length). -/
-def dedupN {α : Type} [DecidableEq α] : Nat → List α → List α
-  | 0, _ | _, [] => []
-  | n + 1, x :: xs => x :: dedupN n (xs.filter (· != x))
-
-def dedup {α : Type} [DecidableEq α] (l : List α) : List α := dedupN l.length l
-
-theorem dedupN_spec {α : Type} [DecidableEq α] : ∀ (n : Nat) (l : List α), l.length ≤ n →
-    (∀ y, y ∈ dedupN n l ↔ y ∈ l) ∧ (dedupN n l).Sublist l ∧ (dedupN n l).Pairwise (· ≠ ·)
-  | _, [], _ => by cases ‹Nat› <;> simp [dedupN]
-  | 0, _ :: _, h => by simp at h
-  | n + 1, x :: xs, h => by
-    have hf : (xs.filter (· != x)).length ≤ n := by
-      have := List.length_filter_le (· != x) xs; simp at h; omega
-    obtain ⟨hm, hs, hp⟩ := dedupN_spec n _ hf
-    simp only [dedupN]
-    refine ⟨fun y => ?_, ?_, ?_⟩
-    · simp only [List.mem_cons, hm, List.mem_filter, bne_iff_ne, ne_eq]
-      by_cases hy : y = x <;> simp [hy]
-    · exact (hs.trans List.filter_sublist).cons_cons x
-    · refine List.Pairwise.cons (fun y hy => ?_) hp
-      have := (hm y).mp hy
-      simp only [List.mem_filter, bne_iff_ne, ne_eq] at this
-      exact fun h => this.2 h.symm
-
-theorem dedup_length_le {α : Type} [DecidableEq α] (l : List α) : (dedup l).length ≤ l.length :=
-  (dedupN_spec l.length l (Nat.le_refl _)).2.1.length_le
-
-theorem mem_dedup {α : Type} [DecidableEq α] {l : List α} {y : α} : y ∈ dedup l ↔ y ∈ l :=
-  (dedupN_spec _ l (Nat.le_refl _)).1 y
-theorem dedup_sublist {α : Type} [DecidableEq α] (l : List α) : (dedup l).Sublist l :=
-  (dedupN_spec _ l (Nat.le_refl _)).2.1
-theorem dedup_pairwise {α : Type} [DecidableEq α] (l : List α) : (dedup l).Pairwise (· ≠ ·) :=
-  (dedupN_spec _ l (Nat.le_refl _)).2.2
 
 /-! ## Measures -/
 
