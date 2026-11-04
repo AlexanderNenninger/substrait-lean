@@ -311,6 +311,9 @@ theorem ofDecimal_bounds (n : Int) (s : Nat) : negInf < ofDecimal n s ∧ ofDeci
 theorem ofDecimal_mono {n n' : Int} (s : Nat) (h : n ≤ n') : ofDecimal n s ≤ ofDecimal n' s :=
   decToDouble.mono s h
 
+/-- `CAST(d AS DOUBLE)` at scale `s` as a `FiniteMonoConv`. -/
+def decConv (s : Nat) : FiniteMonoConv := ⟨(ofDecimal · s), (ofDecimal_bounds · s), ofDecimal_mono s⟩
+
 theorem ofDecimal_rel {n : Int} {s : Nat} (h0 : n ≠ 0) (hn : n.natAbs < 2 ^ 127) (hs : s ≤ 307) :
     ∃ M, ofDecimal n s = signedCode (decide (n < 0)) M ∧
       2 ^ 53 * (10 ^ s * M) ≤ (2 ^ 53 + 1) * (n.natAbs * 2 ^ 1074) ∧

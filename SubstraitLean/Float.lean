@@ -454,12 +454,16 @@ theorem ofIntExact_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
   · rw [← Nat.mul_assoc, ← Nat.mul_assoc]; exact Nat.mul_le_mul_right _ r1
   · rw [← Nat.mul_assoc, ← Nat.mul_assoc]; exact Nat.mul_le_mul_right _ r2
 
-/-- A conversion of integers to doubles, with what the checker knows of it. -/
-structure IntToDouble where
+/-- A monotone conversion to finite doubles: of integers, and of decimals at
+one scale. The checker bounds its results by the conversions of the ends. -/
+structure FiniteMonoConv where
   conv : Int → Int
   bounds : ∀ i, negInf < conv i ∧ conv i < posInf
-  ne_zero : ∀ {i}, i ≠ 0 → conv i ≠ 0
   mono : ∀ {i j}, i ≤ j → conv i ≤ conv j
+
+/-- A conversion of integers to doubles, with what the checker knows of it. -/
+structure IntToDouble extends FiniteMonoConv where
+  ne_zero : ∀ {i}, i ≠ 0 → conv i ≠ 0
   /-- Integers up to `2⁵³` in magnitude are doubles exactly. -/
   exact : ∀ {i}, i.natAbs ≤ 2 ^ 53 → conv i = exactCode i
   /-- Up to `2¹⁰²³`, within half a unit in the last place: `2⁻⁵³`, relatively. -/
@@ -471,11 +475,14 @@ structure IntToDouble where
 plans use only the properties above, as they did of the native conversion
 before, and type-checking them never computes a rounding. -/
 opaque intToDouble : IntToDouble :=
-  ⟨ofIntExact, ofIntExact_bounds, ofIntExact_ne_zero, ofIntExact_mono, ofIntExact_exact,
+  ⟨⟨ofIntExact, ofIntExact_bounds, ofIntExact_mono⟩, ofIntExact_ne_zero, ofIntExact_exact,
     ofIntExact_rel⟩
 
 /-- An integer as a double (`ofIntExact`). -/
 def ofInt (i : Int) : Int := intToDouble.conv i
+
+/-- `CAST(i AS DOUBLE)` as a `FiniteMonoConv`. -/
+def intConv : FiniteMonoConv := intToDouble.toFiniteMonoConv
 
 theorem ofInt_bounds (i : Int) : negInf < ofInt i ∧ ofInt i < posInf := intToDouble.bounds i
 
