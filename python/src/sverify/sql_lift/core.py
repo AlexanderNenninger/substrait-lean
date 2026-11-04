@@ -20,6 +20,7 @@ from sverify.sql_lift._base import (
     Sub,
     _decimal,
     _digits,
+    _fits,
     _fn,
     _generated,
     _Lift,
@@ -206,6 +207,18 @@ def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
         return [(e if not e.type.is_null() else lf.to(e, t)).json for e in es]
     es = _temporal_literals(es)
     t = lf.common(es, what)
+    # An integer column against integer constants that fit its type: the
+    # constants at the column's type, as DuckDB binds them, so the
+    # comparison is a fact about the column itself (`v >= -127` on a
+    # TINYINT, #616), not about a cast of it.
+    cols = [e for e in es if not e.constant]
+    if (
+        t.is_integer()
+        and cols
+        and all(_same(e.type, cols[0].type) for e in cols)
+        and all(e.value is None or _fits(e.value, cols[0].type) for e in es if e.constant)
+    ):
+        t = cols[0].type.copy(nullable=True)
     if t.is_null():
         t = dt.int32
     return [lf.to(e, t).json for e in es]
