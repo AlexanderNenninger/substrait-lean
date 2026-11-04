@@ -20,6 +20,7 @@ SCHEMA = pa.schema([("id", pa.int64()), ("amount", pa.int64())])
 ENGINES = ["duckdb", "polars"]
 SINK = "db.paid"
 
+
 @sv.transform(requires={"orders": [_.amount >= 0]})
 def paid(orders):
     return orders.filter(orders.amount > 0)
