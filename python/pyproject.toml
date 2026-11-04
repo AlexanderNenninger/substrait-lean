@@ -225,6 +225,11 @@ help = "Random queries with Lean as the oracle for $BUDGET seconds (default 600)
 cmd = "python -m sverify_dev.fuzz --budget ${BUDGET}"
 env = { BUDGET.default = "600" }
 
+[tool.poe.tasks.fuzz-duckdb]
+help = "DuckDB's own SQL against Rel.eval, each of $FUZZ_TARGETS for $BUDGET seconds; ledgers to $FUZZ_OUT"
+shell = "for t in ${FUZZ_TARGETS}; do python -m sverify_dev.duckdb_fuzz $t --budget ${BUDGET} --out ${FUZZ_OUT} || exit 1; done"
+env = { BUDGET.default = "600", FUZZ_TARGETS.default = "eval_order float_special", FUZZ_OUT.default = "../characterization/duckdb" }
+
 [tool.poe.tasks.notebooks]
 help = "Check the tour notebooks with marimo and run each one headless"
 shell = """
