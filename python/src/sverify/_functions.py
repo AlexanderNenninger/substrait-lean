@@ -60,7 +60,8 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
     {
         o.id: o
         for o in (
-            Option("rounding", "rounding", _ROUNDINGS + _ROUND_TIES),
+            Option("rounding", "rounding", (*_ROUNDINGS, *_ROUND_TIES, "RECIPROCAL"),
+                   (("RECIPROCAL", "polars-scalar-divisor"),)),
             Option("on_domain_error", "on_domain_error", ("NAN", "NULL", "ERROR"),
                    (("NAN", "duckdb-R15-math-domain"),)),
             Option("on_log_zero", "on_log_zero", ("NAN", "ERROR", "MINUS_INFINITY")),

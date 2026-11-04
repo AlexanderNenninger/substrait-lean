@@ -37,7 +37,7 @@ def prototypeSlice : List String :=
    "rounding", "nan_creation", "zero_sign", "nan_kind", "nan_order", "nan_equality",
    "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
-   "null_join_keys", "float_overflow"]
+   "null_join_keys", "float_overflow", "stat_algo", "quantile_interp"]
 
 /-- Evidence from the facts or tests `ids`, none where empty. -/
 def Evidence.ofIds (ids : List String) : Evidence := if ids.isEmpty then .none else .tested ids
@@ -98,7 +98,9 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "negative_start", .asked ["WRAP_FROM_END"] ["WRAP_FROM_END"]),
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
     (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
-    (none, "null_join_keys", .oneOf ["NO_MATCH"])] ++ uncharacterized prototypeSlice
+    (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
+    (none, "quantile_interp", .oneOf ["LINEAR"])] ++ uncharacterized prototypeSlice
 
 def Profile.duckdb.obs : ObsTable := [
   (none, "overflow", .native ["duckdb-R1", "duckdb-R15-int-arith"]),
@@ -132,7 +134,10 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "negative_start", .native ["duckdb-R13"]),
   (none, "case_sensitivity", .native []),
   (none, "string_positions", .native []),
-  (none, "null_join_keys", .native [])]
+  (none, "null_join_keys", .native []),
+  -- Welford with Chan's merge meets the generic properties the reference allows.
+  (none, "stat_algo", .native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"]),
+  (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
 
@@ -153,13 +158,23 @@ def Profile.polars.table : ProfileTable where
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
     (some "fp.round", "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- By a length-1 divisor, `x * (1 / c)` (polars-scalar-divisor).
+    (some "fp.div", "rounding", .oneOf ["TIE_TO_EVEN", "RECIPROCAL"]),
+    (some "fp.mod", "division_type", .oneOf ["FLOOR"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
-    (none, "sum_order", .oneOf ["PAIRWISE", "KAHAN"]),
+    -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
+    -- ungrouped, morsel sums added in scheduling order. In memory (not the
+    -- target): pairwise, Kahan over groups.
+    (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY"]),
+    (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
+    -- Streaming falls back to the in-memory engine; the translation asks for
+    -- `linear` (polars-quantile).
+    (none, "quantile_interp", .oneOf ["LINEAR"]),
     (none, "avg_int_result", .oneOf ["FP64"]),
     (none, "empty_group_aggregates", .oneOf ["ZERO"]),
     (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_FIRST"]),
@@ -194,7 +209,15 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound.
-  (none, "sum_order", .approxWithin "plan" ["polars-sum-float", "polars-mean-float"]),
+  -- Run to run the order varies (morsels, pipelines), within the plan's bound.
+  (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
+    deterministic := false }),
+  (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
+    deterministic := false }),
+  (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
+  -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
+  (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
+    shim := some "one_zero" }).proved "Polars.one_zero"),
   (none, "avg_int_result", (ObsRow.shimmed "avg_int_declared" ["polars-avg-int"]).proved "Polars.avg_int_declared"),
   (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),
   -- Every stated placement is native, by `nulls_last`; where a key leaves it
@@ -206,6 +229,14 @@ def Profile.polars.obs : ObsTable := [
   (none, "tie_order", (ObsRow.native ["polars-sort-stability", "polars-first-last"]).proved "Polars.tie_order"),
   (none, "tie_pick", .native ["polars-first-last"]),
   (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
+  (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
+    precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
+    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }),
+  (some "fp.mod", "division_type", { ObsRow.shimmed "column_divisor"
+      ["polars-double-modulus", "polars-scalar-divisor"] with
+    note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }),
+  (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
+    ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Polars.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Polars.makes_infinite"),
   (none, "negative_start", .native ["polars-substring"]),
   (none, "case_sensitivity", .native ["polars-match-functions"]),
@@ -300,6 +331,10 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
           | .approx, _ => "approx" | .refused, _ => "refused")),
          ("shim", toJson r.shim)] ++
         [("q", r.q.sparseJson)] ++
+        (if r.deterministic then [] else [("deterministic", toJson false)]) ++
+        (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
+        (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
+        (if r.note == "" then [] else [("note", toJson r.note)]) ++
         (match r.evidence with
           | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
           | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
@@ -331,6 +366,7 @@ def tablesJson : Json :=
         ("core", Json.mkObj [("engine", Json.null)])] ++
       engineTables.map fun (t, _) => (t.name, Json.mkObj [
         ("engine", toJson t.name), ("versions", toJson [t.version]),
+        ("executes", toJson (if t.name == "polars" then "streaming" else "")),
         ("missing", Json.arr <| (t.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))
     |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs)] ++
