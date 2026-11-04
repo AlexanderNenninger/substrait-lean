@@ -110,8 +110,10 @@ fires, `Rel.eval`'s value is not the answer.
   other error issues, and for integer `+ - *` and negation overflow at the
   declared width ([#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202)).
   Inferred bounds (#244) discharge most overflows.
-* **Integer `SUM` overflow is an inferred assumption, checked on the data.**
-  A group's integer sum may leave 64 bits, and the reference raises there.
+* **`SUM` overflow is an inferred assumption, checked on the data.**
+  A group's integer sum may leave 64 bits, and a decimal sum its precision
+  (`DECIMAL(min(38, p + 10), s)`, [#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316));
+  the reference raises there, and so does DuckDB past 38 digits.
   Where the plan bounds a group's rows (a `VALUES` list, a `FETCH` count, an
   aggregate without groups: `Rel.maxRows`) and the argument's range bounds
   each value (`Measure.sumFits`), it is ruled out. Elsewhere `verify` assumes
@@ -311,7 +313,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Operation | Result type | Notes | Status |
 |---|---|---|---|
 | `MIN`, `MAX` | the argument's type | | ✓ |
-| `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact. | ✓ |
+| `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact; raises past the precision, an inferred assumption like integer `SUM` overflow (#316). | ✓ |
 | `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
 | `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Over a window too. | ✓ (M2) |
 
@@ -327,7 +329,7 @@ The rules for decimals are in [Decimals](#decimals).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out (`upstream/LEDGER.md` DF-11) |
+| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out ([DF-11](../upstream/bugs/DF-11.json)) |
 
 ## Relations
 

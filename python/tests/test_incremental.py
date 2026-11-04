@@ -86,6 +86,17 @@ def test_aggregate_is_rejected():
         IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 
+@pytest.mark.parametrize("engine", ENGINES)
+def test_count_and_sum_per_group_are_maintained(engine):
+    con = connect_with([(1, "ada", 30), (2, "ada", None), (3, "bob", 5)], [])
+    orders = con.table("orders")
+    query = orders.group_by("customer").aggregate(total=orders.amount.sum(), n=orders.count())
+    view = IncrementalView(con, query, "v", engine)
+    assert view.strategy == "delta rules"
+    view.apply({"orders": sv.Changes(inserts=[(4, "cy", 7)], deletes=[(1, "ada", 30)])})
+    assert view.rows() == view.recompute() == [("ada", None, 1), ("bob", 5, 1), ("cy", 7, 1)]
+
+
 def test_view_named_after_an_input_is_rejected():
     con = connect_with([(1, "ada", 30), (2, "bob", 5)], [])
     with pytest.raises(ValueError, match="is a table the view reads"):

@@ -68,7 +68,7 @@ import pyarrow as pa
 
 REPO = Path(__file__).resolve().parents[3]
 CACHE = Path(os.environ.get("SVERIFY_SLT_CACHE", Path.home() / ".cache" / "sverify" / "duckdb-slt"))
-LEDGER = REPO / "characterization" / "duckdb"
+REPLAY_DIR = REPO / "characterization" / "duckdb"
 
 #: The one-row table a `SELECT` without `FROM` reads.
 ONE = "__sverify_one"
@@ -852,16 +852,17 @@ class Replay:
 
 
 def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
-    """The runtime errors and wrap-arounds `verify` cannot rule out. The SQL
-    text goes to `verify` as it is: `sverify.sql` refuses a query that reads
-    no table, which hid `SELECT 7 // 0`'s division by zero (#333)."""
+    """The runtime errors and wrap-arounds `verify` cannot rule out, the
+    `SUM`s it assumes fit among them (#316). The SQL text goes to `verify` as
+    it is: `sverify.sql` refuses a query that reads no table, which hid
+    `SELECT 7 // 0`'s division by zero (#333)."""
     from sverify.contracts import verify
 
     try:
         report = verify(sql, tables=schemas)
     except Exception:  # noqa: BLE001
         return []
-    return [str(i) for i in report.issues]
+    return [str(i) for i in report.issues + report.assumed]
 
 
 def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
@@ -1084,7 +1085,7 @@ def write_ledger(
     version: str,
     results: list[dict],
     skipped_files: dict[str, str],
-    out: Path = LEDGER,
+    out: Path = REPLAY_DIR,
     head: dict | None = None,
 ) -> Path:
     """`<out>/<area>.json`: one result per line, sorted by file and line.
@@ -1133,7 +1134,7 @@ def _oracle_a_only(results: list[dict]) -> int:
     )
 
 
-def write_summary(out: Path = LEDGER) -> Path:
+def write_summary(out: Path = REPLAY_DIR) -> Path:
     """`<out>/README.md`'s table, from every ledger in `out`."""
     rows = []
     for p in sorted(out.glob("*.json")):
@@ -1271,7 +1272,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("areas", nargs="*", help="areas under test/sql (default: all)")
     parser.add_argument("--version", help="DuckDB version (default: uv.lock's)")
-    parser.add_argument("--out", type=Path, default=LEDGER)
+    parser.add_argument("--out", type=Path, default=REPLAY_DIR)
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
     args = parser.parse_args(argv)

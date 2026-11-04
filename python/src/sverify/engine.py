@@ -690,7 +690,7 @@ def _check_datafusion_plan(plan: dict) -> None:
                 raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; see #271")
             w = node.get("windowFunction")
             if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
-                # DataFusion spreads the larger buckets out (upstream/LEDGER.md).
+                # DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
                 raise sql.Unsupported("DataFusion's NTILE does not deal out buckets as SQL does")
             f = node.get("scalarFunction")
             fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None

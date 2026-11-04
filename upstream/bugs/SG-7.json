@@ -1,0 +1,31 @@
+{
+  "id": "SG-7",
+  "project": "sqlglot",
+  "version": "30.18.0–30.29.0",
+  "status": "filed",
+  "status_note": "filed [ibis#12124](https://github.com/ibis-project/ibis/issues/12124); fixed on Ibis main by [#12104](https://github.com/ibis-project/ibis/pull/12104), not released",
+  "upstream": [
+    "https://github.com/ibis-project/ibis/issues/12124",
+    "https://github.com/ibis-project/ibis/pull/12104"
+  ],
+  "summary": "From 30.18, `Drop` reads its names from `expressions`, and one given as `this` is not written. Ibis 12.0.0 passes `this`, so its DuckDB `create_table`, which drops a temporary view, fails. Ibis 12 allows any `sqlglot>=23.4`.",
+  "repro": "`sge.Drop(kind=\"VIEW\", this=\"t\", exists=True).sql(\"duckdb\")` is `DROP VIEW IF EXISTS` (30.17: `DROP VIEW IF EXISTS t`); `ibis.duckdb.connect().create_table(\"x\", pa.table({\"a\": [1]}))` fails with DuckDB's \"syntax error at or near EXISTS\".",
+  "handling": "sverify requires `sqlglot~=30.17.0` (#442). Development stays on 30.22 for fakesnow (`[tool.uv] override-dependencies`), the wheel's tests run 30.17, and the lift reads both versions' GROUP BY. File with Ibis.",
+  "found_by": "homelab cycling demo (#442)",
+  "issues": [
+    442
+  ],
+  "files": [
+    "python/pyproject.toml"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0",
+        "ibis-framework": "12.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

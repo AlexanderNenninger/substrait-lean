@@ -2007,7 +2007,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "count", _ => pure (AggFn.count, arg)
     | "sum", .int => pure (.sum, arg)
     | "sum", .float => pure (.fsum, arg)
-    -- Marked as a decimal, which does not wrap at 64 bits (`Safety.lean`).
+    -- Marked as a decimal: the sum fits the result's precision (`Measure.sumOk`).
     | "sum", .dec p s => pure (.sum, .un (.decimal p s) arg)
     | "avg", .int => pure (if intOut then (.iavg, arg) else (.avg, .un .itof arg))
     | "avg", .float => pure (.avg, arg)
