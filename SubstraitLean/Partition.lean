@@ -298,12 +298,15 @@ def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
   | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ | .cov _ | .corr | .concat _ =>
     false
+  -- A black box's laws say nothing of its partial results.
+  | .bbox _ => false
 
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]
 
-theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) : f.apply [] = .null := by
-  cases f <;> first | rfl | exact (hf rfl).elim
+theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) (hb : ∀ n, f ≠ .bbox n) :
+    f.apply [] = .null := by
+  cases f <;> first | rfl | exact (hf rfl).elim | exact (hb _ rfl).elim
 
 /-- `MIN` and `MAX` only depend on which values occur. -/
 theorem AggFn.apply_minMax_mem {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min))
@@ -373,7 +376,7 @@ theorem minMax_combine {f : AggFn} {max : Bool} (hf : f = (if max then .max else
     {L : List (List Value)} (hnn : ∀ vs ∈ L, ∀ v ∈ vs, v ≠ .null) :
     f.apply ((L.map f.apply).filter (· != .null)) = f.apply L.flatten := by
   have hcount : f ≠ .count := by cases max <;> simp [hf]
-  have hnil := AggFn.apply_nil_of_ne_count hcount
+  have hnil := AggFn.apply_nil_of_ne_count hcount (by cases max <;> simp [hf])
   by_cases hF : L.flatten = []
   · rw [hF, hnil]
     have : (L.map f.apply).filter (· != .null) = [] := by
@@ -1874,12 +1877,406 @@ theorem Rel.eval_algebraic {S : String → Bool} {K : String → Option (List Na
   rw [← aggregateEval_algFinish hint]
   exact (eval_twoPhase hs hT hne hw hr (algParts_twoPhase hms)).map _
 
-/-! ### Doubles, unproved -/
+/-! ### Doubles, within a proved bound (#428)
+
+A double `SUM` or `AVG` split over shards adds each shard's values, then the
+partial sums (`floatCombine`), so it rounds differently from the reference's
+one pass over all values (`floatSum`). It is one of the sums the reference
+allows (`FloatSums`, `SubstraitLean/Allowed.lean`), and its distance from
+`Rel.eval`'s value is bounded by what the partial rows report: each shard's
+`COUNT(x)` and rounded `SUM(|x|)` (`floatBoundParts`), and a bound on the
+values from its `MAX(|x|)` (`floatSplit_sum`, `floatSplit_avg`). The bound is
+proved over the reals in `float-bounds/FloatBounds/Shard.lean`, for Lean's
+doubles under its `NativeLink` (`floatSum_twoPhase`, `floatAvg_twoPhase`). -/
 
 /-- The partial measures for splitting `SUM`/`AVG` of doubles: `AVG` as a
 `SUM` and a `COUNT`. -/
 def floatPartial (m : Measure) : List Measure :=
   if m.fn = .avg then [{ m with fn := .fsum }, { m with fn := .count }] else [m]
+
+/-- `|x|` of a double: `CASE WHEN x < 0 THEN -x ELSE x END`, which the writer
+writes as `abs`. -/
+def fabsExpr (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.int 0))) (.un .fneg e) e
+
+/-- `|x|` of a double's code. -/
+def fabsCode (c : Int) : Int := if c < 0 then FloatCode.neg c else c
+
+/-- The partial measures that bound a split double `SUM`/`AVG`'s rounding:
+`SUM(|x|)`, `COUNT(x)` and `MAX(|x|)`, under the measure's `FILTER`. The
+shards compute them after all of `floatPartial`'s, so that the columns
+`floatCombine` reads stay where they are. -/
+def floatBoundParts (m : Measure) : List Measure :=
+  if m.fn = .fsum ∨ m.fn = .avg then
+    [{ m with fn := .fsum, arg := fabsExpr m.arg }, { m with fn := .count },
+      { m with fn := .max, arg := fabsExpr m.arg }]
+  else []
+
+/-- The partial measures of a split with doubles: `floatPartial`'s, then
+`floatBoundParts`'. -/
+def floatParts (ms : List Measure) : List Measure :=
+  ms.flatMap floatPartial ++ ms.flatMap floatBoundParts
+
+theorem fabsExpr_eval_int {e : Expr} {row : Row} {c : Int} (h : e.eval row = .int c) :
+    (fabsExpr e).eval row = .int (fabsCode c) := by
+  by_cases hc : c < 0 <;>
+    simp [fabsExpr, fabsCode, Expr.eval, h, hc, BinFn.apply, UnFn.apply, Value.isTrue]
+
+theorem fabsExpr_eval_null {e : Expr} {row : Row} (h : e.eval row = .null) :
+    (fabsExpr e).eval row = .null := by
+  simp [fabsExpr, Expr.eval, h, BinFn.apply, Value.isTrue]
+
+namespace FloatCode
+
+/-- How far a `SUM` of `n` doubles split over `k` shards of at most `m`
+values, added in two phases, may be from the sequential sum (#428), scaled and
+rounded up: `(γ (m + k) + γ n) · ((As + n·2⁵²) / (1 − γ m) + k·2⁵²)`, where
+`As` is the shards' rounded `SUM(|x|)`s added up, scaled. Proved as
+`shardTol_le` in `float-bounds/FloatBounds/Shard.lean`, which defines it the
+same way. -/
+def shardTolScaled (n m k As : Nat) : Nat :=
+  ceilDiv (((m + k) * (2 * tolK - n) + n * (2 * tolK - (m + k)))
+      * ((As + n * tolK) * (2 * tolK - m) + k * tolK * (2 * tolK - 2 * m)))
+    ((2 * tolK - (m + k)) * (2 * tolK - n) * (2 * tolK - 2 * m))
+
+/-- The same for an `AVG` (`shardAvgTol_le`):
+`(γ (m + k + 2) + γ (n + 2)) · ((As + n·2⁵²) / (1 − γ m) + k·2⁵²) / n`. -/
+def shardAvgTolScaled (n m k As : Nat) : Nat :=
+  ceilDiv (((m + k + 2) * (2 * tolK - (n + 2)) + (n + 2) * (2 * tolK - (m + k + 2)))
+      * ((As + n * tolK) * (2 * tolK - m) + k * tolK * (2 * tolK - 2 * m)))
+    ((2 * tolK - (m + k + 2)) * (2 * tolK - (n + 2)) * (2 * tolK - 2 * m) * n)
+
+-- Values `tests/test_partition.py` checks `sverify.partition`'s tolerances against.
+#guard shardTolScaled 1 1 1 (2 ^ 1074) == 67413492557336866498252040001792083644064068193411786531149605887081928532333886566701038482448840821900724330384915087144207634933861773577164331784294401633577121524395968318874061263280622488211236594736130271757351694344563999121533190951991288203883650243640759293072526056456325657897929556720248422404
+#guard shardTolScaled 0 0 0 0 == 0 && shardTolScaled 1000 300 4 (3 * 2 ^ 1080) == 5626060434865814519377634568766342819539498336233903602149647411948472027538064859444302092589296235927817399957868020457369097473388832809740992849461669965051209421312108807948812976879003456552646490394455402784343550113726544845934856238575391015941000106817583154524955705780959472494085466161306660841885962
+#guard shardAvgTolScaled 1 1 1 (2 ^ 1074) == 157298149300452721759926585582868137649289714382442711829028535830801688179297746064987341784686588694594554020274915259614718763013975228832063467876356333860872815878791493048999295455246832822541941495387249176775796037410021292909345537243087575131230673626119989627886476299927251434926118482253965721620
+
+end FloatCode
+
+/-- The sum of the codes `L`'s shards, each added in one pass, then added up
+in one pass: what `floatCombine` computes from the partial sums. -/
+def twoPhaseSum (L : List (List Int)) : Int :=
+  floatSum (L.map fun l => Value.int (floatSum (l.map .int)))
+
+/-- A shard's rounded `SUM(|x|)`. -/
+def absSum (l : List Int) : Int := floatSum (l.map fun c => .int (fabsCode c))
+
+/-- The shards' `SUM(|x|)`s, scaled, added up exactly. -/
+def absTotal (L : List (List Int)) : Nat :=
+  (L.map fun l => (FloatCode.scaled (absSum l)).toNat).sum
+
+/-! Trusted, like `floatSum_mem` (`SubstraitLean/Aggregate.lean`): proved as
+`core_shard_sum` and `core_shard_avg` in `float-bounds/FloatBounds/Shard.lean`
+for IEEE rounding to nearest, given its `NativeLink` and the code conversions
+of `Float.lean`. `k` shards of at most `m` of the `n ≤ 2³²` codes `ws`, each
+at most `Bs` scaled, with `n (Bs + 2·2⁵²) ≤ 2²⁰⁹⁶` (`|x| ≤ 2¹⁰²¹ / n`, far from
+overflow), added in two phases, are within `shardTolScaled n m k As` of their
+sum in one pass, and their means within `shardAvgTolScaled`. -/
+
+axiom floatSum_twoPhase {L : List (List Int)} {ws : List Int} {m Bs : Nat}
+    (hp : ws.Perm L.flatten) (hm : ∀ l ∈ L, l.length ≤ m) (hmn : m ≤ ws.length)
+    (hk : L.length ≤ ws.length) (h32 : ws.length ≤ 2 ^ 32)
+    (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
+    (hov : ws.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096) :
+    (FloatCode.scaled (twoPhaseSum L) - FloatCode.scaled (floatSum (ws.map .int))).natAbs
+      ≤ FloatCode.shardTolScaled ws.length m L.length (absTotal L)
+
+axiom floatAvg_twoPhase {L : List (List Int)} {ws : List Int} {m Bs : Nat} (hne : ws ≠ [])
+    (hp : ws.Perm L.flatten) (hm : ∀ l ∈ L, l.length ≤ m) (hmn : m ≤ ws.length)
+    (hk : L.length ≤ ws.length) (h32 : ws.length ≤ 2 ^ 32)
+    (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
+    (hov : ws.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096) :
+    (FloatCode.scaled (FloatCode.lift₂ (· / ·) (twoPhaseSum L) (FloatCode.ofInt ws.length))
+        - FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (ws.map .int))
+          (FloatCode.ofInt ws.length))).natAbs
+      ≤ FloatCode.shardAvgTolScaled ws.length m L.length (absTotal L)
+
+/-- Two results agree up to `τ` (scaled): two doubles within `τ`, anything
+else equal. -/
+def Value.Near (τ : Nat) : Value → Value → Prop
+  | .int a, .int b => (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤ τ
+  | a, b => a = b
+
+theorem length_le_flatten : ∀ {L : List (List Int)}, (∀ l ∈ L, l ≠ []) → L.length ≤ L.flatten.length
+  | [], _ => by simp
+  | l :: L, h => by
+    have := length_le_flatten (L := L) fun l' hl' => h l' (by simp [hl'])
+    have hl : 0 < l.length := List.length_pos_iff.mpr (h l (by simp))
+    simp only [List.length_cons, List.flatten_cons, List.length_append]
+    omega
+
+theorem flatten_filter_ne_nil {α : Type} : ∀ L : List (List α),
+    (L.filter fun l => !l.isEmpty).flatten = L.flatten
+  | [] => rfl
+  | [] :: L => by simp [flatten_filter_ne_nil L]
+  | (a :: l) :: L => by simp [flatten_filter_ne_nil L]
+
+theorem fsum_apply_ints : ∀ l : List Int,
+    AggFn.fsum.apply (l.map .int) = if l.isEmpty then .null else .int (floatSum (l.map .int))
+  | [] => rfl
+  | _ :: _ => rfl
+
+theorem partialSums_eq : ∀ Ls : List (List Int),
+    (Ls.map fun l => AggFn.fsum.apply (l.map .int)).filter (· != .null) =
+      (Ls.filter fun l => !l.isEmpty).map fun l => .int (floatSum (l.map .int))
+  | [] => rfl
+  | l :: Ls => by
+    rw [List.map_cons, List.filter_cons, fsum_apply_ints, partialSums_eq Ls]
+    cases l <;> simp
+
+/-- **A split double `SUM`**: shards with the codes `Ls`, against the same
+codes `ws` in one pass. `fsum` of the shards' non-NULL partial sums is
+`floatCombine`'s; it is within `shardTolScaled` of the sequential sum, with
+`k` the shards that have values. -/
+theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {m Bs : Nat}
+    (hp : ws.Perm Ls.flatten) (hm : ∀ l ∈ Ls, l.length ≤ m) (hmn : m ≤ ws.length)
+    (h32 : ws.length ≤ 2 ^ 32) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
+    (hov : ws.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096) :
+    let L := Ls.filter fun l => !l.isEmpty
+    Value.Near (FloatCode.shardTolScaled ws.length m L.length (absTotal L))
+      (AggFn.fsum.apply ((Ls.map fun l => AggFn.fsum.apply (l.map .int)).filter (· != .null)))
+      (AggFn.fsum.apply (ws.map .int)) := by
+  intro L
+  have hpL : ws.Perm L.flatten := by rw [flatten_filter_ne_nil]; exact hp
+  have hne : ∀ l ∈ L, l ≠ [] := fun l hl => by
+    have := (List.mem_filter.mp hl).2; simpa using this
+  rw [partialSums_eq]
+  by_cases hL0 : L = []
+  · have hpL' : ws.Perm [] := by rw [hL0] at hpL; exact hpL
+    have : ws = [] := List.Perm.eq_nil hpL'
+    subst this
+    show Value.Near _ (AggFn.fsum.apply (L.map _)) _
+    rw [hL0]
+    exact rfl
+  · have hkn : L.length ≤ ws.length := Nat.le_trans (length_le_flatten hne) (Nat.le_of_eq hpL.length_eq.symm)
+    have hws : ws ≠ [] := by
+      have := List.length_pos_iff.mpr hL0
+      exact List.length_pos_iff.mp (by omega)
+    have h := floatSum_twoPhase (L := L) hpL (fun l hl => hm l (List.mem_filter.mp hl).1) hmn hkn
+      h32 hB hov
+    obtain ⟨l, L', hLc⟩ := List.exists_cons_of_ne_nil hL0
+    obtain ⟨c, ws', hwc⟩ := List.exists_cons_of_ne_nil hws
+    show Value.Near _ (AggFn.fsum.apply (L.map fun l => .int (floatSum (l.map .int)))) _
+    rw [hLc] at h ⊢
+    rw [hwc] at h ⊢
+    simpa [AggFn.apply, Value.Near, twoPhaseSum] using h
+
+theorem intsOf_flatten (L : List (List Value)) : intsOf L.flatten = (L.map intsOf).flatten :=
+  List.filterMap_flatten ..
+
+theorem sum_apply_ne_nil {vs : List Value} (h : vs ≠ []) : AggFn.sum.apply vs = .int (intSum vs) := by
+  cases vs with
+  | nil => exact absurd rfl h
+  | cons _ _ => rfl
+
+theorem Measure.inputs_eq_vals {m : Measure} (hd : m.distinct = false) (rows : Relation) :
+    m.inputs rows = m.vals rows := by simp [Measure.inputs_eq, hd]
+
+theorem Measure.inputs_flatten_perm {m : Measure} (hd : m.distinct = false) {ss : List Relation}
+    {ws : Relation} (hp : ws.Perm ss.flatten) : (m.inputs ws).Perm (ss.map m.inputs).flatten := by
+  have hss : ss.map m.inputs = ss.map m.vals :=
+    List.map_congr_left fun s _ => Measure.inputs_eq_vals hd s
+  rw [hss, Measure.inputs_eq_vals hd, ← Measure.vals_flatten]; exact m.vals_perm hp
+
+/-- The codes a group's measure adds, on its shards and on the whole, with
+what the bound needs of them. -/
+structure SplitCodes (m : Measure) (ss : List Relation) (ws : Relation) (mx Bs : Nat) : Prop where
+  perm : ws.Perm ss.flatten
+  codes : ∀ v ∈ m.inputs ws, ∃ c, v = .int c ∧ (FloatCode.scaled c).natAbs ≤ Bs
+  shard : ∀ s ∈ ss, (m.inputs s).length ≤ mx
+  le : mx ≤ (m.inputs ws).length
+  small : (m.inputs ws).length ≤ 2 ^ 32
+  far : (m.inputs ws).length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096
+
+theorem SplitCodes.ints {m : Measure} {ss : List Relation} {ws : Relation} {mx Bs : Nat}
+    (hd : m.distinct = false) (h : SplitCodes m ss ws mx Bs) :
+    (∀ v ∈ m.inputs ws, ∃ c, v = .int c) ∧ ∀ s ∈ ss, ∀ v ∈ m.inputs s, ∃ c, v = .int c := by
+  have hint : ∀ v ∈ m.inputs ws, ∃ c, v = .int c := fun v hv =>
+    (h.codes v hv).imp fun _ h => h.1
+  refine ⟨hint, fun s hs v hv => hint v ?_⟩
+  exact (Measure.inputs_flatten_perm hd h.perm).mem_iff.mpr
+    (List.mem_flatten.mpr ⟨_, List.mem_map.mpr ⟨s, hs, rfl⟩, hv⟩)
+
+/-- The shards' codes, those with values. -/
+def SplitCodes.parts (m : Measure) (ss : List Relation) : List (List Int) :=
+  (ss.map fun s => intsOf (m.inputs s)).filter fun l => !l.isEmpty
+
+theorem SplitCodes.apply {m : Measure} {ss : List Relation} {ws : Relation} {mx Bs : Nat}
+    (hd : m.distinct = false) (h : SplitCodes m ss ws mx Bs) :
+    let ws' := intsOf (m.inputs ws)
+    let Ls := ss.map fun s => intsOf (m.inputs s)
+    m.inputs ws = ws'.map .int ∧ (∀ s ∈ ss, m.inputs s = (intsOf (m.inputs s)).map .int) ∧
+      ws'.Perm Ls.flatten ∧ (∀ l ∈ Ls, l.length ≤ mx) ∧ mx ≤ ws'.length ∧ ws'.length ≤ 2 ^ 32 ∧
+      (∀ c ∈ ws', (FloatCode.scaled c).natAbs ≤ Bs) ∧
+      ws'.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096 := by
+  intro ws' Ls
+  obtain ⟨hint, hints⟩ := h.ints hd
+  have hws : m.inputs ws = ws'.map .int := ints_map_intsOf hint
+  have hlen : ws'.length = (m.inputs ws).length := by rw [hws, List.length_map]
+  refine ⟨hws, fun s hs => ints_map_intsOf (hints s hs), ?_, ?_, hlen ▸ h.le, hlen ▸ h.small,
+    ?_, hlen ▸ h.far⟩
+  · have h1 : (intsOf (m.inputs ws)).Perm (intsOf (ss.map m.inputs).flatten) :=
+      (Measure.inputs_flatten_perm hd h.perm).filterMap _
+    rw [intsOf_flatten, List.map_map] at h1; exact h1
+  · intro l hl
+    obtain ⟨s, hs, rfl⟩ := List.mem_map.mp hl
+    exact Nat.le_trans (List.length_filterMap_le _ _) (h.shard s hs)
+  · intro c hc
+    obtain ⟨c', hc', hb⟩ := h.codes _ (mem_intsOf.mp hc)
+    cases hc'; exact hb
+
+/-- **A split double `SUM`, measured** (#428): the measure's `SUM` on each
+shard (`floatPartial`), their non-NULL ones added up (`floatCombine`), is within
+`shardTolScaled n mx k As` of its value on the whole group, where `n` adds up
+the shards' `COUNT(x)`, `mx` is their largest, `k` counts the non-zero ones and
+`As` adds up their `SUM(|x|)`, scaled (`floatBoundParts`, `absPart_eval`). -/
+theorem floatSplit_sum {m : Measure} (hf : m.fn = .fsum) (hd : m.distinct = false)
+    {ss : List Relation} {ws : Relation} {mx Bs : Nat} (h : SplitCodes m ss ws mx Bs) :
+    let L := SplitCodes.parts m ss
+    Value.Near (FloatCode.shardTolScaled (m.inputs ws).length mx L.length (absTotal L))
+      (AggFn.fsum.apply ((ss.map m.eval).filter (· != .null))) (m.eval ws) := by
+  intro L
+  have hsort : m.fn.sorts = false := by rw [hf]; rfl
+  have hev : ∀ rows, m.eval rows = AggFn.fsum.apply (m.inputs rows) := fun rows => by
+    rw [Measure.eval_eq hsort, hf]
+  obtain ⟨hws, hss, hp, hm, hmn, h32, hB, hov⟩ := h.apply hd
+  have hmap : ss.map m.eval = (ss.map fun s => intsOf (m.inputs s)).map
+      fun l => AggFn.fsum.apply (l.map .int) := by
+    simp only [List.map_map]
+    exact List.map_congr_left fun s hs => by simp [hev, ← hss s hs]
+  rw [hmap, hev ws, hws, List.length_map]
+  exact fsum_twoPhase_near hp hm hmn h32 hB hov
+
+/-- **A split double `AVG`, measured**: the measure's `SUM`s and `COUNT`s on
+each shard (`floatPartial`), divided as `floatCombine` divides them, are within
+`shardAvgTolScaled n mx k As` of its value on the whole group. -/
+theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false)
+    {ss : List Relation} {ws : Relation} {mx Bs : Nat} (h : SplitCodes m ss ws mx Bs) :
+    let L := SplitCodes.parts m ss
+    Value.Near (FloatCode.shardAvgTolScaled (m.inputs ws).length mx L.length (absTotal L))
+      (BinFn.apply .fdiv
+        (AggFn.fsum.apply ((ss.map ({ m with fn := .fsum } : Measure).eval).filter (· != .null)))
+        (UnFn.apply .itof
+          (AggFn.sum.apply ((ss.map ({ m with fn := .count } : Measure).eval).filter (· != .null)))))
+      (m.eval ws) := by
+  intro L
+  obtain ⟨hws, hss, hp, hm, hmn, h32, hB, hov⟩ := h.apply hd
+  have hsum : ∀ rows, ({ m with fn := .fsum } : Measure).eval rows =
+      AggFn.fsum.apply (m.inputs rows) := fun rows => by rw [Measure.eval_eq rfl]; rfl
+  have hcount : ∀ rows, ({ m with fn := .count } : Measure).eval rows =
+      .int (m.inputs rows).length := fun rows => by rw [Measure.eval_eq rfl]; rfl
+  have hev : m.eval ws = AggFn.avg.apply ((intsOf (m.inputs ws)).map .int) := by
+    rw [Measure.eval_eq (by rw [hf]; rfl), hf]
+    exact congrArg _ hws
+  have hmap : ss.map ({ m with fn := .fsum } : Measure).eval =
+      (ss.map fun s => intsOf (m.inputs s)).map fun l => AggFn.fsum.apply (l.map .int) := by
+    rw [List.map_map]
+    exact List.map_congr_left fun s hs => by
+      show _ = AggFn.fsum.apply ((intsOf (m.inputs s)).map .int)
+      rw [hsum, ← hss s hs]
+  have hcounts : (ss.map ({ m with fn := .count } : Measure).eval).filter (· != .null) =
+      (ss.map fun s => intsOf (m.inputs s)).map fun l => .int l.length := by
+    rw [List.filter_eq_self.mpr (fun v hv => by
+      obtain ⟨s, _, rfl⟩ := List.mem_map.mp hv; rw [hcount]; rfl), List.map_map]
+    exact List.map_congr_left fun s hs => by
+      show _ = Value.int (intsOf (m.inputs s)).length
+      rw [hcount, (congrArg List.length (hss s hs)).trans (List.length_map ..)]
+  have hlen : (m.inputs ws).length = (intsOf (m.inputs ws)).length :=
+    (congrArg List.length hws).trans (List.length_map ..)
+  rw [hmap, partialSums_eq, hcounts, hev, hlen]
+  have hn : ∀ Ls : List (List Int), intSum (Ls.map fun l => Value.int l.length) = Ls.flatten.length := by
+    intro Ls; induction Ls with
+    | nil => rfl
+    | cons l Ls ih => simp only [List.map_cons, intSum, ih, List.flatten_cons, List.length_append]; omega
+  have hne : ∀ l ∈ L, l ≠ [] := fun l hl => by
+    have := (List.mem_filter.mp hl).2; simpa using this
+  have hpL : (intsOf (m.inputs ws)).Perm L.flatten := by
+    have := flatten_filter_ne_nil (ss.map fun s => intsOf (m.inputs s))
+    show (intsOf (m.inputs ws)).Perm (SplitCodes.parts m ss).flatten
+    unfold SplitCodes.parts; rw [this]; exact hp
+  show Value.Near _ (BinFn.apply .fdiv (AggFn.fsum.apply (L.map fun l => .int (floatSum (l.map .int))))
+    (UnFn.apply .itof (AggFn.sum.apply ((ss.map fun s => intsOf (m.inputs s)).map
+      fun l => .int l.length)))) _
+  have hNs := hn (ss.map fun s => intsOf (m.inputs s))
+  rw [← hp.length_eq] at hNs
+  generalize intsOf (m.inputs ws) = W at *
+  by_cases hw0 : W = []
+  · -- no values: every result is NULL
+    subst hw0
+    have hL : L = [] := by
+      cases hL : L with
+      | nil => rfl
+      | cons l L' =>
+        rw [hL] at hpL
+        have := List.Perm.nil_eq hpL
+        simp at this; exact absurd this.1 (hne l (by rw [hL]; simp))
+    rw [hL]
+    generalize UnFn.apply .itof _ = y
+    cases y <;> rfl
+  · have hkn : L.length ≤ W.length :=
+      Nat.le_trans (length_le_flatten hne) (Nat.le_of_eq hpL.length_eq.symm)
+    have hL0 : L ≠ [] := by
+      intro hL; rw [hL] at hpL; exact hw0 (List.Perm.eq_nil hpL)
+    have h := floatAvg_twoPhase (L := L) hw0 hpL (fun l hl => hm l (List.mem_filter.mp hl).1)
+      hmn hkn h32 hB hov
+    have hLs : (ss.map fun s => intsOf (m.inputs s)).map (fun l => Value.int l.length) ≠ [] := by
+      intro h
+      rw [List.map_eq_nil_iff] at h
+      rw [h] at hp; exact hw0 (List.Perm.eq_nil hp)
+    have hsumapp : AggFn.sum.apply ((ss.map fun s => intsOf (m.inputs s)).map
+        fun l => Value.int l.length) = .int W.length := by
+      rw [sum_apply_ne_nil hLs, hNs]
+    rw [hsumapp]
+    obtain ⟨l, L', hLc⟩ := List.exists_cons_of_ne_nil hL0
+    obtain ⟨c, W', hwc⟩ := List.exists_cons_of_ne_nil hw0
+    rw [hLc] at h ⊢
+    rw [hwc] at h ⊢
+    simpa [AggFn.apply, BinFn.apply, UnFn.apply, Value.Near, twoPhaseSum] using h
+
+/-- `|v|` of a double's code; other values unchanged. -/
+def absValue : Value → Value
+  | .int c => .int (fabsCode c)
+  | v => v
+
+theorem filter_map_absValue : ∀ vs : List Value,
+    (vs.map absValue).filter (· != .null) = (vs.filter (· != .null)).map absValue
+  | [] => rfl
+  | v :: vs => by
+    rw [List.map_cons, List.filter_cons, List.filter_cons, filter_map_absValue vs]
+    cases v <;> simp [absValue]
+
+/-- What a shard's `SUM(|x|)` partial (`floatBoundParts`) holds: its codes'
+`absSum`, `NULL` without values. -/
+theorem absPart_eval {m : Measure} (hd : m.distinct = false) {s : Relation}
+    (hi : ∀ v ∈ m.inputs s, ∃ c, v = .int c) :
+    ({ m with fn := .fsum, arg := fabsExpr m.arg } : Measure).eval s =
+      AggFn.fsum.apply ((intsOf (m.inputs s)).map fun c => .int (fabsCode c)) := by
+  have hrow : ∀ row ∈ m.kept s, (fabsExpr m.arg).eval row = absValue (m.arg.eval row) := by
+    intro row hrow
+    cases hv : m.arg.eval row with
+    | null => exact fabsExpr_eval_null hv
+    | int c => exact fabsExpr_eval_int hv
+    | _ =>
+      exfalso
+      have hmem : m.arg.eval row ∈ m.inputs s := by
+        rw [Measure.inputs_eq_vals hd]
+        simp only [Measure.vals, List.mem_filter, List.mem_map, bne_iff_ne, ne_eq]
+        exact ⟨⟨row, hrow, rfl⟩, by rw [hv]; simp⟩
+      obtain ⟨c, hc⟩ := hi _ hmem
+      rw [hv] at hc; cases hc
+  have hin : ({ m with fn := .fsum, arg := fabsExpr m.arg } : Measure).inputs s =
+      (m.inputs s).map absValue := by
+    rw [Measure.inputs_eq_vals hd,
+      Measure.inputs_eq_vals (m := { m with fn := .fsum, arg := fabsExpr m.arg }) hd]
+    show ((m.kept s).map (fabsExpr m.arg).eval).filter (· != .null) =
+      (((m.kept s).map m.arg.eval).filter (· != .null)).map absValue
+    rw [List.map_congr_left hrow, ← filter_map_absValue, List.map_map]
+    rfl
+  rw [Measure.eval_eq rfl]
+  show AggFn.fsum.apply _ = _
+  rw [hin]
+  have h2 := congrArg (List.map absValue) (ints_map_intsOf hi)
+  rw [h2, List.map_map]
+  rfl
 
 /-- Splits with `floatCombine`: the measures of `Measure.twoPhase`, and
 `SUM`/`AVG` of doubles (not `DISTINCT`). -/
@@ -1918,7 +2315,7 @@ def Rel.splitAgg (S : String → Bool) (K : String → Option (List Nat)) (T : W
       else if r.linear S K T cat && ms.all (·.algebraic I r (r.keyCols S K T cat)) then
         some (.aggregate r gs (algParts ms), algCombine gs.length ms (.read P))
       else if floats && r.linear S K T cat && ms.all (·.floatSplittable (r.keyCols S K T cat)) then
-        some (.aggregate r gs (ms.flatMap floatPartial), floatCombine gs.length ms (.read P))
+        some (.aggregate r gs (floatParts ms), floatCombine gs.length ms (.read P))
       else none
   | .filter r c => (r.splitAgg S K T cat I P floats).map fun pq => (pq.1, .filter pq.2 c)
   | .project r es => (r.splitAgg S K T cat I P floats).map fun pq => (pq.1, .project pq.2 es)

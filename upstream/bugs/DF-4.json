@@ -1,0 +1,22 @@
+{
+  "id": "DF-4",
+  "project": "datafusion",
+  "version": "51",
+  "status": "confirmed",
+  "status_note": "confirmed on 51.0.0 and 55.0.0: a producer bug, DataFusion's own consumer reads the two columns swapped",
+  "summary": "`GROUP BY k, k` writes two grouping expressions, and the projection above reads the aggregate's columns shifted by one. Could also be sverify's reading of a repeated grouping expression: check first.",
+  "repro": "DuckDB `aggregate/group/test_group_by.test:149`",
+  "found_by": "FACTS S6",
+  "facts": [
+    "datafusion-S6"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

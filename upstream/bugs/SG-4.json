@@ -1,0 +1,23 @@
+{
+  "id": "SG-4",
+  "project": "sqlglot",
+  "version": "30.22.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 30.29.0, also with the Rust tokenizer",
+  "summary": "The tokenizer reads every underscore in a number as a digit separator. DuckDB reads only an underscore between two digits so; anywhere else it starts an alias.",
+  "repro": "`SELECT 1__2` is 1 (named `__2`) in DuckDB, 12 in SQLGlot; `SELECT 1._5` is 1 (named `_5`), 1.5 in SQLGlot. `1_000` agrees.",
+  "handling": "The lift refuses a number with an underscore not between two digits (`_check_numbers`).",
+  "found_by": "sqllogictest replay through the lift, `parser/digit_separators.test`, `parser/unquoted_underscore_digit_identifiers.test`",
+  "files": [
+    "python/src/sverify/sql_lift/_base.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

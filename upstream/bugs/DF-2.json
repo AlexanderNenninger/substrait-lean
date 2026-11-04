@@ -1,0 +1,30 @@
+{
+  "id": "DF-2",
+  "project": "datafusion",
+  "version": "51",
+  "status": "fixed upstream",
+  "status_note": "fixed upstream in 52.0.0 ([#17716](https://github.com/apache/datafusion/issues/17716)): `FETCH` is now refused",
+  "fixed_in": "52.0.0",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/17716"
+  ],
+  "summary": "`FETCH FIRST n ROWS ONLY` is dropped: the plan has no limit.",
+  "repro": "DuckDB `parser/fetch_first.test`",
+  "handling": "Frontend no longer used (#264)",
+  "found_by": "FACTS S6",
+  "prs": [
+    264
+  ],
+  "facts": [
+    "datafusion-S6"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

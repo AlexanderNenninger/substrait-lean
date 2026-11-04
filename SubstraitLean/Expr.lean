@@ -3,6 +3,7 @@ import SubstraitLean.Conversions
 import SubstraitLean.Text
 import SubstraitLean.Time
 import SubstraitLean.Numeric
+import SubstraitLean.BlackBox
 
 /-!
 # Scalar expressions
@@ -197,6 +198,9 @@ inductive UnFn where
   /-- `x` is a number (a shim's guard, #185). The SQL printers write `x IS NOT
   NULL`, since in SQL a non-NULL operand of a numeric function is a number. -/
   | isNum
+  /-- A scalar black box of one argument (`SubstraitLean/BlackBox.lean`, #325):
+  the table's row `name`. -/
+  | bbox (name : String)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -247,6 +251,8 @@ inductive BinFn where
   (`apply_greatest`), so that `GREATEST(a, b, c, …)` is linear in its
   arguments: the conditional copies its first argument (#340). -/
   | greatest | least
+  /-- A scalar black box of two arguments (`SubstraitLean/BlackBox.lean`, #325). -/
+  | bbox2 (name : String)
   deriving Repr, DecidableEq
 
 /-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
@@ -384,6 +390,7 @@ def UnFn.apply : UnFn → Value → Value
   | .isNum, _ => .bool false
   | .fit m w, .int i => .int (w.fit m i)
   | .fit _ _, v => v
+  | .bbox n, v => BlackBox.callScalar n [v]
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -499,6 +506,7 @@ def Value.pick (better : Value → Value → Bool) : Value → Value → Value
 /-- Arithmetic and comparisons are null-propagating; ill-typed calls yield
 `null` (a well-typed plan never reaches those cases). -/
 def BinFn.apply : BinFn → Value → Value → Value
+  | .bbox2 n, a, b => BlackBox.callScalar n [a, b]
   | .greatest, a, b => Value.pick Value.ltB a b
   | .least, a, b => Value.pick (fun a b => Value.ltB b a) a b
   | .and, a, b => and3 a b

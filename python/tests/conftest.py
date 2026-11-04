@@ -9,14 +9,15 @@ Tests comparing two engines with each other stay in `core`. DataFusion is an
 optional extra of `sverify`, but the tests need it (it is in the `dev`
 group); `test_without_datafusion.py` blocks it.
 
-`tests/lift_backlog.txt` lists the tests that wait on SQL the lift
-(`sverify.sql_lift`) does not read yet: the backlog of M2 (#240). A listed
+`tests/lift_backlog.json` lists the tests that wait on SQL the lift
+(`sverify.sql_lift`) does not read yet: the backlog of M2 (#240), each with
+the reason it waits (`python -m sverify_dev.bugs` checks it). A listed
 test that fails because the lift refuses its SQL is an expected failure,
 with the refusal as its reason (`pytest -rx`); one that fails otherwise
 fails, and one that passes fails too, until its line is removed (strict). A
 test that is not listed fails as usual, whatever refuses it.
 `SVERIFY_LIFT_BACKLOG=<file> pytest …` writes the tests the lift refuses to
-`<file>`, to start or prune the list.
+`<file>`, one node id per line, to start or prune the list.
 
 Two profiles, chosen by `SVERIFY_PROFILE`: `dev` (the default, except in
 CI) runs every Hypothesis test with a tenth of its examples (at least 3), for
@@ -30,12 +31,17 @@ that take seconds even in the `dev` profile (engine agreement on many
 queries, long streams, replays), and every Spark test, which starts a JVM.
 `poe test-all`, `poe qa` and CI run them.
 
+`chaos` marks the crash-injection suite in `tests/chaos/` (`poe
+test-chaos`). A run collects it only when its `-m` expression names
+`chaos`, so `poe test`, `poe test-all` and CI leave it out.
+
 `SVERIFY_SHARD=2/3` keeps the second of three shards of the selected tests,
 split by a hash of the node id (CI splits `core` this way); the shards
 together are the whole run.
 """
 
 import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -57,6 +63,7 @@ SCALE = float(os.environ.get("SVERIFY_EXAMPLES") or ("1" if PROFILE == "ci" else
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "backend(name): the backend a test runs under")
     config.addinivalue_line("markers", "slow: left out of `poe test`, run by CI and `poe test-all`")
+    config.addinivalue_line("markers", "chaos: crash injection, only run by `-m chaos`")
     config._lift_refused = []  # type: ignore[attr-defined]
     for name in BACKENDS:
         config.addinivalue_line("markers", f"{name}: set from the test's backend")
@@ -82,11 +89,10 @@ def _lift_refusal(exc: BaseException | None) -> str | None:
     return None
 
 
-#: The tests that wait on the lift (`tests/lift_backlog.txt`), by node id.
+#: The tests that wait on the lift (`tests/lift_backlog.json`), by node id.
 BACKLOG = {
-    line.strip()
-    for line in (Path(__file__).parent / "lift_backlog.txt").read_text().splitlines()
-    if line.strip() and not line.startswith("#")
+    entry["test"]
+    for entry in json.loads((Path(__file__).parent / "lift_backlog.json").read_text())["tests"]
 }
 
 
@@ -108,7 +114,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Any:
         report.outcome = "failed"
         report.longrepr = (
             f"{item.nodeid} passes: the lift reads its SQL now, so remove it from "
-            "tests/lift_backlog.txt"
+            "tests/lift_backlog.json"
         )
 
 
@@ -146,7 +152,18 @@ def _shard(config: pytest.Config, items: list[pytest.Item]) -> None:
     items[:] = keep
 
 
+def _leave_out_chaos(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Deselect the chaos suite unless `-m` names it."""
+    if "chaos" in (config.option.markexpr or ""):
+        return
+    chaos = [item for item in items if item.get_closest_marker("chaos")]
+    if chaos:
+        config.hook.pytest_deselected(items=chaos)
+        items[:] = [item for item in items if not item.get_closest_marker("chaos")]
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    _leave_out_chaos(config, items)
     for item in items:
         name = backend(item)
         if name not in BACKENDS:

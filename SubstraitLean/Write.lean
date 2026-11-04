@@ -103,10 +103,16 @@ def windowFns : List (Nat × String) := [
   (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
   (75, "first_value"), (76, "last_value"), (77, "nth_value")]
 
+/-- Black boxes (#325), scalar and aggregate: anchors 700–799, in the order of
+`SubstraitLean/BlackBox.lean`'s table, under its URN (`BlackBox.blackBoxUrn`). -/
+def blackBoxFns : List (Nat × String) :=
+  (BlackBox.scalars.map (·.name) ++ BlackBox.aggregates.map (·.name)).zipIdx.map
+    fun (n, i) => (700 + i, n)
+
 /-- Each area's functions and the range its new anchors come from. -/
 def areas : List (List (Nat × String) × Nat) :=
   [(coreFns, 100), (stringFns, 200), (temporalFns, 300), (nestedFns, 400),
-   (aggregateFns, 500), (windowFns, 600)]
+   (aggregateFns, 500), (windowFns, 600), (blackBoxFns, 700)]
 
 /-- Every declared `(anchor, Substrait name)`, area by area. -/
 def declared : List (Nat × String) := areas.flatMap (·.1)
@@ -119,6 +125,19 @@ example : (declared.map (·.2)).Nodup := by decide
 example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
   decide
 
+/-- The anchor of the black box `name` (0 for a name without a row). -/
+def bbAnchor (name : String) : Nat :=
+  ((blackBoxFns.find? (·.2 == name)).map (·.1)).getD 0
+
+theorem bbAnchor_declared (name : String) :
+    bbAnchor name = 0 ∨ bbAnchor name ∈ declared.map (·.1) := by
+  unfold bbAnchor
+  cases h : blackBoxFns.find? (·.2 == name) with
+  | none => exact Or.inl rfl
+  | some p =>
+    refine Or.inr (List.mem_map.mpr ⟨p, List.mem_flatMap.mpr
+      ⟨(blackBoxFns, 700), by simp [areas], List.mem_of_find?_eq_some h⟩, rfl⟩)
+
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
   | .bit op => match op with | .and => 500 | .or => 501 | _ => 502
@@ -127,6 +146,7 @@ def AggFn.anchor : AggFn → Nat
   | .cov sample => if sample then 507 else 508
   | .corr => 509
   | .concat _ => 510
+  | .bbox n => bbAnchor n
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -155,6 +175,7 @@ def UnFn.anchor : UnFn → Nat
   -- A shim's guards.
   | .raise _ => 118 | .isNum => 119
   | .structField _ | .listElement _ => 0
+  | .bbox n => bbAnchor n
 
 def BinFn.anchor : BinFn → Nat
   -- Core
@@ -171,10 +192,15 @@ def BinFn.anchor : BinFn → Nat
   | .strRepeat => 203 | .ilike => 204 | .levenshtein => 205
   -- Dates and times
   | .dateAdd => 4 | .dateDiff => 60
+  | .bbox2 n => bbAnchor n
 
-/-- Every anchor a function is written with is declared (0 marks no call). -/
-theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.1) := by
+/-- Every anchor a function is written with is declared (0 marks no call,
+or a black box without a row). -/
+theorem AggFn.anchor_declared (f : AggFn) :
+    AggFn.anchor f = 0 ∨ AggFn.anchor f ∈ declared.map (·.1) := by
   cases f
+  case bbox n => exact bbAnchor_declared n
+  all_goals apply Or.inr
   case bit op => cases op <;> decide
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
   case pick last => cases last <;> decide
@@ -185,12 +211,16 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
   cases f
+  case bbox n => exact bbAnchor_declared n
   case regexExtract => exact Or.inr (by simp only [UnFn.anchor]; decide)
   case regexReplace => exact Or.inr (by simp only [UnFn.anchor]; decide)
   all_goals first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
 
-theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
+theorem BinFn.anchor_declared (f : BinFn) :
+    BinFn.anchor f = 0 ∨ BinFn.anchor f ∈ declared.map (·.1) := by
   cases f
+  case bbox2 n => exact bbAnchor_declared n
+  all_goals apply Or.inr
   case trim l r => cases l <;> cases r <;> decide
   case bit op => cases op <;> decide
   all_goals exact of_decide_eq_true rfl
@@ -858,6 +888,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
           | .min | .max | .pick _ => wkind ks m.arg
           | .concat _ => .str
           | .collect => .list (wkind ks m.arg)
+          | .bbox n => .ofKind (Parse.bbAggKind n)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
@@ -867,6 +898,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .min | .max | .pick _ => wkind ks m.arg
         | .concat _ => .str
         | .collect => .list (wkind ks m.arg)
+        | .bbox n => .ofKind (Parse.bbAggKind n)
   | .unnest r c =>
       let ks := relKinds schemas cat r
       ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
@@ -1154,8 +1186,12 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
 def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String)
     (df : Bool := false) : Json :=
   obj [
-    ("extensions", Json.arr (functions.map fun (a, n) => obj [("extensionFunction", obj [
-      ("functionAnchor", toJson a), ("name", toJson n)])]).toArray),
+    -- The black boxes' URN (#325); the other functions are Substrait's own.
+    ("extensionUrns", Json.arr #[obj [("extensionUrnAnchor", toJson 1),
+      ("urn", toJson BlackBox.blackBoxUrn)]]),
+    ("extensions", Json.arr (functions.map fun (a, n) => obj [("extensionFunction", obj ([
+      ("functionAnchor", toJson a), ("name", toJson n)] ++
+      if blackBoxFns.contains (a, n) then [("extensionUrnReference", toJson 1)] else []))]).toArray),
     ("relations", Json.arr #[obj [("root", obj [
       ("input", writeRel schemas cat df [] root none), ("names", toJson names)])]])]
 

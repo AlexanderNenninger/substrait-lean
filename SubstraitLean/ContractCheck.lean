@@ -177,6 +177,9 @@ structure Report where
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
+  /-- The expressions that run correctly without their checks
+  (`Rel.evalG_marks`), as `Rel.marksJson`; `.null` when none is known. -/
+  unchecked : Json := .null
   /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
@@ -190,6 +193,27 @@ structure Report where
   inferred : List (String × Nat × Bound) := []
   /-- The values `bounds` rule out per base-table column (a divisor's 0). -/
   inferredNes : List (String × Nat × Int) := []
+
+/-- The node's name in `sverify.sql`'s model. -/
+def _root_.Substrait.Rel.nodeName : Rel → String
+  | .read _ => "Read" | .values _ _ => "Values" | .filter _ _ => "Filter"
+  | .project _ _ => "Project" | .emit _ _ => "Emit" | .cross _ _ => "Cross"
+  | .join _ _ _ _ => "Join" | .fetch _ _ _ => "Fetch" | .unionAll _ _ => "UnionAll"
+  | .window _ _ _ _ => "Window" | .semi _ _ _ _ => "Semi" | .orderBy _ _ => "OrderBy"
+  | .distinct _ => "Distinct" | .unnest _ _ => "Unnest" | .aggregate _ _ _ => "Aggregate"
+
+/-- The inputs of a node, in the order of `Marks.input`. -/
+def _root_.Substrait.Rel.inputs : Rel → List Rel
+  | .read _ | .values _ _ => []
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r | .unnest r _ | .aggregate r _ _ => [r]
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => [a, b]
+
+/-- `Marks` as JSON, each node named, so the SQL writer can check it walks
+the same tree: `{"node": "Filter", "slots": [0], "inputs": [...]}`. -/
+partial def _root_.Substrait.Rel.marksJson (r : Rel) (m : Marks) : Json :=
+  Json.mkObj [("node", Lean.toJson r.nodeName), ("slots", Lean.toJson m.slots),
+    ("inputs", Json.arr (r.inputs.zipIdx.map fun (x, i) => x.marksJson (m.input i)).toArray)]
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
@@ -211,6 +235,7 @@ def Report.json (r : Report) : Json :=
           | none => .null)]).toArray),
     ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe).toArray),
     ("guard_free", Lean.toJson r.guardFree),
+    ("unchecked", r.unchecked),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
 
@@ -319,6 +344,12 @@ def check (input : Json) : Except String Report := do
   let guardFree := match transform with
     | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1 == .sumWraps)
     | none => false
+  let unchecked := match transform with
+    | some p =>
+      if p.root.checkWF cat && p.root.looseSub then
+        p.root.marksJson (p.root.marks cat A F T false)
+      else .null
+    | none => .null
   let (optimized, rewrites) := match transform with
     | some p =>
       if !p.root.checkWF cat then (.null, [])
@@ -342,6 +373,7 @@ def check (input : Json) : Except String Report := do
     inferred := Infer.merged A (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     inferredNes :=
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
-    guardFree }
+    guardFree
+    unchecked }
 
 end Substrait.ContractCheck

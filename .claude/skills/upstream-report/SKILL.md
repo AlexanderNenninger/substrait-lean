@@ -1,25 +1,25 @@
 ---
 name: upstream-report
-description: Draft or revise an upstream bug report for an entry in `upstream/LEDGER.md` (SQLGlot, DuckDB, DataFusion, Ibis, delta-rs, Substrait tooling), ready for the author to file. Use when asked to write, polish, check or prepare a report or issue for a ledger ID (e.g. "write up SG-5", "draft the DuckDB issue for DD-3", "is DF-4 ready to file?"), or to check a report against a project's contributing guide. Covers provenance, duplicate and main-branch checks, the repro script, each project's issue form, and the voice the reports are written in.
-argument-hint: "Ledger ID(s), e.g. SG-5 or DF-4 DF-10"
+description: Draft or revise an upstream bug report for an upstream bug in `upstream/bugs/<ID>.json` (SQLGlot, DuckDB, DataFusion, Ibis, delta-rs, Substrait tooling), ready for the author to file. Use when asked to write, polish, check or prepare a report or issue for a bug ID (e.g. "write up SG-5", "draft the DuckDB issue for DD-3", "is DF-4 ready to file?"), or to check a report against a project's contributing guide. Covers provenance, duplicate and main-branch checks, the repro script, each project's issue form, and the voice the reports are written in.
+argument-hint: "Bug ID(s), e.g. SG-5 or DF-4 DF-10"
 ---
 
 # Upstream bug reports
 
-The ledger (`upstream/LEDGER.md`) records what sverify found upstream. A report turns one entry into an issue the author files by hand. Reports live in `../sverify-upstream-reports/` (one `<ID>-<project>.md` per entry, repro scripts in `repros/<ID>.py`, and a `README.md` with the status of every entry). If that folder is missing, ask where to put them.
+The upstream bugs (`upstream/bugs/<ID>.json`, one document per bug, in the format of `upstream/bug.schema.json`) record what sverify found upstream. A report turns one document into an issue the author files by hand. Reports live in `../sverify-upstream-reports/` (one `<ID>-<project>.md` per entry, repro scripts in `repros/<ID>.py`, and a `README.md` with the status of every entry). If that folder is missing, ask where to put them.
 
 **Never file an issue, comment, or react upstream.** Draft only; the author files.
 
 ## 1. Establish what happened
 
-Read the ledger row: version, minimal repro, workaround, and the **Found by** column (where the section has one). That column decides how the report says the bug was found. Don't guess or embellish:
+Read the document `upstream/bugs/<ID>.json`: `version`, `repro`, `handling`, the links in `upstream`, `issues` and `prs`, and `found_by`. That field decides how the report says the bug was found. Don't guess or embellish:
 
 - "sqllogictest replay", "replay", `<file>.test`: DuckDB's sqllogictest suite replayed through `python/tools/sverify_dev/slt.py`, compared against the formalization.
 - `fuzz__*.json` ledgers: the Hypothesis fuzzer (`sverify_dev/duckdb_fuzz.py`). **Only** these may be called fuzzing.
 - `probes.json`, `duckdb-R15-*` facts: the function probe (`sverify_dev/probe.py`).
 - `characterization/<engine>/facts/`: characterizing the engine against the formalization.
 
-If the source is unclear, check `git log -S'<ID>'` and the PR named in the row, then ask.
+If the source is unclear, check `git log -S'<ID>'` and the PR named in the document, then ask.
 
 ## 2. Check it is still a bug, and not known
 
@@ -64,5 +64,6 @@ Other projects: follow their template the same way and add them here.
 
 ## 6. Finish
 
+- Once the author has filed it, update `upstream/bugs/<ID>.json` in the repository: `status` `filed`, the link in `upstream` and `status_note`, and a new `checked` entry with the versions the report was checked on. `python -m sverify_dev.bugs` checks the document.
 - Update the reports `README.md`: the entry's row, and a "Worth a look" line for anything unverified (e.g. "may be fixed on main by #N; not tested").
 - Tell the author what still needs them: placeholders to fill, form fields to pick, anything not verified, and whether a duplicate or main-branch fix was found.

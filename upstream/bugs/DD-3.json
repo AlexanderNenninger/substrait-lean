@@ -1,0 +1,26 @@
+{
+  "id": "DD-3",
+  "project": "duckdb",
+  "version": "2.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 2.0.0 and the 2.0.1 and 2.1.0 nightlies",
+  "summary": "`VAR_POP` and `STDDEV_POP` of a single NaN are `0.0`, not NaN; with a second value they are NaN. IEEE and every other engine propagate the NaN.",
+  "repro": "`select var_pop(x) from (values ('nan'::double)) t(x)` gives `0.0`",
+  "handling": "The SQL writer returns NaN when an input is NaN (#54)",
+  "found_by": "#54",
+  "issues": [
+    54
+  ],
+  "files": [
+    "python/src/sverify/sql/core/_base.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

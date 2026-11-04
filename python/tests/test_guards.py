@@ -4,6 +4,7 @@ same result as with them, on data that meets the preconditions."""
 
 import json
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -14,7 +15,7 @@ from ibis import _
 import sverify as sv
 from sverify import duckdb_engine, polars_engine
 from sverify.engine import connect, plan_json, written_plan
-from sverify.sql import to_sql
+from sverify.sql import Unsupported, to_sql
 from sverify.sql.duckdb import DUCKDB
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import canonical
@@ -37,6 +38,8 @@ SETTINGS = settings(
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )
+
+bounded_rows = st.lists(st.tuples(st.integers(0, 1000), st.integers(1, 100)), max_size=20)
 
 
 def plan(expr: ibis.Table) -> dict:
@@ -67,6 +70,58 @@ def test_product_of_unbounded_columns_keeps_its_guard():
     assert not report.guard_free
 
 
+# `a // b` cannot divide by zero; `a * b` may overflow (`b` has no upper bound).
+MIXED = T.select(q=T.a // T.b, p=T.a * T.b)
+# The filter's remainder runs unchecked, the product above it keeps its check.
+MIXED_FILTER = T.filter(T.a % T.b == 0).select(p=T.a * T.b)
+MIXED_REQUIRES = {"t": [_.a >= 0, _.a <= 1000, _.b >= 1]}
+
+
+def test_per_expression_guards():
+    """`Rel.evalG_marks`: the division runs unchecked, the product keeps its check."""
+    report = sv.verify(MIXED, requires=MIXED_REQUIRES, infer=False)
+    assert not report.guard_free and report.unchecked is not None
+    p = plan(MIXED)
+    checked = to_sql(p, SNOWFLAKE)
+    sql = to_sql(p, SNOWFLAKE, unchecked=report.unchecked)
+    assert "division by zero" in checked and "division by zero" not in sql
+    assert "sverify: integer overflow" in sql
+
+
+def test_per_expression_guards_below_a_projection():
+    report = sv.verify(MIXED_FILTER, requires=MIXED_REQUIRES, infer=False)
+    sql = to_sql(plan(MIXED_FILTER), SNOWFLAKE, unchecked=report.unchecked)
+    assert "division by zero" not in sql and "sverify: integer overflow" in sql
+
+
+def test_unchecked_marks_are_checked_against_the_plan():
+    report = sv.verify(MIXED, requires=MIXED_REQUIRES, infer=False)
+    with pytest.raises(Unsupported, match="another plan"):
+        to_sql(plan(GUARD_FREE[1]), DUCKDB, unchecked=report.unchecked)
+
+
+def test_unchecked_aggregate_keeps_its_sum_check():
+    expr = T.group_by("b").agg(s=(T.a // T.b).sum())
+    report = sv.verify(expr, requires=BOUNDED)
+    sql = to_sql(plan(expr), DUCKDB, unchecked=report.unchecked)
+    assert "division by zero" not in sql and "integer overflow in SUM" in sql
+
+
+@pytest.mark.parametrize("expr", [*GUARD_FREE, MIXED, MIXED_FILTER])
+@SETTINGS
+@given(rows=bounded_rows)
+def test_unchecked_runs_agree(expr, rows):
+    tables = {"t": pa.table({"a": [r[0] for r in rows], "b": [r[1] for r in rows]})}
+    p = plan(expr)
+    requires = MIXED_REQUIRES if any(expr is x for x in (MIXED, MIXED_FILTER)) else BOUNDED
+    report = sv.verify(expr, requires=requires, infer=False)
+    con = duckdb.connect()
+    con.register("t", tables["t"])
+    want = canonical(con.execute(to_sql(p, DUCKDB)).fetchall())
+    got = con.execute(to_sql(p, DUCKDB, unchecked=report.unchecked)).fetchall()
+    assert canonical(got) == want
+
+
 def test_sum_keeps_its_check():
     """`SUM` may wrap whatever the rows are (`Issue.sumWraps`): it stays checked."""
     report = sv.verify(GUARD_FREE[2], requires=BOUNDED)
@@ -81,9 +136,6 @@ def test_filtered_right_side_of_a_left_join_keeps_guards():
     expr = T.left_join(U.filter(U.d > 0), "a").select(x=T.b + 1)
     report = sv.verify(expr, requires=BOUNDED)
     assert not report.issues and not report.guard_free
-
-
-bounded_rows = st.lists(st.tuples(st.integers(0, 1000), st.integers(1, 100)), max_size=20)
 
 
 @pytest.mark.parametrize("expr", GUARD_FREE)

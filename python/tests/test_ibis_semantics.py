@@ -150,7 +150,8 @@ def test_refused_operations(con):
         (lambda t: t.select(r=ibis.random()), "each run gives another value"),
         (lambda t: t.select(r=ibis.now()), "pass the time in"),
         (lambda t: t.select(r=ibis.today()), "pass the date in"),
-        (lambda t: t.select(r=t.v.typeof()), "the type's name is the engine's own"),
+        # DuckDB types an expression its own way (`typeof(1)` is INTEGER).
+        (lambda t: t.select(r=(t.a + 1).typeof()), "only supported of a column"),
         (lambda t: t.filter(t.v > ibis.param(ibis.dtype("float64"))), "pass params"),
     ],
 )
@@ -158,6 +159,38 @@ def test_refusals_say_why(con, build, reason):
     """#58: each refused operation says why, and what to do instead."""
     with pytest.raises(Unsupported, match=reason):
         plan_json(con, build(con.table("t")))
+
+
+def test_typeof_folds_to_duckdbs_name(con):
+    """#508: `typeof` of a column is a constant, DuckDB's name of its type
+    (`duckdb-typeof-names`)."""
+    t = con.table("t")
+    expr = t.select(a=t.a.typeof(), s=t.s.typeof(), v=t.v.typeof())
+    expected = duckdb_sql(con, "SELECT typeof(a), typeof(s), typeof(v) FROM t")
+    assert lean(con, expr) == [tuple(r.values()) for r in expected.to_pylist()]
+    assert lean(con, expr) == [("BIGINT", "VARCHAR", "DOUBLE")] * 3
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32",
+        "float64", "decimal(10, 2)", "decimal(38, 10)", "string", "boolean", "date", "time",
+        "binary", "uuid", "interval('s')", "timestamp", "timestamp(0)", "timestamp(3)",
+        "timestamp(9)", "timestamp('UTC')", "array<int64>", "array<array<string>>",
+    ],
+)  # fmt: skip
+def test_typeof_names_are_duckdbs(dtype):
+    """`duckdb_type_name` is what DuckDB's `typeof` says of a value of that
+    type, as Ibis writes the type for DuckDB."""
+    import duckdb
+    from ibis.backends.sql.datatypes import DuckDBType
+
+    from sverify.ibis_substrait.casts import duckdb_type_name
+
+    t = ibis.dtype(dtype)
+    [(name,)] = duckdb.execute(f"SELECT typeof(NULL::{DuckDBType.to_string(t)})").fetchall()
+    assert duckdb_type_name(t) == name
 
 
 def test_day_of_week_index_starts_on_monday(con):

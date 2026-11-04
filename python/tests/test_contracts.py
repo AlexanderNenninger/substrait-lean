@@ -91,6 +91,79 @@ def test_sql_transform_and_conditions():
     assert report.proved
 
 
+def test_sql_transform_with_ibis_ensures():
+    # #438: an Ibis condition binds to the lifted query's output schema.
+    jobs = ibis.table({"workflow": "!string"}, name="jobs")
+    report = sv.verify(
+        "SELECT workflow, count(*) AS n FROM jobs GROUP BY workflow",
+        tables={"jobs": jobs},
+        ensures=[_.n >= 1, sv.unique("workflow")],
+    )
+    assert report.proved
+    assert [c.label for c in report.ensures] == ["(_.n >= 1)", "unique(workflow)"]
+    assert not sv.verify(
+        "SELECT workflow, count(*) - 1 AS n FROM jobs GROUP BY workflow",
+        tables={"jobs": jobs},
+        ensures=[_.n >= 1],
+        counterexamples=0,
+    ).proved
+
+
+def test_sql_transform_with_ibis_requires():
+    # #438: an Ibis precondition binds to its input table's schema, beside SQL ones.
+    report = sv.verify(
+        "select id, amount - 5 as rest from orders",
+        tables={"orders": orders, "customers": customers},
+        requires={"orders": [_.amount >= 5, "amount <= 100"]},
+        ensures=[_.rest >= 0, "rest <= 95"],
+    )
+    assert report.proved
+    assert report.requires["orders"] == ["(_.amount >= 5)", "amount <= 100"]
+    assert not sv.verify(
+        "select id, amount - 5 as rest from orders",
+        tables={"orders": orders},
+        requires={"orders": [_.amount >= 4]},
+        ensures=[_.rest >= 0],
+        counterexamples=0,
+    ).proved
+
+
+def test_report_runs_the_plan_it_checked():
+    # #461: verify, then run exactly that plan, for Ibis and for SQL.
+    import pyarrow as pa
+
+    con = sv.connect("duckdb")
+    con.put("t", pa.table({"host": ["a", "a", "b"], "cpu": [1, 5, 7]}))
+    t = con.table("t")
+    expected = [{"host": "a", "m": 5}, {"host": "b", "m": 7}]
+    ibis_q = t.filter(_.cpu > 3).group_by("host").agg(m=_.cpu.max())
+    sql_q = "SELECT host, max(cpu) AS m FROM t WHERE cpu > 3 GROUP BY host"
+    for report in (
+        sv.verify(ibis_q, ensures=[sv.unique("host")]),
+        sv.verify(sql_q, tables={"t": t}, ensures=[sv.unique("host")]),
+    ):
+        assert report.proved
+        assert report.plan is not None
+        for engine in (None, "polars"):
+            assert report.run(con, engine).sort_by("host").to_pylist() == expected
+
+
+def test_report_runs_with_its_params():
+    import pyarrow as pa
+
+    con = sv.connect("duckdb")
+    con.put("t", pa.table({"cpu": [1, 5, 7]}))
+    t = con.table("t")
+    p = ibis.param(ibis.dtype("int64"))
+    report = sv.verify(t.filter(_.cpu > p), params={p: 4})
+    assert sorted(report.run(con).column("cpu").to_pylist()) == [5, 7]
+
+
+def test_report_without_plan_refuses_to_run():
+    with pytest.raises(ValueError, match="no plan"):
+        sv.Report(requires={}, ensures=[]).run(sv.connect())
+
+
 def test_non_nullable_schema_is_used():
     strict = ibis.table({"id": "!int64", "amount": "int64"}, name="strict")
     assert sv.verify(strict.select("id"), ensures=[_.id.notnull()]).proved

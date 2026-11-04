@@ -112,6 +112,9 @@ inductive AggFn where
   in the measure's `sort` order, joined by the constant `sep`; NULLs skipped,
   NULL without values. Ties make it depend on the engine, as for `pick`. -/
   | concat (sep : String)
+  /-- An aggregate black box (`SubstraitLean/BlackBox.lean`, #325): the
+  table's row `name`, its `empty` value without values. -/
+  | bbox (name : String)
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -274,6 +277,7 @@ def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : V
 
 def AggFn.apply : AggFn → List Value → Value
   | .count, vs => .int vs.length
+  | .bbox n, vs => BlackBox.callAgg n vs
   | _, [] => .null
   | .sum, vs => .int (intSum vs)
   | .fsum, vs => .int (floatSum vs)

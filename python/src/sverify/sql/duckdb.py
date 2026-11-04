@@ -37,6 +37,7 @@ BC), which `date_trunc` leaves as it is.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from sverify.black_box import BlackBox
 from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind, Lst
 
 #: The timestamps chrono represents (`Time.partMin`, `Time.partMax`).
@@ -248,6 +249,13 @@ class DuckDBDialect(Dialect):
 
     def digest(self, fn: str, s: str) -> str:
         return f"{fn}({s})"
+
+    def black_box(self, row: BlackBox, args: list[str]) -> str:
+        # DuckDB's own function: the black box is pinned to it (#325).
+        return row.duckdb.format(*args)
+
+    def black_box_agg(self, row: BlackBox, v: str) -> str:
+        return row.duckdb.format(v)
 
     def date_part(self, part: str, ts: str) -> str:
         us = f"epoch_us({ts})"

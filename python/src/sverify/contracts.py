@@ -78,7 +78,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import ibis
 import ibis.expr.operations as ops
@@ -99,6 +99,9 @@ from sverify.engine import (
     run_plan,
     written_plan,
 )
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 def q(name: str) -> str:
@@ -476,23 +479,35 @@ def _truncates(expr: str) -> bool:
     return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
 
 
-#: How a report explains an integer `SUM` that may overflow: an error like
-#: any other, which the job also checks while it runs.
+#: How a report explains a `SUM` that may overflow: an error like any other,
+#: which the job also checks while it runs.
 RUNTIME_CHECK = (
     "the job also checks it while it runs and raises if it happens; a bound on "
     "the column and on the rows of a group rules it out"
 )
 
-#: How a report explains an integer `SUM` it assumes fits (`Report.assumed`).
+#: How a report explains a `SUM` it assumes fits (`Report.assumed`).
 SUM_ASSUMED = (
-    "fits 64 bits in every group (inferred; checked on the data while the job "
+    "fits {} in every group (inferred; checked on the data while the job "
     "runs, which raises if it does not)"
 )
 
+#: A decimal `SUM`'s argument in Lean's notation: `DECIMAL_p_s(…)`.
+_DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
+
 
 def _sum(issue: Issue) -> bool:
-    """Whether `issue` is an integer `SUM` that may leave 64 bits."""
+    """Whether `issue` is a `SUM` that may leave its type."""
     return issue.kind == "SUM overflow"
+
+
+def _sum_assumed(issue: Issue) -> str:
+    """`SUM_ASSUMED` for `issue`: 64 bits for an integer `SUM`, the result's
+    `DECIMAL(min(38, p + 10), s)` for a decimal one (`Measure.sumOk`, #316)."""
+    if m := _DECIMAL_ARG.match(issue.expr):
+        p, s = int(m[1]), int(m[2])
+        return SUM_ASSUMED.format(f"DECIMAL({min(38, p + 10)}, {s})")
+    return SUM_ASSUMED.format("64 bits")
 
 
 @dataclass(frozen=True)
@@ -503,7 +518,8 @@ class Issue:
     kind: str
     """"division by zero", "overflow" (an integer result that does not fit its
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
-    "domain error", or "SUM overflow" (an integer `SUM` leaving 64 bits)."""
+    "domain error", or "SUM overflow" (a `SUM` leaving its type: 64 bits for
+    integers, the result's precision for decimals)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
@@ -556,10 +572,16 @@ class Report:
     """Runtime errors, SUM overflows among them, Lean could not rule out; when
     empty, the transformation provably runs without them."""
     guard_free: bool = False
-    """The only issues are integer `SUM`s that may overflow: on data that meets
+    """The only issues are `SUM`s that may overflow: on data that meets
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
+    unchecked: dict | None = None
+    """The expressions that run correctly without their checks, on data that
+    meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
+    plan; pass it to `sverify.engines.to_sql(..., unchecked=...)` with the
+    same plan, and only the other expressions keep their checks. None when
+    Lean found none (a left join with a filter on its right side, for one)."""
     optimized: dict | None = None
     """The transformation as a Substrait JSON plan, rewritten with the facts
     and keys of the preconditions (`Rel.optimize` in
@@ -574,7 +596,8 @@ class Report:
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
     assumed: list[Issue] = field(default_factory=list)
-    """The integer `SUM`s assumed to fit 64 bits in every group, inferred
+    """The `SUM`s assumed to fit their type in every group (64 bits for
+    integers, the result's precision for decimals), inferred
     like the bounds in `inferred`: those the inputs' row caps (`max_rows`,
     #219) and the values' range do not prove to fit. The job checks each sum
     on the data while it runs and raises if it does not fit. The proof holds under this assumption
@@ -599,6 +622,50 @@ class Report:
     computes (#411)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
+    plan: str | None = field(default=None, repr=False, compare=False)
+    """The plan the report is about, as Substrait protobuf JSON: the
+    transformation as `verify` compiled it and Lean checked it, with the
+    `params` bound and the SQL lifted with `semantics`. `run` runs it (#461)."""
+
+    def run(self, con: Connection, engine: Engine | Any = None) -> pa.Table:
+        """Run the plan this report checked (`plan`) over the tables of
+        `con`, so the result is the one the report is about (#461).
+
+        The plan reads the tables by the names it was verified with, and
+        runs on `engine` as `sverify.engines.run` runs a plan, with the
+        meaning `Rel.eval` gives it.
+
+        Args:
+            con: The connection whose tables the plan reads (`sv.connect()`).
+            engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
+                Spark session. Default: the connection's engine.
+
+        Returns:
+            The result as an Arrow table, with the transformation's output
+            names.
+
+        Raises:
+            ValueError: The report has no plan (it was not made by
+                `verify`), or `engine` is unknown.
+
+        Examples:
+            Verify a query, then run what was verified:
+
+            ```python
+            con = sv.connect()
+            con.put("t", pa.table({"host": ["a", "a", "b"], "cpu": [1, 5, 7]}))
+            report = sv.verify(
+                "SELECT host, max(cpu) AS m FROM t WHERE cpu > 3 GROUP BY host",
+                tables={"t": con.table("t")},
+                ensures=[sv.unique("host")],
+            )
+            if report.proved:
+                result = report.run(con)
+            ```
+        """
+        if self.plan is None:
+            raise ValueError("this report has no plan to run: it was not made by sv.verify")
+        return run_plan(con, written_plan(self.plan), engine)
 
     @property
     def proved(self) -> bool:
@@ -613,7 +680,7 @@ class Report:
     @property
     def warnings(self) -> list[Issue]:
         """The `issues` that do not count against a proof. None do: an
-        integer `SUM` that may leave 64 bits is an error (`errors`)."""
+        `SUM` that may leave its type is an error (`errors`)."""
         return [i for i in self.issues if not i.error]
 
     @property
@@ -661,7 +728,7 @@ class Report:
                 lines.append(f"  counterexample: {c.counterexample}")
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
-        lines += [f"assumes: SUM of {i.what} {SUM_ASSUMED}" for i in self.assumed]
+        lines += [f"assumes: SUM of {i.what} {_sum_assumed(i)}" for i in self.assumed]
         for i in self.errors:
             lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
             if i.hint:
@@ -701,7 +768,7 @@ class Report:
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
-        inferred += [f"SUM of `{i.what}` {SUM_ASSUMED}" for i in self.assumed]
+        inferred += [f"SUM of `{i.what}` {_sum_assumed(i)}" for i in self.assumed]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
@@ -1338,7 +1405,6 @@ def verify(
             `references` names an unknown column or table, or the checker
             fails on the request (for example on a plan outside the Lean
             model).
-        TypeError: An Ibis condition is given for a SQL transform.
 
     Examples:
         A SQL query (DuckDB's SQL), with its input schema:
@@ -1439,7 +1505,7 @@ def infer_bounds(
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
     report = _confirm_suggestions(report, requires, once)
-    # An integer SUM that may overflow is assumed to fit, and checked on the
+    # A SUM that may overflow is assumed to fit, and checked on the
     # data while the job runs: the row caps (#219) do not rule it out.
     report.assumed = [i for i in report.issues if _sum(i)]
     report.issues = [i for i in report.issues if not _sum(i)]
@@ -1488,18 +1554,39 @@ def _verify_once(
     def plan(query: Transform) -> Any:
         return json.loads(plan_json(con, query, semantics))
 
-    def table_ref(name: str) -> Transform:
-        return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
+    def table_ref(name: str, cond: Condition) -> Transform:
+        if isinstance(transform, str) and isinstance(cond, str):
+            return f"SELECT * FROM {q(name)}"
+        return con.table(name)
+
+    def output(cond: Condition) -> Transform:
+        """The transformation as `cond` reads it: an Ibis condition on a SQL
+        transformation reads the lifted query as an Ibis relation over the
+        input tables, as in an `sv.sql` body (#438)."""
+        if not isinstance(transform, str) or isinstance(cond, str):
+            return transform
+        from sverify.ibis_substrait import SQLModel, sql_model_schema
+
+        names = tuple(schemas)
+        inputs: Any = tuple(con.table(n).op() for n in names)
+        return SQLModel(
+            transform,
+            inputs,
+            names,
+            sql_model_schema(transform, schemas, semantics),
+            "duckdb",
+            semantics,
+        ).to_expr()
 
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t), c, semantics)) for t, c in req_conds]
+    req_plans = [plan(condition_query(table_ref(t, c), c, semantics)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(transform, c, semantics))
+        p = plan(condition_query(output(c), c, semantics))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)
@@ -1630,11 +1717,13 @@ def _verify_once(
             for i in out["issues"]
         ],
         guard_free=out["guard_free"],
+        unchecked=out.get("unchecked"),
         optimized=out["optimized"],
         rewrites=out["rewrites"],
         params=bound,
         bounds=_int_bounds(out["facts"], dtypes),
         rows=out.get("rows"),
+        plan=json.dumps(transform_plan),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
@@ -1813,6 +1902,10 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         if largest == 0:
             return None
         rows = (2**63 - 1) // largest
+        if rows >= 2**63 - 1:
+            # A group has fewer than 2^63 rows (`Rel.sumRows`, #437): the
+            # sum fits, and Lean proves it.
+            return None
         return (
             f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
             f"{rows:,} rows; {capped(rows)}"

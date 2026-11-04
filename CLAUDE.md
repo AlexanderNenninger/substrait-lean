@@ -89,6 +89,28 @@ falls back to `ulimit -v`, which caps each process on its own.
 
 Run long QA commands there in the background, not in the foreground shell.
 
+### Chaos suite
+
+`python/tests/chaos/` injects crashes into pipeline execution: exceptions
+and SIGKILLs at each step of a refresh, an S3 outage (moto behind a proxy),
+sources that change or vanish, and racing writers. Its tests carry the
+`chaos` marker, which only `-m chaos` selects, so `qa` and CI leave it out.
+It spawns many processes, so run it on homelab:
+
+```bash
+ssh homelab 'bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
+```
+
+Each scenario that fails appends a line to a JSONL ledger as it finishes
+(`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<run>.jsonl`,
+which outlives the run's directory; `tail -f` it). The task prints how
+many scenarios ran and recovered, then the summary: failures grouped by signature, with counts and a
+repro. `python -m sverify_dev.chaos summarize <ledger>...` summarises
+partial or several ledgers (`--follow 60` repeats). Signatures with an
+issue go in `tests/chaos/known.json`; their tests report as expected
+failures, and a new signature fails the run. File issues per signature,
+not per test.
+
 ## Notebooks on molab
 
 The README's molab links open `notebooks/` on the `published` branch, not on
@@ -184,6 +206,20 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   decimal typing (`_exact`) is in `_base.py`.
 - **Tests of the lift**: `python/tests/test_sql_lift_<area>.py`, with the
   shared tables in `python/tests/_sql_lift.py`.
+- **Black box** (#325), a DuckDB function the checker treats as opaque: add a
+  row to `BlackBox.scalars` or `BlackBox.aggregates`
+  (`SubstraitLean/BlackBox.lean`) with its types, NULL handling, whether it
+  raises, its laws and a `sample` the laws allow (`scalars_wf` checks it by
+  `decide`), and the same row, at the same index, to `TABLE` in
+  `python/src/sverify/black_box.py` with DuckDB's SQL. Its anchor is 700 plus
+  its index, under the black boxes' URN; the parser, the lift
+  (`sql_lift/blackbox.py`), the writers and the refusals of other engines
+  read the table, and `tests/test_black_box.py` checks the two tables agree.
+  Add a lift rule only where SQLGlot reads the call as a node of its own
+  (`to_base64`), and a Lean evaluator in `BlackBox.evalScalar` where Lean can
+  compute it exactly. Test it in `tests/test_black_box.py`: oracle C, the
+  laws on random data, a contract they prove. A new law kind needs its case
+  in `BlackBox.Law.holds` and `Law.bound` (`Contracts.lean`).
 - **Reference semantics** (`docs/reference-semantics.md`): the area's section.
 
 ## Voice
@@ -255,7 +291,15 @@ DuckDB diff table are in `characterization/duckdb/README.md`.
 ## Upstream bugs
 
 When you find a bug in SQLGlot, an engine, Ibis or Substrait's tooling, add
-an entry to `upstream/LEDGER.md` in the same PR as the workaround: the
-version, a minimal reproduction, and how sverify handles it. We file them
-upstream in batches. Documented engine behaviour that only differs from the
-reference model goes into the engine's characterization, not the ledger.
+a document `upstream/bugs/<id>.json` in the same PR as the workaround, in the
+format of `upstream/bug.schema.json`: the version, a status, a minimal
+reproduction, how sverify handles it, and what it was last checked against
+(`checked`). The id is the project's prefix and the next free number (`SG-8`,
+`DD-5`; `upstream/README.md` lists the prefixes); the file is named after it.
+Link the files of the workaround (`files`) and the engine facts that record
+it (`facts`). We file them upstream in batches, with the `upstream-report`
+skill. Documented engine behaviour that only differs from the reference model
+goes into the engine's characterization.
+
+`python -m sverify_dev.bugs` checks the documents and the lift's backlog
+`python/tests/lift_backlog.json` (`tests/test_bugs.py` does too).

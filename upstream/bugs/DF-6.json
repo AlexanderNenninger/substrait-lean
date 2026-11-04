@@ -1,0 +1,30 @@
+{
+  "id": "DF-6",
+  "project": "datafusion",
+  "version": "51",
+  "status": "fixed upstream",
+  "status_note": "fixed upstream in 55.0.0 ([#23608](https://github.com/apache/datafusion/issues/23608))",
+  "fixed_in": "55.0.0",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/23608"
+  ],
+  "summary": "The Substrait producer writes `FROM (VALUES …)` as an empty virtual table: the rows are dropped.",
+  "repro": "any `SELECT * FROM (VALUES (1), (2))`",
+  "handling": "Frontend no longer used (#264)",
+  "found_by": "FACTS S3",
+  "prs": [
+    264
+  ],
+  "facts": [
+    "datafusion-S3"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

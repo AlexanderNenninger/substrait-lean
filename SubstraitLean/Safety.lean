@@ -69,10 +69,12 @@ inductive Issue where
   `ERROR`, the reference raises (#202); DataFusion wraps around instead,
   which an error allows (a refinement). -/
   | wraps
-  /-- An integer `SUM` leaving 64 bits. The reference raises, and so does the
-  SQL sverify writes, which keeps its check while the job runs. An error like
-  any other: a plan that may raise is not proved, unless the input's rows and
-  the argument's range bound the sum (`Measure.sumFits`). Kept apart from
+  /-- A `SUM` leaving its type (`Measure.sumOk`): 64 bits for integers, the
+  result's precision for decimals (#316). The reference raises, and so does
+  the SQL sverify writes, which keeps its check while the job runs (DuckDB
+  raises on a decimal `SUM` that leaves 38 digits). An error like any other:
+  a plan that may raise is not proved, unless the input's rows and the
+  argument's range bound the sum (`Measure.sumFits`). Kept apart from
   `wraps` because it comes from a group's rows, not from one row:
   `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
@@ -101,18 +103,6 @@ def Issue.name : Issue → String
   | .domain => "domain error"
   | .raised => "raised by a guard"
 
-/-- A decimal (#27). The parser marks the argument of a `SUM` of decimals
-this way: engines add decimals in 128 bits, so the sum does not wrap at 64. -/
-def Expr.isDecimal : Expr → Bool
-  | .un (.decimal _ _) _ => true
-  | _ => false
-
-/-- The arguments of a list of window functions' integer `SUM`s. -/
-def WinFn.sumArg? (fns : List WinFn) : List Expr :=
-  fns.filterMap fun
-    | .agg m _ _ => if m.fn = .sum ∧ m.arg.isDecimal = false then some m.arg else none
-    | _ => none
-
 /-- The aggregates among a list of window functions. -/
 def WinFn.aggs (fns : List WinFn) : List Measure :=
   fns.filterMap fun
@@ -140,6 +130,8 @@ def rangeIssue (lo hi x y : Int) : Option Issue :=
 /-! ## What goes wrong on a row -/
 
 def UnFn.issue : UnFn → Value → Option Issue
+  -- A black box that may raise, where it does (#325).
+  | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
   | .neg, .int i => wrapIf (-i)
   | .ftoi, .int c => match FloatCode.toInt? c with
     | some x => if inI64 x then none else some .badCast
@@ -189,6 +181,7 @@ def nanCase : BinFn → Int → Int → Bool
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
+  | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
   | .add, .int a, .int b => wrapIf (a + b)
   | .sub, .int a, .int b => wrapIf (a - b)
   | .mul, .int a, .int b => wrapIf (a * b)
@@ -305,6 +298,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .decimal p _, aa, _ => if aa.int.all (·.fitsDigits p) then [] else [.overflow]
   | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
   | .raise _, _, _ => [.raised]
+  | .bbox n, _, _ => if BlackBox.mayRaise n then [.domain] else []
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -442,6 +436,7 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .fatan2, aa, ab, _, _, _ => if BinFn.domainSafe .fatan2 aa ab then [] else [.domain]
   | .flogb, aa, ab, _, _, _ => if BinFn.domainSafe .flogb aa ab then [] else [.domain]
   | .bit op, aa, ab, _, _, _ => if BinFn.domainSafe (.bit op) aa ab then [] else [.domain]
+  | .bbox2 n, _, _, _, _, _ => if BlackBox.mayRaise n then [.domain] else []
   | _, _, _, _, _, _ => []
 
 /-- Is `x`'s value never the integer 0? From its interval, an assumption
@@ -554,7 +549,13 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
 
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     (ha : aa.Mem v) (hr : ar.Mem (f.apply v)) (hk : f.issue v = some k) : k ∈ f.mayIssue aa ar := by
-  cases f <;> cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+  cases f
+  case bbox n =>
+    simp only [UnFn.issue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i h
+    simp [UnFn.mayIssue, BlackBox.mayRaise_of_raisesOn h]
+  all_goals (cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk)
   case raise.null | raise.bool | raise.int | raise.str | raise.list =>
     simp only [Option.some.injEq] at hk; subst hk; simp [UnFn.mayIssue]
   case fmath.int f c =>
@@ -724,7 +725,13 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
     (hnz : nz = true → ∀ j, w = .int j → j ≠ 0)
     (hsz : ∀ m s, sz = some m → v = .str s → s.utf8ByteSize = m) (hk : f.issue v w = some k) :
     k ∈ f.mayIssue aa ab ar nz sz := by
-  cases f <;> cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at hk
+  cases f
+  case bbox2 n =>
+    simp only [BinFn.issue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i h
+    simp [BinFn.mayIssue, BlackBox.mayRaise_of_raisesOn h]
+  all_goals (cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at hk)
   case add.int.int i j | sub.int.int i j | mul.int.int i j =>
     simp only [wrapIf] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
@@ -1115,20 +1122,86 @@ theorem intSum_bound (M : Int) (hM : 0 ≤ M) : ∀ vs : List Value,
       simp only [intSum]; omega
     | _ => simp only [intSum]; omega
 
-/-- Does an integer `SUM` of `m`'s argument fit 64 bits on at most `n` rows,
-with the argument within `abs m.arg`? -/
+/-- The digits of a decimal `SUM` of `m`'s argument: the result's precision,
+ten more digits than the argument's and at most 38 (`Measure.kind`, #27).
+None for an integer `SUM`. -/
+def Measure.sumDigits (m : Measure) : Option Nat :=
+  match m.arg with
+  | .un (.decimal p _) _ => some (min 38 (p + 10))
+  | _ => none
+
+/-- Does a `SUM` of `m`'s argument fit its type: 64 bits for integers, the
+result's precision for decimals (#316)? -/
+def Measure.sumOk (m : Measure) (i : Int) : Bool :=
+  match m.sumDigits with
+  | some q => fitsDigits q i
+  | none => inI64 i
+
+/-- The largest magnitude a `SUM` of `m`'s argument is sure to fit. -/
+def Measure.sumMax (m : Measure) : Int :=
+  match m.sumDigits with
+  | some q => 10 ^ q - 1
+  | none => maxI64
+
+theorem Measure.sumMax_nonneg (m : Measure) : 0 ≤ m.sumMax := by
+  unfold Measure.sumMax
+  cases m.sumDigits with
+  | some q =>
+    have : (0 : Int) < 10 ^ q := Int.pow_pos (by decide)
+    simp only; omega
+  | none => simp only; decide
+
+theorem Measure.sumOk_of_le {m : Measure} {i : Int} (h1 : -m.sumMax ≤ i) (h2 : i ≤ m.sumMax) :
+    m.sumOk i = true := by
+  unfold Measure.sumMax at h1 h2
+  unfold Measure.sumOk
+  cases hq : m.sumDigits with
+  | some q =>
+    simp only [hq] at h1 h2 ⊢
+    unfold fitsDigits
+    rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq]
+    omega
+  | none =>
+    simp only [hq] at h1 h2 ⊢
+    have hmax : maxI64 = 2 ^ 63 - 1 := rfl
+    have hmin : minI64 = -(2 ^ 63) := rfl
+    unfold inI64
+    rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq, hmin, hmax]
+    rw [hmax] at h1 h2
+    omega
+
+/-- The most rows a group or window frame of `r`'s rows has: `Rel.maxRows`,
+and fewer than `2⁶³` by the size hypothesis (`Rel.Small`, #437), as
+`COUNT(*)` of a group is a BIGINT. So a `SUM` of values in `[-1, 1]` fits
+64 bits without a row cap. -/
+def Rel.sumRows (r : Rel) : Nat := min (r.maxRows.getD (2 ^ 63 - 1)) (2 ^ 63 - 1)
+
+theorem Rel.le_sumRows {cat : Catalog} {r : Rel} {n : Nat} (hlt : (r.eval cat).length < 2 ^ 63)
+    (hn : n ≤ (r.eval cat).length) : n ≤ r.sumRows := by
+  have h63 : (2 : Nat) ^ 63 = 9223372036854775808 := rfl
+  rw [h63] at hlt
+  unfold Rel.sumRows
+  rw [h63]
+  cases hm : r.maxRows with
+  | none => simp only [Option.getD_none, Nat.le_min]; omega
+  | some k =>
+    have := Rel.maxRows_sound (cat := cat) hm
+    simp only [Option.getD_some, Nat.le_min]; omega
+
+/-- Does a `SUM` of `m`'s argument fit its type (`Measure.sumOk`) on at most
+`n` rows, with the argument within `abs m.arg`? -/
 def Measure.sumFits (m : Measure) (abs : Expr → AVal) (n : Option Nat) : Bool :=
   match (abs m.arg).int, n with
   -- No integer at all: the sum is 0.
   | none, _ => true
   | some ⟨some lo, some hi⟩, some k =>
-    decide (((max lo.natAbs hi.natAbs * k : Nat) : Int) ≤ maxI64)
+    decide (((max lo.natAbs hi.natAbs * k : Nat) : Int) ≤ m.sumMax)
   | _, _ => false
 
 theorem Measure.sumFits_sound {m : Measure} {abs : Expr → AVal} {n : Option Nat} {grp : Relation}
     (hsound : ∀ y ∈ grp, (abs m.arg).Mem (m.arg.eval y))
     (hlen : ∀ k, n = some k → grp.length ≤ k) (h : m.sumFits abs n = true) :
-    inI64 (intSum (m.inputs grp)) = true := by
+    m.sumOk (intSum (m.inputs grp)) = true := by
   have from_row : ∀ i, Value.int i ∈ m.inputs grp → (abs m.arg).Mem (.int i) := fun i hi => by
     obtain ⟨_, y, hy, hv⟩ := Measure.mem_inputs hi
     exact hv ▸ hsound y hy
@@ -1145,12 +1218,13 @@ theorem Measure.sumFits_sound {m : Measure} {abs : Expr → AVal} {n : Option Na
         | int i => exact (hv i (List.mem_cons_self ..)).elim
         | _ => simp only [intSum]; exact ih fun i hi => hv i (List.mem_cons_of_mem _ hi)
     rw [hz _ fun i hi => by obtain ⟨b, hb, _⟩ := from_row i hi; simp [hn] at hb]
-    decide
+    have := m.sumMax_nonneg
+    exact Measure.sumOk_of_le (by omega) (by omega)
   · rename_i lo hi k hb
     subst_vars
     have hk := hlen k rfl
     have hl := Nat.le_trans (Measure.inputs_length_le m grp) hk
-    have hdec : (((max lo.natAbs hi.natAbs * k : Nat)) : Int) ≤ maxI64 := of_decide_eq_true h
+    have hdec : (((max lo.natAbs hi.natAbs * k : Nat)) : Int) ≤ m.sumMax := of_decide_eq_true h
     have hbnd := intSum_bound ((max lo.natAbs hi.natAbs : Nat) : Int) (Int.natCast_nonneg _)
       (m.inputs grp) fun i hi' => by
         obtain ⟨b, hb', hm⟩ := from_row i hi'
@@ -1160,20 +1234,15 @@ theorem Measure.sumFits_sound {m : Measure} {abs : Expr → AVal} {n : Option Na
     have hmul : ((max lo.natAbs hi.natAbs : Nat) : Int) * ((m.inputs grp).length : Int) ≤
         ((max lo.natAbs hi.natAbs * k : Nat) : Int) := by
       rw [← Int.natCast_mul]; exact Int.ofNat_le.mpr (Nat.mul_le_mul_left _ hl)
-    have hmax : maxI64 = 2 ^ 63 - 1 := rfl
-    have hmin : minI64 = -(2 ^ 63) := rfl
-    unfold inI64
-    rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq, hmin, hmax]
-    rw [hmax] at hdec
-    omega
+    exact Measure.sumOk_of_le (by omega) (by omega)
   · simp at h
 
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
 join condition (`under`), which may inline them. Aggregates evaluate their
 grouping expressions and every measure's argument and filter like
-projections, and a `SUM` of integers wraps around when the true sum of a
-group leaves 64 bits. -/
+projections, and a `SUM` raises when the true sum of a group leaves its type:
+64 bits for integers, the result's precision for decimals (#316). -/
 def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | _, .read _, _ | _, .values _ _, _ => False
   | _, .filter r c, p => r.HasIssue cat true p ∨ ∃ row ∈ r.loose.eval cat, p ∈ c.issues row
@@ -1181,14 +1250,14 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
       ∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ es, p ∈ e.issues row
   | u, .emit r _, p | u, .fetch r _ _, p | u, .orderBy r _, p
   | u, .distinct r, p | u, .unnest r _, p => r.HasIssue cat u p
-  -- A window `SUM` of integers may wrap around (its argument is a column:
+  -- A window `SUM` may leave 64 bits (its argument is a column:
   -- `Parse.issueFree`).
   -- A window aggregate that would be NaN on some frame (#257): a frame is
   -- some of the input's rows.
   | u, .window r _ _ fns, p => r.HasIssue cat u p ∨
-      (∃ m ∈ WinFn.aggs fns, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
+      (∃ m ∈ WinFn.aggs fns, m.fn = .sum ∧ p = (.sumWraps, m.arg) ∧
         ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ frame.length ≤ (r.eval cat).length ∧
-          inI64 (intSum (m.inputs frame)) = false) ∨
+          m.sumOk (intSum (m.inputs frame)) = false) ∨
       ∃ m ∈ WinFn.aggs fns, p = (.domain, m.arg) ∧
         ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ m.fn.makesNan (m.inputs frame) = true
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
@@ -1197,8 +1266,8 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .aggregate r gs ms, p => r.HasIssue cat u p ∨
       (∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ gs ++ ms.flatMap Measure.exprs,
         p ∈ e.issues row) ∨
-      (∃ m ∈ ms, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
-        ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false) ∨
+      (∃ m ∈ ms, m.fn = .sum ∧ p = (.sumWraps, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat), m.sumOk (intSum (m.inputs grp)) = false) ∨
       -- An aggregate that would be NaN, which no operation creates (#257).
       ∃ m ∈ ms, p = (.domain, m.arg) ∧
         ∃ grp ∈ aggGroups gs (r.eval cat), m.fn.makesNan (m.inputs grp) = true
@@ -1216,8 +1285,8 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | u, .unnest r _ => r.mayIssues cat A F T u
   | u, .window r _ _ fns => r.mayIssues cat A F T u ++
       (WinFn.aggs fns).filterMap (fun m =>
-        if m.fn = .sum ∧ m.arg.isDecimal = false ∧
-          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false
+        if m.fn = .sum ∧
+          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false
         then some (.sumWraps, m.arg) else none) ++
       (WinFn.aggs fns).filterMap fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
@@ -1227,14 +1296,14 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     let ab := Rel.cross a.loose b.loose
     a.mayIssues cat A F T true ++ b.mayIssues cat A F T true ++
       on.mayIssues (ab.aeval cat A F T true) (ab.facts cat F T)
-  -- An integer sum may wrap unless the input's rows and the argument bound it.
+  -- A sum may leave its type unless the input's rows and the argument bound it.
   | u, .aggregate r gs ms =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++
       (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T)) ++
       ms.filterMap (fun m =>
-        if m.fn = .sum ∧ m.arg.isDecimal = false ∧
-          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false
+        if m.fn = .sum ∧
+          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false
         then some (.sumWraps, m.arg) else none) ++
       ms.filterMap fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
@@ -1320,16 +1389,17 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) := fun y hyr e =>
       Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm.2) y hyr)
         (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
-    rcases h with h | ⟨m, hm, hf, hd, rfl, frame, hframe, hlen, hov⟩ |
+    rcases h with h | ⟨m, hm, hf, rfl, frame, hframe, hlen, hov⟩ |
       ⟨m, hm, rfl, frame, hframe, hnan⟩
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h))
-    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false := by
-        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows
+    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false := by
+        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows)
         · rfl
         · have := Measure.sumFits_sound (fun y hy => habs y (hframe y hy) m.arg)
-            (fun k hk => Nat.le_trans hlen (Rel.maxRows_sound hk)) hfit
+            (fun k hk => by
+              cases hk; exact Rel.le_sumRows (Nat.lt_trans hsm.1 (by decide)) hlen) hfit
           rw [hov] at this; cases this
-      exact .inl (.inr ⟨m, hm, by simp [hf, hd, hfits]⟩)
+      exact .inl (.inr ⟨m, hm, by simp [hf, hfits]⟩)
     · have hsound : ∀ y ∈ frame, ∀ e : Expr,
           (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) :=
         fun y hy e => habs y (hframe y hy) e
@@ -1365,10 +1435,10 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm.1 p h))
     · exact .inl (.inr (mayIssues_sound hcat hA hF hT hwf.2.1 hsm.2 p h))
     · exact .inr (condIssue_sound hcat hA hF hT hwf.1 hwf.2.1 hsm.1 hsm.2 hx hy hp)
-  | u, .aggregate r gs ms, hwf, hsm, p, h => by
+  | u, .aggregate r gs ms, hwf, ⟨hlt, hsm⟩, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
-    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, grp, hgrp, hov⟩ |
+    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, rfl, grp, hgrp, hov⟩ |
       ⟨m, hm, rfl, grp, hgrp, hnan⟩
     · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)))
     · have hs : (if u then r.loose else r).WF cat := by
@@ -1381,16 +1451,17 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         · exact Rel.Small.loose (r := r) hsm
       exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
-    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false := by
-        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows
+    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false := by
+        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows)
         · rfl
         · have := Measure.sumFits_sound (grp := grp) (fun y hy => by
               have hyr := mem_of_mem_aggGroups hgrp hy
               exact Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
                 (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg)
-            (fun k hk => Nat.le_trans (length_le_of_mem_aggGroups hgrp) (Rel.maxRows_sound hk)) hfit
+            (fun k hk => by
+              cases hk; exact Rel.le_sumRows hlt (length_le_of_mem_aggGroups hgrp)) hfit
           rw [hov] at this; cases this
-      exact .inl (.inr ⟨m, hm, by simp [hf, hd, hfits]⟩)
+      exact .inl (.inr ⟨m, hm, by simp [hf, hfits]⟩)
     · have hsound : ∀ y ∈ grp, ∀ e : Expr,
           (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) := by
         intro y hy e
@@ -1399,9 +1470,9 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
           (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
       exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
 
-/-- The assumption a report makes of the integer `SUM`s it cannot bound
+/-- The assumption a report makes of the `SUM`s it cannot bound
 (`Report.assumed` in `sverify`, inferred like #244's bounds): on this
-catalog, no group's or frame's integer sum leaves 64 bits. `Rel.HasIssue`'s
+catalog, no group's or frame's sum leaves its type (`Measure.sumOk`). `Rel.HasIssue`'s
 `sumWraps` cases are exactly those sums, so this says none happens. The job
 checks it on the data: the SQL sverify writes raises where a sum does not
 fit. -/
@@ -1409,7 +1480,7 @@ def Rel.SumsFit (cat : Catalog) (r : Rel) : Prop :=
   ∀ p, r.HasIssue cat false p → p.1 ≠ .sumWraps
 
 /-- **Runs without errors under the `SUM` assumption**: when every issue
-`Rel.mayIssues` reports is an integer `SUM`, a catalog that meets the
+`Rel.mayIssues` reports is a `SUM`, a catalog that meets the
 preconditions and on which the sums fit (`Rel.SumsFit`) runs into no issue
 at all. -/
 theorem Rel.noIssue_of_sumsFit {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}

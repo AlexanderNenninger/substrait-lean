@@ -38,7 +38,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb
+from sverify import _duckdb, black_box
 from sverify._scan import Native, Resident, Scan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
@@ -664,6 +664,9 @@ def _check_datafusion_plan(plan: dict) -> None:
 
     def walk(node: Any) -> None:
         if isinstance(node, dict):
+            ref = node.get("functionReference")
+            if names.get(ref) in black_box.NAMES:
+                raise sql.Unsupported(black_box.refusal(names[ref], "DataFusion"))
             for key in ("measure", "windowFunction"):
                 a = node.get(key)
                 is_avg = isinstance(a, dict) and names.get(a.get("functionReference")) == "avg"
@@ -690,7 +693,7 @@ def _check_datafusion_plan(plan: dict) -> None:
                 raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; see #271")
             w = node.get("windowFunction")
             if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
-                # DataFusion spreads the larger buckets out (upstream/LEDGER.md).
+                # DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
                 raise sql.Unsupported("DataFusion's NTILE does not deal out buckets as SQL does")
             f = node.get("scalarFunction")
             fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
