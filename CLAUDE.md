@@ -12,6 +12,18 @@ and with a tenth of the Hypothesis examples (the `dev` profile,
 (`homelab_qa.sh` runs `qa`). CI runs every test with the full counts, `core`
 in three shards.
 
+On pull requests CI runs what the change can affect; pushes to main, merge
+queue entries and retargets run everything. One job builds `substrait-check`
+and the others download it. The generated proofs are checked only when a
+Lean input changes. Engine jobs, oracle A and the notebooks skip changes in
+areas they cannot read (the table in the `changes` job). A pull request that
+changes only facts, probes, `upstream/` or `python/tests/lift_backlog.json`
+(and docs) runs `static` and a `ledger` job: the checkers and the tests that
+read those files. A pull request into a branch other than main (a stack)
+runs `static` only and its `qa` fails; retargeting it to main starts the full
+run (`.github/workflows/retarget.yml`). The header of
+`.github/workflows/ci.yml` has the details.
+
 ### Check capacity before expensive tasks
 
 Several agents often work at once, and together they have crashed the

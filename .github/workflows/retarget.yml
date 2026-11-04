@@ -1,0 +1,44 @@
+name: Retarget
+
+# A pull request into a branch other than main (a stacked one) runs only
+# `static` in CI, and its `qa` fails (ci.yml's header). When it is retargeted
+# to main, nothing new is pushed, so this starts CI on it: a run of ci.yml
+# on the pull request's branch that checks out its merge with main and runs
+# everything. Its `qa` lands on the pull request's head commit.
+#
+# This lives apart from ci.yml so that an edit of a title or body starts no
+# CI run: a run whose jobs all skip would report a skipped, so passing, `qa`
+# over the commit's real one.
+
+on:
+  pull_request:
+    types: [edited]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  ci:
+    if: github.event.changes.base && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # GitHub recomputes the merge with the new base in the background.
+          for _ in $(seq 30); do
+            state=$(gh pr view "$PR" --json mergeable --jq .mergeable)
+            [ "$state" != UNKNOWN ] && break
+            sleep 5
+          done
+          echo "mergeable: $state"
+          if [ "$state" = CONFLICTING ]; then
+            echo "::error::The pull request conflicts with main: CI runs once it is rebased."
+            exit 1
+          fi
+          gh workflow run ci.yml --ref "$BRANCH" -f pr="$PR"
