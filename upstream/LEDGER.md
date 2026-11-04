@@ -66,4 +66,6 @@ affect sverify's results, but they're worth reporting.
 
 ## Polars, Spark, Ibis
 
-Nothing yet.
+| ID | Status | Summary | Minimal repro | Our handling | Found by |
+|---|---|---|---|---|---|
+| IB-1 | confirmed (ibis-framework 12.0.0, pandas 3.1.0) | Ibis reads the deprecated `pd.options.future.infer_string` in `PandasType.from_ibis` (`ibis/formats/pandas.py:60`), so every `execute()` warns `Pandas4Warning: The 'future.infer_string' option is deprecated` under pandas 3.1, also for a scalar with no string in it. | `python -W error::DeprecationWarning -c "import ibis; ibis.literal(1).execute()"` raises `Pandas4Warning`. | The checks on data fetch their counts through Arrow (`_count` in `contracts.py`: `to_pyarrow().as_py()`), so users see no warning ([#479](https://github.com/AlexanderNenninger/substrait-lean/issues/479)). The tests still ignore the message (`filterwarnings` in `python/pyproject.toml`). | #479 |
