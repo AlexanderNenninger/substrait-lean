@@ -959,6 +959,7 @@ the option left open.
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
+D9 to D15 were decided after #568's classes and #577's translation policy.
 
 ### D1. Where the tables live
 
@@ -1034,3 +1035,72 @@ at run time, and the generated tables already carry the proofs.
 Where a key's direction is `UNSPECIFIED`, the reference puts NULLs last in
 both directions: DuckDB's default ([F2](../characterization/duckdb/facts/duckdb-F2.json))
 and the default of the model's `SortKey` for hand-built values.
+
+### D9. One tool per option
+
+Each option gets one of three tools in the reference: raise, choose a value,
+or leave it open. One table, a row per option, records the tool, the
+precondition it creates, and the shim count per engine. The reference raises
+only where that precondition is usually provable from the bounds or cheap to
+check on the data; otherwise it chooses a value or leaves the option open.
+Each strict choice creates a precondition for every plan that meets it, so
+the table makes that cost visible next to the shims it saves
+([What a proof under the reference guarantees](#what-a-proof-under-the-reference-guarantees)).
+
+### D10. Determinism
+
+Whether a plan's result is determined up to row order is reported by
+default, and required where it matters: incremental refreshes and
+idempotent sink epochs. A rerun of those must give the same result, so a
+plan that leaves an open choice in its output is refused there; elsewhere
+the report names the choice.
+
+### D11. Postconditions name the equivalence
+
+Each output can carry a postcondition that names the equivalence its
+consumer expects: rows as a multiset (the default) or as a sequence; floats
+exact (the default) or within a stated tolerance, absolute, relative or in
+ulps; timestamps up to a precision; strings up to NFC. Verification then
+means that every engine result the route allows is equivalent, under the
+stated relation, to a result the reference allows. `approx` is "verified
+within the stated tolerance", with #568's propagation of `ε` checking that
+the tolerance holds; it is no verdict of its own. The user states what they
+need, so the classes of [Classes of an engine's functions](#classes-of-an-engines-functions)
+become one question: does the route meet the stated relation.
+
+### D12. Contracts and the observation
+
+The same postconditions settle whether a contract can tell `q`-equal
+results apart. The user states the observation `q`, and each other
+`ensures` is either checked on the canonical representative (`q`'s
+canonical map: sort the rows, `canon` the floats, truncate, normalise) or
+falls in a syntactic class invariant under `q` (uniqueness, references,
+bounds, aggregates for the multiset). Otherwise the checker reports which
+`ensures` depends on what `q` ignores.
+
+### D13. Choosing the route
+
+`verify` and `run` choose the route by default: native under the engine's
+profile, then through the reference, then by the option-wise transfer check
+([Which plans run on an engine](#which-plans-run-on-an-engine)). The result
+names the route taken. `semantics=` and an explicit route override the
+choice. The default keeps a plan that verifies somewhere running without the
+user knowing the profiles; the override keeps the choice inspectable.
+
+### D14. Engine versions
+
+An engine profile is tied to the engine's versions: it records the version,
+or range, its facts were probed at. A run on another version warns, and a
+run on another major version is refused until the probes are re-run. A new
+version that changes a fact gets a new fact with `supersedes` (CLAUDE.md,
+"Engine facts") and a new row in the profile. Facts hold for the version they
+were probed at, and the profile is only as good as its facts.
+
+### D15. Where the observations live
+
+The choices table holds, next to each choice, its class, its observation
+`q` and its shim: each (profile, group, option) row reads choice, class,
+`q`, shim, so an engine's realizability row comes from one table. This
+extends step 1a's `ProfileTable` (#578, `SubstraitLean/Options.lean`): a
+column for the class and `q` and one for the shim, filled for engines in
+step 3a, and read by step 1c.
