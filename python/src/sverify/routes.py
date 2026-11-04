@@ -26,6 +26,12 @@ of `E`'s choices (D15). An option `E` realizes only up to its observation
 `q` needs a postcondition whose observation `q` refines (`sv.equivalent`,
 D18), or the row's shim; otherwise the plan is refused there.
 
+A routed run also reads the engine's settings (DuckDB's
+`current_setting`, Polars's engine affinity) and compares them with those
+the profile's facts were probed under (`check_settings`): a setting a
+choice-table row depends on refuses the run (`EngineSettingsError`),
+another warns (`EngineSettingsWarning`).
+
 Each engine profile records the engine versions its facts were probed at
 (`PROFILES`, D14). A run on another version warns
 (`EngineVersionWarning`); a run on another major version is refused
@@ -97,6 +103,17 @@ class EngineVersionError(RuntimeError):
     """The engine's major version differs from the one its profile's facts
     were probed at: re-run the probes (`characterization/<engine>/`) first
     (D14)."""
+
+
+class EngineSettingsWarning(UserWarning):
+    """An engine setting differs from its profile's, where only behaviour
+    sverify does not rely on changes."""
+
+
+class EngineSettingsError(RuntimeError):
+    """An engine setting a profile's choices depend on differs from the
+    value its facts were probed under: restore it, or re-run the probes
+    under it."""
 
 
 class RouteError(ValueError):
@@ -209,6 +226,33 @@ def check_version(engine: str, version: str | None = None) -> str | None:
     )
     warnings.warn(msg, EngineVersionWarning, stacklevel=3)
     return msg
+
+
+def check_settings(engine: str, values: Mapping[str, Any] | None = None) -> list[str]:
+    """Check the settings of `engine` the next run will see (or `values`)
+    against those its profile's facts were probed under
+    (`sverify._engine_settings`).
+
+    Returns:
+        A warning per setting that differs where nothing sverify relies on
+        changes, also issued as an `EngineSettingsWarning`.
+
+    Raises:
+        EngineSettingsError: A setting a choice-table row depends on
+            differs; the message names it.
+    """
+    from sverify import _engine_settings
+
+    found = _engine_settings.differences(engine, values)
+    refused = [_engine_settings.describe(engine, s, v) for s, v in found if s.action == "refuse"]
+    if refused:
+        raise EngineSettingsError(
+            "; ".join(refused) + ": restore the setting, or re-run the probes under it"
+        )
+    notes = [_engine_settings.describe(engine, s, v) for s, v in found]
+    for n in notes:
+        warnings.warn(n, EngineSettingsWarning, stacklevel=3)
+    return notes
 
 
 # -- the choices tables -------------------------------------------------------
@@ -644,6 +688,8 @@ def choose(
 
     Raises:
         EngineVersionError: The engine's major version is not its profile's.
+        EngineSettingsError: A setting the engine's profile depends on
+            differs from its facts' (`check_settings`).
         ValueError: `route` is unknown.
     """
     from sverify import _support
@@ -654,6 +700,7 @@ def choose(
     notes: list[str] = []
     if w := check_version(e, version):
         notes.append(w)
+    notes += check_settings(e)
     source = report.semantics
     det = report.deterministic
 
