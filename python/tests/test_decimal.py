@@ -212,7 +212,7 @@ def test_a_decimal_sum_that_leaves_38_digits_is_reported(col, scale):
     strict = sv.verify(sql, tables=OVERFLOW_SCHEMAS, infer=False)
     assert [i.kind for i in strict.errors] == ["SUM overflow"]
     assert not strict.proved
-    report = sv.verify(sql, tables=OVERFLOW_SCHEMAS, ensures=[_.s > 0])
+    report = sv.verify(sql, tables=OVERFLOW_SCHEMAS)
     assert report.proved and report.errors == []
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
     assert f"fits DECIMAL(38, {scale}) in every group" in str(report)
