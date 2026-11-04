@@ -10,6 +10,7 @@ evaluates it, oracle style.
 
 import json
 import math
+import os
 from pathlib import Path
 
 import ibis
@@ -405,3 +406,77 @@ def test_md5_is_refused_on_polars_with_the_reason():
     plan = written_plan(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
     with pytest.raises(polars_engine.Unsupported, match="see #271"):
         run_plan(con, plan, "polars")
+
+
+# --- The in-memory engine --------------------------------------------------------
+
+
+def _batches(collect) -> int:
+    """How many batches an elementwise function sees: 1 in memory, one per
+    morsel when Polars streams."""
+    calls: list[int] = []
+
+    def f(s: pl.Series) -> pl.Series:
+        calls.append(len(s))
+        return s
+
+    lf = pl.LazyFrame({"x": range(300_000)}).select(
+        pl.col("x").map_batches(f, return_dtype=pl.Int64, is_elementwise=True)
+    )
+    collect(lf)
+    return len(calls)
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [{}, {"POLARS_ENGINE_AFFINITY": "streaming"}, {"POLARS_FORCE_STREAMING": "1"},
+     {"POLARS_AUTO_STREAMING": "1"}, "config"],
+)  # fmt: skip
+def test_queries_run_in_memory_whatever_the_settings(setting, monkeypatch):
+    """Polars 2.1.0's `collect()` streams by default, and streaming adds
+    doubles with other algorithms than the facts were probed with."""
+    if setting == "config":
+        with pl.Config() as cfg:
+            cfg.set_engine_affinity("streaming")
+            assert _batches(lambda lf: lf.collect()) > 1
+            assert _batches(polars_engine.collect) == 1
+        return
+    for k, v in setting.items():
+        monkeypatch.setenv(k, v)
+    assert _batches(lambda lf: lf.collect()) > 1
+    assert _batches(polars_engine.collect) == 1
+    # The variables are back once the query ends.
+    for k, v in setting.items():
+        assert os.environ[k] == v
+
+
+# --- CASE: Polars computes every branch -----------------------------------------
+
+CASES = ibis.schema({"a": "int64", "b": "int64", "x": "float64", "s": "string"})
+CASE_ROWS = [(10, 0, 0.0, "ab"), (MIN, -1, -1.0, None), (7, -2, math.nan, "日本"),
+             (3, 2, 1e308, "")]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["CASE WHEN b <> 0 THEN a % b END",
+     "CASE WHEN b <> 0 AND NOT (a = -9223372036854775808 AND b = -1) THEN a // b END",
+     "CASE WHEN a > -9223372036854775808 THEN -a END",
+     "CASE WHEN a < 1000 AND a > -1000 THEN a * a END",
+     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(x AS BIGINT) END",
+     "CASE WHEN x > 0 THEN sqrt(x) END",
+     "CASE WHEN b > 0 THEN pow(a, b) END",
+     "CASE WHEN a < 100 THEN repeat(s, a) END",
+     "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END"],
+)  # fmt: skip
+def test_an_untaken_branch_neither_raises_nor_leaks(case):
+    """Polars evaluates both sides of `when/then/otherwise` on every row. The
+    translator gives an untaken branch safe arguments (a divisor of 1, a
+    shift of 0) and masks its issues, as `Expr.issues` does, so a guarded
+    `a // b`, overflow or cast raises nowhere and gives `Rel.eval`'s rows."""
+    sql = f"SELECT {case} AS y FROM r"
+    lean, polars = lean_and_polars(CASES, CASE_ROWS, sql, doubles="x" in case or "pow" in case)
+    if "x" in case and "BIGINT" not in case:
+        assert [y is None for (y,) in lean] == [y is None for (y,) in polars]
+    else:
+        assert lean == polars

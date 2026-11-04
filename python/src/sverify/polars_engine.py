@@ -57,8 +57,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
-from collections.abc import Collection, Mapping
+import threading
+from collections.abc import Collection, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -2512,11 +2515,53 @@ def to_lazy(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pl.La
     return lf.rename({col(i): name for i, name in enumerate(names)})
 
 
+#: Variables that make Polars stream a query whatever engine `collect` names
+#: (read on every query in Polars 2.1.0).
+STREAMING_VARIABLES = ("POLARS_FORCE_STREAMING", "POLARS_AUTO_STREAMING")
+_env_lock = threading.Lock()
+_env_users = 0
+_env_saved: dict[str, str] = {}
+
+
+@contextmanager
+def in_memory() -> Iterator[None]:
+    """Hide `STREAMING_VARIABLES` while sverify runs a query, and put them
+    back when the last such query ends. The variables are process-wide, so
+    another thread's Polars query in that window runs in memory too."""
+    global _env_users
+    with _env_lock:
+        if _env_users == 0:
+            _env_saved.update(
+                {k: os.environ.pop(k) for k in STREAMING_VARIABLES if k in os.environ}
+            )
+        _env_users += 1
+    try:
+        yield
+    finally:
+        with _env_lock:
+            _env_users -= 1
+            if _env_users == 0:
+                os.environ.update(_env_saved)
+                _env_saved.clear()
+
+
+def collect_in_memory(lf: pl.LazyFrame, **kwargs: Any) -> pl.DataFrame:
+    """`lf.collect` on Polars's in-memory engine. Polars 2.1.0's default,
+    `engine="auto"`, streams a lazy query, and streaming aggregates doubles
+    with other algorithms than the ones the Polars facts were probed with
+    (`polars-sum-float`, `polars-var-std`, `polars-cov`, `polars-mean-float`).
+    `pl.Config.set_engine_affinity` and `POLARS_ENGINE_AFFINITY` only choose
+    for `"auto"`; `STREAMING_VARIABLES` override the engine named, so they
+    are hidden for the query (`in_memory`)."""
+    with in_memory():
+        return lf.collect(engine="in-memory", **kwargs)
+
+
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:
-    """Run a translated plan. Predicate pushdown would move `guard`s (and
-    filters) below the filters that come before them, onto rows the plan
-    never evaluates there, so it is off."""
-    return lf.collect(optimizations=pl.QueryOptFlags(predicate_pushdown=False))
+    """Run a translated plan, in memory (`collect_in_memory`). Predicate
+    pushdown would move `guard`s (and filters) below the filters that come
+    before them, onto rows the plan never evaluates there, so it is off."""
+    return collect_in_memory(lf, optimizations=pl.QueryOptFlags(predicate_pushdown=False))
 
 
 def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:

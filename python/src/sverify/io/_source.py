@@ -78,7 +78,8 @@ def as_arrow(data: Any) -> pa.Table:
     module = type(data).__module__.split(".")[0]
     if module == "polars":
         if hasattr(data, "collect"):
-            data = data.collect()
+            # Polars's default engine streams a lazy query (`collect_in_memory`).
+            data = data.collect(engine="in-memory")
         return data.to_arrow()
     if module == "pandas":
         return pa.Table.from_pandas(data, preserve_index=False)
