@@ -8,10 +8,14 @@ namespace Substrait
 def Value.render : Value → String
   | .null => "NULL"
   | .bool b => toString b
-  -- Too large for a 64-bit integer: a double's code (SubstraitLean/Float.lean).
-  | .int i => if i.natAbs ≥ 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
+  -- Past 64 bits: a double's code (SubstraitLean/Float.lean). `±2⁶³` stay
+  -- integers: the smallest BIGINT, and its negation (#619).
+  | .int i => if i.natAbs > 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
   | .str s => s.quote
   | .list vs => "[" ++ ", ".intercalate (vs.attach.map fun ⟨v, _⟩ => v.render) ++ "]"
+
+#guard Value.render (.int (-(2 ^ 63))) == "-9223372036854775808"
+#guard Value.render (.int (2 ^ 63)) == "9223372036854775808"
 
 def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"

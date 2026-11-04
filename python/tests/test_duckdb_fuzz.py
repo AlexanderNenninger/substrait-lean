@@ -60,6 +60,17 @@ def test_write(tmp_path):
     path = duckdb_fuzz.write("int_division", "2.0.0", [out], 10, tmp_path)
     led = json.loads(path.read_text())
     assert (led["area"], led["checked"]) == ("fuzz/int_division", 10)
+    # The settings DuckDB ran with (#619): its defaults, `/` of doubles a `/`.
+    assert led["settings"]["integer_division"] is False
+    assert led["settings"]["ieee_floating_point_ops"] is True
     assert led["summary"] == {"agree": 9, "disagree": 1, "refused": 0, "skipped": 0}
     (r,) = led["results"]
     assert r["file"] == "fuzz:int_division" and r["tables"] == {"t": [["7", "0"] + ["NULL"] * 4]}
+
+
+def test_doubles_divide_as_doubles():
+    """`d / d` of `0.0` is NaN on DuckDB's defaults; a ledger of 2026-11-01
+    recorded DuckDB's `//`, from a connection with `integer_division` on
+    (#619)."""
+    out = _check("SELECT (d / d) AS c0 FROM t AS q", [(None, None, 0.0, *T_ROW[3:])])
+    assert out.duckdb == '[["nan"]]'

@@ -202,6 +202,9 @@ def test_replay(replayed):
     assert (overflow.cls, overflow.side) == ("disagree", "lean")
     assert overflow.lean == '[["9223372036854775808"]]'
     assert overflow.engine.startswith("error: Out of Range Error")
+    # `verify` without inference reports the overflow the test expects, which
+    # an inferred precondition would absorb (#619).
+    assert (overflow.reason or "").startswith("verify: overflow"), overflow.reason
     # Lean's division by zero is NULL; DuckDB 2.0 raises (and so does the
     # written plan, guarded); the verifier flags it.
     div = _result(replayed, "SELECT i // 0")
@@ -359,3 +362,23 @@ def test_tables_of_128_bit_integers_are_refused(tmp_path):
     results, _ = slt.replay_file(path, "area/huge.test")
     assert [r.cls for r in results] == ["refused", "refused"]
     assert all("DD-5" in (r.reason or "") for r in results)
+
+
+def test_a_domain_error_is_the_verifiers(tmp_path):
+    """`Rel.eval` gives NULL on a row that raises, and `verify` reports the
+    error: `sin` of infinity raises in the reference, where DuckDB gives NaN
+    (`duckdb-R15-math-domain`, #617)."""
+    path = tmp_path / "trig.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            query I
+            select sin('inf'::DOUBLE)
+            ----
+            nan
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/trig.test")
+    assert (r.cls, r.lean, r.duckdb) == ("disagree", '[["NULL"]]', '[["nan"]]')
+    assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
