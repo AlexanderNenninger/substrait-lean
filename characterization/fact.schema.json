@@ -35,7 +35,8 @@
         "properties": {
           "group": {"type": "string", "pattern": "^[a-z0-9.]+$"},
           "option": {"type": "string", "pattern": "^[a-z0-9_]+$"},
-          "types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+          "types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+          "evidence": {"description": "The evidence for these types where it is weaker than the fact's (a probe of i64 and the docs for the rest): the fact's by default, never stronger.", "enum": ["docs", "source", "engine_test", "probe", "fuzz", "proof"]}
         }
       }
     },

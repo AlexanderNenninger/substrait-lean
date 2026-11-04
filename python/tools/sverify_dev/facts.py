@@ -223,6 +223,9 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTI
                         f"{where}: {name} has no type {t!r}; its types are "
                         f"{', '.join(types_of(group, row['option']))}"
                     )
+            level = row.get("evidence", f["evidence"])
+            if EVIDENCE.index(level) > EVIDENCE.index(f["evidence"]):
+                problems.append(f"{where}: {name}'s evidence {level!r} is stronger than the fact's")
             if row["option"] in items and row["option"] not in f.get("options", []):
                 problems.append(f"{where}: rows name {row['option']!r}, which options lack")
         engine = path.parent.parent.name
@@ -279,7 +282,8 @@ def row_coverage(
     docs: dict[Path, Fact], engine: str, root: Path = ROOT, functions: Path = FUNCTIONS
 ) -> RowCoverage:
     """Per row (group, option, type), `engine`'s current facts that settle it,
-    as (id, evidence); an empty list is a missing row."""
+    as (id, evidence): the row entry's own `evidence`, else the fact's. An
+    empty list is a missing row."""
     found: RowCoverage = {r: [] for r in rows(root, functions)}
     for f in docs.values():
         if f.get("engine") != engine or "superseded_by" in f:
@@ -288,7 +292,7 @@ def row_coverage(
             for t in row["types"]:
                 key = (row.get("group", NO_GROUP), row["option"], t)
                 if key in found:
-                    found[key].append((f["id"], f.get("evidence", "?")))
+                    found[key].append((f["id"], row.get("evidence", f.get("evidence", "?"))))
     return found
 
 

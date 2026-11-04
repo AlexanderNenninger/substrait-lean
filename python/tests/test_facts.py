@@ -41,6 +41,7 @@ def test_validate_finds_problems(tmp_path):
             {"group": "int.arith", "option": "overflow", "types": ["i64", "fp64"]},
             {"group": "int.arith", "option": "zero_sign", "types": ["i64"]},
             {"group": "int.mod", "option": "division_type", "types": ["i64"]},
+            {"group": "int.mod", "option": "overflow", "types": ["i8"], "evidence": "fuzz"},
         ],
         "provenance": [
             {
@@ -66,6 +67,7 @@ def test_validate_finds_problems(tmp_path):
     assert "int.arith × overflow has no type 'fp64'" in problems
     assert "int.arith × zero_sign is not a row of the choice tables" in problems
     assert "rows name 'division_type', which options lack" in problems
+    assert "int.mod × overflow's evidence 'fuzz' is stronger than the fact's" in problems
 
 
 def test_checklist_items_are_unique_and_cover_the_core_options():
@@ -87,7 +89,10 @@ def test_coverage_lists_facts_per_item(tmp_path):
         root / "polars" / "facts" / "polars-a.json": {
             "id": "polars-a", "engine": "polars", "options": ["overflow", "zero_sign"],
             "evidence": "source",
-            "rows": [{"group": "int.arith", "option": "overflow", "types": ["i32", "i64"]}],
+            "rows": [
+                {"group": "int.arith", "option": "overflow", "types": ["i64"]},
+                {"group": "int.arith", "option": "overflow", "types": ["i32"], "evidence": "docs"},
+            ],
         },
         root / "polars" / "facts" / "polars-b.json": {
             "id": "polars-b", "engine": "polars", "options": ["overflow"],
@@ -112,6 +117,7 @@ def test_coverage_lists_facts_per_item(tmp_path):
     text = facts.row_report(rows, root)
     assert "  i8: missing" in text
     assert "  i64: polars-a (source)" in text
+    assert rows[("int.arith", "overflow", "i32")] == [("polars-a", "docs")]
     assert text.endswith(f"2/{len(rows)} rows settled")
 
 
