@@ -48,12 +48,12 @@ def test_a_stored_node_needs_a_determined_result(tmp_path) -> None:
     """D10: an idempotent sink's epoch must give the same rows on a rerun."""
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7)])
     open_pick = any_amount(orders)
-    assert not any_amount.last_report.deterministic
+    report = any_amount.last_report
+    assert report is not None and not report.deterministic
     # Reported, not refused, where nothing is stored.
-    out = open_pick.refresh(route="auto")
-    assert not out["any_amount"].route.deterministic
-    assert out["any_amount"].route.warnings
+    route = open_pick.refresh(route="auto")["any_amount"].route
+    assert route is not None and not route.deterministic and route.warnings
     stored = any_amount(orders).write(DeltaSink(str(tmp_path / "picked")))
-    for route in (None, "auto"):
+    for how in (None, "auto"):
         with pytest.raises(RouteError, match="rerun must give the same"):
-            stored.refresh(route=route)
+            stored.refresh(route=how)
