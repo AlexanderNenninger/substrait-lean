@@ -159,7 +159,9 @@ route to Polars is refused with the bound it could prove.
 A sink commits each epoch once, so a rerun must give the same result. The
 sink says what "the same" means (`reproducible=`, D20), and a refresh is
 refused where the engine's run-to-run variation does not refine it. Polars's
-streaming `SUM` of doubles may add in another order each run:
+streaming `SUM` of doubles may add in another order each run, so a sink that
+asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and
+one that accepts the plan's float bound is not:
 
 ```python
 from sverify.io import DeltaSink
@@ -177,7 +179,8 @@ def sums(readings):
 
 
 try:
-    readings.pipe(sums).write(DeltaSink("sums_exact")).refresh(engine="polars", route="auto")
+    exact = DeltaSink("sums_exact", reproducible=sv.equivalent())  # exact bits
+    readings.pipe(sums).write(exact).refresh(engine="polars", route="auto")
 except RouteError as e:
     print(e)
 # refused on polars: sums_exact: a rerun must give the same result: agg.fsum's sum_order: ... a rerun must reproduce exact doubles
