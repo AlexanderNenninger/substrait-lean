@@ -24,9 +24,11 @@ Each fact names the items of the characterization checklist
 
 As DuckDB's ([../duckdb/README.md](../duckdb/README.md#how-the-facts-are-judged)):
 `Rel.eval` means Substrait's semantics, each function's extension YAML with
-its options; where Substrait leaves a choice open, the reference takes the
-least surprising one every backend can emulate; an engine's profile is a diff
-against the reference. A fact's `status` is `open` where Polars differs from
+its options; where Substrait leaves a choice open, the reference raises if
+engines disagree on an edge case, and otherwise takes the least surprising
+value every backend can emulate; an engine's profile refines the loose core,
+and its diff against the reference is its row of the realizability table
+([Terminology](../../docs/core-semantics.md#terminology)). A fact's `status` is `open` where Polars differs from
 the reference and the profile has not decided how to bridge it, and
 `no-finding` where Polars gives the reference natively.
 

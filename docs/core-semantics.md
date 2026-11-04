@@ -27,15 +27,20 @@ Three kinds of semantics, each with one job.
 - The core is the loosest semantics, a specification layer. It admits every
   engine's behaviour ([D3](#d3-behaviours-outside-the-yaml)), every profile
   refines it, and it is where profiles are stated and related: a profile is
-  the core with its choices narrowed, and a translation between two profiles
-  is a refinement between them ([Translations](#translations-between-profiles)).
-  Sverify runs no plan under the core, and verifying a plan under the core
-  is no goal: the core allows every engine's raises and NaNs at once.
+  the core with its choices narrowed, and a translation from the reference
+  to an engine is a refinement between two profiles
+  ([Translations](#translations-between-profiles)).
+  Every point where engines or Substrait differ is an open option, and its
+  values are at least as fine as Substrait's (`-0.0`, signed NaNs, `fp32`
+  later; [The value domain](#the-value-domain)). Sverify runs no plan under
+  the core. A proof under it would hold under every profile, but few plans
+  verify there: the core allows every engine's raises and NaNs at once.
 - The reference profile (`Profile.reference`, "the reference") is what plans
   are verified under. It is strict, stricter than every engine in most
   options. Where engines disagree on an edge case (integer overflow, NaN
   creation, double overflow to `±∞` (#575), domain errors, division by zero,
-  out-of-range casts and dates), it raises. Where it picks a value, it picks one every engine can produce
+  out-of-range casts and dates), it raises. Where it picks a value, it picks
+  one every engine can produce
   ([principle 3](reference-semantics.md#principles)).
   The reference may still choose a behaviour some engine needs a shim for,
   where that keeps the profile practical for users (the NULL order, rounding
@@ -43,11 +48,15 @@ Three kinds of semantics, each with one job.
   choices are few and deliberate: the reference prefers raising, proved
   absent for a verified plan, or a choice every engine gives natively.
 - Engine profiles say what each engine does, from
-  `characterization/<engine>/facts/`, and refine the core. A plan verified
-  under the reference reaches an engine through a translation, shimmed only
-  on the reference's value choices.
-  `Profile.substrait` (step 2) is a profile of the same kind: the YAMLs'
-  own looseness, between the core and the reference.
+  `characterization/<engine>/facts/`, and refine the core. They are
+  siblings: no engine profile refines another, or the reference. A plan
+  verified under the reference reaches an engine through a translation,
+  shimmed only on the reference's value choices
+  ([Which plans run on an engine](#which-plans-run-on-an-engine)).
+  `Profile.substrait` (step 2) is a sibling of the same kind: the YAMLs'
+  own looseness, with IEEE's two zeros and signed NaNs. The reference
+  overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
+  so neither of the two refines the other.
 
 ### What strictness buys
 
@@ -112,16 +121,23 @@ preference, and refuses the plan where it supports none (as
 
 ### Errors
 
-The reference's correctness allows an engine to raise anywhere: it "returns
-an allowed result or raises an error" ([What it is](reference-semantics.md#what-it-is)).
-The core keeps that. What a profile adds is where it may raise: its
-raise set, a constraint like any other, and `verify`'s error issues
+The core, as a specification, allows raising anywhere: a profile states
+where it may raise, its raise set, a constraint like any other, and `verify`'s error issues
 (`Rel.mayIssues`, `SubstraitLean/Safety.lean`) are the reference's raise
 set. A theorem that a plan cannot raise is then a theorem about one profile's
 raise set, and holds on every profile whose raise set is smaller. This keeps
 principle 4 (an error means "may raise", so rewrites stay refinements) and
 lets DuckDB's extra raises (`MIN % -1`, `<<` of a negative number) stay
 inside the core without new options. Decided ([D2](#d2-raises-in-the-core)).
+
+An engine runs a plan correctly when it returns an allowed result, or
+raises only where the reference may raise; resource errors, such as running
+out of memory, are outside this ([D16](#d16-engine-correctness)). This is
+the raise-set half of [Soundness](#soundness). Today Lean proves partial
+correctness for every lowered plan, an allowed result or an error
+(`Rel.duckdb_shim_sound`). For a plan verified to never raise the two agree,
+and the engine raises nowhere (`Rel.duckdb_sound`,
+[engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice)).
 
 ### Values of an option the YAML does not list
 
@@ -440,7 +456,51 @@ Generated from `REALIZE` and the facts, published in
 `docs/`, and checked in CI: a change to the reference that makes an engine
 refuse, or need a shim of a higher cost class, fails a test until the
 table's expected output is updated. This is principle 3 ("every engine can
-follow it with reasonable effort") as a check.
+follow it with reasonable effort") as a check. The cells are the shims;
+their count per engine is how [few shims](#what-a-proof-under-the-reference-guarantees)
+is measured.
+
+### Classes of an engine's functions
+
+Each row of the realizability table, for an engine, a function and its
+argument types, falls in one class against the reference
+([#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)),
+best first:
+
+1. `refines[D]`: on every input in the domain `D`, every outcome the engine
+   gives is one the reference allows. For a verified plan, `D` is the
+   reference's non-raising domain, so error-side differences cost nothing
+   ([What strictness buys](#what-strictness-buys)).
+2. `refines[D]` up to an observation `q`: `q ∘ f_engine = q ∘ f_reference` on
+   `D`, with `q` a map that forgets the difference: the multiset of rows,
+   permutations within ties, `canon` (one zero, one NaN), the error's kind,
+   a decimal's value without its scale, the UTC instant, parsing back a
+   string, NFC. Equality up to `q` is transitive and composes. The contract
+   must not tell `q`-equal results apart, and each operation downstream
+   must keep `q`; where one does not, a shim makes the value canonical first
+   ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632368108)).
+3. `approx[D, ε]`: on `D`, within `ε` of an outcome the reference allows.
+   Floating point only; `ε` propagates through arithmetic, and a comparison
+   whose threshold lies within `ε` of its argument's range drops the call
+   site to a shim
+   ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632287946)).
+4. Each of the three after a shim: a written flag, a rewrite or a guard,
+   mostly for the reference's value choices.
+5. Refused.
+
+A plan takes the worst class over its call sites.
+
+### Where the evidence lives
+
+- The characterization checklist, [characterization/areas.json](../characterization/areas.json):
+  the areas and items a characterization covers, each item an option of
+  the catalogue or a point the options do not reach.
+- The facts, `characterization/<engine>/facts/`, each naming the items it
+  settles in its `options` field; `python -m sverify_dev.facts --coverage
+  <engine>` lists, per item, the facts that settle it or `missing`.
+- The upstream ledger, [upstream/README.md](../upstream/README.md): spec gaps
+  as `ST-<n>` entries with `kind: "spec-gap"` (D3), engine bugs under their
+  project's prefix.
 
 ## The value domain
 
@@ -475,8 +535,9 @@ full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 A plan means something only under a profile, so the unit sverify reasons
 about is the pair: a plan `r` under a profile `P`, which allows the results
 `Allowed_P(r)` and may raise on the rows of its raise set `Raises_P(r)`.
-Everything that moves a plan, between profiles or within one, is one
-relation on these pairs.
+Everything that moves a plan, from a source language to a profile, from the
+reference to an engine, or within one profile, is one relation on these
+pairs.
 
 ### Soundness
 
@@ -645,8 +706,8 @@ to check.
 A plan verified under the reference, `requires R ⇒ ensures E`, keeps `E` on
 every engine with a sound translation, along every chain of them, and for
 every choice the reference leaves open (ties, order-free `FIRST`, clustered
-groups). It does not carry upward, to the core or to `Profile.substrait`,
-whose allowed sets are larger; a Substrait consumer gets `E` only through a
+groups). It does not carry to the core or to `Profile.substrait`, which
+allow results the reference does not; a Substrait consumer gets `E` only through a
 translation that shims the choices `E` needs. And refinement keeps
 properties of every outcome: that a plan returns some row is not one of them.
 [#444's comment on translations](https://github.com/AlexanderNenninger/substrait-lean/issues/444#issuecomment-6630983452) sets this out.
@@ -663,10 +724,11 @@ Beyond `E`, the proof has five goals:
    not hold. With #85's bounds, every floating result has a usable error
    bound. Today the reference raises where an operation would create a NaN
    and on a zero divisor ([No operation creates a NaN](reference-semantics.md#core-numbers-and-nulls));
-   a finite operation whose result overflows to `±∞` (`exp(1000)`) will
-   raise too
+   a finite operation whose result overflows to `±∞` (`exp(1000)`) will be
+   an error of the reference too
    ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)),
-   with its precondition inferred as for integer overflow.
+   ruled out by inferred preconditions, proved from the bounds or checked on
+   the data, as a `SUM`'s overflow is.
 3. A result determined up to row order. Leaving an option open is the third
    tool beside raising and choosing a value: it costs no shim, and the
    contract must not tell the open choices apart (#568's invariance under an
@@ -771,18 +833,18 @@ reference chose.
 
 Each step is a PR or a short stack, and each ends in a theorem.
 
-| Step | What lands | What it proves |
-|---|---|---|
-| 0 | This page. Wave 3's tables (#544 step 4) with a `group` column and the Python `Option`/`Fn` rows; `optionAccepts` read from the tables. | Nothing new; tests check the Lean and Python tables agree and that every function has a group. |
-| 1a | The options table, `Choice`, `ProfileTable`, and `Profile.reference.table`. | `optionAccepts` equals the reference table's lookup (`#guard` over every group and option); no behaviour change. |
-| 1b | `-0.0` and the signed NaN in `FloatFormat`, with `canon`. | `canon` is idempotent and order-preserving; every existing operation commutes with it on the reference's codes. |
-| 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |
-| 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |
-| 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |
-| 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |
-| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. |
-| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. |
+| Step | What lands | What it proves | Status |
+|---|---|---|---|
+| 0 | This page. Wave 3's tables (#544 step 4) with a `group` column and the Python `Option`/`Fn` rows; `optionAccepts` read from the tables. | Nothing new; tests check the Lean and Python tables agree and that every function has a group. | Done: #562, #565, #566 |
+| 1a | The options table, `Choice`, `ProfileTable`, and `Profile.reference.table`. | `optionAccepts` equals the reference table's lookup (`#guard` over every group and option); no behaviour change. | #578 |
+| 1b | `-0.0` and the signed NaN in `FloatFormat`, with `canon`. | `canon` is idempotent and order-preserving; every existing operation commutes with it on the reference's codes. | In progress; with #575 |
+| 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |  |
+| 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |  |
+| 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |  |
+| 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |  |
+| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
+| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |  |
+| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. |  |
 
 Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
 different tables. The Lean side of step 0 and 1a can merge into one PR if
@@ -911,6 +973,7 @@ the option left open.
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
+D9 to D18 were decided after #568's classes and #577's translation policy.
 
 ### D1. Where the tables live
 
@@ -986,3 +1049,128 @@ at run time, and the generated tables already carry the proofs.
 Where a key's direction is `UNSPECIFIED`, the reference puts NULLs last in
 both directions: DuckDB's default ([F2](../characterization/duckdb/facts/duckdb-F2.json))
 and the default of the model's `SortKey` for hand-built values.
+
+### D9. One tool per option
+
+Each option gets one of three tools in the reference: raise, choose a value,
+or leave it open. One table, a row per option, records the tool, the
+precondition it creates, and the shim count per engine. The reference raises
+only where that precondition is usually provable from the bounds or cheap to
+check on the data; otherwise it chooses a value or leaves the option open.
+Each strict choice creates a precondition for every plan that meets it, so
+the table makes that cost visible next to the shims it saves
+([What a proof under the reference guarantees](#what-a-proof-under-the-reference-guarantees)).
+
+### D10. Determinism
+
+Whether a plan's result is determined up to row order is reported by
+default, and required where it matters: incremental refreshes and
+idempotent sink epochs. A rerun of those must give the same result, so a
+plan that leaves an open choice in its output is refused there; elsewhere
+the report names the choice.
+
+### D11. Postconditions name the equivalence
+
+Each output can carry a postcondition that names the equivalence its
+consumer expects: rows as a multiset (the default) or as a sequence; floats
+exact (the default) or within a stated tolerance, absolute, relative or in
+ulps; timestamps up to a precision; strings up to NFC. Verification then
+means that every engine result the route allows is equivalent, under the
+stated relation, to a result the reference allows. `approx` is "verified
+within the stated tolerance", with #568's propagation of `ε` checking that
+the tolerance holds; it is no verdict of its own. The user states what they
+need, so the classes of [Classes of an engine's functions](#classes-of-an-engines-functions)
+become one question: does the route meet the stated relation.
+
+### D12. Contracts and the observation
+
+The same postconditions settle whether a contract can tell `q`-equal
+results apart. The user states the observation `q`, and each other
+`ensures` is either checked on the canonical representative (`q`'s
+canonical map: sort the rows, `canon` the floats, truncate, normalise) or
+falls in a syntactic class invariant under `q` (uniqueness, references,
+bounds, aggregates for the multiset). Otherwise the checker reports which
+`ensures` depends on what `q` ignores.
+
+### D13. Choosing the route
+
+`verify` and `run` choose the route by default: native under the engine's
+profile, then through the reference, then by the option-wise transfer check
+([Which plans run on an engine](#which-plans-run-on-an-engine)). The result
+names the route taken. `semantics=` and an explicit route override the
+choice. The default keeps a plan that verifies somewhere running without the
+user knowing the profiles; the override keeps the choice inspectable.
+
+### D14. Engine versions
+
+An engine profile is tied to the engine's versions: it records the version,
+or range, its facts were probed at. A run on another version warns, and a
+run on another major version is refused until the probes are re-run. A new
+version that changes a fact gets a new fact with `supersedes` (CLAUDE.md,
+"Engine facts") and a new row in the profile. Facts hold for the version they
+were probed at, and the profile is only as good as its facts.
+
+### D15. Where the observations live
+
+The choices table holds, next to each choice, its class, its observation
+`q` and its shim: each (profile, group, option) row reads choice, class,
+`q`, shim, so an engine's realizability row comes from one table. This
+extends step 1a's `ProfileTable` (#578, `SubstraitLean/Options.lean`): a
+column for the class and `q` and one for the shim, filled for engines in
+step 3a, and read by step 1c.
+
+### D16. Engine correctness
+
+An engine runs a plan correctly when it returns a result the reference
+allows, or raises only where the reference may raise. Resource errors, such
+as running out of memory, are excluded. The guarantee of no error
+([What a proof under the reference guarantees](#what-a-proof-under-the-reference-guarantees))
+needs this stricter definition: under partial correctness, an engine could
+raise anywhere and still be correct. Partial correctness is what
+`Rel.duckdb_shim_sound` proves today for every lowered plan; for a plan
+verified to never raise the two agree (`Rel.duckdb_sound`).
+
+### D17. Changing the reference
+
+While sverify is on 0.x, the reference changes where the design needs it. A
+change to the reference ships in a minor version bump, with a
+`changelog.d/` fragment that says what changed. Bumping the minor version
+costs little, and the fragment tells users which proofs may change.
+
+### D18. Observations ordered by refinement
+
+An observation `q'` refines `q` when `q'` observes everything `q` observes:
+`q` factors through `q'` (`q = f ∘ q'` for some `f`), or equivalently
+`ker q' ⊆ ker q`. Equality up to `q'` then implies equality up to `q`, so
+the finer guarantee refines the coarser one, as `Allowed_P' ⊆ Allowed_P`
+does for profiles. The identity is the finest observation, a constant the
+coarsest. Five consequences:
+
+1. The check. An engine function equal to the reference's up to `q_E`
+   meets a postcondition that asks for `q_post` ([D11](#d11-postconditions-name-the-equivalence))
+   exactly when `q_E` refines `q_post`. Otherwise a canonicalising shim
+   makes the function's `q` finer, or the call is refused.
+2. Components. `q` is a product of components (rows, floats, zeros and
+   NaNs, timestamps, strings, errors), each a short chain from exact to
+   coarse. Refinement is componentwise, so it is a partial order: rows as a
+   multiset and strings up to case folding are incomparable.
+3. Through a plan. Each operation keeps a component or coarsens it (a
+   `LIMIT` without `ORDER BY` coarsens the multiset of rows), and the plan's
+   output `q` must refine the postcondition's.
+4. Tolerances join the floats chain: a tolerance `ε' ≤ ε` refines `ε`, with
+   exact equality at the top.
+5. The finest `q` is computable. The valid observations of a function, those
+   with `q ∘ f_E = q ∘ f_reference`, are closed under meet (if two
+   observations each agree on both functions, the pair of them does), so
+   within the library of components there is one finest valid `q`. Sverify
+   finds it per component by trying candidates from fine to coarse: probes
+   give counterexamples that rule candidates out cheaply, and the finest
+   candidate left is confirmed by a Lean proof against the engine's
+   modelled behaviour (the search-and-prove machinery of the lowering
+   search, `SubstraitLean/LoweringSearch.lean`), or by fuzzing where the
+   engine is not modelled.
+
+This makes D11 and D12 one comparison: the route's `q`, carried through the
+plan, against the `q` the postcondition names. The finest valid `q` is the
+`q` column of the choices table ([D15](#d15-where-the-observations-live)).
+

@@ -1,8 +1,11 @@
 # Reference semantics
 
 What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
-**reference semantics**: `verify` proves things about it, and every engine's
-behaviour is stated as a difference from it. This page collects the choices
+**reference semantics**, the strict profile plans are verified under:
+`verify` proves things about it, and every engine's row of the realizability
+table is its difference from it. The loose core it refines, the engine
+profiles and what a proof under the reference guarantees are in
+[core-semantics.md](core-semantics.md#terminology). This page collects the choices
 the project owner decided, mostly in comments on epic
 [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185), and
 says for each row whether it holds on `main` or which issue or pull request
@@ -27,8 +30,12 @@ The reference follows Substrait. Where it overrides Substrait, it says so
 
 The reference is a relation: for each input it allows a set of results
 (`Rel.Allowed`, `SubstraitLean/Allowed.lean`). An engine runs a plan
-**correctly** when, on every input, it returns an allowed result or raises an
-error. `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
+**correctly** when, on every input, it returns an allowed result, or raises
+only where the reference may raise; resource errors, such as running out of
+memory, are excluded ([D16](core-semantics.md#d16-engine-correctness)). Lean
+proves partial correctness today, an allowed result or an error
+(`Rel.duckdb_shim_sound`); for a plan verified to never raise the two agree
+(`Rel.duckdb_sound`). `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
 witness (`Rel.eval_allowed`), and `verify` proves its theorems through it.
 
 The set holds more than one result only where the reference leaves a choice
@@ -50,16 +57,14 @@ of every allowed result. `Report.deterministic` is false where rows may tie in
 the order of a window or of `FIRST`, `LAST` or `STRING_AGG`
 (`Rel.windowsTotal`); it does not yet flag the other choices.
 
-The reference is not a model of any engine, DuckDB included. Each engine is
+The reference is not a model of any engine, DuckDB included. It is stricter
+than every engine in most options: where engines disagree on an edge case it
+raises, so a verified plan never reaches that case. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which
 behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
-Lean (`SubstraitLean/Profile.lean`: `Profile.reference`,
-`Expr.evalP_reference`; `SubstraitLean/Lowering.lean`: `Lowering.lower_correct`,
-`Rel.duckdb_shim_sound`), and so return allowed results
-(`Rel.duckdb_shim_allowed`, `Rel.guardFree_allowed`).
-That each engine matches its profile is tested, not proved. How profiles and
-shims work is in [engine-profiles.md](engine-profiles.md).
+Lean, and that each engine matches its profile is tested; both are in
+[engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice).
 
 For now the reference is demonstrated on DuckDB only. New functions run on
 DuckDB, and the other engines refuse them until their lowerings land
@@ -86,9 +91,10 @@ Where the reference departs from Substrait, and why:
 | One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Spark and Snowflake treat NaN this way (#89); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
 | The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM` ([#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)). |
 
-Engine quirks belong in profiles, never in the reference. Changing the
-reference is a breaking change and is treated as one (#185,
-"The reference model may need to evolve").
+Engine quirks belong in profiles, never in the reference. While sverify is on
+0.x, a change to the reference ships in a minor version bump, with a
+`changelog.d/` fragment that says what changed (#185, "The reference model
+may need to evolve"; [D17](core-semantics.md#d17-changing-the-reference)).
 
 ## Errors
 
