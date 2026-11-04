@@ -32,6 +32,34 @@ structure Bound where
 def Bound.Mem (b : Bound) (i : Int) : Prop :=
   (∀ l, b.lo = some l → l ≤ i) ∧ (∀ h, b.hi = some h → i ≤ h)
 
+/-- Is every integer of `b` at least `l`? -/
+def Bound.allGe (b : Bound) (l : Int) : Bool := b.lo.any (l ≤ ·)
+
+/-- Is every integer of `b` at most `h`? -/
+def Bound.allLe (b : Bound) (h : Int) : Bool := b.hi.any (· ≤ h)
+
+/-- Is every integer of `b` in `[lo, hi]` (`between`)? The one range check of
+the casts, the integer and decimal widths and the time ranges. -/
+def Bound.within (lo hi : Int) (b : Bound) : Bool := b.allGe lo && b.allLe hi
+
+theorem Bound.allGe_le {b : Bound} {l i : Int} (h : b.allGe l = true) (hi : b.Mem i) : l ≤ i := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.allGe, Option.any_eq_true, decide_eq_true_eq] at h
+  obtain ⟨l', rfl, hl⟩ := h
+  have := hi.1 l' rfl; omega
+
+theorem Bound.le_allLe {b : Bound} {h i : Int} (hb : b.allLe h = true) (hi : b.Mem i) : i ≤ h := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.allLe, Option.any_eq_true, decide_eq_true_eq] at hb
+  obtain ⟨h', rfl, hh⟩ := hb
+  have := hi.2 h' rfl; omega
+
+theorem Bound.within_mem {lo hi i : Int} {b : Bound} (h : b.within lo hi = true) (hm : b.Mem i) :
+    between lo hi i = true := by
+  simp only [Bound.within, Bool.and_eq_true] at h
+  simp only [between, Bool.and_eq_true, decide_eq_true_eq]
+  exact ⟨Bound.allGe_le h.1 hm, Bound.le_allLe h.2 hm⟩
+
 def Bound.top : Bound := ⟨none, none⟩
 def Bound.exact (i : Int) : Bound := ⟨some i, some i⟩
 
@@ -279,6 +307,15 @@ def AVal.Mem (a : AVal) : Value → Prop
   -- so each abstraction covers a list as it covers a value of another type.
   | .list _ => a.tt = true ∧ a.ff = true ∧ a.str = true
 
+/-- Every integer `a` describes is in `[lo, hi]`. -/
+def AVal.within (lo hi : Int) (a : AVal) : Bool := a.int.all (·.within lo hi)
+
+theorem AVal.within_mem {lo hi i : Int} {a : AVal} (h : a.within lo hi = true)
+    (hm : a.Mem (.int i)) : between lo hi i = true := by
+  obtain ⟨b, hb, hi⟩ := hm
+  simp only [AVal.within, hb, Option.all_some] at h
+  exact Bound.within_mem h hi
+
 def AVal.top : AVal := ⟨true, some Bound.top, true, true, true⟩
 def AVal.bot : AVal := ⟨false, none, false, false, false⟩
 
@@ -384,34 +421,6 @@ def ftoiAbs (a : AVal) : AVal :=
   | some _ => ⟨true, some Bound.top, false, false, false⟩
   | none => ⟨a.nonInt, none, false, false, false⟩
 
-/-- Does every integer of the interval fit in `bits` bits? -/
-def Bound.fitsBits (n : Nat) (b : Bound) : Bool :=
-  b.lo.any (-(2 ^ (n - 1) : Int) ≤ ·) && b.hi.any (· < 2 ^ (n - 1))
-
-theorem Bound.fitsBits_mem {n : Nat} {b : Bound} {i : Int} (h : b.fitsBits n = true)
-    (hi : b.Mem i) : _root_.Substrait.fitsBits n i = true := by
-  obtain ⟨bl, bh⟩ := b
-  simp only [Bound.fitsBits, Bool.and_eq_true, Option.any_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨lo, rfl, hlo⟩, ⟨hi', rfl, hhi⟩⟩ := h
-  have h1 := hi.1 lo rfl
-  have h2 := hi.2 hi' rfl
-  simp only [_root_.Substrait.fitsBits, Bool.and_eq_true, decide_eq_true_eq]
-  omega
-
-/-- Does every integer of the interval fit in `p` decimal digits? -/
-def Bound.fitsDigits (p : Nat) (b : Bound) : Bool :=
-  b.lo.any (-(10 ^ p : Int) < ·) && b.hi.any (· < 10 ^ p)
-
-theorem Bound.fitsDigits_mem {p : Nat} {b : Bound} {i : Int} (h : b.fitsDigits p = true)
-    (hi : b.Mem i) : _root_.Substrait.fitsDigits p i = true := by
-  obtain ⟨bl, bh⟩ := b
-  simp only [Bound.fitsDigits, Bool.and_eq_true, Option.any_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨lo, rfl, hlo⟩, ⟨hi', rfl, hhi⟩⟩ := h
-  have h1 := hi.1 lo rfl
-  have h2 := hi.2 hi' rfl
-  simp only [_root_.Substrait.fitsDigits, Bool.and_eq_true, decide_eq_true_eq]
-  omega
-
 /-- `a`, or NULL. -/
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
@@ -421,7 +430,7 @@ theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
 
 /-- `CAST(x AS INT)`: the integer itself, or NULL where it may not fit. -/
 def narrowAbs (n : Nat) (a : AVal) : AVal :=
-  ⟨a.nonInt || a.int.any (!·.fitsBits n), a.int, false, false, false⟩
+  ⟨a.nonInt || !a.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1), a.int, false, false, false⟩
 
 /-- Can the interval contain 0? -/
 def Bound.has0 (b : Bound) : Bool := b.lo.all (· ≤ 0) && b.hi.all (0 ≤ ·)
@@ -676,12 +685,9 @@ def partBound (p : Time.DatePart) (b : Bound) : Bound :=
   | some (lo, hi) => ⟨some lo, some hi⟩
   | none => (b.clamp Time.partMin Time.partMax).mapMono (Time.partOf .year)
 
-/-- Certainly within the timestamps `chrono` represents. -/
-def Bound.inChrono (b : Bound) : Bool :=
-  b.lo.any (Time.partMin ≤ ·) && b.hi.any (· ≤ Time.partMax)
-
+/-- `date_part` is NULL outside the timestamps `chrono` represents. -/
 def datePartAbs (p : Time.DatePart) (a : AVal) : AVal :=
-  ⟨a.nonInt || !a.int.all Bound.inChrono, a.int.map (partBound p), false, false, false⟩
+  ⟨a.nonInt || !a.within Time.partMin Time.partMax, a.int.map (partBound p), false, false, false⟩
 
 /-! ## Domains
 
@@ -689,12 +695,6 @@ The elementary functions, `atan2`, `logb` and the shifts are `NULL` (an
 error, `Issue.domain`) outside their domains (`SubstraitLean/Numeric.lean`).
 Their results are "some double" or "some integer", or `NULL` where an
 argument may be outside the domain. -/
-
-/-- Is every integer in `b` at least `l`? -/
-def Bound.allGe (b : Bound) (l : Int) : Bool := b.lo.any (l ≤ ·)
-
-/-- Is every integer in `b` at most `h`? -/
-def Bound.allLe (b : Bound) (h : Int) : Bool := b.hi.any (· ≤ h)
 
 /-- Is every double `a` describes in `f`'s domain? -/
 def FMath.safe (f : FMath) (a : AVal) : Bool :=
@@ -1131,18 +1131,6 @@ theorem partialAbs₂_sound {f : BinFn} {g : Int → Int → Option Int} {safe :
     · simp [partialAbs₂, AVal.Mem]
     · have := hs hsafe i j ⟨x, hx, hi⟩ ⟨y, hy, hj⟩; simp [hg] at this
 
-theorem Bound.allGe_le {b : Bound} {l i : Int} (h : b.allGe l = true) (hi : b.Mem i) : l ≤ i := by
-  obtain ⟨bl, bh⟩ := b
-  simp only [Bound.allGe, Option.any_eq_true, decide_eq_true_eq] at h
-  obtain ⟨l', rfl, hl⟩ := h
-  have := hi.1 l' rfl; omega
-
-theorem Bound.le_allLe {b : Bound} {h i : Int} (hb : b.allLe h = true) (hi : b.Mem i) : i ≤ h := by
-  obtain ⟨bl, bh⟩ := b
-  simp only [Bound.allLe, Option.any_eq_true, decide_eq_true_eq] at hb
-  obtain ⟨h', rfl, hh⟩ := hb
-  have := hi.2 h' rfl; omega
-
 theorem FMath.inDomain_of_safe {f : FMath} {a : AVal} {c : Int} (hs : f.safe a = true)
     (hm : a.Mem (.int c)) : f.inDomain c = true := by
   obtain ⟨b, hb, hc⟩ := hm
@@ -1217,11 +1205,11 @@ theorem datePartAbs_sound (p : Time.DatePart) {a : AVal} {v : Value} (h : a.Mem 
         subst hy
         exact Bound.mem_mapMono Time.year_mono (Bound.mem_clamp hi hr.1 hr.2)
     · simp only [hr, ↓reduceIte]
-      simp only [AVal.Mem, datePartAbs, hb, Option.all_some, Bool.or_eq_true, Bool.not_eq_true']
+      simp only [AVal.Mem, datePartAbs, hb, Bool.or_eq_true, Bool.not_eq_true']
       right
       obtain ⟨bl, bh⟩ := b
       simp only [Bound.Mem] at hi
-      cases bl <;> cases bh <;> simp_all [Bound.inChrono] <;> omega
+      cases bl <;> cases bh <;> simp_all [AVal.within, Bound.within, Bound.allGe, Bound.allLe] <;> omega
   all_goals simp_all [datePartAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
 
 theorem Text.strpos_nonneg (s t : String) : 0 ≤ Text.strpos s t := by
@@ -1244,16 +1232,16 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case fceil => exact monoAbs_sound FloatCode.ceil_mono (fun v => by cases v <;> rfl) h
   case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> rfl) h
   case ftoi => exact ftoiAbs_sound h
-  case narrow n =>
+  case narrow n | narrowOrNull n =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
     · simp only [UnFn.apply, UnFn.abs]
       split
       · exact ⟨b, hb, hi⟩
       · rename_i hfit
-        cases hfb : b.fitsBits n
-        · simp [AVal.Mem, narrowAbs, hb, hfb]
-        · exact absurd (Bound.fitsBits_mem hfb hi) hfit
+        cases hfb : b.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1)
+        · simp [AVal.Mem, narrowAbs, AVal.within, hb, hfb]
+        · exact absurd (Bound.within_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case ftoiOrNull =>
     have hf := ftoiAbs_sound h
@@ -1267,17 +1255,6 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · simp [AVal.Mem, AVal.nullable]
       · simp [AVal.Mem, AVal.nullable]
     all_goals simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nullable]
-  case narrowOrNull n =>
-    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
-    · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
-    · simp only [UnFn.apply, UnFn.abs]
-      split
-      · exact ⟨b, hb, hi⟩
-      · rename_i hfit
-        cases hfb : b.fitsBits n
-        · simp [AVal.Mem, narrowAbs, hb, hfb]
-        · exact absurd (Bound.fitsBits_mem hfb hi) hfit
-    all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case decimal => simpa [UnFn.abs, UnFn.apply] using h
   case dkind => simpa [UnFn.abs, UnFn.apply] using h

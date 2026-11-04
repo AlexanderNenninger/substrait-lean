@@ -113,19 +113,17 @@ def WinFn.aggs (fns : List WinFn) : List Measure :=
 def Issue.isError : Issue → Bool
   | _ => true
 
-def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)
+def inI64 : Int → Bool := between minI64 maxI64
 
 def wrapIf (i : Int) : Option Issue := if inI64 i then none else some .wraps
 
 /-- A domain error where a partial function has no result. -/
 def domainIssue (r : Option Int) : Option Issue := if r.isSome then none else some .domain
 
-def withinRange (lo hi i : Int) : Bool := decide (lo ≤ i) && decide (i ≤ hi)
-
 /-- `overflow` unless the argument `x` and the result `y` are in `[lo, hi]`:
 the dates and timestamps `chrono` represents, or DataFusion's nanoseconds. -/
 def rangeIssue (lo hi x y : Int) : Option Issue :=
-  if withinRange lo hi x && withinRange lo hi y then none else some .overflow
+  if between lo hi x && between lo hi y then none else some .overflow
 
 /-! ## What goes wrong on a row -/
 
@@ -222,34 +220,6 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
 
 /-! ## What may go wrong, abstractly -/
 
-def Bound.inI64 (b : Bound) : Bool := b.lo.any (minI64 ≤ ·) && b.hi.any (· ≤ maxI64)
-
-/-- Every integer `a` describes fits in 64 bits. -/
-def AVal.intFits (a : AVal) : Bool := a.int.all Bound.inI64
-
-theorem AVal.inI64_of_fits {a : AVal} {i : Int} (h : a.intFits = true) (hm : a.Mem (.int i)) :
-    inI64 i = true := by
-  obtain ⟨b, hb, hi⟩ := hm
-  obtain ⟨bl, bh⟩ := b
-  simp only [AVal.intFits, hb, Option.all_some, Bound.inI64] at h
-  simp only [Bound.Mem] at hi
-  cases bl <;> cases bh <;> simp_all [inI64] <;> constructor <;> omega
-
-/-- Every integer `a` describes is in `[lo, hi]`. -/
-def AVal.within (lo hi : Int) (a : AVal) : Bool :=
-  a.int.all fun b => b.lo.any (lo ≤ ·) && b.hi.any (· ≤ hi)
-
-theorem AVal.withinRange_of_within {a : AVal} {lo hi i : Int} (h : a.within lo hi = true)
-    (hm : a.Mem (.int i)) : withinRange lo hi i = true := by
-  obtain ⟨b, hb, hi⟩ := hm
-  obtain ⟨bl, bh⟩ := b
-  simp only [AVal.within, hb, Option.all_some, Bool.and_eq_true, Option.any_eq_true,
-    decide_eq_true_eq] at h
-  obtain ⟨⟨l, rfl, hl⟩, ⟨u, rfl, hu⟩⟩ := h
-  have := hi.1 l rfl
-  have := hi.2 u rfl
-  simp only [withinRange, Bool.and_eq_true, decide_eq_true_eq]; omega
-
 def rangeMay (lo hi : Int) (aa ar : AVal) : List Issue :=
   if aa.within lo hi && ar.within lo hi then [] else [.overflow]
 
@@ -262,7 +232,7 @@ theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} (ha : aa.M
   split
   · rename_i hn hw
     simp only [Bool.and_eq_true] at hw
-    simp [AVal.withinRange_of_within hw.1 ha, AVal.withinRange_of_within hw.2 hr] at hn
+    simp [AVal.within_mem hw.1 ha, AVal.within_mem hw.2 hr] at hn
   · simp
 
 /-- Every double code `a` describes has a decimal at scale `s`: the casts of
@@ -272,30 +242,27 @@ def AVal.decFits (s : Nat) (a : AVal) : Bool := a.int.all fun b =>
   | some l, some h => (FloatCode.toDecimal? l s).isSome && (FloatCode.toDecimal? h s).isSome
   | _, _ => false
 
-/-- Every double code `a` describes casts to a `BIGINT`. -/
-def AVal.castFits (a : AVal) : Bool := a.int.all fun b => b.lo.any (castLo ≤ ·) && b.hi.any (· ≤ castHi)
-
 /-- Every timestamp `aa` describes, and its truncation `ar`, is within
 DataFusion's nanosecond range. -/
 def nsFits (aa ar : AVal) : Bool :=
-  aa.int.all (·.hi.any (· ≤ Time.nsMax)) && ar.int.all (·.lo.any (Time.nsMin ≤ ·))
+  aa.int.all (·.allLe Time.nsMax) && ar.int.all (·.allGe Time.nsMin)
 
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
-  | .neg, _, ar => if ar.intFits then [] else [.wraps]
-  | .ftoi, aa, _ => if aa.castFits then [] else [.badCast]
-  | .narrow n, aa, _ => if aa.int.all (·.fitsBits n) then [] else [.badCast]
-  | .wrap n, aa, _ => if aa.int.all (·.fitsBits n) then [] else [.wraps]
+  | .neg, _, ar => if ar.within minI64 maxI64 then [] else [.wraps]
+  | .ftoi, aa, _ => if aa.within castLo castHi then [] else [.badCast]
+  | .narrow n, aa, _ => if aa.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1) then [] else [.badCast]
+  | .wrap n, aa, _ => if aa.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1) then [] else [.wraps]
   | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if nsFits aa ar then [] else [.overflow])
-    else if ar.intFits then [] else [.wraps]
+    else if ar.within minI64 maxI64 then [] else [.wraps]
   | .dayTrunc _, aa, ar => rangeMay Time.nsDayMin Time.nsDayMax aa ar
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
   | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
   | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
   | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
-  | .decimal p _, aa, _ => if aa.int.all (·.fitsDigits p) then [] else [.overflow]
+  | .decimal p _, aa, _ => if aa.within (1 - 10 ^ p) (10 ^ p - 1) then [] else [.overflow]
   | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
   | .raise _, _, _ => [.raised]
   | .bbox n, _, _ => if BlackBox.mayRaise n then [.domain] else []
@@ -334,7 +301,7 @@ def repeatMay (sz : Option Nat) (ab : AVal) : List Issue :=
 (`Text.substrInRange`)? -/
 def substrSafe (n : Option Nat) (ab : AVal) : Bool :=
   n.all (fun n => decide ((n : Int) < Text.substrMax)) &&
-    ab.int.all fun b => b.lo.any (-Text.substrMax ≤ ·) && b.hi.any (· < Text.substrMax)
+    ab.within (-Text.substrMax) (Text.substrMax - 1)
 
 /-- May `a` be the double with code `c`? -/
 def AVal.has (a : AVal) (c : Int) : Bool := a.int.any fun b => b.lo.all (· ≤ c) && b.hi.all (c ≤ ·)
@@ -415,10 +382,10 @@ theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (
 size, if it is a constant string. -/
 def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat → List Issue
   | .add, _, _, ar, _, _ | .sub, _, _, ar, _, _ | .mul, _, _, ar, _, _ =>
-    if ar.intFits then [] else [.wraps]
+    if ar.within minI64 maxI64 then [] else [.wraps]
   | .dateAdd, aa, _, ar, _, _ => rangeMay Time.dayMin Time.dayMax aa ar
   | .idiv, _, _, ar, nz, _ =>
-    (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
+    (if nz then [] else [.divByZero]) ++ (if ar.within minI64 maxI64 then [] else [.overflow])
   | .imod, _, _, _, nz, _ => if nz then [] else [.divByZero]
   | .fdiv, aa, ab, _, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fdiv aa ab then [.domain] else [])
@@ -574,50 +541,37 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     simp only [UnFn.mayIssue]
     split
     · rename_i hn hfits
-      exact absurd (AVal.inI64_of_fits hfits (by simpa [UnFn.apply] using hr)) hn
+      exact absurd (AVal.within_mem hfits (by simpa [UnFn.apply] using hr)) hn
     · simp
   case ftoi.int c =>
     simp only [UnFn.mayIssue]
     split
     · rename_i hfits
-      exfalso
-      obtain ⟨b, hb, hc⟩ := ha
-      obtain ⟨bl, bh⟩ := b
-      simp only [AVal.castFits, hb, Option.all_some, Bool.and_eq_true, Option.any_eq_true,
-        decide_eq_true_eq] at hfits
-      obtain ⟨⟨lo, hlo, hlo'⟩, ⟨hi, hhi, hhi'⟩⟩ := hfits
-      subst hlo hhi
-      obtain ⟨x, hx, hx₁, hx₂⟩ :=
-        FloatCode.toInt?_of_range (Int.le_trans hlo' (hc.1 _ rfl)) (Int.le_trans (hc.2 _ rfl) hhi')
-      rw [hx] at hk
-      simp [inI64, hx₁, hx₂] at hk
+      have h := AVal.within_mem hfits ha
+      simp only [between, Bool.and_eq_true, decide_eq_true_eq] at h
+      obtain ⟨x, hx, hx₁, hx₂⟩ := FloatCode.toInt?_of_range h.1 h.2
+      simp [hx, inI64, between, hx₁, hx₂] at hk
     · cases hx : FloatCode.toInt? c <;> simp only [hx] at hk <;> (try split at hk) <;> simp_all
   case narrow.int n i =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     split
     · rename_i hn hfits
-      obtain ⟨b, hb, hi⟩ := ha
-      simp only [hb, Option.all_some] at hfits
-      exact absurd (Bound.fitsBits_mem hfits hi) hn
+      exact absurd (AVal.within_mem hfits ha) hn
     · simp_all
   case wrap.int n i =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     split
     · rename_i hn hfits
-      obtain ⟨b, hb, hi⟩ := ha
-      simp only [hb, Option.all_some] at hfits
-      exact absurd (Bound.fitsBits_mem hfits hi) hn
+      exact absurd (AVal.within_mem hfits ha) hn
     · simp_all
   case decimal.int p s i =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     split
     · rename_i hn hfits
-      obtain ⟨b, hb, hi⟩ := ha
-      simp only [hb, Option.all_some] at hfits
-      exact absurd (Bound.fitsDigits_mem hfits hi) hn
+      exact absurd (AVal.within_mem hfits ha) hn
     · simp_all
   case ftod.int s c =>
     simp only [UnFn.mayIssue]
@@ -647,7 +601,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       subst hk
       split
       · rename_i hn hfits
-        exact absurd (AVal.inI64_of_fits hfits (by simpa [UnFn.apply] using hr)) hn
+        exact absurd (AVal.within_mem hfits (by simpa [UnFn.apply] using hr)) hn
       · simp
     · split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
       subst hk
@@ -662,7 +616,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         obtain ⟨bl, bh⟩ := b
         obtain ⟨bl', bh'⟩ := b'
         simp only [Bound.Mem] at hm hm'
-        cases bh <;> cases bl' <;> simp_all <;> constructor <;> omega
+        cases bh <;> cases bl' <;> simp_all [Bound.allLe, Bound.allGe] <;> constructor <;> omega
       · simp
   case dayTrunc.int u d => exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
   case timeOfDay.int ts => exact rangeIssue_sound ha ha hk
@@ -710,14 +664,11 @@ theorem repeatMay_sound {sz : Option Nat} {ab : AVal} {s : String} {n : Int}
 
 theorem substrSafe_sound {n : Option Nat} {ab : AVal} {a : Int} (hb : ab.Mem (.int a))
     (hs : substrSafe n ab = true) : Text.substrInRange a n = true := by
-  obtain ⟨y, hy, hm⟩ := hb
-  simp only [substrSafe, hy, Bool.and_eq_true, Option.all_some, Option.any_eq_true,
-    decide_eq_true_eq] at hs
-  obtain ⟨hn, ⟨l, hl, hle⟩, ⟨h, hh, hlt⟩⟩ := hs
-  have h1 := hm.1 l hl
-  have h2 := hm.2 h hh
+  simp only [substrSafe, Bool.and_eq_true] at hs
+  have h := AVal.within_mem hs.2 hb
+  simp only [between, Bool.and_eq_true, decide_eq_true_eq] at h
   simp only [Text.substrInRange, Bool.and_eq_true, decide_eq_true_eq]
-  exact ⟨⟨by omega, by omega⟩, hn⟩
+  exact ⟨⟨h.1, by omega⟩, hs.1⟩
 
 theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : Bool}
     {sz : Option Nat} {k : Issue}
@@ -739,7 +690,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
     simp only [BinFn.mayIssue]
     split
     · rename_i hn hfits
-      exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply] using hr)) hn
+      exact absurd (AVal.within_mem hfits (by simpa [BinFn.apply] using hr)) hn
     · simp
   case dateAdd.int.int i j => exact rangeIssue_sound ha (by simpa [BinFn.apply] using hr) hk
   case fatan2.int.int i j | flogb.int.int i j | bit.int.int op i j =>
@@ -780,7 +731,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       subst hk
       right; split
       · rename_i hn hfits
-        exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply, hj] using hr)) hn
+        exact absurd (AVal.within_mem hfits (by simpa [BinFn.apply, hj] using hr)) hn
       · simp
   case imod.int.int i j =>
     simp only [BinFn.mayIssue]
@@ -857,7 +808,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
                 · rename_i hout
                   have hout' : -2 ^ 63 ≤ i ^ j.toNat → ¬ i ^ j.toNat ≤ 2 ^ 63 - 1 := by
                     intro h1 h2
-                    simp only [inI64, minI64, maxI64, Bool.and_eq_true] at hout
+                    simp only [inI64, between, minI64, maxI64, Bool.and_eq_true] at hout
                     exact hout ⟨decide_eq_true h1, decide_eq_true h2⟩
                   have hm : (↑(max l.natAbs u.natAbs) : Int) ^ j.toNat ≤ 2 ^ 63 - 1 :=
                     of_decide_eq_true (by simp at hmax; exact hmax)
@@ -1163,14 +1114,14 @@ theorem Measure.sumOk_of_le {m : Measure} {i : Int} (h1 : -m.sumMax ≤ i) (h2 :
   cases hq : m.sumDigits with
   | some q =>
     simp only [hq] at h1 h2 ⊢
-    unfold fitsDigits
+    unfold fitsDigits between
     rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq]
     omega
   | none =>
     simp only [hq] at h1 h2 ⊢
     have hmax : maxI64 = 2 ^ 63 - 1 := rfl
     have hmin : minI64 = -(2 ^ 63) := rfl
-    unfold inI64
+    unfold inI64 between
     rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq, hmin, hmax]
     rw [hmax] at h1 h2
     omega

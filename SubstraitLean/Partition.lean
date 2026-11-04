@@ -2421,7 +2421,7 @@ theorem inI64_partial {L : List (List Value)}
       (hs : s ⊆ L) : ∀ i, .int i ∈ s.flatten → P i := fun i hi => by
     obtain ⟨l, hl, hi⟩ := List.mem_flatten.mp hi; exact hP l (hs hl) i hi
   rw [he] at ht
-  simp only [inI64, Bool.and_eq_true, FloatCode.minI64, FloatCode.maxI64] at ht ⊢
+  simp only [inI64, between, Bool.and_eq_true, FloatCode.minI64, FloatCode.maxI64] at ht ⊢
   have ht₁ := of_decide_eq_true ht.1
   have ht₂ := of_decide_eq_true ht.2
   have : 0 ≤ intSum vs ∧ intSum vs ≤ intSum s.flatten + intSum vs + intSum t.flatten ∨
