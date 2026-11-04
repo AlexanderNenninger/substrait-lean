@@ -204,6 +204,7 @@ def test_contract_epsilon_per_double_aggregate(monkeypatch):
     # About twice γ(n)·n·B: 2 · 10⁶ · 2⁻⁵³ · 10⁶ · 10⁶.
     assert 200 < eps["total"]["abs"] < 250
     assert 2e-4 < eps["mean"]["abs"] < 2.5e-4
+    assert "rel" not in eps["total"]  # ±10⁶ can cancel
     out = subprocess.run(
         [str(checker_path()), "--options"], capture_output=True, text=True, check=True
     )
