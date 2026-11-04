@@ -530,6 +530,16 @@ never meets the new codes, so its proofs do not change. The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
+Step 1b put them there (`SubstraitLean/FloatFormat.lean`): `negNan` is the
+code negation of NaN and `negZero` the even code below it, `key` orders the
+full set, `canon_idem` and `canon_mono` prove `canon` idempotent and
+order-preserving, and `SubstraitLean/Float.lean` proves that each operation
+on doubles commutes with `canon` on the reference's codes (`lift₂_canon`,
+`roundTo_canon`, `fmod_canon`, `finite_canon`; `canon_ofFloat` for results
+built from a native double). Code negation is the one exception: it sends
+NaN to `negNan`, and `canon_neg` shows that `canon` of it is the parser's
+negation, which keeps NaN.
+
 ## Translations between profiles
 
 A plan means something only under a profile, so the unit sverify reasons

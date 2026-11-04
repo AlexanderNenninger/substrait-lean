@@ -581,6 +581,91 @@ def fmod (a b : Int) : Int :=
 #guard fmod (ofFloat 0.3) (ofFloat 0.1) == ofFloat 0.09999999999999998
 #guard fmod (ofFloat 5e-324) (ofFloat 2.0) == ofFloat 5e-324
 
+/-! ### One zero and one NaN: `canon` (#444 step 1b)
+
+`-0.0` and the negative NaN have codes outside `[-∞, NaN]`
+(`FloatFormat.negZero`, `negNan`), which the reference never produces. Every
+operation here commutes with `canon` on the reference's codes: their results
+are reference codes, which `canon` fixes. Operations elsewhere build their
+results from `ofFloat`, `ofMag`, `ofInt` or their inputs, so the same holds
+of them (`canon_ofFloat`). Negation is the exception the parser already
+handles: code negation sends NaN to the negative NaN, and `canon` of it is
+the parser's `CASE WHEN x = NaN THEN x ELSE -x END` (`canon_neg`). -/
+
+abbrev negZero : Int := fp64.negZero
+abbrev negNan : Int := fp64.negNan
+abbrev IsRef : Int → Prop := fp64.IsRef
+abbrev canon : Int → Int := fp64.canon
+
+theorem canon_of_isRef {c : Int} (h : IsRef c) : canon c = c := fp64.canon_of_isRef h
+
+theorem canon_idem (c : Int) : canon (canon c) = canon c := fp64.canon_idem c
+
+theorem canon_mono {a b : Int} (h : fp64.key a ≤ fp64.key b) : canon a ≤ canon b := fp64.canon_mono h
+
+theorem isRef_of_bounds {c : Int} (h : negInf < c ∧ c < posInf) : IsRef c :=
+  have := fp64.posInf_lt_nan
+  ⟨Int.le_of_lt h.1, Int.le_of_lt (Int.lt_trans h.2 this)⟩
+
+theorem isRef_nan : IsRef nan :=
+  have := fp64.posInf_lt_nan; have := fp64.negInf_lt_zero; have := fp64.zero_lt_posInf
+  ⟨by show fp64.negInf ≤ fp64.nan; omega, Int.le_refl _⟩
+
+/-- A result built from a native double is a reference code. -/
+theorem canon_ofFloat (f : Float) : canon (ofFloat f) = ofFloat f := fp64.canon_ofMag _ _
+
+theorem canon_finite (c : Int) : canon (finite c) = finite c := fp64.canon_finite c
+
+theorem canon_of_bounds {c : Int} (h : negInf < c ∧ c < posInf) : canon c = c :=
+  canon_of_isRef (isRef_of_bounds h)
+
+theorem lift₂_canon (op : Float → Float → Float) {a b : Int} (ha : IsRef a) (hb : IsRef b) :
+    lift₂ op (canon a) (canon b) = canon (lift₂ op a b) := by
+  rw [canon_of_isRef ha, canon_of_isRef hb]; exact (canon_ofFloat _).symm
+
+theorem canon_zero : canon 0 = 0 :=
+  canon_of_bounds ⟨fp64.negInf_lt_zero, fp64.zero_lt_posInf⟩
+
+theorem roundTo_canon (d : Int) {c : Int} (h : IsRef c) : roundTo d (canon c) = canon (roundTo d c) := by
+  rw [canon_of_isRef h]
+  unfold roundTo; dsimp only
+  split <;> (try split) <;> (try split) <;>
+    first
+    | exact (canon_of_isRef h).symm
+    | exact canon_zero.symm
+    | exact (canon_ofFloat _).symm
+
+theorem finite_canon {c : Int} (h : IsRef c) : finite (canon c) = canon (finite c) := by
+  rw [canon_of_isRef h, canon_finite]
+
+theorem ofIntExact_canon (i : Int) : canon (ofIntExact i) = ofIntExact i :=
+  canon_of_bounds (ofIntExact_bounds i)
+
+/-- Code negation commutes with `canon` except at NaN, where `canon` gives
+the parser's negation. -/
+theorem canon_neg {c : Int} (h : IsRef c) : canon (neg c) = if c = nan then nan else neg c := by
+  split
+  · rename_i e; subst e; exact fp64.canon_negNan
+  · rename_i e
+    apply fp64.canon_eq_self
+    have := fp64.nan_eq; have := fp64.negNan_eq; have := fp64.negZero_eq
+    have h2 : c ≤ fp64.nan := h.2
+    have e' : c ≠ fp64.nan := e
+    show -c ≠ fp64.negZero ∧ -c ≠ fp64.negNan
+    omega
+
+theorem neg_canon {c : Int} (h : IsRef c) : neg (canon c) = neg c := by rw [canon_of_isRef h]
+
+theorem fmod_canon {a b : Int} (ha : IsRef a) (hb : IsRef b) :
+    fmod (canon a) (canon b) = canon (fmod a b) := by
+  rw [canon_of_isRef ha, canon_of_isRef hb]
+  unfold fmod; dsimp only
+  split
+  · exact (canon_of_isRef isRef_nan).symm
+  · split
+    · exact (canon_of_isRef ha).symm
+    · exact (fp64.canon_ofMag _ _).symm
+
 /-- `CAST(x AS DECIMAL(_, s))` of a double with native floats (the model's is
 `toDecimal?`, `SubstraitLean/Conversions.lean`), as the decimal's unscaled integer:
 `round(x · 10ˢ)` computed in doubles, halves away from zero, as DuckDB and
@@ -613,6 +698,16 @@ def ofDecimalNative (n : Int) (s : Nat) : Int :=
 -- Correctly rounded where `n` itself is not a double: 2⁵³ + 1 is a tie.
 #guard ofDecimalNative 9007199254740993 0 == ofFloat 9007199254740992.0
 #guard ofDecimalNative 99999999999999999999 2 == ofFloat 999999999999999999.99
+
+theorem canon_ofInt (i : Int) : canon (ofInt i) = ofInt i := canon_of_bounds (ofInt_bounds i)
+
+theorem canon_ofDecimalNative (n : Int) (s : Nat) : canon (ofDecimalNative n s) = ofDecimalNative n s :=
+  canon_finite _
+
+#guard canon negZero == 0 && canon negNan == nan && canon (neg nan) == nan
+#guard canon posInf == posInf && canon negInf == negInf && canon (ofFloat (-1.5)) == ofFloat (-1.5)
+#guard fp64.key negZero < fp64.key 0 && fp64.key (ofFloat (-5e-324)) < fp64.key negZero
+#guard fp64.key posInf < fp64.key negNan && fp64.key negNan < fp64.key nan
 
 end Substrait.FloatCode
 
