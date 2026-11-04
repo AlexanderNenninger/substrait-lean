@@ -17,6 +17,7 @@
   "description": "`power(-inf, y)` for a finite `y` that is not an integer gives IEEE 754's value under either setting of `ieee_floating_point_ops`: `+inf` for `y > 0` (`0.5`, `1.5`) and `0.0` for `y < 0` (`-0.5`). Integer exponents give `+inf` (`2.0`) and `-inf` (`3.0`), and an infinite exponent `+inf` or `0.0`. A finite negative base to a non-integer power is NaN (duckdb-R15-elementary).",
   "reference": "`power(-inf, y)` for a finite non-integer `y` raises a domain error (`negInfPow` in `SubstraitLean/Safety.lean`), as a finite negative base does; Polars's `** 0.5` gives NaN there. `Profile.duckdb` states DuckDB's value (`duckNegInfPow`).",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

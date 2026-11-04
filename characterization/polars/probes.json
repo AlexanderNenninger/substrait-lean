@@ -2184,7 +2184,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 7,
+     "differ": 9,
      "examples": [
       {
        "row": "[-1.0, 0.5]",
