@@ -111,6 +111,9 @@ def test_f3_default_null_order_does_not_transfer(tmp_path):
         ["NULLS_FIRST"],
     )
     assert failure["facts"] == ["polars-null-order"]
+    # Through the reference, the translation states the reference's NULLs last.
+    shim = {"group": "rel.sort", "option": "null_order", "shim": "null_order"}
+    assert shim in r["shims"]["polars"]
 
 
 def test_g1_md5_is_missing_on_polars(tmp_path):

@@ -124,7 +124,9 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
-  (none, "clustered", .shimmed "ORDER BY the keys" []),
+  -- The written `ORDER BY` is the model's sort, which `SortAllowed` allows for
+  -- a clustered key (`Rel.duckdb_refines`; `test_realizability.py` runs it).
+  (none, "clustered", (ObsRow.shimmed "ORDER BY the keys" []).proved "Rel.duckdb_refines"),
   (none, "tie_order", .native ["duckdb-mode-ties"]),
   (none, "tie_pick", .native ["duckdb-mode-ties", "duckdb-arg-min-nulls"]),
   (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
@@ -199,9 +201,10 @@ def Profile.polars.obs : ObsTable := [
   (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),
   -- Every stated placement is native, by `nulls_last`; where a key leaves it
   -- open, Polars's default (first) is not the reference's (last), which the
-  -- choices say (`transferB`). `Polars.null_order`: with `nulls_last` written
-  -- per key, Polars orders as `sortLe`.
-  (none, "null_order", (ObsRow.native ["polars-null-order"]).proved "Polars.null_order"),
+  -- choices say (`transferB`), so the translation writes `nulls_last` on every
+  -- key, a written argument. `Polars.null_order`: with it, Polars orders as
+  -- `sortLe`.
+  (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Polars.null_order"),
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
   (none, "tie_order", (ObsRow.native ["polars-sort-stability", "polars-first-last"]).proved "Polars.tie_order"),
   (none, "tie_pick", .native ["polars-first-last"]),

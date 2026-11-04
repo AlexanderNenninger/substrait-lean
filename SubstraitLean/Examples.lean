@@ -23,6 +23,7 @@ import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
+import SubstraitLean.Obligations
 
 /-!
 # Examples
@@ -175,6 +176,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.refines_of_perm
 #print axioms Substrait.Rel.guardFree_allowed
 #print axioms Substrait.Rel.duckdb_shim_allowed
+#print axioms Substrait.Rel.duckdb_refines
+#print axioms Substrait.Lowering.lowerRel_raises
 #print axioms Substrait.FloatCode.round_mono
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
