@@ -1699,4 +1699,59 @@ theorem Rel.noIssue_of_assumedHold {cat : Catalog} (hcat : cat.WF) {A : String �
   rw [List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)] at this
   cases this
 
+/-! ## Constant subexpressions that raise (#609)
+
+DuckDB folds a `CASE`'s constant conditions when it plans a query, with the
+evaluator that raises: `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END`
+raises on any data, an empty table included (DD-5). The reference counts every
+constant subexpression that raises as raising for the whole plan, whatever
+the data and whichever branch a row takes (D21: strict, and constants that
+raise are rare). No precondition rules one out. -/
+
+/-- Does `e` read no column? A lambda's body reads its parameter. -/
+def Expr.isConst : Expr → Bool
+  | .lit _ => true
+  | .field _ => false
+  | .un _ a => a.isConst
+  | .bin _ a b => a.isConst && b.isConst
+  | .ifThen c t e => c.isConst && t.isConst && e.isConst
+  | .hof _ _ _ => false
+
+/-- The errors of `e` itself if it is constant, on no row. -/
+def Expr.selfConstIssues (e : Expr) : List (Issue × Expr) :=
+  if e.isConst then (e.issues []).filter (·.1.isError) else []
+
+/-- The errors of every constant subexpression of `e`, every branch of a
+constant `CASE` included. -/
+def Expr.constIssues : Expr → List (Issue × Expr)
+  | .lit _ | .field _ => []
+  | e@(.un _ a) => e.selfConstIssues ++ a.constIssues
+  | e@(.bin _ a b) => e.selfConstIssues ++ a.constIssues ++ b.constIssues
+  | e@(.ifThen c t x) => e.selfConstIssues ++ c.constIssues ++ t.constIssues ++ x.constIssues
+  | .hof _ l _ => l.constIssues
+
+/-- Every expression of a plan: conditions, projections, grouping keys and
+the measures' arguments and filters. -/
+def Rel.planExprs : Rel → List Expr
+  | .read _ | .values _ _ => []
+  | .filter r c => c :: r.planExprs
+  | .project r es => es ++ r.planExprs
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.planExprs
+  | .window r _ _ fns => (WinFn.aggs fns).flatMap Measure.exprs ++ r.planExprs
+  | .cross a b | .unionAll a b => a.planExprs ++ b.planExprs
+  | .join a b _ on | .semi a b _ on => on :: a.planExprs ++ b.planExprs
+  | .aggregate r gs ms => gs ++ ms.flatMap Measure.exprs ++ r.planExprs
+
+/-- **The plan's constant errors** (#609, D21): each raises when the plan
+runs, on any data. -/
+def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
+  (r.planExprs.flatMap Expr.constIssues).eraseDups
+
+-- `1 // 0 = 1` in a later `WHEN` raises whatever the first condition says;
+-- a constant without an error is nothing.
+#guard (Expr.ifThen (.bin .lt (.lit (.int 0)) (.field 0)) (.lit (.int 1))
+  (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
+    (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
+#guard (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
+
 end Substrait

@@ -843,6 +843,14 @@ INFINITE_HINT = (
 )
 
 
+#: What a report says of a constant that raises (#609, D21).
+CONSTANT_HINT = (
+    "this operation reads no column and raises: DuckDB evaluates it when it "
+    "plans the query, so the plan raises on any data, an empty table included, "
+    "and no precondition rules it out. Fix or remove the constant"
+)
+
+
 def _sum(issue: Issue) -> bool:
     """Whether `issue` is a `SUM` that may leave its type."""
     return issue.kind == "SUM overflow"
@@ -899,6 +907,10 @@ class Issue:
     """For a "SUM overflow": the column the SUM adds up, named as in its
     hint (the base table's column where it is passed on unchanged). None if
     `expr` is not a single column."""
+    constant: bool = False
+    """The operation reads no column and raises (#609, D21): DuckDB evaluates
+    such a constant when it plans the query, so the plan raises on any data,
+    and no precondition rules it out (`CONSTANT_HINT`)."""
 
     @property
     def what(self) -> str:
@@ -2398,12 +2410,15 @@ def _verify_once(
                 # a report counts it as a `SUM` overflow: assumed with `infer`,
                 # an error without.
                 i["error"] or i["kind"] == INFINITE,
-                _hint(i["bound"], schemas, assumable)
+                CONSTANT_HINT
+                if i.get("constant")
+                else _hint(i["bound"], schemas, assumable)
                 if i["error"]
                 else INFINITE_HINT
                 if i["kind"] == INFINITE
                 else None,
                 _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
+                i.get("constant", False),
             )
             for i in out["issues"]
             # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
