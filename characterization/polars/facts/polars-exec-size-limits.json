@@ -1,0 +1,38 @@
+{
+  "id": "polars-exec-size-limits",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Size limits: decimal precision 38 documented; strings and lists not",
+  "verdict": "Decimal: 128 bits, at most 38 digits; other limits undocumented",
+  "area": "execution",
+  "options": [
+    "size_limits"
+  ],
+  "constructs": [
+    "Decimal",
+    "String",
+    "Binary",
+    "List"
+  ],
+  "settings": {},
+  "description": [
+    "`Decimal` is a 128-bit type with at most 38 digits of precision (also the default when the precision is not given) and a non-negative scale. The page does not say what an overflow does.",
+    "The docs give no limit for strings, binaries, lists or nesting depth. Strings and binaries are stored as Arrow binary views, whose length field is 32 bits as far as Arrow's format goes, and lists as large lists with 64-bit offsets; both are to confirm in source.",
+    "Leads: crates/polars-arrow/src/array/binview/view.rs (the view's length), py-polars/tests/unit/datatypes/test_decimal.py for decimal overflow (polars-decimal-arith covers arithmetic)."
+  ],
+  "reference": "The reference caps decimals at 38 digits and raises past them; it has no limit on string, blob or list lengths.",
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Decimal.html"
+        }
+      ]
+    }
+  ]
+}

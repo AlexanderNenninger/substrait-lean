@@ -7,7 +7,13 @@
   "area": "windows",
   "options": [
     "default_window_frame",
-    "ntile_spread"
+    "ntile_spread",
+    "tie_order"
+  ],
+  "rows": [
+    {"group": "win.rank", "option": "tie_order", "types": ["any"], "evidence": "docs"},
+    {"group": "win.ntile", "option": "ntile_spread", "types": ["any"], "evidence": "docs"},
+    {"group": "win.ntile", "option": "tie_order", "types": ["any"], "evidence": "docs"}
   ],
   "constructs": [
     "rank"
@@ -33,6 +39,29 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (windows)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.rank.html",
+          "note": "'ordinal': every value gets a distinct rank, in the order the values occur in the Series; 'random': ties ranked independently of that order (seeded by `seed`); Notes: only non-null values are ranked and nulls are kept"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/window.html",
+          "note": "the window functions listed are `over` and `rolling`"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/genindex.html",
+          "note": "the API index has no `ntile`, `percent_rank` or `cume_dist`"
+        }
+      ],
+      "notes": [
+        "`rank('ordinal')`, Polars's `ROW_NUMBER`, breaks ties by input order, so `over` with a pre-sorted frame keeps a stable sort's order of ties. `rank('min')` and `rank('dense')` give tied rows one rank. There is no NTILE, so `ntile_spread` and its tie order have no Polars counterpart: a plan with `ntile` is refused.",
+        "The docs at `stable` are those of Polars 2.1.0: their [source] links point at tag py-2.1.0."
+      ]
     }
   ]
 }

@@ -9,7 +9,8 @@
     "quantile_interp"
   ],
   "rows": [
-    {"group": "agg.quant", "option": "quantile_interp", "types": ["fp64"]}
+    {"group": "agg.quant", "option": "quantile_interp", "types": ["fp64"]},
+    {"group": "agg.quant", "option": "quantile_interp", "types": ["i64"], "evidence": "docs"}
   ],
   "constructs": [
     "quantile",
@@ -36,6 +37,25 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.quantile.html",
+          "note": "`quantile(q, interpolation='nearest')`, methods nearest, higher, lower, midpoint, linear, equiprobable; a single quantile is one f64. Over the Int64 column 0..5 at q = 0.3: nearest 2.0, higher 2.0, lower 1.0, midpoint 1.5, linear 1.5"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.median.html",
+          "note": "`median` uses linear interpolation; f64 result"
+        }
+      ],
+      "notes": [
+        "The examples run on an Int64 column, so the methods and the Float64 result hold for integers. They agree with the probe: nearest takes index round(0.3 · 5) = 2. The docs do not mention decimal input.",
+        "The docs at `stable` are those of Polars 2.1.0: their [source] links point at tag py-2.1.0."
+      ]
     }
   ]
 }

@@ -1,0 +1,57 @@
+{
+  "id": "polars-exec-predicate-pushdown",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Strict casts raise on the rows left after predicate pushdown",
+  "verdict": "which rows a raising expression sees depends on the optimizer; sverify turns predicate pushdown off",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "filter",
+    "cast",
+    "with_columns"
+  ],
+  "settings": {
+    "predicate_pushdown": false
+  },
+  "description": [
+    "The `cast` docstring says `strict` raises if the cast is invalid on the rows after predicates are pushed down. So the rows a strict cast sees are those the optimized plan reaches, which the optimizer decides: predicate pushdown applies filters as early as possible, at the scan (lazy optimizations guide). Neither page says whether a pushed filter can move above or below a raising expression, or whether the conditions of one `filter` are evaluated in order.",
+    "sverify collects every translated plan with `predicate_pushdown=False` (`sverify.polars_engine.collect`), because pushdown would move its guards and filters below the filters before them, onto rows the plan never evaluates there. The other optimizations (simplify expressions, common subexpressions, slice pushdown) stay on.",
+    "Leads: crates/polars-plan/src/plans/optimizer/predicate_pushdown/, the streaming engine's filter node, and probes of a filter followed by a strict cast with and without pushdown, in memory and streaming."
+  ],
+  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee.",
+  "status": "open",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.cast.html"
+        },
+        {
+          "url": "https://docs.pola.rs/user-guide/lazy/optimizations/"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L2254",
+          "note": "strict: on rows after predicates are pushed down"
+        },
+        {
+          "file": "python/src/sverify/polars_engine.py",
+          "note": "collect: predicate_pushdown=False"
+        }
+      ]
+    }
+  ]
+}

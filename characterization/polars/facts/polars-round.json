@@ -9,7 +9,8 @@
     "rounding"
   ],
   "rows": [
-    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]},
+    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "docs"}
   ],
   "constructs": [
     "round"
@@ -58,6 +59,21 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/version/2/reference/expressions/api/polars.Expr.round.html",
+          "note": "Expr.round (API reference, version 2)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L2001-L2030"
+        }
+      ],
+      "notes": "`Expr.round` rounds \"floating point data\" with `mode` `half_to_even` (the default), `half_away_from_zero` or `to_zero`, described by value (`2.5` rounds to 2 under the default). The docstring names no float type, so it holds for `Float32` too. Settles the `Float32` row at docs level; the probes cover `Float64`."
     }
   ],
   "issues": [

@@ -1,0 +1,47 @@
+{
+  "id": "polars-fp-ieee",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`Float32` and `Float64` arithmetic: IEEE 754",
+  "verdict": "IEEE 754 rounding for `+ - * /` in both float types",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.arith", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "fp.div", "option": "rounding", "types": ["fp32", "fp64"]}
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/"
+  ],
+  "settings": {},
+  "description": [
+    "Polars's user guide says `Float32` and `Float64` generally follow IEEE 754, with exceptions for NaN equality and order and for the sign of zero and NaN. Rounding is not among the exceptions, so `+ - * /` round as IEEE 754 binary32 and binary64 do, to nearest with ties to even.",
+    "The guide promises no error bound for other computations unless a function says so, so it does not settle the rounding of the elementary functions or logarithms."
+  ],
+  "reference": "`rounding: TIE_TO_EVEN` for `+ - × /` on doubles (native `Float`). `fp32` arithmetic is refused in every profile until #417's stage 3.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "User guide, Floating point numbers (stable)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/docs/source/user-guide/concepts/data-types-and-structures.md#L176-L190",
+          "note": "The same section at tag py-2.1.0."
+        }
+      ],
+      "notes": "Polars's user guide says it generally follows IEEE 754 for `Float32` and `Float64`, with two exceptions: any NaN equals any other NaN and is greater than every non-NaN value, and operations guarantee nothing about the sign of zero or NaN or a NaN's payload (a sort or group by may make every zero +0 and every NaN a positive NaN). It promises no error bound unless a function says otherwise. The user guide is not versioned; the section reads the same at tag py-2.1.0."
+    }
+  ]
+}

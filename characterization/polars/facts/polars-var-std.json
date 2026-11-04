@@ -11,7 +11,8 @@
   ],
   "rows": [
     {"group": "agg.var", "option": "stat_algo", "types": ["fp64"]},
-    {"group": "agg.var", "option": "stat_degenerate", "types": ["fp64"]}
+    {"group": "agg.var", "option": "stat_degenerate", "types": ["fp64"]},
+    {"group": "agg.var", "option": "distribution", "types": ["i64", "fp64"], "evidence": "docs"}
   ],
   "constructs": [
     "var",
@@ -73,6 +74,25 @@
         }
       ],
       "notes": "`var` of one value is NULL (sample) and 0.0 (`ddof=0`); `std` of one value is NULL. Polars 2.1.0."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.var.html",
+          "note": "`var(ddof=1)`: the divisor is N - ddof; `var` of the Int64 column -1, 0, 1 is the Float64 1.0"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.std.html",
+          "note": "`std(ddof=1)`, the same divisor; `std` of the Int64 column -1, 0, 1 is 1.0"
+        }
+      ],
+      "notes": [
+        "Substrait's `distribution` is `ddof`: SAMPLE is `ddof=1`, the default, and POPULATION is `ddof=0`; any other integer is allowed. The example shows an Int64 column gives a Float64 sample variance. The docs say nothing about the algorithm, about a divisor at most 0, or about decimal input.",
+        "The docs at `stable` are those of Polars 2.1.0: their [source] links point at tag py-2.1.0."
+      ]
     }
   ],
   "issues": [
