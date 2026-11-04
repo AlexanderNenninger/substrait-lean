@@ -89,8 +89,8 @@ from sverify.errors import PreconditionError
 t = con.table("orders")
 unchecked = sv.verify(t.select(t.id, unit=t.total // t.qty))
 print(unchecked)
-# requires orders: (_.total >= -9 * 10**18) (inferred)
-# requires orders: (_.qty != 0) (inferred)
+# requires orders: (_.total >= -9 * 10**18) (inferred from total // qty)
+# requires orders: (_.qty != 0) (inferred from total // qty)
 # ...
 con.put("orders", pa.table({"id": [4], "qty": [0], "total": [10]}))
 try:
@@ -148,18 +148,20 @@ on_polars = means.run(con, "polars", route="auto")
 print(means.observation.equal(on_duckdb, on_polars))
 # True
 print(means.routes["polars"].cls)
-# approx
+# observed
 ```
 
-Without the observation, the postcondition asks for exact doubles, and the
-route to Polars is refused with the bound it could prove.
+Without the observation, the run accepts doubles within the plan's proved
+bound, except in a column a postcondition reads, which keeps its exact value.
 
 ## 6. A reproducible sink, kept up to date
 
 A sink commits each epoch once, so a rerun must give the same result. The
-sink says what "the same" means (`reproducible=`, D20), and a refresh is
-refused where the engine's run-to-run variation does not refine it. Polars's
-streaming `SUM` of doubles may add in another order each run:
+sink says what "the same" means (`reproducible=`, D20; by default, doubles
+within the plan's proved bound), and a refresh is refused where the engine's
+run-to-run variation does not refine it. Polars's streaming `SUM` of doubles
+may add in another order each run, so a sink that asks for exact doubles is
+refused:
 
 ```python
 from sverify.io import DeltaSink
@@ -177,10 +179,11 @@ def sums(readings):
 
 
 try:
-    readings.pipe(sums).write(DeltaSink("sums_exact")).refresh(engine="polars", route="auto")
+    exact = DeltaSink("sums_exact", reproducible=sv.equivalent())
+    readings.pipe(sums).write(exact).refresh(engine="polars")
 except RouteError as e:
     print(e)
-# refused on polars: sums_exact: a rerun must give the same result: agg.fsum's sum_order: ... a rerun must reproduce exact doubles
+# refused on polars: sums (stored as sums_exact): a rerun must give the same result: agg.fsum's sum_order: ... a rerun must reproduce exact doubles: pass reproducible=...
 
 totals = readings.pipe(sums).write(
     DeltaSink("sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
@@ -189,7 +192,7 @@ totals.refresh(engine="polars", route="auto")
 readings.apply(sv.Changes(inserts=[(1, 0.5)]))
 print(totals.refresh(engine="polars", route="auto"))
 # sums:
-#   route on polars: reference: ... [approx, tested]
+#   route on polars: reference: ... [observed equivalent(rows='sequence', floats=within(abs=...
 # ...
 #   view sums: 1 touched group(s) recomputed
 #   wrote sums from readings@v1: merge v2, 1 row(s) written, 1 deleted
@@ -211,14 +214,14 @@ t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on [refines]
+# transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on [exact]
 
 divided = sv.verify(t.select(t.id, unit=t.total // t.qty), semantics="duckdb")
 try:
     divided.run(con, "polars", route="auto")
 except RouteError as e:
     print(e)
-# refused on polars: ... int.div's division_type: Profile.duckdb gives TRUNCATE, polars gives FLOOR (polars-int-divide); ...
+# refused on polars: verify with semantics='reference' to run on polars (the plan was verified with semantics='duckdb', whose proof does not carry over to polars); details: ...
 ```
 
 The same query verified under the reference runs on Polars with a shim

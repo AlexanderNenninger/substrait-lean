@@ -69,6 +69,7 @@ import pyarrow as pa
 from sverify import _plan_read, _support
 from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
+from sverify._support import DUCKDB_ONLY
 
 try:
     import polars as pl
@@ -963,7 +964,7 @@ class Exprs:
                     return date_part(which.lower(), ts)
                 if ts.dtype == pl.Time:
                     raise Unsupported(
-                        "date_trunc of a time of day is not yet supported on Polars; see #271"
+                        "date_trunc of a time of day is not yet supported on Polars; " + DUCKDB_ONLY
                     )
                 if ts.dtype == pl.Date:
                     if name == "date_part":
@@ -1069,7 +1070,7 @@ class Exprs:
 
     def cast(self, c: dict) -> Val:
         if c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
-            raise Unsupported("TRY_CAST is not yet supported on Polars; see #271")
+            raise Unsupported("TRY_CAST is not yet supported on Polars; " + DUCKDB_ONLY)
         v = self(c["input"])
         target = c.get("type", {})
         if ("fp64" in target or "fp32" in target) and v.dtype in (pl.Int64, pl.Null):
@@ -1349,7 +1350,7 @@ class Exprs:
             return Val(ops[name], pl.Float64, (*issues(a, b), zero, *tiny, nan, *inf))
         if name in ("add", "subtract") and ta == pl.Time:
             raise Unsupported(
-                "a time of day plus an interval is not yet supported on Polars; see #271"
+                "a time of day plus an interval is not yet supported on Polars; " + DUCKDB_ONLY
             )
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
@@ -2241,7 +2242,9 @@ class Translator:
             if name == "avg" and not itof and t == pl.Int64 and _int_output(w):
                 fn = "iavg"
             if name in ("min", "max") and t == pl.Float64:
-                raise Unsupported(f"{name} of doubles is not yet supported on Polars; see #271")
+                raise Unsupported(
+                    f"{name} of doubles is not yet supported on Polars; " + DUCKDB_ONLY
+                )
             out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
                    "iavg": pl.Int64, "bit_and": pl.Int64, "bit_or": pl.Int64,
                    "bit_xor": pl.Int64}  # fmt: skip
@@ -2417,7 +2420,7 @@ class Translator:
             # no `-0.0`, so only NaN, the largest double in Lean, needs care.
             fn = "fmax"
         elif name in ("min", "max") and t == pl.Float64:
-            raise Unsupported(f"{name} of doubles is not yet supported on Polars; see #271")
+            raise Unsupported(f"{name} of doubles is not yet supported on Polars; " + DUCKDB_ONLY)
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):
             fn = "collect"
         elif name in ("bit_and", "bit_or", "bit_xor") and t == pl.Int64:

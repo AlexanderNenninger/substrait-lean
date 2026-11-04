@@ -676,8 +676,9 @@ class DeltaSink(_TableSink[DeltaTable]):
             Nodes reading the stored node that fell further behind read the
             whole table. Default: None, no vacuum.
         reproducible: What a rerun of a state must reproduce
-            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset
-            with exact values.
+            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset,
+            doubles within the plan's bound (`sv.equivalent(floats="plan")`),
+            other values exact; `sv.equivalent()` asks for the same bits.
 
     Attributes:
         uri: The sink table's location.

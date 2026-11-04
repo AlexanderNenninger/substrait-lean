@@ -27,15 +27,17 @@ def test_refresh_reports_the_route(tmp_path) -> None:
         r = out["doubled"].route
         assert r is not None and r.kind == "reference" and r.engine == engine
         assert f"route on {engine}: reference" in str(out)
+    # "auto" is the default.
     plain = doubled(paid(orders)).refresh(engine="polars")
-    assert plain["doubled"].route is None
+    assert plain["doubled"].route is not None and plain["doubled"].route.kind == "reference"
 
 
 def test_a_refused_route_refreshes_nothing(tmp_path) -> None:
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
     node = doubled(paid(orders)).write(DeltaSink(str(tmp_path / "out")))
     with pytest.raises(
-        RouteError, match="refused on duckdb: out: not verified under Profile.duckdb"
+        RouteError,
+        match=r"refused on duckdb: doubled \(stored as out\): not verified under Profile.duckdb",
     ):
         node.refresh(route="native")
     with pytest.raises(Exception):  # noqa: B017 - nothing was written
@@ -54,6 +56,7 @@ def test_a_stored_node_needs_a_determined_result(tmp_path) -> None:
     route = open_pick.refresh(route="auto")["any_amount"].route
     assert route is not None and not route.deterministic and route.warnings
     stored = any_amount(orders).write(DeltaSink(str(tmp_path / "picked")))
-    for how in (None, "auto"):
-        with pytest.raises(RouteError, match="rerun must give the same"):
+    for how in ("auto", "reference"):
+        # #655: the fix sentence is kept on every route.
+        with pytest.raises(RouteError, match="rerun must give the same.*declare `unique"):
             stored.refresh(route=how)

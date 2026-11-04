@@ -33,7 +33,11 @@ DOC = ROOT / "docs" / "realizability.md"
 ENGINES = {"duckdb": "DuckDB", "polars": "Polars"}
 
 #: The summary's column for a case.
-LABELS = {"refines_up_to": "up to `q`", "uncharacterized": "not characterized"}
+LABELS = {
+    "refines_up_to": "observed",
+    "approx": "observed (tolerance)",
+    "uncharacterized": "not characterized",
+}
 
 #: The cases, in the order the summary counts them.
 CASES = ("native", "shim", "refines_up_to", "approx", "precondition", "refused", "uncharacterized")
@@ -130,9 +134,9 @@ def case_cell(row: dict[str, Any]) -> str:
     if case == "shim":
         cell = f"shim `{row['shim']}` ({row.get('cost') or 'no cost'})"
     elif case == "refines_up_to":
-        cell = f"up to {_q(row.get('q') or {})}"
+        cell = f"observed: up to {_q(row.get('observation', row.get('q')) or {})}"
     elif case == "approx":
-        cell = f"approx, within the {row['bound']}'s bound"
+        cell = f"observed: within the {row['bound']}'s bound"
     elif case == "precondition":
         cell = f"precondition: {row['precondition']}"
     elif case == "uncharacterized":
@@ -174,9 +178,11 @@ def render(t: dict[str, Any]) -> str:
         "- native: the engine's behaviour is one the reference allows.",
         "- shim: the translation writes the shim first, at its cost: a written argument,",
         "  an expression per row or group, or a sort.",
-        "- up to `q`: the same up to the observation `q` (D18); a postcondition that",
-        "  observes more needs the row's shim, or the plan is refused there.",
-        "- approx: within the plan's float bound (#85) of a result the reference allows.",
+        "- observed: the same as a result the reference allows up to an observation",
+        "  (D18), such as rows as a multiset; a postcondition that observes more needs",
+        "  the row's shim, or the plan is refused there.",
+        "- observed (tolerance): within the plan's float bound (#85) of a result the",
+        "  reference allows, a tolerance being an observation of doubles.",
         "- precondition: the engine differs only where the reference raises, so a plan",
         "  verified never to raise never reaches the difference; where the precondition",
         "  is checked on the data, its guard stays.",
