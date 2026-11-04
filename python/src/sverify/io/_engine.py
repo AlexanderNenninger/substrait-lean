@@ -171,6 +171,20 @@ def positions(scan: Scan, change: Resident) -> pa.Table | None:
     return out.cast(pa.schema([("file", pa.string()), ("pos", pa.int64())]))
 
 
+def deletes_by_file(scan: Scan | None, change: Resident) -> dict[str, list[int]] | None:
+    """The positions of the rows `change` deletes (`positions`) in each
+    file of `scan` (by local path, in file order), for a native writer to
+    rewrite those files (Delta) or write their position deletes (Iceberg).
+    None if there is no scan or its files do not hold them all."""
+    gone = None if scan is None else positions(scan, change)
+    if gone is None:
+        return None
+    out: dict[str, list[int]] = {}
+    for f, pos in zip(gone.column("file").to_pylist(), gone.column("pos").to_pylist(), strict=True):
+        out.setdefault(f, []).append(pos)
+    return out
+
+
 # -- Delta statistics ---------------------------------------------------------
 
 

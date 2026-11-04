@@ -1414,17 +1414,12 @@ class IcebergSink(_TableSink[Table]):
         deletes: list[DataFile] = []
         if deleted:
             snap = self.source()._native()
-            if snap is None:
-                return None
-            gone = _engine.positions(snap.scan, delta)
+            gone = _engine.deletes_by_file(None if snap is None else snap.scan, delta)
             if gone is None:
                 return None
             tasks = _tasks(t, t.current_snapshot())
             uris = {local_path(p): p for p in tasks}
-            by_file: dict[str, list[int]] = {}
-            files, at = gone.column("file").to_pylist(), gone.column("pos").to_pylist()
-            for f, pos in zip(files, at, strict=True):
-                by_file.setdefault(uris[f], []).append(pos)
+            by_file = {uris[f]: pos for f, pos in gone.items()}
             data = {p: tasks[p].file for p in by_file}
             deletes = _position_deletes(t, by_file, data)
         added = data_file(_engine.inserts_sql(delta, schema)) if inserted else []
