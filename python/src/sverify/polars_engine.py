@@ -58,6 +58,8 @@ from typing import Any
 
 import pyarrow as pa
 
+from sverify import black_box
+
 try:
     import numpy as np
     import polars as pl
@@ -843,6 +845,8 @@ class Exprs:
         if anchor not in self.functions:
             raise Unsupported(f"function reference {anchor} is not declared in extensions")
         name = self.functions[anchor].split(":")[0]
+        if name in black_box.NAMES:
+            raise Unsupported(black_box.refusal(name, "Polars"))
         # sverify's own remainder of doubles (#256) is `modulus` on doubles.
         return "modulus" if name == "sverify_fmod" else name
 

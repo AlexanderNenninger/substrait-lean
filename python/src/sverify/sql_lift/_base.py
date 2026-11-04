@@ -319,6 +319,8 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
         raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
+    for rewrite in PARSE_REWRITES:
+        tree = rewrite(tree)
     for f in tree.find_all(sge.Anonymous):
         if f.name.lower() not in _KNOWN:
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
@@ -910,6 +912,8 @@ class _Lift:
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
                     raise Unsupported("nth_value needs a positive integer constant")
                 args.append(literal(k.value, dt.int64))
+        elif type(f) in AGG_RULES:
+            raise Unsupported(f"{_shown(f)} over a window is not supported yet")
         elif type(f) in _AGGREGATES:
             # Each measure over the window, with its type (DuckDB's AVG of a
             # DECIMAL is a DOUBLE).
@@ -1101,6 +1105,7 @@ class _Lift:
             where = self.condition(node.expression.this, scope, bound)
             node = node.this
         name = _AGGREGATES[type(node)]
+        agg_rule = AGG_RULES.get(type(node))
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
         if distinct:
@@ -1121,7 +1126,9 @@ class _Lift:
                 )
             args = [a]
             t = a.type
-            if name == "count":
+            if agg_rule is not None:
+                name, out = agg_rule(self, node, a)
+            elif name == "count":
                 out = dt.int64
             elif name in ("min", "max"):
                 out = t
@@ -1286,6 +1293,15 @@ Rule = Callable[..., E]
 #: The rule of each node type. Each area (`sql_lift/<area>.py`) registers its
 #: own; `sverify.sql_lift` imports them all.
 RULES: dict[type, Rule] = {}
+
+#: Rewrites of the parsed tree, before its functions are checked: the black
+#: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
+PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+#: The aggregates of nodes of their own (the black boxes', #325), each also in
+#: `_AGGREGATES`: the Substrait function and output type of a measure, from
+#: the node and its lifted argument.
+AGG_RULES: dict[type, Callable[[_Lift, sge.Expression, E], tuple[str, Any]]] = {}
 
 
 def register(rules: Mapping[type, Rule]) -> None:

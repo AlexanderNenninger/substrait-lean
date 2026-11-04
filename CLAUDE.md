@@ -184,6 +184,20 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   decimal typing (`_exact`) is in `_base.py`.
 - **Tests of the lift**: `python/tests/test_sql_lift_<area>.py`, with the
   shared tables in `python/tests/_sql_lift.py`.
+- **Black box** (#325), a DuckDB function the checker treats as opaque: add a
+  row to `BlackBox.scalars` or `BlackBox.aggregates`
+  (`SubstraitLean/BlackBox.lean`) with its types, NULL handling, whether it
+  raises, its laws and a `sample` the laws allow (`scalars_wf` checks it by
+  `decide`), and the same row, at the same index, to `TABLE` in
+  `python/src/sverify/black_box.py` with DuckDB's SQL. Its anchor is 700 plus
+  its index, under the black boxes' URN; the parser, the lift
+  (`sql_lift/blackbox.py`), the writers and the refusals of other engines
+  read the table, and `tests/test_black_box.py` checks the two tables agree.
+  Add a lift rule only where SQLGlot reads the call as a node of its own
+  (`to_base64`), and a Lean evaluator in `BlackBox.evalScalar` where Lean can
+  compute it exactly. Test it in `tests/test_black_box.py`: oracle C, the
+  laws on random data, a contract they prove. A new law kind needs its case
+  in `BlackBox.Law.holds` and `Law.bound` (`Contracts.lean`).
 - **Reference semantics** (`docs/reference-semantics.md`): the area's section.
 
 ## Voice

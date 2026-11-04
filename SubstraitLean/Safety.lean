@@ -130,6 +130,8 @@ def rangeIssue (lo hi x y : Int) : Option Issue :=
 /-! ## What goes wrong on a row -/
 
 def UnFn.issue : UnFn → Value → Option Issue
+  -- A black box that may raise, where it does (#325).
+  | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
   | .neg, .int i => wrapIf (-i)
   | .ftoi, .int c => match FloatCode.toInt? c with
     | some x => if inI64 x then none else some .badCast
@@ -179,6 +181,7 @@ def nanCase : BinFn → Int → Int → Bool
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
+  | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
   | .add, .int a, .int b => wrapIf (a + b)
   | .sub, .int a, .int b => wrapIf (a - b)
   | .mul, .int a, .int b => wrapIf (a * b)
@@ -295,6 +298,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .decimal p _, aa, _ => if aa.int.all (·.fitsDigits p) then [] else [.overflow]
   | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
   | .raise _, _, _ => [.raised]
+  | .bbox n, _, _ => if BlackBox.mayRaise n then [.domain] else []
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -432,6 +436,7 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .fatan2, aa, ab, _, _, _ => if BinFn.domainSafe .fatan2 aa ab then [] else [.domain]
   | .flogb, aa, ab, _, _, _ => if BinFn.domainSafe .flogb aa ab then [] else [.domain]
   | .bit op, aa, ab, _, _, _ => if BinFn.domainSafe (.bit op) aa ab then [] else [.domain]
+  | .bbox2 n, _, _, _, _, _ => if BlackBox.mayRaise n then [.domain] else []
   | _, _, _, _, _, _ => []
 
 /-- Is `x`'s value never the integer 0? From its interval, an assumption
@@ -544,7 +549,13 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
 
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     (ha : aa.Mem v) (hr : ar.Mem (f.apply v)) (hk : f.issue v = some k) : k ∈ f.mayIssue aa ar := by
-  cases f <;> cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+  cases f
+  case bbox n =>
+    simp only [UnFn.issue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i h
+    simp [UnFn.mayIssue, BlackBox.mayRaise_of_raisesOn h]
+  all_goals (cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk)
   case raise.null | raise.bool | raise.int | raise.str | raise.list =>
     simp only [Option.some.injEq] at hk; subst hk; simp [UnFn.mayIssue]
   case fmath.int f c =>
@@ -714,7 +725,13 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
     (hnz : nz = true → ∀ j, w = .int j → j ≠ 0)
     (hsz : ∀ m s, sz = some m → v = .str s → s.utf8ByteSize = m) (hk : f.issue v w = some k) :
     k ∈ f.mayIssue aa ab ar nz sz := by
-  cases f <;> cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at hk
+  cases f
+  case bbox2 n =>
+    simp only [BinFn.issue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i h
+    simp [BinFn.mayIssue, BlackBox.mayRaise_of_raisesOn h]
+  all_goals (cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at hk)
   case add.int.int i j | sub.int.int i j | mul.int.int i j =>
     simp only [wrapIf] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk

@@ -321,7 +321,7 @@ The rules for decimals are in [Decimals](#decimals).
 
 | Topic | Reference | Status |
 |---|---|---|
-| Aggregates | NULLs are skipped. `COUNT` of no rows is 0; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
+| Aggregates | NULLs are skipped. `COUNT` of no rows is 0, a [black box](#black-boxes) its row's `empty`; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
 | `FIRST` / `LAST` (#55) | The first or last non-NULL value in the aggregate's own `ORDER BY`, NULL without one. Rows tied in the order go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. Without an `ORDER BY` every row ties (any row's value, as in Ibis's `distinct(on=)`), and an engine may take each measure's value from a different row. | ✓ on DuckDB; other engines refuse it until #271 |
 | `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Refused without an `ORDER BY` (the order would be the engine's), and determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. | ✓ on DuckDB; other engines refuse it until #271 |
 
@@ -341,6 +341,23 @@ The rules for decimals are in [Decimals](#decimals).
 | Ties | `Rel.eval` sorts stably and takes `fetch` rows in list order. Engines promise neither, so theorems about `fetch`, ties and windows hold for one choice. A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `tie_free=True` is justified by it. | ✓ |
 | Sort keys | Every key states where NULLs go. The parser reads only `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}` and **refuses** any other direction (unspecified, clustered), so there is no default to choose. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`; the model's `SortKey` has a default of NULLs last only for hand-built values) |
 
+## Black boxes
+
+DuckDB functions that are hard or pointless to model exactly are black boxes
+([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)): one
+row each in a table, `SubstraitLean/BlackBox.lean`, mirrored for the lift and
+the writers in `python/src/sverify/black_box.py`.
+
+| Topic | Reference | Status |
+|---|---|---|
+| The table | A row gives the function's name, its argument and result types, how it treats NULL (a scalar is strict or not; an aggregate skips NULLs and gives `empty` without values), whether a scalar may raise, and its laws: `nonNull`, `atLeast k`, `atMost k`. A double's bounds are on its code (`atLeast 0` is `≥ +0.0`). | ✓ |
+| Meaning | The function itself is an `opaque` constant (`rawScalar`, `rawAgg`). The model's value is that function where it keeps the row's laws, and the row's `sample` elsewhere, so each law is a theorem (`BlackBox.Scalar.call_ok`, `Aggregate.call_ok`), proved from the table by `decide`, with no axiom. That DuckDB computes the model's function, and so keeps the laws, is the trusted part, in `Impl.Faithful` and the profile's agreement with the engine ([Trusted assumptions](#trusted-assumptions)). | ✓ |
+| Contracts | The range analysis knows a black box's result only from its type and laws (`BlackBox.lawsAbs`): `entropy(x) >= 0` and `base64(encode(s)) IS NOT NULL` for a non-NULL `s` are proved. | ✓ |
+| Errors | A scalar that may raise reports a domain error (`Issue.domain`) on the arguments it raises on, which the function decides (`rawRaises`). Aggregates do not raise. | ✓ |
+| Plans | A call is the extension function of the row's name under the URN `extension:io.sverify:black_box`, anchors 700–799 (`SubstraitLean/Write.lean`). One or two arguments for a scalar, one for an aggregate, which is not decomposable (shards refuse it) and not over a window yet. | ✓ |
+| `base64` | `base64(encode(s))` (also `to_base64`): the UTF-8 bytes of a string in base64. Strict, and not NULL for a string. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
+| `entropy` | `entropy(x)` of any type: the Shannon entropy, in bits, of the counts of the distinct values; `0.0` without values. Not NULL and at least `+0.0`. Lean does not evaluate it, so `substrait-check` refuses to print rows of a plan with it. | ✓ on DuckDB; other engines refuse it until #271 |
+
 ## Trusted assumptions
 
 What a proof does not cover. A theorem about `Rel.eval` holds for the model;
@@ -350,6 +367,7 @@ these links connect it to a real run.
 |---|---|---|
 | **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), and every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
 | **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/` | On `main`: the Ibis producer, and the SQLGlot lift for DuckDB's SQL (#252, #264). DataFusion's SQL producer is no longer a frontend (#211) |
+| **Black boxes are DuckDB's functions.** Each black box ([Black boxes](#black-boxes)) means the function DuckDB computes under its name, and DuckDB's keeps its row's laws. | `SubstraitLean/BlackBox.lean` | Tested: DuckDB on the SQL against DuckDB on the plan Lean writes back, and the laws on random data (`python/tests/test_black_box.py`) |
 | **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
 | **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
 | **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64 for arithmetic. The conversions between integers, decimals and doubles are computed exactly instead (`SubstraitLean/Conversions.lean`), behind `opaque` constants with their proved properties, and `#guard`s compare them with the native ones. An integer or decimal that IEEE would round to `±∞` (from 2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the largest finite double (#257). | `SubstraitLean/Float.lean`, `SubstraitLean/Conversions.lean` | Stated. The error bounds of `SUM` and `AVG` are three axioms in `Aggregate.lean` (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign`), proved in [`float-bounds/`](float-bounds.md) from `NativeLink`, the stated link of `Float` to IEEE rounding ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |

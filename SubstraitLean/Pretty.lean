@@ -36,6 +36,7 @@ def UnFn.render : UnFn → String
   | .cardinality => "CARDINALITY"
   | .raise msg => s!"RAISE_{msg.quote}" | .isNum => "IS_NUMBER"
   | .fit m w => s!"{m.name}{w.bits}"
+  | .bbox n => n.toUpper
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
@@ -53,6 +54,7 @@ def BinFn.render : BinFn → String
   | .bit op => match op with
     | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
   | .pair => "PAIR"
+  | .bbox2 n => n.toUpper
 
 def HoFn.name : HoFn → String
   | .anyMatch => "ANY_MATCH" | .allMatch => "ALL_MATCH" | .transform => "TRANSFORM"
@@ -75,6 +77,7 @@ def AggFn.name : AggFn → String
   | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
   | .corr => "CORR"
   | .concat sep => s!"STRING_AGG_{sep.quote}"
+  | .bbox n => n.toUpper
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with

@@ -493,6 +493,19 @@ abbrev Substrait.duckdbOn.isNum : Substrait.UnEntry (Substrait.Profile.duckdb { 
   Substrait.UnEntry.native Substrait.UnFn.isNum
   (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.isNum_native)
 
+theorem Substrait.duckdbOn.bbox_native : ∀ (name : String) (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb { })
+      (Substrait.UnFn.bbox name) x =
+    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.bbox name) x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.bbox : (name : String) →
+  Substrait.UnEntry (Substrait.Profile.duckdb { })
+    (Substrait.UnFn.bbox name) :=
+  fun name =>
+  Substrait.UnEntry.native (Substrait.UnFn.bbox name)
+    (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.bbox_native name))
+
 theorem Substrait.duckdbOn.add_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin (Substrait.Profile.duckdb { }) Substrait.BinFn.add x y =
     Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.add x y := by
@@ -748,4 +761,17 @@ theorem Substrait.duckdbOn.least_native : ∀ (x y : Substrait.Value),
 abbrev Substrait.duckdbOn.least : Substrait.BinEntry (Substrait.Profile.duckdb { }) Substrait.BinFn.least :=
   Substrait.BinEntry.native Substrait.BinFn.least
   (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.least_native)
+
+theorem Substrait.duckdbOn.bbox2_native : ∀ (name : String) (x y : Substrait.Value),
+  Substrait.Profile.bin (Substrait.Profile.duckdb { })
+      (Substrait.BinFn.bbox2 name) x y =
+    Substrait.Profile.bin Substrait.Profile.reference (Substrait.BinFn.bbox2 name) x y := by
+  native_tac
+
+abbrev Substrait.duckdbOn.bbox2 : (name : String) →
+  Substrait.BinEntry (Substrait.Profile.duckdb { })
+    (Substrait.BinFn.bbox2 name) :=
+  fun name =>
+  Substrait.BinEntry.native (Substrait.BinFn.bbox2 name)
+    (Substrait.Lowering.bin_agree_of_eq (Substrait.duckdbOn.bbox2_native name))
 

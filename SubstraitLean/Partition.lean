@@ -298,12 +298,15 @@ def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
   | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ | .cov _ | .corr | .concat _ =>
     false
+  -- A black box's laws say nothing of its partial results.
+  | .bbox _ => false
 
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]
 
-theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) : f.apply [] = .null := by
-  cases f <;> first | rfl | exact (hf rfl).elim
+theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) (hb : ∀ n, f ≠ .bbox n) :
+    f.apply [] = .null := by
+  cases f <;> first | rfl | exact (hf rfl).elim | exact (hb _ rfl).elim
 
 /-- `MIN` and `MAX` only depend on which values occur. -/
 theorem AggFn.apply_minMax_mem {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min))
@@ -373,7 +376,7 @@ theorem minMax_combine {f : AggFn} {max : Bool} (hf : f = (if max then .max else
     {L : List (List Value)} (hnn : ∀ vs ∈ L, ∀ v ∈ vs, v ≠ .null) :
     f.apply ((L.map f.apply).filter (· != .null)) = f.apply L.flatten := by
   have hcount : f ≠ .count := by cases max <;> simp [hf]
-  have hnil := AggFn.apply_nil_of_ne_count hcount
+  have hnil := AggFn.apply_nil_of_ne_count hcount (by cases max <;> simp [hf])
   by_cases hF : L.flatten = []
   · rw [hF, hnil]
     have : (L.map f.apply).filter (· != .null) = [] := by

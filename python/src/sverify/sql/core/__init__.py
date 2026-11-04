@@ -33,7 +33,7 @@ Engines differ in syntax and in a few semantics; those go through the hooks of
 a `Dialect` (see `sverify.sql.duckdb`).
 """
 
-from sverify.sql.core import nested, strings, temporal
+from sverify.sql.core import black_box, nested, strings, temporal
 from sverify.sql.core._base import (
     BIN_KINDS,
     BIT_AGGS,
@@ -118,7 +118,7 @@ from sverify.sql.core.strings import REPEAT_MAX, regex_groups, unicode_classes
 from sverify.sql.core.temporal import DATE_PARTS, TIME_UNITS
 
 #: The areas, which register their cases on import; no two share a function.
-AREAS = (strings, temporal, nested)
+AREAS = (strings, temporal, nested, black_box)
 
 __all__ = [
     "AREAS",

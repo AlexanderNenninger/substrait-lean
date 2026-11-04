@@ -247,6 +247,27 @@ partial def serve : IO UInt32 := do
     | _ => IO.eprintln s!"bad request {line}"; return 1
   return 0
 
+/-- The black boxes' table (#325) as JSON, which `tests/test_black_box.py`
+compares with `sverify.black_box`. -/
+def blackBoxJson : Lean.Json :=
+  let obj := Lean.Json.mkObj
+  let ty : BlackBox.Ty → Lean.Json
+    | .int => "int" | .double => "double" | .str => "str" | .bool => "bool" | .any => "any"
+  let law : BlackBox.Law → Lean.Json
+    | .nonNull => Lean.Json.arr #["non_null"]
+    | .atLeast k => Lean.Json.arr #["at_least", Lean.toJson k]
+    | .atMost k => Lean.Json.arr #["at_most", Lean.toJson k]
+  let laws (ls : List BlackBox.Law) := Lean.Json.arr (ls.map law).toArray
+  Lean.Json.arr ((BlackBox.scalars.map fun f => obj [
+      ("name", f.name), ("kind", "scalar"), ("anchor", Lean.toJson (Write.bbAnchor f.name)),
+      ("args", Lean.Json.arr (f.args.map ty).toArray), ("result", ty f.result),
+      ("strict", Lean.toJson f.strict), ("raises", Lean.toJson (f.raises == .sometimes)),
+      ("laws", laws f.laws)]) ++
+    (BlackBox.aggregates.map fun f => obj [
+      ("name", f.name), ("kind", "aggregate"), ("anchor", Lean.toJson (Write.bbAnchor f.name)),
+      ("args", Lean.Json.arr #[ty f.arg]), ("result", ty f.result),
+      ("empty", Write.writeValue f.empty), ("laws", laws f.laws)])).toArray
+
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
@@ -269,6 +290,10 @@ def main (args : List String) : IO UInt32 := do
     -- The DuckDB lowering's templates, for sverify.sql.lowering (#241).
     IO.println Lowering.duckdbTableJson.compress
     return 0
+  | ["--black-boxes"] => do
+    -- The black boxes' table (#325), for sverify.black_box's test.
+    IO.println blackBoxJson.compress
+    return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB (#241); a golden test.
     for (c, how, _) in duckdbOn.coverage do
@@ -282,5 +307,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes"
     return 1

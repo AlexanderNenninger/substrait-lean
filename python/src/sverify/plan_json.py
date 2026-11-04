@@ -25,6 +25,8 @@ from typing import Any
 
 import ibis.expr.datatypes as dt
 
+from sverify import black_box
+
 Json = dict[str, Any]
 
 EPOCH = dt_.datetime(1970, 1, 1)
@@ -231,10 +233,22 @@ class Compiler:
         return self.functions.setdefault(name, len(self.functions) + 1)
 
     def extensions(self) -> list[Json]:
+        # A black box is sverify's own, under its URN (#325).
         return [
-            {"extensionFunction": {"functionAnchor": a, "name": n}}
+            {
+                "extensionFunction": {
+                    "functionAnchor": a,
+                    "name": n,
+                    **({"extensionUrnReference": 1} if n in black_box.NAMES else {}),
+                }
+            }
             for n, a in self.functions.items()
         ]
+
+    def urns(self) -> list[Json]:
+        if not black_box.NAMES & self.functions.keys():
+            return []
+        return [{"extensionUrnAnchor": 1, "urn": black_box.URN}]
 
 
 #: The compiler of the plan being built (one per `to_substrait` call).
@@ -401,7 +415,9 @@ def plan(compiler: Compiler, root: Json, names: list[str]) -> Json:
     """The plan of the relation `root`, with one name per output column
     (sverify reads them as the columns; Substrait would add struct fields'
     names, depth first)."""
+    urns = compiler.urns()
     return {
+        **({"extensionUrns": urns} if urns else {}),
         "extensions": compiler.extensions(),
         "relations": [{"root": {"input": root, "names": names}}],
     }

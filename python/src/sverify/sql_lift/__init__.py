@@ -50,7 +50,8 @@ in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
 CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
 `max`, DISTINCT and FILTER (WHERE …) in them, HAVING; window functions
 (ranking, `lag`/`lead`, first/last/nth value, aggregates; ROWS and RANGE
-frames); DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
+frames); DISTINCT, ORDER BY, LIMIT and OFFSET; and the black boxes of
+`sverify.black_box` (#325: `base64(encode(s))`, `entropy`), in `blackbox.py`. Anything else, unknown
 functions (`Anonymous`) included, raises `Unsupported` saying what.
 """
 
@@ -77,7 +78,7 @@ __all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "pars
 
 #: The areas, each a module that registers its rules in `RULES`, imported in
 #: this order.
-AREAS = ("core", "strings", "temporal", "nested", "relations", "casts")
+AREAS = ("core", "strings", "temporal", "nested", "relations", "casts", "blackbox")
 
 for _area in AREAS:
     importlib.import_module(f"{__name__}.{_area}")

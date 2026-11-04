@@ -728,6 +728,105 @@ def partialAbs₂ (safe : Bool) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt || !safe,
    (match a.int, b.int with | some _, some _ => some Bound.top | _, _ => none), false, false, false⟩
 
+/-! ## Black boxes (#325)
+
+What a black box's row declares of its result (`SubstraitLean/BlackBox.lean`):
+its type, and its laws, which hold of the model by construction
+(`BlackBox.Scalar.call_ok`). -/
+
+def BlackBox.Law.bound : BlackBox.Law → Bound
+  | .atLeast k => ⟨some k, none⟩
+  | .atMost k => ⟨none, some k⟩
+  | .nonNull => Bound.top
+
+/-- The results of type `result` that keep `laws`, where no argument is NULL
+(`set`) or some may be. -/
+def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bool) : AVal :=
+  ⟨!(set && laws.contains .nonNull),
+   if result == .int || result == .double || result == .any then
+     some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
+   else none,
+   result == .bool || result == .any, result == .bool || result == .any,
+   result == .str || result == .any⟩
+
+theorem BlackBox.lawsBound_mem {set : Bool} {i : Int} :
+    ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (.int i)) = true →
+      (laws.foldr (fun l b => l.bound.meet b) Bound.top).Mem i
+  | [], _ => Bound.mem_top i
+  | l :: ls, h => by
+    simp only [List.all_cons, Bool.and_eq_true] at h
+    refine Bound.mem_meet ?_ (lawsBound_mem h.2)
+    cases l <;> simp_all [BlackBox.Law.holds, BlackBox.Law.bound, Bound.Mem, Bound.top]
+
+theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {set : Bool}
+    {v : Value} (h : BlackBox.ok result laws set v = true) :
+    (BlackBox.lawsAbs result laws set).Mem v := by
+  simp only [BlackBox.ok, Bool.and_eq_true] at h
+  obtain ⟨ht, hl⟩ := h
+  match v with
+  | .null =>
+    simp only [AVal.Mem, BlackBox.lawsAbs, Bool.not_eq_true', Bool.and_eq_false_iff]
+    cases set
+    · simp
+    · right
+      simp only [List.all_eq_true] at hl
+      cases hc : laws.contains .nonNull
+      · rfl
+      · have := hl .nonNull (by simpa using hc)
+        simp [BlackBox.Law.holds] at this
+  | .int i =>
+    refine ⟨_, ?_, lawsBound_mem hl⟩
+    cases result <;> simp_all [BlackBox.lawsAbs, BlackBox.Ty.has]
+  | .bool true | .bool false | .str _ =>
+    cases result <;> simp_all [AVal.Mem, BlackBox.lawsAbs, BlackBox.Ty.has]
+  | .list _ =>
+    cases result <;> simp_all [AVal.Mem, BlackBox.lawsAbs, BlackBox.Ty.has]
+
+/-- A scalar black box's result, where no argument is NULL (`set`) or some may be. -/
+def BlackBox.scalarAbs (name : String) (set : Bool) : AVal :=
+  match BlackBox.scalar? name with
+  | some f => BlackBox.lawsAbs f.result f.laws set
+  | none => ⟨true, none, false, false, false⟩
+
+theorem BlackBox.scalarAbs_mem {name : String} {vs : List Value} {set : Bool}
+    (hs : set = true → vs.contains .null = false) :
+    (BlackBox.scalarAbs name set).Mem (BlackBox.callScalar name vs) := by
+  unfold BlackBox.scalarAbs BlackBox.callScalar
+  cases h : BlackBox.scalar? name with
+  | none => rfl
+  | some f =>
+    apply BlackBox.lawsAbs_mem
+    have hok := BlackBox.Scalar.call_ok (BlackBox.scalar?_mem h) vs
+    cases set
+    · cases hc : vs.contains .null
+      · rw [hc] at hok; exact BlackBox.ok_of_set hok false
+      · rw [hc] at hok; exact hok
+    · rw [hs rfl] at hok; exact hok
+
+/-- An aggregate black box's result: over values (`valued`), or maybe over none. -/
+def BlackBox.aggAbs (name : String) (valued : Bool) : AVal :=
+  match BlackBox.aggregate? name with
+  | some f => (BlackBox.lawsAbs f.result f.laws true).join
+      (if valued then AVal.bot else AVal.ofValue f.empty)
+  | none => ⟨true, none, false, false, false⟩
+
+theorem BlackBox.aggAbs_mem {name : String} {vs : List Value} {valued : Bool}
+    (hv : valued = true → vs ≠ []) :
+    (BlackBox.aggAbs name valued).Mem (BlackBox.callAgg name vs) := by
+  unfold BlackBox.aggAbs BlackBox.callAgg
+  cases h : BlackBox.aggregate? name with
+  | none => rfl
+  | some f =>
+    cases vs with
+    | nil =>
+      apply AVal.mem_join_right
+      cases valued
+      · exact AVal.mem_ofValue _
+      · exact absurd rfl (hv rfl)
+    | cons v vs =>
+      exact AVal.mem_join_left (BlackBox.lawsAbs_mem
+        (BlackBox.Aggregate.call_ok (BlackBox.aggregate?_mem h) (List.cons_ne_nil _ _)))
+
 def UnFn.abs : UnFn → AVal → AVal
   | .not, a => ⟨a.nonBool, none, a.ff, a.tt, false⟩
   | .isNull, a => ⟨false, none, a.null, a.int.isSome || a.tt || a.ff || a.str, false⟩
@@ -785,6 +884,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .raise _, _ => ⟨true, none, false, false, false⟩
   | .isNum, _ => ⟨false, none, true, true, false⟩
   | .fit _ _, _ => AVal.top
+  | .bbox n, a => BlackBox.scalarAbs n !a.null
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -826,6 +926,7 @@ def pickAbs (both : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.null && b.null, ints, a.tt || b.tt, a.ff || b.ff, a.str || b.str⟩
 
 def BinFn.abs : BinFn → AVal → AVal → AVal
+  | .bbox2 n, a, b => BlackBox.scalarAbs n (!a.null && !b.null)
   | .greatest, a, b => pickAbs Bound.greatest a b
   | .least, a, b => pickAbs Bound.least a b
   | .and, a, b =>
@@ -1133,6 +1234,9 @@ theorem Text.ascii_nonneg (s : String) : 0 ≤ Text.ascii s := by
 theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     (f.abs a).Mem (f.apply v) := by
   cases f
+  case bbox n =>
+    refine BlackBox.scalarAbs_mem fun hs => ?_
+    cases v <;> simp_all [AVal.Mem]
   case ffloor => exact monoAbs_sound FloatCode.floor_mono (fun v => by cases v <;> rfl) h
   case fceil => exact monoAbs_sound FloatCode.ceil_mono (fun v => by cases v <;> rfl) h
   case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> rfl) h
@@ -1497,6 +1601,9 @@ theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Val
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
+  case bbox2 n =>
+    refine BlackBox.scalarAbs_mem fun hs => ?_
+    cases v <;> cases w <;> simp_all [AVal.Mem]
   case pair => exact AVal.mem_top _
   case greatest =>
     exact pickAbs_sound (fun hx hy => by simpa [Value.ltB] using Bound.mem_greatest hx hy)
@@ -3891,6 +3998,8 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- A string, or NULL without values.
   | .concat _ => ⟨true, none, false, false, true⟩
   | .collect => AVal.top
+  -- A black box's laws over values; its `empty` value without (#325).
+  | .bbox n => BlackBox.aggAbs n valued
 
 /-- `ROW_NUMBER` and the ranks are positive integers, at most `Text.rowCap`
 by the size hypothesis for relations (`Rel.Small`) when `sz` says to use
@@ -4173,6 +4282,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
   case collect => exact AVal.mem_top _
+  case bbox n => exact BlackBox.aggAbs_mem valued_ne_nil
   case concat sep =>
     cases m.inputs (List.mergeSort grp (sortLe m.sort)) <;> simp [AggFn.apply, AVal.Mem]
   case count =>
