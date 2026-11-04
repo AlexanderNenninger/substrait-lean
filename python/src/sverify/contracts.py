@@ -1615,12 +1615,28 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
     null = f"{sql} IS NULL OR " if dtype.nullable else ""
     out = []
     if dtype.is_integer():
+        # A side at or past 64 bits holds for every integer column, and its
+        # constant (2**63) would be a HUGEINT, which the lift refuses (#616).
+        # A narrower column's own limits stay, the proof needs them stated,
+        # each a constant of the column's type, so it is a fact about the
+        # column (`v <= 127` on a TINYINT, not `v < 128`).
+        if lo is not None and lo <= -(2**63):
+            lo = None
+        if hi is not None and hi >= 2**63 - 1:
+            hi = None
         if lo is not None:
-            v, text = _nice(lo, up=True)
+            if lo <= dtype.bounds.lower:
+                v, text = dtype.bounds.lower, f"{dtype.bounds.lower:_}"
+            else:
+                v, text = _nice(lo, up=True)
             out.append(Inferred(f"{null}{sql} >= {v}", f"({ref} >= {text})"))
         if hi is not None:
-            v, text = _nice(hi + 1, up=False)
-            out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
+            if hi >= dtype.bounds.upper:
+                top = dtype.bounds.upper
+                out.append(Inferred(f"{null}{sql} <= {top}", f"({ref} <= {top:_})"))
+            else:
+                v, text = _nice(hi + 1, up=False)
+                out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
         return out
     if dtype.is_floating():
         return _double_conditions(ref, sql, null, lo, hi)
@@ -1753,7 +1769,7 @@ def _render_needs(
             lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
             new = _bound_conditions(col, schema[col], lo, hi)
         have += [c for c in new if c not in have]
-    return out
+    return {t: cs for t, cs in out.items() if cs}
 
 
 def _hint(
