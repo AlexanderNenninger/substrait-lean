@@ -840,6 +840,11 @@ class Replay:
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
+        elif lean_ok and "overflow to infinity" in (res.engine or ""):
+            # DuckDB gives `±inf`, which `Rel.eval` keeps; the reference raises
+            # there and the written plan checks it on the data (#575).
+            res.cls, res.side = "disagree", "engine"
+            res.reason = "reference: an overflow to ±inf raises (#575)"
         else:
             res.cls = "disagree"
             res.side = (
