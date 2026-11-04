@@ -58,6 +58,9 @@ def queries(draw: st.DrawFn) -> str:
                 "SELECT t.i, t.s FROM t WHERE t.j IN (SELECT k FROM u WHERE v IS NOT NULL)",
                 "SELECT t.i, t.s FROM t WHERE t.i NOT IN (SELECT k FROM u WHERE k IS NOT NULL)",
                 "SELECT DISTINCT i, s FROM t",
+                "SELECT i, s FROM t EXCEPT SELECT k, v FROM u",
+                "SELECT j, s FROM t INTERSECT SELECT k, v FROM u",
+                "SELECT i, s FROM t EXCEPT ALL SELECT k, v FROM u",
                 "SELECT s, i, count(DISTINCT j), min(j) FROM t GROUP BY s, i",
                 "SELECT a.i, b.k, c.v FROM t a JOIN u b ON a.i = b.k "
                 "LEFT JOIN u c ON b.k = c.k AND a.s = c.v",

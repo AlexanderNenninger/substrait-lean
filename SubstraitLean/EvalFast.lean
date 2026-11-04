@@ -13,11 +13,12 @@ row with every other. All of them take time quadratic in the data.
 `Rel.evalFast` computes the same list of rows (`Rel.evalFast_eq`), in the
 same order, faster:
 
-* An equi-join (`on` a conjunction with `a = b`, `a` reading only left
-  columns and `b` only right ones) hashes the right side by its keys once.
+* An equi-join (`on` a conjunction with `a = b` or `a IS NOT DISTINCT FROM b`,
+  `a` reading only left columns and `b` only right ones) hashes the right
+  side by its keys once.
   Each left row then tests `on` only on the right rows with its keys, in
   their order on the right, so the output keeps the nested loop's left-major
-  order. A left row with a NULL key matches nothing; a row of another length
+  order. A left row with a NULL in an `=` key matches nothing; a row of another length
   than the left side's arity, or a join without such keys, falls back to the
   whole right side.
 * `DISTINCT`, `fn(DISTINCT …)` and the groups of `GROUP BY` keep a hash set
@@ -227,20 +228,39 @@ theorem Expr.eval_append_of_refsLtB {x : Row} (y : Row) : ∀ {e : Expr}, e.refs
       eval_append_of_refsLtB y h.2]
   | .hof f l body, h => by simp only [refsLtB] at h; simp [eval, eval_append_of_refsLtB y h]
 
-/-- One key pair `(a, b)` from `a = b` or `b = a`: `a` on the left row (its
-first `la` columns) and `b` on the right row. -/
+/-- A join key: `left` on the left row equals `right` on the right row
+wherever the condition holds, and is not NULL there if `strict`. -/
+structure EqKey where
+  left : Expr
+  right : Expr
+  strict : Bool
+
+/-- `a` on the left row (its first `la` columns) and `b` on the right row. -/
 def eqKey (la : Nat) (a b : Expr) : Option (Expr × Expr) :=
   if a.refsLtB la then (b.dropCols la).map (a, ·) else none
 
-/-- The key pairs of the conjuncts of `on` that are equalities between the
-two sides. -/
-def equiKeys (la : Nat) : Expr → List (Expr × Expr)
-  | .bin .and a b => equiKeys la a ++ equiKeys la b
-  | .bin .eq a b => match eqKey la a b, eqKey la b a with
-    | some k, _ => [k]
-    | none, some k => [k]
-    | none, none => []
+/-- The key of `a = b` (`strict`) or `a IS NOT DISTINCT FROM b`, either way
+round. -/
+def pairKey (la : Nat) (strict : Bool) (a b : Expr) : List EqKey :=
+  match eqKey la a b, eqKey la b a with
+  | some (l, r), _ => [⟨l, r, strict⟩]
+  | none, some (l, r) => [⟨l, r, strict⟩]
+  | none, none => []
+
+/-- The key of one conjunct: `a = b`, or `a IS NOT DISTINCT FROM b` as the
+parser writes it (`Parse.mkCoreCall?.notDistinct`), which `EXCEPT` and
+`INTERSECT` join on. -/
+def leafKeys (la : Nat) : Expr → List EqKey
+  | .bin .eq a b => pairKey la true a b
+  | .ifThen (.un .isNull a) (.un .isNull b)
+      (.ifThen (.un .isNull b') (.lit (.bool false)) (.bin .eq a' b'')) =>
+    if a' = a ∧ b' = b ∧ b'' = b then pairKey la false a b else []
   | _ => []
+
+/-- The keys of the conjuncts of `on` that compare the two sides. -/
+def equiKeys (la : Nat) : Expr → List EqKey
+  | .bin .and a b => equiKeys la a ++ equiKeys la b
+  | e => leafKeys la e
 
 @[simp] theorem Value.isTrue_bool (c : Bool) : (Value.bool c).isTrue = c := by cases c <;> rfl
 @[simp] theorem Value.isTrue_null : Value.null.isTrue = false := rfl
@@ -248,26 +268,67 @@ def equiKeys (la : Nat) : Expr → List (Expr × Expr)
 theorem isTrue_eq {a b : Value} (h : (BinFn.apply .eq a b).isTrue = true) : a = b ∧ a ≠ .null := by
   cases a <;> cases b <;> simp_all [BinFn.apply]
 
-theorem eqKey_sound {x y : Row} {a b : Expr} {k : Expr × Expr} (hk : eqKey x.length a b = some k)
-    (h : a.eval (x ++ y) = b.eval (x ++ y)) : k.1.eval x = k.2.eval y := by
+theorem eval_notDistinct {row : Row} {a b : Expr}
+    (h : ((Expr.ifThen (.un .isNull a) (.un .isNull b)
+      (.ifThen (.un .isNull b) (.lit (.bool false)) (.bin .eq a b))).eval row).isTrue = true) :
+    a.eval row = b.eval row := by
+  cases ha : a.eval row <;> cases hb : b.eval row <;> simp_all [Expr.eval, UnFn.apply, BinFn.apply]
+
+theorem eqKey_sound {x y : Row} {a b : Expr} {l r : Expr} (hk : eqKey x.length a b = some (l, r)) :
+    l.eval x = a.eval (x ++ y) ∧ r.eval y = b.eval (x ++ y) := by
   unfold eqKey at hk
   split at hk
   · rename_i ha
     cases hb : b.dropCols x.length with
     | none => simp [hb] at hk
     | some b' =>
-      simp only [hb, Option.map_some, Option.some.injEq] at hk; subst hk
-      rw [← Expr.eval_append_of_refsLtB y ha, h, Expr.eval_dropCols hb]
+      simp only [hb, Option.map_some, Option.some.injEq, Prod.mk.injEq] at hk
+      obtain ⟨rfl, rfl⟩ := hk
+      exact ⟨(Expr.eval_append_of_refsLtB y ha).symm, (Expr.eval_dropCols hb).symm⟩
   · simp at hk
 
-/-- Where `on` holds on `x ++ y`, with `x` of length `la`, every key pair
-agrees on `x` and `y`, and is not NULL. -/
+/-- What a key promises where the condition holds on `x ++ y`. -/
+def EqKey.Holds (x y : Row) (k : EqKey) : Prop :=
+  k.left.eval x = k.right.eval y ∧ (k.strict = true → k.left.eval x ≠ .null)
+
+theorem pairKey_sound {x y : Row} {strict : Bool} {a b : Expr}
+    (hab : a.eval (x ++ y) = b.eval (x ++ y))
+    (hn : strict = true → a.eval (x ++ y) ≠ .null) :
+    ∀ k ∈ pairKey x.length strict a b, k.Holds x y := by
+  intro k hk
+  unfold pairKey at hk
+  split at hk
+  · rename_i l r hk'
+    simp only [List.mem_singleton] at hk; subst hk
+    obtain ⟨hl, hr⟩ := eqKey_sound (y := y) hk'
+    exact ⟨by rw [hl, hr, hab], fun hs => by rw [hl]; exact hn hs⟩
+  · rename_i l r _ hk'
+    simp only [List.mem_singleton] at hk; subst hk
+    obtain ⟨hl, hr⟩ := eqKey_sound (y := y) hk'
+    exact ⟨by rw [hl, hr, hab], fun hs => by rw [hl, ← hab]; exact hn hs⟩
+  · simp at hk
+
+theorem leafKeys_sound {x y : Row} {e : Expr} (h : (e.eval (x ++ y)).isTrue = true) :
+    ∀ k ∈ leafKeys x.length e, k.Holds x y := by
+  intro k hk
+  unfold leafKeys at hk
+  split at hk
+  · obtain ⟨hab, hn⟩ := isTrue_eq h
+    exact pairKey_sound hab (fun _ => hn) k hk
+  · split at hk
+    · rename_i a b b' a' b'' hc
+      obtain ⟨rfl, rfl, rfl⟩ := hc
+      have hab := eval_notDistinct h
+      exact pairKey_sound hab (fun h => by simp at h) k hk
+    · simp at hk
+  · simp at hk
+
+/-- Where `on` holds on `x ++ y`, with `x` of length `la`, every key holds. -/
 theorem equiKeys_sound {x y : Row} {on : Expr} (h : (on.eval (x ++ y)).isTrue = true) :
-    ∀ k ∈ equiKeys x.length on, k.1.eval x = k.2.eval y ∧ k.1.eval x ≠ .null := by
+    ∀ k ∈ equiKeys x.length on, k.Holds x y := by
   induction on with
   | bin f a b iha ihb =>
     cases f
-    all_goals try (intro k hk; simp [equiKeys] at hk; done)
     case and =>
       intro k hk
       simp only [Expr.eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at h
@@ -275,41 +336,14 @@ theorem equiKeys_sound {x y : Row} {on : Expr} (h : (on.eval (x ++ y)).isTrue = 
       rcases hk with hk | hk
       · exact iha h.1 k hk
       · exact ihb h.2 k hk
-    case eq =>
-      intro k hk
-      obtain ⟨hab, hn⟩ := isTrue_eq h
-      simp only [equiKeys] at hk
-      split at hk
-      · rename_i k' hk'
-        simp only [List.mem_singleton] at hk; subst hk
-        have := eqKey_sound hk' hab
-        refine ⟨this, ?_⟩
-        unfold eqKey at hk'
-        split at hk'
-        · rename_i ha
-          cases hb : b.dropCols x.length <;> simp [hb] at hk'
-          subst hk'
-          rwa [← Expr.eval_append_of_refsLtB y ha]
-        · simp at hk'
-      · rename_i k' _ hk'
-        simp only [List.mem_singleton] at hk; subst hk
-        have := eqKey_sound hk' hab.symm
-        refine ⟨this, ?_⟩
-        unfold eqKey at hk'
-        split at hk'
-        · rename_i ha
-          cases hb' : a.dropCols x.length <;> simp [hb'] at hk'
-          subst hk'
-          rw [← Expr.eval_append_of_refsLtB y ha, ← hab]; exact hn
-        · simp at hk'
-      · simp at hk
-  | _ => intro k hk; simp [equiKeys] at hk
+    all_goals exact fun k hk => leafKeys_sound h k (by simpa [equiKeys] using hk)
+  | _ => exact fun k hk => leafKeys_sound h k (by simpa [equiKeys] using hk)
 
 /-! ## Joins -/
 
-/-- The right side of a join, hashed by the right halves of its key pairs. -/
+/-- The right side of a join, hashed by the right halves of its keys. -/
 structure JoinIndex where
-  keys : List (Expr × Expr)
+  keys : List EqKey
   la : Nat
   rows : Relation
   index : Std.HashMap Row (Array Row)
@@ -317,14 +351,14 @@ structure JoinIndex where
 def JoinIndex.make (on : Expr) (la : Nat) (ys : Relation) : JoinIndex :=
   let keys := equiKeys la on
   { keys, la, rows := ys,
-    index := if keys.isEmpty then ∅ else indexBy (fun y => keys.map (·.2.eval y)) ys }
+    index := if keys.isEmpty then ∅ else indexBy (fun y => keys.map (·.right.eval y)) ys }
 
 /-- The right rows that may satisfy `on` next to `x`: those with `x`'s keys,
-none for a NULL key, and all of them without keys. -/
+none for a NULL in a strict key, and all of them without keys. -/
 def JoinIndex.candidates (J : JoinIndex) (x : Row) : Relation :=
   if J.keys.isEmpty || x.length != J.la then J.rows else
-    let k := J.keys.map (·.1.eval x)
-    if k.contains .null then [] else (J.index.getD k #[]).toList
+    if J.keys.any (fun k => k.strict && k.left.eval x == .null) then [] else
+      (J.index.getD (J.keys.map (·.left.eval x)) #[]).toList
 
 theorem JoinIndex.candidates_eq (on : Expr) (la : Nat) (ys : Relation) (x : Row) :
     ∃ q : Row → Bool, (JoinIndex.make on la ys).candidates x = ys.filter q ∧
@@ -341,16 +375,16 @@ theorem JoinIndex.candidates_eq (on : Expr) (la : Nat) (ys : Relation) (x : Row)
   subst hlen
   have hsound := fun y h => equiKeys_sound (x := x) (y := y) (on := on) h
   simp only [hne, Bool.false_eq_true, ↓reduceIte]
-  by_cases hnull : ((equiKeys x.length on).map (·.1.eval x)).contains .null = true
+  by_cases hnull : (equiKeys x.length on).any (fun k => k.strict && k.left.eval x == .null) = true
   · simp only [hnull, ↓reduceIte]
     refine ⟨fun _ => false, by simp, fun y h => ?_⟩
     exfalso
-    simp only [List.contains_iff_mem, List.mem_map] at hnull
-    obtain ⟨k, hk, hkn⟩ := hnull
-    exact (hsound y h k hk).2 hkn
+    simp only [List.any_eq_true, Bool.and_eq_true, beq_iff_eq] at hnull
+    obtain ⟨k, hk, hs, hkn⟩ := hnull
+    exact (hsound y h k hk).2 hs hkn
   · simp only [hnull, Bool.false_eq_true, ↓reduceIte]
-    refine ⟨fun y => (equiKeys x.length on).map (·.2.eval y) ==
-        (equiKeys x.length on).map (·.1.eval x), indexBy_getD _ _ _, fun y h => ?_⟩
+    refine ⟨fun y => (equiKeys x.length on).map (·.right.eval y) ==
+        (equiKeys x.length on).map (·.left.eval x), indexBy_getD _ _ _, fun y h => ?_⟩
     simp only [beq_iff_eq, List.map_inj_left]
     exact fun k hk => (hsound y h k hk).1.symm
 
