@@ -338,7 +338,6 @@ register_refusals(
         "RandomScalar": _NONDETERMINISTIC,
         "RandomUUID": _NONDETERMINISTIC,
         "RowID": "the row id is the engine's own, so it differs between engines",
-        "TypeOf": "the type's name is the engine's own",
         "ScalarParameter": "bind it: pass params={param: value} to verify, which proves the "
         "transform for that value (an unbound parameter as any value of its type is planned: "
         "#354)",
