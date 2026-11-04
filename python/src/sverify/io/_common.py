@@ -13,7 +13,7 @@ import json
 import math
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -555,6 +555,47 @@ def _table_ids(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, 
         if isinstance(src, _TableSource) and (table_id := src._table_id(n)) is not None:
             out[t] = table_id
     return out
+
+
+@dataclass(frozen=True)
+class LastRecord[C, R]:
+    """The newest commit of a table that carries a sverify record, as
+    `last_record` finds it walking back from the latest."""
+
+    record: R | None
+    """What that commit recorded, or None if no commit walked has one."""
+    walked: list[C]
+    """The commits walked, newest first, ending with that one."""
+    kept: bool
+    """Whether every commit newer than it keeps what it recorded."""
+
+
+def last_record[C, R](
+    commits: Iterable[C],
+    record: Callable[[C], R | None],
+    keeps: Callable[[C], bool],
+    *,
+    stop: bool = False,
+) -> LastRecord[C, R]:
+    """Walk `commits`, newest first, back to the first one whose `record`
+    is not None, noting whether every commit before it `keeps` the state it
+    recorded (changes no rows: a compaction, a vacuum, a property). With
+    `stop`, give up at the first commit that does not.
+
+    The one walk of a sink's history: Delta's commit log (`DeltaSource`,
+    `DeltaSink.maintain`) and Iceberg's snapshot ancestry (`IcebergSource`,
+    `IcebergSink`)."""
+    walked: list[C] = []
+    kept = True
+    for c in commits:
+        walked.append(c)
+        if (r := record(c)) is not None:
+            return LastRecord(r, walked, kept)
+        if not keeps(c):
+            kept = False
+            if stop:
+                break
+    return LastRecord(None, walked, kept)
 
 
 def other_tables(committed: Contract, contract: Contract) -> list[str]:

@@ -98,9 +98,11 @@ from sverify.io import _engine
 from sverify.io._common import (
     ColumnStats,
     Contract,
+    LastRecord,
     SinkWrite,
     _TableSource,
     filter_rows,
+    last_record,
     q,
 )
 from sverify.io._sink import _UNREAD, SinkChange, _TableSink
@@ -268,6 +270,25 @@ def _deleted_rows(paths: dict[str, set[str]]) -> pa.Table:
     return pa.concat_tables(parts)
 
 
+def _last_record(
+    t: Table, record: Callable[[Summary], Summary | None], keeps: Callable[[Summary], bool]
+) -> LastRecord[IcebergSnapshot, Summary]:
+    """The newest snapshot whose summary is a `record`, walking the current
+    snapshot's ancestry back through snapshots that `keep` what it recorded
+    (`last_record`); a snapshot without a summary keeps nothing."""
+    return last_record(
+        _ancestry(t),
+        lambda s: None if s.summary is None else record(s.summary),
+        lambda s: s.summary is not None and keeps(s.summary),
+        stop=True,
+    )
+
+
+def _rewrites(summary: Summary) -> bool:
+    """Whether the snapshot only rewrites files (`replace`, a compaction)."""
+    return summary.operation == Operation.REPLACE
+
+
 def contract_facts(t: Table) -> list[Fact]:
     """The contract the table's properties record, if every snapshot of the
     table was written under it."""
@@ -275,7 +296,7 @@ def contract_facts(t: Table) -> list[Fact]:
     if text is None:
         return []
     c = Contract.from_json(text)
-    if not all(s.summary is not None and s.summary.get(PLAN) == c.plan for s in _ancestry(t)):
+    if not _last_record(t, lambda _: None, lambda m: m.get(PLAN) == c.plan).kept:
         return []
     return [Fact(f"{q(col)} IS NOT NULL", CONTRACT) for col in c.not_null] + [
         Fact(sql, CONTRACT) for sql in c.checks.values()
@@ -463,14 +484,12 @@ class IcebergSource(_TableSource):
         if s is None or text is None:
             return None
         c = Contract.from_json(text)
-        for a in _ancestry(t):
-            if a.summary is None:
-                return None
-            if a.summary.get(PLAN) == c.plan and a.summary.get(EPOCH) == str(c.epoch):
-                break
-            if a.summary.operation != Operation.REPLACE:
-                return None
-        else:
+        mine = _last_record(
+            t,
+            lambda m: m if m.get(PLAN) == c.plan and m.get(EPOCH) == str(c.epoch) else None,
+            _rewrites,
+        )
+        if mine.record is None:
             return None
         where = f"{self.identifier}@v{_version(s)}"
         return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
@@ -1242,18 +1261,14 @@ class IcebergSink(_TableSink[Table]):
         text = t.properties.get(KEY)
         if text is None:
             return [], {}
-        plan, run = Contract.from_json(text).plan, []
-        for a in _ancestry(t):
-            run.append(a)
-            summary = a.summary
-            if summary is None:
-                break
-            if summary.get(APP) == self.app_id and summary.get(PLAN) == plan:
-                own = {k: summary.get(k) for k in (PLAN, EPOCH, APP)}
-                return run, {k: v for k, v in own.items() if v is not None}
-            if summary.operation != Operation.REPLACE:
-                break
-        return [], {}
+        plan = Contract.from_json(text).plan
+        mine = _last_record(
+            t, lambda m: m if m.get(APP) == self.app_id and m.get(PLAN) == plan else None, _rewrites
+        )
+        if mine.record is None:
+            return [], {}
+        own = {k: mine.record.get(k) for k in (PLAN, EPOCH, APP)}
+        return mine.walked, {k: v for k, v in own.items() if v is not None}
 
     def maintain(
         self, *, expire: timedelta | None = None, min_snapshots: int | None = None

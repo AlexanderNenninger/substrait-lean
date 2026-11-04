@@ -25,7 +25,7 @@ import math
 import os
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath
@@ -58,9 +58,11 @@ from sverify.io import _engine
 from sverify.io._common import (
     ColumnStats,
     Contract,
+    LastRecord,
     SinkWrite,
     _TableSource,
     filter_rows,
+    last_record,
     q,
 )
 from sverify.io._sink import SinkChange, _TableSink
@@ -148,22 +150,26 @@ _SAME_ROWS = {
 }
 
 
-def _last_contract(dt: DeltaTable) -> tuple[Contract | None, bool]:
-    """The contract the last sverify commit recorded, and whether every
-    commit after it changes no rows (`_SAME_ROWS`), so that the table holds
-    the state it recorded. Reads the log back from the latest commit, a few
-    commits at a time."""
-    n, seen, rows_same = 8, 0, True
+def _history(dt: DeltaTable) -> Iterator[dict[str, Any]]:
+    """The commits of the log, from the latest back, read a few at a time."""
+    n, seen = 8, 0
     while True:
         commits = dt.history(n)
-        for commit in commits[seen:]:
-            if METADATA_KEY in commit:
-                return Contract.from_json(commit[METADATA_KEY]), rows_same
-            if commit.get("operation") not in _SAME_ROWS:
-                rows_same = False
+        yield from commits[seen:]
         if len(commits) < n:
-            return None, False
+            return
         seen, n = n, n * 2
+
+
+def _last_contract(dt: DeltaTable) -> LastRecord[dict[str, Any], Contract]:
+    """The contract the last sverify commit recorded (`record`), and
+    whether every commit after it changes no rows (`kept`, `_SAME_ROWS`),
+    so that the table holds the state it recorded."""
+    return last_record(
+        _history(dt),
+        lambda c: Contract.from_json(c[METADATA_KEY]) if METADATA_KEY in c else None,
+        lambda c: c.get("operation") in _SAME_ROWS,
+    )
 
 
 def _table_id(dt: DeltaTable) -> str:
@@ -432,7 +438,7 @@ class DeltaSource(_TableSource):
             The contract a `DeltaSink` stored in the commit metadata, or None
             if no commit has one.
         """
-        return _last_contract(self.table(version))[0]
+        return _last_contract(self.table(version)).record
 
     def stored(self) -> Stored | None:
         """The node state the table holds, if a `DeltaSink` stored it: the
@@ -447,8 +453,9 @@ class DeltaSource(_TableSource):
             the sink's last commit.
         """
         dt = self.table()
-        c, rows_same = _last_contract(dt)
-        if c is None or not rows_same:
+        last = _last_contract(dt)
+        c = last.record
+        if c is None or not last.kept:
             return None
         where = f"{self.uri}@v{dt.version()}"
         return Stored(where, self.uri, c.plan, c.sources, c.digests, _read(dt))
@@ -797,7 +804,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         return table.transaction_version(self.app_id)
 
     def _contract_of(self, table: DeltaTable) -> Contract | None:
-        return _last_contract(table)[0]
+        return _last_contract(table).record
 
     def maintain(self, *, vacuum: timedelta | None = None) -> dict[str, object]:
         """Compact the table's small files, and with `vacuum`, remove the
@@ -818,10 +825,10 @@ class DeltaSink(_TableSink[DeltaTable]):
         dt = self._table()
         if dt is None:
             return {}
-        contract, rows_same = _last_contract(dt)
+        last = _last_contract(dt)
         commit = None
-        if contract is not None and rows_same:
-            commit = CommitProperties(custom_metadata={METADATA_KEY: contract.to_json()})
+        if last.record is not None and last.kept:
+            commit = CommitProperties(custom_metadata={METADATA_KEY: last.record.to_json()})
         out: dict[str, object] = {"optimize": dt.optimize.compact(commit_properties=commit)}
         if vacuum is not None:
             dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
