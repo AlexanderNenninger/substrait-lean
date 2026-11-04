@@ -39,9 +39,10 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported")
     if node.to.is_type(*sge.DataType.TEMPORAL_TYPES) and [
         p.sql(DIALECT) for p in node.to.expressions
-    ] not in ([], ["6"]):
-        # `TIMESTAMP(p)` is seconds, milliseconds or nanoseconds in DuckDB
-        # for some `p`; the model's timestamps are microseconds (#626, #323).
+    ] not in ([], ["4"], ["5"], ["6"]):
+        # DuckDB reads `TIMESTAMP(p)` as seconds for p = 0, milliseconds for
+        # 1 to 3 and nanoseconds for 7 to 9; the model's timestamps are
+        # microseconds, DuckDB's for 4 to 6 (#626, #323).
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)}: a precision is not supported")
     if node.to.this in (sge.DataType.Type.INT128, sge.DataType.Type.UINT128):
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported")
