@@ -60,20 +60,6 @@ checker runs the analyses on the schema-only catalog: they read only arities.
 
 namespace Substrait
 
-theorem dedupN_of_nodup {α : Type} [DecidableEq α] :
-    ∀ (n : Nat) (l : List α), l.length ≤ n → l.Nodup → dedupN n l = l
-  | _, [], _, _ => by cases ‹Nat› <;> simp [dedupN]
-  | 0, _ :: _, h, _ => by simp at h
-  | n + 1, x :: xs, h, hnd => by
-    obtain ⟨hx, hxs⟩ := List.nodup_cons.mp hnd
-    have hf : xs.filter (· != x) = xs :=
-      List.filter_eq_self.2 fun y hy => by simpa using fun h : y = x => hx (h ▸ hy)
-    simp only [dedupN, hf]
-    rw [dedupN_of_nodup n xs (by simp at h; omega) hxs]
-
-theorem dedup_of_nodup {α : Type} [DecidableEq α] {l : List α} (h : l.Nodup) : dedup l = l :=
-  dedupN_of_nodup _ l (Nat.le_refl _) h
-
 /-- Values that a key's columns determine are distinct across the rows. -/
 theorem KeyOn.map_pairwise {β : Type} {k : List Nat} {rows : Relation} (h : KeyOn k rows)
     {f : Row → β} (hf : ∀ x y, f x = f y → keyOf k x = keyOf k y) :
@@ -811,34 +797,6 @@ theorem aggregateEval_map {gs : List Expr} {ms : List Measure} {A : Relation} {g
 
 /-! ### Functional dependencies -/
 
-theorem dedupN_parallel {α β : Type} [DecidableEq β] {f g : α → β} :
-    ∀ (n : Nat) (l : List α), l.length ≤ n → (∀ x ∈ l, ∀ y ∈ l, f x = f y ↔ g x = g y) →
-    ∃ L : List α, (∀ x ∈ L, x ∈ l) ∧ dedupN n (l.map f) = L.map f ∧ dedupN n (l.map g) = L.map g
-  | _, [], _, _ => ⟨[], by simp, by cases ‹Nat› <;> simp [dedupN], by cases ‹Nat› <;> simp [dedupN]⟩
-  | 0, _ :: _, h, _ => by simp at h
-  | n + 1, x :: xs, hl, he => by
-    have hfg : xs.filter ((· != f x) ∘ f) = xs.filter ((· != g x) ∘ g) :=
-      List.filter_congr fun y hy => by
-        rw [Bool.eq_iff_iff]
-        simp only [Function.comp_apply, bne_iff_ne, ne_eq]
-        exact not_congr (he y (by simp [hy]) x (by simp))
-    have hlen : (xs.filter ((· != f x) ∘ f)).length ≤ n := by
-      have := List.length_filter_le ((· != f x) ∘ f) xs; simp at hl; omega
-    obtain ⟨L, hL, hf, hg⟩ := dedupN_parallel n _ hlen fun y hy z hz =>
-      he y (by simp [(List.mem_filter.mp hy).1]) z (by simp [(List.mem_filter.mp hz).1])
-    refine ⟨x :: L, fun y hy => ?_, ?_, ?_⟩
-    · rcases List.mem_cons.mp hy with rfl | hy
-      · simp
-      · exact List.mem_cons_of_mem _ (List.mem_filter.mp (hL y hy)).1
-    · simp only [List.map_cons, dedupN, List.filter_map, hf]
-    · simp only [List.map_cons, dedupN, List.filter_map, ← hfg, hg]
-
-theorem dedup_parallel {α β : Type} [DecidableEq β] {f g : α → β} {l : List α}
-    (he : ∀ x ∈ l, ∀ y ∈ l, f x = f y ↔ g x = g y) :
-    ∃ L : List α, (∀ x ∈ L, x ∈ l) ∧ dedup (l.map f) = L.map f ∧ dedup (l.map g) = L.map g := by
-  have := dedupN_parallel (f := f) (g := g) l.length l (Nat.le_refl _) he
-  simpa [dedup] using this
-
 /-- `MIN` of an expression constant on the group is its value. -/
 theorem Measure.eval_min_const {e : Expr} {grp : Relation} {x : Row} (hx : x ∈ grp)
     (h : ∀ y ∈ grp, e.eval y = e.eval x) : ({ fn := .min, arg := e } : Measure).eval grp = e.eval x := by
@@ -966,54 +924,6 @@ theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.r
 
 theorem gpos_spec {gs : List Expr} {c q : Nat} (h : gpos gs c = some q) : gs[q]? = some (.field c) := by
   simpa using List.find?_some h
-
-theorem dedupN_fuel {α : Type} [DecidableEq α] : ∀ (n m : Nat) (l : List α), l.length ≤ n →
-    l.length ≤ m → dedupN n l = dedupN m l
-  | 0, m, [], _, _ => by cases m <;> rfl
-  | 0, _, _ :: _, h, _ => by simp at h
-  | _ + 1, 0, [], _, _ => rfl
-  | _ + 1, 0, _ :: _, _, h => by simp at h
-  | _ + 1, _ + 1, [], _, _ => rfl
-  | n + 1, m + 1, x :: xs, h₁, h₂ => by
-    have := List.length_filter_le (· != x) xs
-    simp only [List.length_cons] at h₁ h₂
-    simp only [dedupN]
-    rw [dedupN_fuel n m _ (by omega) (by omega)]
-
-theorem dedup_cons {α : Type} [DecidableEq α] (x : α) (xs : List α) :
-    dedup (x :: xs) = x :: dedup (xs.filter (· != x)) := by
-  simp only [dedup, List.length_cons, dedupN]
-  rw [dedupN_fuel _ _ _ (List.length_filter_le _ _) (Nat.le_refl _)]
-
-theorem dedup_nil {α : Type} [DecidableEq α] : dedup ([] : List α) = [] := by simp [dedup, dedupN]
-
-/-- Filtering by a predicate of the images commutes with `dedup`. -/
-theorem dedup_filter_map {α β : Type} [DecidableEq β] {f : α → β} {p : α → Bool} {q : β → Bool} :
-    ∀ (n : Nat) (l : List α), l.length ≤ n → (∀ x ∈ l, p x = q (f x)) →
-      dedup ((l.filter p).map f) = (dedup (l.map f)).filter q
-  | _, [], _, _ => by simp [dedup_nil]
-  | 0, _ :: _, h, _ => by simp at h
-  | n + 1, x :: xs, hl, hpq => by
-    have hlen : (xs.filter ((· != f x) ∘ f)).length ≤ n := by
-      have := List.length_filter_le ((· != f x) ∘ f) xs; simp at hl; omega
-    have ih := dedup_filter_map n _ hlen fun y hy => hpq y (List.mem_cons_of_mem _ (List.mem_filter.mp hy).1)
-    rw [List.map_cons, dedup_cons, List.filter_map]
-    by_cases hp : p x
-    · have hq : q (f x) = true := by rw [← hpq x (by simp)]; exact hp
-      rw [List.filter_cons_of_pos hp, List.map_cons, dedup_cons, List.filter_cons_of_pos hq,
-        List.filter_map, ← ih, List.filter_filter, List.filter_filter]
-      congr 3
-      exact List.filter_congr fun y _ => by simp [Bool.and_comm]
-    · have hq : q (f x) = false := by rw [← hpq x (by simp)]; simpa using hp
-      rw [List.filter_cons_of_neg hp, List.filter_cons_of_neg (by simp [hq]), ← ih, List.filter_filter]
-      congr 2
-      refine List.filter_congr fun y hy => ?_
-      by_cases hpy : p y
-      · have hne : f y ≠ f x := fun he => by
-          have h1 := hpq y (by simp [hy]); have h2 := hpq x (by simp)
-          rw [he] at h1; simp_all
-        simp [hpy, hne]
-      · simp [hpy]
 
 /-- An aggregate over the rows of its groups that pass `p`, when `p` is the
 same on a group, is the aggregate's rows that pass `P`. -/

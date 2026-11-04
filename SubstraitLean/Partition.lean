@@ -104,33 +104,6 @@ theorem crossRows_flatMap_right {α : Type} (xs : Relation) (l : List α) (f : �
 theorem flatMap_eq_flatten_map {α β : Type} (l : List α) (f : α → List β) :
     l.flatMap f = (l.map f).flatten := List.flatMap_def
 
-theorem dedup_perm_of_mem {α : Type} [DecidableEq α] {l l' : List α} (h : ∀ y, y ∈ l ↔ y ∈ l') :
-    (dedup l).Perm (dedup l') :=
-  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l))
-    (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l'))).mpr fun y => by
-      rw [mem_dedup, mem_dedup]; exact h y
-
-theorem dedup_append_disjoint {α : Type} [DecidableEq α] {A B : List α}
-    (h : ∀ a ∈ A, ∀ b ∈ B, a ≠ b) : (dedup (A ++ B)).Perm (dedup A ++ dedup B) :=
-  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _))
-    (List.nodup_append.mpr ⟨List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _),
-      List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _),
-      fun a ha b hb => h a (mem_dedup.mp ha) b (mem_dedup.mp hb)⟩)).mpr fun y => by
-    simp only [mem_dedup, List.mem_append]
-
-/-- `DISTINCT` of parts with no row in common: the parts' `DISTINCT`s. -/
-theorem dedup_flatten_disjoint {α : Type} [DecidableEq α] :
-    ∀ {L : List (List α)}, L.Pairwise (fun A B => ∀ a ∈ A, ∀ b ∈ B, a ≠ b) →
-      (dedup L.flatten).Perm (L.map dedup).flatten
-  | [], _ => by simp [dedup, dedupN]
-  | A :: L, h => by
-    rw [List.pairwise_cons] at h
-    simp only [List.flatten_cons, List.map_cons]
-    refine (dedup_append_disjoint fun a ha b hb => ?_).trans
-      (List.Perm.append_left _ (dedup_flatten_disjoint h.2))
-    obtain ⟨B, hB, hb⟩ := List.mem_flatten.mp hb
-    exact h.1 B hB a ha b hb
-
 /-- The first position of `a` in `l`. -/
 def posOf {α : Type} [DecidableEq α] (a : α) : List α → Option Nat
   | [] => none

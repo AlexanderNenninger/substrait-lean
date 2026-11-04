@@ -190,9 +190,6 @@ theorem mem_keys_iff {gs : List Expr} {rows : Relation} {k : Row} :
   rw [mem_dedup, rowsIn_lift, groupRows, Int.natCast_pos, List.length_pos_iff_exists_mem]
   simp only [List.mem_map, List.mem_filter, beq_iff_eq]
 
-theorem nodup_dedup {α : Type} [DecidableEq α] (l : List α) : (dedup l).Nodup :=
-  List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l)
-
 /-! ## Aggregates -/
 
 variable {gs : List Expr} {ms : List Measure}

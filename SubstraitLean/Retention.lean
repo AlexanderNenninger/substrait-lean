@@ -91,12 +91,6 @@ theorem final_mono {W wm wm' b : Int} (h : wm ≤ wm') (hf : final W wm b = true
 theorem groupKey_length (gs : List Expr) (row : Row) : (groupKey gs row).length = gs.length := by
   simp [groupKey]
 
-theorem dedup_filter_perm {α : Type} [DecidableEq α] (p : α → Bool) (l : List α) :
-    (dedup (l.filter p)).Perm ((dedup l).filter p) :=
-  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _))
-    ((List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l)).filter p)).mpr fun y => by
-      simp only [mem_dedup, List.mem_filter]
-
 /-- **Groups are independent**: the output rows of an aggregate whose group
 key satisfies `p` are the aggregate of the input rows whose key does. -/
 theorem aggregateEval_filter_key {gs : List Expr} (hg : gs ≠ []) (ms : List Measure)
