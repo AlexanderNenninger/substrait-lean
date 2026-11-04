@@ -59,6 +59,7 @@ import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.EngineTables
 import SubstraitLean.Transfer
+import SubstraitLean.Epsilon
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples
