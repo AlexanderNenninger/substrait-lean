@@ -1223,12 +1223,12 @@ of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
 ### Reproducible sinks
 
 A stored node's sink commits each epoch once, so a rerun must give the same
-result. Rows as a multiset with exact values is the default; the sink
-states what else it accepts (`reproducible=`, D20 in
-[core-semantics.md](core-semantics.md)). A refresh whose engine may give
-another result on a rerun is refused with a `RouteError`. Polars's
-streaming `SUM` of doubles may add in another order each run, so a double
-sum on Polars needs both: the transform's
+result. The sink states what "the same" means (`reproducible=`, D20 in
+[core-semantics.md](core-semantics.md)): `sv.equivalent()` asks for exact
+bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
+tolerance. A refresh whose engine may give another result on a rerun is
+refused with a `RouteError`. Polars's streaming `SUM` of doubles may add in
+another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
 sink's `reproducible=sv.equivalent(floats=sv.within(abs=...))` for the
 rerun, each at least the plan's bound. With `x` within ±1000 and

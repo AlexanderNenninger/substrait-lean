@@ -1051,9 +1051,9 @@ def _(con, mo, sv):
 def _(mo):
     mo.md(r"""
     A stored node also needs a rerun to reproduce its result, since its sink
-    commits each epoch once: rows as a multiset with exact values by
-    default, or what the sink states, such as
-    `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`
+    commits each epoch once. The sink states what that means: exact bits
+    (`reproducible=sv.equivalent()`), or doubles within a tolerance,
+    `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`,
     for a `SUM` of doubles, which Polars's streaming engine may add in
     another order each run. A refresh whose route cannot meet that is
     refused. The
