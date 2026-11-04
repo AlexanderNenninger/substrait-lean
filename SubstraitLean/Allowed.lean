@@ -340,7 +340,7 @@ theorem Rel.guardFree_allowed {cat : Catalog} (hcat : cat.WF) {A : String → Li
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     {I : Impl} (hI : I.Faithful) : r.Allowed cat (r.evalI I cat) := by
   rw [Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm hI]; exact r.eval_allowed cat
 

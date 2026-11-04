@@ -1,0 +1,40 @@
+{
+  "id": "ST-9",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0",
+  "status": "unverified",
+  "status_note": "Unspecified in substrait-extensions 0.106.0; not yet checked against Substrait's main branch or raised upstream.",
+  "summary": "The `fp32` and `fp64` implementations of `add`, `subtract`, `multiply`, `divide`, `power`, `exp` and the other elementary functions have no option for a result too large for the type: only `rounding` (and `on_domain_error`, `on_division_by_zero` where they apply). Nothing says whether `1e308 * 10` is `+inf`, as IEEE 754 makes it, or an error. `sum` and `avg` of `fp64` take `overflow: SILENT | SATURATE | ERROR`, which the YAML defines for integers only.",
+  "repro": [
+    "`multiply(fp64 1e308, fp64 10)`, `exp(fp64 1000)`, `power(fp64 10, fp64 400)`, and `sum` of `1e308` and `1e308`.",
+    "DuckDB 2.0 gives `inf` for all of them (fact duckdb-double-overflow); Polars gives `inf` (fact polars-double-arith); sverify's reference raises (#575)."
+  ],
+  "handling": [
+    "The reference raises when an operation on finite doubles gives `±inf` (`Issue.infinite`): an inferred precondition the written plan checks on the data, as for a `SUM` that leaves 64 bits. The core allows both behaviours.",
+    "Could be expressed as: an `overflow` option on the floating-point implementations, with `IEEE` (`±inf`) and `ERROR`, and the meaning of `sum`'s existing `overflow` values stated for `fp32` and `fp64` (`SATURATE` to the largest finite value)."
+  ],
+  "found_by": "the terminology of the loose core (#574), docs/core-semantics.md",
+  "issues": [
+    444,
+    575
+  ],
+  "files": [
+    "SubstraitLean/Safety.lean",
+    "docs/core-semantics.md",
+    "docs/reference-semantics.md"
+  ],
+  "facts": [
+    "duckdb-double-overflow",
+    "polars-double-arith"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "functions_arithmetic.yaml: the fp implementations of add, subtract, multiply, divide, power and exp have `rounding` only; sum and avg of fp64 have `overflow`"
+    }
+  ]
+}

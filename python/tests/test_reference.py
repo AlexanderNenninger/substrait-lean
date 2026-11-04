@@ -265,6 +265,7 @@ def test_double_division_by_zero_may_fail():
     assert [str(i) for i in report.errors] == [
         "division by zero: ($0 /. $1)",
         "domain error: ($0 /. $1)",
+        "overflow to infinity: ($0 /. $1)",
     ]
     duckdb = sv.verify("SELECT x / y AS q FROM f", tables={"f": f}, semantics="duckdb")
     assert "division by zero" not in [i.kind for i in duckdb.errors]
@@ -291,8 +292,9 @@ def test_double_division_options(dcon, mode, by_zero):
     rows = {"d": DIV_ROWS}
     expected = nan_safe([(v,) for v in [*by_zero, None, 2.0]])
     assert nan_safe(lean_values(json.dumps(inline_tables(json.loads(plan), rows)))) == expected
-    # Only `∞ / ∞`, which would be NaN (#257): the dividend is not bounded.
-    assert issues(plan) == ["domain error"]
+    # Only `∞ / ∞`, which would be NaN (#257), and an overflow to `±∞`
+    # (#575): the dividend is not bounded.
+    assert issues(plan) == ["domain error", "overflow to infinity"]
     written = written_plan(plan)
     for engine in ("duckdb", "polars"):
         assert nan_safe(arrow_rows(run_plan(dcon, written, engine))) == expected, engine
@@ -300,7 +302,11 @@ def test_double_division_options(dcon, mode, by_zero):
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_double_division_by_zero_raises(dcon, engine):
-    assert issues(divide_plan(dcon, None)) == ["division by zero", "domain error"]
+    assert issues(divide_plan(dcon, None)) == [
+        "division by zero",
+        "domain error",
+        "overflow to infinity",
+    ]
     with pytest.raises(Exception, match="(?i)division by zero|divide by zero"):
         run_plan(dcon, written_plan(divide_plan(dcon, None)), engine)
 
@@ -606,28 +612,36 @@ def test_float_arithmetic_is_refused(f32, sql, message):
 # numbers (`inf - inf`, `0 * inf`, `inf / inf`, `fmod(inf, y)`, a negative
 # base to a fractional power, `sin(inf)`, a double `SUM` of `inf` and
 # `-inf`), the reference raises a domain error; a NaN in the input stays NaN.
+# Nor `±inf` (#575): an operation on finite doubles that overflows raises,
+# which the checker rules out only for a `SUM` or `AVG` of bounded values
+# over a bounded number of rows.
 FINITE = ["x < 1e300", "x > -1e300", "y < 1e300", "y > -1e300"]
+INFINITE = "overflow to infinity"
 
 
 @pytest.mark.parametrize(
     ("sql", "requires", "errors"),
     [
-        ("SELECT x + y AS v FROM f", [], ["domain error"]),
-        ("SELECT x + y AS v FROM f", FINITE, []),
-        ("SELECT x - y AS v FROM f", [], ["domain error"]),
-        ("SELECT x * y AS v FROM f", [], ["domain error"]),
-        ("SELECT x * y AS v FROM f", FINITE, []),
+        ("SELECT x + y AS v FROM f", [], ["domain error", INFINITE]),
+        ("SELECT x + y AS v FROM f", FINITE, [INFINITE]),
+        ("SELECT x - y AS v FROM f", [], ["domain error", INFINITE]),
+        ("SELECT x * y AS v FROM f", [], ["domain error", INFINITE]),
+        ("SELECT x * y AS v FROM f", FINITE, [INFINITE]),
         # Infinity plus a number is infinity, never NaN.
-        ("SELECT x + 1.5 AS v FROM f", [], []),
-        ("SELECT power(x, 0.5) AS v FROM f", [], ["domain error"]),
-        ("SELECT power(x, 0.5) AS v FROM f", ["x >= 0"], []),
-        ("SELECT power(x, 2.0) AS v FROM f", [], []),
+        ("SELECT x + 1.5 AS v FROM f", [], [INFINITE]),
+        ("SELECT power(x, 0.5) AS v FROM f", [], ["domain error", INFINITE]),
+        ("SELECT power(x, 0.5) AS v FROM f", ["x >= 0"], [INFINITE]),
+        ("SELECT power(x, 2.0) AS v FROM f", [], [INFINITE]),
         ("SELECT sin(x) AS v FROM f", [], ["domain error"]),
         ("SELECT sin(x) AS v FROM f", FINITE, []),
-        ("SELECT sum(x) AS v FROM f", [], ["domain error"]),
-        ("SELECT sum(x) AS v FROM f", ["x >= 0"], []),
-        # An integer converts to a finite double.
-        ("SELECT avg(CAST(i AS DOUBLE)) AS v FROM f", [], []),
+        ("SELECT exp(x) AS v FROM f", FINITE, [INFINITE]),
+        ("SELECT sum(x) AS v FROM f", [], ["domain error", INFINITE]),
+        ("SELECT sum(x) AS v FROM f", ["x >= 0"], [INFINITE]),
+        # Values within 2⁴⁰⁰ over at most 2³² rows sum to a finite double (#85).
+        ("SELECT sum(x) AS v FROM f", ["x < 1e100", "x > -1e100", sv.max_rows(1000)], []),
+        # An integer converts to a finite double; without a row cap the
+        # checker has no bound on the mean.
+        ("SELECT avg(CAST(i AS DOUBLE)) AS v FROM f", [], [INFINITE]),
     ],
 )
 def test_nan_creation_is_a_domain_error(sql, requires, errors):

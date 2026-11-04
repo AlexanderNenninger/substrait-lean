@@ -148,20 +148,22 @@ class DomainError(RuntimeIssue):
 
 class InfiniteResult(RuntimeIssue):
     """An operation on finite doubles whose result is `±∞` (`Issue.infinite`,
-    #575): the reference assumes none, and the job checks it where the
-    report lists it as assumed. Checked only when `guards` names it."""
+    #575): an error of the reference, which verification rules out by an
+    inferred precondition (`Report.assumed`) that the job checks on the data.
+    Checked with or without guards, as a `SUM`'s overflow is."""
 
     issue = "overflow to infinity"
 
 
-#: The issues `guards=True` checks: all but `InfiniteResult`, which #575
-#: makes an assumed precondition (`Rel.eval` keeps the IEEE `±∞`).
+#: The issues `guards=True` checks: every one.
 ALL_GUARDS = frozenset(
     {"overflow", "SUM overflow", "division by zero", "negative exponent", "cast out of range",
-     "invalid regular expression", "domain error", "raised by a guard"}
+     "invalid regular expression", "domain error", "raised by a guard", "overflow to infinity"}
 )  # fmt: skip
-#: `guards=False`: the integer `SUM`s, which a `guard_free` report assumes fit.
-NO_GUARDS = frozenset({"SUM overflow"})
+#: `guards=False`: the checks of the preconditions a `guard_free` report
+#: assumes (`Issue.assumed`): integer `SUM`s fit, and no operation on finite
+#: doubles gives `±∞` (#575).
+NO_GUARDS = frozenset({"SUM overflow", "overflow to infinity"})
 
 
 def col(i: int) -> str:
@@ -1241,10 +1243,16 @@ class Exprs:
         else:
             y = _rows(FMATH_ROWS[name], pl.Float64, Val(safe, pl.Float64))
         y = canon(y)
+        # Only `exp` of a finite double overflows (`UnFn.infIssue`, #575).
+        inf = (
+            (issue(shims.makes_infinite(y, e), InfiniteResult, f"{name} overflows to infinity"),)
+            if name == "exp"
+            else ()
+        )
         if bad is None:
-            return Val(y, pl.Float64, a.issues)
+            return Val(y, pl.Float64, (*a.issues, *inf))
         err = issue(bad, DomainError, f"{name} outside its domain")
-        return Val(pl.when(bad).then(None).otherwise(y), pl.Float64, (*a.issues, err))
+        return Val(pl.when(bad).then(None).otherwise(y), pl.Float64, (*a.issues, err, *inf))
 
     def domain(self, bad: pl.Expr, y: pl.Expr, out: DType, what: str, *vals: Val) -> Val:
         """`y`, or `NULL` and a `DomainError` where `bad`."""
@@ -1583,14 +1591,20 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
             return None
         s = pl.Series(vs, dtype=pl.Float64)
         ddof = 1 if fn.endswith("_samp") else 0
-        r = s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof)
-        return float(r) + 0.0  # pyrefly: ignore
+        r = float(s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof))  # pyrefly: ignore
+        if math.isinf(r):
+            # Finite values whose variance overflows (`Measure.makesInf`, #575).
+            raise InfiniteResult(f"{fn} overflows to infinity")
+        return r + 0.0
     if fn in ("fsum", "avg"):
         if not window and math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
+        if math.isinf(acc) and all(math.isfinite(v) for v in vs):
+            # Finite values whose sum overflows (`Measure.makesInf`, #575).
+            raise InfiniteResult(f"{fn} overflows to infinity")
         return acc / len(vs) + 0.0 if fn == "avg" else acc
     if fn == "fmax":
         # By the codes' order: NaN above every double.

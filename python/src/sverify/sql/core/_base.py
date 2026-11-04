@@ -3834,7 +3834,11 @@ class _Writer:
                     none = f"({n} < {d.int_lit(2)} OR {flat})"
                 else:
                     none = f"{n} <= {d.int_lit(1 if m.fn == 'covar_samp' else 0)}"
-                value = d.case_when(none, d.null("float"), d.canon(d.covar(m.fn, v)))
+                # Finite pairs whose result overflows (#575), kept without
+                # guards; an infinite side raises below.
+                value = self.agg_finite(
+                    d.case_when(none, d.null("float"), d.canon(d.covar(m.fn, v)))
+                )
                 if not d.guards:
                     return value
 
@@ -3858,6 +3862,9 @@ class _Writer:
                 value = d.case_when(
                     none, d.null("float"), d.case_when(nan, d.float_lit(math.nan), body)
                 )
+                # Finite values whose variance overflows (#575), kept without
+                # guards; an infinity raises below.
+                value = self.agg_finite(value)
                 if not d.guards:
                     return value
                 # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
@@ -3870,6 +3877,11 @@ class _Writer:
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v})")))
                 total = d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
+                # Finite values whose sum overflows (#575), kept without guards.
+                top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
+                total = self.agg_finite(
+                    total, f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}", f"MIN({v})"
+                )
                 if not d.guards:
                     return total
                 # `+∞` and `-∞` would sum to NaN, which no operation creates (#257).
@@ -4078,7 +4090,10 @@ class _Writer:
                 total = d.window_float_sum(v, w)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
-                return d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
+                total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
+                # Finite values whose sum overflows (#575), kept without guards.
+                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
+                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
         f = "MIN" if m.fn == "min" else "MAX"
         if expr_kind(m.arg, ks) == "bool":
             as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
@@ -4215,8 +4230,11 @@ class _Writer:
             case Un(op="fmath", arg=a, param=name):
                 x = self.float_operand(a, ref, cols)
                 if (low := d.lowered(f"fmath:{name}", [x], "float")) is not None:
-                    return d.canon(low)
-                return self.domain(x, self.domain_error(name, x), d.canon(d.fn(name, x)))
+                    sql = d.canon(low)
+                else:
+                    sql = self.domain(x, self.domain_error(name, x), d.canon(d.fn(name, x)))
+                # Only `exp` of a finite double overflows (`UnFn.infIssue`).
+                return self.finite(sql, [x]) if name == "exp" else sql
             case Bin(op="fatan2", left=a, right=b):
                 y, x = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
                 if (low := d.lowered("fatan2", [y, x], "float")) is not None:
@@ -4252,16 +4270,22 @@ class _Writer:
                     "fpow": d.float_pow,
                 }[op]
                 sa, sb = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                # The operands that may be `±∞` or NaN: not a finite constant.
+                unknown = [x for x, e in ((sa, a), (sb, b)) if _float_lit(e) is None]
                 # Where an operand rules out a new NaN (a finite constant),
                 # the template's guard could not fire: the operator alone.
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 if not plain and (low := d.lowered(op, [sa, sb], "float")) is not None:
-                    return low if op in ("fadd", "fsub") else d.canon(low)
+                    low = low if op in ("fadd", "fsub") else d.canon(low)
+                    return low if op == "fmod" else self.finite(low, unknown)
                 sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
                 sql = sql if op in ("fadd", "fsub") else d.canon(sql)
                 if not d.guards:
                     return sql
+                if op != "fmod":
+                    # `fmod` is exact: it never overflows.
+                    sql = self.finite(sql, unknown)
                 if not _nan_ruled_out(op, a, b):
                     sql = self.domain(sa, self.nan_case(op, sa, sb), sql)
                 if op != "fdiv":
@@ -4513,6 +4537,26 @@ class _Writer:
                 f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
             )
         return d.bool_lit(False)
+
+    def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
+        """An aggregate's `value`, raising where it is `±∞` though its values
+        are finite (`finite`, if the caller has not ruled them out:
+        `Measure.makesInf`, #575)."""
+        d = self.d
+        cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
+        return d.case_when(cond, d.raise_("overflow to infinity", dep or value, "float"), value)
+
+    def finite(self, sql: str, args: list[str]) -> str:
+        """`sql`, raising where its finite arguments `args` (those that are not
+        finite constants) give `±∞`
+        (`Issue.infinite`, #575): the reference's check on the data of the
+        assumption that a double operation does not overflow. Kept without
+        guards, as a `SUM`'s check is (`Rel.guardFree_sound`)."""
+        d = self.d
+        fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
+        return d.case_when(
+            f"({fin}{d.is_inf(sql)})", d.raise_("overflow to infinity", sql, "float"), sql
+        )
 
     def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:
         """`sql`, raising where the arguments are outside the function's

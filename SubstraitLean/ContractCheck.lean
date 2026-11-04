@@ -436,7 +436,7 @@ def check (input : Json) : Except String Report := do
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
   let guardFree := match transform with
-    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1 == .sumWraps)
+    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1.assumed)
     | none => false
   let unchecked := match transform with
     | some p =>

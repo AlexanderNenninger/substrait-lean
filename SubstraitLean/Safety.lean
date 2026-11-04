@@ -90,6 +90,16 @@ inductive Issue where
   /-- Raised by a shim's guard (`UnFn.raise`, #185), where an engine would
   answer while the reference raises. Plans `verify` checks have none. -/
   | raised
+  /-- An operation on finite doubles whose result is `±∞` (#575): `+`, `-`,
+  `*`, `/` and `power` that overflow (or `0 ^ -1`), `exp` past `709.78`, and a
+  `SUM`, `AVG` or statistical aggregate of finite values that overflows. The
+  reference raises: like a `SUM` that leaves its type, it is an inferred
+  precondition that the job checks on the data (`Report.assumed`), ruled out
+  where the bounds do it (`Measure.abs`). `Rel.eval` and `Profile.reference`
+  keep the IEEE value, `±∞`, which is what an engine without the check gives
+  (DuckDB, Polars), so it is not an error here (`Issue.isError`), and the lift
+  of DuckDB's SQL states DuckDB's result exactly. -/
+  | infinite
   deriving Repr, DecidableEq
 
 def Issue.name : Issue → String
@@ -102,6 +112,7 @@ def Issue.name : Issue → String
   | .sumWraps => "SUM overflow"
   | .domain => "domain error"
   | .raised => "raised by a guard"
+  | .infinite => "overflow to infinity"
 
 /-- The aggregates among a list of window functions. -/
 def WinFn.aggs (fns : List WinFn) : List Measure :=
@@ -109,9 +120,18 @@ def WinFn.aggs (fns : List WinFn) : List Measure :=
     | .agg m _ _ => some m
     | _ => none
 
-/-- Errors are what a proof must rule out: every issue raises. -/
+/-- Errors are what a proof must rule out: every issue raises, but for an
+overflow to `±∞`, which keeps the IEEE value and is assumed (`Issue.assumed`). -/
 def Issue.isError : Issue → Bool
+  | .infinite => false
   | _ => true
+
+/-- The issues a report assumes do not happen, inferred like #244's bounds
+and checked on the data while the job runs (`Report.assumed`): a `SUM` that
+leaves its type, an overflow to `±∞`. -/
+def Issue.assumed : Issue → Bool
+  | .sumWraps | .infinite => true
+  | _ => false
 
 def inI64 : Int → Bool := between minI64 maxI64
 
@@ -207,13 +227,48 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .bit op, .int a, .int b => domainIssue (op.apply a b)
   | _, _, _ => none
 
+/-- Is `c` the code of a finite double? -/
+def isFiniteCode (c : Int) : Bool := decide (FloatCode.negInf < c) && decide (c < FloatCode.posInf)
+
+/-- The operations of doubles that may overflow to `±∞` (#575). -/
+def BinFn.makesInf : BinFn → Bool
+  | .fadd | .fsub | .fmul | .fdiv | .fpow => true
+  | _ => false
+
+/-- An operation on finite doubles whose IEEE result is `±∞` (#575). -/
+def BinFn.infIssue (f : BinFn) (v w : Value) : Option Issue :=
+  match v, w, f.apply v w with
+  | .int a, .int b, .int r =>
+    if f.makesInf && isFiniteCode a && isFiniteCode b && isInfCode r then some .infinite else none
+  | _, _, _ => none
+
+/-- `exp` of a finite double whose result is `±∞` (#575): the other
+elementary functions of a finite double are finite, or a domain error. -/
+def UnFn.infIssue (f : UnFn) (v : Value) : Option Issue :=
+  match f, v, f.apply v with
+  | .fmath .exp, .int a, .int r => if isFiniteCode a && isInfCode r then some .infinite else none
+  | _, _, _ => none
+
+/-- The issue of a call: the error first, else an overflow to `±∞`. -/
+def UnFn.issueAll (f : UnFn) (v : Value) : Option Issue := (f.issue v).or (f.infIssue v)
+
+def BinFn.issueAll (f : BinFn) (v w : Value) : Option Issue := (f.issue v w).or (f.infIssue v w)
+
+theorem UnFn.infIssue_eq {f : UnFn} {v : Value} {k : Issue} (h : f.infIssue v = some k) :
+    k = .infinite := by
+  unfold UnFn.infIssue at h; split at h <;> (try split at h) <;> simp_all
+
+theorem BinFn.infIssue_eq {f : BinFn} {v w : Value} {k : Issue} (h : f.infIssue v w = some k) :
+    k = .infinite := by
+  unfold BinFn.infIssue at h; split at h <;> (try split at h) <;> simp_all
+
 /-- The issues evaluating `e` on `row` runs into, each with the operation
 that raises it. A `CASE` only evaluates the branch it takes. -/
 def Expr.issues (row : Row) : Expr → List (Issue × Expr)
   | .lit _ | .field _ => []
-  | .un f a => a.issues row ++ ((f.issue (a.eval row)).map (·, .un f a)).toList
+  | .un f a => a.issues row ++ ((f.issueAll (a.eval row)).map (·, .un f a)).toList
   | .bin f a b =>
-    a.issues row ++ b.issues row ++ ((f.issue (a.eval row) (b.eval row)).map (·, .bin f a b)).toList
+    a.issues row ++ b.issues row ++ ((f.issueAll (a.eval row) (b.eval row)).map (·, .bin f a b)).toList
   | .ifThen c t e => c.issues row ++ if (c.eval row).isTrue then t.issues row else e.issues row
   -- The lambda runs on every element.
   | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues [x]
@@ -424,16 +479,69 @@ def Expr.nonZero (env : List AVal) (fs : List Fact) (ks : Assumptions) (x : Expr
   | .un .itof a => a.nonZero env fs ks
   | _ => false
 
+/-- May `a` be a finite double? -/
+def AVal.mayFinite (a : AVal) : Bool :=
+  a.int.any fun b => b.lo.all (· < FloatCode.posInf) && b.hi.all (FloatCode.negInf < ·)
+
+theorem AVal.mayFinite_of_mem {a : AVal} {i : Int} (h : a.Mem (.int i))
+    (hf : isFiniteCode i = true) : a.mayFinite = true := by
+  obtain ⟨b, hb, hm⟩ := h
+  obtain ⟨bl, bh⟩ := b
+  simp only [isFiniteCode, Bool.and_eq_true, decide_eq_true_eq] at hf
+  simp only [AVal.mayFinite, hb, Option.any_some, Bool.and_eq_true, Option.all_eq_true,
+    decide_eq_true_eq]
+  exact ⟨fun l hl => by have := hm.1 l hl; omega, fun u hu => by have := hm.2 u hu; omega⟩
+
+/-- May the call overflow to `±∞` (`UnFn.infIssue`)? Only where its argument
+may be finite: the checker has no bound on what `exp` gives. -/
+def UnFn.mayInf (f : UnFn) (aa : AVal) : List Issue :=
+  match f with
+  | .fmath .exp => if aa.mayFinite then [.infinite] else []
+  | _ => []
+
+/-- May the call overflow to `±∞` (`BinFn.infIssue`)? Where both arguments
+may be finite: the checker has no bound on a double operation's result. -/
+def BinFn.mayInf (f : BinFn) (aa ab : AVal) : List Issue :=
+  if f.makesInf && aa.mayFinite && ab.mayFinite then [.infinite] else []
+
+theorem UnFn.mayInf_sound (f : UnFn) {aa : AVal} {v : Value} {k : Issue} (ha : aa.Mem v)
+    (hk : f.infIssue v = some k) : k ∈ f.mayInf aa := by
+  have := UnFn.infIssue_eq hk; subst this
+  unfold UnFn.infIssue at hk
+  split at hk
+  · rename_i a r _
+    split at hk
+    · rename_i hc
+      simp only [Bool.and_eq_true] at hc
+      simp [UnFn.mayInf, AVal.mayFinite_of_mem ha hc.1]
+    · simp at hk
+  · simp at hk
+
+theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} (ha : aa.Mem v)
+    (hb : ab.Mem w) (hk : f.infIssue v w = some k) : k ∈ f.mayInf aa ab := by
+  have := BinFn.infIssue_eq hk; subst this
+  unfold BinFn.infIssue at hk
+  split at hk
+  · rename_i a b r _
+    split at hk
+    · rename_i hc
+      simp only [Bool.and_eq_true] at hc
+      simp [BinFn.mayInf, hc.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.2, AVal.mayFinite_of_mem hb hc.1.2]
+    · simp at hk
+  · simp at hk
+
 def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
     Expr → List (Issue × Expr)
   | .lit _ | .field _ => []
   | .un f a =>
     a.mayIssues env fs ks ++
-      (f.mayIssue (a.absD env fs ks) ((Expr.un f a).absD env fs ks)).map (·, .un f a)
+      (f.mayIssue (a.absD env fs ks) ((Expr.un f a).absD env fs ks) ++
+        f.mayInf (a.absD env fs ks)).map (·, .un f a)
   | .bin f a b =>
     a.mayIssues env fs ks ++ b.mayIssues env fs ks ++
       (f.mayIssue (a.absD env fs ks) (b.absD env fs ks) ((Expr.bin f a b).absD env fs ks)
-        (b.nonZero env fs ks) a.strBytes?).map (·, .bin f a b)
+        (b.nonZero env fs ks) a.strBytes? ++ f.mayInf (a.absD env fs ks) (b.absD env fs ks)).map
+        (·, .bin f a b)
   | .ifThen c t e =>
     let ac := c.absD env fs ks
     c.mayIssues env fs ks ++
@@ -837,13 +945,21 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
     rcases hp with hp | hp
     · exact .inl (Expr.mayIssues_sound h hfs hks a p hp)
     · right
-      cases hi : f.issue (a.eval row) with
+      cases hi : f.issueAll (a.eval row) with
       | none => simp [hi] at hp
       | some k =>
         simp only [hi, Option.map_some, Option.toList_some, List.mem_singleton] at hp
         subst hp
-        exact List.mem_map_of_mem (UnFn.mayIssue_sound f (Expr.absD_sound h hfs hks a)
-          (Expr.absD_sound h hfs hks (.un f a)) hi)
+        refine List.mem_map_of_mem (List.mem_append.mpr ?_)
+        unfold UnFn.issueAll at hi
+        cases hj : f.issue (a.eval row) with
+        | some k' =>
+          rw [hj] at hi; cases hi
+          exact .inl (UnFn.mayIssue_sound f (Expr.absD_sound h hfs hks a)
+            (Expr.absD_sound h hfs hks (.un f a)) hj)
+        | none =>
+          rw [hj, Option.none_or] at hi
+          exact .inr (UnFn.mayInf_sound f (Expr.absD_sound h hfs hks a) hi)
   | .bin f a b, p, hp => by
     simp only [Expr.issues, List.mem_append] at hp
     simp only [Expr.mayIssues, List.mem_append]
@@ -851,14 +967,23 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
     · exact .inl (.inl (Expr.mayIssues_sound h hfs hks a p hp))
     · exact .inl (.inr (Expr.mayIssues_sound h hfs hks b p hp))
     · right
-      cases hi : f.issue (a.eval row) (b.eval row) with
+      cases hi : f.issueAll (a.eval row) (b.eval row) with
       | none => simp [hi] at hp
       | some k =>
         simp only [hi, Option.map_some, Option.toList_some, List.mem_singleton] at hp
         subst hp
-        exact List.mem_map_of_mem (BinFn.mayIssue_sound f (Expr.absD_sound h hfs hks a)
-          (Expr.absD_sound h hfs hks b) (Expr.absD_sound h hfs hks (.bin f a b))
-          (fun hnz => Expr.nonZero_sound h hfs hks b hnz) (Expr.strBytes?_sound row a) hi)
+        refine List.mem_map_of_mem (List.mem_append.mpr ?_)
+        unfold BinFn.issueAll at hi
+        cases hj : f.issue (a.eval row) (b.eval row) with
+        | some k' =>
+          rw [hj] at hi; cases hi
+          exact .inl (BinFn.mayIssue_sound f (Expr.absD_sound h hfs hks a)
+            (Expr.absD_sound h hfs hks b) (Expr.absD_sound h hfs hks (.bin f a b))
+            (fun hnz => Expr.nonZero_sound h hfs hks b hnz) (Expr.strBytes?_sound row a) hj)
+        | none =>
+          rw [hj, Option.none_or] at hi
+          exact .inr (BinFn.mayInf_sound f (Expr.absD_sound h hfs hks a)
+            (Expr.absD_sound h hfs hks b) hi)
   | .ifThen c t e, p, hp => by
     simp only [Expr.issues, List.mem_append] at hp
     simp only [Expr.mayIssues, List.mem_append]
@@ -1047,6 +1172,40 @@ theorem Measure.mayNan_of_makesNan {m : Measure} {grp : Relation} {abs : Expr �
     rw [hev] at this
     exact AVal.has_of_mem this
 
+/-! ## Aggregates that overflow to `±∞` (#575) -/
+
+/-- The aggregates of doubles whose result may overflow: `SUM`, `AVG` and the
+statistical aggregates. -/
+def AggFn.infAgg : AggFn → Bool
+  | .fsum | .avg | .var _ _ | .cov _ | .corr => true
+  | _ => false
+
+/-- A finite double, or a pair of them; anything else is not a double. -/
+def finiteValue : Value → Bool
+  | .int c => isFiniteCode c
+  | .list [.int a, .int b] => isFiniteCode a && isFiniteCode b
+  | _ => true
+
+/-- Is the aggregate of these rows `±∞` though every value is finite? -/
+def Measure.makesInf (m : Measure) (grp : Relation) : Bool :=
+  m.fn.infAgg && (m.inputs grp).all finiteValue && isInfValue (m.eval grp)
+
+/-- May the aggregate, whose result `r` describes (`Measure.abs`), overflow?
+Ruled out where `r` excludes `±∞`: a `SUM` or `AVG` of bounded values over at
+most `2³²` rows (`floatBound`, from #85's error bounds). -/
+def Measure.mayInf (m : Measure) (r : AVal) : Bool :=
+  m.fn.infAgg && (r.has FloatCode.posInf || r.has FloatCode.negInf)
+
+theorem Measure.mayInf_of_makesInf {m : Measure} {grp : Relation} {r : AVal}
+    (hr : r.Mem (m.eval grp)) (h : m.makesInf grp = true) : m.mayInf r = true := by
+  simp only [Measure.makesInf, Bool.and_eq_true] at h
+  obtain ⟨⟨hf, _⟩, hinf⟩ := h
+  simp only [isInfValue, Bool.or_eq_true, beq_iff_eq] at hinf
+  simp only [Measure.mayInf, hf, Bool.true_and, Bool.or_eq_true]
+  rcases hinf with h | h <;> rw [h] at hr
+  · exact .inl (AVal.has_of_mem hr)
+  · exact .inr (AVal.has_of_mem hr)
+
 /-! ## Bounded sums
 
 An integer `SUM` may leave 64 bits, and the reference raises there. Without
@@ -1214,8 +1373,12 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
       (∃ m ∈ WinFn.aggs fns, m.fn = .sum ∧ p = (.sumWraps, m.arg) ∧
         ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ frame.length ≤ (r.eval cat).length ∧
           m.sumOk (intSum (m.inputs frame)) = false) ∨
-      ∃ m ∈ WinFn.aggs fns, p = (.domain, m.arg) ∧
-        ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ m.fn.makesNan (m.inputs frame) = true
+      (∃ m ∈ WinFn.aggs fns, p = (.domain, m.arg) ∧
+        ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ m.fn.makesNan (m.inputs frame) = true) ∨
+      -- A window aggregate that would be `±∞` on some frame (#575).
+      ∃ m ∈ WinFn.aggs fns, p = (.infinite, m.arg) ∧
+        ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ frame.length ≤ (r.eval cat).length ∧
+          m.makesInf frame = true
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
   | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
@@ -1225,8 +1388,11 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
       (∃ m ∈ ms, m.fn = .sum ∧ p = (.sumWraps, m.arg) ∧
         ∃ grp ∈ aggGroups gs (r.eval cat), m.sumOk (intSum (m.inputs grp)) = false) ∨
       -- An aggregate that would be NaN, which no operation creates (#257).
-      ∃ m ∈ ms, p = (.domain, m.arg) ∧
-        ∃ grp ∈ aggGroups gs (r.eval cat), m.fn.makesNan (m.inputs grp) = true
+      (∃ m ∈ ms, p = (.domain, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat), m.fn.makesNan (m.inputs grp) = true) ∨
+      -- An aggregate of finite values that would be `±∞` (#575).
+      ∃ m ∈ ms, p = (.infinite, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat), m.makesInf grp = true
 
 /-- The issues the abstract evaluation cannot rule out. -/
 def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
@@ -1244,9 +1410,12 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
         if m.fn = .sum ∧
           m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false
         then some (.sumWraps, m.arg) else none) ++
-      (WinFn.aggs fns).filterMap fun m =>
+      (WinFn.aggs fns).filterMap (fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
-        then some (.domain, m.arg) else none
+        then some (.domain, m.arg) else none) ++
+      (WinFn.aggs fns).filterMap fun m =>
+        if m.mayInf (m.abs (r.aeval cat A F T true) (r.facts cat F T) false (some r.sumRows))
+        then some (.infinite, m.arg) else none
   | u, .cross a b | u, .unionAll a b => a.mayIssues cat A F T u ++ b.mayIssues cat A F T u
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
@@ -1261,9 +1430,12 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
         if m.fn = .sum ∧
           m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false
         then some (.sumWraps, m.arg) else none) ++
-      ms.filterMap fun m =>
+      ms.filterMap (fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
-        then some (.domain, m.arg) else none
+        then some (.domain, m.arg) else none) ++
+      ms.filterMap fun m =>
+        if m.mayInf (m.abs (r.aeval cat A F T true) (r.facts cat F T) false (some r.sumRows))
+        then some (.infinite, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
 
@@ -1346,8 +1518,8 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
       Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm.2) y hyr)
         (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
     rcases h with h | ⟨m, hm, hf, rfl, frame, hframe, hlen, hov⟩ |
-      ⟨m, hm, rfl, frame, hframe, hnan⟩
-    · exact .inl (.inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h))
+      ⟨m, hm, rfl, frame, hframe, hnan⟩ | ⟨m, hm, rfl, frame, hframe, hlen, hinf⟩
+    · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h)))
     · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false := by
         cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows)
         · rfl
@@ -1355,11 +1527,16 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
             (fun k hk => by
               cases hk; exact Rel.le_sumRows (Nat.lt_trans hsm.1 (by decide)) hlen) hfit
           rw [hov] at this; cases this
-      exact .inl (.inr ⟨m, hm, by simp [hf, hfits]⟩)
+      exact .inl (.inl (.inr ⟨m, hm, by simp [hf, hfits]⟩))
     · have hsound : ∀ y ∈ frame, ∀ e : Expr,
           (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) :=
         fun y hy e => habs y (hframe y hy) e
-      exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
+      exact .inl (.inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩)
+    · have hres := Measure.abs_sound (grp := frame)
+        (fun y hy => ⟨aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm.2) y (hframe y hy),
+          facts_sound hcat hF hT hwf.1 y (hframe y hy)⟩) m false (by simp) (some r.sumRows)
+        (fun k hk => by cases hk; exact Rel.le_sumRows (Nat.lt_trans hsm.1 (by decide)) hlen)
+      exact .inr ⟨m, hm, by simp [Measure.mayInf_of_makesInf hres hinf]⟩
   | _, .orderBy r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
   | _, .distinct r, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf hsm p h
   | _, .unnest r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
@@ -1395,8 +1572,8 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
     rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, rfl, grp, hgrp, hov⟩ |
-      ⟨m, hm, rfl, grp, hgrp, hnan⟩
-    · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)))
+      ⟨m, hm, rfl, grp, hgrp, hnan⟩ | ⟨m, hm, rfl, grp, hgrp, hinf⟩
+    · exact .inl (.inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h))))
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
         · exact hwf.1
@@ -1405,8 +1582,8 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         cases u
         · exact hsm
         · exact Rel.Small.loose (r := r) hsm
-      exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
-        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
+      exact .inl (.inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
+        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩)))
     · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false := by
         cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows)
         · rfl
@@ -1417,14 +1594,21 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
             (fun k hk => by
               cases hk; exact Rel.le_sumRows hlt (length_le_of_mem_aggGroups hgrp)) hfit
           rw [hov] at this; cases this
-      exact .inl (.inr ⟨m, hm, by simp [hf, hfits]⟩)
+      exact .inl (.inl (.inr ⟨m, hm, by simp [hf, hfits]⟩))
     · have hsound : ∀ y ∈ grp, ∀ e : Expr,
           (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) := by
         intro y hy e
         have hyr := mem_of_mem_aggGroups hgrp hy
         exact Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
           (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
-      exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
+      exact .inl (.inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩)
+    · have hres := Measure.abs_sound (grp := grp)
+        (fun y hy => by
+          have hyr := mem_of_mem_aggGroups hgrp hy
+          exact ⟨aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr,
+            facts_sound hcat hF hT hwf.1 y hyr⟩) m false (by simp) (some r.sumRows)
+        (fun k hk => by cases hk; exact Rel.le_sumRows hlt (length_le_of_mem_aggGroups hgrp))
+      exact .inr ⟨m, hm, by simp [Measure.mayInf_of_makesInf hres hinf]⟩
 
 /-- The assumption a report makes of the `SUM`s it cannot bound
 (`Report.assumed` in `sverify`, inferred like #244's bounds): on this
@@ -1447,5 +1631,25 @@ theorem Rel.noIssue_of_sumsFit {cat : Catalog} (hcat : cat.WF) {A : String → L
     (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) (hfit : r.SumsFit cat) :
     ∀ p, ¬r.HasIssue cat false p := fun p hp =>
   hfit p hp (by simpa using List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp))
+
+/-- The assumptions a report makes (`Report.assumed`): no `SUM` leaves its
+type and no operation on finite doubles gives `±∞` (#575). The job checks
+both on the data. -/
+def Rel.AssumedHold (cat : Catalog) (r : Rel) : Prop :=
+  ∀ p, r.HasIssue cat false p → p.1.assumed = false
+
+/-- **Runs without issues under the assumptions**: when every issue
+`Rel.mayIssues` reports is assumed (`Issue.assumed`), a catalog that meets
+the preconditions and the assumptions runs into no issue at all. -/
+theorem Rel.noIssue_of_assumedHold {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) (hok : r.AssumedHold cat) :
+    ∀ p, ¬r.HasIssue cat false p := fun p hp => by
+  have := hok p hp
+  rw [List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)] at this
+  cases this
 
 end Substrait

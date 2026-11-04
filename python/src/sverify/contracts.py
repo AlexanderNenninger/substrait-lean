@@ -793,9 +793,40 @@ SUM_ASSUMED = (
 _DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
 
 
+#: How a report explains an operation it assumes stays finite (#575).
+FINITE_ASSUMED = (
+    "stays finite where its inputs are (inferred; checked on the data while "
+    "the job runs, which raises if it gives ±∞)"
+)
+
+#: The kind of an operation on finite doubles that may give `±∞` (#575).
+INFINITE = "overflow to infinity"
+
+#: What a report suggests for an operation that may overflow to `±∞` (#575).
+INFINITE_HINT = (
+    "no bound on a column proves a double operation finite; with infer=True it "
+    "is assumed and checked on the data while the job runs"
+)
+
+
 def _sum(issue: Issue) -> bool:
     """Whether `issue` is a `SUM` that may leave its type."""
     return issue.kind == "SUM overflow"
+
+
+def _assumable(issue: Issue) -> bool:
+    """Whether `issue` is assumed not to happen, and checked on the data while
+    the job runs (`Issue.assumed` in `SubstraitLean/Safety.lean`): a `SUM`
+    that may leave its type, or an operation on finite doubles that may give
+    `±∞` (#575)."""
+    return _sum(issue) or issue.kind == INFINITE
+
+
+def _assumption(issue: Issue) -> str:
+    """How a report names an assumed issue."""
+    if _sum(issue):
+        return f"SUM of {issue.what} {_sum_assumed(issue)}"
+    return f"{issue.expr} {FINITE_ASSUMED}"
 
 
 def _sum_assumed(issue: Issue) -> str:
@@ -815,15 +846,17 @@ class Issue:
     kind: str
     """"division by zero", "overflow" (an integer result that does not fit its
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
-    "domain error", or "SUM overflow" (a `SUM` leaving its type: 64 bits for
-    integers, the result's precision for decimals)."""
+    "domain error", "SUM overflow" (a `SUM` leaving its type: 64 bits for
+    integers, the result's precision for decimals), or "overflow to infinity"
+    (an operation on finite doubles, or their `SUM` or `AVG`, giving `±∞`,
+    #575)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
     error: bool
     """True if a proof must rule it out. Every issue is one; a "SUM overflow"
-    is also checked while the job runs, where the transformation's SQL raises
-    too."""
+    or an "overflow to infinity" is also checked while the job runs, where
+    the transformation's SQL raises too."""
     hint: str | None = None
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
@@ -869,7 +902,8 @@ class Report:
     """Runtime errors, SUM overflows among them, Lean could not rule out; when
     empty, the transformation provably runs without them."""
     guard_free: bool = False
-    """The only issues are `SUM`s that may overflow: on data that meets
+    """The only issues are assumed ones (`SUM`s that may overflow, double
+    operations that may give `±∞`, which keep their checks): on data that meets
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
@@ -900,11 +934,12 @@ class Report:
     and skip the files whose statistics rule it out."""
     assumed: list[Issue] = field(default_factory=list)
     """The `SUM`s assumed to fit their type in every group (64 bits for
-    integers, the result's precision for decimals), inferred
+    integers, the result's precision for decimals), and the operations on
+    finite doubles assumed to stay finite (#575), inferred
     like the bounds in `inferred`: those the inputs' row caps (`max_rows`,
-    #219) and the values' range do not prove to fit. The job checks each sum
-    on the data while it runs and raises if it does not fit. The proof holds under this assumption
-    (`Rel.noIssue_of_sumsFit`). With `infer=False` they are errors instead."""
+    #219) and the values' range do not prove to fit. The job checks each
+    on the data while it runs and raises where one fails. The proof holds under these assumptions
+    (`Rel.noIssue_of_assumedHold`). With `infer=False` they are errors instead."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -1035,9 +1070,9 @@ class Report:
                 lines.append(f"  counterexample: {c.counterexample}")
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
-        lines += [f"assumes: SUM of {i.what} {_sum_assumed(i)}" for i in self.assumed]
+        lines += [f"assumes: {_assumption(i)}" for i in self.assumed]
         for i in self.errors:
-            lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
+            lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _assumable(i) else ""))
             if i.hint:
                 lines.append(f"  hint: {i.hint}")
         lines += [f"hint: {h}" for h in self._hints()]
@@ -1070,12 +1105,15 @@ class Report:
                 rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
-            note = f" ({RUNTIME_CHECK})" if _sum(i) else ""
+            note = f" ({RUNTIME_CHECK})" if _assumable(i) else ""
             rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')}{note} |")
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
-        inferred += [f"SUM of `{i.what}` {_sum_assumed(i)}" for i in self.assumed]
+        inferred += [
+            f"SUM of `{i.what}` {_sum_assumed(i)}" if _sum(i) else f"`{i.expr}` {FINITE_ASSUMED}"
+            for i in self.assumed
+        ]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
@@ -1860,10 +1898,11 @@ def infer_bounds(
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
     report = _confirm_suggestions(report, requires, once)
-    # A SUM that may overflow is assumed to fit, and checked on the
-    # data while the job runs: the row caps (#219) do not rule it out.
-    report.assumed = [i for i in report.issues if _sum(i)]
-    report.issues = [i for i in report.issues if not _sum(i)]
+    # A SUM that may overflow is assumed to fit, and an operation on finite
+    # doubles to stay finite (#575), both checked on the data while the job
+    # runs: the row caps (#219) and the bounds do not rule them out.
+    report.assumed = [i for i in report.issues if _assumable(i)]
+    report.issues = [i for i in report.issues if not _assumable(i)]
     return report
 
 
@@ -2041,8 +2080,15 @@ def _verify_once(
             Issue(
                 i["kind"],
                 i["expr"],
-                i["error"],
-                _hint(i["bound"], schemas, assumable) if i["error"] else None,
+                # Lean keeps the IEEE value of an overflow to ±∞ (#575), and
+                # a report counts it as a `SUM` overflow: assumed with `infer`,
+                # an error without.
+                i["error"] or i["kind"] == INFINITE,
+                _hint(i["bound"], schemas, assumable)
+                if i["error"]
+                else INFINITE_HINT
+                if i["kind"] == INFINITE
+                else None,
                 _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
             )
             for i in out["issues"]
