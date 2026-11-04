@@ -45,6 +45,8 @@ from sverify.plan_json import (
     type_json,
     values_rel,
 )
+from sverify.plan_json import decimal_dtype as _decimal
+from sverify.plan_json import same_type as _same
 
 __all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
 
@@ -529,10 +531,6 @@ def _fn(name: str, args: list[Json], out: Any, options: Sequence[Json] = ()) -> 
     return c
 
 
-def _decimal(p: int, s: int) -> Any:
-    return dt.Decimal(precision=min(p, 38), scale=s)
-
-
 def _digits(t: Any) -> tuple[int, int]:
     """`(precision, scale)` of a decimal or an integer, as DuckDB widens it."""
     if t.is_decimal():
@@ -542,10 +540,6 @@ def _digits(t: Any) -> tuple[int, int]:
 
 def _numeric(t: Any) -> bool:
     return t.is_integer() or t.is_float64() or t.is_decimal()
-
-
-def _same(a: Any, b: Any) -> bool:
-    return a.copy(nullable=True) == b.copy(nullable=True)
 
 
 def _shown(node: sge.Expression) -> str:

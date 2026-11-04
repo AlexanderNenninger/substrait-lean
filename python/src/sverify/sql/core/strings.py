@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from sverify import _plan_read
 from sverify.sql.core._base import (
     Bin,
     Expr,
@@ -21,12 +22,7 @@ from sverify.sql.core._base import (
     register,
 )
 
-#: `substring`'s offsets lie in `[-SUBSTR_MAX, SUBSTR_MAX)`, its lengths below
-#: `SUBSTR_MAX` (`Text.substrMax`, #336).
-SUBSTR_MAX = 2**32
-
-#: The longest string DataFusion's `repeat` writes, in bytes (`Text.repeatMax`).
-REPEAT_MAX = 2**31 - 1
+SUBSTR_MAX, REPEAT_MAX = _plan_read.SUBSTR_MAX, _plan_read.REPEAT_MAX
 
 
 def unicode_classes(p: str) -> bool:
@@ -45,35 +41,8 @@ def unicode_classes(p: str) -> bool:
 
 
 def regex_groups(p: str) -> int:
-    """The entries `regexp_match(s, p)` has on a match: its capture groups, or
-    the whole match if there are none. Groups are counted as `(` outside
-    classes and escapes, but `(?:`, which is exact for patterns without
-    other `(?`."""
-    groups, k, in_class = 0, 0, False
-    while k < len(p):
-        c = p[k]
-        if c == "\\":
-            k += 2
-            continue
-        if in_class:
-            in_class = c != "]"
-        elif c == "[":
-            in_class = True
-            # A `]` right after `[` or `[^` is a literal member.
-            if p[k + 1 : k + 2] == "^":
-                k += 1
-            if p[k + 1 : k + 2] == "]":
-                k += 1
-        elif c == "(":
-            if p[k + 1 : k + 3] == "?:":
-                # Non-capturing.
-                k += 1
-            elif p[k + 1 : k + 2] == "?":
-                raise Unsupported(f"regular expressions with '(?' are not supported: {p!r}")
-            else:
-                groups += 1
-        k += 1
-    return max(groups, 1)
+    """The entries `regexp_match(s, p)` has on a match (`_plan_read.regex_groups`)."""
+    return _plan_read.regex_groups(p, Unsupported)
 
 
 def call(name: str, args: list[Expr]) -> Expr | None:

@@ -17,6 +17,7 @@ from ibis.common.collections import FrozenOrderedDict
 from ibis.common.typing import VarTuple
 from ibis.expr.schema import Schema
 
+from sverify._plan_read import function_names
 from sverify.ibis_substrait._base import Exprs, _sort_key, register, register_rels, rel, same_type
 from sverify.ibis_substrait.aggregates import measure
 from sverify.ibis_substrait.windows import _row_number_from_zero, _window_functions, window
@@ -359,11 +360,7 @@ def sql_view_schema(parent: Any, query: str) -> Any:
 def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
     """The root relation of a lifted plan, with its function anchors in this
     plan's numbering and reads of `views` replaced by their plans."""
-    names = {
-        e["extensionFunction"].get("functionAnchor", 0): e["extensionFunction"]["name"]
-        for e in plan.get("extensions", [])
-        if "extensionFunction" in e
-    }
+    names = function_names(plan, Unsupported)
 
     def walk(j: Any) -> Any:
         if isinstance(j, list):

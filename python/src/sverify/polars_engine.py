@@ -58,7 +58,8 @@ from typing import Any
 
 import pyarrow as pa
 
-from sverify import black_box
+from sverify import _plan_read, black_box
+from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify.sql.core import EXACT_HOLISTIC
 
 try:
@@ -168,46 +169,35 @@ def _int(v: Any) -> int:
     return i
 
 
-def _double(v: Any) -> float:
-    if isinstance(v, str):
-        named = {"NaN": "nan", "Infinity": "inf", "-Infinity": "-inf"}
-        if v not in named:
-            raise Unsupported(f"malformed double literal {v!r}")
-        return float(named[v])
-    return float(v) + 0.0  # the one zero
-
-
 def interval_micros(d: dict) -> int:
     """`intervalDayToSecond` in microseconds, as `Parse.intervalMicros`."""
-    p = int(d.get("precision", 0))
-    sub = int(d.get("subseconds", 0))
-    sub_us = sub // 10 ** (p - 6) if p >= 6 else sub * 10 ** (6 - p)
-    return (int(d.get("days", 0)) * 86400 + int(d.get("seconds", 0))) * 1_000_000 + sub_us
+    return _plan_read.interval_micros(d, Unsupported)
 
 
 def null_type(t: dict) -> DType:
     """The dtype of a typed NULL. The writer types unknown kinds as `i64`, so
     those stay untyped (`pl.Null`) and take the type of what they meet."""
-    if "fp64" in t or "fp32" in t:
-        return pl.Float64
-    if "string" in t:
-        return pl.String
-    if "bool" in t:
-        return pl.Boolean
-    if "precisionTimestamp" in t:
-        if int(t["precisionTimestamp"].get("precision", 0)) != 6:
-            raise Unsupported("only microsecond timestamps are supported")
-        return US
-    if "date" in t:
-        return pl.Date
-    if "precisionTime" in t:
-        return pl.Time
-    if "i64" in t:
-        return pl.Null
-    if "list" in t:
-        return pl.List(materialize(null_type(t["list"].get("type", {"i64": {}}))))
-    if "struct" in t:
-        return struct_type([materialize(null_type(f)) for f in t["struct"].get("types", [])])
+    match _plan_read.type_kind(t):
+        case "float", _:
+            return pl.Float64
+        case "str", _:
+            return pl.String
+        case "bool", _:
+            return pl.Boolean
+        case "time", p:
+            if p != 6:
+                raise Unsupported("only microsecond timestamps are supported")
+            return US
+        case "date", _:
+            return pl.Date
+        case "tod", _:
+            return pl.Time
+        case "int", _:
+            return pl.Null
+        case "list", elem:
+            return pl.List(materialize(null_type(elem or {"i64": {}})))
+        case "struct", fields:
+            return struct_type([materialize(null_type(f)) for f in fields])
     raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
 
 
@@ -219,47 +209,40 @@ def struct_type(fields: list[DType]) -> DType:
 
 def literal(lit: dict) -> tuple[Any, DType]:
     """A literal as a Python value and its dtype."""
-    value = {k: v for k, v in lit.items() if k not in ("nullable", "typeVariationReference")}
-    if len(value) != 1:
-        raise Unsupported(f"malformed literal {json.dumps(lit)}")
-    ((kind, v),) = value.items()
-    if kind == "boolean":
-        return bool(v), pl.Boolean
-    if kind == "i64":
-        return _int(v), pl.Int64
-    if kind in ("i8", "i16", "i32"):
-        # A virtual table's narrow column (Lean writes its rows typed).
-        return _int(v), {"i8": pl.Int8, "i16": pl.Int16, "i32": pl.Int32}[kind]
-    if kind == "string":
-        return str(v), pl.String
-    if kind == "fp64":
-        return _double(v), pl.Float64
-    if kind == "null":
-        return None, null_type(v)
-    if kind == "precisionTimestamp":
-        if int(v.get("precision", 0)) != 6:
-            raise Unsupported("only microsecond timestamps are supported")
-        return _int(v["value"]), US
-    if kind == "date":
-        return _int(v), pl.Date
-    if kind == "intervalDayToSecond":
-        return _int(interval_micros(v)), INTERVAL
-    if kind == "precisionTime":
-        if int(v.get("precision", 0)) != 6:
-            raise Unsupported("only microsecond times are supported")
-        return _int(v["value"]), pl.Time
-    if kind == "emptyList":
-        return [], pl.List(materialize(null_type(v.get("type", {"i64": {}}))))
-    if kind == "struct":
-        fields = [literal(e) for e in v.get("fields", [])]
-        dtype = struct_type([materialize(t) for _, t in fields])
-        return {f"f{i}": f for i, (f, _) in enumerate(fields)}, dtype
-    if kind == "list":
-        elems = [literal(e) for e in v.get("values", [])]
-        t: DType = pl.Null
-        for _, et in elems:
-            t = unify(t, et, "list literal")
-        return [e for e, _ in elems], pl.List(materialize(t))
+    kind, v = _plan_read.literal(lit, Unsupported)
+    match kind:
+        case "bool":
+            return v, pl.Boolean
+        case "int":
+            # A virtual table's narrow column (Lean writes its rows typed).
+            key, i = v
+            return _int(i), {"i8": pl.Int8, "i16": pl.Int16, "i32": pl.Int32}.get(key, pl.Int64)
+        case "str":
+            return v, pl.String
+        case "float":
+            return v + 0.0, pl.Float64  # the one zero
+        case "null":
+            return None, null_type(v)
+        case "time":
+            return _int(v), US
+        case "date":
+            return _int(v), pl.Date
+        case "interval" if v[0] == 0:
+            return _int(v[1]), INTERVAL
+        case "tod":
+            return _int(v), pl.Time
+        case "emptyList":
+            return [], pl.List(materialize(null_type(v)))
+        case "struct":
+            fields = [literal(e) for e in v]
+            dtype = struct_type([materialize(t) for _, t in fields])
+            return {f"f{i}": f for i, (f, _) in enumerate(fields)}, dtype
+        case "list":
+            elems = [literal(e) for e in v]
+            t: DType = pl.Null
+            for _, et in elems:
+                t = unify(t, et, "list literal")
+            return [e for e, _ in elems], pl.List(materialize(t))
     raise Unsupported(f"unsupported literal {json.dumps(lit)}")
 
 
@@ -556,10 +539,6 @@ def ilike_regex(p: str) -> str:
     return "(?is)^" + "".join(out) + "$"
 
 
-#: `Text.repeatMax`: the longest string DataFusion's `repeat` writes, in bytes.
-REPEAT_MAX = 2**31 - 1
-
-
 def repeat(s: str, n: int) -> str:
     """`Text.repeatStr`, '' where it does not fit (the row raises)."""
     return s * n if n > 0 and len(s.encode()) * n <= REPEAT_MAX else ""
@@ -581,10 +560,6 @@ def levenshtein(s: str, t: str) -> int:
     return prev[-1]
 
 
-#: `Text.substrMax`: `substring`'s offsets and lengths stay below it (#336).
-SUBSTR_MAX = 2**32
-
-
 def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
     """`Text.substr`: the characters at 1-based positions `a … a+n-1`."""
     start = wide(a) - 1
@@ -600,20 +575,18 @@ def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
 
 
 def regex_groups(p: str) -> int | None:
-    """Entries of `regexp_match(s, p)` on a match: the capture groups, or the
-    whole match if there are none. `None` if the pattern does not compile.
-    Asked of Polars, which compiles patterns with DataFusion's `regex` crate."""
+    """Entries of `regexp_match(s, p)` on a match (`_plan_read.regex_groups`).
+    `None` if the pattern does not compile, asked of Polars, which compiles
+    patterns with DataFusion's `regex` crate."""
     try:
-        groups = pl.Series([""], dtype=pl.String).str.extract_groups(p).dtype
+        pl.Series([""], dtype=pl.String).str.contains(p)
     except pl.exceptions.ComputeError:
         return None
-    assert isinstance(groups, pl.Struct)
-    return max(len(groups.fields), 1)
+    return _plan_read.regex_groups(p, Unsupported)
 
 
 # --- Times (`SubstraitLean/Time.lean`) ---------------------------------------
 
-US_PER_DAY = 86_400_000_000
 #: The timestamps `chrono` represents (`Time.partMin`, `Time.partMax`).
 PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 #: Calendar truncation is exact from here to here (`Time.nsMin`, `Time.nsMax`).
@@ -994,8 +967,7 @@ class Exprs:
             return None
         if interval_micros(c.get("intervalDayToSecond", {})) != 0:
             raise Unsupported("an interval of months and days")
-        ym = c.get("intervalYearToMonth", {})
-        return 12 * int(ym.get("years", 0)) + int(ym.get("months", 0))
+        return _plan_read.year_months(c.get("intervalYearToMonth", {}), Unsupported)
 
     @staticmethod
     def constant(j: dict, what: str) -> Any:
@@ -1475,26 +1447,27 @@ def positional(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def type_of(t: dict) -> DType:
     """The engine dtype for a declared column type."""
-    if any(k in t for k in ("i8", "i16", "i32", "i64")):
-        return pl.Int64
-    if "fp64" in t or "fp32" in t:
-        return pl.Float64
-    if "string" in t or "varchar" in t or "fixedChar" in t:
-        return pl.String
-    if "bool" in t:
-        return pl.Boolean
-    if "precisionTimestamp" in t or "timestamp" in t:
-        return US
-    if "date" in t:
-        return pl.Date
-    if "precisionTime" in t or "time" in t:
-        return pl.Time
-    if "intervalDayToSecond" in t:
-        return INTERVAL
-    if "list" in t:
-        return pl.List(type_of(t["list"].get("type", {})))
-    if "struct" in t:
-        return struct_type([type_of(f) for f in t["struct"].get("types", [])])
+    match _plan_read.type_kind(t):
+        case "int", _:
+            return pl.Int64
+        case "float", _:
+            return pl.Float64
+        case "str", _:
+            return pl.String
+        case "bool", _:
+            return pl.Boolean
+        case "time", _:
+            return US
+        case "date", _:
+            return pl.Date
+        case "tod", _:
+            return pl.Time
+        case "interval", _:
+            return INTERVAL
+        case "list", elem:
+            return pl.List(type_of(elem or {}))
+        case "struct", fields:
+            return struct_type([type_of(f) for f in fields])
     raise Unsupported(f"unsupported column type {json.dumps(t)}")
 
 
@@ -1821,11 +1794,7 @@ def python_windows(
 
 class Translator:
     def __init__(self, plan: dict, tables: Tables, guards: bool = True):
-        self.functions = {
-            int(e["extensionFunction"].get("functionAnchor", 0)): e["extensionFunction"]["name"]
-            for e in plan.get("extensions", [])
-            if "extensionFunction" in e
-        }
+        self.functions = _plan_read.function_names(plan, Unsupported)
         self.tables = tables
         self.guards = guards
 
