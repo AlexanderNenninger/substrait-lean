@@ -1018,7 +1018,7 @@ class Report:
     """The request the checker proved, for a check under another profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types."""
-    epsilon: dict[str, dict[str, float]] | None = field(default=None, repr=False, compare=False)
+    epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
@@ -1067,6 +1067,7 @@ class Report:
         *,
         route: RouteKind | Literal["auto"] | None = None,
         deterministic: bool = False,
+        reproducible: Observation | None = None,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1090,8 +1091,11 @@ class Report:
             route: None (the default) runs the plan without choosing a
                 route; `"auto"` chooses one; `"native"`, `"reference"`,
                 `"transfer"` or `"recheck"` takes that one or refuses.
-            deterministic: With `route`, refuse a plan whose result is not
-                determined up to row order (D10).
+            deterministic: With `route`, require a rerun to reproduce the
+                result exactly (`reproducible=sv.equivalent()`, D10).
+            reproducible: With `route`, what a rerun must reproduce
+                (`q_det`, D20): the engine's run-to-run variation must
+                refine it. Default None: determinism is only reported.
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1130,6 +1134,7 @@ class Report:
                 engine if engine is not None else con.engine,
                 route,
                 deterministic=deterministic,
+                reproducible=reproducible,
             )
             self.routes[chosen.engine] = chosen
             kind = chosen.kind

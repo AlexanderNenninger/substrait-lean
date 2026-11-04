@@ -49,7 +49,7 @@ import functools
 import json
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from sverify import _plan_read
@@ -157,6 +157,14 @@ class Route:
     where one rests on a test or a probe; None where the tables say nothing."""
     shims: tuple[str, ...] = ()
     """The shims the translation writes for this plan, by option."""
+    reproducible: Observation | None = None
+    """What a rerun had to reproduce (`q_det`, D20), where the caller
+    required one; the route was refused unless the engine's run-to-run
+    variation refines it."""
+    rerun_evidence: Evidence | None = None
+    """`"proved"` where every option's run-to-run variation is in the
+    tables and proved, `"tested"` where one is missing (read as exact) or
+    rests on an unproved bound; None without `reproducible`."""
 
     @property
     def refused(self) -> bool:
@@ -492,6 +500,7 @@ def _plan_bound(
     q: Mapping[str, Any],
     observed: Observation,
     epsilon: Mapping[str, Mapping[str, Any]] | None,
+    against: str = "of the reference, and the postcondition asks",
 ) -> tuple[dict[str, Any], list[str], bool]:
     """`q` without a plan-dependent float bound (`{"floats": {"bound":
     "plan"}}`), the problems with that bound, and whether the bound that
@@ -529,9 +538,7 @@ def _plan_bound(
         ]
         if not met:
             want = "exact doubles" if not isinstance(stated, Within) else str(stated)
-            problems.append(
-                f"{col} is within {shown} of the reference, and the postcondition asks {want}"
-            )
+            problems.append(f"{col} is within {shown} {against} {want}")
         elif not any(met):
             unproved = True
     return rest, problems, unproved
@@ -661,6 +668,66 @@ def _sorted_root(plan: Mapping[str, Any]) -> bool:
     return False
 
 
+def reproducibility(
+    report: Report,
+    engine: str,
+    required: Observation,
+    depends: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[list[str], Evidence]:
+    """Whether a rerun of the plan on `engine` reproduces its result up to
+    `required` (`q_det`, D20).
+
+    The result must be determined up to row order (`Report.deterministic`):
+    an open choice in it (ties in an ORDER BY, a LIMIT without one) fails
+    every `q_det`. Then, on each option the plan depends on, the engine's
+    run-to-run variation (the `"rerun"` column of its choices, component
+    levels as in `q`, `{}` where it is exact; `{"floats": {"bound":
+    "plan"}}` for a summation order that varies between runs, bounded by the
+    plan's `ε`) must refine `required`. The evidence is the row's
+    `"rerun_evidence"`: "tested" unless it says "proved". A row without the
+    column is read as exact, on the evidence of a test.
+
+    Returns:
+        The problems (empty: reproduced), and the evidence.
+    """
+    from sverify.observation import from_json
+
+    problems: list[str] = []
+    if not report.deterministic:
+        problems.append(
+            "the result is not determined up to row order (ties in an ORDER BY, or a LIMIT "
+            "without one), so no rerun is sure to reproduce it"
+        )
+    if depends is None:
+        depends = (
+            report.depends
+            if report.depends is not None
+            else plan_options(json.loads(report.plan) if report.plan else {})
+        )
+    tested = False
+    for d in depends:
+        g, o = d.get("group"), d["option"]
+        r = row(engine, g, o)
+        if r is None or r.get("rerun") is None:
+            tested = True
+            continue
+        rest, bounded, unproved = _plan_bound(
+            r["rerun"], required, report.epsilon, "between runs, and a rerun must reproduce"
+        )
+        # The row's own evidence for its variation (`{}` where it is known
+        # exact); the class's evidence says nothing about reruns.
+        tested = tested or unproved or r.get("rerun_evidence") != "proved"
+        varies = from_json(rest)
+        missed = varies.coarser_than(required)
+        if missed:
+            problems.append(
+                f"{_where(g, o)}: two runs on {engine} agree only up to {varies}, and a rerun "
+                f"must reproduce its {', '.join(missed)} ({required})"
+            )
+        problems += [f"{_where(g, o)}: {p}" for p in bounded]
+    return problems, "tested" if tested else "proved"
+
+
 def choose(
     report: Report,
     engine: Any,
@@ -668,6 +735,7 @@ def choose(
     *,
     deterministic: bool = False,
     version: str | None = None,
+    reproducible: Observation | None = None,
 ) -> Route:
     """The route by which the plan `report` checked reaches `engine` (D13).
 
@@ -677,9 +745,12 @@ def choose(
         route: `"auto"` (the default) tries `"native"`, `"reference"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or
             refused.
-        deterministic: Refuse a plan whose result is not determined up to
-            row order, as incremental refreshes and idempotent sinks need
-            (D10). By default the route only reports it.
+        deterministic: Require a rerun to reproduce the result exactly, rows
+            as a multiset: `reproducible=sv.equivalent()` (D10).
+        reproducible: What a rerun must reproduce (`q_det`, D20), as an
+            idempotent sink needs: the engine's run-to-run variation must
+            refine it (`reproducibility`), or the route is refused. None
+            (the default) reports determinism and checks nothing.
         version: The engine's version; the installed one by default.
 
     Returns:
@@ -709,11 +780,23 @@ def choose(
 
     if not report.proved:
         return refuse(f"the plan is not verified under Profile.{source}")
+    if deterministic and reproducible is None:
+        from sverify.observation import Observation as _Observation
+
+        reproducible = _Observation()
+    rerun_evidence: Evidence | None = None
+    if reproducible is not None:
+        problems, rerun_evidence = reproducibility(report, e, reproducible)
+        if problems:
+            return replace(
+                refuse("a rerun must give the same result: " + "; ".join(problems)),
+                reproducible=reproducible,
+                rerun_evidence=rerun_evidence,
+            )
     if not det:
-        hint = "an open choice (ties in an ORDER BY) leaves the result undetermined up to row order"
-        if deterministic:
-            return refuse(f"{hint}, and a rerun must give the same result")
-        notes.append(hint)
+        notes.append(
+            "an open choice (ties in an ORDER BY) leaves the result undetermined up to row order"
+        )
     plan = json.loads(report.plan) if report.plan else {}
     if report.observation.rows == "sequence" and not _sorted_root(plan):
         return refuse(
@@ -729,11 +812,34 @@ def choose(
         if kind != "reference":
             # Verified under the engine's own profile, or transferred to it by
             # monotonicity: every outcome is one the proof covers.
-            return Route(e, kind, profile, reason, det, tuple(notes), cls="refines")
+            return Route(
+                e,
+                kind,
+                profile,
+                reason,
+                det,
+                tuple(notes),
+                cls="refines",
+                reproducible=reproducible,
+                rerun_evidence=rerun_evidence,
+            )
         cls, ev, shims, problems = realization(e, depends, report.observation, report.epsilon)
         if problems:
             return refuse("; ".join(problems))
-        return Route(e, kind, profile, reason, det, tuple(notes), (), cls, ev, shims)
+        return Route(
+            e,
+            kind,
+            profile,
+            reason,
+            det,
+            tuple(notes),
+            (),
+            cls,
+            ev,
+            shims,
+            reproducible,
+            rerun_evidence,
+        )
 
     tried = ROUTES if route == "auto" else (route,)
     why_not: list[str] = []

@@ -1081,8 +1081,11 @@ assumed `SUM`s are checked on the data, and a batch that breaks one raises
 `deterministic=True` refuses a plan whose result is not determined up to
 row order. `node.refresh(engine=..., route="auto")` chooses a route for
 every node the same way and records it in each entry's `route`. A stored
-node always needs a result determined up to row order, since its sink
-commits each epoch once. Each engine profile names the versions its facts were probed at
+node needs a rerun to reproduce its result, since its sink commits each
+epoch once: rows as a multiset with exact values by default, or what the
+sink states, such as
+`DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(rel=1e-12)))`
+for a double `SUM` whose order varies between runs. Each engine profile names the versions its facts were probed at
 (DuckDB 2.0.0, Polars 2.1.0): another version warns, another major version
 is refused.
 
