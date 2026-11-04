@@ -148,6 +148,9 @@ def Profile.polars.table : ProfileTable where
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
     (some "fp.round", "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- By a length-1 divisor, `x * (1 / c)` (polars-scalar-divisor).
+    (some "fp.div", "rounding", .oneOf ["TIE_TO_EVEN", "RECIPROCAL"]),
+    (some "fp.mod", "division_type", .oneOf ["FLOOR"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
@@ -200,6 +203,12 @@ def Profile.polars.obs : ObsTable := [
   (none, "tie_order", .native ["polars-sort-stability", "polars-first-last"]),
   (none, "tie_pick", .native ["polars-first-last"]),
   (some "fp.round", "rounding", .shimmed "round_half_away" ["polars-round"]),
+  -- Until the shim is proved, a quotient by a scalar is not claimed exact.
+  (some "fp.div", "rounding", .shimmed "column_divisor" ["polars-scalar-divisor"]),
+  (some "fp.mod", "division_type",
+    .shimmed "column_divisor" ["polars-double-modulus", "polars-scalar-divisor"]),
+  (some "fp.arith", "zero_sign", { ObsRow.upTo { zeros := .canon }
+    ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }),
   (none, "float_overflow", .native ["polars-double-arith"]),
   (none, "negative_start", .native ["polars-substring"]),
   (none, "case_sensitivity", .native ["polars-match-functions"]),

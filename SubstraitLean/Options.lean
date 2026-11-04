@@ -57,8 +57,11 @@ def options : List OptionSpec := [
     core := ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"] },
   -- Doubles
   { id := "rounding", substrait := some "rounding",
-    core := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD"],
-    yaml := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD"] },
+    core := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD",
+      "RECIPROCAL"],
+    yaml := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD"],
+    -- A quotient as the dividend times the divisor's reciprocal, rounded twice.
+    extra := [("RECIPROCAL", "polars-scalar-divisor")] },
   { id := "on_domain_error", substrait := some "on_domain_error", core := ["NAN", "NULL", "ERROR"],
     yaml := ["NAN", "NULL", "ERROR"], extra := [("NAN", "duckdb-R15-math-domain")] },
   { id := "on_log_zero", substrait := some "on_log_zero", core := ["NAN", "ERROR", "MINUS_INFINITY"],
