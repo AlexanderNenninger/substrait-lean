@@ -1,6 +1,6 @@
 ---
 name: upstream-report
-description: Draft or revise an upstream bug report for an upstream bug in `upstream/bugs/<ID>.json` (SQLGlot, DuckDB, DataFusion, Ibis, delta-rs, Substrait tooling), ready for the author to file. Use when asked to write, polish, check or prepare a report or issue for a bug ID (e.g. "write up SG-5", "draft the DuckDB issue for DD-3", "is DF-4 ready to file?"), or to check a report against a project's contributing guide. Covers provenance, duplicate and main-branch checks, the repro script, each project's issue form, and the voice the reports are written in.
+description: Draft or revise an upstream bug report for an upstream bug in `upstream/bugs/<ID>.json` (SQLGlot, DuckDB, DataFusion, Spark, Polars, Ibis, delta-rs, Substrait: its tooling and spec gaps), ready for the author to file. Use when asked to write, polish, check or prepare a report or issue for a bug ID (e.g. "write up SG-5", "draft the DuckDB issue for DD-3", "is DF-4 ready to file?"), or to check a report against a project's contributing guide. Covers provenance, duplicate and main-branch checks, the repro script, each project's issue form, and the voice the reports are written in.
 argument-hint: "Bug ID(s), e.g. SG-5 or DF-4 DF-10"
 ---
 
@@ -50,17 +50,18 @@ Prefer end-user-visible behaviour (wrong rows, a failed round trip, a rejected p
 
   For example: "I found this inconsistency while replaying DuckDB's sqllogictest suite through SQLGlot's `qualify` and comparing the results against a [formalization](https://github.com/AlexanderNenninger/substrait-lean) of parts of DuckDB's SQL semantics."
 
-## 5. Each project's form
+## 5. Each project's rules
 
-Fetch the current template before writing (`gh api repos/<repo>/contents/.github/ISSUE_TEMPLATE`), plus `CONTRIBUTING.md` and the code of conduct; they change. As of 2026-11:
+Each project's code of conduct, contributing guide, issue form, AI policy and triage habits are summarised in `../sverify-upstream-reports/guidelines/<project>.md` (`sqlglot`, `duckdb`, `datafusion`, `spark`, `polars`, `ibis`, `delta-rs`, `substrait`), with sources pinned to the commits read and a drafting checklist at the end; `guidelines/README.md` compares them. Read the project's note before drafting. If it is more than a few months old, or the project's template has changed (`gh api repos/<repo>/contents/.github/ISSUE_TEMPLATE`), recheck the files it cites and update the note.
 
-**SQLGlot** (`tobymao/sqlglot`, `bug_report.md`): `Title:` line, intro paragraph, `## Fully reproducible code snippet` (state the read and write dialects), `## Official Documentation` (links), optionally `## Where it comes from`. Check main first.
+What changes the draft itself, as of 2026-11-04:
 
-**DuckDB** (`duckdb/duckdb`, `bug_report.yml`): `### What happens?` (short, clear and concise: thanks, how found, the symptom; put the cause analysis further down), `### To Reproduce`, `### OS:` (with architecture), `### DuckDB Version:`, `### DuckDB Client:`, `### Hardware:`, `### Full Name:`, `### Affiliation:`, then the three checklist questions. Full Name and Affiliation are **required**: DuckDB may close issues without them. Leave `<your full name>` / `<your affiliation>` placeholders and tell the author. Client and extension bugs go to their own repos (the form lists them). Mention whether the repro is plain SQL that runs in the CLI.
-
-**DataFusion** (`apache/datafusion`, `bug_report.yml`): `### Describe the bug`, `### To Reproduce`, `### Expected behavior`, `### Additional context`, `### Willingness to contribute`. The author's answer for willingness is "I would like to contribute a fix for this bug, but request guidance from the DataFusion community". ASF Code of Conduct. Its AI policy (`docs/source/contributor-guide/ai-policy.md`) asks for a clear problem statement and a minimal repro focused on user-visible behaviour, and expects the author to discuss it in their own words.
-
-Other projects: follow their template the same way and add them here.
+- **The author's own words.** DuckDB, Polars and Ibis don't accept AI-written issue text. For them the draft is the reproduction, the facts and short notes, and the author writes the prose. DuckDB allows AI context only as a disclosed `>` quote; Polars wants a disclosure line naming the tool and its extent; at Ibis a `maybe-ai` label closes the issue. SQLGlot, DataFusion, delta-rs and Substrait accept a draft the author reviews; Substrait wants one sentence on the tools used.
+- **Personal fields.** DuckDB requires Full Name and Affiliation: leave `<your full name>` / `<your affiliation>` placeholders and tell the author. Spark takes bugs in ASF JIRA (SPARK), under an account in the author's real name, in wiki markup (`{code:sql}`), with Issue Type, Priority, Component and Affects Version; its GitHub issues are an experiment that auto-closes after 100 idle days.
+- **Where it goes.** DuckDB's clients and extensions have their own repos (`duckdb-python` has its own form); Ibis's Substrait producer is `ibis-project/ibis-substrait`; Substrait's spec issues go to `substrait-io/substrait`, tooling bugs to the library's repo, quoting the spec text that defines the expected result.
+- **Spec gaps** (`kind: spec-gap`, `ST-<n>`): an issue in `substrait-io/substrait` with the YAML file and line at a commit, concrete calls with their types, what each engine does (versions, facts), a proposal reusing existing option names, alternatives and whether it is breaking; then, once someone responds, a small `feat(extensions):` PR changing the YAML with `tests/cases/*.test` (the PR needs the CLA). Search for an existing issue first and comment there instead.
+- **Pacing.** File one report at a time, spread over days: DataFusion labels accounts that file many reports quickly.
+- **Forms.** SQLGlot: state the read and write dialects and check main. DataFusion: the willingness answer is "I would like to contribute a fix for this bug, but request guidance from the DataFusion community"; spec-like requests use the feature form. Polars: `pl.show_versions()`, and keywords in the title set the area label. delta-rs: `deltalake.__version__` and `deltalake.rust_core_version()`.
 
 ## 6. Finish
 
