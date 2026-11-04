@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
 
-from sverify import _plan_read, black_box
+from sverify import _plan_read, _support, black_box
 from sverify.black_box import BlackBox
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -84,6 +84,12 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `SubstraitLean/Guards.lean`). Integer `SUM` keeps its check."""
+
+    def refused(self, fn: str) -> Unsupported:
+        """The refusal of a function this dialect does not run. `to_sql`
+        raises it before writing anything (`sverify._support`); the hooks of
+        those functions raise it too, for a dialect the table misses."""
+        return Unsupported(_support.refusal(fn, self.name))
 
     def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
         """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
@@ -599,27 +605,27 @@ class Dialect:
     def regex_extract(self, s: str, pattern: str, group: int) -> str:
         """`UnFn.regexExtract` (#50): group `group` of the first match of the
         constant `pattern` in `s`, `''` where there is none."""
-        raise Unsupported(f"regexp_extract is not yet supported on {self.name}; see #271")
+        raise self.refused("regexp_extract")
 
     def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
         """`UnFn.regexReplace` (#50): the first match of the constant `pattern`
         in `s`, or every match, replaced (`\\1` is a group)."""
-        raise Unsupported(f"regexp_replace is not yet supported on {self.name}; see #271")
+        raise self.refused("regexp_replace")
 
     def digest(self, fn: str, s: str) -> str:
         """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
-        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+        raise self.refused(fn)
 
     # Black boxes (#325)
 
     def black_box(self, row: BlackBox, args: list[str]) -> str:
         """The scalar black box `row` of `args` (`sverify.black_box`)."""
-        raise Unsupported(black_box.refusal(row.name, self.name))
+        raise self.refused(row.name)
 
     def black_box_agg(self, row: BlackBox, v: str) -> str:
         """The aggregate black box `row` of the column `v`, NULLs skipped,
         `row.empty` without values."""
-        raise Unsupported(black_box.refusal(row.name, self.name))
+        raise self.refused(row.name)
 
     # Lists (#94)
 
@@ -745,41 +751,38 @@ class Dialect:
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         """`AggFn.pick` (#55): the first or last value of the column `v`, NULLs
         skipped, in the order `order`; NULL without values."""
-        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+        raise self.refused(fn)
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
         in the order `order`, joined by `sep`; NULL without values."""
-        raise Unsupported(f"string_agg is not yet supported on {self.name}; see #271")
+        raise self.refused("string_agg")
 
     def collect(self, v: str, order: Sequence[str]) -> str:
         """`AggFn.collect` (#94): the non-NULL values of the column `v` as a
         list, in the order `order`; NULL without values."""
-        raise Unsupported(f"array_agg is not yet supported on {self.name}; see #271")
+        raise self.refused("array_agg")
 
     def quantile(self, cont: bool, v: str, q: str) -> str:
         """`AggFn.quantile` (#53) of the column `v` for the decimal literal `q`:
         the value at position `⌈n·q⌉` (`quantile_disc`), or the linear
         interpolation of the doubles at `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`
         (`quantile_cont`); NULLs skipped, NULL without values."""
-        name = "quantile_cont" if cont else "quantile_disc"
-        raise Unsupported(f"{name} is not yet supported on {self.name}; see #271")
+        raise self.refused("quantile_cont" if cont else "quantile_disc")
 
     def mode(self, v: str, order: Sequence[str]) -> str:
         """`AggFn.mode` (#53): the most frequent value of the column `v`, of the
         values that tie the first in the order `order`; NULL without values."""
-        raise Unsupported(f"mode is not yet supported on {self.name}; see #271")
+        raise self.refused("mode")
 
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
-        raise Unsupported(
-            f"covariance and correlation are not yet supported on {self.name}; see #271"
-        )
+        raise self.refused("sverify_pair")
 
     def covar(self, fn: str, v: str) -> str:
         """`AggFn.cov`/`corr` of the pairs `v` (`pair`'s lists), the engine's own
         algorithm (#54); NULL cases are the caller's."""
-        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+        raise self.refused(fn)
 
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
@@ -4710,6 +4713,7 @@ def to_sql(
     """
     if not guards:
         dialect = replace(dialect, guards=False)
+    _support.check(plan, dialect.name, Unsupported)
     p = parse_plan(plan)
     n = arity(p.root)
     names = p.names or [f"c{i}" for i in range(n)]

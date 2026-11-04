@@ -235,7 +235,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "refused: first is not yet supported on Polars; see #271",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   "snowflake": "refused: first is not yet supported on snowflake; see #271"
   }
  },
  "fin-bollinger": {
@@ -386,7 +386,7 @@
   "engines": {
    "duckdb": "differs",
    "polars": "refused: corr is not yet supported on Polars; see #271",
-   "snowflake": "refused: covariance and correlation are not yet supported on snowflake; see #271"
+   "snowflake": "refused: corr is not yet supported on snowflake; see #271"
   },
   "contract": {
    "proved": true,
@@ -530,8 +530,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "differs",
-   "polars": "refused: min of doubles is not yet supported on Polars; see #271",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   "polars": "refused: first is not yet supported on Polars; see #271",
+   "snowflake": "refused: first is not yet supported on snowflake; see #271"
   }
  },
  "iot-latest-reading": {
@@ -1653,7 +1653,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "refused: first is not yet supported on Polars; see #271",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   "snowflake": "refused: first is not yet supported on snowflake; see #271"
   }
  },
  "win-top-n-per-group": {

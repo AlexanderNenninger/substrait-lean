@@ -58,9 +58,8 @@ from typing import Any
 
 import pyarrow as pa
 
-from sverify import _plan_read, black_box
+from sverify import _plan_read, _support
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
-from sverify.sql.core import EXACT_HOLISTIC
 
 try:
     import numpy as np
@@ -819,8 +818,6 @@ class Exprs:
         if anchor not in self.functions:
             raise Unsupported(f"function reference {anchor} is not declared in extensions")
         name = self.functions[anchor].split(":")[0]
-        if name in black_box.NAMES:
-            raise Unsupported(black_box.refusal(name, "Polars"))
         # sverify's own remainder of doubles (#256) is `modulus` on doubles.
         return "modulus" if name == "sverify_fmod" else name
 
@@ -870,8 +867,6 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
-            if name in ("regexp_extract", "regexp_replace", "md5", "sha256"):
-                raise Unsupported(f"{name} is not yet supported on Polars; see #271")
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name in _PICKS:
@@ -1794,6 +1789,7 @@ def python_windows(
 
 class Translator:
     def __init__(self, plan: dict, tables: Tables, guards: bool = True):
+        _support.check(plan, "Polars", Unsupported)
         self.functions = _plan_read.function_names(plan, Unsupported)
         self.tables = tables
         self.guards = guards
@@ -2153,16 +2149,6 @@ class Translator:
         an optional `FILTER`."""
         m = j.get("measure", {})
         name = ex.function(m.get("functionReference"))
-        if name in (
-            "first",
-            "last",
-            "covar_samp",
-            "covar_pop",
-            "corr",
-            "string_agg",
-            *EXACT_HOLISTIC,
-        ):
-            raise Unsupported(f"{name} is not yet supported on Polars; see #271")
         if m.get("sorts") and name != "array_agg":
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         invocation = m.get("invocation", "AGGREGATION_INVOCATION_ALL")

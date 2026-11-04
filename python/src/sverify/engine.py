@@ -38,7 +38,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb, black_box
+from sverify import _duckdb, _support
 from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
 from sverify.ibis_substrait import to_substrait_json
@@ -655,52 +655,24 @@ def _check_datafusion_plan(plan: dict) -> None:
     beginning, the reference counts it from the end, `Text.substrWrap`) unless
     the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
     (`AggFn.iavg`), which DataFusion computes as a double."""
+    _support.check(plan, "DataFusion", sql.Unsupported)
     names: dict[Any, str] = {
         a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()
     }
 
     def walk(node: Any) -> None:
         if isinstance(node, dict):
-            ref = node.get("functionReference")
-            if names.get(ref) in black_box.NAMES:
-                raise sql.Unsupported(black_box.refusal(names[ref], "DataFusion"))
             for key in ("measure", "windowFunction"):
                 a = node.get(key)
                 is_avg = isinstance(a, dict) and names.get(a.get("functionReference")) == "avg"
                 ints = ("i8", "i16", "i32", "i64")
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported("DataFusion's AVG has no integer result")
-            m = node.get("measure")
-            if isinstance(m, dict) and names.get(m.get("functionReference")) in ("first", "last"):
-                raise sql.Unsupported(
-                    "first and last are not yet supported on DataFusion; see #271"
-                )
-            if isinstance(m, dict) and names.get(m.get("functionReference")) == "string_agg":
-                raise sql.Unsupported("string_agg is not yet supported on DataFusion; see #271")
-            if (
-                isinstance(m, dict)
-                and (n := names.get(m.get("functionReference"))) in sql.EXACT_HOLISTIC
-            ):
-                raise sql.Unsupported(f"{n} is not yet supported on DataFusion; see #271")
-            if isinstance(m, dict) and names.get(m.get("functionReference")) in (
-                "covar_samp",
-                "covar_pop",
-                "corr",
-            ):
-                raise sql.Unsupported(
-                    "covariance and correlation are not yet supported on DataFusion; see #271"
-                )
             c = node.get("cast")
             if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
                 raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; see #271")
-            w = node.get("windowFunction")
-            if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
-                # DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
-                raise sql.Unsupported("DataFusion's NTILE does not deal out buckets as SQL does")
             f = node.get("scalarFunction")
             fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
-            if fname in ("regexp_extract", "regexp_replace", "md5", "sha256"):
-                raise sql.Unsupported(f"{fname} is not yet supported on DataFusion; see #271")
             if isinstance(f, dict) and fname == "round" and len(f.get("arguments", [])) == 2:
                 # DataFusion's `round(x · 10ᵈ) / 10ᵈ` is not DuckDB's (#335).
                 raise sql.Unsupported(
