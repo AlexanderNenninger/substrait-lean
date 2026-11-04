@@ -388,7 +388,9 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
         )
     )
     (r,), _ = slt.replay_file(path, "area/trig.test")
-    assert (r.cls, r.lean, r.duckdb) == ("disagree", '[["NULL"]]', '[["nan"]]')
+    # DuckDB prints the NaN of sin(inf) as -nan on Linux, nan on macOS.
+    assert (r.cls, r.lean) == ("disagree", '[["NULL"]]')
+    assert r.duckdb in ('[["nan"]]', '[["-nan"]]'), r.duckdb
     assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
 
 
