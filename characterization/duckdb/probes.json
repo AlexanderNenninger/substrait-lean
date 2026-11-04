@@ -6672,6 +6672,418 @@
      "examples": []
     }
    }
+  },
+  {
+   "construct": "dec-result-types",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT typeof(1.25::DECIMAL(4,2) + 1.5::DECIMAL(3,1)), typeof(1.25::DECIMAL(4,2) * 1.25::DECIMAL(4,2)), typeof(1::DECIMAL(10,2) * 1::DECIMAL(10,2)), typeof(1::DECIMAL(18,2) + 1::DECIMAL(18,2)), typeof(1::DECIMAL(20,10) * 1::DECIMAL(20,10)), typeof(1::DECIMAL(38,0) + 1::DECIMAL(38,0)), typeof(1.25::DECIMAL(4,2) / 1.5::DECIMAL(3,1)), typeof(-1.25::DECIMAL(4,2)), typeof(round(1.25::DECIMAL(4,2), 1))",
+   "observed": "'DECIMAL(5,2)', 'DECIMAL(8,4)', 'DECIMAL(18,4)', 'DECIMAL(19,2)', 'DECIMAL(38,20)', 'DECIMAL(38,0)', 'DOUBLE', 'DECIMAL(4,2)', 'DECIMAL(4,1)'"
+  },
+  {
+   "construct": "dec-aggregate-types",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT typeof(sum(x)), typeof(avg(x)), typeof(min(x)), sum(x), avg(x) FROM (VALUES (1.25::DECIMAL(4,2)), (1.26::DECIMAL(4,2))) t(x)",
+   "observed": "'DECIMAL(38,2)', 'DOUBLE', 'DECIMAL(4,2)', 2.51, 1.255"
+  },
+  {
+   "construct": "dec-multiply-18",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 9999999999999.99::DECIMAL(15,2) * 9999999999999.99::DECIMAL(15,2)",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in multiplication of DECIMAL(18) (999999999999999 * 999999999999999). You might want to add an explicit cast to a bigger decimal."
+  },
+  {
+   "construct": "dec-multiply-scale-38",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 0.5::DECIMAL(38,37) * 0.5::DECIMAL(38,37)",
+   "observed": "error OutOfRangeException: Out of Range Error: Needed scale 74 to accurately represent the multiplication result, but this is out of range of the DECIMAL type. Max scale is 38; could not perform an accurate multiplication. Either add a cast to DOUBLE, or add an explicit cast to a decimal with a lower scale."
+  },
+  {
+   "construct": "dec-add-overflow",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) + 1::DECIMAL(38,0)",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in addition of DECIMAL(38) (99999999999999999999999999999999999999 + 1);"
+  },
+  {
+   "construct": "dec-sum-overflow",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT sum(x) FROM (VALUES (99999999999999999999999999999999999999::DECIMAL(38,0)), (1::DECIMAL(38,0))) t(x)",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in SUM of DECIMAL: the result does not fit in DECIMAL(38)"
+  },
+  {
+   "construct": "dec-rescale",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT CAST(1.25::DECIMAL(4,2) AS DECIMAL(3,1)), CAST(-1.25::DECIMAL(4,2) AS DECIMAL(3,1)), CAST(1.35::DECIMAL(4,2) AS DECIMAL(3,1)), CAST(0.125::DECIMAL(4,3) AS DECIMAL(3,2)), CAST(2.5::DECIMAL(3,1) AS DECIMAL(2,0)), CAST(-2.5::DECIMAL(3,1) AS DECIMAL(2,0)), CAST(0.05::DECIMAL(10,2) * 0.5::DECIMAL(10,1) AS DECIMAL(10,2))",
+   "observed": "1.3, -1.3, 1.4, 0.13, 3, -3, 0.03"
+  },
+  {
+   "construct": "dec-round",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT round(2.5::DECIMAL(3,1)), round(-2.5::DECIMAL(3,1)), round(1.25::DECIMAL(4,2), 1), round(-1.25::DECIMAL(4,2), 1)",
+   "observed": "3, -3, 1.3, -1.3"
+  },
+  {
+   "construct": "dec-to-int",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT CAST(2.5::DECIMAL(3,1) AS INTEGER), CAST(-2.5::DECIMAL(3,1) AS INTEGER), CAST(3.5::DECIMAL(3,1) AS INTEGER)",
+   "observed": "3, -3, 4"
+  },
+  {
+   "construct": "dec-from-double",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT CAST(0.625::DOUBLE AS DECIMAL(3,2)), CAST(-0.125::DOUBLE AS DECIMAL(3,2)), CAST(2.675::DOUBLE AS DECIMAL(3,2)), CAST('2.675' AS DECIMAL(3,2))",
+   "observed": "0.63, -0.13, 2.68, 2.68"
+  },
+  {
+   "construct": "dec-divide",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 1.00::DECIMAL(10,2) / 8::DECIMAL(10,0), 10::DECIMAL(10,0) / 3::DECIMAL(10,0), CAST(1.00::DECIMAL(10,2) / 8::DECIMAL(10,0) AS DECIMAL(10,2))",
+   "observed": "0.125, 3.3333333333333335, 0.13"
+  },
+  {
+   "construct": "nan-compare",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT 'nan'::DOUBLE = 'nan'::DOUBLE, 'nan'::DOUBLE <> 'nan'::DOUBLE, 'nan'::DOUBLE = -'nan'::DOUBLE, 'nan'::DOUBLE IN (1.0, 'nan'::DOUBLE), 'nan'::DOUBLE IS DISTINCT FROM 'nan'::DOUBLE, 'nan'::FLOAT = 'nan'::FLOAT, list_contains([1.0, 'nan'::DOUBLE], 'nan'::DOUBLE), list_position([1.0, 'nan'::DOUBLE], 'nan'::DOUBLE)",
+   "observed": "true, false, true, true, false, true, true, 2"
+  },
+  {
+   "construct": "nan-group",
+   "area": "doubles",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1.0), (1.0), (1.0), (2.0), (NULL), (NULL), ('nan'::DOUBLE), (-0.0::DOUBLE)) t(x)",
+    "CREATE TABLE b AS SELECT * FROM (VALUES (1.0), (1.0), (NULL), (3.0), (-'nan'::DOUBLE), (0.0::DOUBLE)) t(x)"
+   ],
+   "sql": "SELECT count(*), list(x::VARCHAR ORDER BY x::VARCHAR) FROM (SELECT x FROM a UNION ALL SELECT x FROM b) GROUP BY x ORDER BY min(x)",
+   "observed": "2, ['-0.0', '0.0']; 5, ['1.0', '1.0', '1.0', '1.0', '1.0']; 1, ['2.0']; 1, ['3.0']; 2, ['-nan', 'nan']; 3, [NULL, NULL, NULL]"
+  },
+  {
+   "construct": "nan-distinct",
+   "area": "doubles",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1.0), (1.0), (1.0), (2.0), (NULL), (NULL), ('nan'::DOUBLE), (-0.0::DOUBLE)) t(x)",
+    "CREATE TABLE b AS SELECT * FROM (VALUES (1.0), (1.0), (NULL), (3.0), (-'nan'::DOUBLE), (0.0::DOUBLE)) t(x)"
+   ],
+   "sql": "SELECT count(DISTINCT x), count(*) FROM (SELECT x FROM a UNION ALL SELECT x FROM b) WHERE isnan(x)",
+   "observed": "1, 2"
+  },
+  {
+   "construct": "nan-join",
+   "area": "doubles",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1.0), (1.0), (1.0), (2.0), (NULL), (NULL), ('nan'::DOUBLE), (-0.0::DOUBLE)) t(x)",
+    "CREATE TABLE b AS SELECT * FROM (VALUES (1.0), (1.0), (NULL), (3.0), (-'nan'::DOUBLE), (0.0::DOUBLE)) t(x)"
+   ],
+   "sql": "SELECT a.x::VARCHAR, b.x::VARCHAR FROM a JOIN b ON a.x = b.x ORDER BY a.x",
+   "observed": "'-0.0', '0.0'; '1.0', '1.0'; '1.0', '1.0'; '1.0', '1.0'; '1.0', '1.0'; '1.0', '1.0'; '1.0', '1.0'; 'nan', '-nan'"
+  },
+  {
+   "construct": "case-unicode",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT upper('stra\u00dfe'), upper('\u00df'), upper('\ufb01'), upper('\u01c6'), lower('\u0130'), length(lower('\u0130')), lower('\u03a3\u0391\u03a3'), upper('\u00e9\u00ff'), lower('\u00c0\u03a9')",
+   "observed": "'STRA\u1e9eE', '\u1e9e', '\ufb01', '\u01c4', 'i', 1, '\u03c3\u03b1\u03c3', '\u00c9\u0178', '\u00e0\u03c9'"
+  },
+  {
+   "construct": "date-past-9999",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT (DATE '9999-12-31' + 1)::VARCHAR, (DATE '0001-01-01' - 1)::VARCHAR, (DATE '9999-12-31' + INTERVAL 1 MONTH)::VARCHAR, (DATE '0001-01-01' - INTERVAL 1 YEAR)::VARCHAR, (TIMESTAMP '9999-12-31 23:59:59' + INTERVAL 1 SECOND)::VARCHAR, year(DATE '0001-01-01' - 1), date_diff('day', DATE '0001-01-01', DATE '9999-12-31')",
+   "observed": "'10000-01-01', '0001-12-31 (BC)', '10000-01-31 00:00:00', '0001-01-01 (BC) 00:00:00', '10000-01-01 00:00:00', 0, 3652058"
+  },
+  {
+   "construct": "date-limits",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT (DATE '5877642-06-25 (BC)')::VARCHAR, (DATE '5881580-07-10')::VARCHAR",
+   "observed": "'5877642-06-25 (BC)', '5881580-07-10'"
+  },
+  {
+   "construct": "date-beyond-max",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT DATE '5881580-07-10' + 1",
+   "observed": "error OutOfRangeException: Out of Range Error: Date out of range"
+  },
+  {
+   "construct": "date-beyond-min",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT DATE '5877642-06-25 (BC)' - 1",
+   "observed": "error OutOfRangeException: Out of Range Error: Date out of range"
+  },
+  {
+   "construct": "date-interval-beyond-timestamp",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT DATE '5881580-07-10' + INTERVAL 1 DAY",
+   "observed": "error ConversionException: Conversion Error: Date and time not in timestamp range"
+  },
+  {
+   "construct": "timestamp-beyond-max",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT TIMESTAMP '294247-01-10 04:00:54.775806' + INTERVAL 1 SECOND",
+   "observed": "error ConversionException: Conversion Error: Date and time not in timestamp range"
+  },
+  {
+   "construct": "tz-gap-overlap",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'Europe/Berlin'"
+   ],
+   "sql": "SELECT (TIMESTAMPTZ '2024-03-31 02:30:00')::VARCHAR, (TIMESTAMPTZ '2024-10-27 02:30:00')::VARCHAR, (TIMESTAMP '2024-03-31 02:30:00' AT TIME ZONE 'Europe/Berlin')::VARCHAR, (TIMESTAMP '2024-10-27 02:30:00' AT TIME ZONE 'Europe/Berlin')::VARCHAR",
+   "observed": "'2024-03-31 03:30:00+02', '2024-10-27 02:30:00+01', '2024-03-31 03:30:00+02', '2024-10-27 02:30:00+01'"
+  },
+  {
+   "construct": "tz-to-local",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'Europe/Berlin'"
+   ],
+   "sql": "SELECT (TIMESTAMPTZ '2024-10-27 00:30:00+00' AT TIME ZONE 'Europe/Berlin')::VARCHAR, (TIMESTAMPTZ '2024-10-27 01:30:00+00' AT TIME ZONE 'Europe/Berlin')::VARCHAR, (TIMESTAMPTZ '2024-01-01 00:00:00 America/New_York')::VARCHAR, (TIMESTAMPTZ '2024-03-31 12:00:00+00')::DATE::VARCHAR, date_part('hour', TIMESTAMPTZ '2024-03-31 12:00:00+00')",
+   "observed": "'2024-10-27 02:30:00', '2024-10-27 02:30:00', '2024-01-01 06:00:00+01', '2024-03-31', 14"
+  },
+  {
+   "construct": "tz-interval",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'Europe/Berlin'"
+   ],
+   "sql": "SELECT (TIMESTAMPTZ '2024-03-30 12:00:00+01' + INTERVAL 1 DAY)::VARCHAR, (TIMESTAMPTZ '2024-03-30 12:00:00+01' + INTERVAL 24 HOUR)::VARCHAR, date_trunc('day', TIMESTAMPTZ '2024-03-31 12:00:00+02')::VARCHAR, date_diff('hour', TIMESTAMPTZ '2024-03-31 00:00:00+01', TIMESTAMPTZ '2024-04-01 00:00:00+02')",
+   "observed": "'2024-03-31 12:00:00+02', '2024-03-31 13:00:00+02', '2024-03-31 00:00:00+01', 23"
+  },
+  {
+   "construct": "tz-utc",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'UTC'"
+   ],
+   "sql": "SELECT (TIMESTAMPTZ '2024-03-31 02:30:00')::VARCHAR, (TIMESTAMPTZ '2024-03-31 02:30:00+05:30')::VARCHAR, (TIMESTAMPTZ '2024-03-31 02:30:00+05:30')::TIMESTAMP::VARCHAR",
+   "observed": "'2024-03-31 02:30:00+00', '2024-03-30 21:00:00+00', '2024-03-30 21:00:00'"
+  },
+  {
+   "construct": "tz-unknown",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT TIMESTAMPTZ '2024-01-01 00:00:00+00' AT TIME ZONE 'Nowhere/Land'",
+   "observed": "error NotImplementedException: Not implemented Error: Unknown TimeZone 'Nowhere/Land'!"
+  },
+  {
+   "construct": "null-concat",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT 'a' || NULL, concat('a', NULL, 'b'), concat(NULL, NULL), concat_ws(',', 'a', NULL, 'b'), concat_ws(NULL, 'a'), [1] || NULL, list_concat([1], NULL)",
+   "observed": "NULL, 'ab', '', 'a,b', NULL, NULL, [1]"
+  },
+  {
+   "construct": "null-functions",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT upper(NULL), length(NULL), substring('abc', NULL, 1), replace('abc', NULL, 'x'), greatest(1, NULL, 3), least(NULL, 2), greatest(NULL::INT, NULL), coalesce(NULL, 1)",
+   "observed": "NULL, NULL, NULL, NULL, 3, 2, NULL, 1"
+  },
+  {
+   "construct": "null-logic",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT NULL AND FALSE, NULL AND TRUE, NULL OR TRUE, NULL OR FALSE, NOT NULL, NULL = NULL, NULL IN (1, NULL), 1 IN (1, NULL), 2 NOT IN (1, NULL)",
+   "observed": "false, NULL, true, NULL, NULL, NULL, NULL, true, NULL"
+  },
+  {
+   "construct": "null-bool-agg",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT bool_and(x), bool_or(x), count(x), count(*) FROM (VALUES (TRUE), (NULL)) t(x) UNION ALL SELECT bool_and(x), bool_or(x), count(x), count(*) FROM (VALUES (FALSE), (NULL)) t(x) UNION ALL SELECT bool_and(x), bool_or(x), count(x), count(*) FROM (VALUES (NULL::BOOLEAN)) t(x) UNION ALL SELECT bool_and(x), bool_or(x), count(x), count(*) FROM (SELECT TRUE x WHERE FALSE) t",
+   "observed": "true, true, 1, 2; false, false, 1, 2; NULL, NULL, 0, 1; NULL, NULL, 0, 0"
+  },
+  {
+   "construct": "null-join",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT 'eq', a.x, b.x FROM (VALUES (1), (NULL)) a(x) JOIN (VALUES (1), (NULL)) b(x) ON a.x = b.x UNION ALL SELECT 'indistinct', a.x, b.x FROM (VALUES (1), (NULL)) a(x) JOIN (VALUES (1), (NULL)) b(x) ON a.x IS NOT DISTINCT FROM b.x ORDER BY 1, 2",
+   "observed": "'eq', 1, 1; 'indistinct', 1, 1; 'indistinct', NULL, NULL"
+  },
+  {
+   "construct": "null-full-join",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT a.x, b.x FROM (VALUES (1), (NULL)) a(x) FULL JOIN (VALUES (1), (NULL)) b(x) ON a.x = b.x ORDER BY 1, 2",
+   "observed": "1, 1; NULL, NULL; NULL, NULL"
+  },
+  {
+   "construct": "null-in-subquery",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT x, x IN (SELECT NULL::INT), x NOT IN (SELECT y FROM (VALUES (2), (NULL)) s(y)) FROM (VALUES (1), (NULL)) a(x) ORDER BY x",
+   "observed": "1, NULL, NULL; NULL, NULL, NULL"
+  },
+  {
+   "construct": "null-group",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT x, count(*) FROM (VALUES (1), (NULL), (NULL)) t(x) GROUP BY x ORDER BY x",
+   "observed": "1, 1; NULL, 2"
+  },
+  {
+   "construct": "null-spaceship",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT 1 <=> NULL",
+   "observed": "error BinderException: Binder Error: No function matches the given name and argument types '<=>(INTEGER_LITERAL, \"NULL\")'. You might need to add explicit type casts."
+  },
+  {
+   "construct": "list-index",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT [10, 20, 30][1], [10, 20, 30][0], [10, 20, 30][-1], [10, 20, 30][-3], [10, 20, 30][4], [10, 20, 30][-4], (NULL::INT[])[1], [10, 20, 30][NULL], [10, 20, 30][9223372036854775807], list_extract([10, 20, 30], 2)",
+   "observed": "10, NULL, 30, 10, NULL, NULL, NULL, NULL, NULL, 20"
+  },
+  {
+   "construct": "list-slice",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT [10, 20, 30][2:3], [10, 20, 30][-2:], [10, 20, 30][0:1], [10, 20, 30][3:2]",
+   "observed": "[20, 30], [20, 30], [10], []"
+  },
+  {
+   "construct": "list-equality",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT [1, NULL] = [1, NULL], [1, NULL] = [1, 2], [1, NULL] <> [1, 2], NULL::INT[] = [1]",
+   "observed": "true, false, true, NULL"
+  },
+  {
+   "construct": "struct-equality",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT {'a': 1, 'b': NULL} = {'a': 1, 'b': NULL}, {'a': 1, 'b': NULL} = {'a': 1, 'b': 2}, {'a': 1, 'b': NULL} <> {'a': 1, 'b': 2}, {'a': 1, 'b': NULL} < {'a': 1, 'b': 2}, {'a': 1, 'b': NULL} > {'a': 1, 'b': 2}, NULL::STRUCT(a INT) = {'a': 1}",
+   "observed": "true, false, true, false, true, NULL"
+  },
+  {
+   "construct": "struct-order",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT list(s ORDER BY s), list(s ORDER BY s DESC) FROM (VALUES ({'a': 1, 'b': 2}), ({'a': 1, 'b': NULL}), ({'a': NULL, 'b': 0}), ({'a': 0, 'b': 0})) t(s)",
+   "observed": "[{a: 0, b: 0}, {a: 1, b: 2}, {a: 1, b: NULL}, {a: NULL, b: 0}], [{a: NULL, b: 0}, {a: 1, b: NULL}, {a: 1, b: 2}, {a: 0, b: 0}]"
+  },
+  {
+   "construct": "struct-group-join",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT s, count(*), (SELECT count(*) FROM (VALUES ({'a': 1, 'b': NULL})) u(s2) WHERE s2 = s) FROM (VALUES ({'a': 1, 'b': NULL}), ({'a': 1, 'b': NULL}), ({'a': 1, 'b': 2}), (NULL)) t(s) GROUP BY s ORDER BY s",
+   "observed": "{a: 1, b: 2}, 1, 0; {a: 1, b: NULL}, 2, 1; NULL, 1, 0"
+  },
+  {
+   "construct": "unnest-select",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT id, unnest(l) FROM (VALUES (1, [1, 2]), (2, []), (3, NULL), (4, [NULL])) t(id, l) ORDER BY id",
+   "observed": "1, 1; 1, 2; 4, NULL"
+  },
+  {
+   "construct": "unnest-lateral",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT id, u FROM (VALUES (1, [1, 2]), (2, []), (3, NULL), (4, [NULL])) t(id, l), unnest(l) AS v(u) ORDER BY id, u",
+   "observed": "1, 1; 1, 2; 4, NULL"
+  },
+  {
+   "construct": "unnest-left-lateral",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT id, u FROM (VALUES (1, [1, 2]), (2, []), (3, NULL), (4, [NULL])) t(id, l) LEFT JOIN unnest(l) AS v(u) ON TRUE ORDER BY id, u",
+   "observed": "1, 1; 1, 2; 2, NULL; 3, NULL; 4, NULL"
+  },
+  {
+   "construct": "unnest-zip",
+   "area": "nested",
+   "setup": [],
+   "sql": "SELECT unnest([1, 2]), unnest([7]), unnest([]::INT[])",
+   "observed": "1, 7, NULL; 2, NULL, NULL"
+  },
+  {
+   "construct": "ntile-spread",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT n, list(t ORDER BY i) FROM (SELECT n, i, ntile(n) OVER (PARTITION BY n ORDER BY i) t FROM range(1, 11) r(i), (VALUES (2), (3), (4), (6), (7), (12)) k(n)) GROUP BY n ORDER BY n",
+   "observed": "2, [1, 1, 1, 1, 1, 2, 2, 2, 2, 2]; 3, [1, 1, 1, 1, 2, 2, 2, 3, 3, 3]; 4, [1, 1, 1, 2, 2, 2, 3, 3, 4, 4]; 6, [1, 1, 2, 2, 3, 3, 4, 4, 5, 6]; 7, [1, 1, 2, 2, 3, 3, 4, 5, 6, 7]; 12, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
+  },
+  {
+   "construct": "ntile-args",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT ntile(NULL) OVER (), ntile(2) OVER (), ntile(9223372036854775807) OVER ()",
+   "observed": "NULL, 1, 1"
+  },
+  {
+   "construct": "ntile-zero",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT ntile(0) OVER ()",
+   "observed": "error InvalidInputException: Invalid Input Error: Argument for ntile must be greater than zero"
+  },
+  {
+   "construct": "window-default-frame",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT i, x, sum(x) OVER (ORDER BY i), sum(x) OVER (), count(*) OVER (ORDER BY i), last_value(x) OVER (ORDER BY i), first_value(x) OVER (ORDER BY i DESC), sum(x) OVER (ORDER BY i ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1, 10), (2, 20), (2, 30), (3, 40), (NULL, 50), (NULL, 60)) t(i, x) ORDER BY i, x",
+   "observed": "1, 10, 10, 210, 1, 10, 40, 10; 2, 20, 60, 210, 3, 30, 40, 30; 2, 30, 60, 210, 3, 30, 40, 60; 3, 40, 100, 210, 4, 40, 40, 100; NULL, 50, 210, 210, 6, 60, 40, 150; NULL, 60, 210, 210, 6, 60, 40, 210"
+  },
+  {
+   "construct": "window-ranks",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT i, rank() OVER w, dense_rank() OVER w, percent_rank() OVER w, cume_dist() OVER w, rank() OVER (ORDER BY i DESC) FROM (VALUES (1, 10), (2, 20), (2, 30), (3, 40), (NULL, 50), (NULL, 60)) t(i, x) WINDOW w AS (ORDER BY i) ORDER BY i, x",
+   "observed": "1, 1, 1, 0.0, 0.16666666666666666, 4; 2, 2, 2, 0.2, 0.5, 2; 2, 2, 2, 0.2, 0.5, 2; 3, 4, 3, 0.6, 0.6666666666666666, 1; NULL, 5, 4, 0.8, 1.0, 5; NULL, 5, 4, 0.8, 1.0, 5"
+  },
+  {
+   "construct": "window-no-order",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT rank() OVER (), dense_rank() OVER (), percent_rank() OVER (), cume_dist() OVER () FROM (VALUES (1), (2)) t(i)",
+   "observed": "1, 1, 0.0, 1.0; 1, 1, 0.0, 1.0"
+  },
+  {
+   "construct": "window-offsets",
+   "area": "windows",
+   "setup": [],
+   "sql": "SELECT i, lag(i) OVER w, lead(i, 1, -1) OVER w, nth_value(i, 2) OVER w, lag(i, 5) OVER w FROM (VALUES (1), (2), (3)) t(i) WINDOW w AS (ORDER BY i) ORDER BY i",
+   "observed": "1, NULL, 2, NULL, NULL; 2, 1, 3, 2, NULL; 3, 2, -1, 2, NULL"
+  },
+  {
+   "construct": "clustered-syntax",
+   "area": "relations",
+   "setup": [],
+   "sql": "SELECT 1 ORDER BY 1 CLUSTERED",
+   "observed": "error ParserException: Parser Error: syntax error at or near \"CLUSTERED\""
+  },
+  {
+   "construct": "set-operations",
+   "area": "relations",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1.0), (1.0), (1.0), (2.0), (NULL), (NULL), ('nan'::DOUBLE), (-0.0::DOUBLE)) t(x)",
+    "CREATE TABLE b AS SELECT * FROM (VALUES (1.0), (1.0), (NULL), (3.0), (-'nan'::DOUBLE), (0.0::DOUBLE)) t(x)"
+   ],
+   "sql": "SELECT 'union', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM a WHERE x IS DISTINCT FROM 0 UNION SELECT x FROM b WHERE x IS DISTINCT FROM 0)) UNION ALL SELECT 'union all', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM a WHERE x IS DISTINCT FROM 0 UNION ALL SELECT x FROM b WHERE x IS DISTINCT FROM 0)) UNION ALL SELECT 'intersect', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM a WHERE x IS DISTINCT FROM 0 INTERSECT SELECT x FROM b WHERE x IS DISTINCT FROM 0)) UNION ALL SELECT 'intersect all', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM a WHERE x IS DISTINCT FROM 0 INTERSECT ALL SELECT x FROM b WHERE x IS DISTINCT FROM 0)) UNION ALL SELECT 'except', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM a WHERE x IS DISTINCT FROM 0 EXCEPT SELECT x FROM b WHERE x IS DISTINCT FROM 0)) UNION ALL SELECT 'except all', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM a WHERE x IS DISTINCT FROM 0 EXCEPT ALL SELECT x FROM b WHERE x IS DISTINCT FROM 0)) UNION ALL SELECT 'b except all a', list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN' ELSE x::VARCHAR END v FROM (SELECT x FROM b WHERE x IS DISTINCT FROM 0 EXCEPT ALL SELECT x FROM a WHERE x IS DISTINCT FROM 0))",
+   "observed": "'union', '[1.0, 2.0, 3.0, NaN, NULL]'; 'union all', '[1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, NaN, NaN, NULL, NULL, NULL]'; 'intersect', '[1.0, NaN, NULL]'; 'intersect all', '[1.0, 1.0, NaN, NULL]'; 'except', '[2.0]'; 'except all', '[1.0, 2.0, NULL]'; 'b except all a', '[3.0]'"
+  },
+  {
+   "construct": "set-operation-types",
+   "area": "relations",
+   "setup": [],
+   "sql": "SELECT typeof(x) FROM (SELECT 1 x UNION SELECT 1.5) LIMIT 1",
+   "observed": "'DECIMAL(11,1)'"
   }
  ]
 }

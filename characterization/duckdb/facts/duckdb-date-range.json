@@ -1,0 +1,66 @@
+{
+  "id": "duckdb-date-range",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Dates past 9999 and before year 1: computed, up to DuckDB's own limits",
+  "verdict": "computes past 0001-01-01 … 9999-12-31; the written plan guards",
+  "area": "temporal",
+  "options": [
+    "date_range",
+    "raise_set"
+  ],
+  "constructs": [
+    "DATE + INTEGER",
+    "DATE + INTERVAL",
+    "TIMESTAMP + INTERVAL",
+    "date_diff",
+    "year"
+  ],
+  "settings": {},
+  "description": [
+    "Date arithmetic is not limited to 0001-01-01 … 9999-12-31: `DATE '9999-12-31' + 1` is `10000-01-01`, `DATE '0001-01-01' - 1` is `0001-12-31 (BC)` (year 0), and an interval of months or a second past a timestamp's last one carry on. `year(DATE '0001-01-01' - 1)` is 0.",
+    "DuckDB's dates run from 5877642-06-25 BC to 5881580-07-10; a day past either raises `Out of Range Error: Date out of range`. `DATE + INTERVAL` gives a timestamp, whose range is narrower (to 294247-01-10): past it, `Conversion Error: Date and time not in timestamp range`."
+  ],
+  "reference": "`date_range`: date arithmetic whose operand or result leaves 0001-01-01 … 9999-12-31 raises (#251), reported by `verify`. The written SQL checks the result against the reference's dates and raises \"outside the reference's dates\" (`sql/core/_base.py`), so DuckDB's wider range is never returned; with constant operands the check is made when the plan is written.",
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "date-past-9999"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "date-limits"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "date-beyond-max"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "date-beyond-min"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "date-interval-beyond-timestamp"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "timestamp-beyond-max"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/date/date_limits.test"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ],
+  "issues": [
+    251
+  ]
+}

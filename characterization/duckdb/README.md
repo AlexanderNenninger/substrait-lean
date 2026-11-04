@@ -127,6 +127,33 @@ DuckDB settings the diff depends on: `error_on_division_by_zero` (default
 true, integers only), `ieee_floating_point_ops` (default true: doubles),
 `integer_division` (frontend only), `default_null_order` (frontend only).
 
+### NULLs, nested values, windows and relations
+
+The checklist items (`characterization/areas.json`) the rows above leave out,
+each with its fact. The probes' observations (`sql` and `observed` in
+[probes.json](probes.json)) are DuckDB queries recorded as they run, under
+`TimeZone = 'UTC'` unless their setup sets it; `--observations` reruns them
+without Lean.
+
+| Function (types) | Option | Reference | DuckDB | Fact |
+|---|---|---|---|---|
+| `+`, `-`, `*`, `sum`, `avg` (decimals) | result type | the YAML's; `SUM` `p + 10` digits, `AVG` a decimal | `*` capped at 18 digits while the operands fit 64 bits; `/` and `avg` a `DOUBLE`; `sum` `DECIMAL(38, s)`; compensated | [decimal-arith](facts/duckdb-decimal-arith.json) |
+| casts, `round` (decimals) | `decimal_rescale` | `TIE_AWAY_FROM_ZERO` | native ([ST-8](../../upstream/bugs/ST-8.json)) | decimal-arith |
+| `equal`, grouping, `DISTINCT`, joins, set operations (`fp64`) | `nan_equality` | `NAN_IS_NAN` | native, NaN of either sign | [nan-equality](facts/duckdb-nan-equality.json) |
+| `upper`, `lower` | `char_set` | `UTF8`, Rust's full mappings | simple mappings (`ß` → `ẞ`, no final sigma); guarded to ASCII ([ST-10](../../upstream/bugs/ST-10.json)) | [case-mapping](facts/duckdb-case-mapping.json) |
+| date and timestamp `±` | `date_range` | raise outside 0001 … 9999 | computes to DuckDB's own limits; guarded | [date-range](facts/duckdb-date-range.json) |
+| `TIMESTAMPTZ` | time zones | outside the model | ICU in the session's `TimeZone` (the host's by default); a DST gap moves forward, an overlap takes standard time | [time-zones](facts/duckdb-time-zones.json) |
+| `str_concat` | `null_handling` | `ACCEPT_NULLS` | `\|\|` native; `concat`, `concat_ws`, `greatest`, `least` skip NULLs, and the lift reads them so | [null-concat](facts/duckdb-null-concat.json) |
+| `and`, `or`, `not`, `bool_and`, `bool_or` | three-valued logic | Kleene; aggregates skip NULLs | native | [kleene](facts/duckdb-kleene.json) |
+| joins, grouping | NULL keys | `=` does not match NULL, grouping does | native; `IS NOT DISTINCT FROM`, no `<=>` | [null-keys](facts/duckdb-null-keys.json) |
+| list element | indexing | 0-based offset, negative from the end, NULL out of range | 1-based, NULL at 0; the SQL adds 1 | [list-index](facts/duckdb-list-index.json) |
+| `=`, `<` on structs | struct equality | structural, NULL equals NULL inside | the same in `=`; `<` two-valued, a NULL field greatest; struct columns refused | [struct-equality](facts/duckdb-struct-equality.json) |
+| `UNNEST` | NULL and `[]` | no row | native | [unnest](facts/duckdb-unnest.json) |
+| `ntile` | `ntile_spread` | the SQL standard's | native; `ntile(0)` raises | [ntile](facts/duckdb-ntile.json) |
+| windows | default frame, ranks | SQL's; NULLs by the key's direction | native, NULLs last both ways | [window-frame](facts/duckdb-window-frame.json) |
+| sort | `clustered` | equal keys adjacent | no such SQL; `ORDER BY` | [clustered](facts/duckdb-clustered.json) |
+| `UNION`, `INTERSECT`, `EXCEPT` (`ALL`) | set operations | bags; NULLs equal; `min(m, n)`, `max(m − n, 0)` | native | [set-operations](facts/duckdb-set-operations.json) |
+
 ## sverify: written plans and the harness
 
 S3, S4 and S6 are DataFusion's: [../datafusion/facts/](../datafusion/facts/).

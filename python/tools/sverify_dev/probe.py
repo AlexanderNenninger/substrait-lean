@@ -13,7 +13,13 @@ match are DuckDB's options for that function; a probe that no candidate
 matches is behaviour the model cannot express yet, and the rows that differ
 say where.
 
-`python -m sverify_dev.probe` writes `characterization/duckdb/probes.json`,
+An `Observation` is a DuckDB query whose result the reference has no single
+call for (a sort, a grouping, a decimal's type, a time zone): its result is
+recorded as it is, after the probes, under `TimeZone = 'UTC'` unless its setup
+says otherwise. `--observations` reruns those alone, keeping the recorded
+probes, and needs no Lean.
+
+`python -m sverify_dev.probe --write` writes `characterization/duckdb/probes.json`,
 the evidence `Profile.duckdb` is seeded from (the `duckdb-R15-…` facts in
 `characterization/duckdb/facts/` cite its constructs).
 """
@@ -280,13 +286,305 @@ def probe_all(probes: Sequence[Probe] = PROBES, log: Callable[[str], None] = pri
     return found
 
 
+@dataclass(frozen=True)
+class Observation:
+    """A DuckDB query whose result the reference has no single call for (a
+    sort, a grouping, a decimal's type, a time zone): its result is recorded
+    as it is, for the facts to cite."""
+
+    construct: str
+    """Its name, which facts cite."""
+    area: str
+    sql: str
+    """One query; `setup` runs first."""
+    setup: tuple[str, ...] = ()
+
+
+def _o(construct: str, area: str, sql: str, *setup: str) -> Observation:
+    return Observation(construct, area, sql, setup)
+
+
+#: Two bags with duplicates, NULLs, both NaNs and both zeros, for the set
+#: operations and the NaN keys.
+_BAGS = (
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1.0), (1.0), (1.0), (2.0), (NULL), (NULL),"
+    " ('nan'::DOUBLE), (-0.0::DOUBLE)) t(x)",
+    "CREATE TABLE b AS SELECT * FROM (VALUES (1.0), (1.0), (NULL), (3.0), (-'nan'::DOUBLE),"
+    " (0.0::DOUBLE)) t(x)",
+)
+
+#: Rows of a window: ties, and NULLs in the order key.
+_WIN = "(VALUES (1, 10), (2, 20), (2, 30), (3, 40), (NULL, 50), (NULL, 60)) t(i, x)"
+
+#: Lists for UNNEST: a full one, an empty one, a NULL one, one of a NULL.
+_LISTS = "(VALUES (1, [1, 2]), (2, []), (3, NULL), (4, [NULL])) t(id, l)"
+
+OBSERVATIONS: list[Observation] = [
+    # Decimals.
+    _o("dec-result-types", "decimals",
+       "SELECT typeof(1.25::DECIMAL(4,2) + 1.5::DECIMAL(3,1)),"
+       " typeof(1.25::DECIMAL(4,2) * 1.25::DECIMAL(4,2)),"
+       " typeof(1::DECIMAL(10,2) * 1::DECIMAL(10,2)), typeof(1::DECIMAL(18,2) + 1::DECIMAL(18,2)),"
+       " typeof(1::DECIMAL(20,10) * 1::DECIMAL(20,10)),"
+       " typeof(1::DECIMAL(38,0) + 1::DECIMAL(38,0)),"
+       " typeof(1.25::DECIMAL(4,2) / 1.5::DECIMAL(3,1)), typeof(-1.25::DECIMAL(4,2)),"
+       " typeof(round(1.25::DECIMAL(4,2), 1))"),
+    _o("dec-aggregate-types", "decimals",
+       "SELECT typeof(sum(x)), typeof(avg(x)), typeof(min(x)), sum(x), avg(x)"
+       " FROM (VALUES (1.25::DECIMAL(4,2)), (1.26::DECIMAL(4,2))) t(x)"),
+    _o("dec-multiply-18", "decimals",
+       "SELECT 9999999999999.99::DECIMAL(15,2) * 9999999999999.99::DECIMAL(15,2)"),
+    _o("dec-multiply-scale-38", "decimals",
+       "SELECT 0.5::DECIMAL(38,37) * 0.5::DECIMAL(38,37)"),
+    _o("dec-add-overflow", "decimals",
+       "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) + 1::DECIMAL(38,0)"),
+    _o("dec-sum-overflow", "decimals",
+       "SELECT sum(x) FROM (VALUES (99999999999999999999999999999999999999::DECIMAL(38,0)),"
+       " (1::DECIMAL(38,0))) t(x)"),
+    _o("dec-rescale", "decimals",
+       "SELECT CAST(1.25::DECIMAL(4,2) AS DECIMAL(3,1)), CAST(-1.25::DECIMAL(4,2) AS DECIMAL(3,1)),"
+       " CAST(1.35::DECIMAL(4,2) AS DECIMAL(3,1)), CAST(0.125::DECIMAL(4,3) AS DECIMAL(3,2)),"
+       " CAST(2.5::DECIMAL(3,1) AS DECIMAL(2,0)), CAST(-2.5::DECIMAL(3,1) AS DECIMAL(2,0)),"
+       " CAST(0.05::DECIMAL(10,2) * 0.5::DECIMAL(10,1) AS DECIMAL(10,2))"),
+    _o("dec-round", "decimals",
+       "SELECT round(2.5::DECIMAL(3,1)), round(-2.5::DECIMAL(3,1)), round(1.25::DECIMAL(4,2), 1),"
+       " round(-1.25::DECIMAL(4,2), 1)"),
+    _o("dec-to-int", "decimals",
+       "SELECT CAST(2.5::DECIMAL(3,1) AS INTEGER), CAST(-2.5::DECIMAL(3,1) AS INTEGER),"
+       " CAST(3.5::DECIMAL(3,1) AS INTEGER)"),
+    _o("dec-from-double", "decimals",
+       "SELECT CAST(0.625::DOUBLE AS DECIMAL(3,2)), CAST(-0.125::DOUBLE AS DECIMAL(3,2)),"
+       " CAST(2.675::DOUBLE AS DECIMAL(3,2)), CAST('2.675' AS DECIMAL(3,2))"),
+    _o("dec-divide", "decimals",
+       "SELECT 1.00::DECIMAL(10,2) / 8::DECIMAL(10,0), 10::DECIMAL(10,0) / 3::DECIMAL(10,0),"
+       " CAST(1.00::DECIMAL(10,2) / 8::DECIMAL(10,0) AS DECIMAL(10,2))"),
+    # NaN in equality and keys.
+    _o("nan-compare", "doubles",
+       "SELECT 'nan'::DOUBLE = 'nan'::DOUBLE, 'nan'::DOUBLE <> 'nan'::DOUBLE,"
+       " 'nan'::DOUBLE = -'nan'::DOUBLE, 'nan'::DOUBLE IN (1.0, 'nan'::DOUBLE),"
+       " 'nan'::DOUBLE IS DISTINCT FROM 'nan'::DOUBLE, 'nan'::FLOAT = 'nan'::FLOAT,"
+       " list_contains([1.0, 'nan'::DOUBLE], 'nan'::DOUBLE),"
+       " list_position([1.0, 'nan'::DOUBLE], 'nan'::DOUBLE)"),
+    _o("nan-group", "doubles",
+       "SELECT count(*), list(x::VARCHAR ORDER BY x::VARCHAR) FROM (SELECT x FROM a UNION ALL"
+       " SELECT x FROM b) GROUP BY x ORDER BY min(x)", *_BAGS),
+    _o("nan-distinct", "doubles",
+       "SELECT count(DISTINCT x), count(*) FROM (SELECT x FROM a UNION ALL SELECT x FROM b)"
+       " WHERE isnan(x)", *_BAGS),
+    _o("nan-join", "doubles",
+       "SELECT a.x::VARCHAR, b.x::VARCHAR FROM a JOIN b ON a.x = b.x ORDER BY a.x", *_BAGS),
+    # Case mapping.
+    _o("case-unicode", "strings",
+       "SELECT upper('straße'), upper('ß'), upper('ﬁ'), upper('ǆ'), lower('İ'), length(lower('İ')),"
+       " lower('ΣΑΣ'), upper('éÿ'), lower('ÀΩ')"),
+    # Dates and timestamps past the reference's range.
+    _o("date-past-9999", "temporal",
+       "SELECT (DATE '9999-12-31' + 1)::VARCHAR, (DATE '0001-01-01' - 1)::VARCHAR,"
+       " (DATE '9999-12-31' + INTERVAL 1 MONTH)::VARCHAR,"
+       " (DATE '0001-01-01' - INTERVAL 1 YEAR)::VARCHAR,"
+       " (TIMESTAMP '9999-12-31 23:59:59' + INTERVAL 1 SECOND)::VARCHAR,"
+       " year(DATE '0001-01-01' - 1),"
+       " date_diff('day', DATE '0001-01-01', DATE '9999-12-31')"),
+    _o("date-limits", "temporal",
+       "SELECT (DATE '5877642-06-25 (BC)')::VARCHAR, (DATE '5881580-07-10')::VARCHAR"),
+    _o("date-beyond-max", "temporal", "SELECT DATE '5881580-07-10' + 1"),
+    _o("date-beyond-min", "temporal", "SELECT DATE '5877642-06-25 (BC)' - 1"),
+    _o("date-interval-beyond-timestamp", "temporal",
+       "SELECT DATE '5881580-07-10' + INTERVAL 1 DAY"),
+    _o("timestamp-beyond-max", "temporal",
+       "SELECT TIMESTAMP '294247-01-10 04:00:54.775806' + INTERVAL 1 SECOND"),
+    # Time zones (ICU), under a set TimeZone: its default is the host's.
+    _o("tz-gap-overlap", "temporal",
+       "SELECT (TIMESTAMPTZ '2024-03-31 02:30:00')::VARCHAR,"
+       " (TIMESTAMPTZ '2024-10-27 02:30:00')::VARCHAR,"
+       " (TIMESTAMP '2024-03-31 02:30:00' AT TIME ZONE 'Europe/Berlin')::VARCHAR,"
+       " (TIMESTAMP '2024-10-27 02:30:00' AT TIME ZONE 'Europe/Berlin')::VARCHAR",
+       "SET TimeZone = 'Europe/Berlin'"),
+    _o("tz-to-local", "temporal",
+       "SELECT (TIMESTAMPTZ '2024-10-27 00:30:00+00' AT TIME ZONE 'Europe/Berlin')::VARCHAR,"
+       " (TIMESTAMPTZ '2024-10-27 01:30:00+00' AT TIME ZONE 'Europe/Berlin')::VARCHAR,"
+       " (TIMESTAMPTZ '2024-01-01 00:00:00 America/New_York')::VARCHAR,"
+       " (TIMESTAMPTZ '2024-03-31 12:00:00+00')::DATE::VARCHAR,"
+       " date_part('hour', TIMESTAMPTZ '2024-03-31 12:00:00+00')",
+       "SET TimeZone = 'Europe/Berlin'"),
+    _o("tz-interval", "temporal",
+       "SELECT (TIMESTAMPTZ '2024-03-30 12:00:00+01' + INTERVAL 1 DAY)::VARCHAR,"
+       " (TIMESTAMPTZ '2024-03-30 12:00:00+01' + INTERVAL 24 HOUR)::VARCHAR,"
+       " date_trunc('day', TIMESTAMPTZ '2024-03-31 12:00:00+02')::VARCHAR,"
+       " date_diff('hour', TIMESTAMPTZ '2024-03-31 00:00:00+01',"
+       " TIMESTAMPTZ '2024-04-01 00:00:00+02')",
+       "SET TimeZone = 'Europe/Berlin'"),
+    _o("tz-utc", "temporal",
+       "SELECT (TIMESTAMPTZ '2024-03-31 02:30:00')::VARCHAR,"
+       " (TIMESTAMPTZ '2024-03-31 02:30:00+05:30')::VARCHAR,"
+       " (TIMESTAMPTZ '2024-03-31 02:30:00+05:30')::TIMESTAMP::VARCHAR",
+       "SET TimeZone = 'UTC'"),
+    _o("tz-unknown", "temporal",
+       "SELECT TIMESTAMPTZ '2024-01-01 00:00:00+00' AT TIME ZONE 'Nowhere/Land'"),
+    # NULLs.
+    _o("null-concat", "nulls",
+       "SELECT 'a' || NULL, concat('a', NULL, 'b'), concat(NULL, NULL), concat_ws(',', 'a',"
+       " NULL, 'b'),"
+       " concat_ws(NULL, 'a'), [1] || NULL, list_concat([1], NULL)"),
+    _o("null-functions", "nulls",
+       "SELECT upper(NULL), length(NULL), substring('abc', NULL, 1), replace('abc', NULL, 'x'),"
+       " greatest(1, NULL, 3), least(NULL, 2), greatest(NULL::INT, NULL), coalesce(NULL, 1)"),
+    _o("null-logic", "nulls",
+       "SELECT NULL AND FALSE, NULL AND TRUE, NULL OR TRUE, NULL OR FALSE, NOT NULL,"
+       " NULL = NULL, NULL IN (1, NULL), 1 IN (1, NULL), 2 NOT IN (1, NULL)"),
+    _o("null-bool-agg", "nulls",
+       "SELECT bool_and(x), bool_or(x), count(x), count(*) FROM (VALUES (TRUE), (NULL)) t(x)"
+       " UNION ALL SELECT bool_and(x), bool_or(x), count(x), count(*)"
+       " FROM (VALUES (FALSE), (NULL)) t(x)"
+       " UNION ALL SELECT bool_and(x), bool_or(x), count(x), count(*)"
+       " FROM (VALUES (NULL::BOOLEAN)) t(x)"
+       " UNION ALL SELECT bool_and(x), bool_or(x), count(x), count(*)"
+       " FROM (SELECT TRUE x WHERE FALSE) t"),
+    _o("null-join", "nulls",
+       "SELECT 'eq', a.x, b.x FROM (VALUES (1), (NULL)) a(x) JOIN (VALUES (1), (NULL)) b(x)"
+       " ON a.x = b.x UNION ALL SELECT 'indistinct', a.x, b.x FROM (VALUES (1), (NULL)) a(x)"
+       " JOIN (VALUES (1), (NULL)) b(x) ON a.x IS NOT DISTINCT FROM b.x ORDER BY 1, 2"),
+    _o("null-full-join", "nulls",
+       "SELECT a.x, b.x FROM (VALUES (1), (NULL)) a(x) FULL JOIN (VALUES (1), (NULL)) b(x)"
+       " ON a.x = b.x ORDER BY 1, 2"),
+    _o("null-in-subquery", "nulls",
+       "SELECT x, x IN (SELECT NULL::INT), x NOT IN (SELECT y FROM (VALUES (2), (NULL)) s(y))"
+       " FROM (VALUES (1), (NULL)) a(x) ORDER BY x"),
+    _o("null-group", "nulls",
+       "SELECT x, count(*) FROM (VALUES (1), (NULL), (NULL)) t(x) GROUP BY x ORDER BY x"),
+    _o("null-spaceship", "nulls", "SELECT 1 <=> NULL"),
+    # Nested.
+    _o("list-index", "nested",
+       "SELECT [10, 20, 30][1], [10, 20, 30][0], [10, 20, 30][-1], [10, 20, 30][-3], [10, 20,"
+       " 30][4],"
+       " [10, 20, 30][-4], (NULL::INT[])[1], [10, 20, 30][NULL],"
+       " [10, 20, 30][9223372036854775807], list_extract([10, 20, 30], 2)"),
+    _o("list-slice", "nested",
+       "SELECT [10, 20, 30][2:3], [10, 20, 30][-2:], [10, 20, 30][0:1], [10, 20, 30][3:2]"),
+    _o("list-equality", "nested",
+       "SELECT [1, NULL] = [1, NULL], [1, NULL] = [1, 2], [1, NULL] <> [1, 2], NULL::INT[] = [1]"),
+    _o("struct-equality", "nested",
+       "SELECT {'a': 1, 'b': NULL} = {'a': 1, 'b': NULL}, {'a': 1, 'b': NULL} = {'a': 1, 'b': 2},"
+       " {'a': 1, 'b': NULL} <> {'a': 1, 'b': 2}, {'a': 1, 'b': NULL} < {'a': 1, 'b': 2},"
+       " {'a': 1, 'b': NULL} > {'a': 1, 'b': 2}, NULL::STRUCT(a INT) = {'a': 1}"),
+    _o("struct-order", "nested",
+       "SELECT list(s ORDER BY s), list(s ORDER BY s DESC) FROM (VALUES ({'a': 1, 'b': 2}),"
+       " ({'a': 1, 'b': NULL}), ({'a': NULL, 'b': 0}), ({'a': 0, 'b': 0})) t(s)"),
+    _o("struct-group-join", "nested",
+       "SELECT s, count(*), (SELECT count(*) FROM (VALUES ({'a': 1,"
+       " 'b': NULL})) u(s2) WHERE s2 = s)"
+       " FROM (VALUES ({'a': 1, 'b': NULL}), ({'a': 1, 'b': NULL}), ({'a': 1, 'b': 2}), (NULL))"
+       " t(s) GROUP BY s ORDER BY s"),
+    _o("unnest-select", "nested",
+       f"SELECT id, unnest(l) FROM {_LISTS} ORDER BY id"),
+    _o("unnest-lateral", "nested",
+       f"SELECT id, u FROM {_LISTS}, unnest(l) AS v(u) ORDER BY id, u"),
+    _o("unnest-left-lateral", "nested",
+       f"SELECT id, u FROM {_LISTS} LEFT JOIN unnest(l) AS v(u) ON TRUE ORDER BY id, u"),
+    _o("unnest-zip", "nested",
+       "SELECT unnest([1, 2]), unnest([7]), unnest([]::INT[])"),
+    # Windows.
+    _o("ntile-spread", "windows",
+       "SELECT n, list(t ORDER BY i) FROM (SELECT n, i, ntile(n) OVER (PARTITION BY n ORDER BY i) t"
+       " FROM range(1, 11) r(i), (VALUES (2), (3), (4), (6), (7),"
+       " (12)) k(n)) GROUP BY n ORDER BY n"),
+    _o("ntile-args", "windows",
+       "SELECT ntile(NULL) OVER (), ntile(2) OVER (), ntile(9223372036854775807) OVER ()"),
+    _o("ntile-zero", "windows", "SELECT ntile(0) OVER ()"),
+    _o("window-default-frame", "windows",
+       f"SELECT i, x, sum(x) OVER (ORDER BY i), sum(x) OVER (), count(*) OVER (ORDER BY i),"
+       f" last_value(x) OVER (ORDER BY i), first_value(x) OVER (ORDER BY i DESC),"
+       f" sum(x) OVER (ORDER BY i ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+       f" FROM {_WIN} ORDER BY i, x"),
+    _o("window-ranks", "windows",
+       f"SELECT i, rank() OVER w, dense_rank() OVER w, percent_rank() OVER w, cume_dist() OVER w,"
+       f" rank() OVER (ORDER BY i DESC) FROM {_WIN} WINDOW w AS (ORDER BY i) ORDER BY i, x"),
+    _o("window-no-order", "windows",
+       "SELECT rank() OVER (), dense_rank() OVER (), percent_rank() OVER (), cume_dist() OVER ()"
+       " FROM (VALUES (1), (2)) t(i)"),
+    _o("window-offsets", "windows",
+       "SELECT i, lag(i) OVER w, lead(i, 1, -1) OVER w, nth_value(i, 2) OVER w,"
+       " lag(i, 5) OVER w FROM (VALUES (1), (2), (3)) t(i) WINDOW w AS (ORDER BY i) ORDER BY i"),
+    # Relations.
+    _o("clustered-syntax", "relations", "SELECT 1 ORDER BY 1 CLUSTERED"),
+    _o("set-operations", "relations",
+       " UNION ALL ".join(
+           f"SELECT '{name}',"
+           f" list(v ORDER BY v)::VARCHAR FROM (SELECT CASE WHEN isnan(x) THEN 'NaN'"
+           f" ELSE x::VARCHAR END v FROM (SELECT x FROM {lhs} WHERE x IS DISTINCT FROM 0 {op}"
+           f" SELECT x FROM {r} WHERE x IS DISTINCT FROM 0))"
+           for name, lhs, op, r in [
+               ("union", "a", "UNION", "b"), ("union all", "a", "UNION ALL", "b"),
+               ("intersect", "a", "INTERSECT", "b"), ("intersect all", "a", "INTERSECT ALL", "b"),
+               ("except", "a", "EXCEPT", "b"), ("except all", "a", "EXCEPT ALL", "b"),
+               ("b except all a", "b", "EXCEPT ALL", "a"),
+           ]
+       ),
+       *_BAGS),
+    _o("set-operation-types", "relations",
+       "SELECT typeof(x) FROM (SELECT 1 x UNION SELECT 1.5) LIMIT 1"),
+]  # fmt: skip
+
+
+def _render(v: Any) -> str:
+    """A value as text that does not depend on the host: NULL, true and
+    false, decimals as written, doubles as Python prints them, and lists and
+    structs element by element."""
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return str(v).lower()
+    if isinstance(v, list | tuple):
+        return "[" + ", ".join(_render(x) for x in v) + "]"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{k}: {_render(x)}" for k, x in v.items()) + "}"
+    if isinstance(v, str):
+        return repr(v)
+    return str(v)
+
+
+def observe(o: Observation) -> Json:
+    """`o`'s rows (`;` between rows), or the error it raises."""
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")
+    try:
+        for s in o.setup:
+            con.execute(s)
+        rows = con.execute(o.sql).fetchall()
+        observed = "; ".join(", ".join(_render(v) for v in r) for r in rows)
+    except duckdb.Error as e:
+        observed = f"error {type(e).__name__}: {str(e).splitlines()[0]}"
+    return {"construct": o.construct, "area": o.area, "setup": list(o.setup), "sql": o.sql,
+            "observed": observed}  # fmt: skip
+
+
+def observe_all(
+    observations: Sequence[Observation] = OBSERVATIONS, log: Callable[[str], None] = print
+) -> list[Json]:
+    found = []
+    for o in observations:
+        r = observe(o)
+        log(f"{o.construct}: {r['observed']}")
+        found.append(r)
+    return found
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--write", action="store_true", help="write probes.json")
+    parser.add_argument(
+        "--observations",
+        action="store_true",
+        help="rerun the observations only, keeping the recorded probes (no Lean needed)",
+    )
     args = parser.parse_args(argv)
-    found = probe_all()
+    out = slt.REPLAY_DIR / "probes.json"
+    if args.observations:
+        recorded = json.loads(out.read_text())["probes"]
+        found = [r for r in recorded if "sql" not in r] + observe_all()
+    else:
+        found = probe_all() + observe_all()
     if args.write:
-        out = slt.REPLAY_DIR / "probes.json"
         head = {"duckdb": duckdb.__version__, "probes": found}
         out.write_text(json.dumps(head, indent=1) + "\n")
         print(f"-> {out}")

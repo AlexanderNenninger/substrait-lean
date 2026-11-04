@@ -1,0 +1,100 @@
+{
+  "id": "duckdb-decimal-arith",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Decimal result types: its own, capped at 18 digits while the operands fit 64 bits; rescaling rounds half away from zero",
+  "verdict": "`decimal_rescale: TIE_AWAY_FROM_ZERO` native; result types its own, compensated",
+  "area": "decimals",
+  "options": [
+    "decimal_result_type",
+    "decimal_rescale",
+    "raise_set"
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/",
+    "CAST",
+    "round",
+    "sum",
+    "avg"
+  ],
+  "settings": {},
+  "description": [
+    "`+` and `-` give `DECIMAL(max(p₁−s₁, p₂−s₂) + max(s₁, s₂) + 1, max(s₁, s₂))`, at most 38 digits: `DECIMAL(18,2) + DECIMAL(18,2)` is `DECIMAL(19,2)`, `DECIMAL(38,0) + DECIMAL(38,0)` stays `DECIMAL(38,0)` and raises past 38 digits (`Overflow in addition of DECIMAL(38)`).",
+    "`*` gives `DECIMAL(p₁ + p₂, s₁ + s₂)`, but where both operands fit 64 bits (`p ≤ 18`) and the sum of the precisions does not, the result is capped at `DECIMAL(18, s₁ + s₂)` and raises when a value needs more: `DECIMAL(10,2) * DECIMAL(10,2)` is `DECIMAL(18,4)`, and `9999999999999.99 * 9999999999999.99` (`DECIMAL(15,2)`) raises `Overflow in multiplication of DECIMAL(18)`. Wider operands give up to `DECIMAL(38, s₁ + s₂)` (`DECIMAL(20,10) * DECIMAL(20,10)` is `DECIMAL(38,20)`); a scale above 38 raises (`Needed scale 74 …`).",
+    "`/` of decimals is a `DOUBLE` (`1.00 / 8` is 0.125, `10 / 3` is 3.3333333333333335). `sum` is `DECIMAL(38, s)` and raises past 38 digits (`Overflow in SUM of DECIMAL`); `avg` is a `DOUBLE`; `min` keeps the type; `round(x, d)` is `DECIMAL(p, d)`.",
+    "Every drop of decimal places rounds half away from zero: a cast to a smaller scale (1.25 → 1.3, -1.25 → -1.3, 0.125 → 0.13, ±2.5 → ±3), `round` (±2.5 → ±3, ±1.25 → ±1.3 at one digit), a cast to an integer (±2.5 → ±3, 3.5 → 4) and a cast of a double to a decimal (0.625 → 0.63, -0.125 → -0.13, 2.675 → 2.68: the double just below 2.675 is scaled in doubles first)."
+  ],
+  "reference": [
+    "The reference's types are the YAML's: `+`, `-` as DuckDB's; `×` is `DECIMAL(p₁ + p₂ + 1, s₁ + s₂)` up to 38 digits, exact; `/` refused; `SUM` is `DECIMAL(min(38, p + 10), s)`, `AVG` a `DECIMAL(min(38, p + 4), s + 4)` rounded half away from zero (reference-semantics.md, Decimals). A result past its precision raises in both.",
+    "`decimal_rescale` is `TIE_AWAY_FROM_ZERO`, DuckDB's own. Decimal to integer truncates in the reference. The translation compensates for the rest (engine-profiles.md, Decimals (#27)): a cast to the plan's type around each operation, the left operand of `×` cast to `DECIMAL(38, s)`, `TRUNC` before a cast to an integer, `SUM` cast to `p + 10` digits, `AVG` as `SUM` and `COUNT` in `HUGEINT`. Double to decimal is `round(x · 10ˢ)` in doubles, half away from zero, as DuckDB's (2.675 → 2.68).",
+    "ST-8 records that Substrait leaves this rounding open."
+  ],
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-result-types"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-aggregate-types"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-multiply-18"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-multiply-scale-38"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-add-overflow"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-sum-overflow"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-rescale"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-round"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-to-int"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-from-double"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "dec-divide"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/src/function/scalar/operator/arithmetic.cpp",
+          "note": "BindDecimalMultiply: a result over 18 digits from operands of 18 or fewer is capped at 18 (lines 1045-1048)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/src/common/types/decimal.cpp"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ],
+  "issues": [
+    27
+  ]
+}
