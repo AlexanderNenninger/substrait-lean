@@ -235,6 +235,8 @@ class Contract:
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.
+        table_ids: The id of every source table that has one (a Delta
+            table's `metaData.id`), at its version in `sources`.
     """
 
     view: str
@@ -254,6 +256,11 @@ class Contract:
     """The cursor of each source the node read whose cursors last across
     processes (`sverify.io.Source.restore`), at its version in `sources`, as
     `cursor_json` encodes it."""
+    table_ids: dict[str, str] = field(default_factory=dict)
+    """The id of each source table that has one (`DeltaSource`: the table's
+    `metaData.id`), at its version in `sources`. A table dropped and created
+    again at the same location has a new id, and versions that start over:
+    a state recorded from the old table is not one of the new table's."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
@@ -361,6 +368,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
         unique=unique,
         digests=view.pipeline.digests(view.name),
         cursors=_cursors(view, versions),
+        table_ids=_table_ids(view, versions),
     )
 
 
@@ -441,6 +449,31 @@ def _cursors(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, An
         if value is not UNRECORDED and (data := cursor_json(value)) is not UNRECORDED:
             out[t] = data
     return out
+
+
+def _table_ids(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, str]:
+    """The id of every source table of `view` that has one
+    (`DeltaSource._table_id`), at the version `view` is at."""
+    out = {}
+    for t, n in versions.items():
+        at = getattr(view.pipeline.sources.get(t), "_table_id", None)
+        if at is not None and (table_id := at(n)) is not None:
+            out[t] = table_id
+    return out
+
+
+def other_tables(committed: Contract, contract: Contract) -> list[str]:
+    """The sources of `contract` that are not the tables `committed` was
+    computed from: their table id changed, or their version went down (a
+    table's versions only grow, so a lower one is another table, dropped
+    and created again). Then the sink's rows are not a state of these
+    inputs, whatever the epochs say (#516)."""
+    out = []
+    for t, n in contract.sources.items():
+        was, now = committed.table_ids.get(t), contract.table_ids.get(t)
+        if (was is not None and now is not None and was != now) or n < committed.sources.get(t, n):
+            out.append(t)
+    return sorted(out)
 
 
 def check_same_state(uri: str, committed: Contract | None, contract: Contract) -> None:

@@ -478,6 +478,23 @@ class _Stored(Node):
         return self.upstream
 
 
+def _recreated(sink: Sink, leaves: Sequence[Node], stored: Stored) -> bool:
+    """Whether a source of the state `sink` stored is another table now: at
+    the stored version, its table id is not the one the sink recorded (it
+    was dropped and created again, #516). Then the stored state is not a
+    state of the sources, and the node is computed again."""
+    committed = getattr(sink, "committed", None)
+    ids = getattr(committed(), "table_ids", None) if committed is not None else None
+    if not ids:
+        return False
+    for leaf in leaves:
+        src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
+        at = getattr(src, "_table_id", None)
+        if leaf.name in ids and at is not None and at(stored.sources[leaf.name]) != ids[leaf.name]:
+            return True
+    return False
+
+
 class _Stage:
     """One incremental view and the pipeline around it: the state of a node."""
 
@@ -498,6 +515,7 @@ class _Stage:
         if stored is not None and (
             set(stored.sources) != set(versions)
             or any(stored.sources[t] > n for t, n in versions.items())
+            or (sink is not None and _recreated(sink, leaves, stored))
         ):
             stored = None
         if stored is not None:
