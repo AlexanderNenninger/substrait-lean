@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): the fp impls of `add`, `subtract` and `multiply` ([`functions_arithmetic.yaml` L45-L62](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L45-L62), [`functions_arithmetic.yaml` L103-L120](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L103-L120), [`functions_arithmetic.yaml` L161-L178](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L161-L178)) take `rounding` only, while `divide` ([`functions_arithmetic.yaml` L180-L187](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L180-L187)) has `on_domain_error`; nothing says `inf - inf` or `0 * inf` gives NaN. Closest issue [#1275](https://github.com/substrait-io/substrait/issues/1275) (IEEE divide); see also [#996](https://github.com/substrait-io/substrait/issues/996) (options inconsistent across functions).",
   "summary": "`add`, `subtract` and `multiply` on `fp32`/`fp64` have only `rounding`. `inf - inf`, `inf + (-inf)` and `0 * inf` have no IEEE value, and the YAML neither says they give NaN nor offers `on_domain_error`, as `divide` and `sqrt` do.",
   "repro": [
     "`subtract(inf::fp64, inf::fp64)`, `multiply(0.0::fp64, inf::fp64)`.",
@@ -35,6 +35,19 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "the extension YAMLs and site/docs on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_arithmetic.yaml fp add/subtract/multiply/divide and their test cases on main; the gap is there"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/issues/1275",
+    "https://github.com/substrait-io/substrait/issues/996",
+    "https://github.com/substrait-io/substrait/issues/254"
   ]
 }

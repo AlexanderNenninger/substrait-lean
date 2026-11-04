@@ -3,9 +3,9 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
-  "summary": "`corr`, `variance` and `std_dev` say what no input gives (null), and nothing about the degenerate cases: `corr` of one pair or of a side whose values are all equal, and any of them over a group with `±inf` or NaN. Engines give NULL or NaN there.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): [`functions_arithmetic.yaml` L1492-L1516](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L1492-L1516) says only that `corr` of no input is null, and [`functions_arithmetic.yaml` L1394-L1491](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L1394-L1491) (`std_dev`, `variance`) say nothing beyond their names; no option or sentence covers one pair, a constant side, or `±inf`/NaN input. No existing issue.",
+  "summary": "`corr` says what no input gives (null); `variance` and `std_dev` say nothing about it, though they return nullable types. None of them says anything about the degenerate cases: `corr` of one pair or of a side whose values are all equal, and any of them over a group with `±inf` or NaN. Engines give NULL or NaN there.",
   "repro": [
     "`corr(x, y)` over `(1, 2)` alone, or over `(1, 1), (1, 2)`.",
     "DuckDB 2.0 and Polars 2.1: NaN for both; Spark 4.3: NULL for both. DuckDB: `var_samp` over `[inf, 1]` is NaN."
@@ -37,6 +37,14 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "the extension YAMLs and site/docs on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_arithmetic.yaml corr, std_dev, variance on main; the gap is there"
     }
   ]
 }

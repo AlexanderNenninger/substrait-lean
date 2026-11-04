@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): [`functions_string.yaml` L985-L1037](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_string.yaml#L985-L1037) point `lower`/`upper` at the utf8_unicode_ci collation and return `varchar<L1>` for `varchar<L1>`, with nothing on simple or full case mapping; the test cases are ASCII only. No existing issue.",
   "summary": "`upper` and `lower` with `char_set: UTF8` say the implementation \"should follow the utf8_unicode_ci collations\" of the Unicode Collation Algorithm (UTR #10), which is a collation, not a case mapping. Nothing says whether the mapping is Unicode's simple one (one code point to one, the length kept) or the full one of SpecialCasing.txt (`ß` to `SS`, `ﬁ` to `FI`, `İ` to `i̇`, a final sigma). Engines differ: DuckDB maps code point by code point, Rust's `str::to_uppercase` (Polars, DataFusion) maps in full. The `varchar<L1>` and `fixedchar<L1>` signatures return the input's length, which a full mapping can exceed.",
   "repro": "`upper('ß')`: DuckDB 2.0.0 gives `ẞ` (U+1E9E), Polars 2.1.0 gives `SS`. `lower('ΣΑΣ')`: DuckDB `σασ`, Polars `σας`. `upper('ﬁ')`: DuckDB `ﬁ`, Polars `FI`. `lower('İ')`: DuckDB `i` (one character), Polars `i̇` (two).",
   "handling": [
@@ -32,6 +32,14 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "functions_string.yaml on main: upper, lower with char_set [UTF8, ASCII_ONLY] and the utf8_unicode_ci sentence, nothing on simple or full mappings"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_string.yaml lower/upper and their test cases on main; the gap is there"
     }
   ]
 }

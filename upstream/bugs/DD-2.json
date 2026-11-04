@@ -3,7 +3,7 @@
   "project": "duckdb",
   "version": "2.0",
   "status": "not a bug",
-  "status_note": "not a bug: the docs say `concat` skips `NULL` inputs",
+  "status_note": "not a bug: the docs say `concat` skips `NULL` inputs; same on 2.0.0 and the 2.0.1/2.1.0 nightlies.",
   "summary": "`error()` with a message built by `concat` shows a NULL argument as an empty string. That's `concat`'s documented NULL handling.",
   "repro": "`error(concat('x: ', NULL))`",
   "handling": "Guards keep NULL out of the error branch (#255)",
@@ -18,6 +18,13 @@
         "duckdb": "2.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "also nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630"
     }
   ]
 }
