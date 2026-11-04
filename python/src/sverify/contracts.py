@@ -560,6 +560,12 @@ class Report:
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
+    unchecked: dict | None = None
+    """The expressions that run correctly without their checks, on data that
+    meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
+    plan; pass it to `sverify.engines.to_sql(..., unchecked=...)` with the
+    same plan, and only the other expressions keep their checks. None when
+    Lean found none (a left join with a filter on its right side, for one)."""
     optimized: dict | None = None
     """The transformation as a Substrait JSON plan, rewritten with the facts
     and keys of the preconditions (`Rel.optimize` in
@@ -1630,6 +1636,7 @@ def _verify_once(
             for i in out["issues"]
         ],
         guard_free=out["guard_free"],
+        unchecked=out.get("unchecked"),
         optimized=out["optimized"],
         rewrites=out["rewrites"],
         params=bound,
