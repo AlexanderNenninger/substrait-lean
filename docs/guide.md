@@ -284,6 +284,17 @@ except VerificationError as e:
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report; an Ibis condition there reads the query's output, or in `requires`
   its input table ([#438](https://github.com/AlexanderNenninger/substrait-lean/issues/438)).
+* `report.run(con)` runs the plan the report checked over the tables of an
+  `sv.connect()` connection, on its engine or the one you name
+  (`report.run(con, "polars")`). The result is the one the report is about,
+  `params` and `semantics` included
+  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)):
+
+  ```python
+  report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
+  if report.proved:
+      result = report.run(con)
+  ```
 * `requires` maps each input to its conditions. A transformation with one
   input also takes a plain list, `requires=[_.amount >= 0]`. A key that
   names no input raises a `ValueError` that lists the inputs (#408).
