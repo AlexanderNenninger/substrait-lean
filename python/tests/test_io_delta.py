@@ -558,6 +558,52 @@ def test_static_table_changed_without_a_version_is_refused(tmp_path):
         StaticSource(REGIONS, version=1).replace(other, version=1)
 
 
+def fail_write(monkeypatch, *, after_commit: bool) -> None:
+    """The sink's next write raises, before or after its commit lands (as
+    reading the version back from a store that just went down does)."""
+    write = DeltaSink.write
+
+    def failing(self, change):
+        monkeypatch.setattr(DeltaSink, "write", write)
+        if after_commit:
+            write(self, change)
+        raise OSError("dns error: the store is down")
+
+    monkeypatch.setattr(DeltaSink, "write", failing)
+
+
+@pytest.mark.parametrize("native", [True, False], ids=["native", "merge"])
+@pytest.mark.parametrize("after_commit", [True, False], ids=["after", "before"])
+def test_a_failed_write_is_recovered_in_the_same_process(
+    tmp_path, monkeypatch, native, after_commit
+):
+    # Issue #488: a write that raised after its commit landed left every later
+    # refresh failing until a restart.
+    if not native:
+        monkeypatch.setattr("sverify.io.delta.local_path", lambda uri: None)
+    src, stored = job1(tmp_path)
+    uri = str(tmp_path / "big")
+    stored.refresh(engine="duckdb")
+    dt = DeltaTable(src.uri)
+    write_deltalake(dt, orders_table([(3, "cy", 1)]), mode="append")
+    dt.update(updates={"amount": "amount + 1"}, predicate="id = 1")
+    fail_write(monkeypatch, after_commit=after_commit)
+    with pytest.raises(OSError, match="store is down"):
+        stored.refresh(engine="duckdb")
+    epoch = DeltaTable(uri).transaction_version("sverify:big")
+    assert epoch == (3 if after_commit else 1)
+    # The store is back, and the source moved on again.
+    dt = DeltaTable(src.uri)
+    dt.delete("id = 2")
+    write_deltalake(dt, orders_table([(4, "dee", 2)]), mode="append")
+    [written] = stored.refresh(engine="duckdb").writes
+    assert written.mode == "merge" and written.contract.epoch == 5
+    assert DeltaTable(uri).transaction_version("sverify:big") == 5
+    assert delta_rows(uri) == sorted(rows(stored), key=repr)
+    assert rows(stored) == recomputed(doubled(paid(src)), src)
+    assert stored.refresh(engine="duckdb").writes[0].mode == "skipped"
+
+
 def test_restarted_job_resumes_from_its_sink(tmp_path, monkeypatch):
     src, stored = job1(tmp_path)
     stored.refresh()

@@ -196,6 +196,9 @@ class Sink:
     last; None: the sink's contents are replaced on the next write."""
     _last: Contract | None = None
     _kept: _Kept | None = None
+    _pending: tuple[int, Contract] | None = None
+    """The view's serial and the contract of a write that raised: its commit
+    may have landed before the error (reading the version back, say)."""
 
     def __init__(self, name: str, *, app_id: str | None = None, location: str | None = None):
         self.name = name
@@ -244,7 +247,7 @@ class Sink:
         """Write `view` from now on."""
         self.view = view
         view._sinks.append(self)
-        self._written = None
+        self._written, self._pending = None, None
         if view.stored is not None and view.stored[0] == self.location:
             self._written = view.serial
 
@@ -271,6 +274,15 @@ class Sink:
             raise ValueError(f"no node is stored in {self.location}: node.write(sink) attaches one")
         contract = view_contract_record(view)
         done = self.committed()
+        pending, self._pending = self._pending, None
+        if (
+            pending is not None
+            and done is not None
+            and (done.plan, done.epoch) == (pending[1].plan, pending[1].epoch)
+        ):
+            # The last write raised after its commit landed: the sink holds
+            # that state, as a restarted job finds it. Write on from there.
+            self._written, self._last = pending
         if done is not None and done.plan != contract.plan:
             # Another plan's rows: neither skip this epoch nor write a change
             # on top of them; replace them.
@@ -282,7 +294,9 @@ class Sink:
             return SinkWrite("skipped", self._version(), contract)
         since = None if self._written is None else view.changes_since(self._written)
         change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
+        self._pending = (view.serial, contract)
         out = self.write(change)
+        self._pending = None
         if out is None:
             mode = "overwrite" if change.replace else "update"
             n_in, n_out = change.inserts.num_rows, change.deletes.num_rows
