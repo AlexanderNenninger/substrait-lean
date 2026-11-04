@@ -238,3 +238,8 @@ def test_rerun_variation():
     # Not known: no rerun at all.
     assert "rerun" not in polars[("agg.order", "zero_sign")]
     assert "rerun" not in duck[(None, "zero_sign")]
+    # Every known rerun has evidence of its own.
+    for engine in ("duckdb", "polars"):
+        for r in choices[engine]:
+            if "rerun" in r:
+                assert r.get("rerun_evidence") in ("tested", "proved"), (engine, r)

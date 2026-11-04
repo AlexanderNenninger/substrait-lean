@@ -268,7 +268,8 @@ def withReruns (obs : ObsTable) : ObsTable :=
     | none =>
       -- A sum's sign of zero is the row's own; a group key's or `min`'s zero is
       -- the one seen first, or the platform's: not settled here.
-      if rerunExact.contains o || (o == "zero_sign" && g == some "fp.arith") then (g, o, { r with rerun := some Obs.exact, rerunEvidence := ev })
+      -- Exact only with evidence: a row without facts stays unknown.
+      if ev != .none && (rerunExact.contains o || (o == "zero_sign" && g == some "fp.arith")) then (g, o, { r with rerun := some Obs.exact, rerunEvidence := ev })
       else (g, o, r)
 
 /-- The engine profiles, under DuckDB's default settings. -/
