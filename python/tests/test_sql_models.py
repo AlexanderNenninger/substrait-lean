@@ -123,12 +123,11 @@ def test_refused_sql_says_what_is_refused():
     @sv.transform()
     def money(orders):
         return sv.sql(
-            "SELECT avg(CAST(amount AS DOUBLE)) OVER "
-            "(ORDER BY amount ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS m FROM orders",
+            "SELECT var_samp(CAST(amount AS DOUBLE)) OVER (ORDER BY amount) AS m FROM orders",
             orders=orders,
         )
 
-    with pytest.raises(Unsupported, match="Lean refuses the SQL: avg over a sliding frame"):
+    with pytest.raises(Unsupported, match="over a window is not supported"):
         money(orders)
 
     @sv.transform()

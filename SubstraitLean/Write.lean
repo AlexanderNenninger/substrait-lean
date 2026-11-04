@@ -851,6 +851,21 @@ def _root_.Substrait.Rel.floatExtremes (tables : Parse.Tables) : Rel → Bool
     r.floatExtremes tables ||
       ms.any fun m => (m.fn == .min || m.fn == .max) && m.arg.kind (r.kinds tables) == .float
 
+/-- Does the plan take a double `SUM`, an `AVG` or a `MIN` over a sliding
+frame (one not from UNBOUNDED PRECEDING)? DataFusion slides a frame by
+retracting the rows that leave it: a sum of doubles then rounds differently
+from adding up the frame, an average of a frame that has become empty is NaN,
+and a `MIN` of one with only NULLs left is the last minimum. -/
+def _root_.Substrait.Rel.slidingFrames : Rel → Bool
+  | .read _ | .values _ _ => false
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
+  | .unnest r _ | .aggregate r _ _ => r.slidingFrames
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.slidingFrames || b.slidingFrames
+  | .window r _ _ fns =>
+    r.slidingFrames || fns.any fun
+      | .agg m _ fr => [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding
+      | _ => false
+
 /-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
 `SATURATE`, `UnFn.fit`, #241)? -/
 def _root_.Substrait.Expr.fits : Expr → Bool

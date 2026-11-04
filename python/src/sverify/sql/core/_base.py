@@ -2576,13 +2576,7 @@ class _Parser:
                     raise Unsupported(
                         "window aggregates of expressions are not supported; use a column"
                     )
-                fr = self.frame(w, cols, sort)
-                if m.fn in ("fsum", "avg", "min") and fr.lo != ("unbounded", 0):
-                    raise Unsupported(
-                        f"{name} over a sliding frame is not supported yet; use a frame "
-                        "from UNBOUNDED PRECEDING"
-                    )
-                return part, sort, WinFn("agg", measure=m, frame=fr)
+                return part, sort, WinFn("agg", measure=m, frame=self.frame(w, cols, sort))
         raise Unsupported(f"unsupported window function: {name}")
 
     def positive(self, args: list, i: int, name: str) -> int:

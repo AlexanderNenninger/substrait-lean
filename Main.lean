@@ -178,6 +178,9 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
     if plan.root.floatExtremes plan.tables then
       IO.eprintln "error: MIN and MAX of doubles are not yet supported on DataFusion; see #271"
       return 1
+    if plan.root.slidingFrames then
+      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion; use a frame from UNBOUNDED PRECEDING"
+      return 1
     if plan.root.anyExpr Expr.nestedAccess then
       IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"
       return 1

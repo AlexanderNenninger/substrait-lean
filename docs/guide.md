@@ -56,9 +56,8 @@ In order of day-to-day value:
    goes, a left join on a NOT NULL foreign key becomes an inner join). See
    [docs/optimizations.md](optimizations.md).
 
-What it doesn't do (yet). Rolling means, `MIN` over a sliding frame,
-correlated scalar subqueries and parameters (`ibis.param`) are not in the
-model. Incremental maintenance covers filters, projections, inner and cross
+What it doesn't do (yet). Correlated scalar subqueries and parameters
+(`ibis.param`) are not in the model. Incremental maintenance covers filters, projections, inner and cross
 joins and `UNION ALL`; an aggregate recomputes only the groups a batch
 touches, and a window only the partitions it touches. Other views (left
 joins, `DISTINCT`) are recomputed and diffed instead, and `node.status()`
