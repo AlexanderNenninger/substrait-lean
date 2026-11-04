@@ -6,8 +6,8 @@ The rows follow `docs/core-semantics.md`: a function's options are its
 group's (`GROUPS`), each option is a row of `OPTIONS`, and each profile
 chooses among an option's behaviours (`CHOICES`). Lean's tables are the
 source (D1, `SubstraitLean/Functions.lean`); `tests/test_functions.py`
-checks the names, anchors, groups and options against them
-(`substrait-check --functions`).
+checks the names, anchors, groups, options and the reference's choices
+against them (`substrait-check --functions` and `--options`, #444).
 
 Internal: not part of sverify's public API. It imports nothing of sverify's,
 so every layer can read it.
@@ -52,14 +52,17 @@ def _asked(*bs: str) -> Choice:
 
 
 _ROUNDINGS = ("TIE_TO_EVEN", "TIE_AWAY_FROM_ZERO", "TRUNCATE", "CEILING", "FLOOR")
+#: `round`'s five more.
+_ROUND_TIES = ("AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD")
 
 #: The options of the groups below (`docs/core-semantics.md`, "The option catalogue").
 OPTIONS: Mapping[str, Option] = MappingProxyType(
     {
         o.id: o
         for o in (
-            Option("rounding", "rounding", _ROUNDINGS),
-            Option("on_domain_error", "on_domain_error", ("NAN", "NULL", "ERROR")),
+            Option("rounding", "rounding", _ROUNDINGS + _ROUND_TIES),
+            Option("on_domain_error", "on_domain_error", ("NAN", "NULL", "ERROR"),
+                   (("NAN", "duckdb-R15-math-domain"),)),
             Option("on_log_zero", "on_log_zero", ("NAN", "ERROR", "MINUS_INFINITY")),
             Option("shift_range", None, ("ERROR", "ZERO", "DROP_BITS"),
                    (("ERROR", "duckdb-R15-shift-left"), ("ZERO", "duckdb-R15-shift-right"))),
@@ -185,6 +188,11 @@ class Fn:
     @property
     def options(self) -> tuple[str, ...]:
         return GROUPS[self.group]
+
+    @property
+    def reference(self) -> Mapping[str, Choice]:
+        """The reference's choice at each of its options."""
+        return {o: choice("reference", self.group, o) for o in self.options}
 
     @property
     def what(self) -> str:
