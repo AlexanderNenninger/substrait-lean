@@ -1,9 +1,11 @@
 # The loose core: design
 
-Sverify's plans will mean one thing in Lean, a loose core semantics,
-and every semantics sverify knows becomes a refinement of it: Substrait's,
-the reference's and each engine's
+Sverify's semantics will share one loose core in Lean, and every semantics
+sverify knows becomes a refinement of it: Substrait's, the reference's and
+each engine's
 ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)).
+Plans are verified under the strict reference profile
+([Terminology](#terminology)).
 This page is the design pass of step 3 of epic
 [#544](https://github.com/AlexanderNenninger/substrait-lean/issues/544). It
 lists, per function, the points where profiles differ, gives the tables that
@@ -17,6 +19,57 @@ The choices this page left open were decided in its review
 ([Decisions](#decisions)). Everything else follows decisions already made on
 #185, #202, #209, #257, #336, #427 and #444; [reference-semantics.md](reference-semantics.md)
 records them.
+
+## Terminology
+
+Three kinds of semantics, each with one job.
+
+- The core is the loosest semantics, a specification layer. It admits every
+  engine's behaviour ([D3](#d3-behaviours-outside-the-yaml)), every profile
+  refines it, and it is where profiles are stated and related: a profile is
+  the core with its choices narrowed, and a translation between two profiles
+  is a refinement between them ([Translations](#translations-between-profiles)).
+  Sverify runs no plan under the core, and verifying a plan under the core
+  is no goal: the core allows every engine's raises and NaNs at once.
+- The reference profile (`Profile.reference`, "the reference") is what plans
+  are verified under. It is strict, stricter than every engine in most
+  options. Where engines disagree on an edge case (integer overflow, NaN
+  creation, domain errors, division by zero, out-of-range casts and dates),
+  it raises. Where it picks a value, it picks one every engine can produce
+  ([principle 3](reference-semantics.md#principles)).
+- Engine profiles say what each engine does, from
+  `characterization/<engine>/facts/`, and refine the core. A plan verified
+  under the reference reaches an engine through a translation, shimmed only
+  on the reference's value choices.
+  `Profile.substrait` (step 2) is a profile of the same kind: the YAMLs'
+  own looseness, between the core and the reference.
+
+### What strictness buys
+
+A plan verified under the reference never raises: its preconditions,
+stated or inferred, are proved to exclude the reference's raise set, or
+checked on the data. The inputs where engines disagree on errors are in that
+raise set, so a verified plan never reaches them, and it creates no new NaN
+(`nan_creation` raises in the reference). In
+[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)'s
+terms, each call of such a plan is `refines[D]` on every engine, with `D` the
+reference's non-raising domain at that call, and the proof keeps the plan's
+inputs inside `D`.
+
+So the options split in three, and a verified plan needs a shim only for the
+second:
+
+| Kind | Reference | Options | A verified plan on an engine |
+|---|---|---|---|
+| Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
+| Value side | picks one value | `null_order`, `rounding` of `round`, `division_type`, floor or truncating division of negatives, `float_to_int`, `decimal_rescale`, `avg_int_result`, an empty `SUM`, string and list positions, `zero_sign`, `nan_kind`, `nan_order`, `list_null_order`, `stat_degenerate` for `CORR`, result types | native where the engine picks the same value; a shim otherwise |
+| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `approx[D, ε]` (#568) otherwise |
+
+An option the plan states itself (`overflow: SILENT`) is a value choice too.
+A precondition only checked on the data, such as a `SUM`'s overflow bound
+(#316), needs its run-time check, the guard, on every engine; guard
+elimination (#83) drops the guards the inferred bounds rule out.
+[The Polars example](#the-polars-example) counts the shims for one engine.
 
 ## The shape
 
@@ -362,7 +415,10 @@ boxes. Decided ([D1](#d1-where-the-tables-live)).
 
 For every option, the behaviour the reference chooses, and every engine:
 native, a shim with its cost (an extra `CASE`, a cast to `HUGEINT`, a second
-pass), or refused. Generated from `REALIZE` and the facts, published in
+pass), or refused. An error-side option needs no shim for a plan verified
+to never raise ([What strictness buys](#what-strictness-buys)), so its cell
+names the guard, used only where a precondition is checked on the data.
+Generated from `REALIZE` and the facts, published in
 `docs/`, and checked in CI: a change to the reference that makes an engine
 refuse, or need a shim of a higher cost class, fails a test until the
 table's expected output is updated. This is principle 3 ("every engine can
@@ -468,9 +524,16 @@ group. For two profiles `P` and `Q`, a group and one of its options, with
 | Case | Realization | Example |
 |---|---|---|
 | `q ⊆ p` | native: the call as it is | `overflow`, reference to DuckDB: both `ERROR` |
-| `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `zero_sign`, reference (`ONE_ZERO`) to DuckDB (`IEEE`): `Dialect.canon`; `nan_creation` (raise) to DuckDB (`NAN`): a guard that raises (`UnFn.raise`); `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
-| `q ⊄ p` only on inputs a precondition excludes | a precondition, listed in `Report.assumed` and checked on the data | `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
+| `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `zero_sign`, reference (`ONE_ZERO`) to DuckDB (`IEEE`): `Dialect.canon`; `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
+| `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan verified to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
 | none of these | refused | `ntile_spread` on DataFusion ([DF-11](../upstream/bugs/DF-11.json)); `FLOOR` modulus anywhere today |
+
+From the reference to an engine, the third case covers every error-side
+option ([What strictness buys](#what-strictness-buys)): the reference raises
+there, so its raise set is the precondition, and a plan verified to never
+raise discharges it. The guard that raises (`UnFn.raise`) is needed only
+where the precondition is checked on the data. The second case is left for
+the value choices.
 
 `obligations P Q` lists, for every group and option, which case holds and
 which shim or precondition discharges it. It is generated from `P`'s and
@@ -541,8 +604,8 @@ to check.
 
 ### What a proof under the reference gives
 
-A plan verified under the reference, `requires R ⇒ ensures E`, keeps `E` on
-every engine with a sound translation, along every chain of them, and for
+A plan verified under the reference, `requires R ⇒ ensures E`, never raises
+under it, and keeps `E` on every engine with a sound translation, along every chain of them, and for
 every choice the reference leaves open (ties, order-free `FIRST`, clustered
 groups). It does not carry upward, to the core or to `Profile.substrait`,
 whose allowed sets are larger; a Substrait consumer gets `E` only through a
@@ -559,6 +622,77 @@ the choices it uses: the option dependency report (step 3c) computes the
 set, and guard elimination (#83) drops the shims the inferred bounds rule
 out.
 
+### The Polars example
+
+Polars 2.1.0's characterization ([characterization/polars/README.md](../characterization/polars/README.md),
+with strings, dates and casts in
+[#570](https://github.com/AlexanderNenninger/substrait-lean/pull/570) and the
+remaining items in
+[#573](https://github.com/AlexanderNenninger/substrait-lean/pull/573)) lists
+where Polars differs from the reference. Sorted by the three kinds:
+
+Error side, no shim for a verified plan (15). The reference raises on each,
+so a verified plan never reaches Polars's behaviour:
+
+- integer `overflow` of `+ - ×`, negate and `**` (wraps,
+  [int-arith](../characterization/polars/facts/polars-int-arith.json)),
+  `abs(MIN)` ([int-abs](../characterization/polars/facts/polars-int-abs.json)),
+  `MIN / -1` and `sum` of `i32`, `i64`
+  ([int-divide](../characterization/polars/facts/polars-int-divide.json),
+  [sum-int](../characterization/polars/facts/polars-sum-int.json));
+- integer division and modulus by zero (`NULL`, int-divide,
+  [int-modulus](../characterization/polars/facts/polars-int-modulus.json));
+- doubles: `nan_creation`
+  ([double-arith](../characterization/polars/facts/polars-double-arith.json)),
+  division by zero
+  ([double-divide](../characterization/polars/facts/polars-double-divide.json)),
+  `x % 0`
+  ([double-modulus](../characterization/polars/facts/polars-double-modulus.json)),
+  `on_domain_error`, `on_log_zero`
+  ([math-domain](../characterization/polars/facts/polars-math-domain.json)),
+  `atan2(0, 0)` ([atan2](../characterization/polars/facts/polars-atan2.json)),
+  `±∞` in `sum`, `avg`, `variance`, `std_dev`
+  ([nonfinite-aggregates](../characterization/polars/facts/polars-nonfinite-aggregates.json));
+- `date_range`, past 9999 and PL-2's panic (#570's date-range), and
+  `substring_range` (#573's substring-range).
+
+Value side, shimmed (30). Seven of these are a written argument with no run-time
+cost: `round(mode='half_away_from_zero')`, `nulls_last`, `nan_max`,
+`strip_chars(' ')`, `explode`'s and the set operations' NULL arguments, and
+the quantile's `method`. The others are shims with a cost:
+
+- truncating division and modulus of negative integers (`//` floors,
+  int-divide, int-modulus), and the sign of a double modulus (double-modulus);
+- an empty `SUM` (0, [sum-float](../characterization/polars/facts/polars-sum-float.json)),
+  `avg` of integers ([avg-int](../characterization/polars/facts/polars-avg-int.json)),
+  `CORR` of one pair ([corr](../characterization/polars/facts/polars-corr.json)),
+  `mode`'s list ([mode](../characterization/polars/facts/polars-mode.json)),
+  the rank of NULL ([rank](../characterization/polars/facts/polars-rank.json));
+- `zero_sign` and `nan_kind` (`canon`, or `refines up to canon` in #568's
+  terms), and `round` to negative digits
+  ([round-digits](../characterization/polars/facts/polars-round-digits.json));
+- decimal result types and `decimal_rescale`
+  ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json)),
+  the `i64` against `fp64` comparison, `sum`'s widening of `i8`, `i16`, and
+  the implicit casts and literal types of #573;
+- 0-based positions of `substring`, `strpos` and `list_extract`,
+  `strpos`'s NULL, a regex's NULL without a match, `reverse` by graphemes
+  (#570), and `list_null_order` (#573).
+
+Open, native or `approx`: `tie_pick` and `tie_order` (Polars picks
+deterministically, which the reference allows), `sum_order` and `stat_algo`
+(`approx[D, ε]` within #85's bounds), and `log10`, `log2` an ulp off
+([log-base](../characterization/polars/facts/polars-log-base.json)).
+
+Refused: the shifts, `ntile`, `percent_rank`, `cume_dist` and seven string
+functions have no Polars expression, and `<`, `min`, `max` of lists raise in
+Polars where the reference does not, a raise the reference's raise set does
+not cover.
+
+So 15 of Polars's differences cost a verified plan nothing, 7 cost a
+written argument, and the 23 run-time shims left each implement a value the
+reference chose.
+
 ## The steps of #444
 
 Each step is a PR or a short stack, and each ends in a theorem.
@@ -572,7 +706,7 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |
 | 3b | `obligations P Q` for any two profiles, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |
-| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. | For each plan, `verify` under core + that set; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. |
+| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. |
 | 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |
 | 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile translated to the second engine directly. | Soundness of the second engine's translation from `obligations reference E`, and of the direct one from `obligations duckdb E`; the query's proof reused by composition. |
 
