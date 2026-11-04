@@ -62,6 +62,19 @@ QUERIES = [
     "SELECT covar_pop(price, amount) FILTER (WHERE id > 2) AS c FROM orders",
     "SELECT customer, qty, stddev_samp(amount) AS sd, count(*) AS n FROM orders"
     " GROUP BY ROLLUP (customer, qty)",
+    # Exact quantiles, the mode and arg_min/arg_max (#53). DuckDB's median of
+    # strings and dates is the 0.5 quantile_disc, and `quantile` is
+    # `quantile_disc`.
+    "SELECT customer, median(amount) AS m, median(price) AS mp, quantile_cont(qty, 0.25) AS q"
+    " FROM orders GROUP BY customer",
+    "SELECT quantile_disc(amount, 0.5) AS d, quantile_disc(customer, 0.75) AS s,"
+    " quantile(day, 0.3) AS dd, median(customer) AS mc, quantile_cont(price, 1) AS top FROM orders",
+    "SELECT customer, mode(qty ORDER BY qty) AS m, mode(customer ORDER BY customer DESC) AS c"
+    " FROM orders GROUP BY customer",
+    "SELECT customer, arg_min(id, price) AS a, arg_max(day, amount) AS b FROM orders"
+    " GROUP BY customer",
+    "SELECT median(price) FILTER (WHERE id > 1) AS m, quantile_cont(DISTINCT amount, 0.9) AS q"
+    " FROM orders",
 ]
 
 
@@ -97,6 +110,12 @@ def test_the_reference_lift_is_checked_too(query):
             "SELECT var_pop(amount) OVER (PARTITION BY customer) FROM orders",
             "over a window is not supported",
         ),
+        ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),
+        ("SELECT median(cost) FROM orders", "of a DECIMAL is not supported yet"),
+        ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
+        ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
+        ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
+        ("SELECT median(amount) OVER (PARTITION BY customer) FROM orders", "over a window"),
     ],
 )
 def test_refusals_say_what(query, message):

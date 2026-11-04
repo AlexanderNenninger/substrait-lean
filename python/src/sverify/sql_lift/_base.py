@@ -32,6 +32,7 @@ from sverify.plan_json import (
     cast_json,
     column_of,
     compiling,
+    decimal_literal,
     distinct_rel,
     emit_rel,
     field_ref,
@@ -450,7 +451,20 @@ _AGGREGATES: dict[type, str] = {
     sge.CovarSamp: "covar_samp",
     sge.CovarPop: "covar_pop",
     sge.Corr: "corr",
+    # Exact quantiles, the mode and arg_min/arg_max (#53). DuckDB's `quantile`
+    # is `quantile_disc`.
+    sge.Median: "median",
+    sge.PercentileCont: "quantile_cont",
+    sge.PercentileDisc: "quantile_disc",
+    sge.Quantile: "quantile_disc",
+    sge.Mode: "mode",
+    sge.ArgMin: "arg_min",
+    sge.ArgMax: "arg_max",
 }
+
+#: The aggregates that need every value of a group, which `_Lift.holistic`
+#: reads (#53).
+_HOLISTIC = {"median", "quantile_cont", "quantile_disc", "mode", "arg_min", "arg_max"}
 
 #: The variance family's population measures; the others are a sample's.
 _POPULATION = (sge.VariancePop, sge.StddevPop)
@@ -933,7 +947,7 @@ class _Lift:
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
                     raise Unsupported("nth_value needs a positive integer constant")
                 args.append(literal(k.value, dt.int64))
-        elif _AGGREGATES.get(type(f)) in ("variance", "std_dev", *_PAIRED):
+        elif _AGGREGATES.get(type(f)) in ("variance", "std_dev", *_PAIRED, *_HOLISTIC):
             # Lean's `parseWindow` refuses them too.
             raise Unsupported(f"{_shown(f)} over a window is not supported")
         elif type(f) in AGG_RULES:
@@ -1129,6 +1143,8 @@ class _Lift:
             where = self.condition(node.expression.this, scope, bound)
             node = node.this
         name = _AGGREGATES[type(node)]
+        if name in _HOLISTIC:
+            return self.holistic(node, name, where, scope, bound)
         agg_rule = AGG_RULES.get(type(node))
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
@@ -1219,6 +1235,100 @@ class _Lift:
             types, finish = [out], lambda refs: E(refs[0], out)
         filt = {"filter": where} if where is not None else {}
         return [({"measure": m, **filt}, t) for m, t in zip(parts, types, strict=True)], finish
+
+    def holistic(
+        self,
+        node: sge.Expression,
+        name: str,
+        where: Json | None,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E] | None,
+    ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
+        """`median`, `quantile_cont`/`quantile_disc`, `mode` and `arg_min`/
+        `arg_max` (#53), as `Parse.parseMeasure` reads them: a quantile's
+        fraction is a decimal constant, `mode` needs an `ORDER BY` to break
+        its ties, and `arg_min` orders by a column."""
+        arg = node.this
+        order = None
+        if isinstance(arg, sge.Order):
+            # `mode(x ORDER BY …)`
+            order, arg = arg, arg.this
+        distinct = isinstance(arg, sge.Distinct)
+        if distinct:
+            if len(arg.expressions) != 1:
+                raise Unsupported(f"{_shown(node)}: DISTINCT of several values is not supported")
+            arg = arg.expressions[0]
+        if arg is None:
+            raise Unsupported(f"{_shown(node)} needs an argument")
+        a = self.expr(arg, scope, bound)
+        if a.midnight:
+            raise Unsupported(
+                f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
+                "TIMESTAMP is not supported yet (#240)"
+            )
+        t = a.type
+        args = [a.json]
+        sorts: list[Json] = []
+        if name == "median" and not _numeric(t):
+            # DuckDB's median of other ordered values is the 0.5 quantile_disc.
+            name = "quantile_disc"
+            args.append(decimal_literal("0.5", dt.Decimal()))
+        elif name in ("quantile_cont", "quantile_disc"):
+            q = node.args.get("quantile") or node.expression
+            if isinstance(q, sge.Neg):
+                # DuckDB reads a negative fraction from the largest value.
+                raise Unsupported(f"{_shown(node)}: the fraction must be between 0 and 1")
+            if not (isinstance(q, sge.Literal) and not q.is_string):
+                raise Unsupported(f"{_shown(node)}: the fraction must be one number")
+            if not 0 <= Decimal(q.this) <= 1:
+                raise Unsupported(f"{_shown(node)}: the fraction must be between 0 and 1")
+            args.append(decimal_literal(q.this, dt.Decimal()))
+        if name in ("median", "quantile_cont"):
+            if t.is_decimal():
+                raise Unsupported(
+                    f"{_shown(node)} of a DECIMAL is not supported yet (DuckDB interpolates "
+                    "it as a DECIMAL); cast it to DOUBLE"
+                )
+            if not (t.is_integer() or t.is_float64()):
+                raise Unsupported(f"{_shown(node)} of {t} is not supported")
+            out: Any = dt.float64
+        else:
+            out = t
+        if name == "mode":
+            if order is None:
+                raise Unsupported(
+                    f"{_shown(node)} breaks ties in the engine's order; give it an order "
+                    "(mode(x ORDER BY x) takes the smallest of the most frequent values)"
+                )
+            for o in order.expressions:
+                key = self.expr(o.this, scope, bound).json
+                if "selection" not in key:
+                    raise Unsupported(f"{_shown(node)}: ORDER BY a column only")
+                desc = bool(o.args.get("desc"))
+                nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
+                sorts.append(
+                    {"expr": key, "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"}
+                )
+        elif order is not None:
+            raise Unsupported(f"{_shown(node)}: ORDER BY in {name} is not supported")
+        if name in ("arg_min", "arg_max"):
+            if distinct:
+                raise Unsupported(f"{_shown(node)}: DISTINCT is not supported")
+            by = self.expr(node.expression, scope, bound).json
+            if "selection" not in by:
+                raise Unsupported(f"{_shown(node)} orders by a column only")
+            args.append(by)
+        measure: Json = {
+            "functionReference": anchor(name),
+            "arguments": [{"value": j} for j in args],
+            "outputType": type_json(out),
+            "invocation": (
+                "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
+            ),
+            **({"sorts": sorts} if sorts else {}),
+        }
+        filt = {"filter": where} if where is not None else {}
+        return [({"measure": measure, **filt}, out)], lambda refs: E(refs[0], out)
 
     # -- expressions -------------------------------------------------------
 
