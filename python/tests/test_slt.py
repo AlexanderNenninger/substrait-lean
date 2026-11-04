@@ -358,4 +358,4 @@ def test_tables_of_128_bit_integers_are_refused(tmp_path):
     )
     results, _ = slt.replay_file(path, "area/huge.test")
     assert [r.cls for r in results] == ["refused", "refused"]
-    assert all("DD-5" in r.reason for r in results)
+    assert all("DD-5" in (r.reason or "") for r in results)
