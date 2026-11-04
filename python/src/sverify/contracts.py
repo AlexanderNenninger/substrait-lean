@@ -1067,6 +1067,7 @@ class Report:
         *,
         route: RouteKind | Literal["auto"] | None = None,
         deterministic: bool = False,
+        streaming: Literal["allow", "require"] = "allow",
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1092,6 +1093,11 @@ class Report:
                 `"transfer"` or `"recheck"` takes that one or refuses.
             deterministic: With `route`, refuse a plan whose result is not
                 determined up to row order (D10).
+            streaming: On Polars, `"require"` refuses a plan any of whose
+                nodes runs on the in-memory engine
+                (`polars_engine.fallback_nodes`); `"allow"` (the default)
+                runs it. Either way a chosen route records the nodes in
+                `Route.fallbacks`.
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1100,7 +1106,9 @@ class Report:
         Raises:
             ValueError: The report has no plan (it was not made by
                 `verify`), or `engine` is unknown.
-            sverify.routes.RouteError: No route takes the plan to `engine`.
+            sverify.routes.RouteError: No route takes the plan to `engine`,
+                or, with `streaming="require"`, a node of its Polars plan
+                runs on the in-memory engine.
             sverify.routes.EngineVersionError: The engine's major version is
                 not the one its profile's facts were probed at.
 
@@ -1122,25 +1130,53 @@ class Report:
         if self.plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
         kind: str | None = None
+        target = engine if engine is not None else con.engine
+        chosen = None
         if route is not None:
             from sverify import routes
 
-            chosen = routes.choose(
-                self,
-                engine if engine is not None else con.engine,
-                route,
-                deterministic=deterministic,
-            )
+            chosen = routes.choose(self, target, route, deterministic=deterministic)
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
                 raise routes.RouteError(chosen)
             self.check_inputs(con)
+        if target == "polars" and (chosen is not None or streaming == "require"):
+            self._streaming(con, chosen, streaming)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
         finite = self.semantics == "reference" or kind == "reference"
         return run_plan(con, written_plan(self.plan), engine, finite=finite)
+
+    def _streaming(self, con: Connection, chosen: Any, streaming: str) -> None:
+        """Record the in-memory nodes of the plan's Polars streaming plan in
+        its route, and refuse it with `streaming="require"` if it has any."""
+        import dataclasses
+
+        from sverify import polars_engine, routes
+        from sverify.engine import read_tables
+
+        assert self.plan is not None
+        plan = json.loads(written_plan(self.plan))
+        tables = {t: con.arrow[t] for t in read_tables(plan)}
+        nodes = tuple(polars_engine.plan_fallbacks(plan, tables))
+        if chosen is not None:
+            chosen = dataclasses.replace(chosen, fallbacks=nodes)
+            self.routes[chosen.engine] = chosen
+        if streaming == "require" and nodes:
+            refused = routes.Route(
+                engine="polars",
+                kind=None,
+                profile=chosen.profile if chosen is not None else self.semantics,
+                reason=(
+                    f"{len(nodes)} node(s) of the streaming plan run on the in-memory engine "
+                    f"(streaming='require'): " + "; ".join(n[:120] for n in nodes)
+                ),
+                fallbacks=nodes,
+            )
+            self.routes["polars"] = refused
+            raise routes.RouteError(refused)
 
     @property
     def proved(self) -> bool:

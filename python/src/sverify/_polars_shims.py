@@ -79,6 +79,9 @@ SHIMS: tuple[Shim, ...] = (
     Shim("one_zero", "zero_sign", "ONE_ZERO, also as a group key: on read and after each "
          "operation that can give -0.0", "IEEE: -0.0 kept; a group's key is its first zero",
          "polars-zero-sign", "expression"),
+    Shim("pow_ieee", "nan_creation", "IEEE pow: pow(-inf, 0.5) is +inf",
+         "pow(x, 0.5) as sqrt(x): NaN for -inf, on both engines", "polars-double-arith",
+         "expression"),
     Shim("strpos_chars", "negative_start", "1-based characters, 0 when absent",
          "str.find: 0-based bytes, NULL when absent", "polars-strpos", "expression"),
     Shim("substring_wrap", "negative_start", "WRAP_FROM_END",
@@ -143,6 +146,14 @@ def round_half_away(e: pl.Expr) -> pl.Expr:
     """`ROUND` to an integer, halves away from zero (`roundMag`); Polars's
     default rounds them to even (polars-round)."""
     return e.round(0, mode="half_away_from_zero")
+
+
+def pow_ieee(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """`x ^ y` as IEEE's `pow`. Polars computes `pow(x, 0.5)` as `sqrt(x)`,
+    which is NaN for `-inf` where `pow` gives `+inf`; `sqrt(-0.0)` is `-0.0`,
+    which `one_zero` makes the one zero."""
+    inf = pl.lit(float("inf"), pl.Float64)
+    return pl.when((x == -inf) & (y == 0.5)).then(inf).otherwise(x.pow(y))
 
 
 def makes_infinite(y: pl.Expr, *xs: pl.Expr) -> pl.Expr:
@@ -233,7 +244,8 @@ def sum_empty_null(total: pl.Expr, values: pl.Expr) -> pl.Expr:
 
 def int_sum(values: pl.Expr) -> pl.Expr:
     """The exact `SUM` of integers, on 128 bits, NULL for no values. Its
-    result fits 64 bits unless `sum_leaves_i64`."""
+    result fits 64 bits unless `sum_leaves_i64`. (A cast of 128-bit values
+    is none: Polars drops it.)"""
     return sum_empty_null(values.cast(pl.Int128).sum(), values)
 
 

@@ -140,6 +140,10 @@ class Route:
     where one rests on a test or a probe; None where the tables say nothing."""
     shims: tuple[str, ...] = ()
     """The shims the translation writes for this plan, by option."""
+    fallbacks: tuple[str, ...] = ()
+    """On Polars, the nodes of the plan's streaming plan that run on the
+    in-memory engine (`polars_engine.fallback_nodes`), recorded by
+    `Report.run`: the in-memory engine's facts hold for those."""
 
     @property
     def refused(self) -> bool:

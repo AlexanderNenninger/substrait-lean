@@ -14,6 +14,7 @@ from pathlib import Path
 
 import ibis
 import polars as pl
+import pyarrow as pa
 import pytest
 
 from sverify import _polars_shims as shims
@@ -447,12 +448,16 @@ def test_queries_stream_whatever_the_settings(setting, monkeypatch):
     assert _batches(polars_engine.collect) > 1
 
 
-def test_streaming_fallbacks_are_found():
-    """`streaming_fallbacks` reads the physical plan: a list per group runs on
+def test_fallback_nodes_are_found():
+    """`fallback_nodes` reads the physical plan: a list per group runs on
     the in-memory engine, a sum per group streams."""
     lf = pl.LazyFrame({"g": [1, 2, 1], "x": [1.0, 2.0, 3.0]}).group_by("g", maintain_order=True)
-    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").sum())) == []
-    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").implode())) == ["in-memory-map"]
+    assert polars_engine.fallback_nodes(lf.agg(pl.col("x").sum())) == []
+    (node,) = polars_engine.fallback_nodes(lf.agg(pl.col("x").implode()))
+    assert node.startswith("in-memory-map: AGGREGATE")
+    assert polars_engine.disallowed_fallbacks(lf.agg(pl.col("x").implode())) == []
+    q = lf.agg(pl.col("x").median())
+    assert polars_engine.disallowed_fallbacks(q) == polars_engine.fallback_nodes(q) != []
 
 
 # --- CASE: Polars computes every branch -----------------------------------------
@@ -472,7 +477,11 @@ CASE_ROWS = [(10, 0, 0.0, "ab"), (MIN, -1, -1.0, None), (7, -2, math.nan, "æ—¥æœ
      "CASE WHEN x > 0 THEN sqrt(x) END",
      "CASE WHEN b > 0 THEN pow(a, b) END",
      "CASE WHEN a < 100 THEN repeat(s, a) END",
-     "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END"],
+     "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END",
+     # Polars's CSE may hoist a repeated subexpression out of its branch
+     # (`csee.rs`); the translator's casts are masked inside the expression.
+     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(x AS BIGINT) + CAST(x AS BIGINT)"
+     " WHEN x = x AND x < 1e17 THEN CAST(x AS BIGINT) END"],
 )  # fmt: skip
 def test_an_untaken_branch_neither_raises_nor_leaks(case):
     """Polars evaluates both sides of `when/then/otherwise` on every row. The
@@ -555,26 +564,47 @@ def test_month_arithmetic_is_native_and_the_calendars(months):
             assert got == want
 
 
+def _ulps(a: float, b: float) -> float:
+    return abs(a - b) / math.ulp(b) if b != 0.0 else abs(a) / math.ulp(0.0)
+
+
 @pytest.mark.parametrize("n", [2, 5001])
-def test_double_division_by_a_constant_is_exact(n):
-    """PL-3 (polars-double-scalar-divisor): Polars divides a column by a
-    constant through its reciprocal, also broadcast to a column and on the
-    streaming engine, so `fdiv` and `fmod` keep numpy."""
-    rows = [(0, 49.0), (1, 0.0), (2, 1e-300)] * n
-    lf = pl.LazyFrame({"x": [x for _, x in rows]})
-    ours = lf.select(
-        q=polars_engine.fdiv(pl.col("x"), pl.lit(49.0)),
-        m=polars_engine.fmod(pl.col("x"), pl.lit(49.0)),
-        t=polars_engine.fdiv(pl.col("x"), pl.lit(1e-310)),
+def test_double_division_is_within_two_ulps_and_the_remainder_exact(n):
+    """PL-3 (polars-double-scalar-divisor): Polars divides by a constant
+    through its reciprocal, on both engines and from 2 rows on. The
+    reference's `/` is `approx` there, 2 ulps per division, for a divisor
+    that is not subnormal; `%` stays C's `fmod`, exact, and `ROUND`'s
+    division by `10^d` exact."""
+    xs = [49.0, 0.0, 1e-300, 7.0, -3.3, 1e308, 5e-324]
+    lf = pl.LazyFrame({"x": xs * n})
+    out = polars_engine.collect(
+        lf.select(
+            q=polars_engine.fdiv(pl.col("x"), pl.lit(49.0)),
+            m=polars_engine.fmod(pl.col("x"), pl.lit(49.0)),
+            r=polars_engine.exact_div(pl.col("x"), pl.lit(49.0)),
+        )
     )
-    ours = polars_engine.collect(ours)
-    assert ours.row(0) == (1.0, 0.0, math.inf)
-    assert ours.row(1) == (0.0, 0.0, 0.0)
-    assert ours.row(2)[2] == 1e-300 / 1e-310
-    sql = "SELECT g, x / 49.0 AS q, x % 49.0 AS m FROM r"
+    for x, (q, m, r) in zip(xs, out.rows()[: len(xs)], strict=True):
+        assert _ulps(q, x / 49.0) <= 2
+        assert m == math.fmod(x, 49.0)
+        assert r == x / 49.0
+    rows = [(0, 49.0), (1, 0.0), (2, 1e-300)] * n
+    sql = "SELECT g, x / 49.0 AS q, x % 49.0 AS m, ROUND(x / 7.0, 2) AS r FROM r"
     lean, polars = lean_and_polars(FLOATS, rows[:6], sql, doubles=True)
-    for (g, q, m), (h, q2, m2) in zip(polars, lean, strict=True):
+    for (g, q, m, r), (h, q2, m2, r2) in zip(polars, lean, strict=True):
         assert g == h and math.isclose(q, q2, abs_tol=1e-6) and math.isclose(m, m2, abs_tol=1e-6)
+        assert math.isclose(r, r2, abs_tol=1e-6)
+
+
+def test_a_subnormal_divisor_is_refused():
+    con = connect()
+    create_table(con, "r", FLOATS, [(0, 1.0), (1, 2.0)])
+    plan = written_plan(substrait_json(con, "SELECT x / 1e-310 AS q FROM r", "reference"))
+    with pytest.raises(polars_engine.SubnormalDivisor):
+        run_plan(con, plan, "polars")
+    # Without the check, the reciprocal overflows: 1 / 1e-310 is inf.
+    out = polars_engine.run(plan, {"r": con.arrow["r"]}, guards=set())
+    assert math.isinf(out["q"].to_pylist()[0])
 
 
 def test_a_difference_of_zeros_is_the_one_zero():
@@ -660,3 +690,46 @@ def test_native_bit_aggregates_match_lean(op):
     create_table(con, "r", schema, rows)
     lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
     assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+
+
+def test_pow_of_minus_infinity_to_a_half_is_ieee():
+    """Polars computes `pow(x, 0.5)` as `sqrt(x)`: NaN for `-inf`, where
+    IEEE's `pow` and the reference give `+inf`."""
+    df = pl.DataFrame({"x": [-math.inf, -0.0, 4.0], "y": [0.5, 0.5, 0.5]})
+    x, y = pl.col("x"), pl.col("y")
+    assert math.isnan(df.select(x.pow(0.5))["x"][0])  # a literal exponent
+    got = df.select(shims.one_zero(shims.pow_ieee(x, y)).alias("p"))["p"].to_list()
+    assert got == [math.inf, 0.0, 2.0]
+    assert math.copysign(1.0, got[1]) == 1.0
+    rows = [(0, -math.inf), (1, -0.0), (2, 4.0)]
+    lean, polars = lean_and_polars(
+        FLOATS, rows, "SELECT g, power(x, 0.5) AS p FROM r", doubles=True
+    )
+    assert repr(lean) == repr(polars)
+
+
+# --- Streaming in a routed run ---------------------------------------------------
+
+
+def test_a_routed_run_records_fallbacks_and_can_require_streaming():
+    import sverify as sv
+    from sverify.errors import RouteError
+
+    t = ibis.table({"k": "int64", "i": "int64"}, name="t")
+    con = sv.connect()
+    con.put("t", pa.table({"k": [1, 1, 2], "i": [3, 4, 5]}))
+    summed = sv.verify(t.group_by("k").aggregate(total=t.i.sum()))
+    out = summed.run(con, "polars", route="auto", streaming="require")
+    assert sorted(out.to_pylist(), key=lambda r: r["k"]) == [
+        {"k": 1, "total": 7},
+        {"k": 2, "total": 5},
+    ]
+    assert summed.routes["polars"].fallbacks == ()
+    listed = sv.verify(t.group_by("k").aggregate(l=t.i.collect()))
+    listed.run(con, "polars", route="auto")
+    (node,) = listed.routes["polars"].fallbacks
+    assert "implode" in node
+    with pytest.raises(RouteError, match="in-memory engine"):
+        listed.run(con, "polars", route="auto", streaming="require")
+    with pytest.raises(RouteError, match="in-memory engine"):
+        listed.run(con, "polars", streaming="require")
