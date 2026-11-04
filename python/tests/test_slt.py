@@ -328,3 +328,34 @@ def test_large_queries_are_condensed(tmp_path):
     assert (r.cls, r.reason) == ("agree", f"condensed to {slt.MAX_ROWS} rows")
     # Lean counted the condensed join, not the test's full one.
     assert r.lean == f'[["{slt.MAX_ROWS // 2}"]]'
+
+
+def test_tables_of_128_bit_integers_are_refused(tmp_path):
+    """DuckDB exports `UHUGEINT` to Arrow as `decimal128(38, 0)`, its maximum
+    as -1 (DD-5): the harness refuses such tables rather than mirror them
+    (#618)."""
+    path = tmp_path / "huge.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE u AS SELECT '340282366920938463463374607431768211455'::UHUGEINT AS i
+
+            query R
+            SELECT i::DOUBLE FROM u
+            ----
+            340282366920938463463374607431768211455
+
+            statement ok
+            CREATE TABLE h AS SELECT [1::HUGEINT] AS l
+
+            query I
+            SELECT l[1] FROM h
+            ----
+            1
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/huge.test")
+    assert [r.cls for r in results] == ["refused", "refused"]
+    assert all("DD-5" in (r.reason or "") for r in results)

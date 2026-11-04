@@ -51,6 +51,14 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ('SELECT 42::TINYINT::"null"', "CAST to"),
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
+        # Unsigned integers are outside the core (#618): a constant above the
+        # signed range is refused, never read as a negative.
+        ("SELECT '340282366920938463463374607431768211455'::UHUGEINT", "HUGEINT"),
+        ("SELECT 340282366920938463463374607431768211455 AS x", "HUGEINT"),
+        ("SELECT 18446744073709551615::UBIGINT", "unsigned"),
+        ("SELECT 9223372036854775808::UBIGINT", "unsigned"),
+        ("SELECT 4294967295::UINTEGER", "unsigned"),
+        ("SELECT CAST(id AS UINTEGER) FROM orders", "unsigned"),
         ("SELECT CAST(NULL AS INT[3]) FROM orders", "fixed-size array"),
     ],
 )
