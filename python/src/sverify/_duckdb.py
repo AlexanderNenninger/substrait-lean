@@ -25,7 +25,10 @@ from collections.abc import Callable
 import duckdb
 
 _DB: duckdb.DuckDBPyConnection | None = None
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()
+# Reentrant: `forget` runs from weakref finalizers, which the garbage
+# collector may call inside `cursor` or `collect` while this thread holds
+# the lock; a plain Lock deadlocks the process there.
 _GONE: list[tuple[str, str]] = []
 #: What forgets a cursor of the database kept elsewhere (`on_reset`).
 _FORGET: list[Callable[[], None]] = []
@@ -69,8 +72,9 @@ def forget(name: str, kind: str) -> None:
 def collect(db: duckdb.DuckDBPyConnection) -> None:
     """Drop the residents nothing refers to any more, through `db`."""
     with _LOCK:
-        gone = list(_GONE)
-        _GONE.clear()
+        gone = _GONE[:]
+        # Keep what a finalizer queued since the copy.
+        del _GONE[: len(gone)]
     # Views first: one may read a table dropped in the same batch.
     for name, kind in sorted(gone, key=lambda g: g[1] != "VIEW"):
         db.execute(f'DROP {kind} IF EXISTS main."{name}"')
