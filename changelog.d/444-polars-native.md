@@ -6,7 +6,7 @@ The Polars engine now computes integer `POWER`, month arithmetic and
 and `ARRAY_AGG` as Polars expressions, where it ran Python and numpy on each
 batch before. numpy is imported only for double `/` and `%`: Polars divides a
 column by a constant through its reciprocal, so `49.0 / 49.0` is
-`0.9999999999999999` there (`upstream`: PL-3, fact
-`polars-double-scalar-divisor`). A double `+` or `-` is now `0.0` where Polars
+`0.9999999999999999` there (PL-3 and the fact
+`polars-double-scalar-divisor`, from #608). A double `+` or `-` is now `0.0` where Polars
 rewrites `0.0 - x` as `-x` (fact `polars-zero-sign`)
 ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)).
