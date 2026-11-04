@@ -1077,7 +1077,7 @@ and the default of the model's `SortKey` for hand-built values.
 
 ### D9. One tool per option
 
-Each option gets one of three tools in the reference: raise, choose a value,
+Each option gets one of three tools in the reference ([D21](#d21-tighten-the-reference-where-it-stays-practical)): raise, choose a value,
 or leave it open. One table, a row per option, records the tool, the
 precondition it creates, and the shim count per engine. The reference raises
 only where that precondition is usually provable from the bounds or cheap to
@@ -1227,3 +1227,18 @@ characterization pipeline's probes), so such a plan passes a sink whose
 `q_post` and still fail every `q_det`, since which rows it keeps can change
 between runs.
 
+
+### D21. Tighten the reference where it stays practical
+
+Sverify tightens the reference when that costs little in practicality. Where
+an engine differs from the reference on an edge case, the reference raises
+there, rather than the engine getting a shim, as long as the precondition
+that excludes the edge case rarely bites real queries: it is proved from the
+bounds or checked on the data by a guard. A guard costs a check where the
+precondition is not proved; a shim costs a rewrite on every run. D9's table
+records the tool for each option. This is how D9 chooses between raising and
+choosing a value.
+
+Example: `power(-∞, y)` for a non-integer `y` raises in the reference.
+IEEE 754 gives `+∞`, and Polars's `** 0.5` gives NaN through `sqrt`, so
+Polars needs a guard for such plans and no shim.
