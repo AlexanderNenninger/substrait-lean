@@ -30,7 +30,7 @@
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. Lean evaluates `CASE` lazily and `and`/`or` on both operands (Kleene), the same model.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -231,6 +231,17 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Confirms round 2's reading of the CASE simplification: it raises while planning (DD-5)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "fuzz",
+      "checked_by": "characterization pipeline round 5 (sverify_dev.duckdb_fuzz on homelab, Linux x86_64, budget 900 s per target)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/fuzz__eval_order.json"
+        }
+      ],
+      "notes": "eval_order: 16183 random DuckDB queries with integer + - * // % over 0, ±1, 2, 7 and the i64 bounds inside CASE, COALESCE, NULLIF, AND, OR and NOT; five disagreements, all an integer overflow or division by zero that DuckDB raises and Rel.eval evaluates (four flagged by verify; `k - 1` at the minimum and `x // x` at 0 are not, leads for the lift's DuckDB profile). None turns on evaluation order: no CASE, COALESCE, AND or OR evaluated an operand the reference skips, in these queries (the plan-time CASE fold of DD-5 needs a constant raising WHEN, which the generator does not draw)."
     }
   ],
   "issues": [

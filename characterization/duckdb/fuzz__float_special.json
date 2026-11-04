@@ -1,0 +1,13 @@
+{
+  "duckdb": "2.0.0",
+  "source": "sverify_dev.duckdb_fuzz (generated queries, no DuckDB tests)",
+  "area": "fuzz/float_special",
+  "summary": {"agree": 16809, "disagree": 1, "refused": 0, "skipped": 0},
+  "agree_oracle_a_only": 0,
+  "disagree_sides": {"lean": 1},
+  "skipped_files": {},
+  "checked": 16810,
+  "results": [
+    {"file": "fuzz:float_special", "line": 0, "sql": "SELECT DISTINCT (i // i) AS c0, b AS c1, b AS c2 FROM t AS q ORDER BY c0, c1, c2", "tables": {"t": [["NULL", "NULL", "NULL", "NULL", "NULL", "NULL"], ["NULL", "NULL", "NULL", "NULL", "NULL", "NULL"], ["NULL", "NULL", "NULL", "NULL", "NULL", "NULL"], ["0", "NULL", "NULL", "NULL", "NULL", "NULL"]]}, "duckdb": "error: Invalid Input Error: Division by zero in expression (i // i). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.", "lean": "[[\"NULL\", \"NULL\", \"NULL\"]]", "cls": "disagree", "side": "lean"}
+  ]
+}

@@ -14,9 +14,16 @@
       "group": "fp.mod",
       "option": "nan_creation",
       "types": [
-        "fp32",
         "fp64"
       ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "nan_creation",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
     },
     {
       "group": "fp.mod",
@@ -24,7 +31,8 @@
       "types": [
         "fp32",
         "fp64"
-      ]
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -46,7 +54,7 @@
   ],
   "reference": "`modulus` of doubles is `fmod` (duckdb-R4); a zero divisor and an infinite dividend raise.",
   "status": "shimmed",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-02",
@@ -119,6 +127,17 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "fuzz",
+      "checked_by": "characterization pipeline round 5 (sverify_dev.duckdb_fuzz on homelab, Linux x86_64, budget 900 s per target)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/fuzz__float_special.json"
+        }
+      ],
+      "notes": "float_special: 16810 random DuckDB queries over DOUBLE columns and literals holding ±0, NaN, ±inf, 1.7e308, 0.1 and a subnormal, with + - * / %, negation, abs, CASE, COALESCE and comparisons; Rel.eval under DuckDB's semantics agreed with DuckDB on every one (doubles compared to six decimals, so zero and NaN signs are not seen). The one disagreement is integer `i // i` at 0 (DuckDB raises)."
     }
   ],
   "issues": [
