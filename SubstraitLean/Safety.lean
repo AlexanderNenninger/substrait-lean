@@ -1135,6 +1135,13 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
 /-- Is the value a double's `±∞`? -/
 def isInfValue (v : Value) : Bool := v == .int FloatCode.posInf || v == .int FloatCode.negInf
 
+/-- Are `QUANTILE_CONT`'s neighbours among the values in order `-∞` and
+`+∞` (`contNeighbours`)? Its interpolation between them is NaN. -/
+def quantileOpposite (num scale : Nat) (vs : List Value) : Bool :=
+  match contNeighbours num scale (sortVals vs) with
+  | some (l, h, _) => l == FloatCode.negInf && h == FloatCode.posInf
+  | none => false
+
 /-- Would IEEE make the aggregate of these values NaN, from numbers (#257)?
 A double `SUM` or `AVG` of `+∞` and `-∞`, and a variance of an infinity
 (`∞ - ∞` in its deviations). A black box that raises on them (#326) is
@@ -1146,6 +1153,11 @@ def AggFn.makesNan : AggFn → List Value → Bool
   | .cov _, vs | .corr, vs => vs.any fun
     | .list [a, b] => isInfValue a || isInfValue b
     | _ => false
+  -- `QUANTILE_CONT` between `-∞` and `+∞`: IEEE's interpolation is NaN
+  -- (DuckDB gives it), the model's clamp `+∞`; the reference raises (D21).
+  | .quantile true num scale, vs =>
+    vs.contains (.int FloatCode.posInf) && vs.contains (.int FloatCode.negInf) &&
+      quantileOpposite num scale vs
   -- A black box that raises on these values (#326).
   | .bbox n, vs => BlackBox.aggRaisesOn n vs
   | _, _ => false
@@ -1154,6 +1166,7 @@ def AggFn.makesNan : AggFn → List Value → Bool
 def AggFn.mayNan : AggFn → AVal → Bool
   | .fsum, a | .avg, a => a.has FloatCode.posInf && a.has FloatCode.negInf
   | .var _ _, a => a.has FloatCode.posInf || a.has FloatCode.negInf
+  | .quantile true _ _, a => a.has FloatCode.posInf && a.has FloatCode.negInf
   -- A pair's sides are what may be infinite (`Measure.mayNan`).
   | .cov _, _ | .corr, _ => true
   | .bbox n, _ => BlackBox.aggMayRaise n
@@ -1161,10 +1174,18 @@ def AggFn.mayNan : AggFn → AVal → Bool
 
 theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
     (has : ∀ c, .int c ∈ vs → a.has c = true) (h : f.makesNan vs = true) : f.mayNan a = true := by
-  cases f <;> simp only [makesNan, mayNan, Bool.and_eq_true, Bool.or_eq_true,
+  cases f
+  case quantile c _ _ =>
+    cases c <;> simp only [makesNan, mayNan, Bool.and_eq_true, List.contains_iff_mem,
+      reduceCtorEq] at h ⊢
+    all_goals first
+      | exact ⟨has _ h.1.1, has _ h.1.2⟩
+      | simp at h
+  all_goals simp only [makesNan, mayNan, Bool.and_eq_true, Bool.or_eq_true,
     List.contains_iff_mem] at h ⊢
   all_goals first
     | exact ⟨has _ h.1, has _ h.2⟩
+    | exact ⟨has _ h.1.1, has _ h.1.2⟩
     | exact h.imp (has _) (has _)
     | exact BlackBox.aggMayRaise_of_aggRaisesOn h
     | simp at h
