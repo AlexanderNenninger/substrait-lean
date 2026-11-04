@@ -25,11 +25,15 @@ Input (JSON):
   "references": {"<table>": [[<col>, "<table>", <col>], ...]},
       -- input foreign keys: every non-NULL value of the column occurs in the
       -- other table's column (`ForeignKeys.Hold`)
-  "max_rows": {"<table>": <n>} }
+  "max_rows": {"<table>": <n>},
       -- row caps (`sv.max_rows`): the postconditions, facts and issues are
       -- checked on the plan with these reads capped (`Rel.capReads`), which is the plan
       -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
       -- get their error bounds from them (#85)
+  "rows_per": {"<table>": [[[<col>, ...], <n>], ...]} }
+      -- at most <n> rows per value of the columns (`sv.rows_per`, `RowsPer`):
+      -- an aggregate grouping by them has groups of at most <n> rows, which
+      -- bound its integer and decimal `SUM`s (`Rel.issuesCapped_sound`)
 ```
 
 Output: a JSON report (`Report.json`). Besides what is proved, it carries
@@ -170,11 +174,17 @@ structure Report where
   /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
   deterministic : Bool := true
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
-  out: an integer `SUM` the row caps keep within 64 bits is left out. -/
+  out: an integer `SUM` the row caps or the bounds on rows per key keep
+  within 64 bits is left out. -/
   issues : List (Issue × Expr) := []
   /-- At most this many output rows, on inputs within their caps
   (`Rel.maxRows_sound` of the capped plan). -/
   rows : Option Nat := none
+  /-- Each relation of the transformation, in pre-order: its operator, its
+  depth, at most how many rows it has (`Rel.maxRows_sound` of its capped
+  plan) and, for an aggregate, at most how many rows a group has
+  (`Rel.groupRows_sound`). -/
+  relations : List (String × Nat × Option Nat × Option Nat) := []
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
@@ -232,6 +242,10 @@ def Report.json (r : Report) : Json :=
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
+    ("relations", Json.arr (r.relations.map fun (op, d, n, g) =>
+      Json.mkObj [("op", Lean.toJson op), ("depth", Lean.toJson d),
+        ("rows", match n with | some n => Lean.toJson n | none => .null),
+        ("group_rows", match g with | some n => Lean.toJson n | none => .null)]).toArray),
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
         ("expr", Lean.toJson e.render),
@@ -278,6 +292,59 @@ def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
 def rowCaps (j : Json) : String → Option Nat := fun t =>
   (j.getObjValAs? Nat t).toOption
 
+/-- The bounds on rows per key of each table (`sv.rows_per`). -/
+def rowsPer (j : Json) : String → List (List Nat × Nat) := fun t =>
+  (((j.getObjVal? t).toOption.bind (·.getArr?.toOption)).getD #[]).toList.filterMap fun e =>
+    match e.getArr?.toOption.map Array.toList with
+    | some [k, n] => do
+      let n ← n.getNat?.toOption
+      pure (((k.getArr?).toOption.getD #[]).toList.filterMap (·.getNat?.toOption), n)
+    | _ => none
+
+/-- The operator of a relation, as the report names it. -/
+def opName : Rel → String
+  | .read t => s!"read {t}"
+  | .values _ _ => "values"
+  | .filter _ _ => "filter"
+  | .project _ _ => "project"
+  | .emit _ _ => "emit"
+  | .cross _ _ => "cross"
+  | .join _ _ .inner _ => "join"
+  | .join _ _ .left _ => "left join"
+  | .fetch _ _ _ => "fetch"
+  | .unionAll _ _ => "union all"
+  | .window _ _ _ _ => "window"
+  | .semi _ _ false _ => "semi join"
+  | .semi _ _ true _ => "anti join"
+  | .orderBy _ _ => "order by"
+  | .distinct _ => "distinct"
+  | .aggregate _ _ _ => "aggregate"
+  | .unnest _ _ => "unnest"
+
+/-- Each relation of `r` in pre-order, with its depth, its row bound on
+the capped plan and an aggregate's bound on the rows of a group. -/
+def relationBounds (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (caps : String → Option Nat)
+    (P : String → List (List Nat × Nat)) (d : Nat) (r : Rel) :
+    List (String × Nat × Option Nat × Option Nat) :=
+  let group := match r with
+    | .aggregate i gs _ =>
+      let c := i.capped cat A F K caps
+      let g := c.groupRows cat A F K P gs
+      match g, c.maxRows with
+      | some a, some b => some (min a b)
+      | some a, none => some a
+      | none, b => if gs.isEmpty then b else none
+    | _ => none
+  let here := (opName r, d, (r.capped cat A F K caps).maxRows, group)
+  let rest := match r with
+    | .read _ | .values _ _ => []
+    | .filter i _ | .project i _ | .emit i _ | .fetch i _ _ | .window i _ _ _ | .orderBy i _
+    | .distinct i | .aggregate i _ _ | .unnest i _ => relationBounds cat A F K caps P (d + 1) i
+    | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
+      relationBounds cat A F K caps P (d + 1) a ++ relationBounds cat A F K caps P (d + 1) b
+  here :: rest
+
 def check (input : Json) : Except String Report := do
   let ensures ← ((input.getObjValAs? (Array Json) "ensures").toOption.getD #[]).toList.mapM
     parseJsonPlan
@@ -311,6 +378,7 @@ def check (input : Json) : Except String Report := do
   let implied : List (String × List (List (Nat × Bound))) :=
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let perKey := rowsPer ((input.getObjVal? "rows_per").toOption.getD (.obj {}))
   let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST, " ++
     "STRING_AGG, MODE, ARG_MIN or ARG_MAX, and the engine orders them"
   let mut results : List (String × Bool × String) := []
@@ -352,11 +420,15 @@ def check (input : Json) : Except String Report := do
     | none => []
   let issues := match transform with
     | some p =>
-      if p.root.checkWF cat then (p.root.issuesCapped cat A F T inputKeys caps).eraseDups else []
+      if p.root.checkWF cat then (p.root.issuesCapped cat A F T inputKeys caps perKey).eraseDups else []
     | none => []
   let rows := match transform with
     | some p => if p.root.checkWF cat then (p.root.capped cat A F inputKeys caps).maxRows else none
     | none => none
+  let relations := match transform with
+    | some p =>
+      if p.root.checkWF cat then relationBounds cat A F inputKeys caps perKey 0 p.root else []
+    | none => []
   let bounds := match transform with
     | some p =>
       if !p.root.checkWF cat then [] else
@@ -391,6 +463,7 @@ def check (input : Json) : Except String Report := do
     deterministic
     issues
     rows
+    relations
     bounds
     -- Only for the issues the caps leave.
     inferred := Infer.merged A (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))

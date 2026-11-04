@@ -486,6 +486,42 @@ print(report)
 * In `ensures`, `sv.max_rows(n)` is proved from the inputs' caps.
   `Report.rows` is the cap on the output, under "known about the output".
 * The SUM hint names the cap that proves a sum fits.
+* A cap also bounds the magnitude of an integer or decimal `SUM`: at most
+  `n` values in `[lo, hi]` add up to within `[min(0, n·lo), max(0, n·hi)]`,
+  so arithmetic on the sum can be proved to fit
+  ([#470](https://github.com/AlexanderNenninger/substrait-lean/issues/470)).
+
+### Rows per key
+
+`sv.rows_per(["customer"], at_most=n)` in `requires` states that at most
+`n` rows of an input agree on the columns (#219). A cap on the whole table
+bounds every group at once; this bounds each group alone, so a table may
+grow without limit while each customer's rows stay few:
+
+```python
+sales = ibis.table({"customer": "string", "amount": "int64"}, name="sales")
+per_customer = sales.group_by("customer").aggregate(total=sales.amount.sum())
+report = sv.verify(
+    per_customer,
+    requires={"sales": [_.amount >= 0, _.amount <= 10**6, sv.rows_per(["customer"], at_most=10**12)]},
+)
+assert not report.assumed and not report.errors
+# Each group's sum is at most 10¹² · 10⁶, which fits 64 bits.
+```
+
+* Filters, sorts, `LIMIT`, `DISTINCT`, semi-joins, projections and
+  `UNION ALL` keep the bounds (`Rel.perKey_sound` in
+  [Rows.lean](../SubstraitLean/Rows.lean)), and so does a join on a `unique`
+  key of its right side. A `unique` key is a bound of 1.
+* An aggregate grouping by all of a bound's columns has groups of at most
+  that many rows (`Rel.groupRows_sound`), which bounds its integer and
+  decimal `SUM`s.
+* `Report.relations` lists each relation of the plan with the bound on its
+  rows and, for an aggregate, on the rows of a group.
+* It is checked on the data at call time (a `GROUP BY` of the columns, with
+  NULLs as one key), or proved from a row count of a Delta or Iceberg table
+  of at most `n` rows. Incremental views refuse it until batches are checked
+  against it.
 
 ### Suggested preconditions
 

@@ -126,8 +126,9 @@ fires, `Rel.eval`'s value is not the answer.
   (`Rel.noIssue_of_sumsFit`). With `infer=False` it is an error that makes the
   report unproved. A row cap on the inputs (`sv.max_rows(n)`,
   [#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
-  discharges it statically: with values in `[-m, m]` and at most `n` rows,
-  `n · m < 2⁶³` proves the sum fits (`Rel.issuesCapped_sound` in
+  or a bound on the rows per grouping key (`sv.rows_per(cols, at_most=n)`)
+  discharges it statically: with values in `[-m, m]` and at most `n` rows
+  in a group, `n · m < 2⁶³` proves the sum fits (`Rel.issuesCapped_sound` in
   [Rows.lean](../SubstraitLean/Rows.lean)).
 
 ## Core: numbers and NULLs

@@ -1595,11 +1595,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": false,
-   "may_fail": [
-    "overflow: DECIMAL_27_3(($6 * DECIMAL_1_1(5)))"
-   ]
+   "proved": true,
+   "guard_free": false
   },
   "verified_sql": {
    "duckdb": "yes"

@@ -57,6 +57,7 @@ from sverify.contracts import (
     Condition,
     MaxRows,
     References,
+    RowsPer,
     TableCondition,
     Unique,
     _lookup,
@@ -414,6 +415,16 @@ def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
         return [r for r in rows if r[cond.col] is None]
     if isinstance(cond, MaxRows):
         return rows[cond.n :]
+    if isinstance(cond, RowsPer):
+        # The rows beyond the first `n` of each key.
+        seen: Counter[object] = Counter()
+        over = []
+        for r in rows:
+            k = _norm(tuple(r[c] for c in cond.cols))
+            seen[k] += 1
+            if seen[k] > cond.n:
+                over.append(r)
+        return over
     if isinstance(cond, References):
         present = {_norm(r[cond.other]) for r in con.arrow[cond.table].to_pylist()}
         return [r for r in rows if r[cond.col] is not None and _norm(r[cond.col]) not in present]
@@ -772,7 +783,11 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
         for t, cs in requirements.items()
     }
     keys = {
-        t: [[schemas[t].names.index(col) for col in c.cols] for c in cs if isinstance(c, Unique)]
+        t: [
+            ([schemas[t].names.index(col) for col in c.cols], 1 if isinstance(c, Unique) else c.n)
+            for c in cs
+            if isinstance(c, Unique | RowsPer)
+        ]
         for t, cs in requirements.items()
     }
     foreign = [
@@ -800,13 +815,13 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
             if rows:
                 held = counterexample.evaluate(plan, {t: rows})
                 rows = [r for r, (v,) in zip(rows, held, strict=True) if v is True]
-        for cols in keys[t]:
-            seen: set[object] = set()
+        for cols, n in keys[t]:
+            seen: Counter[object] = Counter()
             kept = []
             for r in rows:
                 k = _norm(tuple(r[i] for i in cols))
-                if k not in seen:
-                    seen.add(k)
+                if seen[k] < n:
+                    seen[k] += 1
                     kept.append(r)
             rows = kept
         return rows
