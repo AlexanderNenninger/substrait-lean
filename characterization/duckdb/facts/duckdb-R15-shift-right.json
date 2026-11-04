@@ -8,6 +8,9 @@
   "options": [
     "shift_range"
   ],
+  "rows": [
+    {"group": "int.shift", "option": "shift_range", "types": ["i64"]}
+  ],
   "constructs": [
     ">>",
     "shift_right"
@@ -25,6 +28,7 @@
   "description": "0 for shifts below 0 or beyond 63 (`-5 >> 64` too).",
   "reference": "`shift_right` raises on shifts below 0 or beyond 63.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

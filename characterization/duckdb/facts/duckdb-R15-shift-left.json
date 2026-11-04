@@ -9,6 +9,9 @@
     "shift_range",
     "raise_set"
   ],
+  "rows": [
+    {"group": "int.shift", "option": "shift_range", "types": ["i64"]}
+  ],
   "constructs": [
     "<<",
     "shift_left"
@@ -26,6 +29,7 @@
   "description": "Raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`).",
   "reference": "`shift_left` drops the bits shifted out, and raises on shifts below 0 or beyond 63.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

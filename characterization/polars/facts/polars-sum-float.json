@@ -9,6 +9,9 @@
     "sum_order",
     "empty_group_aggregates"
   ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]}
+  ],
   "constructs": [
     "sum"
   ],
@@ -19,6 +22,7 @@
   ],
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

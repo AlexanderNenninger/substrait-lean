@@ -13,6 +13,7 @@
   "description": "DataFusion 51 writes `FROM (VALUES …)` as an empty virtual table.",
   "reference": "The replay refuses these plans (`producer: VALUES written as an empty virtual table`).",
   "status": "no-finding",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

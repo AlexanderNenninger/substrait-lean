@@ -23,6 +23,7 @@
   ],
   "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround either; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

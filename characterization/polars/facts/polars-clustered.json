@@ -8,6 +8,9 @@
   "options": [
     "clustered"
   ],
+  "rows": [
+    {"option": "clustered", "types": ["any"]}
+  ],
   "constructs": [
     "sort"
   ],
@@ -15,6 +18,7 @@
   "description": "Polars has no operation that only brings equal keys together; `sort` on the keys does (with `maintain_order=True` the rows of a key keep their order).",
   "reference": "`SORT_DIRECTION_CLUSTERED`: equal keys adjacent, groups in any order; the parser refuses it for now.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -7,7 +7,13 @@
   "area": "doubles",
   "options": [
     "division_type",
+    "on_division_by_zero",
     "nan_creation"
+  ],
+  "rows": [
+    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]}
   ],
   "constructs": [
     "%",
@@ -20,6 +26,7 @@
   ],
   "reference": "`modulus` on doubles (sverify's `sverify_fmod`): the truncated remainder (`fmod`), with a zero divisor an error as on integers, and `fmod(x, ±inf) = x`. 60 of the 144 rows differ.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -8,6 +8,9 @@
   "options": [
     "char_set"
   ],
+  "rows": [
+    {"group": "str.case", "option": "char_set", "types": ["string"]}
+  ],
   "constructs": [
     "upper",
     "lower",
@@ -23,6 +26,7 @@
     "The written SQL raises on non-ASCII text for every engine (`ascii_only`, #70), so DuckDB never returns its mapping there. ST-10 records that Substrait's `UTF8` does not say which Unicode mapping."
   ],
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

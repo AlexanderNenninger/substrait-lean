@@ -15,6 +15,7 @@
   "description": "Adding months keeps the day where it exists and otherwise takes the month's last day: 2024-01-31 plus a month is 2024-02-29, 2024-02-29 plus a year is 2025-02-28, 2023-03-31 minus a month is 2023-02-28. `pl.duration` has no months; calendar steps go through `offset_by`.",
   "reference": "Adding months keeps the day of month, or takes the month's last day where it is shorter (`Time.addMonths`: 2024-01-31 + 1 month is 2024-02-29).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

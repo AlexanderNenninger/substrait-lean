@@ -8,6 +8,9 @@
   "options": [
     "list_null_order"
   ],
+  "rows": [
+    {"group": "list.order", "option": "list_null_order", "types": ["list"]}
+  ],
   "constructs": [
     "<",
     ">",
@@ -30,6 +33,7 @@
   ],
   "status": "shimmed",
   "ledger_entries": 22,
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

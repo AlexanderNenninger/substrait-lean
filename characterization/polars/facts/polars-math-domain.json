@@ -9,6 +9,11 @@
     "on_domain_error",
     "on_log_zero"
   ],
+  "rows": [
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.log", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.log", "option": "on_log_zero", "types": ["fp64"]}
+  ],
   "constructs": [
     "sqrt",
     "log",
@@ -24,6 +29,7 @@
   "description": "`sqrt`, the logarithms, `arcsin`, `arccos` and `**` give NaN outside their domain (`sqrt(-1)`, `log(-1)`, `arcsin(2.5)`, `(-1) ** 0.5`), `log(0)` is -inf, and `sin`, `cos`, `tan` of ±inf are NaN. Inside the domain they are Rust's `f64` functions (the platform's libm).",
   "reference": "`on_domain_error: ERROR` and `on_log_zero: ERROR` (#215); `sin(±inf)` is a domain issue.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

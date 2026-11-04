@@ -6,9 +6,14 @@
   "verdict": "`Decimal(38, max(s₁, s₂))`; rounds half to even; raises on overflow and on `/ 0`",
   "area": "decimals",
   "options": [
+    "overflow",
     "decimal_rescale",
     "decimal_result_type",
     "raise_set"
+  ],
+  "rows": [
+    {"group": "dec.arith", "option": "overflow", "types": ["decimal"]},
+    {"group": "dec.arith", "option": "decimal_rescale", "types": ["decimal"]}
   ],
   "constructs": [
     "+",
@@ -26,6 +31,7 @@
   ],
   "reference": "`functions_arithmetic_decimal.yaml` gives the result types (multiply: scale s₁ + s₂, divide: max(6, s₁ + p₂ + 1), precision capped at 38 by borrowing scale) and no rounding; the reference rounds half away from zero (`decimal_rescale`). Decimal division is refused until #27. ST-8 records the open rounding.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

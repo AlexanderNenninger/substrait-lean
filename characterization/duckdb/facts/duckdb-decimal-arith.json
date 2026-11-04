@@ -8,7 +8,12 @@
   "options": [
     "decimal_result_type",
     "decimal_rescale",
-    "raise_set"
+    "raise_set",
+    "overflow"
+  ],
+  "rows": [
+    {"group": "dec.arith", "option": "overflow", "types": ["decimal"]},
+    {"group": "dec.arith", "option": "decimal_rescale", "types": ["decimal"]}
   ],
   "constructs": [
     "+",
@@ -33,6 +38,7 @@
     "ST-8 records that Substrait leaves this rounding open."
   ],
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -8,6 +8,9 @@
   "options": [
     "sum_order"
   ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]}
+  ],
   "constructs": [
     "mean",
     "avg"
@@ -16,6 +19,7 @@
   "description": "`mean` is the sum (polars-sum-float, pairwise or Kahan by path) divided by the count.",
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-03",

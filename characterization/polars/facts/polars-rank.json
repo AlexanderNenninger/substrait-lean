@@ -16,6 +16,7 @@
   "description": "`rank()` gives tied rows their average rank as a double; the methods `min`, `max`, `dense` and `ordinal` give integers. A NULL's rank is NULL (SQL ranks NULLs with the other rows), and `descending=True` reverses the order with NaN first. There is no `ntile`, `percent_rank` or `cume_dist` expression.",
   "reference": "`rank`, `dense_rank`, `row_number` over the window's order, NULLs placed by the key's direction; `percent_rank`, `cume_dist`, `ntile` as SQL.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

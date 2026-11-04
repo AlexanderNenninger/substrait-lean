@@ -8,6 +8,9 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
   "constructs": [
     "round"
   ],
@@ -24,6 +27,7 @@
   "description": "DuckDB rounds to `d` digits; below zero it computes `round(x / 10^-d) · 10^-d`, and 0 where that is not finite.",
   "reference": "`round` with a digit count: DuckDB's formula since #335, so the outcomes match on every probed `d`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

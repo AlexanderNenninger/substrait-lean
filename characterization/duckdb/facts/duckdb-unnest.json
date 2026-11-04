@@ -17,6 +17,7 @@
   ],
   "reference": "`UNNEST` gives one row per element and none for an empty list or NULL (sverify's own extension, reference-semantics.md, Nested). DuckDB's SQL is a lateral `UNNEST(l) WITH ORDINALITY` (docs/nested-values.md).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

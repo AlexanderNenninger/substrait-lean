@@ -8,6 +8,9 @@
   "options": [
     "substring_range"
   ],
+  "rows": [
+    {"group": "str.sub", "option": "substring_range", "types": ["string"]}
+  ],
   "constructs": [
     "str.slice"
   ],
@@ -15,6 +18,7 @@
   "description": "No offset or length makes `str.slice` raise: an offset of 2⁴⁰ gives `''`, and `slice(-2⁴⁰, 2⁴¹)` the whole string.",
   "reference": "`substring_range`: offsets outside `[-2³², 2³²)` raise (#336), as DuckDB does (duckdb-substring-range).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

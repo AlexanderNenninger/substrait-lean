@@ -8,6 +8,9 @@
   "options": [
     "on_domain_error"
   ],
+  "rows": [
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]}
+  ],
   "constructs": [
     "arctan2"
   ],
@@ -15,6 +18,7 @@
   "description": "`pl.arctan2(y, x)` is Rust's `atan2`: `atan2(0, 0)` is 0 and the infinities give the IEEE angles. It is the only edge case that differs.",
   "reference": "`atan2` with `on_domain_error: ERROR`, which raises at `(0, 0)`; Substrait leaves its domain open (ST-2).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

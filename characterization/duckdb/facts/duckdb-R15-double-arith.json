@@ -9,6 +9,11 @@
     "nan_creation",
     "on_division_by_zero"
   ],
+  "rows": [
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -31,6 +36,7 @@
   ],
   "reference": "`add` … `divide`: no operation creates a NaN (#257); a zero divisor raises unless the plan asks otherwise.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

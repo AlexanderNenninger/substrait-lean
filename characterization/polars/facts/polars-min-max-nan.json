@@ -8,6 +8,10 @@
   "options": [
     "nan_order"
   ],
+  "rows": [
+    {"group": "agg.order", "option": "nan_order", "types": ["fp64"]},
+    {"group": "cmp", "option": "nan_order", "types": ["fp64"]}
+  ],
   "constructs": [
     "min",
     "max",
@@ -24,6 +28,7 @@
   ],
   "reference": "`MAX`, `greatest` follow `nan_order: GREATEST`, so `max(1, NaN)` is NaN. The writer needs `nan_max` (or a sort) for `max` of doubles and a NaN check for `greatest`; 20 of 144 rows of `greatest` differ.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

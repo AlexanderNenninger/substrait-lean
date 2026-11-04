@@ -9,6 +9,10 @@
     "stat_algo",
     "stat_degenerate"
   ],
+  "rows": [
+    {"group": "agg.stat", "option": "stat_algo", "types": ["fp64"]},
+    {"group": "agg.stat", "option": "stat_degenerate", "types": ["fp64"]}
+  ],
   "constructs": [
     "corr",
     "pearson_corr"
@@ -23,6 +27,7 @@
     "Where the reference is NULL (one pair, a constant side), Polars gives NaN."
   ],
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

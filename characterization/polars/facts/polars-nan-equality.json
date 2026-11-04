@@ -9,6 +9,9 @@
     "nan_equality",
     "nan_zero_grouping"
   ],
+  "rows": [
+    {"group": "cmp", "option": "nan_equality", "types": ["fp64"]}
+  ],
   "constructs": [
     "==",
     "is_in",
@@ -20,6 +23,7 @@
   "description": "`NaN == NaN` is true and `NaN != NaN` false; `is_in([nan])` finds NaN; `group_by`, `unique`, `n_unique` put every NaN in one group, and a join matches NaN keys. NULL compares as NULL (`eq_missing` makes NULL equal NULL).",
   "reference": "`NAN_IS_NAN` (#89, an override of IEEE equality) for `=`, grouping, `DISTINCT` and joins.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

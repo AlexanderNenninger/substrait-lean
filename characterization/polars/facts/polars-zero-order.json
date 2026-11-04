@@ -9,6 +9,9 @@
     "zero_sign",
     "nan_zero_grouping"
   ],
+  "rows": [
+    {"group": "cmp", "option": "zero_sign", "types": ["fp64"]}
+  ],
   "constructs": [
     "==",
     "sort",
@@ -20,6 +23,7 @@
   "description": "`0.0 == -0.0` is true, `sort` treats them as equal (with `maintain_order` the input order stays), and `group_by`, `unique` and joins put them together. The group's key and the surviving row of `unique` carry the zero seen first, which can be `-0.0`; arithmetic still tells them apart (polars-zero-sign).",
   "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key is never `-0.0`.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

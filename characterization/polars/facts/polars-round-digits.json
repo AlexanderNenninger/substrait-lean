@@ -8,6 +8,9 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
   "constructs": [
     "round"
   ],
@@ -18,6 +21,7 @@
   ],
   "reference": "`round` to `d` digits (#335), `TIE_AWAY_FROM_ZERO`, with negative digits. On the probe's edge cases at `d` = 1, 2, 16, 308, 309, 400 Polars and the reference agree.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

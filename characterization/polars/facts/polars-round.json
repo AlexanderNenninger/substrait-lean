@@ -8,6 +8,9 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
   "constructs": [
     "round"
   ],
@@ -15,6 +18,7 @@
   "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case.",
   "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO` (#335), the only value the model accepts. So the writer needs `mode='half_away_from_zero'`, which matches on every row.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

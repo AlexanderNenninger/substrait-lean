@@ -8,6 +8,9 @@
   "options": [
     "cast_failure"
   ],
+  "rows": [
+    {"option": "cast_failure", "types": ["any"]}
+  ],
   "constructs": [
     "cast"
   ],
@@ -15,6 +18,7 @@
   "description": "A cast to a narrower integer that does not fit raises with `strict=True`, is NULL with `strict=False`, and wraps with `wrap_numerical=True` (300 is 44 in `Int8`). A cast to a decimal too narrow for it raises or is NULL the same way. A decimal to an integer truncates.",
   "reference": "`cast_failure`: `THROW_EXCEPTION` or `RETURN_NULL`, as the cast states.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

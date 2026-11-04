@@ -119,6 +119,18 @@
       ]
     },
     {
+      "id": "execution",
+      "items": [
+        {"id": "evaluation_order", "kind": "extra", "question": "Short-circuit in `CASE`, `AND`, `OR`, `COALESCE`: does the engine evaluate an expression on rows a filter or a branch removes, and raise there (division by zero, a failing cast)? This can break the reference's no-error guarantee."},
+        {"id": "settings", "kind": "extra", "question": "Which session settings change results: DuckDB's `default_null_order`, `integer_division`, `threads`, …; Polars's `Config` and environment variables."},
+        {"id": "parallel_nondeterminism", "kind": "extra", "question": "Results that change with the thread count or from run to run: the order of a double `SUM`, row order without `ORDER BY`, ties."},
+        {"id": "platform", "kind": "extra", "question": "Results that depend on the platform: libm (`sin`, `pow`, `exp`), NaN signs, SIMD paths; probes ran on macOS arm64, CI on Linux x86_64."},
+        {"id": "size_limits", "kind": "extra", "question": "Limits on string, blob and list lengths, decimal precision, nesting depth, and what happens past them."},
+        {"id": "streaming_fallback", "kind": "extra", "question": "Operations a streaming engine cannot run itself and hands to its in-memory engine (Polars's streaming engine, which sverify targets): which, and whether results differ."},
+        {"id": "try_variants", "kind": "extra", "question": "`TRY_CAST`, `TRY(…)` and other non-raising forms: which errors become NULL and which still raise."}
+      ]
+    },
+    {
       "id": "frontend",
       "items": [
         {"id": "type_names", "kind": "extra", "question": "The engine's names of the types."},

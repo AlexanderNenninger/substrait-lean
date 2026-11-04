@@ -10,6 +10,10 @@
     "on_division_by_zero",
     "overflow"
   ],
+  "rows": [
+    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]}
+  ],
   "constructs": [
     "//",
     "floordiv"
@@ -21,6 +25,7 @@
   ],
   "reference": "`divide` on integers truncates toward zero, with `on_division_by_zero: ERROR` when the plan omits it (`NULL` when asked) and `overflow: ERROR` at `MIN / -1`. Polars differs on every quotient of operands of opposite signs that is not exact (26 of the 121 rows of the `NULL` candidate).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

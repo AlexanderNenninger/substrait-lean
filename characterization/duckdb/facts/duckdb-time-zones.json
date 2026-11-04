@@ -29,6 +29,7 @@
   ],
   "reference": "Time-zone-aware timestamps are a kind the model does not compute with (reference-semantics.md, Temporal): plans with them are refused, and the reference's `timestamp` has no zone. The written SQL never reads `TimeZone`.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

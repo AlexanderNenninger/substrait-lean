@@ -22,6 +22,7 @@
     "`yearweek` is a black box (#328), strict, with no `nonNull` law because of the infinite dates, and bounded by DuckDB's dates: -587764053 to 588158053. Before 5877641-01-04 BC it is NULL (`BlackBox.yearweekMin`), as `date_part` is NULL outside chrono's dates, and its SQL guards DuckDB's call there. Lean's evaluator (`BlackBox.yearweek`) computes DuckDB's value, signs included. `weekday` lifts to `date_part('dow', d)`, exact."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

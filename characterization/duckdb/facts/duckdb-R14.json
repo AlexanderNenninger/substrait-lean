@@ -9,6 +9,9 @@
     "zero_sign",
     "nan_zero_grouping"
   ],
+  "rows": [
+    {"group": "fp.div", "option": "zero_sign", "types": ["fp64"]}
+  ],
   "constructs": [
     "ORDER BY",
     "/",
@@ -25,6 +28,7 @@
   ],
   "status": "decided",
   "ledger_entries": 2,
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

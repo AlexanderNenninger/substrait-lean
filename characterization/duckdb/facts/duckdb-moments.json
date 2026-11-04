@@ -25,6 +25,7 @@
     "Each is a black box (#326). Aggregates in the table may raise now (`Aggregate.raises`): `verify` reports a domain error for the three moments, on the groups `rawAggRaises` decides, as it does for a variance of an infinity (`AggFn.makesNan`). `sem` is not NULL over values and at least `+0.0`."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -9,6 +9,10 @@
     "tie_pick",
     "tie_order"
   ],
+  "rows": [
+    {"group": "agg.pick", "option": "tie_pick", "types": ["any"]},
+    {"group": "agg.seq", "option": "tie_order", "types": ["any"]}
+  ],
   "constructs": [
     "first",
     "last",
@@ -23,6 +27,7 @@
   ],
   "reference": "`tie_pick`: any row of the group (each measure may take its own); `tie_order`: any order for `string_agg` and `array_agg`. Polars's choice is allowed, and deterministic where DuckDB's depends on parallelism (duckdb-mode-ties).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

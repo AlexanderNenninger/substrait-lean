@@ -8,6 +8,9 @@
   "options": [
     "quantile_interp"
   ],
+  "rows": [
+    {"group": "agg.quant", "option": "quantile_interp", "types": ["i64", "fp64", "decimal"]}
+  ],
   "constructs": [
     "quantile_cont",
     "median"
@@ -22,6 +25,7 @@
     "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf (NaN, where the reference keeps +inf). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]`, which gives the model's +inf there."
   ],
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -9,6 +9,9 @@
     "on_division_by_zero",
     "overflow"
   ],
+  "rows": [
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i64"]}
+  ],
   "constructs": [
     "//"
   ],
@@ -25,6 +28,7 @@
   "description": "Raises on a zero divisor; gives NULL with `error_on_division_by_zero` off (duckdb-R2).",
   "reference": "`divide` with `on_division_by_zero: ERROR`; `NULL` matches with `error_on_division_by_zero` off.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

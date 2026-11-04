@@ -19,6 +19,7 @@
     "`list_sum` of integers is a black box (#327) Lean evaluates exactly. Its result is a BIGINT, as `SUM`'s is (#437), so a sum outside the BIGINT range raises a domain error, and the SQL casts DuckDB's HUGEINT to a BIGINT. `list_sum` of doubles is refused."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

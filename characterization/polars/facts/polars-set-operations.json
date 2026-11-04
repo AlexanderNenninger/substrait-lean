@@ -21,6 +21,7 @@
   ],
   "reference": "`UNION ALL` is bag union and `UNION DISTINCT` its `distinct`; `INTERSECT` and `EXCEPT` are semi and anti joins with NULLs equal, then `DISTINCT`, and the `ALL` forms number equal rows (#344).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

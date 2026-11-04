@@ -9,6 +9,9 @@
     "nan_equality",
     "nan_zero_grouping"
   ],
+  "rows": [
+    {"group": "cmp", "option": "nan_equality", "types": ["fp32", "fp64"]}
+  ],
   "constructs": [
     "=",
     "<>",
@@ -27,6 +30,7 @@
   ],
   "reference": "`NAN_IS_NAN` (#89, an override of IEEE equality) for `=`, grouping, `DISTINCT` and joins, with one NaN (`nan_kind: ONE_NAN`); docs/core-semantics.md lists DuckDB as `NAN_IS_NAN`. ST-4 records the gap in Substrait.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -8,6 +8,9 @@
   "options": [
     "on_domain_error"
   ],
+  "rows": [
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]}
+  ],
   "constructs": [
     "atan2"
   ],
@@ -27,6 +30,7 @@
   ],
   "reference": "`atan2(0, 0)` raises.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

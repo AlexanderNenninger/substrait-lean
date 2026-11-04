@@ -19,6 +19,7 @@
     "Workaround: create the secret without a name, or name it in the ATTACH: `(TYPE unity_catalog, SECRET uc)`. The endpoint is the server's root (`http://host:port`, with or without a trailing slash): one with the API path gets the path twice (404), and one without a scheme is refused (`Unsupported URL scheme`)."
   ],
   "status": "workaround",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

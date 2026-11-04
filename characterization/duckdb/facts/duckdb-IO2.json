@@ -25,6 +25,7 @@
     "Workaround: DuckDB's global S3 settings, which the internal secret falls back to: `SET s3_endpoint='host:port'`, `SET s3_url_style='path'`, `SET s3_use_ssl=false` for plain HTTP, `SET s3_region=...`."
   ],
   "status": "workaround",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

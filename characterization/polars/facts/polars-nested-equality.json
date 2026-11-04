@@ -20,6 +20,7 @@
   ],
   "reference": "Equality is structural, and list equality treats NULLs as equal, as grouping does (reference-semantics.md, \"Equality for grouping\" and Nested).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

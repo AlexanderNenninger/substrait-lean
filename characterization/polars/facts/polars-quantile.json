@@ -8,6 +8,9 @@
   "options": [
     "quantile_interp"
   ],
+  "rows": [
+    {"group": "agg.quant", "option": "quantile_interp", "types": ["fp64"]}
+  ],
   "constructs": [
     "quantile",
     "median"
@@ -16,6 +19,7 @@
   "description": "`quantile(q)` takes the `nearest` value by default (index `round(q · (n - 1))`); the other methods are `lower`, `higher`, `midpoint`, `linear` and `equiprobable`. `median` is `quantile(0.5, 'linear')`. At `q = 0.4` over 1, 2, 3, 4: nearest 2, lower 2, higher 3, midpoint 2.5, linear 2.2, equiprobable 2. NaN sorts above every number (polars-nan-order).",
   "reference": "`quantile_disc` takes a value of the input; `quantile_cont` any double between the neighbours (`contAllowed`).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

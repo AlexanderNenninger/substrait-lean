@@ -19,6 +19,7 @@
   "description": "In DuckDB, `/` on integers is float division and `//` is integer division; the setting `integer_division` switches `/`.",
   "reference": "The lift reads `/` as DuckDB does: it divides as doubles, and `//` divides integers.",
   "status": "no-finding",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

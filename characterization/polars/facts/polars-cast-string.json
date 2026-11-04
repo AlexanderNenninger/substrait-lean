@@ -10,6 +10,9 @@
     "cast_formatting",
     "cast_failure"
   ],
+  "rows": [
+    {"option": "cast_failure", "types": ["any"]}
+  ],
   "constructs": [
     "cast"
   ],
@@ -21,6 +24,7 @@
   ],
   "reference": "Casts to and from strings follow the reference's `cast` rules; `cast_failure` as stated.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

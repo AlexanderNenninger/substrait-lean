@@ -28,6 +28,7 @@
   ],
   "reference": "An operation on finite doubles whose result is `±inf` raises (`Issue.infinite`, #575): an inferred precondition the written plan checks on the data (`CASE WHEN … THEN error('overflow to infinity')`), as for a `SUM` that leaves 64 bits.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

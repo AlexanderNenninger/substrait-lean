@@ -24,6 +24,7 @@
   ],
   "status": "fixed",
   "ledger_entries": 60,
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

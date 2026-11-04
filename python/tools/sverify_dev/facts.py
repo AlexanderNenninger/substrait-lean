@@ -10,8 +10,12 @@ status, and its provenance (when it was checked, how, by what, and the
 evidence: links at a tag or commit, ledgers, probes, SQL repros).
 
 A fact's `options` names the items of the characterization checklist
-(`characterization/areas.json`) it settles. The documents are the record;
-there is no generated overview. The command
+(`characterization/areas.json`) it settles, and its `rows` the rows of the
+engine choice tables it settles: a function group of `SubstraitLean/Functions.lean`
+(`groups`), one of the group's options and the types it was checked at. Its
+`evidence` is the strongest kind of check in its provenance: `docs` <
+`source` < `engine_test` < `probe` < `fuzz` < `proof`. The documents are the record; there
+is no generated overview. The command
 
     uv run python -m sverify_dev.facts
 
@@ -19,7 +23,9 @@ checks them (`tests/test_facts.py` runs the same check), and
 
     uv run python -m sverify_dev.facts --coverage polars
 
-lists, per area and item of the checklist, the engine's facts that settle it.
+lists, per row (group × option × type), the engine's facts that settle it
+with their evidence, or `missing`, then per area and item of the checklist
+as a rollup.
 """
 
 from __future__ import annotations
@@ -37,6 +43,63 @@ REPO = Path(__file__).resolve().parents[3]
 ROOT = REPO / "characterization"
 SCHEMA = ROOT / "fact.schema.json"
 AREAS = ROOT / "areas.json"
+FUNCTIONS = REPO / "SubstraitLean" / "Functions.lean"
+
+#: The kinds of evidence, weakest first.
+EVIDENCE = ("docs", "source", "engine_test", "probe", "fuzz", "proof")
+#: The evidence each provenance method gives. An engine's own test with an
+#: expected result (DuckDB's sqllogictests, Polars's unit tests), read or
+#: replayed (`sverify_dev.slt`), pins the intended behaviour on its input; a
+#: hand-written repro runs the engine on chosen inputs, as a probe does.
+METHOD_EVIDENCE = {
+    "docs": "docs",
+    "source-reading": "source",
+    "engine-test": "engine_test",
+    "replay": "engine_test",
+    "probe": "probe",
+    "manual-repro": "probe",
+    "fuzz": "fuzz",
+    "proof": "proof",
+}
+
+_INTS = ("i8", "i16", "i32", "i64")
+_FLOATS = ("fp32", "fp64")
+#: The types a group's functions take, by group or by the group's family
+#: (`int.` for every `int.*` group). A group not listed takes `any`.
+GROUP_TYPES: dict[str, tuple[str, ...]] = {
+    "int.": _INTS,
+    "dec.": ("decimal",),
+    "fp.": _FLOATS,
+    "cmp": _FLOATS,
+    "str.": ("string",),
+    "time.": ("date", "time", "timestamp", "timestamp_tz"),
+    "list.": ("list",),
+    "agg.isum": _INTS,
+    "agg.fsum": _FLOATS,
+    "agg.var": ("i64", "fp64", "decimal"),
+    "agg.stat": ("i64", "fp64", "decimal"),
+    "agg.order": (*_FLOATS, "list"),
+    "agg.quant": ("i64", "fp64", "decimal"),
+}
+#: Options that only bear on some types: a row takes the group's types that
+#: the option's list also has.
+OPTION_TYPES: dict[str, tuple[str, ...]] = {
+    **dict.fromkeys(
+        ("nan_equality", "nan_order", "nan_kind", "nan_creation", "zero_sign", "float_overflow"),
+        _FLOATS,
+    ),
+    "fp32": ("fp32",),
+    "list_null_order": ("list",),
+    "decimal_rescale": ("decimal",),
+    "date_range": ("date", "timestamp", "timestamp_tz"),
+    "time_interval_months": ("time",),
+}
+#: The group of a row at an option no function group takes (`null_order`),
+#: and of `RELATION_OPTIONS`.
+NO_GROUP = "-"
+#: Options of relations as well as of function groups: `tie_order` is also
+#: the order of a sort's ties.
+RELATION_OPTIONS = ("tie_order",)
 
 Fact = dict[str, Any]
 
@@ -57,14 +120,73 @@ def checklist(root: Path = ROOT) -> dict[str, list[str]]:
     return {a["id"]: [i["id"] for i in a["items"]] for a in areas}
 
 
-def validate(docs: dict[Path, Fact], root: Path = ROOT) -> list[str]:
+def groups(functions: Path = FUNCTIONS) -> dict[str, list[str]]:
+    """Each function group's options: `Functions.groups` of `Functions.lean`
+    (`substrait-check --options` prints the same), read from the source so no
+    Lean build is needed."""
+    text = functions.read_text()
+    block = text[text.index("def groups") :]
+    block = block[: block.index("\n\n")]
+    found = {
+        g: re.findall(r'"([a-z0-9_]+)"', opts)
+        for g, opts in re.findall(r'\("([a-z0-9.]+)", \[([^\]]*)\]\)', block)
+    }
+    if not found:
+        raise ValueError(f"no groups in {functions}")
+    return found
+
+
+def types_of(group: str, option: str) -> tuple[str, ...]:
+    """The types of the row (`group`, `option`)."""
+    family = next(
+        (t for g, t in GROUP_TYPES.items() if g == group or (g[-1] == "." and group.startswith(g))),
+        None,
+    )
+    narrow = OPTION_TYPES.get(option)
+    if family is None:
+        return narrow or ("any",)
+    if narrow is None:
+        return family
+    return tuple(t for t in family if t in narrow) or family
+
+
+Row = tuple[str, str, str]
+
+
+def rows(root: Path = ROOT, functions: Path = FUNCTIONS) -> list[Row]:
+    """The rows of the engine choice tables, (group, option, type): every
+    group's options at its types, then the checklist's options no group
+    takes and `RELATION_OPTIONS`, under `NO_GROUP`."""
+    by_group = groups(functions)
+    found = [(g, o, t) for g, opts in by_group.items() for o in opts for t in types_of(g, o)]
+    grouped = {o for opts in by_group.values() for o in opts}
+    areas = json.loads((root / AREAS.name).read_text())["areas"]
+    for area in areas:
+        for item in area["items"]:
+            if item["kind"] == "option" and (
+                item["id"] not in grouped or item["id"] in RELATION_OPTIONS
+            ):
+                found += [(NO_GROUP, item["id"], t) for t in types_of(NO_GROUP, item["id"])]
+    return found
+
+
+def evidence_of(fact: Fact) -> str:
+    """The strongest evidence of `fact`'s provenance."""
+    levels = [METHOD_EVIDENCE[c["method"]] for c in fact["provenance"]]
+    return max(levels, key=EVIDENCE.index)
+
+
+def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTIONS) -> list[str]:
     """What is wrong with the documents: the schema, the file names, ids that
-    repeat, checklist items that do not exist, and references to files,
-    probes or facts that do not exist."""
+    repeat, checklist items and rows that do not exist, an `evidence` level
+    other than the provenance's strongest, and references to files, probes or
+    facts that do not exist."""
     validator = jsonschema.Draft202012Validator(json.loads((root / SCHEMA.name).read_text()))
     repo = root.parent
     problems: list[str] = []
     items = [i for area in checklist(root).values() for i in area]
+    table_rows = set(rows(root, functions))
+    table = {(g, o) for g, o, _ in table_rows}
     problems += [
         f"{AREAS.name}: item {i} repeats" for i in sorted(set(items)) if items.count(i) > 1
     ]
@@ -84,6 +206,28 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT) -> list[str]:
         for item in f.get("options", []):
             if item not in items:
                 problems.append(f"{where}: {item!r} is not an item of {AREAS.name}")
+        if f["evidence"] != evidence_of(f):
+            problems.append(
+                f"{where}: evidence is {f['evidence']!r}; its provenance's strongest is "
+                f"{evidence_of(f)!r}"
+            )
+        for row in f.get("rows", []):
+            group = row.get("group", NO_GROUP)
+            name = f"{group} × {row['option']}"
+            if (group, row["option"]) not in table:
+                problems.append(f"{where}: {name} is not a row of the choice tables")
+                continue
+            for t in row["types"]:
+                if (group, row["option"], t) not in table_rows:
+                    problems.append(
+                        f"{where}: {name} has no type {t!r}; its types are "
+                        f"{', '.join(types_of(group, row['option']))}"
+                    )
+            level = row.get("evidence", f["evidence"])
+            if EVIDENCE.index(level) > EVIDENCE.index(f["evidence"]):
+                problems.append(f"{where}: {name}'s evidence {level!r} is stronger than the fact's")
+            if row["option"] in items and row["option"] not in f.get("options", []):
+                problems.append(f"{where}: rows name {row['option']!r}, which options lack")
         engine = path.parent.parent.name
         if f["engine"] != engine or not f["id"].startswith(f"{engine}-"):
             problems.append(f"{where}: engine and id must start with the folder's {engine!r}")
@@ -131,6 +275,61 @@ def coverage(docs: dict[Path, Fact], engine: str, root: Path = ROOT) -> Coverage
     return found
 
 
+RowCoverage = dict[Row, list[tuple[str, str]]]
+
+
+def row_coverage(
+    docs: dict[Path, Fact], engine: str, root: Path = ROOT, functions: Path = FUNCTIONS
+) -> RowCoverage:
+    """Per row (group, option, type), `engine`'s current facts that settle it,
+    as (id, evidence): the row entry's own `evidence`, else the fact's. An
+    empty list is a missing row."""
+    found: RowCoverage = {r: [] for r in rows(root, functions)}
+    for f in docs.values():
+        if f.get("engine") != engine or "superseded_by" in f:
+            continue
+        for row in f.get("rows", []):
+            for t in row["types"]:
+                key = (row.get("group", NO_GROUP), row["option"], t)
+                if key in found:
+                    found[key].append((f["id"], row.get("evidence", f.get("evidence", "?"))))
+    return found
+
+
+def strongest(facts_: list[tuple[str, str]]) -> str:
+    """The strongest evidence among a row's facts, `missing` for none."""
+    levels = [e for _, e in facts_ if e in EVIDENCE]
+    return max(levels, key=EVIDENCE.index) if levels else "missing"
+
+
+def row_report(found: RowCoverage, root: Path = ROOT) -> str:
+    """`row_coverage`'s result as text: per group and option, each type's
+    facts with their evidence, then counts per area and per evidence."""
+    lines = []
+    by_pair: dict[tuple[str, str], list[str]] = {}
+    for (g, o, t), fs in found.items():
+        settled = ", ".join(f"{i} ({e})" for i, e in fs) or "missing"
+        by_pair.setdefault((g, o), []).append(f"{t}: {settled}")
+    for (g, o), cells in by_pair.items():
+        lines.append(f"{g} × {o}")
+        lines += [f"  {c}" for c in cells]
+    area_of = {i: a for a, items in checklist(root).items() for i in items}
+    per_area: dict[str, list[int]] = {}
+    for (_, o, _), fs in found.items():
+        counts = per_area.setdefault(area_of.get(o, "(not on the checklist)"), [0, 0])
+        counts[0] += bool(fs)
+        counts[1] += 1
+    lines.append("rows by area: " + ", ".join(f"{a} {c}/{n}" for a, (c, n) in per_area.items()))
+    levels = [strongest(fs) for fs in found.values()]
+    lines.append(
+        "rows by strongest evidence: "
+        + ", ".join(f"{e} {levels.count(e)}" for e in (*EVIDENCE, "missing"))
+    )
+    covered = sum(1 for fs in found.values() if fs)
+    lines.append(f"{covered}/{len(found)} rows settled")
+    return "\n".join(lines)
+
+
 def report(found: Coverage) -> str:
     """`coverage`'s result as text: one line per item, then the counts."""
     lines = []
@@ -156,6 +355,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.coverage:
         if args.coverage not in engines():
             sys.exit(f"no engine {args.coverage!r}; the engines are {', '.join(engines())}")
+        print(row_report(row_coverage(docs, args.coverage)))
+        print()
         print(report(coverage(docs, args.coverage)))
         return
     print(f"{len(docs)} facts, well-formed")
