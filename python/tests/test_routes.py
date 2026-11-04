@@ -9,6 +9,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import routes
+from sverify.errors import PreconditionError
 
 
 @pytest.fixture
@@ -246,7 +247,7 @@ def test_unsupported_functions_are_refused(con) -> None:
 def test_inputs_are_checked_before_the_run(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i <= 2]})
-    with pytest.raises(sv.errors.PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
+    with pytest.raises(PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
         report.run(con, "polars", route="auto")
     report.run(con, "polars")  # without a route, as before
 
@@ -268,11 +269,14 @@ def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
     assert route(sv.within(rel=1e-9), both).cls == "approx"
     assert route(sv.within(abs=1e3), both).cls == "approx"
     r = route(sv.within(rel=1e-15, abs=1.0), both)
-    assert r.refused and "total is within abs=222, rel=1e-10" in r.reason
+    assert r.refused and "total is within abs=222 (not proved), rel=1e-10 (not proved)" in r.reason
     assert "no per-plan bound" in route(sv.within(rel=1e-9), None).reason
-    # A bound Lean does not prove yet: the route rests on a test.
-    unproved = {"total": {"abs": 222.0, "rel": 1e-10, "proved": {"rel": False}}}
-    assert route(sv.within(rel=1e-9), unproved).evidence == "tested"
-    assert route(sv.within(abs=1e3), unproved).evidence == "proved"
-    nested = {"total": {"rel": {"value": 1e-10, "proved": False}}}
-    assert route(sv.within(rel=1e-9), nested).evidence == "tested"
+    # A bound is proved only where Lean says so; otherwise the route rests
+    # on a test.
+    assert route(sv.within(rel=1e-9), both).evidence == "tested"
+    marked = {"total": {"abs": 222.0, "rel": 1e-10, "proved": {"abs": True, "rel": False}}}
+    assert route(sv.within(rel=1e-9), marked).evidence == "tested"
+    assert route(sv.within(abs=1e3), marked).evidence == "proved"
+    assert route(sv.within(abs=1e3), {"total": {"abs": 222.0, "proved": True}}).evidence == "proved"
+    nested = {"total": {"rel": {"value": 1e-10, "proved": True}}}
+    assert route(sv.within(rel=1e-9), nested).evidence == "proved"

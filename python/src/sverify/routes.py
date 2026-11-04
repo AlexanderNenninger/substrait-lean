@@ -426,14 +426,15 @@ _KINDS = ("abs", "rel", "ulps")
 def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
     """A column's `ε` as `{kind: (value, proved)}`. Each kind is a number or
     `{"value", "proved"}`; `"proved"` beside them is a bool for all of them
-    or a mapping per kind. A bound is proved unless it says otherwise."""
-    flag = eps.get("proved", True)
+    or a mapping per kind. A bound is proved only where Lean marks it so: a
+    missing mark means it rests on a test."""
+    flag = eps.get("proved", False)
     out: dict[str, tuple[float, bool]] = {}
     for kind in _KINDS:
         v = eps.get(kind)
         if v is None:
             continue
-        proved = flag.get(kind, True) if isinstance(flag, Mapping) else bool(flag)
+        proved = bool(flag.get(kind, False)) if isinstance(flag, Mapping) else bool(flag)
         if isinstance(v, Mapping):
             proved = bool(v.get("proved", proved))
             v = v.get("value")
