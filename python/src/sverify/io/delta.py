@@ -685,8 +685,9 @@ class DeltaSink(Sink):
     A `uri` of the form `uc://catalog.schema.table` writes a table Unity
     Catalog has registered, with the options described in `DeltaSource`.
     The sink cannot create one: delta-rs writes files and registers no
-    table, so register it in the catalog first, or write to its storage
-    location.
+    table, so register it in the catalog first, and write its first version
+    at its storage location (`write_deltalake` with the catalog's READ_WRITE
+    keys), or write to its storage location.
 
     The node `write` returns reads the table as a `DeltaSource`, through its
     Change Data Feed, and builds on the contract the stored node proved. A
@@ -825,12 +826,21 @@ class DeltaSink(Sink):
             except DeltaError as e:
                 # The catalog's 404 comes as a DeltaError: "Invalid table
                 # error: TABLE_NOT_FOUND: …" (or SCHEMA_/CATALOG_NOT_FOUND).
-                if not isinstance(e, TableNotFoundError) and "_NOT_FOUND" not in str(e):
-                    raise
-                raise ValueError(
-                    f"{self.uri} is not a table Unity Catalog has: register it in the "
-                    "catalog first, since DeltaSink can't create a table through it"
-                ) from e
+                if "_NOT_FOUND" in str(e):
+                    raise ValueError(
+                        f"{self.uri} is not a table Unity Catalog has: register it in the "
+                        "catalog first, since DeltaSink can't create a table through it"
+                    ) from e
+                # A registered table whose location has no Delta log yet:
+                # delta-rs's "No files in log segment" (#512).
+                if isinstance(e, TableNotFoundError):
+                    raise ValueError(
+                        f"{self.uri} is registered in Unity Catalog, but its storage location "
+                        f"has no Delta table yet ({first_line(e)}): write its first version "
+                        "there, for example with write_deltalake and the catalog's READ_WRITE "
+                        "keys, since DeltaSink can't create a table through the catalog"
+                    ) from e
+                raise
         if not DeltaTable.is_deltatable(self.uri, storage_options=options):
             return None
         return DeltaTable(self.uri, storage_options=options)
