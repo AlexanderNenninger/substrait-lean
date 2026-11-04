@@ -1,0 +1,204 @@
+{
+  "extensions": [
+    {
+      "extensionFunction": {
+        "functionAnchor": 1,
+        "name": "modulus"
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 2,
+        "name": "divide"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "project": {
+            "common": {
+              "emit": {
+                "outputMapping": [
+                  2,
+                  3,
+                  4
+                ]
+              }
+            },
+            "input": {
+              "read": {
+                "baseSchema": {
+                  "names": [
+                    "i",
+                    "j"
+                  ],
+                  "struct": {
+                    "types": [
+                      {
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      }
+                    ],
+                    "nullability": "NULLABILITY_REQUIRED"
+                  }
+                },
+                "namedTable": {
+                  "names": [
+                    "t"
+                  ]
+                }
+              }
+            },
+            "expressions": [
+              {
+                "scalarFunction": {
+                  "functionReference": 1,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 0
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "cast": {
+                          "type": {
+                            "i64": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          "input": {
+                            "literal": {
+                              "i8": 3
+                            }
+                          },
+                          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                        }
+                      }
+                    }
+                  ],
+                  "options": [
+                    {
+                      "name": "division_type",
+                      "preference": [
+                        "FLOOR"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 2,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 0
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "cast": {
+                          "type": {
+                            "i64": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          "input": {
+                            "literal": {
+                              "i8": -2
+                            }
+                          },
+                          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                        }
+                      }
+                    }
+                  ],
+                  "options": [
+                    {
+                      "name": "division_type",
+                      "preference": [
+                        "FLOOR"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 1,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 0
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "cast": {
+                          "type": {
+                            "i64": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          "input": {
+                            "literal": {
+                              "i8": -5
+                            }
+                          },
+                          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                        }
+                      }
+                    }
+                  ],
+                  "options": [
+                    {
+                      "name": "division_type",
+                      "preference": [
+                        "FLOOR"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "names": [
+          "m",
+          "q",
+          "r"
+        ]
+      }
+    }
+  ]
+}

@@ -866,6 +866,14 @@ def narrow_int(v: Val, bits: int) -> Val:
     return Val(value, pl.Int64, (*v.issues, issue(bad, BadCast, message)))
 
 
+def _floors(f: dict) -> bool:
+    """Does the call state `division_type` = `FLOOR` (Polars's `//` and `%`)?"""
+    return any(
+        o.get("name") == "division_type" and (o.get("preference") or [None])[0] == "FLOOR"
+        for o in f.get("options", [])
+    )
+
+
 class Exprs:
     """Translates expressions over input columns of the given dtypes, or, with
     `param`, a lambda's body over its parameter of that dtype (#94)."""
@@ -929,6 +937,8 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
+            if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
+                return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name in _PICKS:
@@ -1122,6 +1132,20 @@ class Exprs:
                 ),
             )
         return out
+
+    def floor_divide(self, name: str, a: Val, b: Val) -> Val:
+        """Integer `//` or `%` with `division_type` = `FLOOR`: Polars's own,
+        with no shim (`Profile.polars`, `SubstraitLean/PolarsProfile.lean`).
+        A zero divisor and `MIN // -1` raise, as under `Profile.polars`; the
+        guards check them."""
+        if unify(a.dtype, b.dtype, name) not in (pl.Int64, pl.Null):
+            raise Unsupported(f"{name} with division_type FLOOR of {a.dtype} and {b.dtype}")
+        x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
+        by_zero = issue(shims.zero_divisor(x, y), DivisionByZero, f"{name} by zero")
+        if name == "modulus":
+            return Val(x % y, pl.Int64, (*issues(a, b), by_zero))
+        wraps = issue(shims.div_overflows(x, y), Overflow, "division leaves 64 bits")
+        return Val(x // y, pl.Int64, (*issues(a, b), wraps, by_zero))
 
     def call(self, name: str, args: list[Val]) -> Val:
         types = [v.dtype for v in args]

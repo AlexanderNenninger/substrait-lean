@@ -305,7 +305,7 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
     (`substrait_json`) with `semantics`."""
     if isinstance(query, str):
         return substrait_json(con, query, semantics)
-    return to_substrait_json(query)
+    return to_substrait_json(query, semantics)
 
 
 def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:

@@ -99,13 +99,13 @@ Polars runs on its streaming engine, as sverify does (#605; the probe patches it
 - A difference under a window or `LIMIT` may be allowed. Where sort keys tie, the reference leaves `tie_order` open; an engine that orders ties differently refines it up to the observation "ties permuted". Check whether the differing rows tie.
 - `raises` on an engine running the plan is by design where the reference raises: division by zero, i64 overflow, a double overflowing to ±∞ (#575). `Report.issues` and `Safety.lean` say where that can happen; a guard (`CASE WHEN b <> 0`) or a precondition removes it.
 - A float `SUM` or `AVG` verifies only once the inputs are bounded and NaN-free (`between` gives both, with `max_rows`); otherwise the report says `may fail: domain error`. Its order is the open option `sum_order`. Where an engine's row bounds the difference per plan (Polars streaming), the route checks that bound against the postcondition's tolerance (`sv.equivalent(floats=sv.within(...))`), and a rerun may differ in the last bits (D20).
-- Polars SQL and the Polars expression API differ, and Ibis is not SQL (`row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`). Give both `--sql` and `--ibis` when the question is about Ibis. `semantics="polars"` checks Ibis expressions only.
+- Polars SQL and the Polars expression API differ, and Ibis is not SQL (`row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`). Give both `--sql` and `--ibis` when the question is about Ibis. `semantics="polars"` checks Ibis expressions only: integer `//` and `%` floor and state `division_type: FLOOR`, which Polars runs natively and DuckDB refuses.
 - A run on a DuckDB or Polars version other than the profile's warns, another major version refuses (D14). A DuckDB setting a choice depends on (`default_null_order`, `integer_division`, …) refuses a routed run (#598).
 - `catalogue/status.json` is a snapshot. Re-probe one query from `python/` with `uv run python -m sverify_dev.catalogue <query-id>`.
 
 ## Troubleshooting
 
-- `this checker has no Profile.polars to check under yet`: the checker predates the engine tables (#587); the reference's route still applies.
+- `this checker has no Profile.polars to check under yet`: the checker predates `Profile.polars` (`SubstraitLean/PolarsProfile.lean`); rebuild it. The reference's route still applies.
 - `CheckerVersionError` or `FileNotFoundError` for `_bin/substrait-check`: set `SVERIFY_CHECK` (above).
 - `memtable() got an unexpected keyword argument 'name'`: the probe uses `ibis.memtable` for native Ibis runs; keep it that way.
 - `Relations no longer have fetchone()`: DuckDB 2.0; use `.fetchall()` or `.fetch_arrow_table()`.

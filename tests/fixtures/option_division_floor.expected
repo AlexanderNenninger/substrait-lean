@@ -1,0 +1,10 @@
+Emit [2, 3, 4]
+  Project +[IF ($0 < 0) THEN IF (0 < 3) THEN ((3 - 1) - ((-1 - $0) % 3)) ELSE ($0 % 3) ELSE IF (3 < 0) THEN IF (0 < $0) THEN ((($0 - 1) % 3) + (3 + 1)) ELSE ($0 % 3) ELSE ($0 % 3), IF ($0 < 0) THEN IF (0 < -2) THEN ((($0 + 1) / -2) + -1) ELSE ($0 / -2) ELSE IF (-2 < 0) THEN IF (0 < $0) THEN ((($0 - 1) / -2) + -1) ELSE ($0 / -2) ELSE ($0 / -2), IF ($0 < 0) THEN IF (0 < -5) THEN ((-5 - 1) - ((-1 - $0) % -5)) ELSE ($0 % -5) ELSE IF (-5 < 0) THEN IF (0 < $0) THEN ((($0 - 1) % -5) + (-5 + 1)) ELSE ($0 % -5) ELSE ($0 % -5)]
+    Read t
+tables: t(2)
+arity: 3
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

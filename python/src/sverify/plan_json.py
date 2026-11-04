@@ -279,6 +279,24 @@ def call(name: str, args: Iterable[Json]) -> Json:
     }
 
 
+#: The profile the plan being built is read under (`verify(semantics=...)`):
+#: under `"polars"`, integer `//` and `%` are Polars's (`floor_call`).
+_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="reference")
+
+
+def semantics() -> str:
+    """The profile the plan being built is read under."""
+    return _SEMANTICS.get()
+
+
+def floor_call(name: str, args: Iterable[Json]) -> Json:
+    """Integer `divide` or `modulus` with `division_type` = `FLOOR`: Polars's
+    `//` and `%` (`Profile.polars`, `SubstraitLean/PolarsProfile.lean`)."""
+    j = call(name, args)
+    j["scalarFunction"]["options"] = [{"name": "division_type", "preference": ["FLOOR"]}]
+    return j
+
+
 def substring_left(args: list[Json]) -> Json:
     """`substring` whose start may be below 1, which then lies left of the
     first character (`negative_start` = `LEFT_OF_BEGINNING`): the rules below
@@ -411,13 +429,16 @@ def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
 
 
 @contextlib.contextmanager
-def compiling() -> Iterator[Compiler]:
-    """A fresh `Compiler` for the plan built inside the block."""
+def compiling(semantics: str = "reference") -> Iterator[Compiler]:
+    """A fresh `Compiler` for the plan built inside the block, read under
+    `semantics`."""
     compiler = Compiler()
     token = _COMPILER.set(compiler)
+    sem = _SEMANTICS.set(semantics)
     try:
         yield compiler
     finally:
+        _SEMANTICS.reset(sem)
         _COMPILER.reset(token)
 
 
