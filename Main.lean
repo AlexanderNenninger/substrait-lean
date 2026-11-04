@@ -202,11 +202,7 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
         -- engine's profile is not built yet, so a request for one gets the
         -- reference's report, which says so), and the options the
         -- transformation meets (#444).
-        let depends := match (j.getObjVal? "transform").toOption with
-          | some t => match ContractCheck.parseJsonPlan t with
-            | .ok p => p.root.dependsJson
-            | .error _ => Lean.Json.null
-          | none => Lean.Json.null
+        let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
         -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
         let eps := (Epsilon.epsilon j).toOption.getD (Lean.Json.mkObj [])
         IO.println (report.json |>.setObjVal! "profile" "reference"
