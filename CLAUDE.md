@@ -187,21 +187,26 @@ digests), `temporal`, `nested` (lists, structs, lambdas, UNNEST),
 `aggregates`, `windows`, `relations` and `casts`. A feature edits its area's
 file; touch the shared `_base.py` only for what the area files say lives there.
 
-- **Substrait function** (`SubstraitLean/Write.lean`): add `(anchor, name)` at
-  the end of its area's list (`coreFns`, `stringFns`, `temporalFns`,
-  `nestedFns`, `aggregateFns`, `windowFns`) with the next free anchor in that
-  area's range (100s core, 200s strings, 300s temporal, 400s nested, 500s
-  aggregates, 600s windows), and the matching arm in `UnFn`/`BinFn`/`AggFn.anchor`
-  under the area's comment. `lake build` rejects duplicate anchors or names,
-  out-of-range anchors and anchors that are not declared.
+- **Substrait function** (`SubstraitLean/Functions.lean`): add a row at the
+  end of its area's table (`core`, `strings`, `temporal`, `nested`,
+  `aggregates`, `windows`), one per constructor it is modelled by, with the
+  next free anchor in that area's range (100s core, 200s strings, 300s
+  temporal, 400s nested, 500s aggregates, 600s windows), its group from
+  `docs/core-semantics.md`, its constructor and how the parser reads it.
+  `Write.lean`'s anchors (`UnFn`/`BinFn`/`AggFn.anchor`, `fn "name"`) and
+  `Pretty.lean` read the row. `lake build` rejects duplicate anchors or
+  names, out-of-range anchors, a constructor with two rows and a group the
+  design does not list. `substrait-check --functions` prints the tables as
+  JSON for the Python mirror.
 - **Coverage case** (`python/tools/sverify_dev/coverage_cases/<area>.py`): append to
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.
-- **Parse** (`SubstraitLean/Parse.lean`): the function's arm in its area's
-  `mkCoreCall?`, `mkStringCall?`, `mkTemporalCall?` or `mkNestedCall?`, before
-  its `| _, _ => none` (core: before the trailing `BitOp` arm too). Doubles go
-  in `mkFloatCall`, decimals in `decimalCall`, constant folding in
+- **Parse** (`SubstraitLean/Parse.lean`): a row marked `reads := .plain`
+  (`.float` for doubles) is read as its constructor with nothing more.
+  Otherwise the function's arm in its area's `mkCoreCall?`, `mkStringCall?`,
+  `mkTemporalCall?` or `mkNestedCall?`, before its last arm, which reads the
+  table. Doubles go in `mkFloatCall`, decimals in `decimalCall`, constant folding in
   `foldCoreCall`/`foldTemporalCall`, aggregates in `parseMeasure`'s
   `match name, k`, windows in `parseWindow`'s `match baseName name, args`. A
   string function's integer arguments go in `stringFns`; an option's functions

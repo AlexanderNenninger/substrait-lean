@@ -154,24 +154,27 @@ in every profile.
 ### Function groups
 
 Functions with the same options share a row. Every function of an area is in
-exactly one group; wave 3's tables give each function its group.
+exactly one group; wave 3's tables give each function its group
+(`SubstraitLean/Functions.lean`, one row per constructor, so `add` has a row
+in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 
 | Area | Group | Functions | Options |
 |---|---|---|---|
-| core | `int.arith` | `add`, `subtract`, `multiply`, `negate` on integers | `overflow` |
+| core | `int.arith` | `add`, `subtract`, `multiply`, `negate`, `power` on integers | `overflow` |
 | core | `int.abs` | `abs` on integers | `overflow` |
 | core | `int.div` | `divide` on integers | `overflow` (`MIN / -1`), `on_division_by_zero` |
 | core | `int.mod` | `modulus` on integers | `on_division_by_zero`, `division_type`, `min_mod_neg_one` |
 | core | `int.bit` | `bitwise_and`, `bitwise_or`, `bitwise_xor` | none |
 | core | `int.shift` | `bitwise_shift_left`, `bitwise_shift_right` | `shift_range` |
 | core | `dec.arith` | `add`, `subtract`, `multiply`, `negate`, `abs` on decimals | `overflow` (`ERROR` only), `decimal_rescale` |
-| core | `dec.div` | `divide`, `modulus` on decimals | refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
-| core | `fp.arith` | `add`, `subtract`, `multiply` on doubles | `rounding`, `nan_creation`, `zero_sign` |
+| core | `dec.div` | `divide`, `modulus` on decimals, `sverify_decimal_div` | refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
+| core | `fp.arith` | `add`, `subtract`, `multiply`, `negate` on doubles | `rounding`, `nan_creation`, `zero_sign` |
 | core | `fp.div` | `divide` on doubles, `sverify_fmod` | `rounding`, `on_division_by_zero`, `nan_creation`, `zero_sign` |
 | core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
 | core | `fp.round` | `round`, `floor`, `ceil` | `rounding` (`round` only) |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
+| core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
 | strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity` |
 | strings | `str.case` | `upper`, `lower` | `char_set` |

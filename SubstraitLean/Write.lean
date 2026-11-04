@@ -21,92 +21,18 @@ open Lean (Json toJson)
 
 /-! ## Function anchors
 
-Every function the writer can emit has a fixed anchor, declared in one list
-per area. A new function goes at the end of its area's list, with the next
-free anchor of that area's range, so pull requests for different areas
-touch different lines. Anchors below 100 predate the ranges and stay as they
-are. The checks after `functions` reject a duplicate anchor or name, and an
-anchor outside its area's range.
+Every function the writer can emit has a fixed anchor, from its area's table
+in `SubstraitLean/Functions.lean` (black boxes from
+`SubstraitLean/BlackBox.lean`). Anchors below 100 predate the areas' ranges
+and stay as they are. The checks below reject a duplicate anchor or name and
+an anchor outside its area's range; `Functions.lean` checks its rows.
 
 DataFusion resolves functions by name and argument types, so the same `add`
 serves integers, doubles, dates and timestamps. -/
 
-/-- Logic, comparison and arithmetic: new anchors 100–199. -/
-def coreFns : List (Nat × String) := [
-  (1, "not"), (2, "is_null"), (3, "negate"), (4, "add"), (5, "subtract"), (6, "multiply"),
-  (7, "equal"), (8, "lt"), (9, "and"), (10, "or"), (11, "divide"),
-  (15, "floor"), (16, "ceil"), (17, "round"), (18, "modulus"), (19, "power"), (41, "nanvl"),
-  (100, "sqrt"), (101, "exp"), (102, "ln"), (103, "log10"), (104, "log2"), (105, "sin"),
-  (106, "cos"), (107, "tan"), (108, "asin"), (109, "acos"), (110, "atan"), (111, "atan2"),
-  (112, "logb"), (113, "bitwise_and"), (114, "bitwise_or"), (115, "bitwise_xor"),
-  (116, "bitwise_shift_left"), (117, "bitwise_shift_right"),
-  -- sverify's own: a shim's guards (#185), which the SQL printers write as
-  -- `error(…)` and `x IS NOT NULL`.
-  (118, "sverify_raise"), (119, "sverify_is_number"),
-  -- sverify's own: a decimal divided by an integer, rounded half away from
-  -- zero (a decimal `AVG` over a window, #27).
-  (120, "sverify_decimal_div"),
-  -- `abs` of a decimal (`Parse.decimalCall`), #27.
-  (121, "abs"),
-  -- sverify's own: the remainder of doubles, C's `fmod` (#256). Substrait's
-  -- `modulus` has no double impl.
-  (122, "sverify_fmod"),
-  -- sverify's own: two values as the argument of a two-argument aggregate
-  -- (`COVAR_SAMP(x, y)`, #54), written as the measure's two arguments.
-  (123, "sverify_pair"),
-  -- `GREATEST`/`LEAST` of two values, skipping `NULL`s (`BinFn.greatest`,
-  -- #340): untyped, as DataFusion writes its own and the parser reads them;
-  -- Substrait's typed ones propagate `NULL`s.
-  (124, "greatest"), (125, "least")]
-
-/-- Strings: new anchors 200–299. -/
-def stringFns : List (Nat × String) := [
-  (20, "upper"), (21, "lower"), (22, "character_length"), (23, "regexp_match"),
-  (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
-  (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-  (200, "reverse"), (201, "ascii"), (202, "replace"), (203, "repeat"), (204, "ilike"),
-  (205, "levenshtein"),
-  -- Regular expressions with a constant pattern, and digests (#50).
-  (206, "regexp_extract"), (207, "regexp_replace"), (208, "md5"), (209, "sha256")]
-
-/-- Dates and times: new anchors 300–399. -/
-def temporalFns : List (Nat × String) := [
-  (25, "date_part"), (26, "date_trunc"), (60, "date_diff"), (61, "strftime"), (62, "date_bin")]
-
-/-- Lists and structs: new anchors 400–499. -/
-def nestedFns : List (Nat × String) := [
-  (24, "array_length"),
-  -- sverify's own: `lt` of two lists (`Value.listLt3`), which the parser
-  -- reads back as `lt`. Engines order lists with NULL elements their own
-  -- way, so each needs to know a comparison is of lists (#207).
-  (400, "list_lt"),
-  (401, "cardinality"), (402, "any_match"), (403, "all_match"), (404, "transform"),
-  (405, "filter")]
-
-/-- Aggregate functions: new anchors 500–599. -/
-def aggregateFns : List (Nat × String) := [
-  (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (42, "array_agg"),
-  -- 64-bit integers folded with a bit operation (#53).
-  (500, "bit_and"), (501, "bit_or"), (502, "bit_xor"),
-  -- The variance and standard deviation of doubles, each engine's own algorithm (#54).
-  (503, "variance"), (504, "std_dev"),
-  -- The first and last value in the measure's sort order (#55).
-  (505, "first"), (506, "last"),
-  -- The covariance and correlation of pairs of doubles (#54).
-  (507, "covar_samp"), (508, "covar_pop"), (509, "corr"),
-  -- Strings joined in the measure's sort order (#55).
-  (510, "string_agg"),
-  -- Exact quantiles and the mode (#53). `median` is `quantile_cont(x, 0.5)`,
-  -- and `arg_min(x, y)` is `first(x ORDER BY y)` over the rows where neither
-  -- is NULL; the parser reads them so, and they are written so.
-  (511, "median"), (512, "quantile_cont"), (513, "quantile_disc"), (514, "mode"),
-  (515, "arg_min"), (516, "arg_max")]
-
-/-- Window functions: new anchors 600–699. -/
-def windowFns : List (Nat × String) := [
-  (12, "row_number"), (13, "lag"), (14, "lead"),
-  (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
-  (75, "first_value"), (76, "last_value"), (77, "nth_value")]
+/-- `(anchor, Substrait name)` of the rows `rows`, once each. -/
+def declaredOf (rows : List Functions.FnRow) : List (Nat × String) :=
+  (rows.map fun r => (r.anchor, r.name)).eraseDups
 
 /-- Black boxes (#325), scalar and aggregate: anchors 700–799, in the order of
 `SubstraitLean/BlackBox.lean`'s table, under its URN (`BlackBox.blackBoxUrn`). -/
@@ -116,11 +42,11 @@ def blackBoxFns : List (Nat × String) :=
 
 /-- Each area's functions and the range its new anchors come from. -/
 def areas : List (List (Nat × String) × Nat) :=
-  [(coreFns, 100), (stringFns, 200), (temporalFns, 300), (nestedFns, 400),
-   (aggregateFns, 500), (windowFns, 600), (blackBoxFns, 700)]
+  Functions.areas.map (fun (_, rows, lo) => (declaredOf rows, lo)) ++ [(blackBoxFns, 700)]
 
-/-- Every declared `(anchor, Substrait name)`, area by area. -/
-def declared : List (Nat × String) := areas.flatMap (·.1)
+/-- Every declared `(anchor, Substrait name)`, area by area, once each (`add`
+is core's and temporal's). -/
+def declared : List (Nat × String) := (areas.flatMap (·.1)).eraseDups
 
 /-- `(anchor, Substrait name)` for every function the writer can emit, by anchor. -/
 def functions : List (Nat × String) := declared.mergeSort fun a b => a.1 ≤ b.1
@@ -128,7 +54,22 @@ def functions : List (Nat × String) := declared.mergeSort fun a b => a.1 ≤ b.
 example : (declared.map (·.1)).Nodup := by decide +kernel
 example : (declared.map (·.2)).Nodup := by decide +kernel
 example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
-  decide
+  decide +kernel
+
+theorem declared_rows : Functions.all.all fun r => declared.contains (r.anchor, r.name) := by
+  decide +kernel
+
+/-- A row's anchor is declared. -/
+theorem row_declared {r : Functions.FnRow} (h : r ∈ Functions.all) :
+    r.anchor ∈ declared.map (·.1) := by
+  have := List.all_eq_true.mp declared_rows r h
+  exact List.mem_map.mpr ⟨_, List.elem_iff.mp this, rfl⟩
+
+theorem anchorOf_declared (c : Functions.Ctor) :
+    Functions.anchorOf c = 0 ∨ Functions.anchorOf c ∈ declared.map (·.1) := by
+  rcases Functions.anchorOf_mem c with h | ⟨r, hr, he⟩
+  · exact Or.inl h
+  · exact Or.inr (he ▸ row_declared hr)
 
 /-- The anchor of the black box `name` (0 for a name without a row). -/
 def bbAnchor (name : String) : Nat :=
@@ -140,66 +81,26 @@ theorem bbAnchor_declared (name : String) :
   cases h : blackBoxFns.find? (·.2 == name) with
   | none => exact Or.inl rfl
   | some p =>
-    refine Or.inr (List.mem_map.mpr ⟨p, List.mem_flatMap.mpr
-      ⟨(blackBoxFns, 700), by simp [areas], List.mem_of_find?_eq_some h⟩, rfl⟩)
+    have ha : (blackBoxFns, 700) ∈ areas := List.mem_append_right _ (List.mem_singleton_self _)
+    refine Or.inr (List.mem_map.mpr ⟨p, List.mem_eraseDups.mpr (List.mem_flatMap.mpr
+      ⟨_, ha, List.mem_of_find?_eq_some h⟩), rfl⟩)
 
 def AggFn.anchor : AggFn → Nat
-  | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
-  | .bit op => match op with | .and => 500 | .or => 501 | _ => 502
-  | .var _ sqrt => if sqrt then 504 else 503
-  | .pick last => if last then 506 else 505
-  | .cov sample => if sample then 507 else 508
-  | .corr => 509
-  | .concat _ => 510
-  | .quantile cont _ _ => if cont then 512 else 513
-  | .mode => 514
   | .bbox n => bbAnchor n
+  | f => Functions.anchorOf (.agg f)
 
+/-- 0 for a function written as a cast, a reference or the arithmetic inside
+(`wrap`, `fit`, decimals' rescaling), which have no row. -/
 def UnFn.anchor : UnFn → Nat
-  -- Core
-  | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
-  | .fround | .froundTo _ => 17
-  | .fmath f => match f with
-    | .sqrt => 100 | .exp => 101 | .ln => 102 | .log10 => 103 | .log2 => 104 | .sin => 105
-    | .cos => 106 | .tan => 107 | .asin => 108 | .acos => 109 | .atan => 110
-  -- Strings
-  | .upper => 20 | .lower => 21 | .length => 22 | .reverse => 200 | .ascii => 201 | .replace _ _ => 202
-  | .regexExtract _ _ => 206 | .regexReplace _ _ _ => 207 | .md5 => 208 | .sha256 => 209
-  -- Dates and times
-  | .datePart _ | .dayPart _ => 25 | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
-  | .strftime _ => 61 | .bucket _ _ => 62
-  -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .narrow _ | .itos | .widen | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
-  | .ftoiOrNull | .narrowOrNull _ => 0
-  -- Not a function: the arithmetic inside is written at its width.
-  | .wrap _ => 0
-  -- Written as the arithmetic inside, with its `overflow` option.
-  | .fit _ _ => 0
-  -- Decimals are written as casts and typed calls (`writeExpr`).
-  | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
-  -- Lists and structs; field and element access are references, not calls.
-  | .cardinality => 401
-  -- A shim's guards.
-  | .raise _ => 118 | .isNum => 119
-  | .structField _ | .listElement _ => 0
   | .bbox n => bbAnchor n
+  | f => Functions.anchorOf (.un f)
 
 def BinFn.anchor : BinFn → Nat
-  -- Core
-  | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
-  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .fmod => 122 | .ipow | .fpow => 19
-  | .fatan2 => 111 | .flogb => 112
-  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11 | .pair => 123
-  | .greatest => 124 | .least => 125
-  | .bit op => match op with
-    | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
-  -- Strings
-  | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
-  | .substr _ _ => 32 | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
-  | .strRepeat => 203 | .ilike => 204 | .levenshtein => 205
-  -- Dates and times
-  | .dateAdd => 4 | .dateDiff => 60
   | .bbox2 n => bbAnchor n
+  | f => Functions.anchorOf (.bin f)
+
+/-- The anchor of a function by its Substrait name (`Functions.anchorNamed`). -/
+abbrev fn (name : String) : Nat := Functions.anchorNamed name
 
 /-- Every anchor a function is written with is declared (0 marks no call,
 or a black box without a row). -/
@@ -207,31 +108,19 @@ theorem AggFn.anchor_declared (f : AggFn) :
     AggFn.anchor f = 0 ∨ AggFn.anchor f ∈ declared.map (·.1) := by
   cases f
   case bbox n => exact bbAnchor_declared n
-  all_goals apply Or.inr
-  case bit op => cases op <;> decide
-  case var sample sqrt => cases sample <;> cases sqrt <;> decide
-  case pick last => cases last <;> decide
-  case quantile cont _ _ => cases cont <;> simp only [AggFn.anchor] <;> decide
-  case cov sample => cases sample <;> decide
-  case concat => simp only [AggFn.anchor]; decide
-  all_goals decide
+  all_goals exact anchorOf_declared _
 
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
   cases f
   case bbox n => exact bbAnchor_declared n
-  case regexExtract => exact Or.inr (by simp only [UnFn.anchor]; decide)
-  case regexReplace => exact Or.inr (by simp only [UnFn.anchor]; decide)
-  all_goals first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
+  all_goals exact anchorOf_declared _
 
 theorem BinFn.anchor_declared (f : BinFn) :
     BinFn.anchor f = 0 ∨ BinFn.anchor f ∈ declared.map (·.1) := by
   cases f
   case bbox2 n => exact bbAnchor_declared n
-  all_goals apply Or.inr
-  case trim l r => cases l <;> cases r <;> decide
-  case bit op => cases op <;> decide
-  all_goals exact of_decide_eq_true rfl
+  all_goals exact anchorOf_declared _
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
@@ -443,7 +332,7 @@ operation that can give `-0.0` or a negative NaN; the parser reads
 `nanvl(x, NaN)` back as `x`. -/
 def canonical (x : Json) : Json :=
   let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
-  call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
+  call (fn "nanvl") [call (fn "add") [x, lit (Json.num 0)], lit "NaN"]
 
 /-- `CAST(j AS INT<n>)` that raises where the value does not fit. -/
 def checkedNarrow (n : Nat) (j : Json) : Json :=
@@ -470,8 +359,7 @@ def isLit : Expr → Bool
 def reference (seg e : Json) : Json :=
   obj [("selection", obj [("directReference", seg), ("expression", e)])]
 
-def HoFn.anchor : HoFn → Nat
-  | .anyMatch => 402 | .allMatch => 403 | .transform => 404 | .filter => 405
+def HoFn.anchor (f : HoFn) : Nat := Functions.anchorOf (.hof f)
 
 /-- A closed lambda's body, written over the row `[x]`, with its references
 into the row as references to the lambda's parameter (`Parse.closeBody`
@@ -520,7 +408,7 @@ def decimalLit (p s : Nat) (m : Int) : Json := writeLit (.dec p s) (.int m)
 power of ten `Parse.upscale` brought it to the common scale with (it always
 is; the parser rescales it again). -/
 def upscaled (n : Int) (x : Json) : Json :=
-  if isPow10 n then x else call 6 [x, writeLit .int (.int n)]
+  if isPow10 n then x else call (fn "multiply") [x, writeLit .int (.int n)]
 
 /-- A comparison (`anchor`) of decimals `x` and `y`, one of which (`left`
 or not) the parser brought to the common scale by `· n`: written without it,
@@ -528,7 +416,7 @@ since the parser rescales it again. -/
 def decimalCompare (anchor : Nat) (n : Int) (left : Bool) (x y : Json) : Json :=
   if isPow10 n then call anchor [x, y]
   else
-    let scaled (z : Json) := call 6 [z, writeLit .int (.int n)]
+    let scaled (z : Json) := call (fn "multiply") [z, writeLit .int (.int n)]
     call anchor (if left then [scaled x, y] else [x, scaled y])
 
 /-- The scale of a decimal, `0` for an integer (`Parse.decType?`). -/
@@ -563,48 +451,48 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- `abs(a)`: `Parse.decimalCall` makes it `CASE WHEN a < 0 THEN 0 - a ELSE a END`.
   | .un (.decimal p s) (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .dsub (.lit (.int 0)) a') a'') =>
     let wa := writeExpr cols (wkind cols a) a
-    if a == a' && a == a'' then call 121 [wa]
+    if a == a' && a == a'' then call (fn "abs") [wa]
     else
       let zero := writeLit .int (.int 0)
       castTo (decType p s) (obj [("ifThen", obj [
-        ("ifs", Json.arr #[obj [("if", call 8 [wa, zero]),
-          ("then", call 5 [zero, writeExpr cols (wkind cols a') a'])]]),
+        ("ifs", Json.arr #[obj [("if", call (fn "lt") [wa, zero]),
+          ("then", call (fn "subtract") [zero, writeExpr cols (wkind cols a') a'])]]),
         ("else", writeExpr cols (wkind cols a'') a'')])])
   -- `a / b` at scale `s`, rounded half away from zero (`Parse.decimalCall`'s
   -- `sverify_decimal_div`): a decimal `AVG` over a window.
   | .un (.dkind p s) (.bin .ddiv (.bin .dmul a (.lit (.int n))) b) =>
-    callTyped 120 [upscaled n (writeExpr cols (wkind cols a) a), writeExpr cols (wkind cols b) b]
+    callTyped (fn "sverify_decimal_div") [upscaled n (writeExpr cols (wkind cols a) a), writeExpr cols (wkind cols b) b]
       (decType p s)
   | .un (.dkind p s) (.bin .ddiv a b) =>
-    callTyped 120 [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+    callTyped (fn "sverify_decimal_div") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.bin .dadd (.bin .dmul x (.lit (.int n))) b) =>
     let wa := upscaled n (writeExpr cols (wkind cols x) x)
-    callTyped 4 [wa, writeExpr cols (wkind cols b) b] (decType p s)
+    callTyped (fn "add") [wa, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.bin .dadd a (.bin .dmul x (.lit (.int n)))) =>
     let wb := upscaled n (writeExpr cols (wkind cols x) x)
-    callTyped 4 [writeExpr cols (wkind cols a) a, wb] (decType p s)
+    callTyped (fn "add") [writeExpr cols (wkind cols a) a, wb] (decType p s)
   | .un (.decimal p s) (.bin .dadd a b) =>
-    callTyped 4 [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+    callTyped (fn "add") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.bin .dsub (.bin .dmul x (.lit (.int n))) b) =>
     let wa := upscaled n (writeExpr cols (wkind cols x) x)
-    callTyped 5 [wa, writeExpr cols (wkind cols b) b] (decType p s)
+    callTyped (fn "subtract") [wa, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.bin .dsub a (.bin .dmul x (.lit (.int n)))) =>
     let wb := upscaled n (writeExpr cols (wkind cols x) x)
-    callTyped 5 [writeExpr cols (wkind cols a) a, wb] (decType p s)
+    callTyped (fn "subtract") [writeExpr cols (wkind cols a) a, wb] (decType p s)
   | .un (.decimal p s) (.bin .dsub a b) =>
     let wb := writeExpr cols (wkind cols b) b
     -- `negate`: `0 - b` at `b`'s own type.
-    if a == .lit (.int 0) && wkind cols b == .dec p s then call 3 [wb]
-    else callTyped 5 [writeExpr cols (wkind cols a) a, wb] (decType p s)
+    if a == .lit (.int 0) && wkind cols b == .dec p s then call (fn "negate") [wb]
+    else callTyped (fn "subtract") [writeExpr cols (wkind cols a) a, wb] (decType p s)
   -- `CAST(a AS DECIMAL(p, s))` to a larger scale is an `upscale`; otherwise
   -- this is a product.
   | .un (.decimal p s) (.bin .dmul a (.lit (.int n))) =>
     let wa := writeExpr cols (wkind cols a) a
     let k := (toString n).length - 1
     if isPow10 n && (decScale? (wkind cols a)).map (· + k) == some s then castTo (decType p s) wa
-    else callTyped 6 [wa, writeLit .int (.int n)] (decType p s)
+    else callTyped (fn "multiply") [wa, writeLit .int (.int n)] (decType p s)
   | .un (.decimal p s) (.bin .dmul a b) =>
-    callTyped 6 [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+    callTyped (fn "multiply") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.un (.dround _) a) | .un (.decimal p s) (.un (.ftod _) a) =>
     castTo (decType p s) (writeExpr cols (wkind cols a) a)
   | .un (.decimal p s) a => castTo (decType p s) (writeExpr cols (wkind cols a) a)
@@ -624,7 +512,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .time a)])]
-  | .un .fneg a => canonical (call 3 [writeExpr cols .float a])
+  | .un .fneg a => canonical (call (fn "negate") [writeExpr cols .float a])
   | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.narrow n) a =>
@@ -644,12 +532,12 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- back as the same `wrap`.
   | .un (.wrap n) (.bin f x y) => checkedNarrow n
     (call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)])
-  | .un (.wrap n) (.un .neg x) => checkedNarrow n (call 3 [narrowLit n x (writeExpr cols .int x)])
+  | .un (.wrap n) (.un .neg x) => checkedNarrow n (call (fn "negate") [narrowLit n x (writeExpr cols .int x)])
   | .un (.wrap _) a => writeExpr cols ctx a
   -- `overflow` = `SILENT` or `SATURATE` (#241): the arithmetic at the width,
   -- with the option; the parser reads it back as the same `fit`.
   | .un (.fit m w) (.bin .dsub (.lit (.int 0)) x) =>
-    callOpt 3 [fitArg w x (writeExpr cols .int x)] "overflow" m.name
+    callOpt (fn "negate") [fitArg w x (writeExpr cols .int x)] "overflow" m.name
   | .un (.fit m w) (.bin f x y) =>
     callOpt (BinFn.anchor f) [fitArg w x (writeExpr cols .int x), fitArg w y (writeExpr cols .int y)]
       "overflow" m.name
@@ -657,17 +545,17 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>
-    canonical (call 17 [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]])
-  | .un .ffloor a => canonical (call 15 [writeExpr cols .float a])
-  | .un .fceil a => canonical (call 16 [writeExpr cols .float a])
-  | .un .fround a => canonical (call 17 [writeExpr cols .float a])
+    canonical (call (fn "round") [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]])
+  | .un .ffloor a => canonical (call (fn "floor") [writeExpr cols .float a])
+  | .un .fceil a => canonical (call (fn "ceil") [writeExpr cols .float a])
+  | .un .fround a => canonical (call (fn "round") [writeExpr cols .float a])
   | .un (.fmath f) a => canonical (call (UnFn.anchor (.fmath f)) [writeExpr cols .float a])
-  | .un .neg a => call 3 [writeExpr cols ctx a]
+  | .un .neg a => call (fn "negate") [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
-    call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
+    call (fn "array_length") [call (fn "regexp_match") [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
   | .un (.datePart p) a =>
     let k := if wkind cols a == .tod then .tod else .time
-    call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols k a]
+    call (fn "date_part") [obj [("literal", writeValue (.str p.name))], writeExpr cols k a]
   -- A time of day plus a constant (`temporalArith`): the time plus an interval,
   -- which wraps around midnight.
   -- A constant's time of day is the same, so it is written as a TIME.
@@ -682,29 +570,29 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .time a)])]
   | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
-  | .un (.strftime fmt) a => call 61 [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
-  | .un (.bucket k o) a => call 62 [writeInterval k, writeExpr cols .time a, writeLit .time (.int o)]
+  | .un (.strftime fmt) a => call (fn "strftime") [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
+  | .un (.bucket k o) a => call (fn "date_bin") [writeInterval k, writeExpr cols .time a, writeLit .time (.int o)]
   | .un (.dateTrunc u) a =>
     let k := if wkind cols a == .tod then .tod else .time
-    call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols k a]
-  | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
-  | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
-  | .un (.addMonths m t) a => call 4 [writeExpr cols (if t then .time else .date) a, writeMonths m]
+    call (fn "date_trunc") [obj [("literal", writeValue (.str u.name))], writeExpr cols k a]
+  | .un (.dayPart p) a => call (fn "date_part") [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
+  | .un (.dayTrunc u) a => call (fn "date_trunc") [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
+  | .un (.addMonths m t) a => call (fn "add") [writeExpr cols (if t then .time else .date) a, writeMonths m]
   -- The argument's kind from the function, for a bare `NULL` (#96).
   | .un .not a => call (UnFn.anchor .not) [writeExpr cols .bool a]
   | .un .upper a => call (UnFn.anchor .upper) [writeExpr cols .str a]
   | .un .lower a => call (UnFn.anchor .lower) [writeExpr cols .str a]
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
-  | .un (.raise msg) a => call 118 [writeExpr cols (wkind cols a) a, writeLit .str (.str msg)]
-  | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
+  | .un (.raise msg) a => call (fn "sverify_raise") [writeExpr cols (wkind cols a) a, writeLit .str (.str msg)]
+  | .un (.replace p r) a => call (fn "replace") [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
   | .un (.regexExtract p g) a =>
-    call 206 [writeExpr cols .str a, writeLit .str (.str p), writeLit .int (.int g)]
+    call (fn "regexp_extract") [writeExpr cols .str a, writeLit .str (.str p), writeLit .int (.int g)]
   -- DuckDB's and DataFusion's flags argument: `'g'` replaces every match.
   | .un (.regexReplace p r g) a =>
-    call 207 ([writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)] ++
+    call (fn "regexp_replace") ([writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)] ++
       if g then [writeLit .str (.str "g")] else [])
-  | .un .md5 a => call 208 [writeExpr cols .str a]
-  | .un .sha256 a => call 209 [writeExpr cols .str a]
+  | .un .md5 a => call (fn "md5") [writeExpr cols .str a]
+  | .un .sha256 a => call (fn "sha256") [writeExpr cols .str a]
   -- A reference into the value of `a` (#94).
   | .un (.structField i) a => reference (obj [("structField", obj [("field", toJson i)])])
       (writeExpr cols (wkind cols a) a)
@@ -725,17 +613,17 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     -- Days added to a date: an interval of days, or a count of them.
     | .dateAdd => match b with
-      | .lit (.int k) => call 4 [writeExpr cols .date a, writeInterval (k * Time.usPerDay)]
-      | _ => call 4 [writeExpr cols .date a, call 6 [writeExpr cols .int b, writeInterval Time.usPerDay]]
-    | .dateDiff => call 60 [writeExpr cols .date a, writeExpr cols .date b]
+      | .lit (.int k) => call (fn "add") [writeExpr cols .date a, writeInterval (k * Time.usPerDay)]
+      | _ => call (fn "add") [writeExpr cols .date a, call (fn "multiply") [writeExpr cols .int b, writeInterval Time.usPerDay]]
+    | .dateDiff => call (fn "date_diff") [writeExpr cols .date a, writeExpr cols .date b]
     -- `WRAP_FROM_END` is what a plan without the option means.
     | .substr n wrap =>
       let args := [writeExpr cols .str a, writeExpr cols .int b] ++
         (n.map fun n => obj [("literal", writeValue (.int n))]).toList
-      if wrap then call 32 args else callOpt 32 args "negative_start" "LEFT_OF_BEGINNING"
-    | .strRepeat => call 203 [writeExpr cols .str a, writeExpr cols .int b]
+      if wrap then call (fn "substring") args else callOpt (fn "substring") args "negative_start" "LEFT_OF_BEGINNING"
+    | .strRepeat => call (fn "repeat") [writeExpr cols .str a, writeExpr cols .int b]
     | .lt => match ka, kb with
-      | .list _, _ | _, .list _ => call 400 [writeExpr cols ka a, writeExpr cols kb b]
+      | .list _, _ | _, .list _ => call (fn "list_lt") [writeExpr cols ka a, writeExpr cols kb b]
       | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ | .ilike | .levenshtein =>
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
@@ -744,7 +632,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     | .greatest | .least => match ka, kb with
       | .list _, _ | _, .list _ =>
         let (ja, jb) := (writeExpr cols ka a, writeExpr cols kb b)
-        let better := if f matches .greatest then call 400 [ja, jb] else call 400 [jb, ja]
+        let better := if f matches .greatest then call (fn "list_lt") [ja, jb] else call (fn "list_lt") [jb, ja]
         caseChain (call (UnFn.anchor .isNull) [ja]) jb
           (caseChain (call (UnFn.anchor .isNull) [jb]) ja (caseChain better jb ja))
       -- Two constants are of the context's kind: a date or a timestamp is an
@@ -757,13 +645,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- double (`Parse.mkFloatCall`): written as those calls, so that they read
   -- back as they were.
   | .ifThen (.bin .eq a (.lit (.int k))) t (.un .fneg e) =>
-    if k == FloatCode.nan && t == a && e == a then canonical (call 3 [writeExpr cols .float a])
+    if k == FloatCode.nan && t == a && e == a then canonical (call (fn "negate") [writeExpr cols .float a])
     else obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .eq a (.lit (.int k)))),
         ("then", writeExpr cols ctx t)]]),
       ("else", writeExpr cols ctx (.un .fneg e))])]
   | .ifThen (.bin .lt a (.lit (.int 0))) (.un .fneg t) e =>
-    if t == a && e == a && wkind cols a == .float then call 121 [writeExpr cols .float a]
+    if t == a && e == a && wkind cols a == .float then call (fn "abs") [writeExpr cols .float a]
     else obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .lt a (.lit (.int 0)))),
         ("then", writeExpr cols ctx (.un .fneg t))]]),
@@ -967,20 +855,20 @@ def measureArg (cols : List WKind) (m : Measure) : Json :=
 def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
   let col (i : Nat) := writeExpr cols .other (.field i)
   let (anchor, args, fr) : Nat × List Json × Frame := match f with
-    | .rowNumber => (12, [], .all)
+    | .rowNumber => (fn "row_number", [], .all)
     | .lag c k d | .lead c k d =>
       let base := [col c, writeLit .int (.int k)]
-      (if f matches .lag .. then 13 else 14,
+      (fn (if f matches .lag .. then "lag" else "lead"),
         if d == Value.null then base else base ++ [writeLit (cols.getD c .other) d], .all)
-    | .rank _ => (70, [], .all)
-    | .denseRank _ => (71, [], .all)
-    | .percentRank _ => (72, [], .all)
-    | .cumeDist _ => (73, [], .all)
-    | .ntile k => (74, [writeLit .int (.int k)], .all)
+    | .rank _ => (fn "rank", [], .all)
+    | .denseRank _ => (fn "dense_rank", [], .all)
+    | .percentRank _ => (fn "percent_rank", [], .all)
+    | .cumeDist _ => (fn "cume_dist", [], .all)
+    | .ntile k => (fn "ntile", [writeLit .int (.int k)], .all)
     | .agg m _ fr => (Write.AggFn.anchor m.fn, [measureArg cols m], fr)
-    | .firstValue c _ fr => (75, [col c], fr)
-    | .lastValue c _ fr => (76, [col c], fr)
-    | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
+    | .firstValue c _ fr => (fn "first_value", [col c], fr)
+    | .lastValue c _ fr => (fn "last_value", [col c], fr)
+    | .nthValue c n _ fr => (fn "nth_value", [col c, writeLit .int (.int n)], fr)
   obj [("windowFunction", obj ([
     ("functionReference", toJson anchor),
     ("partitions", Json.arr (part.map col).toArray),

@@ -1,4 +1,5 @@
 import SubstraitLean.Rel
+import SubstraitLean.Functions
 
 /-! # Human-readable rendering of values, expressions and plans -/
 
@@ -15,50 +16,36 @@ def Value.render : Value → String
 def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"
 
+/-! Constructors without parameters render as their row of
+`SubstraitLean/Functions.lean` says (`Functions.prettyOf`); the others, and
+those without a row (casts), by an arm of their own. -/
+
 def UnFn.render : UnFn → String
-  | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
-  | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
+  | .itof => "DOUBLE" | .froundTo d => s!"ROUND_{d}"
   | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .ftoiOrNull => "TRY_BIGINT"
-  | .narrowOrNull n => s!"TRY_INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE" | .upper => "UPPER" | .lower => "LOWER"
-  | .length => "LENGTH" | .reverse => "REVERSE" | .ascii => "ASCII"
+  | .narrowOrNull n => s!"TRY_INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE"
   | .replace p r => s!"REPLACE_{p.quote}_{r.quote}" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .regexExtract p g => s!"REGEXP_EXTRACT_{p.quote}_{g}"
   | .regexReplace p r g => s!"REGEXP_REPLACE_{p.quote}_{r.quote}{if g then "_G" else ""}"
-  | .md5 => "MD5" | .sha256 => "SHA256"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
   | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"
   | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
   | .strftime fmt => s!"STRFTIME_{fmt.quote}" | .bucket k o => s!"BUCKET_{k}_{o}"
-  | .fmath f => f.name.toUpper
   | .decimal p s => s!"DECIMAL_{p}_{s}" | .dkind p s => s!"AS_DECIMAL_{p}_{s}" | .dround k => s!"DROUND_{k}" | .dtrunc k => s!"DTRUNC_{k}"
   | .ftod s => s!"TO_DECIMAL_{s}" | .dtof s => s!"DECIMAL_TO_DOUBLE_{s}"
   | .structField i => s!"FIELD_{i}" | .listElement off => s!"ELEMENT_{off}"
-  | .cardinality => "CARDINALITY"
-  | .raise msg => s!"RAISE_{msg.quote}" | .isNum => "IS_NUMBER"
+  | .raise msg => s!"RAISE_{msg.quote}"
   | .fit m w => s!"{m.name}{w.bits}"
   | .bbox n => n.toUpper
+  | f => Functions.prettyOf (.un f)
 
 def BinFn.render : BinFn → String
-  | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
-  | .and => "AND" | .or => "OR" | .fadd => "+." | .fsub => "-." | .fmul => "*." | .fdiv => "/."
-  | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^." | .fmod => "%."
-  | .concat => "||" | .strpos => "STRPOS" | .startsWith => "STARTS_WITH"
-  | .endsWith => "ENDS_WITH" | .like => "LIKE"
   | .substr n wrap =>
     s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}{if wrap then "" else "_LEFT_OF_BEGINNING"}"
-  | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
-  | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN" | .greatest => "GREATEST" | .least => "LEAST"
-  | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
-  | .fatan2 => "ATAN2" | .flogb => "LOGB"
-  | .dadd => "+" | .dsub => "-" | .dmul => "*" | .ddiv => "/ROUND"
-  | .bit op => match op with
-    | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
-  | .pair => "PAIR"
   | .bbox2 n => n.toUpper
+  | f => Functions.prettyOf (.bin f)
 
-def HoFn.name : HoFn → String
-  | .anyMatch => "ANY_MATCH" | .allMatch => "ALL_MATCH" | .transform => "TRANSFORM"
-  | .filter => "FILTER"
+def HoFn.name (f : HoFn) : String := Functions.prettyOf (.hof f)
 
 def Expr.render : Expr → String
   | .lit v => v.render
@@ -69,18 +56,12 @@ def Expr.render : Expr → String
   | .hof f l b => s!"{f.name}({l.render}, $0 -> {b.render})"
 
 def AggFn.name : AggFn → String
-  | .count => "COUNT" | .sum | .fsum => "SUM" | .avg | .iavg => "AVG" | .min => "MIN" | .max => "MAX"
-  | .collect => "ARRAY_AGG"
   | .bit op => s!"BIT_{op.name.toUpper}"
-  | .var sample sqrt => s!"{if sqrt then "STDDEV" else "VAR"}_{if sample then "SAMP" else "POP"}"
-  | .pick last => if last then "LAST" else "FIRST"
-  | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
-  | .corr => "CORR"
   | .concat sep => s!"STRING_AGG_{sep.quote}"
   | .quantile cont num scale =>
     s!"QUANTILE_{if cont then "CONT" else "DISC"}_{num}E-{scale}"
-  | .mode => "MODE"
   | .bbox n => n.toUpper
+  | f => Functions.prettyOf (.agg f)
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with
