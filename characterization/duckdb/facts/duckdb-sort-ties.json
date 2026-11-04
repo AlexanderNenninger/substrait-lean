@@ -1,0 +1,63 @@
+{
+  "id": "duckdb-sort-ties",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Ties of a sort and the input order of aggregates are not guaranteed",
+  "verdict": "`tie_order`: any order (`ORDER BY` may not be stable)",
+  "area": "relations",
+  "options": [
+    "tie_order"
+  ],
+  "rows": [
+    {
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    },
+    {
+      "group": "agg.seq",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "ORDER BY",
+    "list",
+    "array_agg",
+    "string_agg"
+  ],
+  "settings": {},
+  "description": [
+    "\"ORDER BY may not use a stable algorithm\": rows that tie on every key come out in any order. `JOIN`, `UNION`, `GROUP BY` and whole-table aggregation do not preserve the order of rows either; `FROM` a single table, `WHERE`, `SELECT`, `LIMIT`, `OFFSET`, `UNION ALL` and a window with an empty `OVER` do (Order Preservation).",
+    "`list` (`array_agg`) and `string_agg` are order-sensitive and \"can have non-deterministic results without ordering\"; an `ORDER BY` in the call sorts the values first, and the docs give that sort no stability either, so ties on its keys take any order.",
+    "For windows (`row_number`, `ntile`, `lag`, …) the docs only say that without an `ORDER BY` the results \"are not well-defined\"; the order of peers is for round 2."
+  ],
+  "reference": "`tie_order`: any order of the ties (docs/core-semantics.md); the reference fixes nothing, and a plan that needs one order is refused or made `tie_free`. DuckDB's is one of them.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/order_preservation",
+          "note": "ORDER BY (specifically, ORDER BY may not use a stable algorithm); aggregation input order not guaranteed"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "ORDER BY Clause in Aggregate Functions: list, string_agg are order-sensitive"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/window_functions",
+          "note": "Partition and Ordering: without ORDER BY not well-defined"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0)."
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "id": "duckdb-exec-short-circuit",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Short-circuit: `CASE` and `COALESCE` lazy, `AND`/`OR` lazy only in a filter",
+  "verdict": "`CASE`, `COALESCE` lazy; `AND`/`OR` eager in a projection, sequential in a filter with the order kept when a child can raise",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "CASE",
+    "COALESCE",
+    "AND",
+    "OR",
+    "WHERE"
+  ],
+  "settings": {
+    "error_on_division_by_zero": true
+  },
+  "description": [
+    "The documentation is silent: the `CASE` page says the matching branch is evaluated and returned, and the logical operators page says `AND` and `OR` are commutative. Neither says whether other operands run.",
+    "The executor at v2.0.0: `CASE` evaluates each `WHEN` on the rows still undecided and each `THEN` only on the rows its `WHEN` selects, `ELSE` on the rest (`execute_case.cpp`). `COALESCE` evaluates each argument only on the rows still NULL (`execute_operator.cpp`). So a raising branch or argument runs only on the rows that reach it.",
+    "`AND` and `OR` run two ways. As a value (in a `SELECT` list, or inside a `CASE` result), `Execute` evaluates every child on every row and combines them, so `SELECT x <> 0 AND 10 // x > 1` raises on `x = 0`. As a condition (`WHERE`, a `CASE` `WHEN`, a join filter), `Select` evaluates the children one after the other, each on the rows the earlier ones left undecided. The adaptive filter permutes the children at run time by observed cost, but not when one of them can raise (`Expression::CanThrow`) or holds a barrier, and the optimizer's cost ordering (`ExpressionHeuristics`) also leaves such a conjunction in its written order. DuckDB's own test checks that `WHERE id <> 0 AND s::INT = 10` does not raise on the rows `id <> 0` removes, also when the filter is pushed into a dictionary-compressed segment or a Parquet dictionary.",
+    "Constant folding does not raise: an expression whose folding fails is left in place (`constant_folding.cpp`), so `CASE WHEN false THEN 1 // 0 END` is evaluated at run time, lazily.",
+    "To settle at the next rounds: probes of `SELECT a AND b` with a raising `b`, of a `WHERE` that writes the raising conjunct first, and of which functions `CanThrow` misses (a function marked as not raising that does raise would be permuted)."
+  ],
+  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. Lean evaluates `CASE` lazily and `and`/`or` on both operands (Kleene), the same model.",
+  "status": "open",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/case.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/logical_operators.html"
+        }
+      ],
+      "notes": "Both pages are silent on evaluation order and on errors in operands that do not decide the result."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_case.cpp#L35-L95",
+          "note": "CASE: THEN on the WHEN's true rows only, ELSE on the rest"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_operator.cpp#L126-L172",
+          "note": "COALESCE: each argument on the rows still NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_conjunction.cpp#L33-L59",
+          "note": "AND/OR as a value: every child on every row"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_conjunction.cpp#L61-L146",
+          "note": "AND/OR as a condition: children in sequence on the undecided rows, in the adaptive filter's permutation"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/adaptive_filter.cpp#L17-L47",
+          "note": "no permutation when a child CanThrow or holds a barrier"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/expression_heuristics.cpp#L50-L55",
+          "note": "no cost reordering when an expression can throw"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_function_expression.cpp#L75-L79",
+          "note": "CanThrow: the function's error mode, lambdas, children"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_cast_expression.cpp#L337-L380",
+          "note": "CastCanThrow"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/constant_folding.cpp#L34-L41",
+          "note": "failed folding leaves the expression"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/filter/test_throwing_filter_pushdown.test#L39-L69",
+          "note": "`WHERE id <> 0 AND s::INT = 10` and `grp <> 0 AND val::TINYINT = 5` do not raise; the cast alone does"
+        }
+      ],
+      "notes": "Read, not replayed."
+    }
+  ],
+  "issues": [
+    604
+  ]
+}

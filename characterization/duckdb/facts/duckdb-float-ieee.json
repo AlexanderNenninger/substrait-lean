@@ -1,0 +1,57 @@
+{
+  "id": "duckdb-float-ieee",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`FLOAT` and `DOUBLE` are IEEE 754 binary32 and binary64",
+  "verdict": "`rounding: TIE_TO_EVEN` for `+ - * /` (docs, hedged)",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.arith", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "fp.div", "option": "rounding", "types": ["fp32", "fp64"]}
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/",
+    "FLOAT",
+    "DOUBLE"
+  ],
+  "settings": {
+    "ieee_floating_point_ops": true,
+    "integer_division": false
+  },
+  "description": [
+    "`FLOAT` (`FLOAT4`, `REAL`) is single precision and `DOUBLE` (`FLOAT8`) double precision, in practice IEEE 754 \"to the extent that the underlying processor, operating system, and compiler support it\". Addition, subtraction and multiplication are approximate on them, so each result is the operands' IEEE result, rounded to nearest with ties to even, the default IEEE mode. The docs name no other rounding mode and no setting that changes it.",
+    "`/` of two integers is float division (`5 / 2 = 2.5`) while `integer_division` is false (the default); `//` divides integers. `ieee_floating_point_ops` (default true) selects IEEE results (NaN, `±inf`) over errors or NULL for supported floating-point operations; it does not touch rounding.",
+    "The docs hedge (\"usually\", \"to the extent … support it\"), so this rests on the platform's FPU; a source or probe check (round 2) would pin it."
+  ],
+  "reference": "`rounding: TIE_TO_EVEN` for `+ - × /` of doubles (Lean's native `Float`; docs/core-semantics.md D5). Lean refuses arithmetic on `FLOAT` values (duckdb-R12), so the fp32 rows matter only once binary32 is modelled.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html",
+          "note": "Floating-Point Types: FLOAT and DOUBLE are usually implementations of IEEE 754 single and double precision; multiplication, addition and subtraction are only approximate on them"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
+          "note": "ieee_floating_point_ops (default true); integer_division (default false): whether / defaults to integer division"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html",
+          "note": "Division and Modulo Operators: / and // are equivalent when an operand is FLOAT or DOUBLE"
+        }
+      ],
+      "notes": "https://duckdb.org/docs/stable/ redirects to the 2.0 docs."
+    }
+  ]
+}

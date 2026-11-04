@@ -1,0 +1,52 @@
+{
+  "id": "duckdb-exec-row-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Row order and order-sensitive aggregates under parallel execution",
+  "verdict": "insertion order kept for scans, WHERE, LIMIT, UNION ALL; not for joins, GROUP BY, aggregates",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "ORDER BY",
+    "GROUP BY",
+    "JOIN",
+    "SUM",
+    "first",
+    "list",
+    "string_agg",
+    "any_value"
+  ],
+  "settings": {
+    "preserve_insertion_order": true,
+    "threads": "the host's core count"
+  },
+  "description": [
+    "The order preservation page guarantees the input order for a single-table `FROM`, `SELECT`, `WHERE`, `LIMIT`, `OFFSET`, `UNION ALL`, `COPY` and an empty `OVER ()`, and for the CSV, JSON and Parquet readers, while `preserve_insertion_order` is true. Joins, `UNION`, `GROUP BY`, whole-table aggregates, `USING SAMPLE` and scalar subqueries guarantee no order. With the setting off, any query without `ORDER BY` may reorder rows.",
+    "The aggregates page marks the double versions of `sum`, `fsum` and `favg`, and `first`, `last`, `any_value`, `list` and `string_agg`, as affected by ordering, with non-deterministic results without an `ORDER BY` in the aggregate. Neither page names threads; the dependence on the thread count is implied by the parallel hash aggregate and goes to a probe (sum of doubles at threads 1 and N; existing facts duckdb-sum-double and duckdb-mode-ties).",
+    "Leads: src/execution/operator/aggregate/physical_hash_aggregate.cpp (the partition merge), test/sql/aggregate/aggregates/test_sum.test and test/sql/parallelism/."
+  ],
+  "reference": "The reference compares results as bags (`List.Perm`), so row order outside `ORDER BY` is free. `sum_order` is an open option every route allows within the plan's bound; `first`/`any_value` without ordering and `tie_order` allow every order.",
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/order_preservation.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
+          "note": "preserve_insertion_order, threads"
+        }
+      ]
+    }
+  ]
+}

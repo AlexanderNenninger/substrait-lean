@@ -1,0 +1,49 @@
+{
+  "id": "duckdb-var-distribution",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`variance` and `stddev` are the sample's",
+  "verdict": "`variance` is `var_samp`, `stddev` is `stddev_samp`",
+  "area": "aggregates",
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "variance",
+    "stddev",
+    "var_samp",
+    "var_pop",
+    "stddev_samp",
+    "stddev_pop"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB names both distributions: `var_samp` and `stddev_samp` divide by `count(x) - 1` (Bessel's correction), `var_pop` and `stddev_pop` by `count(x)`. `variance` is an alias of `var_samp` and `stddev` of `stddev_samp`.",
+    "The docs give these per function, without listing the argument types; the types here rest on the functions taking any numeric argument. The docs' formulas (`(sum(x^2) - sum(x)^2 / count(x)) / (count(x) - 1)`) define the result; the algorithm is Welford's (duckdb-var-stddev)."
+  ],
+  "reference": "Substrait's `variance` and `std_dev` take `distribution` (`SAMPLE`, `POPULATION`); sverify reads an omitted one as `SAMPLE` (`SubstraitLean/Options.lean`, `Parse.lean`), and the lift writes `VAR_SAMP`/`VAR_POP` (`sql_lift/_base.py`, `_distribution`). DuckDB's defaults agree.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "Statistical Aggregates: var_samp (alias variance), var_pop, stddev_samp (alias stddev), stddev_pop, with their formulas"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0). Per-type overloads are for round 2 (source)."
+    }
+  ]
+}

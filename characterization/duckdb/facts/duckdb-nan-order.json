@@ -1,0 +1,68 @@
+{
+  "id": "duckdb-nan-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "NaN compares greater than every other float",
+  "verdict": "`nan_order: GREATEST` natively (docs)",
+  "area": "doubles",
+  "options": [
+    "nan_order"
+  ],
+  "rows": [
+    {"group": "cmp", "option": "nan_order", "types": ["fp32", "fp64"]},
+    {"group": "agg.order", "option": "nan_order", "types": ["fp32"]},
+    {"group": "agg.quant", "option": "nan_order", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "<",
+    ">",
+    "greatest",
+    "least",
+    "min",
+    "max",
+    "quantile_cont",
+    "median"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB departs from IEEE 754 in one point: NaN compares equal to NaN and greater than any other floating-point number, `+inf` included (`'nan' > sqrt(2)` is true). So `FLOAT` and `DOUBLE` have a total order, and `greatest` and `least` treat NaN as the largest value.",
+    "The docs state this for both floating-point types. They say nothing about the sign of a NaN in comparisons (duckdb-nan-equality: `nan = -nan` is true).",
+    "`min`, `max` and `quantile_cont` take the values in this order (\"in the specified order\"); the docs do not restate NaN's place for each aggregate. duckdb-quantile-disc probes `agg.order` for `fp64`."
+  ],
+  "reference": "`nan_order: GREATEST`, NaN above `+inf`, for sorting, `MIN`, `MAX`, `<`, `greatest` and `least` (docs/core-semantics.md). Substrait's comparisons are IEEE (`NaN < x` false); ST-4 records the gap.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html",
+          "note": "Floating-Point Types: DuckDB follows IEEE 754 for Infinity, -Infinity and NaN with one exception, NaN compares equal to NaN and greater than any other floating point number; example `'nan' > sqrt(2)` is true"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/sql_quirks.html",
+          "note": "NaN Values: 'NaN'::FLOAT = 'NaN'::FLOAT and 'NaN'::FLOAT > 3 give floating point types a total order (beware the consequences for greatest / least)"
+        }
+      ],
+      "notes": "https://duckdb.org/docs/stable/ redirects to the 2.0 docs."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "quantile_cont: the value at a position in the specified order; min and max"
+        }
+      ],
+      "notes": "The same sentence of the numeric types page, read for MIN, MAX and quantiles."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}
