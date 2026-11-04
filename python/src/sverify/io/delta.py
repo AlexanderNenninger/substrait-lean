@@ -67,6 +67,7 @@ from sverify.io._common import (
 )
 from sverify.io._sink import SinkChange, _TableSink
 from sverify.io._storage import Options, resolve
+from sverify.observation import Observation
 
 CONSTRAINT = "Delta constraint"
 INSERT = ("insert", "update_postimage")
@@ -674,6 +675,9 @@ class DeltaSink(_TableSink[DeltaTable]):
             no version newer than this needs (`maintain(vacuum=...)`).
             Nodes reading the stored node that fell further behind read the
             whole table. Default: None, no vacuum.
+        reproducible: What a rerun of a state must reproduce
+            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset
+            with exact values.
 
     Attributes:
         uri: The sink table's location.
@@ -735,6 +739,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         log_retention: timedelta | None = None,
         compact_every: int | None = None,
         vacuum_retention: timedelta | None = None,
+        reproducible: Observation | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
         if checkpoint_interval is not None and checkpoint_interval < 1:
@@ -744,6 +749,7 @@ class DeltaSink(_TableSink[DeltaTable]):
             app_id=app_id,
             location=self.uri,
             compact_every=compact_every,
+            reproducible=reproducible,
         )
         self._properties: dict[str, str] = {}
         if checkpoint_interval is not None:
