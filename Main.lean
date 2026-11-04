@@ -276,6 +276,7 @@ def blackBoxJson : Lean.Json :=
       ("laws", laws f.laws)]) ++
     (BlackBox.aggregates.map fun f => obj [
       ("name", f.name), ("kind", "aggregate"), ("anchor", Lean.toJson (Write.bbAnchor f.name)),
+      ("raises", Lean.toJson (f.raises == .sometimes)),
       ("args", Lean.Json.arr #[ty f.arg]), ("result", ty f.result),
       ("empty", Write.writeValue f.empty), ("laws", laws f.laws)])).toArray
 

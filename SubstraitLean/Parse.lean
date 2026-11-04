@@ -2140,7 +2140,9 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- A black box (#325): NULLs skipped, its row's `empty` without values.
     | n, _ => match BlackBox.aggregate? n with
       | some bb =>
-        if arg.readsField && !bbAccepts bb.arg k then
+        -- Integers become doubles, as DuckDB converts them (#326).
+        if bb.arg == .double && k == .int then pure (.bbox bb.name, .un .itof arg)
+        else if arg.readsField && !bbAccepts bb.arg k then
           throw s!"{n} of a value of kind {repr k} is not supported"
         else pure (.bbox bb.name, arg)
       | none => throw s!"unsupported aggregate function: {n}"
