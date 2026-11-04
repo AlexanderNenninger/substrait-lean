@@ -168,7 +168,8 @@ def test_pl3_scalar_divisor_multiplies_by_the_reciprocal():
     # On several threads a morsel may hold one row, which takes the IEEE
     # kernel: on Polars 2.1.0 (macOS arm64, 10 threads) every row of a column
     # of 2 or 3, and the last of 64.
-    assert set(_polars(PL3 % (64, "streaming"))) <= {RECIPROCAL, IEEE}
+    rows = _polars(PL3 % (64, "streaming"))
+    assert isinstance(rows, list) and set(rows) <= {RECIPROCAL, IEEE}
 
 
 @polars_only
