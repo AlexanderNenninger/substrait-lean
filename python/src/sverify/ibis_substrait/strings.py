@@ -12,7 +12,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
-from sverify.ibis_substrait._base import Exprs, _unary, register, register_refusals
+from sverify.ibis_substrait._base import Exprs, register, register_refusals, table_rules
 from sverify.plan_json import Json, Unsupported, call, chain, if_then, literal, substring_left
 
 _URL_PARTS = ("Authority", "File", "Fragment", "Host", "Path", "Protocol", "Query", "UserInfo")
@@ -183,11 +183,8 @@ def _string_find(x: Exprs, op: Any) -> Json:
 
 register(
     {
-        ops.Uppercase: _unary("upper"),
-        ops.Lowercase: _unary("lower"),
-        ops.StringLength: _unary("character_length"),
-        ops.StartsWith: lambda x, op: call("starts_with", [x(op.arg), x(op.start)]),
-        ops.EndsWith: lambda x, op: call("ends_with", [x(op.arg), x(op.end)]),
+        # The function table's: `upper`, `lower`, `starts_with`, `repeat`, …
+        **table_rules("strings"),
         ops.StringContains: _string_contains,
         ops.StringSQLLike: _like("like"),
         ops.StringSQLILike: _like("ilike"),
@@ -199,14 +196,10 @@ register(
         ops.Capitalize: _capitalize,
         ops.LPad: _pad(left=True),
         ops.RPad: _pad(left=False),
-        ops.Repeat: lambda x, op: call("repeat", [x(op.arg), x(op.times, dt.int64)]),
-        ops.Reverse: _unary("reverse"),
         ops.StrRight: _str_right,
         ops.StringReplace: _replace,
-        ops.StringAscii: _unary("ascii"),
         ops.StringJoin: _string_join,
         ops.FindInSet: _find_in_set,
-        ops.Levenshtein: lambda x, op: call("levenshtein", [x(op.left), x(op.right)]),
         ops.Translate: _translate,
         ops.StringConcat: _string_concat,
         ops.RegexSearch: _regex_search,

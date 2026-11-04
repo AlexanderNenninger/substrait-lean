@@ -211,6 +211,13 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   `match name, k`, windows in `parseWindow`'s `match baseName name, args`. A
   string function's integer arguments go in `stringFns`; an option's functions
   in that option's arm of `optionAccepts`.
+- **Function table** (`python/src/sverify/_functions.py`, #544): a scalar
+  function of strings, math or bitwise operations is a row: its anchor, area
+  and group (`docs/core-semantics.md`), its kinds, the writer's operation, the
+  SQL of each dialect, and the SQLGlot nodes and Ibis operations that read as
+  it. A row whose `call`, `expr`, `lift` or `ibis` covers the function needs
+  no case in the places below; `tests/test_functions.py` checks the rows
+  against `Functions.lean` (`substrait-check --functions`).
 - **SQL writer** (`python/src/sverify/sql/core/<area>.py`, `strings`,
   `temporal`, `nested`): the function's case in the area's `call` (`mkCall`),
   its SQL in the area's `expr`, and its result kind in the area's `UN_KINDS` or

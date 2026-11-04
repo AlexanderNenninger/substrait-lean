@@ -12,7 +12,8 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
 
-from sverify import _plan_read, _support, black_box
+from sverify import _functions, _plan_read, _support, black_box
+from sverify._functions import FixedKind
 from sverify.black_box import BlackBox
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -90,6 +91,17 @@ class Dialect:
         raises it before writing anything (`sverify._support`); the hooks of
         those functions raise it too, for a dialect the table misses."""
         return Unsupported(_support.refusal(fn, self.name))
+
+    def fn(self, name: str, *args: str) -> str:
+        """The function `name` of `args` (SQL text), as the function table
+        writes it for this dialect (`sverify._functions`)."""
+        row = _functions.BY_NAME[name]
+        sql = _functions.sql(row, self.name)
+        if isinstance(sql, _functions.No):
+            raise Unsupported(sql.reason)
+        if sql is None:
+            raise self.refused(row.name)
+        return sql.format(*args)
 
     def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
         """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
@@ -365,26 +377,13 @@ class Dialect:
         """C's `pow`: IEEE results, no errors."""
         return f"POWER({a}, {b})"
 
-    # Elementary functions and bitwise operations (`SubstraitLean/Numeric.lean`).
-    # The writer guards their domains, so the hooks only see arguments inside them.
-
-    def float_fn(self, name: str, x: str) -> str:
-        """An elementary function (`FMath.name`) of a double in its domain, as
-        C's `libm` computes it (±inf and NaN in, IEEE results out)."""
-        return f"{name.upper()}({x})"
-
-    def float_atan2(self, y: str, x: str) -> str:
-        """C's `atan2`, for `(y, x)` other than `(0, 0)`."""
-        return f"ATAN2({y}, {x})"
+    # Elementary functions (`SubstraitLean/Numeric.lean`), as C's `libm`
+    # computes them, and bitwise operations are the function table's (`fn`).
+    # The writer guards their domains, so they only see arguments inside them.
 
     def float_logb(self, x: str, b: str) -> str:
         """`ln x / ln b`, for positive `x` and `b`, `b` not 1."""
-        return self.float_div(self.float_fn("ln", x), self.float_fn("ln", b))
-
-    def bitwise(self, op: str, a: str, b: str) -> str:
-        """A `BitOp` (`BitOp.name`) of 64-bit integers, in two's complement; a
-        shift's count `b` is in `0`–`63`, and bits shifted out are lost."""
-        raise Unsupported(f"{self.name}: {op} is not implemented")
+        return self.float_div(self.fn("ln", x), self.fn("ln", b))
 
     def float_to_int(self, x: str) -> str:
         """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
@@ -517,35 +516,17 @@ class Dialect:
     # Lengths and positions count characters, and string order (which only
     # sorts use) is by code point, i.e. byte order: no collation.
 
-    def upper(self, s: str) -> str:
-        """A black box in Lean, meaning Rust's `str::to_uppercase` (DataFusion's
-        and Polars'). SQL engines map case with their own tables (`'ß'`), so
-        the writer guards it with `is_ascii`."""
-        return f"UPPER({s})"
-
-    def lower(self, s: str) -> str:
-        return f"LOWER({s})"
+    # The functions of strings alone are the function table's (`fn`).
 
     def char_length(self, s: str) -> str:
-        return f"CHAR_LENGTH({s})"
+        return self.fn("character_length", s)
 
     def is_ascii(self, s: str) -> str:
         """Is every character of `s` ASCII? (Its UTF-8 bytes are its characters.)"""
         return f"(OCTET_LENGTH({s}) = {self.char_length(s)})"
 
     def concat(self, a: str, b: str) -> str:
-        """NULL if either is."""
-        return f"({a} || {b})"
-
-    def strpos(self, s: str, t: str) -> str:
-        """The 1-based position of the first `t` in `s`, 0 if none, 1 for ''."""
-        return f"POSITION({t} IN {s})"
-
-    def starts_with(self, s: str, t: str) -> str:
-        return f"starts_with({s}, {t})"
-
-    def ends_with(self, s: str, t: str) -> str:
-        return f"ends_with({s}, {t})"
+        return self.fn("str_concat", a, b)
 
     def like(self, s: str, pattern: str) -> str:
         """`s LIKE pattern` with `\\` as the escape character; the pattern has
@@ -575,26 +556,13 @@ class Dialect:
         """`s` `n` times, '' for `n ≤ 0`."""
         return f"REPEAT({s}, CASE WHEN {n} < {self.int_lit(0)} THEN {self.int_lit(0)} ELSE {n} END)"
 
-    def reverse(self, s: str) -> str:
-        """The characters of `s` backwards; engines that reverse grapheme
-        clusters agree on ASCII text (the writer guards it)."""
-        return f"REVERSE({s})"
-
     def replace(self, s: str, pattern: str, replacement: str) -> str:
         """Every non-overlapping `pattern` (not empty) from the left."""
         return f"REPLACE({s}, {pattern}, {replacement})"
 
-    def first_code_point(self, s: str) -> str:
-        """The code point of the first character, 0 for '' (ASCII `s` only)."""
-        return f"ASCII({s})"
-
     def ilike(self, s: str, pattern: str) -> str:
         """`LIKE` ignoring case (ASCII text only), with `like`'s escapes."""
         return f"({s} ILIKE {pattern} ESCAPE {self.str_lit(chr(92))})"
-
-    def levenshtein(self, s: str, t: str) -> str:
-        """The edit distance in characters (ASCII text only)."""
-        return f"LEVENSHTEIN({s}, {t})"
 
     def regex_search(self, s: str, pattern: str) -> str:
         """Does the regular expression (a constant) match somewhere in `s`?
@@ -611,10 +579,6 @@ class Dialect:
         """`UnFn.regexReplace` (#50): the first match of the constant `pattern`
         in `s`, or every match, replaced (`\\1` is a group)."""
         raise self.refused("regexp_replace")
-
-    def digest(self, fn: str, s: str) -> str:
-        """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
-        raise self.refused(fn)
 
     # Black boxes (#325)
 
@@ -1002,13 +966,9 @@ class Bin:
 
 
 #: `FMath.name`: elementary functions of a double (`SubstraitLean/Numeric.lean`).
-FMATH = (
-    "sqrt", "exp", "ln", "log10", "log2", "sin", "cos", "tan", "asin", "acos", "atan",
-)  # fmt: skip
+FMATH = tuple(f.name for f in _functions.FUNCTIONS if f.op == "fmath")
 #: `BitOp.name`: bitwise operations of integers.
-BITWISE = (
-    "bitwise_and", "bitwise_or", "bitwise_xor", "bitwise_shift_left", "bitwise_shift_right",
-)  # fmt: skip
+BITWISE = tuple(f.name for f in _functions.FUNCTIONS if f.op == "bit")
 #: `Parse.doubleFns`: functions of doubles only.
 DOUBLE_FNS = ("atan2", "logb", *FMATH)
 
@@ -1412,16 +1372,15 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 #: The result kinds of operations whose result kind is fixed, by `Un.op` and
 #: `Bin.op` (`Expr.kind`): the core ones here, each area module's registered by
 #: it (`register`).
-FixedKind = Literal["int", "float", "str", "time", "date", "tod"]
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
-    "froundTo": "float", "fmath": "float", "ftoi": "int", "ftoi_or_null": "int",
-    "narrow_or_null": "int", "narrow": "int", "fit": "int", "itos": "str",
+    "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
+    "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
     "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fmod": "float",
-    "fpow": "float", "fatan2": "float", "flogb": "float", "idiv": "int", "imod": "int",
-    "ipow": "int", "bit": "int",
+    "fpow": "float", "idiv": "int", "imod": "int", "ipow": "int",
+    **_functions.kinds("core", un=False),
 }  # fmt: skip
 
 
@@ -3190,6 +3149,21 @@ def register(
     EXPRS.append(expr)
 
 
+def table_call(name: str, args: list[Expr], double: bool) -> Expr | None:
+    """`mkCall` of a function of the function table (`sverify._functions`)
+    whose operation takes its arguments as they are: of doubles (`mkFloatCall`)
+    or of anything else."""
+    f = _functions.BY_NAME.get(name)
+    if f is None or not (f.op and f.call) or len(args) != len(f.args):
+        return None
+    if (f.args[:1] == ("float",)) != double:
+        return None
+    param = f.name if f.param else ""
+    if f.un:
+        return Un(f.op, args[0], param=param)  # type: ignore[arg-type]
+    return Bin(f.op, args[0], args[1], param=param)  # type: ignore[arg-type]
+
+
 def _call(name: str, args: list[Expr]) -> Expr:
     """`mkCall`: the core functions here, then each area's (`CALLS`)."""
     match name, args:
@@ -3264,8 +3238,8 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("bit", a, b, param="bitwise_shift_left")
         case "shift_right", [a, b]:
             return Bin("bit", a, b, param="bitwise_shift_right")
-        case _, [a, b] if name in BITWISE:
-            return Bin("bit", a, b, param=name)
+    if (out := table_call(name, args, double=False)) is not None:
+        return out
     for call in CALLS:
         if (out := call(name, args)) is not None:
             return out
@@ -3363,12 +3337,8 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Un("fround", a)
         case "round", [a, Lit(value=int(d), kind="int")] if not isinstance(d, bool):
             return Un("fround", a) if d == 0 else Un("froundTo", a, d)
-        case "atan2", [y, x]:
-            return Bin("fatan2", y, x)
-        case "logb", [x, b]:
-            return Bin("flogb", x, b)
-        case _, [a] if name in FMATH:
-            return Un("fmath", a, param=name)
+    if (out := table_call(name, args, double=True)) is not None:
+        return out
     raise Unsupported(f"unsupported double function {name}/{len(args)}")
 
 
@@ -4246,14 +4216,14 @@ class _Writer:
                 x = self.float_operand(a, ref, cols)
                 if (low := d.lowered(f"fmath:{name}", [x], "float")) is not None:
                     return d.canon(low)
-                return self.domain(x, self.domain_error(name, x), d.canon(d.float_fn(name, x)))
+                return self.domain(x, self.domain_error(name, x), d.canon(d.fn(name, x)))
             case Bin(op="fatan2", left=a, right=b):
                 y, x = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
                 if (low := d.lowered("fatan2", [y, x], "float")) is not None:
                     return d.canon(low)
                 zero = d.float_lit(0.0)
                 bad = f"({d.float_eq(y, zero)} AND {d.float_eq(x, zero)})"
-                return self.domain(y, bad, d.canon(d.float_atan2(y, x)))
+                return self.domain(y, bad, d.canon(d.fn("atan2", y, x)))
             case Bin(op="flogb", left=a, right=b):
                 x, base = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
                 zero = d.float_lit(0.0)
@@ -4266,7 +4236,7 @@ class _Writer:
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
                 if (low := d.lowered(f"bit:{name}", [sa, sb], "int")) is not None:
                     return low
-                sql = d.bitwise(name, sa, sb)
+                sql = d.fn(name, sa, sb)
                 if "shift" not in name:
                     return sql
                 # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.

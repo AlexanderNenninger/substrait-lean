@@ -25,6 +25,7 @@ from sverify.ibis_substrait._base import (
     register,
     register_refusals,
     same_type,
+    table_rules,
 )
 from sverify.plan_json import (
     Json,
@@ -198,11 +199,6 @@ def _is_nan(x: Exprs, op: Any) -> Json:
     return call("and", [call("is_not_null", [arg]), call("is_nan", [arg])])
 
 
-def _double_fn(name: str) -> Callable[[Exprs, Any], Json]:
-    # `SQRT(x)` and friends of doubles; DataFusion converts integers.
-    return lambda x, op: call(name, [x(op.arg, dt.float64)])
-
-
 def _double(v: float) -> Json:
     return literal(v, dt.float64)
 
@@ -319,20 +315,10 @@ register(
         ),
         ops.Clip: _clip,
         ops.IsNan: _is_nan,
-        # Elementary functions and bitwise operations (`SubstraitLean/Numeric.lean`).
-        ops.Sqrt: _double_fn("sqrt"),
-        ops.Exp: _double_fn("exp"),
-        ops.Ln: _double_fn("ln"),
+        # Elementary functions of doubles (DataFusion converts integers) and
+        # bitwise operations (`SubstraitLean/Numeric.lean`): the function table's.
+        **table_rules("core", {"int.bit": _bitwise, "int.shift": _bitwise}),
         ops.Log: _log,
-        ops.Log10: _double_fn("log10"),
-        ops.Log2: _double_fn("log2"),
-        ops.Sin: _double_fn("sin"),
-        ops.Cos: _double_fn("cos"),
-        ops.Tan: _double_fn("tan"),
-        ops.Asin: _double_fn("asin"),
-        ops.Acos: _double_fn("acos"),
-        ops.Atan: _double_fn("atan"),
-        ops.Atan2: lambda x, op: call("atan2", [x(op.left, dt.float64), x(op.right, dt.float64)]),
         # DataFusion's `COT(x)` is `1 / tan(x)` in IEEE division, so `cot(0)` is
         # `inf`; `DEGREES` and `RADIANS` multiply by Rust's constants
         # (`f64::to_degrees`, `to_radians`).
@@ -347,11 +333,6 @@ register(
         ops.Pi: lambda x, op: _double(math.pi),
         ops.Sign: _sign,
         ops.IsInf: _is_inf,
-        ops.BitwiseAnd: _bitwise("bitwise_and"),
-        ops.BitwiseOr: _bitwise("bitwise_or"),
-        ops.BitwiseXor: _bitwise("bitwise_xor"),
-        ops.BitwiseLeftShift: _bitwise("bitwise_shift_left"),
-        ops.BitwiseRightShift: _bitwise("bitwise_shift_right"),
         # `~x` is `x XOR -1`, as Ibis's DataFusion SQL writes it.
         ops.BitwiseNot: lambda x, op: call("bitwise_xor", [x(op.arg), literal(-1, op.dtype)]),
         ops.Xor: _xor,

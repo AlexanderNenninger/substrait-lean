@@ -230,7 +230,9 @@ def test_strings(spark):
         True,
         2,
     )
-    assert one(d.strpos(d.str_lit("abc"), d.str_lit("")), d.strpos(d.str_lit("abc"), "'c'")) == (
+    assert one(
+        d.fn("strpos", d.str_lit("abc"), d.str_lit("")), d.fn("strpos", d.str_lit("abc"), "'c'")
+    ) == (
         1,
         3,
     )

@@ -181,24 +181,8 @@ class SnowflakeDialect(Dialect):
     def int_to_float(self, a: str) -> str:
         return f"CAST({a} AS FLOAT)"
 
-    def float_fn(self, name: str, x: str) -> str:
-        raise Unsupported(
-            f"Snowflake's {name.upper()} is not documented to be C's libm, "
-            "which the Lean model uses"
-        )
-
-    def float_atan2(self, y: str, x: str) -> str:
-        raise Unsupported("Snowflake's ATAN2 is not documented to be C's libm")
-
     def float_logb(self, x: str, b: str) -> str:
         raise Unsupported("Snowflake's LN is not documented to be C's libm")
-
-    def bitwise(self, op: str, a: str, b: str) -> str:
-        # Exact on 64-bit integers; shifts of NUMBER(38) are wider than 64 bits.
-        fn = {"bitwise_and": "BITAND", "bitwise_or": "BITOR", "bitwise_xor": "BITXOR"}.get(op)
-        if fn is None:
-            raise Unsupported(f"Snowflake's bit shifts are not 64-bit ({op})")
-        return f"{fn}({a}, {b})"
 
     def is_nan(self, x: str) -> str:
         return f"({x} = {NAN})"
@@ -286,9 +270,6 @@ class SnowflakeDialect(Dialect):
 
     # Strings
 
-    def char_length(self, s: str) -> str:
-        return f"LENGTH({s})"
-
     def is_ascii(self, s: str) -> str:
         return f"(OCTET_LENGTH(TO_BINARY({s}, 'UTF-8')) = LENGTH({s}))"
 
@@ -301,21 +282,6 @@ class SnowflakeDialect(Dialect):
 
     def least(self, a: str, b: str) -> str:
         return f"LEAST_IGNORE_NULLS({a}, {b})"
-
-    def levenshtein(self, s: str, t: str) -> str:
-        return f"EDITDISTANCE({s}, {t})"
-
-    def strpos(self, s: str, t: str) -> str:
-        return (
-            f"(CASE WHEN {s} IS NULL OR {t} IS NULL THEN NULL WHEN {t} = {self.str_lit('')} "
-            f"THEN 1 ELSE POSITION({t} IN {s}) END)"
-        )
-
-    def starts_with(self, s: str, t: str) -> str:
-        return f"STARTSWITH({s}, {t})"
-
-    def ends_with(self, s: str, t: str) -> str:
-        return f"ENDSWITH({s}, {t})"
 
     def like_pattern(self, p: str) -> str:
         # Ends with an odd number of backslashes: a non-backslash (or nothing),
