@@ -69,7 +69,8 @@
   "description": [
     "Arithmetic keeps the sign of zero: `1.0 / -0.0` is -inf, `-(0.0)` and `0.0 * -1` are -0.0, `sqrt(-0.0)` is -0.0. Comparison, grouping and sorting are in polars-zero-order.",
     "The streaming engine runs the in-memory kernels on each morsel. With a literal operand, a morsel of two rows or more takes the literal kernels' shortcuts: `x + 0.0` and `x - 0.0` return `x`, so `-0.0 + 0.0` and `-0.0 - (-0.0)` are -0.0, and `0.0 - x` is `-x`, so `0.0 - 0.0` is -0.0. A morsel of one row takes the IEEE operations (0.0 in those three cases).",
-    "Which rows land in a one-row morsel depends on the frame's size and the machine's thread count: on 10 cores every row of a frame of up to 10 rows did, so `-0.0 + 0.0` was 0.0 there and -0.0 in memory; from about 100 rows none did. The in-memory engine's behaviour is in polars-zero-sign."
+    "Which rows land in a one-row morsel depends on the frame's size and the machine's thread count: on 10 cores every row of a frame of up to 10 rows did, so `-0.0 + 0.0` was 0.0 there and -0.0 in memory; from about 100 rows none did. The in-memory engine's behaviour is in polars-zero-sign.",
+    "polars-zero-add records the literal-shortcut part of this finding from #590's probe and is the id the engine tables cite."
   ],
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere.",
   "status": "open",
@@ -117,6 +118,18 @@
       "notes": [
         "Carried over from polars-zero-sign's round-2 reading; the morsel's length decides between the kernels, which the probe confirms. `impl_float_arith_kernel!` serves `f32` and `f64` alike, so the `Float32` rows rest on the source."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline (merging duplicates after #636)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-zero-sign-literal"
+        }
+      ],
+      "notes": "polars-zero-add records the literal-shortcut part of this finding from #590's probe and is the id the engine tables cite."
     }
   ],
   "issues": [

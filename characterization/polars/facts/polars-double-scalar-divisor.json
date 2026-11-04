@@ -11,12 +11,51 @@
     "division_type"
   ],
   "rows": [
-    {"group": "fp.div", "option": "rounding", "types": ["fp64"]},
-    {"group": "fp.div", "option": "rounding", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]},
-    {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "source"}
+    {
+      "group": "fp.div",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "rounding",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "fp.div",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "nan_creation",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "fp.mod",
+      "option": "division_type",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "division_type",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "source"
+    }
   ],
   "constructs": [
     "/",
@@ -32,7 +71,8 @@
   "description": [
     "When one operand of `/`, `//` or `%` on floats has length 1 and the other more (a literal, `pl.lit`, or a one-row column against a longer one), Polars computes the reciprocal of the divisor once and multiplies: `x / c` is `x * (1 / c)`, `x // c` is `floor(x * (1 / c))`, `x % c` is `x - c * floor(x * (1 / c))`. Two roundings replace one, so `x / c` can miss the IEEE quotient by an ulp: `49.0 / 49.0` is 0.9999999999999999, and then `49.0 // 49.0` is 0.0 and `49.0 % 49.0` is 49.0. Recorded as PL-3.",
     "For a subnormal `c` the reciprocal overflows to inf: `0.0 / 1e-310` is NaN where IEEE gives 0.0, and `1e-300 / 1e-310` is inf where IEEE gives 1e10 (`%` gives -inf). The same holds for `Float32` below about 2.9e-39.",
-    "On a one-row frame, or a one-row morsel of the streaming engine, both sides have length 1 and the IEEE kernel runs, so the one-row probes do not show it, and a small frame under streaming (split into one-row morsels) does not either. Two columns of equal length use `l / r`. Both engines share the kernels."
+    "On a one-row frame, or a one-row morsel of the streaming engine, both sides have length 1 and the IEEE kernel runs, so the one-row probes do not show it, and a small frame under streaming (split into one-row morsels) does not either. Two columns of equal length use `l / r`. Both engines share the kernels.",
+    "polars-scalar-divisor records the same finding from #590's probe and is the id the engine tables cite."
   ],
   "reference": "`divide` on doubles is the IEEE quotient, rounded once (`rounding: TIE_TO_EVEN`), and creates no NaN from non-NaN inputs other than `0/0` and `inf/inf`, which raise. `sverify_fmod` is the truncated remainder, smaller than the divisor in magnitude.",
   "status": "open",
@@ -136,6 +176,18 @@
         "Streaming agrees with memory on 9 000 rows: `49.0 % 49.0` is 49.0, `49.0 // 49.0` 0.0, `0.0 / 1e-310` NaN, `1e-300 / 1e-310` inf. So PL-3 holds on the streaming engine when the morsels hold more than one row.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline (merging duplicates after #636)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-scalar-divisor"
+        }
+      ],
+      "notes": "polars-scalar-divisor records the same finding from #590's probe and is the id the engine tables cite."
     }
   ]
 }

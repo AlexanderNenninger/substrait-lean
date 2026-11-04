@@ -13,7 +13,10 @@
     "-"
   ],
   "settings": {},
-  "description": "`-0.0 + 0.0` is `-0.0` and `0.0 - 0.0` (as `0.0 - x`) is `-0.0`, where IEEE 754 gives `+0.0` for both under round-to-nearest; `-0.0 - 0.0` is `-0.0`, as IEEE gives. The sign of a zero result of `+` and `-` is therefore Polars's own (polars-zero-sign).",
+  "description": [
+    "`-0.0 + 0.0` is `-0.0` and `0.0 - 0.0` (as `0.0 - x`) is `-0.0`, where IEEE 754 gives `+0.0` for both under round-to-nearest; `-0.0 - 0.0` is `-0.0`, as IEEE gives. The sign of a zero result of `+` and `-` is therefore Polars's own (polars-zero-sign).",
+    "The same finding as polars-zero-sign-streaming (which supersedes polars-zero-sign): the literal shortcuts `x + 0.0 → x` and `0.0 - x → -x` run on both engines once a morsel holds more than one row; on streaming frames under about 100 rows (one-row morsels) the IEEE zero comes back (`s-zero-sign-literal`). This fact keeps its id for the engine tables that cite it."
+  ],
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere, so the translation canonicalises (`one_zero`) where a result's zeros are observed.",
   "status": "shimmed",
   "evidence": "probe",
@@ -37,6 +40,18 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline (merging duplicates after #636)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-zero-sign-literal"
+        }
+      ],
+      "notes": "The same finding as polars-zero-sign-streaming (which supersedes polars-zero-sign): the literal shortcuts `x + 0.0 → x` and `0.0 - x → -x` run on both engines once a morsel holds more than one row; on streaming frames under about 100 rows (one-row morsels) the IEEE zero comes back (`s-zero-sign-literal`). This fact keeps its id for the engine tables that cite it."
     }
   ]
 }

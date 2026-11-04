@@ -229,6 +229,13 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
         agree = _same_rows(lean_rows, duck_rows, query.ordered)
     schemas = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in s.con.arrow.items()}
     issues = [] if agree else slt._lift_issues(query.sql, schemas)
+    if lean_rows is not None and duck_rows is None and issues:
+        # DuckDB raises where `Rel.eval` gives rows, and `verify` cannot rule
+        # the error out: a verified plan carries the precondition that
+        # excludes this input (`k <> i64 min` for `k - 1`, `x <> 0` for
+        # `x // x`), so the input is an expected refusal, as in
+        # `sverify_dev.slt` (#619, #638).
+        agree = True
     return Outcome(query.sql, s.tables, lean, duck, agree, issues)
 
 
