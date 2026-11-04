@@ -931,7 +931,9 @@ class Exprs:
                 if ts.dtype == pl.Time and name == "date_part":
                     return date_part(which.lower(), ts)
                 if ts.dtype == pl.Time:
-                    raise Unsupported("date_trunc of a time of day")
+                    raise Unsupported(
+                        "date_trunc of a time of day is not yet supported on Polars; see #271"
+                    )
                 if ts.dtype == pl.Date:
                     if name == "date_part":
                         return day_part(which.lower(), ts)
@@ -1298,6 +1300,10 @@ class Exprs:
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
             return Val(ops[name], pl.Float64, (*issues(a, b), zero, nan))
+        if name in ("add", "subtract") and ta == pl.Time:
+            raise Unsupported(
+                "a time of day plus an interval is not yet supported on Polars; see #271"
+            )
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:

@@ -660,13 +660,25 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un (.datePart p) a =>
     let k := if wkind cols a == .tod then .tod else .time
     call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols k a]
+  -- A time of day plus a constant (`temporalArith`): the time plus an interval,
+  -- which wraps around midnight.
+  -- A constant's time of day is the same, so it is written as a TIME.
+  | .un .timeOfDay (.bin .add a (.lit (.int c))) =>
+    if let .lit (.int x) := a then
+      call (BinFn.anchor .add) [writeLit .tod (.int (x % Time.usPerDay)), writeInterval c]
+    else if wkind cols a == .tod then call (BinFn.anchor .add) [writeExpr cols .tod a, writeInterval c]
+    else obj [("cast", obj [("type", obj [("precisionTime", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]),
+      ("input", writeExpr cols .time (.bin .add a (.lit (.int c))))])]
   | .un .timeOfDay a => obj [("cast", obj [("type", obj [("precisionTime", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .time a)])]
   | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
   | .un (.strftime fmt) a => call 61 [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
   | .un (.bucket k o) a => call 62 [writeInterval k, writeExpr cols .time a, writeLit .time (.int o)]
-  | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
+  | .un (.dateTrunc u) a =>
+    let k := if wkind cols a == .tod then .tod else .time
+    call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols k a]
   | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
   | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
   | .un (.addMonths m t) a => call 4 [writeExpr cols (if t then .time else .date) a, writeMonths m]

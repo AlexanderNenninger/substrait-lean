@@ -290,7 +290,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
   | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
-  | .un (.dateTrunc _) _ => .time
+  | .un (.dateTrunc _) a => if a.kind cols == .tod then .tod else .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
   | .un (.addMonths _ true) _ | .un .asTime _ | .un (.bucket _ _) _ => .time
   | .un .timeOfDay _ => .tod
@@ -1120,6 +1120,16 @@ def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (
   let sub := name == "subtract"
   let a ← parse aj
   let ka := argKind cols aj a
+  -- A time of day plus a constant interval wraps around midnight, both ways
+  -- (`duckdb-time-plus-interval`): `timeOfDay` of the sum, the interval
+  -- brought into one day so the sum stays small. DuckDB drops an interval's
+  -- months there; the model refuses them.
+  if ka == .tod then
+    let some (m, us) ← intervalLit? bj
+      | throw "a time of day plus an interval is only supported for constant intervals"
+    if m != 0 then throw "a time of day plus months or years is not supported"
+    let c := (if sub then -us else us) % Time.usPerDay
+    return some (.un .timeOfDay (.bin .add a (.lit (.int c))))
   if ka != .date && ka != .time then return none
   -- Calcite types `DATE + INTERVAL` as a timestamp; under a cast to DATE
   -- (`parseExpr` retypes it) that is the date.
@@ -1750,6 +1760,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         | e@(.un (.datePart p) _) =>
           if [.hour, .minute, .second, .millisecond, .microsecond].contains p then return e
           throw s!"date_part '{p.name}' of a time of day is not supported"
+        -- Truncation to a unit of a day or less is a floor of the microseconds,
+        -- and stays within the day.
+        | e@(.un (.dateTrunc u) _) =>
+          if [.hour, .minute, .second, .millisecond, .microsecond].contains u then return e
+          throw s!"date_trunc of a time of day to a {u.name} is not supported"
         | _ => throw s!"{baseName name} of a time of day is not supported"
       | .date =>
         -- The same function of a DATE (days).

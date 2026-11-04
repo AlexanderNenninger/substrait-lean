@@ -458,6 +458,17 @@ class Dialect:
         and `microsecond` within the minute)."""
         return self.date_part(part, f"(DATE '1970-01-01' + {t})")
 
+    def time_add(self, t: str, micros: int) -> str:
+        """A time of day plus `0 ≤ micros` < a day, wrapping around midnight
+        (`Time.timeOfDay` of the sum)."""
+        raise Unsupported(
+            f"a time of day plus an interval is not yet supported on {self.name}; see #271"
+        )
+
+    def time_trunc(self, unit: str, t: str) -> str:
+        """`Time.trunc` of a time of day, to a unit of an hour or less."""
+        raise Unsupported(f"truncating a time of day is not yet supported on {self.name}; see #271")
+
     def time_of_day(self, ts: str) -> str:
         """`Time.timeOfDay`: the TIME of a timestamp."""
         return self.cast(ts, "tod")
@@ -933,7 +944,7 @@ StringBinOp = Literal[
 #: Dates and timestamps (`temporal.py`).
 TemporalUnOp = Literal[
     "date_part", "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day",
-    "as_time", "strftime", "bucket",
+    "as_time", "strftime", "bucket", "time_add", "time_trunc",
 ]  # fmt: skip
 TemporalBinOp = Literal["date_add", "date_diff"]
 
@@ -2191,6 +2202,8 @@ class _Parser:
                         clock = ("hour", "minute", "second", "millisecond", "microsecond")
                         if isinstance(call, Un) and call.op == "date_part" and call.param in clock:
                             return call
+                        if isinstance(call, Un) and call.op == "date_trunc" and call.param in clock:
+                            return replace(call, op="time_trunc")
                         raise Unsupported(
                             f"{name} of a time of day is only supported for its clock"
                         )
@@ -2414,6 +2427,16 @@ class _Parser:
         aj, bj = arg_js
         a = self.expr(aj, cols)
         ka = _arg_kind(cols.lean, aj, a)
+        if ka == "tod":
+            # Lean's `timeOfDay (a + c)`, `c` brought into one day.
+            iv = _interval_lit(bj)
+            if iv is None:
+                raise Unsupported(
+                    "a time of day plus an interval is only supported for constant intervals"
+                )
+            if iv[0] != 0:
+                raise Unsupported("a time of day plus months or years is not supported")
+            return Un("time_add", a, digits=(-iv[1] if sub else iv[1]) % 86_400_000_000)
         if ka not in ("date", "time"):
             return None
         if ka == "date" and out == "time":

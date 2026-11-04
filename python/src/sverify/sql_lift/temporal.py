@@ -193,6 +193,10 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
                 "cast Lean lacks (#240)"
             )
         return E(_fn(name, [a.json, b.json], dt.date), dt.date, midnight=True)
+    if a.type.is_time():
+        # TIME ± INTERVAL wraps around midnight, and DuckDB drops the
+        # interval's months (`duckdb-time-plus-interval`).
+        return E(_fn("add", [a.json, interval_json(0, micros)], dt.time), dt.time)
     if not a.type.is_timestamp() or a.type.timezone is not None:
         raise Unsupported(f"{name} of {a.type} and an interval is not supported yet")
     return E(_fn(name, [a.json, b.json], ts), ts)

@@ -138,8 +138,8 @@ CASES: list[Case] = [
     ),
     case("time", "date from columns", R, lambda: t.select(x=ibis.date(t.qty, 1, 1))),
     case("time", "string to timestamp", R, lambda: t.select(x=t.name.as_timestamp("%Y-%m-%d"))),
-    case("time", "time + interval", R, lambda: t.select(x=t.ts.time() + ibis.interval(hours=1))),
-    case("time", "time truncate", R, lambda: t.select(x=t.ts.time().truncate("h"))),
+    case("time", "time + interval", V, lambda: t.select(x=t.ts.time() + ibis.interval(hours=1))),
+    case("time", "time truncate", V, lambda: t.select(x=t.ts.time().truncate("h"))),
     case("time", "strftime other directives", R, lambda: t.select(x=t.ts.strftime("%A"))),
     case(
         "time",
@@ -154,6 +154,8 @@ REFUSED: dict[str, dict[str, str]] = {
     "time parts": {"spark": "no tod type"},
     "compare times": {"spark": "no tod type"},
     "rolling sum by time": NO_ROW_ORDER,
+    "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
+    "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
 }
 
 TIE_FREE = {"rolling sum by time"}
@@ -161,4 +163,5 @@ TIE_FREE = {"rolling sum by time"}
 NO_DUCKDB_SQL = {
     "epoch_seconds": "DuckDB's epoch keeps the fraction of a second",
     "date - date": "Ibis's DuckDB SQL compares a day count with an interval",
+    "time truncate": "Ibis's DuckDB SQL is date_trunc of a TIME, which DuckDB lacks (IB-2)",
 }

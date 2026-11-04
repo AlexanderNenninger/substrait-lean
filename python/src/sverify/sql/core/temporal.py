@@ -124,6 +124,10 @@ def expr(
             ru = d.time_micros(r)
             bad = f"({us} NOT BETWEEN {lo} AND {hi} OR {ru} NOT BETWEEN {lo} AND {hi})"
             return d.case_when(bad, fail, r)
+        case Un(op="time_add", arg=a, digits=us):
+            return d.time_add(self.operand(a, "tod", ref, cols, "time + interval"), us)
+        case Un(op="time_trunc", arg=a, param=unit):
+            return d.time_trunc(unit, self.operand(a, "tod", ref, cols, "date_trunc"))
         case Un(op="as_time", arg=a):
             return d.as_time(self.int_operand(a, ref, cols, "CAST to TIMESTAMP"))
         case Un(op="strftime", arg=a, param=fmt):
@@ -192,7 +196,7 @@ def expr(
 UN_KINDS: dict[str, FixedKind] = {
     "date_part": "int", "day_part": "int", "date_trunc": "time", "to_date": "date",
     "day_trunc": "date", "time_of_day": "tod", "as_time": "time", "bucket": "time",
-    "strftime": "str",
+    "strftime": "str", "time_add": "tod", "time_trunc": "tod",
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {"date_diff": "int", "date_add": "date"}
 

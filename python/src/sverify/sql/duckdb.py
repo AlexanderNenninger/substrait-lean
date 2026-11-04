@@ -269,6 +269,14 @@ class DuckDBDialect(Dialect):
     def time_micros(self, ts: str) -> str:
         return f"epoch_us({ts})"
 
+    def time_add(self, t: str, micros: int) -> str:
+        # TIME + INTERVAL wraps around midnight (`duckdb-time-plus-interval`).
+        return f"({t} + {self.interval_lit(micros)})"
+
+    def time_trunc(self, unit: str, t: str) -> str:
+        # DuckDB has no `date_trunc` of a TIME: truncate it on 1970-01-01.
+        return self.cast(self.date_trunc(unit, f"(DATE '1970-01-01' + {t})"), "tod")
+
     def as_time(self, us: str) -> str:
         return f"make_timestamp({us})"
 

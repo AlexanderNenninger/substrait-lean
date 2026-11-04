@@ -156,6 +156,24 @@ def test_time_constants(query):
 
 
 @pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT tm + INTERVAL 1 HOUR AS x, tm - INTERVAL 1 HOUR AS y FROM t",
+        "SELECT INTERVAL '90 minutes' + tm AS x, tm + INTERVAL '-49 hours' AS y FROM t",
+        "SELECT tm + INTERVAL 1 MICROSECOND AS x, tm - INTERVAL 25 HOUR AS y FROM t",
+        # DuckDB drops the days and months of the interval.
+        "SELECT tm + INTERVAL '1 month 2 days 3 hours' AS x FROM t",
+        "SELECT TIME '23:30' + INTERVAL 1 HOUR AS x",
+        "SELECT tm FROM t WHERE tm + INTERVAL 1 HOUR < TIME '05:00'",
+    ],
+)
+def test_time_plus_interval_wraps_around_midnight(query):
+    # #507: TIME ± INTERVAL wraps around midnight (`duckdb-time-plus-interval`).
+    result = check(query, TIMES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
     ("query", "message"),
     [
         # DuckDB raises on these.

@@ -445,8 +445,13 @@ TOD_EXPR = R_TS.select(
 )
 
 
-def tod_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tuple]]:
-    """As `date_runs`, over a timestamp column `ts`; times as microseconds."""
+def tod_runs(
+    expr: ibis.Table,
+    values: list[int | None],
+    engines: tuple[str, ...] = ("datafusion", "polars", "duckdb"),
+) -> dict[str, list[tuple]]:
+    """As `date_runs`, over a timestamp column `ts`; times as microseconds.
+    Lean always runs; `engines` picks the others."""
 
     def plain(out: pa.Table) -> list[tuple]:
         columns = []
@@ -461,15 +466,15 @@ def tod_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tuple
     plan = to_substrait(expr)
     written = written_plan(json.dumps(plan))
     inline_tables(plan, {"r": [(v,) for v in values]})
-    return {
+    runs = {
         # chrono's formats and years, which only DataFusion's own SQL has.
-        "datafusion": plain(
+        "datafusion": lambda: plain(
             collect(con._datafusion_session.sql(ibis.to_sql(expr, dialect="datafusion")))
         ),
-        "lean": lean_values(json.dumps(plan)),
-        "polars": plain(run_plan(con, written, "polars")),
-        "duckdb": plain(run_plan(con, written, "duckdb")),
+        "polars": lambda: plain(run_plan(con, written, "polars")),
+        "duckdb": lambda: plain(run_plan(con, written, "duckdb")),
     }
+    return {"lean": lean_values(json.dumps(plan))} | {e: runs[e]() for e in engines}
 
 
 #: Within chrono's years, and DuckDB's.
@@ -488,6 +493,57 @@ def test_times_of_day_and_formats_match_datafusion(values):
     expected = canonical(runs.pop("datafusion"))
     for engine, rows in runs.items():
         assert canonical(rows) == expected, engine
+
+
+US_PER_DAY = 86_400_000_000
+#: A time of day plus intervals (#507), as (name, Ibis interval, microseconds).
+TIME_SHIFTS = [
+    ("p", ibis.interval(hours=1), 3_600_000_000),
+    ("m", -ibis.interval(minutes=90), -5_400_000_000),
+    ("d", ibis.interval(hours=25), 90_000_000_000),
+    ("u", ibis.interval(microseconds=1), 1),
+]
+TIME_UNITS = {"h": 3_600_000_000, "m": 60_000_000, "s": 1_000_000, "ms": 1_000}
+
+
+@pytest.mark.backend("duckdb")
+@settings(max_examples=40, deadline=None)
+@given(values=st.lists(st.one_of(st.none(), chrono), max_size=8))
+def test_time_arithmetic_wraps_around_midnight(values):
+    """#507: a time of day plus an interval wraps around midnight, both ways,
+    and truncation floors it, in Lean as in DuckDB (`duckdb-time-plus-interval`)."""
+    t = R_TS.ts.time()
+    expr = R_TS.select(
+        **{f"a{n}": t + iv for n, iv, _ in TIME_SHIFTS},
+        s=t - ibis.interval(hours=1),
+        **{f"t{u}": t.truncate(u) for u in TIME_UNITS},
+    )
+    runs = tod_runs(expr, values, engines=("duckdb",))
+
+    def expected(v: int | None) -> tuple:
+        if v is None:
+            return (None,) * (len(TIME_SHIFTS) + 1 + len(TIME_UNITS))
+        tod = v % US_PER_DAY
+        shifted = [(tod + us) % US_PER_DAY for _, _, us in TIME_SHIFTS]
+        return (*shifted, (tod - 3_600_000_000) % US_PER_DAY,
+                *[tod // k * k for k in TIME_UNITS.values()])  # fmt: skip
+
+    want = [expected(v) for v in values]
+    for engine, rows in runs.items():
+        assert rows == want, engine
+
+
+def test_time_arithmetic_outside_the_model_is_refused():
+    t = R_TS.ts.time()
+    with pytest.raises(Unsupported, match="to a nanosecond"):
+        to_substrait_json(R_TS.select(x=t.truncate("ns")))
+    # Ibis has no months of a time; DuckDB drops them, and Lean refuses them.
+    plan = to_substrait_json(R_TS.select(x=t + ibis.interval(hours=1)))
+    day_to_second = '{"intervalDayToSecond": {"seconds": 3600, "subseconds": "0", "precision": 6}}'
+    months = plan.replace(day_to_second, '{"intervalYearToMonth": {"months": 1}}')
+    assert months != plan
+    code, out, err = run_checker((), months)
+    assert code != 0 and "months" in out + err
 
 
 @pytest.mark.backend("datafusion")
