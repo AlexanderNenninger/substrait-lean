@@ -14,7 +14,7 @@
     "An expression's type is DuckDB's own inference: `typeof(1)` is INTEGER, `typeof(1.5)` is DECIMAL(2,1), and an INTEGER plus an INTEGER is an INTEGER. `typeof(NULL)` is `\"NULL\"`, quotes included."
   ],
   "reference": [
-    "The type of a column is fixed when the plan is checked, so the Ibis producer folds `typeof(column)` to DuckDB's name as a string constant (`duckdb_type_name`, `ibis_substrait/casts.py`). Lists of these types are folded; structs and maps are refused, and so is `typeof` of an expression, whose type is the engine's inference. Other engines name types otherwise; they run the constant the plan holds."
+    "The type of a column is fixed when the plan is checked, so the Ibis producer folds `typeof(column)` to DuckDB's name as a string constant (`duckdb_type_name`, `ibis_substrait/casts.py`). Lists of these types are folded; structs and maps are refused, and so is `typeof` of an expression, whose type is the engine's inference. The plan holds DuckDB's name whichever engine runs it, so every engine gives the same string (decided by the coordinating session for #508)."
   ],
   "status": "decided",
   "provenance": [
