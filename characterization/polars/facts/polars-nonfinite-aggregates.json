@@ -5,6 +5,10 @@
   "title": "Aggregates over ±inf: NaN",
   "verdict": "`sum(inf, -inf)` and `std` over inf are NaN",
   "area": "aggregates",
+  "options": [
+    "nonfinite_aggregates",
+    "nan_creation"
+  ],
   "constructs": [
     "sum",
     "mean",

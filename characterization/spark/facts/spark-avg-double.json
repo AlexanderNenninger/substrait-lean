@@ -5,6 +5,9 @@
   "title": "`AVG` of doubles: plain sum by the count",
   "verdict": "plain sum / n",
   "area": "aggregates",
+  "options": [
+    "sum_order"
+  ],
   "constructs": [
     "avg"
   ],

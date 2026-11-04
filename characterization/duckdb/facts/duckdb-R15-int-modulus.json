@@ -5,6 +5,11 @@
   "title": "`BIGINT % BIGINT`",
   "verdict": "no option matches: `MIN % -1` raises",
   "area": "integers",
+  "options": [
+    "min_mod_neg_one",
+    "division_type",
+    "raise_set"
+  ],
   "constructs": [
     "%"
   ],

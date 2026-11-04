@@ -5,6 +5,9 @@
   "title": "`/` and `//` on integers",
   "verdict": "frontend",
   "area": "integers",
+  "options": [
+    "implicit_casts"
+  ],
   "layer": "frontend",
   "constructs": [
     "/",

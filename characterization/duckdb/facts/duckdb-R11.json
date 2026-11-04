@@ -5,6 +5,9 @@
   "title": "Ordering comparisons of lists",
   "verdict": "fixed (#207): lexicographic; DuckDB shim",
   "area": "nested",
+  "options": [
+    "list_null_order"
+  ],
   "constructs": [
     "<",
     ">",

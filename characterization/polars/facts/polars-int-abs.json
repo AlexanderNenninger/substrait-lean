@@ -5,6 +5,9 @@
   "title": "`abs` of an integer: `abs(MIN)` is `MIN`",
   "verdict": "wraps at `MIN`; the model's `abs` takes `overflow: ERROR` only",
   "area": "integers",
+  "options": [
+    "overflow"
+  ],
   "constructs": [
     "abs"
   ],

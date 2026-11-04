@@ -5,6 +5,10 @@
   "title": "`kahan_sum`, `fsum`, `sumkahan`, `favg`: classic Kahan",
   "verdict": "classic Kahan (not Neumaier); NaN with an infinite input",
   "area": "aggregates",
+  "options": [
+    "sum_order",
+    "nonfinite_aggregates"
+  ],
   "constructs": [
     "kahan_sum",
     "fsum",

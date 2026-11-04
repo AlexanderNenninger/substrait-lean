@@ -5,6 +5,10 @@
   "title": "Integer `sum`",
   "verdict": "deviation: unbounded, and reported as a warning",
   "area": "aggregates",
+  "options": [
+    "overflow",
+    "avg_int_result"
+  ],
   "constructs": [
     "sum",
     "avg"

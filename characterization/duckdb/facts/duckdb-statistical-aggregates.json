@@ -5,6 +5,9 @@
   "title": "product, mad, histogram, weighted_avg and bit_count: types and edge cases",
   "verdict": "decided: product and mad are black boxes; histogram and weighted_avg are refused; bit_count of a BIGINT only",
   "area": "aggregates",
+  "options": [
+    "empty_group_aggregates"
+  ],
   "constructs": [
     "product",
     "mad",

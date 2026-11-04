@@ -5,6 +5,9 @@
   "title": "`abs`, `floor`, `ceil`, `exp`, `atan`",
   "verdict": "the reference",
   "area": "doubles",
+  "options": [
+    "rounding"
+  ],
   "constructs": [
     "abs",
     "floor",

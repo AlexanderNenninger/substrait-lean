@@ -5,6 +5,9 @@
   "title": "`mean` and `median` of integers: `Float64`",
   "verdict": "a double: the `Float64` sum over the count",
   "area": "aggregates",
+  "options": [
+    "avg_int_result"
+  ],
   "constructs": [
     "mean",
     "median"

@@ -5,6 +5,10 @@
   "title": "`QUANTILE_DISC`: the value at position ⌈n·q⌉, exact for a decimal fraction",
   "verdict": "the reference's rule; a DOUBLE fraction rounds; negative fractions count from the top",
   "area": "aggregates",
+  "options": [
+    "quantile_interp",
+    "nan_order"
+  ],
   "constructs": [
     "quantile_disc",
     "quantile",

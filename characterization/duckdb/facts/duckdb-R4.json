@@ -5,6 +5,10 @@
   "title": "`modulus` on doubles",
   "verdict": "fixed (#203): C's `fmod` (no such Substrait function)",
   "area": "doubles",
+  "options": [
+    "on_division_by_zero",
+    "nan_creation"
+  ],
   "constructs": [
     "%",
     "modulus",

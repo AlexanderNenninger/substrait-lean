@@ -5,6 +5,9 @@
   "title": "`fp32`",
   "verdict": "fixed (#208): `fp32` arithmetic refused until modelled",
   "area": "doubles",
+  "options": [
+    "fp32"
+  ],
   "constructs": [
     "FLOAT",
     "+",

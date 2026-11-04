@@ -5,6 +5,9 @@
   "title": "Vector functions of lists: NULL elements raise, a zero vector gives NaN",
   "verdict": "decided: black boxes with bounds that allow NaN",
   "area": "nested",
+  "options": [
+    "raise_set"
+  ],
   "constructs": [
     "list_cosine_similarity",
     "list_cosine_distance",

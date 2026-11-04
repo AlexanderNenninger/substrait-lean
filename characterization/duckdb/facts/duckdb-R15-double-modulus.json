@@ -5,6 +5,10 @@
   "title": "`DOUBLE % DOUBLE`",
   "verdict": "no option matches: NaN for a zero divisor or an infinite dividend",
   "area": "doubles",
+  "options": [
+    "nan_creation",
+    "division_type"
+  ],
   "constructs": [
     "%"
   ],

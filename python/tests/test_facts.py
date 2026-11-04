@@ -26,6 +26,7 @@ def test_validate_finds_problems(tmp_path):
     root = tmp_path / "characterization"
     (root / "duckdb" / "facts").mkdir(parents=True)
     (root / "fact.schema.json").write_text(facts.SCHEMA.read_text())
+    (root / "areas.json").write_text(facts.AREAS.read_text())
     fact = {
         "id": "duckdb-X1",
         "engine": "duckdb",
@@ -34,6 +35,7 @@ def test_validate_finds_problems(tmp_path):
         "area": "integers",
         "description": "d, see duckdb-X9",
         "status": "open",
+        "options": ["overflow", "no_such_item"],
         "provenance": [
             {
                 "checked_at": "unknown",
@@ -53,3 +55,45 @@ def test_validate_finds_problems(tmp_path):
     assert "no fact duckdb-X2" in problems
     assert "names duckdb-X9" in problems
     assert "'geometry' is not one of" in problems
+    assert "'no_such_item' is not an item of areas.json" in problems
+
+
+def test_checklist_items_are_unique_and_cover_the_core_options():
+    found = facts.checklist()
+    items = [i for area in found.values() for i in area]
+    assert len(items) == len(set(items))
+    assert len(found) == 14
+    areas = json.loads(facts.AREAS.read_text())["areas"]
+    options = [i["id"] for a in areas for i in a["items"] if i["kind"] == "option"]
+    assert len(options) == 35
+
+
+def test_coverage_lists_facts_per_item(tmp_path):
+    root = tmp_path / "characterization"
+    (root / "polars" / "facts").mkdir(parents=True)
+    (root / "areas.json").write_text(facts.AREAS.read_text())
+    docs = {
+        root / "polars" / "facts" / "polars-a.json": {
+            "id": "polars-a", "engine": "polars", "options": ["overflow", "zero_sign"]
+        },
+        root / "polars" / "facts" / "polars-b.json": {
+            "id": "polars-b", "engine": "polars", "options": ["overflow"],
+            "superseded_by": "polars-a",
+        },
+        root / "duckdb" / "facts" / "duckdb-c.json": {
+            "id": "duckdb-c", "engine": "duckdb", "options": ["division_type"]
+        },
+    }  # fmt: skip
+    found = facts.coverage(docs, "polars", root)
+    assert found["integers"]["overflow"] == ["polars-a"]
+    assert found["doubles"]["zero_sign"] == ["polars-a"]
+    assert found["integers"]["division_type"] == []
+    text = facts.report(found)
+    assert "  division_type: missing" in text
+    assert text.endswith("2/60 items covered; gaps in: " + ", ".join(found))
+
+
+def test_coverage_of_the_repository():
+    found = facts.coverage(facts.load(), "duckdb")
+    assert found["integers"]["overflow"]
+    assert "items covered" in facts.report(found)

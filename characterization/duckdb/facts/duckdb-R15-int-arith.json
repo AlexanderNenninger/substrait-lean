@@ -5,6 +5,9 @@
   "title": "`BIGINT + - *` and `-BIGINT`",
   "verdict": "matches `overflow: ERROR`",
   "area": "integers",
+  "options": [
+    "overflow"
+  ],
   "constructs": [
     "+",
     "-",

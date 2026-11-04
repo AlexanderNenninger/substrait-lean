@@ -5,6 +5,11 @@
   "title": "Integer `%`: the floor remainder, NULL for a zero divisor",
   "verdict": "`division_type: FLOOR`; `x % 0` is NULL; `MIN % -1` is 0",
   "area": "integers",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "min_mod_neg_one"
+  ],
   "constructs": [
     "%",
     "mod"

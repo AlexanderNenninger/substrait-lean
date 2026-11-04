@@ -5,6 +5,9 @@
   "title": "`SUM` of doubles: plain sequential",
   "verdict": "plain recursive summation",
   "area": "aggregates",
+  "options": [
+    "sum_order"
+  ],
   "constructs": [
     "sum"
   ],

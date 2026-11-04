@@ -5,6 +5,10 @@
   "title": "unity_catalog: the vended endpoint_url is ignored",
   "verdict": "set s3_endpoint, s3_url_style, s3_use_ssl",
   "area": "io",
+  "options": [
+    "catalogs",
+    "object_stores"
+  ],
   "layer": "io",
   "constructs": [
     "ATTACH ... (TYPE unity_catalog)",

@@ -5,6 +5,9 @@
   "title": "`substring` raises for an offset or a length outside 32 bits",
   "verdict": "fixed (#336): the reference raises too",
   "area": "strings",
+  "options": [
+    "substring_range"
+  ],
   "constructs": [
     "substring"
   ],

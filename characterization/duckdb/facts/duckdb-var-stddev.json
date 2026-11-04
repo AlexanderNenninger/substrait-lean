@@ -5,6 +5,9 @@
   "title": "`VAR_*` and `STDDEV_*` of doubles: Welford, Chan merge",
   "verdict": "Welford; Chan merge with fma; no clamp",
   "area": "aggregates",
+  "options": [
+    "stat_algo"
+  ],
   "constructs": [
     "var_samp",
     "var_pop",

@@ -1,0 +1,138 @@
+{
+  "description": [
+    "The characterization checklist: what a characterization of an engine records, area by area. Each item is an option of the loose core (docs/core-semantics.md, the option catalogue; kind `option`) or a point the options do not reach (kind `extra`). A fact names the items it settles in its `options` field, and `python -m sverify_dev.facts --coverage <engine>` lists, per item, the engine's facts that settle it, or `missing`.",
+    "Item ids are unique across areas, so each option sits in one area even where it applies to functions of several (`overflow` covers integer `sum` too). The option ids are the catalogue's for now; once #444's step 1a lands, they will come from Lean's options table (`SubstraitLean/Options.lean`), and a test will check the two agree."
+  ],
+  "areas": [
+    {
+      "id": "integers",
+      "items": [
+        {"id": "overflow", "kind": "option", "question": "`+ - ×`, negate, `abs`, `MIN / -1` and integer `sum` past the declared width: raise, wrap or saturate, at which width."},
+        {"id": "division_type", "kind": "option", "question": "Integer `modulus` (and `divide`): truncated or floored."},
+        {"id": "on_division_by_zero", "kind": "option", "question": "A zero divisor of integers and of doubles: error, NULL, IEEE or a limit."},
+        {"id": "min_mod_neg_one", "kind": "option", "question": "`MIN % -1`: 0 or a raise."},
+        {"id": "shift_range", "kind": "option", "question": "Shifts by a negative count or by the width or more, and bits shifted out."}
+      ]
+    },
+    {
+      "id": "decimals",
+      "items": [
+        {"id": "decimal_rescale", "kind": "option", "question": "A result with more digits than its scale: how it rounds."},
+        {"id": "decimal_result_type", "kind": "extra", "question": "The precision and scale of decimal arithmetic and aggregates, and overflow past 38 digits."}
+      ]
+    },
+    {
+      "id": "doubles",
+      "items": [
+        {"id": "rounding", "kind": "option", "question": "Rounding of arithmetic and of `round` (to `d` digits too)."},
+        {"id": "on_domain_error", "kind": "option", "question": "`sqrt`, logs, `asin`, `acos`, `atan2`, `power` outside their domain: NaN, NULL or a raise."},
+        {"id": "on_log_zero", "kind": "option", "question": "A logarithm of zero: -inf, NaN or a raise."},
+        {"id": "nan_creation", "kind": "option", "question": "`inf - inf`, `0 · inf`, `inf / inf`, `fmod(inf, y)`, a sum of both infinities: NaN or a raise."},
+        {"id": "nan_equality", "kind": "option", "question": "Is NaN equal to NaN in `=`, grouping, `DISTINCT` and joins."},
+        {"id": "nan_order", "kind": "option", "question": "Where NaN sorts, and how `MIN`, `MAX`, `<`, `greatest` treat it."},
+        {"id": "nan_kind", "kind": "option", "question": "Does a NaN's sign (or payload) survive and show."},
+        {"id": "zero_sign", "kind": "option", "question": "`-0.0` in arithmetic, comparison, sorting and grouping."},
+        {"id": "fp32", "kind": "option", "question": "Single-precision arithmetic and its conversions."}
+      ]
+    },
+    {
+      "id": "strings",
+      "items": [
+        {"id": "char_set", "kind": "option", "question": "`upper`, `lower`: Unicode or ASCII mappings."},
+        {"id": "case_sensitivity", "kind": "option", "question": "`like`, `contains`, `starts_with`, `strpos`, regexes: case-sensitive or not."},
+        {"id": "substring_range", "kind": "option", "question": "`substring` offsets and lengths outside 32 bits."},
+        {"id": "negative_start", "kind": "option", "question": "`substring` with a negative or zero start; its indexing (characters or bytes, 0- or 1-based)."},
+        {"id": "regex_dialect", "kind": "extra", "question": "The regex engine and syntax, classes on non-ASCII text, a match that fails, replacement references."},
+        {"id": "digests", "kind": "extra", "question": "`md5`, `sha256` and other digests: present, and on which bytes."}
+      ]
+    },
+    {
+      "id": "temporal",
+      "items": [
+        {"id": "date_range", "kind": "option", "question": "Date and timestamp arithmetic past 0001-01-01 … 9999-12-31."},
+        {"id": "time_interval_months", "kind": "option", "question": "`TIME ± INTERVAL` with months, and time arithmetic past midnight."},
+        {"id": "timestamp_precision", "kind": "extra", "question": "The timestamp unit (s, ms, µs, ns) and its range."},
+        {"id": "time_zones", "kind": "extra", "question": "Time zones: DST gaps and overlaps, conversions."},
+        {"id": "week_numbering", "kind": "extra", "question": "Week numbers, weekdays, ISO years, `date_trunc` to a week, parts before 1970."}
+      ]
+    },
+    {
+      "id": "casts",
+      "items": [
+        {"id": "float_to_int", "kind": "option", "question": "A double or decimal cast to an integer: truncate or round."},
+        {"id": "cast_failure", "kind": "option", "question": "A cast that does not fit or parse: raise or NULL."},
+        {"id": "cast_parsing", "kind": "extra", "question": "Text to numbers, booleans and dates: what is accepted (spaces, signs, `nan`, `inf`, exponents)."},
+        {"id": "cast_formatting", "kind": "extra", "question": "Numbers, booleans and dates to text: the format."}
+      ]
+    },
+    {
+      "id": "nulls",
+      "items": [
+        {"id": "null_handling", "kind": "option", "question": "`concat` and other functions given a NULL: NULL or skip."},
+        {"id": "three_valued_logic", "kind": "extra", "question": "`and`, `or`, `not` with NULLs; `bool_and`, `bool_or` over NULLs."},
+        {"id": "null_join_keys", "kind": "extra", "question": "Do NULL keys match in joins, and how `IS NOT DISTINCT FROM` is spelled."}
+      ]
+    },
+    {
+      "id": "nested",
+      "items": [
+        {"id": "list_null_order", "kind": "option", "question": "A NULL element deciding `<` of lists, in comparisons and in `ORDER BY`."},
+        {"id": "list_indexing", "kind": "extra", "question": "List indexing: base, negative and out-of-range indexes."},
+        {"id": "struct_equality", "kind": "extra", "question": "Equality and order of structs with NULL fields."},
+        {"id": "unnest_null_empty", "kind": "extra", "question": "UNNEST of a NULL list and of an empty one."}
+      ]
+    },
+    {
+      "id": "aggregates",
+      "items": [
+        {"id": "avg_int_result", "kind": "option", "question": "`avg` of integers: its type and how it is computed."},
+        {"id": "sum_order", "kind": "option", "question": "The order and grouping of a double `SUM`, `AVG`."},
+        {"id": "stat_algo", "kind": "option", "question": "The algorithm of `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`."},
+        {"id": "stat_degenerate", "kind": "option", "question": "`CORR` of one pair or a constant side; a statistical aggregate of a single value."},
+        {"id": "quantile_interp", "kind": "option", "question": "`QUANTILE_CONT`, `QUANTILE_DISC`, `MEDIAN`: the position and interpolation."},
+        {"id": "tie_pick", "kind": "option", "question": "Which row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE` take among ties."},
+        {"id": "empty_group_aggregates", "kind": "extra", "question": "Aggregates of no rows or of NULLs only (`SUM`, `COUNT`, `MIN`, `AVG`)."},
+        {"id": "nonfinite_aggregates", "kind": "extra", "question": "Aggregates of ±inf and NaN inputs."}
+      ]
+    },
+    {
+      "id": "windows",
+      "items": [
+        {"id": "ntile_spread", "kind": "option", "question": "How `NTILE` spreads the remainder."},
+        {"id": "default_window_frame", "kind": "extra", "question": "The frame when none is given, with and without an order; rank functions over ties and NULLs."}
+      ]
+    },
+    {
+      "id": "relations",
+      "items": [
+        {"id": "tie_order", "kind": "option", "question": "The order of ties in a sort, `STRING_AGG`, `collect`, a window: stable or not."},
+        {"id": "null_order", "kind": "option", "question": "Where NULLs sort by default, ascending and descending."},
+        {"id": "clustered", "kind": "option", "question": "A sort that only clusters equal keys."},
+        {"id": "set_operations", "kind": "extra", "question": "`UNION`, `INTERSECT`, `EXCEPT`, with and without `ALL`: duplicates, NULLs, order."},
+        {"id": "nan_zero_grouping", "kind": "extra", "question": "Grouping, `DISTINCT` and join keys with NaN and `-0.0`: one group, and which value represents it."}
+      ]
+    },
+    {
+      "id": "errors",
+      "items": [
+        {"id": "raise_set", "kind": "extra", "question": "Where the engine raises beyond the reference (D2): extra raises, and raises that are planning errors or panics."}
+      ]
+    },
+    {
+      "id": "frontend",
+      "items": [
+        {"id": "type_names", "kind": "extra", "question": "The engine's names of the types."},
+        {"id": "implicit_casts", "kind": "extra", "question": "Implicit casts and type promotion in arithmetic and comparisons."},
+        {"id": "literal_types", "kind": "extra", "question": "The types of literals."}
+      ]
+    },
+    {
+      "id": "io",
+      "items": [
+        {"id": "io_formats", "kind": "extra", "question": "File formats read and written, and their type mappings."},
+        {"id": "object_stores", "kind": "extra", "question": "Object stores and their credentials."},
+        {"id": "catalogs", "kind": "extra", "question": "Catalogs (Unity, Iceberg, …) and how the engine attaches them."}
+      ]
+    }
+  ]
+}

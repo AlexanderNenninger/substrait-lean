@@ -5,6 +5,10 @@
   "title": "`var` and `std`: two-pass blocks of 128, or Welford, by path",
   "verdict": "two-pass per 128-block with Chan merge (ungrouped); Welford (grouped); clamps below 0",
   "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate"
+  ],
   "constructs": [
     "var",
     "std"

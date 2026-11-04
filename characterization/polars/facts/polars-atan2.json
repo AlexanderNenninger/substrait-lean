@@ -5,6 +5,9 @@
   "title": "`arctan2(0, 0)` is 0",
   "verdict": "0, where the reference raises",
   "area": "doubles",
+  "options": [
+    "on_domain_error"
+  ],
   "constructs": [
     "arctan2"
   ],

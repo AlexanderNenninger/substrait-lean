@@ -5,6 +5,10 @@
   "title": "Integer `modulus`: zero divisor and sign",
   "verdict": "no finding; `division_type` open, no diff",
   "area": "integers",
+  "options": [
+    "division_type",
+    "on_division_by_zero"
+  ],
   "constructs": [
     "%",
     "modulus"
