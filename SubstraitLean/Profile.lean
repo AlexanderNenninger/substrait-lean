@@ -165,6 +165,24 @@ theorem firstError_flatMap (xs : List Value) (g : Value → List (Issue × Expr)
     rw [List.flatMap_cons, firstError_append, ih, List.findSome?_cons]
     cases firstError (g x) <;> rfl
 
+/-- An overflow to `±∞` (#575) is not an error: a call's errors are its
+`issue`'s. -/
+theorem errOf_or_inf {o i : Option Issue} (hi : ∀ k, i = some k → k = .infinite) :
+    errOf (o.or i) = errOf o := by
+  cases o with
+  | some k => rfl
+  | none =>
+    cases i with
+    | none => rfl
+    | some k => rw [hi k rfl]; rfl
+
+theorem UnFn.errOf_issueAll (f : UnFn) (v : Value) : errOf (f.issueAll v) = errOf (f.issue v) :=
+  errOf_or_inf fun _ h => UnFn.infIssue_eq h
+
+theorem BinFn.errOf_issueAll (f : BinFn) (v w : Value) :
+    errOf (f.issueAll v w) = errOf (f.issue v w) :=
+  errOf_or_inf fun _ h => BinFn.infIssue_eq h
+
 /-- **The reference is a profile:** evaluating under `Profile.reference` is
 `eval`, raising the first error `Safety.lean` reports. -/
 theorem Expr.evalP_reference : ∀ (e : Expr) (row : Row),
@@ -172,7 +190,7 @@ theorem Expr.evalP_reference : ∀ (e : Expr) (row : Row),
   | .lit _, _ | .field _, _ => rfl
   | .un f a, row => by
     simp only [evalP, refOutcome, issues, firstError_append, firstError_issue,
-      Expr.evalP_reference a row]
+      UnFn.errOf_issueAll, Expr.evalP_reference a row]
     cases firstError (a.issues row) with
     | some k => rfl
     | none =>
@@ -180,7 +198,7 @@ theorem Expr.evalP_reference : ∀ (e : Expr) (row : Row),
       all_goals (cases errOf (f.issue (a.eval row)) <;> rfl)
   | .bin f a b, row => by
     simp only [evalP, refOutcome, issues, firstError_append, firstError_issue,
-      Expr.evalP_reference a row, Expr.evalP_reference b row]
+      BinFn.errOf_issueAll, Expr.evalP_reference a row, Expr.evalP_reference b row]
     cases firstError (a.issues row) with
     | some k => rfl
     | none =>
@@ -478,7 +496,7 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) :
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
     r.evalI (Profile.duckdbWritten s).impl cat = r.eval cat :=
   Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm (Profile.duckdbWritten_faithful s hieee)
 

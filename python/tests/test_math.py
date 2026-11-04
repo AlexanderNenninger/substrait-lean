@@ -70,9 +70,10 @@ def rows() -> list[tuple]:
     ]  # fmt: skip
 
 
-#: Inside each function's domain.
+#: Inside each function's domain, and where `exp` stays finite: of a finite
+#: double it overflows past 709.78, which the reference refuses (#575).
 EXPRS: dict[str, Any] = {
-    "sqrt, exp, ln": lambda: X.select(x.k, a=x.p.sqrt(), b=x.x.exp(), c=x.p.ln()),
+    "sqrt, exp, ln": lambda: X.select(x.k, a=x.p.sqrt(), b=x.u.exp(), c=x.p.ln()),
     "log(b)": lambda: X.select(x.k, b=x.p.log(3), c=x.p.log(x.p + 2)),
     # Of `±inf` they would be NaN, which no operation creates (#257).
     "sin, cos, tan, cot": lambda: X.select(
@@ -85,7 +86,7 @@ EXPRS: dict[str, Any] = {
         x.k, a=x.x.degrees(), b=x.x.radians(), c=x.x * ibis.pi, d=x.x + ibis.e
     ),
     "sign, isinf": lambda: X.select(x.k, a=x.x.sign(), b=x.i.sign(), c=x.x.isinf()),
-    "of integers": lambda: X.select(x.k, a=x.n.sqrt(), b=x.i.exp(), c=(x.n + 1).ln()),
+    "of integers": lambda: X.select(x.k, a=x.n.sqrt(), b=x.n.exp(), c=(x.n + 1).ln()),
     "and, or, xor, not": lambda: X.select(x.k, a=x.i & x.j, b=x.i | x.j, c=x.i ^ x.j, d=~x.i),
     "shifts": lambda: X.select(x.k, a=x.i << x.n, b=x.i >> x.n),
     "logical xor": lambda: X.select(x.k, a=x.b ^ (x.i > 0)),

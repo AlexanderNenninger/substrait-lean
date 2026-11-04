@@ -558,7 +558,8 @@ def test_no_bound_where_it_does_not_carry_over():
     assert not got.rows_exact
     assert got.tolerance["s2"] == [math.inf, math.inf]
     plan = float_plan("SELECT g, SUM(x) AS s FROM f GROUP BY g")
-    shards = [{"f": f_arrow([(0, math.nan), (1, 1e308), (2, 1.0)])}, {"f": f_arrow([(1, 1e308)])}]
+    # Near overflow, short of it: `1e308 + 1e308` would raise (#575).
+    shards = [{"f": f_arrow([(0, math.nan), (1, 1e308), (2, 1.0)])}, {"f": f_arrow([(1, 7e307)])}]
     got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
     tau = {r["g"]: t for r, t in zip(got.table.to_pylist(), got.tolerance["s"], strict=True)}
     assert tau[0] == math.inf and tau[1] == math.inf and math.isfinite(tau[2])

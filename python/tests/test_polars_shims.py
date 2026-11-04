@@ -232,10 +232,11 @@ def test_overflow_to_infinity_is_checked_when_assumed(sql):
     create_table(con, "r", FLOATS, [(1, 1e308), (1, 1e308)])
     plan = written_plan(substrait_json(con, sql, "reference"))
     tables = {"r": con.arrow["r"]}
-    with pytest.raises(polars_engine.InfiniteResult):
-        polars_engine.run(plan, tables, guards={"overflow to infinity"})
-    # `Rel.eval` keeps IEEE's ±∞ until #575 lands, and so do the default guards.
-    assert math.isinf(polars_engine.run(plan, tables)["y"].to_pylist()[0])
+    # Checked by the default guards, by name, and without guards, as a
+    # `SUM`'s overflow is (`Issue.assumed`).
+    for guards in (True, {"overflow to infinity"}, False):
+        with pytest.raises(polars_engine.InfiniteResult):
+            polars_engine.run(plan, tables, guards=guards)
 
 
 def test_unknown_guards_are_refused():

@@ -732,13 +732,18 @@ Beyond `E`, the proof has five goals:
 2. No new non-finite values. A NaN or `±∞` from the inputs stays allowed, as
    `semantics="duckdb"` models them; the plan creates none the inputs did
    not hold. With #85's bounds, every floating result has a usable error
-   bound. Today the reference raises where an operation would create a NaN
-   and on a zero divisor ([No operation creates a NaN](reference-semantics.md#core-numbers-and-nulls));
-   a finite operation whose result overflows to `±∞` (`exp(1000)`) will be
-   an error of the reference too
-   ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)),
-   ruled out by inferred preconditions, proved from the bounds or checked on
-   the data, as a `SUM`'s overflow is.
+   bound. The reference raises where an operation would create a NaN, on a
+   zero divisor ([No operation creates a NaN](reference-semantics.md#floating-point)),
+   and where an operation on finite doubles overflows to `±∞` (`exp(1000)`,
+   `1e308 * 10`, a `SUM` of large values;
+   [No operation creates `±∞`](reference-semantics.md#floating-point),
+   [#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
+   Verification rules the overflow out by an inferred precondition, as a
+   `SUM`'s overflow is: proved from the bounds where they do it (a `SUM` or
+   `AVG` of values within `2⁴⁰⁰` over at most `2³²` rows), otherwise listed
+   in `Report.assumed` and checked on the data (`Issue.infinite`,
+   `Rel.noIssue_of_assumedHold`). `Rel.eval` keeps the IEEE `±∞` on the rows
+   the precondition excludes, so the lift states DuckDB's result exactly.
 3. A result determined up to row order. Leaving an option open is the third
    tool beside raising and choosing a value: it costs no shim, and the
    contract must not tell the open choices apart (#568's invariance under an
@@ -1020,6 +1025,7 @@ This design pass found seven, each checked against Substrait's `main` at
 | [ST-5](../upstream/bugs/ST-5.json) | `inf - inf` and `0 * inf` in `add`, `subtract`, `multiply` | `nan_creation` |
 | [ST-6](../upstream/bugs/ST-6.json) | how a cast to an integer rounds; `FAILURE_BEHAVIOR_UNSPECIFIED` | `float_to_int`, `cast_failure` |
 | [ST-7](../upstream/bugs/ST-7.json) | what `SORT_DIRECTION_UNSPECIFIED` means | `null_order` (D6) |
+| [ST-9](../upstream/bugs/ST-9.json) | a result of finite doubles beyond the largest double: `±inf` or an error | double overflow to `±∞` (#575) |
 
 `CLUSTERED` needs no entry: Substrait's `relations/basics.md` defines it.
 

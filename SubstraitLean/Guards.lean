@@ -22,9 +22,10 @@ running the plan *without* them gives the same result.
 * `Rel.evalI` runs a plan with those functions. Integer `SUM` keeps its check
   (`Issue.sumWraps` comes from a group's rows, so contracts on rows rarely
   rule it out).
-* `Rel.evalI_eq`: if every issue a plan can run into is a `SUM` that may
-  wrap, the unchecked plan computes `Rel.eval`. `Rel.guardFree_sound`
-  derives this from an empty `Rel.mayIssues` (up to `sumWraps`), which is
+* `Rel.evalI_eq`: if every issue a plan can run into is assumed, a `SUM`
+  that may wrap or an overflow to `±∞` (#575, whose check the written SQL
+  keeps), the unchecked plan computes `Rel.eval`. `Rel.guardFree_sound`
+  derives this from an empty `Rel.mayIssues` (up to assumed issues), which is
   what `substrait-check --contract` reports as `guard_free`.
 * `Rel.evalG_marks`: the same per expression. `Rel.marks` lists the
   expressions without abstract issues, `Rel.evalG` runs only those
@@ -71,11 +72,11 @@ theorem Expr.evalI_eq {I : Impl} (hI : I.Faithful) {row : Row} :
   | .un f a, h => by
     simp only [issues, List.append_eq_nil_iff, Option.toList_eq_nil_iff, Option.map_eq_none_iff] at h
     simp only [evalI, eval, evalI_eq hI h.1]
-    exact hI.1 f _ h.2
+    exact hI.1 f _ (Option.or_eq_none_iff.mp h.2).1
   | .bin f a b, h => by
     simp only [issues, List.append_eq_nil_iff, Option.toList_eq_nil_iff, Option.map_eq_none_iff] at h
     simp only [evalI, eval, evalI_eq hI h.1.1, evalI_eq hI h.1.2]
-    exact hI.2 f _ _ h.2
+    exact hI.2 f _ _ (Option.or_eq_none_iff.mp h.2).1
   | .ifThen c t e, h => by
     simp only [issues, List.append_eq_nil_iff] at h
     simp only [evalI, eval, evalI_eq hI h.1]
@@ -95,6 +96,20 @@ theorem BinFn.issue_ne_sumWraps (f : BinFn) (v w : Value) : f.issue v w ≠ some
   unfold BinFn.issue wrapIf rangeIssue domainIssue nanIssue
   split <;> (try split) <;> (try split) <;> (try split) <;> simp
 
+theorem UnFn.issueAll_ne_sumWraps (f : UnFn) (v : Value) : f.issueAll v ≠ some .sumWraps := by
+  intro h
+  unfold UnFn.issueAll at h
+  cases hi : f.issue v with
+  | some k => rw [hi] at h; exact f.issue_ne_sumWraps v (hi.trans h)
+  | none => rw [hi, Option.none_or] at h; cases UnFn.infIssue_eq h
+
+theorem BinFn.issueAll_ne_sumWraps (f : BinFn) (v w : Value) : f.issueAll v w ≠ some .sumWraps := by
+  intro h
+  unfold BinFn.issueAll at h
+  cases hi : f.issue v w with
+  | some k => rw [hi] at h; exact f.issue_ne_sumWraps v w (hi.trans h)
+  | none => rw [hi, Option.none_or] at h; cases BinFn.infIssue_eq h
+
 /-- Row-level issues are never `SUM`s. -/
 theorem Expr.issues_ne_sumWraps {row : Row} :
     ∀ {e : Expr} {p : Issue × Expr}, p ∈ e.issues row → p.1 ≠ .sumWraps
@@ -103,13 +118,13 @@ theorem Expr.issues_ne_sumWraps {row : Row} :
     simp only [issues, List.mem_append, Option.mem_toList, Option.map_eq_some_iff] at h
     rcases h with h | ⟨i, hi, rfl⟩
     · exact issues_ne_sumWraps h
-    · rintro rfl; exact f.issue_ne_sumWraps _ hi
+    · rintro rfl; exact f.issueAll_ne_sumWraps _ hi
   | .bin f a b, p, h => by
     simp only [issues, List.mem_append, Option.mem_toList, Option.map_eq_some_iff] at h
     rcases h with (h | h) | ⟨i, hi, rfl⟩
     · exact issues_ne_sumWraps h
     · exact issues_ne_sumWraps h
-    · rintro rfl; exact f.issue_ne_sumWraps _ _ hi
+    · rintro rfl; exact f.issueAll_ne_sumWraps _ _ hi
   | .ifThen c t e, p, h => by
     simp only [issues, List.mem_append] at h
     rcases h with h | h
@@ -123,9 +138,67 @@ theorem Expr.issues_ne_sumWraps {row : Row} :
     · exact issues_ne_sumWraps h
     · exact issues_ne_sumWraps h
 
+theorem UnFn.issue_ne_infinite (f : UnFn) (v : Value) : f.issue v ≠ some .infinite := by
+  unfold UnFn.issue wrapIf rangeIssue domainIssue
+  split <;> (try split) <;> (try split) <;> simp
+
+theorem BinFn.issue_ne_infinite (f : BinFn) (v w : Value) : f.issue v w ≠ some .infinite := by
+  unfold BinFn.issue wrapIf rangeIssue domainIssue nanIssue
+  split <;> (try split) <;> (try split) <;> (try split) <;> simp
+
+/-- A call whose only issue is assumed (`Issue.assumed`: an overflow to `±∞`)
+has no error issue: the engine's function agrees with Lean's there. -/
+theorem issue_none_of_assumed {o i : Option Issue} {k : Issue} (h : o.or i = some k)
+    (hk : k.assumed = true) (h1 : o ≠ some .sumWraps) (h2 : o ≠ some .infinite) : o = none := by
+  cases o with
+  | none => rfl
+  | some k' =>
+    simp only [Option.some_or, Option.some.injEq] at h
+    subst h
+    cases k' <;> simp_all [Issue.assumed]
+
+/-- **Unchecked evaluation is exact** where every issue is assumed: a
+`SUM` (which keeps its check) or an overflow to `±∞` (#575), where Lean keeps
+the IEEE value an engine gives. -/
+theorem Expr.evalI_eq_assumed {I : Impl} (hI : I.Faithful) {row : Row} :
+    ∀ {e : Expr}, (∀ p ∈ e.issues row, p.1.assumed = true) → e.evalI I row = e.eval row
+  | .lit _, _ | .field _, _ => rfl
+  | .un f a, h => by
+    have ha : ∀ p ∈ a.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
+    simp only [evalI, eval, evalI_eq_assumed hI ha]
+    apply hI.1 f _
+    cases hk : f.issueAll (a.eval row) with
+    | none => exact (Option.or_eq_none_iff.mp hk).1
+    | some k =>
+      have := h (k, .un f a) (by simp [issues, hk])
+      exact issue_none_of_assumed hk this (f.issue_ne_sumWraps _) (f.issue_ne_infinite _)
+  | .bin f a b, h => by
+    have ha : ∀ p ∈ a.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
+    have hb : ∀ p ∈ b.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
+    simp only [evalI, eval, evalI_eq_assumed hI ha, evalI_eq_assumed hI hb]
+    apply hI.2 f _ _
+    cases hk : f.issueAll (a.eval row) (b.eval row) with
+    | none => exact (Option.or_eq_none_iff.mp hk).1
+    | some k =>
+      have := h (k, .bin f a b) (by simp [issues, hk])
+      exact issue_none_of_assumed hk this (f.issue_ne_sumWraps _ _) (f.issue_ne_infinite _ _)
+  | .ifThen c t e, h => by
+    have hc : ∀ p ∈ c.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
+    simp only [evalI, eval, evalI_eq_assumed hI hc]
+    split
+    · rename_i hct
+      exact evalI_eq_assumed hI fun p hp => h p (by simp [issues, hct, hp])
+    · rename_i hct
+      exact evalI_eq_assumed hI fun p hp => h p (by simp [issues, hct, hp])
+  | .hof f l b, h => by
+    have hl : ∀ p ∈ l.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
+    simp only [evalI, eval, evalI_eq_assumed hI hl]
+    exact HoFn.apply_congr f _ fun x hx => evalI_eq_assumed hI fun p hp =>
+      h p (by simp only [issues, List.mem_append, List.mem_flatMap]; exact .inr ⟨x, hx, hp⟩)
+
 theorem Expr.evalI_eq_of {I : Impl} (hI : I.Faithful) {row : Row} {e : Expr}
-    (h : ∀ p ∈ e.issues row, p.1 = .sumWraps) : e.evalI I row = e.eval row :=
-  evalI_eq hI (List.eq_nil_iff_forall_not_mem.mpr fun p hp => issues_ne_sumWraps hp (h p hp))
+    (h : ∀ p ∈ e.issues row, p.1.assumed = true) : e.evalI I row = e.eval row :=
+  evalI_eq_assumed hI h
 
 /-! ## Relations -/
 
@@ -402,11 +475,12 @@ theorem Rel.mem_loose_if {cat : Catalog} {r : Rel} (hs : r.looseSub = true) (u :
 
 /-! ## Plans -/
 
-/-- **Guard elimination**: if the only issue a plan can run into is an
-integer `SUM` that may wrap (which keeps its check), running it with
-unchecked functions gives `Rel.eval`. -/
+/-- **Guard elimination**: if the only issues a plan can run into are assumed
+(`Issue.assumed`): an integer `SUM` that may wrap (which keeps its check) or
+an overflow to `±∞` (whose check the written SQL keeps, #575), running it
+with unchecked functions gives `Rel.eval`. -/
 theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
-    ∀ {u : Bool} {r : Rel}, r.looseSub = true → (∀ p, r.HasIssue cat u p → p.1 = .sumWraps) →
+    ∀ {u : Bool} {r : Rel}, r.looseSub = true → (∀ p, r.HasIssue cat u p → p.1.assumed = true) →
       r.evalI I cat = r.eval cat
   | _, .read _, _, _ | _, .values _ _, _, _ => rfl
   | _, .filter r c, hs, h => by
@@ -473,7 +547,7 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
       Expr.evalI_eq_of hI fun p hp => h p (.inr (.inl ⟨row, mem_loose_if (r := r) hs u hr, e, he, hp⟩))
 
 /-- **Guard elimination from contracts**: when `Rel.mayIssues` reports
-nothing but integer `SUM`s, on every catalog that satisfies the
+nothing but assumed issues (integer `SUM`s, overflows to `±∞`), on every catalog that satisfies the
 preconditions and the size hypothesis (`Rel.Small`: windows read fewer than
 `2⁶²` rows, aggregates fewer than `2⁶³`), the plan runs correctly with unchecked functions. -/
 theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
@@ -481,7 +555,7 @@ theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     {I : Impl} (hI : I.Faithful) : r.evalI I cat = r.eval cat :=
   evalI_eq hI (u := false) hs fun p hp => by
     have := List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)

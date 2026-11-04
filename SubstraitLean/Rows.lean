@@ -207,6 +207,10 @@ end
 theorem sumWraps_ne_domain {e e' : Expr} (h : ((Issue.sumWraps, e) : Issue × Expr) = (.domain, e')) :
     False := by simp only [Prod.mk.injEq, reduceCtorEq, false_and] at h
 
+theorem sumWraps_ne_infinite {e e' : Expr}
+    (h : ((Issue.sumWraps, e) : Issue × Expr) = (.infinite, e')) :
+    False := by simp only [Prod.mk.injEq, reduceCtorEq, false_and] at h
+
 /-- Capping reads commutes with loosening: `FETCH` stops `Rel.loose`. -/
 theorem Rel.capReads_loose (caps : String → Option Nat) :
     ∀ r : Rel, (r.capReads caps).loose = r.loose.capReads caps
@@ -283,10 +287,11 @@ theorem Rel.sumWraps_capJoins {cat : Catalog} (hcat : cat.WF) {A : String → Li
     exact sumWraps_capJoins hcat hA hF hK (r := r) hw h
   | _, .window r _ _ _, _, hw, h => by
     simp only [HasIssue, capJoins, capJoins_eval hcat hA hF hK hw.1] at h ⊢
-    rcases h with h | h | ⟨_, _, heq, _⟩
+    rcases h with h | h | ⟨_, _, heq, _⟩ | ⟨_, _, heq, _⟩
     · exact .inl (sumWraps_capJoins hcat hA hF hK hw.1 h)
     · exact .inr (.inl h)
     · exact (sumWraps_ne_domain heq).elim
+    · exact (sumWraps_ne_infinite heq).elim
   | _, .cross a b, _, hw, h => by
     simp only [HasIssue, capJoins] at h ⊢
     exact h.imp (sumWraps_capJoins hcat hA hF hK hw.1) (sumWraps_capJoins hcat hA hF hK hw.2)
@@ -315,11 +320,12 @@ theorem Rel.sumWraps_capJoins {cat : Catalog} (hcat : cat.WF) {A : String → Li
     · exact hj
   | _, .aggregate r _ _, _, hw, h => by
     simp only [HasIssue, capJoins, capJoins_eval hcat hA hF hK hw.1] at h ⊢
-    rcases h with h | ⟨_, _, _, _, hp⟩ | h | ⟨_, _, heq, _⟩
+    rcases h with h | ⟨_, _, _, _, hp⟩ | h | ⟨_, _, heq, _⟩ | ⟨_, _, heq, _⟩
     · exact .inl (sumWraps_capJoins hcat hA hF hK hw.1 h)
     · exact absurd rfl (Expr.issues_ne_sumWraps hp)
     · exact .inr (.inr (.inl h))
     · exact (sumWraps_ne_domain heq).elim
+    · exact (sumWraps_ne_infinite heq).elim
 
 /-! ## Rows per key (`sv.rows_per`)
 
@@ -656,11 +662,12 @@ theorem Rel.sumsPer_sound (hcat : cat.WF)
     exact sumsPer_sound hcat hA hF hT hK hP (r := r) hw hs h
   | _, .window r _ _ _, _, hw, hs, h => by
     simp only [HasIssue] at h; simp only [sumsPer, List.mem_append, List.mem_filterMap]
-    rcases h with h | ⟨m, hm, hf, heq, _⟩ | ⟨_, _, heq, _⟩
+    rcases h with h | ⟨m, hm, hf, heq, _⟩ | ⟨_, _, heq, _⟩ | ⟨_, _, heq, _⟩
     · exact .inl (sumsPer_sound hcat hA hF hT hK hP hw.1 hs.2 h)
     · simp only [Prod.mk.injEq] at heq
       exact .inr ⟨m, hm, by simp [hf, heq.2]⟩
     · exact (sumWraps_ne_domain heq).elim
+    · exact (sumWraps_ne_infinite heq).elim
   | _, .cross a b, _, hw, hs, h => by
     simp only [HasIssue] at h; simp only [sumsPer, List.mem_append]
     exact h.imp (sumsPer_sound hcat hA hF hT hK hP hw.1 hs.1)
@@ -685,7 +692,8 @@ theorem Rel.sumsPer_sound (hcat : cat.WF)
     · exact absurd rfl (Expr.issues_ne_sumWraps hp)
   | _, .aggregate r gs ms, _, hw, ⟨_, hsm⟩, h => by
     simp only [HasIssue] at h; simp only [sumsPer, List.mem_append, List.mem_filterMap]
-    rcases h with h | ⟨_, _, _, _, hp⟩ | ⟨m, hm, hf, heq, grp, hgrp, hov⟩ | ⟨_, _, heq, _⟩
+    rcases h with h | ⟨_, _, _, _, hp⟩ | ⟨m, hm, hf, heq, grp, hgrp, hov⟩ | ⟨_, _, heq, _⟩ |
+      ⟨_, _, heq, _⟩
     · exact .inl (sumsPer_sound hcat hA hF hT hK hP hw.1 hsm h)
     · exact absurd rfl (Expr.issues_ne_sumWraps hp)
     · simp only [Prod.mk.injEq] at heq
@@ -702,6 +710,7 @@ theorem Rel.sumsPer_sound (hcat : cat.WF)
           rw [hov] at this; cases this
       exact .inr ⟨m, hm, by simp [hf, hfits, heq.2]⟩
     · exact (sumWraps_ne_domain heq).elim
+    · exact (sumWraps_ne_infinite heq).elim
 
 end
 
