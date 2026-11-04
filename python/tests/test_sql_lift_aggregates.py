@@ -51,7 +51,15 @@ QUERIES = [
     "SELECT customer, stddev_samp(amount) AS sd, stddev_pop(price) AS sp, var_samp(qty) AS vs,"
     " var_pop(amount) AS vp, stddev(price) AS s, variance(amount) AS v"
     " FROM orders GROUP BY customer",
-    "SELECT covar_samp(amount, price) AS cs, covar_pop(qty, amount) AS cp FROM orders",
+    "SELECT covar_samp(amount, price) AS cs, covar_pop(qty, amount) AS cp, corr(price, qty) AS r"
+    " FROM orders",
+    # DuckDB's CORR is NaN for one pair or a constant side, where the
+    # reference's is NULL (`duckdb-corr`); of no pairs it is NULL.
+    "SELECT customer, corr(price, qty) AS r, corr(amount, 2) AS k,"
+    " corr(price, amount) FILTER (WHERE id > 2) AS f FROM orders GROUP BY customer",
+    # H2O's groupby q9.
+    "SELECT customer, qty, power(corr(price, amount), 2) AS r2 FROM orders GROUP BY customer, qty",
+    "SELECT covar_pop(price, amount) FILTER (WHERE id > 2) AS c FROM orders",
     "SELECT customer, qty, stddev_samp(amount) AS sd, count(*) AS n FROM orders"
     " GROUP BY ROLLUP (customer, qty)",
 ]
@@ -84,7 +92,7 @@ def test_the_reference_lift_is_checked_too(query):
         ),
         ("SELECT stddev_samp(cost) FROM orders", "of a DECIMAL is not supported"),
         ("SELECT var_pop(customer) FROM orders", "variance of"),
-        ("SELECT corr(price, qty) FROM orders", "DuckDB's CORR is NaN"),
+        ("SELECT corr(customer, amount) FROM orders", "corr of"),
         (
             "SELECT var_pop(amount) OVER (PARTITION BY customer) FROM orders",
             "over a window is not supported",
@@ -173,11 +181,20 @@ def test_stddev_samp_of_an_integer_is_proved_as_ibiss():
     assert measure["options"] == [{"name": "distribution", "preference": ["SAMPLE"]}]
 
 
-def test_corr_lifts_with_the_reference_semantics():
-    # DuckDB's CORR is NaN where the reference's is NULL (`duckdb-corr`), so
-    # only the reference profile lifts it.
-    plan = json.dumps(lift("SELECT corr(price, qty) AS r FROM orders", SCHEMAS, "reference").plan)
-    code, out, err = run_checker((), plan)
-    assert code == 0, err or out
-    with pytest.raises(Refused, match="corr of"):
-        lift("SELECT corr(customer, amount) FROM orders", SCHEMAS, "reference")
+def test_corr_of_one_pair_is_nan_with_duckdbs_semantics_and_null_with_the_reference():
+    # `duckdb-corr`: DuckDB's CORR of one pair is NaN, the reference's NULL.
+    import math
+
+    from sverify.testing import lean_values
+    from sverify_dev import slt
+
+    query = "SELECT corr(price, qty) AS r FROM orders WHERE id = 1"
+    rows = {n: [tuple(r.values()) for r in t.to_pylist()] for n, t in TABLES.items()}
+
+    def lean(semantics):
+        plan = lift(query, SCHEMAS, semantics).plan
+        return lean_values(json.dumps(slt._typed_inline(plan, rows, None)))
+
+    ((r,),) = lean("duckdb")
+    assert math.isnan(r)
+    assert lean("reference") == [(None,)]

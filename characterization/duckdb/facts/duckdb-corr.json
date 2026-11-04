@@ -10,13 +10,15 @@
   ],
   "settings": {},
   "description": [
-    "`CORR` keeps three independent states, a covariance and two Welford variances, and returns `cov / (std_x * std_y)`, NaN when `std_x * std_y == 0`. One pair or a zero variance gives NaN; no pairs gives NULL. Not clamped to [-1, 1]: with the separate states, |corr| can exceed 1 by a few ulps, more so than with a shared state. The square roots are taken separately, so the product of the variances does not overflow or underflow."
+    "`CORR` keeps three independent states, a covariance and two Welford variances, and returns `cov / (std_x * std_y)`, NaN when `std_x * std_y == 0`. One pair or a zero variance gives NaN; no pairs gives NULL. Not clamped to [-1, 1]: with the separate states, |corr| can exceed 1 by a few ulps, more so than with a shared state. The square roots are taken separately, so the product of the variances does not overflow or underflow.",
+    "Probed: of no pairs (rows with a NULL on either side skipped) it is NULL; of one pair, of a side whose values are all equal, or where a variance underflows to 0 or overflows to inf, it is NaN, as is any NaN or ±inf input. Where the reference is NULL with at least one pair, DuckDB's is NaN; elsewhere they differ only in rounding (#85)."
   ],
   "reference": [
     "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
-    "Where the reference is NULL (one pair, a constant side), DuckDB gives NaN; `Dialect.covar` leaves the NULL cases to its caller."
+    "Where the reference is NULL (one pair, a constant side), DuckDB gives NaN; `Dialect.covar` leaves the NULL cases to its caller.",
+    "The SQL lift (`semantics=\"duckdb\"`, the lift profile's `corr_degenerate=\"NAN\"`) writes DuckDB's `CORR` as the reference's with a count of pairs, NaN where it is NULL and the count is positive (#433). With `semantics=\"reference\"` it is the reference's."
   ],
-  "status": "open",
+  "status": "decided",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -28,10 +30,56 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "session for #433 (PR #511), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (1.0, NULL::DOUBLE)) t(x, y)",
+          "observed": "NULL"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (1.0, 2.0)) t(x, y)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (1.0, 2.0), (3.0, NULL)) t(x, y)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (1.0, 2.0), (1.0, 3.0), (1.0, 5.0)) t(x, y)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (1.0, 2.0), (2.0, 2.0)) t(x, y)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (1.0, 2.0), (2.0, 3.0), (4.0, 1.0)) t(x, y)",
+          "observed": "-0.6546536707079772"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (0.0, 0.0), (1e-170, 1e-170)) t(x, y)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT corr(x, y) FROM (VALUES (0.0, 0.0), (1e300, 1e300), (-1e300, 2e300)) t(x, y)",
+          "observed": "nan"
+        },
+        {
+          "test": "python/tests/test_sql_lift_aggregates.py::test_corr_of_one_pair_is_nan_with_duckdbs_semantics_and_null_with_the_reference"
+        }
+      ]
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    433
+  ],
+  "prs": [
+    511
   ]
 }

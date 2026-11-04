@@ -76,6 +76,7 @@ def test_the_profiles_differ_only_in_what_functions_do():
         "decimal_to_int",
         "domain_error",
         "log_zero",
+        "corr_degenerate",
     }
 
 

@@ -1425,6 +1425,10 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return expr_kind(a, cols) or expr_kind(b, cols)
         case Bin(op=op) if op in BIN_KINDS:
             return BIN_KINDS[op]
+        case Bin(op="pair"):
+            # A covariance's or correlation's pair has no scalar kind: a
+            # filtered measure's NULL stays untyped.
+            return None
         case Bin():
             return "bool"
         case If(then=t, orelse=o):

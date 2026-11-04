@@ -95,6 +95,9 @@ class Profile:
             (reference, #257).
         log_zero: A logarithm of 0: `"MINUS_INFINITY"` (DuckDB) or `"ERROR"`
             (reference).
+        corr_degenerate: `CORR` of one pair or of a side whose values are
+            all equal: `"NAN"` (DuckDB, `duckdb-corr`) or `"NULL"`
+            (reference, `corrOf`). Of no pairs it is NULL in both.
     """
 
     name: str
@@ -109,6 +112,7 @@ class Profile:
     decimal_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
+    corr_degenerate: str = "NULL"
 
 
 DUCKDB = Profile(
@@ -117,6 +121,7 @@ DUCKDB = Profile(
     decimal_to_int="TIE_AWAY_FROM_ZERO",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
+    corr_degenerate="NAN",
 )
 REFERENCE = Profile("reference")
 PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
@@ -1130,13 +1135,6 @@ class _Lift:
             args: list[E] = []
             out: Any = dt.int64
         elif name in _PAIRED:
-            if name == "corr" and self.profile is DUCKDB:
-                # The reference's CORR is NULL for one pair or a side whose
-                # values are all equal, where DuckDB's is NaN (`duckdb-corr`).
-                raise Unsupported(
-                    f"{_shown(node)}: DuckDB's CORR is NaN where the reference's is NULL"
-                    " (one pair, or a constant side); use semantics='reference'"
-                )
             if distinct:
                 raise Unsupported(f"{_shown(node)}: DISTINCT is not supported")
             args = [self.expr(a, scope, bound) for a in (arg, node.expression)]
@@ -1193,6 +1191,8 @@ class _Lift:
                 for f, js, t in gen.parts
             ]
             types, finish = [t for _, _, t in gen.parts], gen.finish
+        elif name == "corr" and self.profile.corr_degenerate == "NAN":
+            return _nan_corr(args, out, invocation, where)
         else:
             # Pending generation (#268), but for `avg` of an integer.
             parts = [
@@ -1356,6 +1356,50 @@ def _overflow(lf: _Lift, t: Any) -> list[Json]:
     """`overflow` for exact arithmetic (integers, decimals) at the declared
     width; doubles have none."""
     return [] if t.is_float64() else [_option("overflow", lf.profile.overflow)]
+
+
+def _nan_corr(
+    args: list[E], out: Any, invocation: str, where: Json | None
+) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
+    """DuckDB's `CORR` (`duckdb-corr`): the reference's, but NaN where that
+    is NULL and some pair has no NULL (one pair, or a side whose values are
+    all equal). Two measures: the correlation, and a count of those pairs."""
+    pair = _fn(
+        "and",
+        [_fn("not", [_fn("is_null", [a.json], dt.boolean)], dt.boolean) for a in args],
+        dt.boolean,
+    )
+    corr = {
+        "functionReference": anchor("corr"),
+        "arguments": [{"value": a.json} for a in args],
+        "outputType": type_json(out),
+        "invocation": invocation,
+    }
+    pairs = {
+        "functionReference": anchor("count"),
+        "arguments": [],
+        "outputType": type_json(dt.int64),
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    both = pair if where is None else _fn("and", [where, pair], dt.boolean)
+    measures = [
+        ({"measure": corr, **({"filter": where} if where is not None else {})}, out),
+        ({"measure": pairs, "filter": both}, dt.int64),
+    ]
+
+    def finish(refs: list[Json]) -> E:
+        r, n = refs
+        degenerate = _fn(
+            "and",
+            [
+                _fn("is_null", [r], dt.boolean),
+                _fn("gt", [n, literal(0, dt.int64)], dt.boolean),
+            ],
+            dt.boolean,
+        )
+        return E(if_then([(degenerate, literal(float("nan"), dt.float64))], r), out)
+
+    return measures, finish
 
 
 def _distribution(population: bool) -> Json:
