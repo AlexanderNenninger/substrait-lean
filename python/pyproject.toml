@@ -110,7 +110,7 @@ filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tools", "tests", "scripts"]
+src = ["src", "tools", "tests", "tests/chaos", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
@@ -118,7 +118,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 [tool.pyrefly]
 project-includes = ["src", "tools", "tests", "scripts"]
 # `test_polars` reuses the queries of the other test modules.
-search-path = ["src", "tools", "tests"]
+search-path = ["src", "tools", "tests", "tests/chaos"]
 
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.
@@ -177,6 +177,18 @@ env = { PYTEST_XDIST_AUTO_NUM_WORKERS.default = "2", SVERIFY_PROFILE.default = "
 [tool.poe.tasks.test-all]
 help = "Every Python test with full Hypothesis counts, on every core (as CI and qa run them)"
 cmd = "pytest -n auto --dist worksteal"
+env = { SVERIFY_PROFILE.default = "ci" }
+
+[tool.poe.tasks.test-chaos]
+help = "Crash injection into pipeline execution (tests/chaos), streamed to a ledger and summarised; not in qa or CI, run it on homelab"
+shell = """
+export SVERIFY_CHAOS_RUN="${SVERIFY_CHAOS_RUN:-$(python -m sverify_dev.chaos run-id)}"
+export SVERIFY_CHAOS_LEDGER="${SVERIFY_CHAOS_LEDGER:-$(python -m sverify_dev.chaos path)}"
+echo "chaos ledger: $SVERIFY_CHAOS_LEDGER"
+pytest -n auto --dist worksteal -m chaos tests/chaos; status=$?
+python -m sverify_dev.chaos summarize "$SVERIFY_CHAOS_LEDGER"
+exit $status
+"""
 env = { SVERIFY_PROFILE.default = "ci" }
 
 [tool.poe.tasks.test-core]

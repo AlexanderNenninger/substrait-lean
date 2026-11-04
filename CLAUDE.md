@@ -89,6 +89,28 @@ falls back to `ulimit -v`, which caps each process on its own.
 
 Run long QA commands there in the background, not in the foreground shell.
 
+### Chaos suite
+
+`python/tests/chaos/` injects crashes into pipeline execution: exceptions
+and SIGKILLs at each step of a refresh, an S3 outage (moto behind a proxy),
+sources that change or vanish, and racing writers. Its tests carry the
+`chaos` marker, which only `-m chaos` selects, so `qa` and CI leave it out.
+It spawns many processes, so run it on homelab:
+
+```bash
+ssh homelab 'bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
+```
+
+Each scenario appends a line to a JSONL ledger as it finishes
+(`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<run>.jsonl`,
+which outlives the run's directory; `tail -f` it). The task prints the
+summary at the end: failures grouped by signature, with counts and a
+repro. `python -m sverify_dev.chaos summarize <ledger>...` summarises
+partial or several ledgers (`--follow 60` repeats). Signatures with an
+issue go in `tests/chaos/known.json`; their tests report as expected
+failures, and a new signature fails the run. File issues per signature,
+not per test.
+
 ## Notebooks on molab
 
 The README's molab links open `notebooks/` on the `published` branch, not on
