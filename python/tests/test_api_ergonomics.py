@@ -29,7 +29,7 @@ def test_an_unknown_requires_table_without_a_close_match():
 
 
 def test_a_list_of_requires_is_on_the_only_input():
-    report = sv.verify(S.mutate(c=_.a + 1), requires=[_.a >= 0], ensures=[_.c > 0])
+    report = sv.verify(S.mutate(c=_.a + 1), requires=[_.a >= 0, _.a < 1000], ensures=[_.c > 0])
     assert report.proved
     assert report.requires["s"][0] == "(_.a >= 0)"
 
@@ -48,7 +48,7 @@ def test_transform_requires_an_unknown_parameter():
 
 
 def test_transform_takes_a_list_of_requires_for_one_parameter():
-    @sv.transform(requires=[_.a >= 0], ensures=[_.c > 0])
+    @sv.transform(requires=[_.a >= 0, _.a < 1000], ensures=[_.c > 0])
     def plus(t):
         return t.mutate(c=t.a + 1)
 

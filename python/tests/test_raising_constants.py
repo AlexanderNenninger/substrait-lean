@@ -6,6 +6,8 @@ constant as raising, and no precondition rules it out."""
 
 from __future__ import annotations
 
+import functools
+
 import duckdb
 import ibis
 import pyarrow as pa
@@ -14,6 +16,12 @@ import pytest
 import sverify as sv
 from sverify.contracts import CONSTANT_HINT
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
+
+#: These tests are about inferred preconditions: assume them, as before
+#: `on_inferred` (#655); `test_on_inferred.py` tests the default.
+verify = functools.partial(sv.verify, on_inferred="silent")
+transform = functools.partial(sv.transform, on_inferred="silent")
+
 
 T = ibis.table({"x": "int64"}, name="t")
 LATER_WHEN = "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END AS v FROM t"
@@ -29,7 +37,7 @@ LATER_WHEN = "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END AS v FROM
     ],
 )
 def test_a_constant_that_raises_is_reported_whatever_the_preconditions(sql):
-    report = sv.verify(sql, tables={"t": T}, requires={"t": ["x > 0"]})
+    report = verify(sql, tables={"t": T}, requires={"t": ["x > 0"]})
     assert not report.proved
     [issue] = report.errors
     assert issue.kind == "division by zero" and issue.constant
@@ -38,7 +46,7 @@ def test_a_constant_that_raises_is_reported_whatever_the_preconditions(sql):
 
 
 def test_a_constant_without_an_error_is_nothing():
-    report = sv.verify("SELECT x + 6 // 3 AS v FROM t", tables={"t": T})
+    report = verify("SELECT x + 6 // 3 AS v FROM t", tables={"t": T})
     assert report.proved and report.errors == []
 
 
@@ -63,4 +71,4 @@ def test_an_integer_cast_of_a_constant_string_is_refused():
     the plan outright."""
     sql = "SELECT CASE WHEN x > 0 THEN 1 WHEN CAST('a' AS INTEGER) = 1 THEN 2 END AS v FROM t"
     with pytest.raises(ValueError, match="cannot cast"):
-        sv.verify(sql, tables={"t": T})
+        verify(sql, tables={"t": T})

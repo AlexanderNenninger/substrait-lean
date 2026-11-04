@@ -127,7 +127,7 @@ def test_the_plan_bound_level() -> None:
 
 def test_an_inferred_precondition_says_where_it_came_from(con) -> None:
     t = con.table("t")
-    report = sv.verify(t.select(t.k, per=t.total // t.qty))
+    report = sv.verify(t.select(t.k, per=t.total // t.qty), on_inferred="silent")
     assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(report)
     with pytest.raises(
         PreconditionError,

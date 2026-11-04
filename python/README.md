@@ -142,7 +142,7 @@ orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
 )
 def big_orders(orders):
@@ -156,6 +156,7 @@ big.refresh(engine="polars", route="auto")  # updated from the changes alone, on
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 print(big_orders.last_report)
 # requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 1000000000)
 # requires orders: unique(id)
 # ensures (_.doubled >= 22): proved
 ```

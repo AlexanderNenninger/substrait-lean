@@ -40,7 +40,7 @@ carries over ([Routes](#routes-classes-and-profiles)):
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, sv.unique("id")],
 )
 def first_contract(orders):
@@ -269,6 +269,7 @@ Ibis expression). Each call proves the postconditions before it returns:
 @sv.transform(
     requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
+    on_inferred="silent",  # by default ("error"), it reports the bound under `needs:`
 )
 def doubled(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
@@ -422,7 +423,8 @@ compute, and the division is proved safe with no precondition:
 gcon = sv.connect()
 gcon.put("lines", pa.table({"id": [1, 2, 3], "n": [4, 0, 2], "total": [100, 250, 30]}))
 lines = gcon.table("lines")
-per_line = sv.verify(lines.filter(lines.n != 0).select(lines.id, per=lines.total // lines.n))
+kept = lines.filter(lines.n != 0)
+per_line = sv.verify(kept.select(kept.id, per=kept.total // kept.n), requires={"lines": [_.total >= 0]})
 print(per_line.run(gcon).to_pylist())
 # [{'id': 1, 'per': 25}, {'id': 3, 'per': 15}]
 ```
@@ -435,7 +437,8 @@ before the run, and says where the error sits:
 
 ```python
 mixed = sv.verify(
-    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
+    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n),
+    on_inferred="silent",
 )
 print(mixed)
 # requires lines: (_.total >= -9 * 10**18) (inferred from total // n)
@@ -460,7 +463,7 @@ leave its range, it works out the range each input column must stay in, and
 adds it to `requires` as if you had written it:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
 def twice(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
@@ -520,7 +523,7 @@ samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name
 per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
     cpu=samples.cpu.sum()
 )
-print(sv.verify(per_minute))
+print(sv.verify(per_minute, on_inferred="silent"))
 # requires samples: (_.ts >= datetime(1, 1, 1)) (inferred from ts.truncate('minute'))
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...

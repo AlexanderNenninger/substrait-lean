@@ -4,6 +4,8 @@ precision and date arithmetic. Like #244's bounds, Lean proposes them
 (`SubstraitLean/Infer.lean`), the unchanged proof checks them, and they are
 checked on the data."""
 
+import functools
+
 import ibis
 import pyarrow as pa
 import pytest
@@ -14,6 +16,12 @@ from _pipelines import discharged
 from sverify.contracts import ON_DATA, label
 from sverify.errors import PreconditionError
 from sverify.io import StaticSource
+
+#: These tests are about inferred preconditions: assume them, as before
+#: `on_inferred` (#655); `test_on_inferred.py` tests the default.
+verify = functools.partial(sv.verify, on_inferred="silent")
+transform = functools.partial(sv.transform, on_inferred="silent")
+
 
 T = ibis.table(
     {
@@ -57,10 +65,10 @@ def inferred(report: sv.Report) -> list[str]:
     ids=lambda v: v if isinstance(v, str) else None,
 )
 def test_inferred_preconditions_prove_the_plan(expr, conds):
-    report = sv.verify(expr, counterexamples=0)
+    report = verify(expr, counterexamples=0)
     assert report.proved, str(report)
     assert inferred(report) == conds
-    off = sv.verify(expr, counterexamples=0, infer=False)
+    off = verify(expr, counterexamples=0, infer=False)
     assert not off.proved
     assert all(i.hint for i in off.errors)
 
@@ -76,18 +84,18 @@ def test_inferred_preconditions_prove_the_plan(expr, conds):
     ],
 )
 def test_choices_are_suggested_not_assumed(expr, hint):
-    report = sv.verify(expr, counterexamples=0)
+    report = verify(expr, counterexamples=0)
     assert not report.proved
     assert any(i.hint and i.hint.startswith(hint) for i in report.errors), report.errors
 
 
 def test_a_computed_divisor_gets_no_bound():
-    report = sv.verify(T.select(r=T.a % (T.b * T.b)), counterexamples=0, infer=False)
+    report = verify(T.select(r=T.a % (T.b * T.b)), counterexamples=0, infer=False)
     [issue] = [i for i in report.errors if i.kind == "division by zero"]
     assert issue.hint is not None and issue.hint.startswith("no bound on an input column")
 
 
-@sv.transform(requires={"orders": [_.qty >= 0]}, ensures=[])
+@transform(requires={"orders": [_.qty >= 0]}, ensures=[])
 def unit_price(orders):
     return orders.select(orders.id, price=orders.total // orders.qty)
 

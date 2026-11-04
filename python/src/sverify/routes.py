@@ -1004,6 +1004,7 @@ def verified(report: Report) -> bool:
     return (
         not report.errors
         and not report.transfer
+        and not report.needed
         and all(c.portable or c.checked for c in report.ensures)
     )
 
@@ -1025,6 +1026,9 @@ def not_verified(report: Report) -> str:
             parts.append(f"ensures {c.label} {_observation.why(c.ignores)}")
         if "report.unproved" not in see:
             see.append("report.unproved")
+    parts += [f"needs {n}" for n in report.needs_lines()]
+    if report.needed:
+        see.append("report.needed")
     if report.transfer:
         parts.append(
             "the reference's proof does not carry over to Substrait's semantics on "

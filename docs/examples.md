@@ -87,7 +87,10 @@ the data first, and refuses a batch that breaks one before anything runs
 from sverify.errors import PreconditionError
 
 t = con.table("orders")
-unchecked = sv.verify(t.select(t.id, unit=t.total // t.qty))
+print(sv.verify(t.select(t.id, unit=t.total // t.qty)))
+# needs: (_.total >= -9 * 10**18) and (_.qty != 0) on orders, inferred from `total // qty` (overflow or division by zero otherwise): declare them in requires ...
+# ...
+unchecked = sv.verify(t.select(t.id, unit=t.total // t.qty), on_inferred="silent")
 print(unchecked)
 # requires orders: (_.total >= -9 * 10**18) (inferred from total // qty)
 # requires orders: (_.qty != 0) (inferred from total // qty)
@@ -216,7 +219,9 @@ filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
 # transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on [exact]
 
-divided = sv.verify(t.select(t.id, unit=t.total // t.qty), semantics="duckdb")
+divided = sv.verify(
+    t.select(t.id, unit=t.total // t.qty), semantics="duckdb", on_inferred="silent"
+)
 try:
     divided.run(con, "polars", route="auto")
 except RouteError as e:
