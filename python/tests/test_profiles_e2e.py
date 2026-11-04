@@ -142,13 +142,23 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
 def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
     """`SUM` of an unbounded `i64`: assumed to fit and checked on the data.
     A batch that overflows is refused before the plan runs, on both
-    engines, with the precondition in the message."""
+    engines, with the precondition in the message.
+
+    `i` may be NULL, and Polars sums a group of NULLs to 0 where the
+    reference gives NULL: its translation shims `sum_empty_null`. With `i`
+    NOT NULL in the preconditions no group is all NULL, and Polars refines."""
     t = con.table("t")
     report = sv.verify(t.group_by("k").aggregate(total=t.i.sum()))
     assert report.proved and [i.what for i in report.assumed] == ["i"]
     run_both(report, con)
+    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "polars").cls == "shim"
+    assert any("sum_empty_null" in s for s in route_of(report, "polars").shims)
+    present = sv.verify(t.group_by("k").aggregate(total=t.i.sum()), requires={"t": [_.i.notnull()]})
+    assert present.proved, str(present)
+    run_both(present, con)
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(present, e).cls == "refines"
     bad = sv.connect()
     bad.put("t", pa.table({"k": [1, 1], "i": [2**62, 2**62]}))
     for e in ENGINES:
@@ -181,25 +191,33 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
 
 @classes
 def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
-    """`AVG` of `i32` (Polars needs the cast shim) and `round` on ties
-    (half away from zero in the reference; Polars rounds half to even
-    natively, so its translation writes the mode)."""
+    """`round` on ties (half away from zero in the reference; Polars rounds
+    half to even natively, so its translation writes the mode), and `AVG`
+    of an `i32` with a double result: its sum's order is open
+    (`sum_order`), so with a row cap Lean bounds it per plan (`ε`) and
+    Polars is `approx` within the postcondition's tolerance."""
     ties = sv.connect()
     ties.put(
         "t",
         pa.table({"k": [1, 1, 2], "n": pa.array([1, 2, 3], pa.int32()), "x": [0.5, 2.5, -1.5]}),
     )
     tt = ties.table("t")
-    req = {"t": [_.x.between(-100, 100), _.n.between(-100, 100)]}
+    req = {"t": [_.x.between(-100, 100), _.n.between(-100, 100), sv.max_rows(1_000)]}
     rounded = sv.verify(tt.select("k", r=tt.x.round()), requires=req)
-    mean = sv.verify(tt.group_by("k").aggregate(a=tt.n.mean()), requires=req)
+    mean = sv.verify(
+        tt.group_by("k").aggregate(a=tt.n.mean()),
+        requires=req,
+        ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
+    )
     for report in (rounded, mean):
         assert report.proved, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
-    for report in (rounded, mean):
-        assert route_of(report, "duckdb").cls == "refines"
-        assert route_of(report, "polars").cls == "shim"
+    assert route_of(rounded, "duckdb").cls == "refines"
+    assert route_of(rounded, "polars").cls == "shim"
+    assert mean.epsilon, "the plan's bound on the mean"
+    assert route_of(mean, "duckdb").cls in ("refines", "approx")
+    assert route_of(mean, "polars").cls == "approx"
 
 
 # -- B: observations ---------------------------------------------------------
@@ -208,26 +226,46 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
 @classes
 def test_b1_float_aggregates_within_a_tolerance(con) -> None:
     """Float `SUM` and `AVG` with a tolerance postcondition: the summation
-    order is open, so an engine is `approx` within #85's bound, and the
-    stated tolerance must cover it."""
+    order is open, so an engine is `approx` within the plan's bound (#85,
+    `ε` per column), and the stated tolerance must cover it.
+
+    With `x` in ±10⁶ the sum can cancel, so only an absolute bound exists
+    (about 222 for the sum of 10⁶ rows, 2.2e-4 for the mean) and the
+    postcondition states an absolute tolerance. With `x` non-negative
+    nothing cancels, and a relative tolerance suffices."""
     t = con.table("t")
-    q = sv.equivalent(floats=sv.within(rel=1e-9))
-    report = sv.verify(
-        t.group_by("k").aggregate(total=t.x.sum(), mean=t.x.mean()),
-        requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
-        ensures=[q, sv.approx(_.mean <= 1e6)],
-    )
-    assert report.proved, str(report)
-    run_both(report, con)
-    assert route_of(report, "polars").cls == "approx"
-    assert route_of(report, "duckdb").cls in ("refines", "approx")
+    cases = [
+        (_.x.between(-1e6, 1e6), sv.within(abs=1e3)),
+        (_.x.between(0, 1e6), sv.within(rel=1e-6)),
+    ]
+    for bound, tolerance in cases:
+        report = sv.verify(
+            t.group_by("k").aggregate(total=t.x.sum(), mean=t.x.mean()),
+            requires={"t": [bound, sv.max_rows(1_000_000)]},
+            ensures=[sv.equivalent(floats=tolerance), sv.approx(_.mean <= 1e6)],
+        )
+        assert report.proved, str(report)
+        assert report.epsilon, "the plan's bound on the doubles"
+        data = con if tolerance.abs is not None else _non_negative(con)
+        run_both(report, data)
+        assert route_of(report, "polars").cls == "approx", tolerance
+        assert route_of(report, "duckdb").cls in ("refines", "approx")
     tight = sv.verify(
         t.group_by("k").aggregate(total=t.x.sum()),
         requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
         ensures=[sv.equivalent()],
     )
     refused = routes.choose(tight, "polars")
-    assert refused.refused and "floats" in refused.reason
+    assert refused.refused and ("floats" in refused.reason or "doubles" in refused.reason)
+
+
+def _non_negative(con) -> sv.engine.Connection:
+    """`con`'s table `t` with `x` made non-negative."""
+    out = sv.connect()
+    t = con.get("t")
+    x = [abs(v) for v in t.column("x").to_pylist()]
+    out.put("t", t.set_column(t.schema.get_field_index("x"), "x", pa.array(x)))
+    return out
 
 
 @classes
