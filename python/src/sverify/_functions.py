@@ -74,6 +74,10 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
                    ("CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII")),
             Option("char_set", "char_set", ("UTF8", "ASCII_ONLY")),
             Option("null_handling", "null_handling", ("IGNORE_NULLS", "ACCEPT_NULLS")),
+            Option("string_positions", None,
+                   ("ONE_BASED_CHARS", "ZERO_BASED_CHARS", "ZERO_BASED_BYTES"),
+                   (("ZERO_BASED_CHARS", "polars-substring"),
+                    ("ZERO_BASED_BYTES", "polars-strpos"))),
         )
     }
 )  # fmt: skip
@@ -85,8 +89,8 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "int.shift": ("shift_range",),
         "fp.elem": ("rounding", "on_domain_error"),
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
-        "str.sub": ("negative_start", "substring_range"),
-        "str.match": ("case_sensitivity",),
+        "str.sub": ("negative_start", "substring_range", "string_positions"),
+        "str.match": ("case_sensitivity", "string_positions"),
         "str.case": ("char_set",),
         "str.concat": ("null_handling",),
         "str.plain": (),
@@ -108,6 +112,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "case_sensitivity"): _asked("CASE_SENSITIVE"),
                 (None, "char_set"): _asked("UTF8"),
                 (None, "null_handling"): _asked("ACCEPT_NULLS"),
+                (None, "string_positions"): Choice(("ONE_BASED_CHARS",)),
             }
         ),
         "duckdb": MappingProxyType(
@@ -121,6 +126,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "case_sensitivity"): Choice(("CASE_SENSITIVE",)),
                 (None, "char_set"): Choice(("UTF8",)),
                 (None, "null_handling"): Choice(("ACCEPT_NULLS",)),
+                (None, "string_positions"): Choice(("ONE_BASED_CHARS",)),
             }
         ),
     }

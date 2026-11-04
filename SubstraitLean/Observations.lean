@@ -195,6 +195,9 @@ structure ToolRow where
   tool : Tool
   /-- The precondition a raise creates (`""` for the other tools). -/
   precondition : String := ""
+  /-- For an option left open, the coarsest observation a contract can hold
+  under every choice: what it must not tell apart. -/
+  q : Option Obs := none
   deriving Repr, DecidableEq
 
 /-- The reference's tool per option (`docs/core-semantics.md`, "What
@@ -228,27 +231,35 @@ def Profile.reference.tools : List ToolRow := [
   { option := "time_interval_months", tool := .raise,
     precondition := "no interval with months is added to a TIME (the parser refuses it)" },
   { option := "list_null_order", tool := .choose },
-  { option := "sum_order", tool := .leaveOpen },
-  { option := "stat_algo", tool := .leaveOpen },
+  { option := "sum_order", tool := .leaveOpen, q := some { floats := .within "#85" } },
+  { option := "stat_algo", tool := .leaveOpen, q := some { floats := .within "#85" } },
   { option := "stat_degenerate", tool := .choose },
   { option := "avg_int_result", tool := .choose },
-  { option := "quantile_interp", tool := .leaveOpen },
-  { option := "tie_pick", tool := .leaveOpen },
-  { option := "tie_order", tool := .leaveOpen },
+  { option := "quantile_interp", tool := .leaveOpen, q := some { floats := .within "contAllowed" } },
+  -- The element multiset: which row of a tie, which order of a list's elements.
+  { option := "tie_pick", tool := .leaveOpen, q := some { rows := .multiset } },
+  { option := "tie_order", tool := .leaveOpen, q := some { rows := .multiset } },
   { option := "null_order", tool := .choose },
-  { option := "clustered", tool := .leaveOpen },
+  { option := "clustered", tool := .leaveOpen, q := some { rows := .multiset } },
   { option := "ntile_spread", tool := .choose },
   { option := "float_to_int", tool := .choose },
   { option := "cast_failure", tool := .raise,
     precondition := "every value a cast with UNSPECIFIED failure behaviour converts" },
   { option := "distribution", tool := .choose },
-  { option := "empty_group_aggregates", tool := .choose }]
+  { option := "empty_group_aggregates", tool := .choose },
+  { option := "float_overflow", tool := .raise,
+    precondition := "no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575)" },
+  { option := "null_join_keys", tool := .choose },
+  { option := "string_positions", tool := .choose }]
 
 /-! ## Checks -/
 
 /-- One tool per option, in the catalogue's order; a raise names its precondition. -/
 example : Profile.reference.tools.map (·.option) = options.map (·.id) := by decide +kernel
 example : Profile.reference.tools.all fun r => (r.tool == .raise) == (r.precondition != "") := by
+  decide +kernel
+/-- An open option names its observation; the others none. -/
+example : Profile.reference.tools.all fun r => (r.tool == .leaveOpen) == r.q.isSome := by
   decide +kernel
 /-- The options the reference leaves open are those whose choice allows any
 order, value or row, a value of the core that sverify names for that. -/
@@ -273,6 +284,16 @@ def Obs.json (q : Obs) : Json :=
           | .ns => "ns" | .us => "us" | .ms => "ms" | .s => "s"))]),
     ("strings", toJson (match q.strings with | .exact => "exact" | .nfc => "nfc" | .casefold => "casefold")),
     ("errors", toJson (match q.errors with | .exact => "exact" | .kind => "kind" | .raises => "raises"))]
+
+open Lean (Json toJson) in
+/-- An observation as the Python side reads it (D18): only the components
+that are not exact. -/
+def Obs.sparseJson (q : Obs) : Json :=
+  let full := q.json
+  let keep := [("rows", q.rows != .sequence), ("floats", q.floats != .exact),
+    ("zeros", q.zeros != .exact), ("times", q.times != .exact),
+    ("strings", q.strings != .exact), ("errors", q.errors != .exact)]
+  Json.mkObj (keep.filterMap fun (k, b) => if b then (full.getObjVal? k).toOption.map (k, ·) else none)
 
 open Lean (Json toJson) in
 def ObsRow.json (r : ObsRow) : Json :=

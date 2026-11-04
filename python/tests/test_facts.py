@@ -78,7 +78,7 @@ def test_checklist_items_are_unique_and_cover_the_core_options():
     assert found["execution"][0] == "evaluation_order"
     areas = json.loads(facts.AREAS.read_text())["areas"]
     options = [i["id"] for a in areas for i in a["items"] if i["kind"] == "option"]
-    assert len(options) == 36
+    assert len(options) == 39
 
 
 def test_coverage_lists_facts_per_item(tmp_path):
@@ -109,7 +109,7 @@ def test_coverage_lists_facts_per_item(tmp_path):
     assert found["integers"]["division_type"] == []
     text = facts.report(found)
     assert "  division_type: missing" in text
-    assert text.endswith("2/67 items covered; gaps in: " + ", ".join(found))
+    assert text.endswith("2/69 items covered; gaps in: " + ", ".join(found))
     rows = facts.row_coverage(docs, "polars", root)
     assert rows[("int.arith", "overflow", "i64")] == [("polars-a", "source")]
     assert rows[("int.arith", "overflow", "i8")] == []

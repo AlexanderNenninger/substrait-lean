@@ -8,6 +8,7 @@ import subprocess
 import ibis
 
 from sverify.engine import checker_path
+from sverify.ibis_substrait import to_substrait_json
 from sverify.sql_lift import lift
 
 SCHEMAS = {"t": ibis.schema({"a": "int64", "b": "float64", "c": "int64"})}
@@ -46,3 +47,124 @@ def test_transfer_and_shims(tmp_path):
     assert r["transfer"]["reference"]["polars"] is False
     assert r["shims"]["duckdb"] == []
     assert {s["option"] for s in r["shims"]["polars"]} == {"null_order"}
+
+
+STRINGS = {"t": ibis.schema({"a": "int64", "b": "float64", "s": "string"})}
+
+
+def dependencies(plan: dict, tmp_path) -> dict:
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(plan))
+    out = subprocess.run(
+        [str(checker_path()), "--dependencies", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(out.stdout)
+
+
+def transfer(request: dict) -> dict:
+    out = subprocess.run(
+        [str(checker_path()), "--transfer"],
+        input=json.dumps(request),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(out.stdout)
+
+
+def depends_of(report: dict) -> list[dict]:
+    return [
+        {"group": o["group"], "option": o["option"], "preferences": o["preferences"]}
+        for o in report["options"]
+    ]
+
+
+def test_f2_double_arithmetic_transfers_from_duckdb_to_polars(tmp_path):
+    """F2: arithmetic that may reach ±∞, under DuckDB's profile: Polars's IEEE
+    choices are within DuckDB's at every option the plan meets."""
+    r = dependencies(lift("SELECT b * b + b AS y FROM t", STRINGS).plan, tmp_path)
+    met = {o["option"] for o in r["options"]}
+    assert {"float_overflow", "nan_creation", "zero_sign", "rounding"} <= met
+    assert r["transfer"]["duckdb"]["polars"] is True
+    assert r["transfer"]["reference"]["polars"] is False
+    out = transfer({"from": "duckdb", "to": "polars", "depends": depends_of(r)})
+    assert out == {"ok": True, "failures": []}
+
+
+def test_f3_default_null_order_does_not_transfer(tmp_path):
+    """F3: an UNSPECIFIED sort key read as DuckDB's NULLs last: Polars puts
+    NULLs first, so the transfer fails on `null_order`, with its fact."""
+    plan = lift("SELECT a FROM t ORDER BY a", STRINGS).plan
+    text = json.dumps(plan).replace("SORT_DIRECTION_ASC_NULLS_LAST", "SORT_DIRECTION_UNSPECIFIED")
+    r = dependencies(json.loads(text), tmp_path)
+    assert r["transfer"]["duckdb"]["polars"] is False
+    out = transfer({"from": "duckdb", "to": "polars", "depends": depends_of(r)})
+    assert out["ok"] is False
+    [failure] = out["failures"]
+    assert (failure["option"], failure["from"], failure["to"]) == (
+        "null_order",
+        ["NULLS_LAST"],
+        ["NULLS_FIRST"],
+    )
+    assert failure["facts"] == ["polars-null-order"]
+
+
+def test_g1_md5_is_missing_on_polars(tmp_path):
+    t = ibis.table(STRINGS["t"], name="t")
+    plan = json.loads(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
+    r = dependencies(plan, tmp_path)
+    assert "md5" in r["functions"]
+    assert r["missing"]["duckdb"] == []
+    assert [m["function"] for m in r["missing"]["polars"]] == ["md5"]
+    out = transfer({"from": "duckdb", "to": "polars", "depends": [], "functions": ["md5"]})
+    assert out["ok"] is False
+    assert out["failures"][0]["function"] == "md5"
+
+
+def test_b2_double_group_keys(tmp_path):
+    """B2: grouping by a double meets NaN equality and the zeros; Polars is
+    the reference's up to one zero, or after the `one_zero` shim."""
+    r = dependencies(lift("SELECT b, COUNT(*) AS n FROM t GROUP BY b", STRINGS).plan, tmp_path)
+    keys = {o["option"]: o for o in r["options"] if o["group"] == "rel.keys"}
+    assert set(keys) == {"nan_equality", "zero_sign"}
+    row = keys["zero_sign"]["polars"]["row"]
+    assert row["class"] == "refines_up_to" and row["q"]["zeros"] == "canon"
+    assert row["shim"] == "one_zero"
+
+
+def test_options_rows_for_python():
+    """`--options`' rows: choice, class, q (only what is not exact), shim,
+    evidence and facts; the reference's tool; the profiles' versions."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    tables = json.loads(out.stdout)
+    assert tables["profiles"]["polars"]["versions"] == ["2.1.0"]
+    assert {m["function"] for m in tables["profiles"]["polars"]["missing"]} >= {"md5"}
+    rows = {(r["group"], r["option"]): r for r in tables["choices"]["polars"]}
+    mod = rows[("int.mod", "division_type")]
+    assert mod["choice"]["behaviours"] == ["FLOOR"] and mod["shim"] == "int_mod_trunc"
+    duck = {(r["group"], r["option"]): r for r in tables["choices"]["duckdb"]}
+    assert duck[("int.mod", "division_type")]["choice"]["behaviours"] == ["TRUNCATE"]
+    ref = {(r["group"], r["option"]): r for r in tables["choices"]["reference"]}
+    assert ref[(None, "overflow")]["tool"] == "raise" and ref[(None, "overflow")]["precondition"]
+    assert ref[(None, "tie_order")]["tool"] == "open"
+    assert ref[(None, "tie_order")]["q"] == {"rows": "multiset"}
+    assert "q" not in ref[(None, "rounding")]
+
+
+def test_contract_reports_its_dependencies(tmp_path):
+    path = tmp_path / "contract.json"
+    plan = lift("SELECT a * a AS x FROM t ORDER BY x", STRINGS).plan
+    path.write_text(json.dumps({"transform": plan, "ensures": []}))
+    out = subprocess.run(
+        [str(checker_path()), "--contract", str(path)], capture_output=True, text=True
+    )
+    report = json.loads(out.stdout)
+    assert report["profile"] == "reference"
+    depends = {(d["group"], d["option"]): d["behaviours"] for d in report["depends"]}
+    assert depends[("int.arith", "overflow")] == ["ERROR"]
+    assert depends[("rel.sort", "null_order")] == ["NULLS_LAST"]
