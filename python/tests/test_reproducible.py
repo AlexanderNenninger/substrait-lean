@@ -171,3 +171,16 @@ def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
     assert routes.choose(report, "polars", reproducible=loose).kind == "reference"
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused and "sum_order" in exact.reason
+
+
+def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> None:
+    """#612's rows level: two runs agree up to permutations of tied rows."""
+    ties = sv.equivalent(rows="ties permuted")
+    assert sv.equivalent(rows="sequence").refines(ties)
+    assert ties.refines(sv.equivalent(rows="multiset"))
+    assert not ties.refines(sv.equivalent(rows="sequence"))
+    _tables(monkeypatch, {"rows": "ties permuted"})
+    report = _float_sum(con)
+    assert routes.choose(report, "polars", reproducible=sv.equivalent()).kind == "reference"
+    r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
+    assert r.refused and "rows" in r.reason
