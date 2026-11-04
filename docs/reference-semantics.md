@@ -30,8 +30,12 @@ The reference follows Substrait. Where it overrides Substrait, it says so
 
 The reference is a relation: for each input it allows a set of results
 (`Rel.Allowed`, `SubstraitLean/Allowed.lean`). An engine runs a plan
-**correctly** when, on every input, it returns an allowed result or raises an
-error. `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
+**correctly** when, on every input, it returns an allowed result, or raises
+only where the reference may raise; resource errors, such as running out of
+memory, are excluded ([D16](core-semantics.md#d16-engine-correctness)). Lean
+proves partial correctness today, an allowed result or an error
+(`Rel.duckdb_shim_sound`); for a plan verified to never raise the two agree
+(`Rel.duckdb_sound`). `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
 witness (`Rel.eval_allowed`), and `verify` proves its theorems through it.
 
 The set holds more than one result only where the reference leaves a choice
@@ -87,9 +91,10 @@ Where the reference departs from Substrait, and why:
 | One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Spark and Snowflake treat NaN this way (#89); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
 | The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM` ([#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)). |
 
-Engine quirks belong in profiles, never in the reference. Changing the
-reference is a breaking change and is treated as one (#185,
-"The reference model may need to evolve").
+Engine quirks belong in profiles, never in the reference. While sverify is on
+0.x, a change to the reference ships in a minor version bump, with a
+`changelog.d/` fragment that says what changed (#185, "The reference model
+may need to evolve"; [D17](core-semantics.md#d17-changing-the-reference)).
 
 ## Errors
 

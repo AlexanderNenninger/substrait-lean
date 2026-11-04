@@ -130,12 +130,12 @@ principle 4 (an error means "may raise", so rewrites stay refinements) and
 lets DuckDB's extra raises (`MIN % -1`, `<<` of a negative number) stay
 inside the core without new options. Decided ([D2](#d2-raises-in-the-core)).
 
-Two notions of an engine running a plan correctly meet here. Partial
-correctness, an allowed result or an error
-([What it is](reference-semantics.md#what-it-is)), is what
-`Rel.duckdb_shim_sound` proves for every lowered plan. A sound translation
-([Soundness](#soundness)) also keeps the raise set: the engine raises only
-where the reference may. For a plan verified to never raise the two agree,
+An engine runs a plan correctly when it returns an allowed result, or
+raises only where the reference may raise; resource errors, such as running
+out of memory, are outside this ([D16](#d16-engine-correctness)). This is
+the raise-set half of [Soundness](#soundness). Today Lean proves partial
+correctness for every lowered plan, an allowed result or an error
+(`Rel.duckdb_shim_sound`). For a plan verified to never raise the two agree,
 and the engine raises nowhere (`Rel.duckdb_sound`,
 [engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice)).
 
@@ -711,10 +711,11 @@ Beyond `E`, the proof has five goals:
    not hold. With #85's bounds, every floating result has a usable error
    bound. Today the reference raises where an operation would create a NaN
    and on a zero divisor ([No operation creates a NaN](reference-semantics.md#core-numbers-and-nulls));
-   a finite operation whose result overflows to `±∞` (`exp(1000)`) will
-   raise too
+   a finite operation whose result overflows to `±∞` (`exp(1000)`) will be
+   an error of the reference too
    ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)),
-   with its precondition inferred as for integer overflow.
+   ruled out by inferred preconditions, proved from the bounds or checked on
+   the data, as a `SUM`'s overflow is.
 3. A result determined up to row order. Leaving an option open is the third
    tool beside raising and choosing a value: it costs no shim, and the
    contract must not tell the open choices apart (#568's invariance under an
@@ -959,7 +960,7 @@ the option left open.
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
-D9 to D15 were decided after #568's classes and #577's translation policy.
+D9 to D17 were decided after #568's classes and #577's translation policy.
 
 ### D1. Where the tables live
 
@@ -1104,3 +1105,21 @@ The choices table holds, next to each choice, its class, its observation
 extends step 1a's `ProfileTable` (#578, `SubstraitLean/Options.lean`): a
 column for the class and `q` and one for the shim, filled for engines in
 step 3a, and read by step 1c.
+
+### D16. Engine correctness
+
+An engine runs a plan correctly when it returns a result the reference
+allows, or raises only where the reference may raise. Resource errors, such
+as running out of memory, are excluded. The guarantee of no error
+([What a proof under the reference guarantees](#what-a-proof-under-the-reference-guarantees))
+needs this stricter definition: under partial correctness, an engine could
+raise anywhere and still be correct. Partial correctness is what
+`Rel.duckdb_shim_sound` proves today for every lowered plan; for a plan
+verified to never raise the two agree (`Rel.duckdb_sound`).
+
+### D17. Changing the reference
+
+While sverify is on 0.x, the reference changes where the design needs it. A
+change to the reference ships in a minor version bump, with a
+`changelog.d/` fragment that says what changed. Bumping the minor version
+costs little, and the fragment tells users which proofs may change.

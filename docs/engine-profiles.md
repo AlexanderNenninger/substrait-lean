@@ -17,9 +17,12 @@ defaults (overflow and division by zero are errors, errors mean "may raise",
 rewrites are refinements) and every row of its behaviour, with its status on
 `main`, are in [reference-semantics.md](reference-semantics.md).
 
-An engine runs a plan **correctly** when, on every input, it gives
-`Rel.eval`'s rows or fails. For a plan verified to never raise, it gives
-`Rel.eval`'s rows ([Errors](core-semantics.md#errors)).
+An engine runs a plan **correctly** when, on every input, it gives a result
+the reference allows, or raises only where the reference may raise; resource
+errors, such as running out of memory, are excluded
+([D16](core-semantics.md#d16-engine-correctness)). Today Lean proves partial
+correctness, `Rel.eval`'s rows or an error (`Rel.duckdb_shim_sound` below),
+and for a plan verified to never raise the two agree (`Rel.duckdb_sound`).
 
 **The size hypothesis.** Integers have their declared widths, and so do
 lengths, positions and ranks. The reference assumes, as every engine's memory
