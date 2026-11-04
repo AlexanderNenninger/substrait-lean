@@ -354,7 +354,8 @@ and proves `share` ([Inferred bounds](#inferred-bounds)).
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
-wraps around there; the reference raises). An integer `SUM` leaving 64 bits
+wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
+or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316)),
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
 `requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
