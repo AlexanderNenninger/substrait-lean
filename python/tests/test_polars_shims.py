@@ -692,20 +692,21 @@ def test_native_bit_aggregates_match_lean(op):
     assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
 
 
-def test_pow_of_minus_infinity_to_a_half_is_ieee():
-    """Polars computes `pow(x, 0.5)` as `sqrt(x)`: NaN for `-inf`, where
-    IEEE's `pow` and the reference give `+inf`."""
-    df = pl.DataFrame({"x": [-math.inf, -0.0, 4.0], "y": [0.5, 0.5, 0.5]})
-    x, y = pl.col("x"), pl.col("y")
-    assert math.isnan(df.select(x.pow(0.5))["x"][0])  # a literal exponent
-    got = df.select(shims.one_zero(shims.pow_ieee(x, y)).alias("p"))["p"].to_list()
-    assert got == [math.inf, 0.0, 2.0]
-    assert math.copysign(1.0, got[1]) == 1.0
-    rows = [(0, -math.inf), (1, -0.0), (2, 4.0)]
-    lean, polars = lean_and_polars(
-        FLOATS, rows, "SELECT g, power(x, 0.5) AS p FROM r", doubles=True
-    )
-    assert repr(lean) == repr(polars)
+def test_a_fractional_power_of_minus_infinity_is_refused():
+    """Polars computes `x ** 0.5` as `sqrt(x)`: NaN for `-inf`, where IEEE's
+    `pow` gives `+inf`. The reference refuses a negative base, `-inf`
+    included, to a fractional power, so the guard does, on the streaming
+    engine; `(-0.0) ** 0.5` is `-0.0` in Polars and the one zero here."""
+    lf = pl.LazyFrame({"x": [-math.inf, -0.0, 4.0]})
+    assert math.isnan(lf.select(pl.col("x").pow(0.5)).collect(engine="streaming").item(0, 0))
+    con = connect()
+    create_table(con, "r", FLOATS, [(0, -math.inf), (1, 4.0)])
+    plan = written_plan(substrait_json(con, "SELECT power(x, 0.5) AS p FROM r", "reference"))
+    with pytest.raises(polars_engine.DomainError, match="NaN"):
+        run_plan(con, plan, "polars")
+    create_table(con, "r", FLOATS, [(1, -0.0), (2, 4.0)])
+    out = run_plan(con, plan, "polars")["p"].to_pylist()
+    assert out == [0.0, 2.0] and math.copysign(1.0, out[0]) == 1.0
 
 
 # --- Streaming in a routed run ---------------------------------------------------

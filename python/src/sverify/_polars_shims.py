@@ -79,9 +79,6 @@ SHIMS: tuple[Shim, ...] = (
     Shim("one_zero", "zero_sign", "ONE_ZERO, also as a group key: on read and after each "
          "operation that can give -0.0", "IEEE: -0.0 kept; a group's key is its first zero",
          "polars-zero-sign", "expression"),
-    Shim("pow_ieee", "nan_creation", "IEEE pow: pow(-inf, 0.5) is +inf",
-         "pow(x, 0.5) as sqrt(x): NaN for -inf, on both engines", "polars-double-arith",
-         "expression"),
     Shim("strpos_chars", "negative_start", "1-based characters, 0 when absent",
          "str.find: 0-based bytes, NULL when absent", "polars-strpos", "expression"),
     Shim("substring_wrap", "negative_start", "WRAP_FROM_END",
@@ -97,6 +94,8 @@ GUARDS: tuple[Guard, ...] = (
     Guard("domain error", "sum_makes_nan", "NaN from +inf and -inf",
           "polars-nonfinite-aggregates"),
     Guard("overflow to infinity", "makes_infinite", "±inf (IEEE)", "polars-double-arith"),
+    Guard("domain error", "fractional_power_of_negative",
+          "x ** 0.5 is sqrt(x): NaN for -inf, where IEEE pow gives +inf", "polars-double-arith"),
 )  # fmt: skip
 
 
@@ -148,14 +147,6 @@ def round_half_away(e: pl.Expr) -> pl.Expr:
     return e.round(0, mode="half_away_from_zero")
 
 
-def pow_ieee(x: pl.Expr, y: pl.Expr) -> pl.Expr:
-    """`x ^ y` as IEEE's `pow`. Polars computes `pow(x, 0.5)` as `sqrt(x)`,
-    which is NaN for `-inf` where `pow` gives `+inf`; `sqrt(-0.0)` is `-0.0`,
-    which `one_zero` makes the one zero."""
-    inf = pl.lit(float("inf"), pl.Float64)
-    return pl.when((x == -inf) & (y == 0.5)).then(inf).otherwise(x.pow(y))
-
-
 def makes_infinite(y: pl.Expr, *xs: pl.Expr) -> pl.Expr:
     """Do the finite doubles `xs` give the `±∞` `y` (`BinFn.infIssue`, #575)?
     NULL for NULL."""
@@ -163,6 +154,14 @@ def makes_infinite(y: pl.Expr, *xs: pl.Expr) -> pl.Expr:
     for x in xs[1:]:
         finite = finite & x.is_finite()
     return finite & y.is_infinite()
+
+
+def fractional_power_of_negative(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """A negative base, `-inf` included, to a finite power that is not a
+    whole number: the reference's domain error for `power`. Polars computes
+    `x ** 0.5` as `sqrt(x)`, NaN for `-inf` (IEEE's `pow` gives `+inf`), so
+    the guard covers that input too."""
+    return (x < 0.0) & y.is_finite() & (y.floor() != y)
 
 
 # --- Integers ------------------------------------------------------------------

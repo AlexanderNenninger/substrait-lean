@@ -568,8 +568,10 @@ def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
         return x.is_infinite() & y.is_infinite()
     if name == "modulus":
         return x.is_infinite() & ~y.is_nan()
-    # `power`: a negative base to a finite power that is not a whole number.
-    return (x > -inf) & (x < 0.0) & y.is_finite() & (y.floor() != y)
+    # `power`: a negative base to a finite power that is not a whole number;
+    # `-inf` too, which the reference is tightened to refuse (Polars's
+    # `-inf ** 0.5` is `sqrt`'s NaN).
+    return shims.fractional_power_of_negative(x, y)
 
 
 #: `BitOp.name`.
@@ -1342,7 +1344,7 @@ class Exprs:
             # be `-0.0` too.
             ops = {"add": canon(x + y), "subtract": canon(x - y), "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
-                   "power": canon(shims.pow_ieee(x, y))}  # fmt: skip
+                   "power": canon(x.pow(y))}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
             # `fmod` is exact: it never overflows (#575).
             inf = () if name == "modulus" else (
