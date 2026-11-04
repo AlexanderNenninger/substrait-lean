@@ -13,7 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, _sort_key
-from sverify.plan_json import Json, Unsupported, call
+from sverify.plan_json import Json, Unsupported, call, decimal_literal
 from sverify.plan_json import anchor as _anchor
 
 
@@ -68,6 +68,12 @@ def measure(x: Exprs, op: Any) -> Json:
         return first_last(x, op)
     elif isinstance(op, ops.GroupConcat):
         return group_concat(x, op)
+    elif isinstance(op, ops.Median | ops.Quantile | ops.MultiQuantile):
+        return quantile(x, op)
+    elif isinstance(op, ops.Mode):
+        return mode(x, op)
+    elif isinstance(op, ops.ArgMin | ops.ArgMax):
+        return arg_min_max(x, op)
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
@@ -158,6 +164,84 @@ def first_last(x: Exprs, op: Any) -> Json:
         "functionReference": _anchor(name),
         "arguments": [{"value": x(op.arg)}],
         "sorts": sorts,
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    out: Json = {"measure": agg}
+    if op.where is not None:
+        out["filter"] = x(op.where)
+    return out
+
+
+def quantile(x: Exprs, op: Any) -> Json:
+    """`median()` and `quantile(q)` (#53), exactly, as Ibis's DuckDB compiler
+    writes them: `QUANTILE_CONT(x, q)` of numbers (a double), `QUANTILE_DISC`
+    of other ordered values. The fraction is the decimal Python prints for
+    it, which DuckDB reads exactly; approximate quantiles are refused."""
+    if isinstance(op, ops.ApproxMedian | ops.ApproxQuantile):
+        raise Unsupported(
+            f"{type(op).__name__} is not supported: its value is each engine's own estimate; "
+            "use median() or quantile() for the exact value"
+        )
+    if isinstance(op, ops.MultiQuantile):
+        raise Unsupported("quantile() of several fractions is not supported; take one at a time")
+    if isinstance(op, ops.Median):
+        q: Any = 0.5
+    elif isinstance(op.quantile, ops.Literal) and isinstance(op.quantile.value, int | float):
+        q = op.quantile.value
+    else:
+        raise Unsupported("quantile() needs a constant fraction")
+    if not 0 <= q <= 1:
+        raise Unsupported("quantile() needs a fraction between 0 and 1")
+    t = op.arg.dtype
+    cont = t.is_integer() or t.is_floating()
+    if not (cont or t.is_string() or t.is_date()):
+        # DuckDB interpolates decimals and timestamps in their own types.
+        raise Unsupported(f"{type(op).__name__.lower()} of {t} is not supported yet")
+    agg: Json = {
+        "functionReference": _anchor("quantile_cont" if cont else "quantile_disc"),
+        "arguments": [
+            {"value": x(op.arg)},
+            {"value": decimal_literal(repr(float(q)), dt.Decimal())},
+        ],
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    out: Json = {"measure": agg}
+    if op.where is not None:
+        out["filter"] = x(op.where)
+    return out
+
+
+def mode(x: Exprs, op: Any) -> Json:
+    """`mode()` (#53): the most frequent value, and of the values that tie the
+    smallest, `MODE(x ORDER BY x)`. DuckDB's own `MODE(x)` breaks ties in the
+    order it reads the rows."""
+    arg = x(op.arg)
+    if "selection" not in arg:
+        raise Unsupported("mode() of an expression is not supported; select it as a column first")
+    agg: Json = {
+        "functionReference": _anchor("mode"),
+        "arguments": [{"value": arg}],
+        "sorts": [{"expr": arg, "direction": "SORT_DIRECTION_ASC_NULLS_LAST"}],
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    out: Json = {"measure": agg}
+    if op.where is not None:
+        out["filter"] = x(op.where)
+    return out
+
+
+def arg_min_max(x: Exprs, op: Any) -> Json:
+    """`argmin(key)` / `argmax(key)` (#53): the value at the row with the
+    smallest (largest) key, over the rows where neither is NULL, as DuckDB's
+    `ARG_MIN`. Ties make it the engine's choice, which `verify` reports
+    unless the group and the key contain a unique key."""
+    name = "arg_min" if isinstance(op, ops.ArgMin) else "arg_max"
+    key = x(op.key)
+    if "selection" not in key:
+        raise Unsupported(f"{name} orders by a column only; select the key as a column first")
+    agg: Json = {
+        "functionReference": _anchor(name),
+        "arguments": [{"value": x(op.arg)}, {"value": key}],
         "invocation": "AGGREGATION_INVOCATION_ALL",
     }
     out: Json = {"measure": agg}

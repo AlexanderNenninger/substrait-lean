@@ -13,6 +13,7 @@
 
 import json
 import math
+from fractions import Fraction
 
 import duckdb
 import ibis
@@ -825,3 +826,201 @@ def test_group_concat_is_determined_by_a_key():
             run_plan(con, written, engine)
     with pytest.raises(Exception, match="engine's order"):
         to_substrait_json(P.group_by("k").aggregate(s=P.x.group_concat(",")))
+
+
+# #53: exact quantiles, the mode and arg_min/arg_max, which need every value
+# of a group. DuckDB runs them; other engines refuse them for now (#271).
+Q = ibis.table({"k": "int64", "i": "int64", "x": "float64", "s": "string"}, name="t")
+
+
+def quantile_expr():
+    return Q.group_by("k").aggregate(
+        m=Q.i.median(),
+        q=Q.x.quantile(0.25),
+        p=Q.x.quantile(0.9),
+        d=Q.s.median(),
+        mo=Q.i.mode(),
+        ms=Q.s.mode(),
+        lo=Q.s.argmin(Q.i),
+        hi=Q.i.argmax(Q.x),
+    )
+
+
+def _double_key(v: float) -> tuple:
+    """Doubles as DuckDB and the model order them: NaN above `+inf`."""
+    return (v != v, 0.0 if v != v else v)
+
+
+def ref_cont(vals: list, q: Fraction) -> float | None:
+    """`QUANTILE_CONT`: between the values at `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`."""
+    if not vals:
+        return None
+    s = sorted((float(v) for v in vals), key=_double_key)
+    p = (len(s) - 1) * q
+    f = math.floor(p)
+    if p == f:
+        return s[f]
+    w = float(p - f)
+    return s[f] * (1 - w) + s[f + 1] * w
+
+
+def ref_disc(vals: list, q: Fraction, key=None) -> object:
+    """`QUANTILE_DISC`: the value at position `⌈n·q⌉`, at least the first."""
+    if not vals:
+        return None
+    s = sorted(vals, key=key)
+    return s[max(math.ceil(len(s) * q), 1) - 1]
+
+
+def ref_mode(vals: list) -> object:
+    """The most frequent value, the smallest of those that tie."""
+    if not vals:
+        return None
+    top = max(vals.count(v) for v in vals)
+    return min(v for v in vals if vals.count(v) == top)
+
+
+def ref_arg(rows: list, value: int, key: int, largest: bool) -> object:
+    """The value at the row with the smallest (largest) key, over the rows
+    where neither is NULL; of rows that tie, the first."""
+    kept = [r for r in rows if r[value] is not None and r[key] is not None]
+    if not kept:
+        return None
+    best = (max if largest else min)(_double_key(r[key]) for r in kept)
+    return next(r[value] for r in kept if _double_key(r[key]) == best)
+
+
+def quantile_reference(rows: list) -> list[tuple]:
+    out = []
+    for k in sorted({r[0] for r in rows}):
+        g = [r for r in rows if r[0] == k]
+        ints = [r[1] for r in g if r[1] is not None]
+        xs = [r[2] for r in g if r[2] is not None]
+        ss = [r[3] for r in g if r[3] is not None]
+        out.append((
+            k,
+            ref_cont(ints, Fraction(1, 2)),
+            ref_cont(xs, Fraction(1, 4)),
+            ref_cont(xs, Fraction(9, 10)),
+            ref_disc(ss, Fraction(1, 2)),
+            ref_mode(ints),
+            ref_mode(ss),
+            ref_arg(g, 3, 1, False),
+            ref_arg(g, 1, 2, True),
+        ))  # fmt: skip
+    return out
+
+
+def same_rows(got: list[tuple], expected: list[tuple]) -> bool:
+    def eq(a: object, b: object) -> bool:
+        if isinstance(a, float) and isinstance(b, float):
+            return (a != a and b != b) or near(a, b)
+        return a == b
+
+    return len(got) == len(expected) and all(
+        len(g) == len(e) and all(eq(a, b) for a, b in zip(g, e, strict=True))
+        for g, e in zip(got, expected, strict=True)
+    )
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-3, 3)),
+            # No -inf: between -inf and +inf the interpolation is NaN, which
+            # the model and the written SQL keep at +inf (a test of its own).
+            st.one_of(
+                st.none(), st.sampled_from([0.5, 1.0, 2.25, -3.0, 1e300, math.inf, math.nan])
+            ),
+            st.one_of(st.none(), st.sampled_from(["a", "b", "c"])),
+        ),
+        max_size=9,
+    )
+)
+def test_quantiles_mode_and_arg_min_agree_with_duckdb(rows):
+    """Lean, a Python reference and DuckDB running the plan Lean writes give
+    the same rows, the interpolated doubles up to rounding."""
+    plan = to_substrait_json(quantile_expr())
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
+    lean = [tuple(decode_double(v) if isinstance(v, int) and i in (1, 2, 3) else v
+                  for i, v in enumerate(r)) for r in lean]  # fmt: skip
+    expected = quantile_reference(rows)
+    assert same_rows(lean, expected), (lean, expected)
+    con = connect()
+    create_table(con, "t", Q.schema(), rows)
+    got = sorted(tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist())
+    assert same_rows(got, expected), (got, expected)
+
+
+def test_quantile_cont_between_infinities_stays_between_them():
+    """DuckDB's `lo·(1−d) + hi·d` is NaN between -inf and +inf; the model keeps
+    the result between the neighbours, as the written SQL does."""
+    rows = [(1, 1, -math.inf, "a"), (1, 2, math.inf, "b")]
+    plan = to_substrait_json(Q.group_by("k").aggregate(q=Q.x.quantile(0.5)))
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    assert [decode_double(v) if isinstance(v, int) else v for _, v in lean] == [math.inf]
+    con = connect()
+    create_table(con, "t", Q.schema(), rows)
+    assert math.isnan(duckdb_sql(con, "SELECT quantile_cont(x, 0.5) FROM t").column(0)[0].as_py())
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert [r["q"] for r in got] == [math.inf]
+
+
+def test_quantiles_lie_between_the_smallest_and_largest_value():
+    """The median and quantiles lie in [MIN, MAX] of their column, and
+    `arg_min`'s result is one of the column's values."""
+    expr = Q.group_by("k").aggregate(
+        m=Q.i.median(), q=Q.x.quantile(0.9), d=Q.i.quantile(0.3), mo=Q.i.mode(), a=Q.i.argmin(Q.x)
+    )
+    # A key on the group and `x` settles `arg_min`'s ties.
+    report = sv.verify(
+        expr,
+        requires={"t": [_.i >= 0, _.i <= 10, _.x >= -1.0, _.x <= 2.0, sv.unique("k", "x")]},
+        ensures=[
+            _.m.isnull() | ((_.m >= 0.0) & (_.m <= 10.0)),
+            _.q.isnull() | ((_.q >= -1.0) & (_.q <= 2.0)),
+            _.d.isnull() | ((_.d >= 0) & (_.d <= 10)),
+            _.mo.isnull() | (_.mo <= 10),
+            _.a.isnull() | ((_.a >= 0) & (_.a <= 10)),
+        ],
+    )
+    assert report.proved, str(report)
+
+
+def test_arg_min_is_determined_by_a_key_and_mode_by_its_value():
+    """`arg_min` picks among rows that tie on the key, so it is the engine's
+    choice unless the group and the key contain a unique key; `mode` breaks
+    its ties by its own value, which rows that tie share."""
+    assert sv.verify(Q.group_by("k").aggregate(m=Q.i.mode(), q=Q.x.median())).deterministic
+    expr = Q.group_by("k").aggregate(a=Q.s.argmin(Q.i))
+    assert not sv.verify(expr).deterministic
+    assert sv.verify(expr, requires={"t": [sv.unique("k", "i")]}).deterministic
+
+
+@pytest.mark.parametrize(
+    "agg",
+    [Q.i.median(), Q.x.quantile(0.5), Q.s.median(), Q.i.mode(), Q.s.argmin(Q.i)],
+)
+def test_quantiles_are_refused_on_other_engines(agg):
+    con = connect()
+    create_table(con, "t", Q.schema(), [(1, 1, 1.0, "a")])
+    written = written_plan(to_substrait_json(Q.group_by("k").aggregate(v=agg)))
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="see #271"):
+            run_plan(con, written, engine)
+
+
+@pytest.mark.parametrize(
+    ("agg", "message"),
+    [
+        (Q.x.approx_median(), "each engine's own estimate"),
+        (Q.x.approx_quantile(0.5), "each engine's own estimate"),
+        (Q.x.quantile([0.25, 0.5]), "several fractions"),
+        ((Q.i + 1).mode(), "select it as a column"),
+    ],
+)
+def test_quantile_refusals_say_what(agg, message):
+    with pytest.raises(Exception, match=message):
+        to_substrait_json(Q.group_by("k").aggregate(v=agg))

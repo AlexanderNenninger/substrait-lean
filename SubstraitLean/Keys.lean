@@ -1052,12 +1052,15 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ => r.windowsTotal cat A F K
-  -- `FIRST`/`LAST` (#55) pick a row by their order, and `STRING_AGG` joins the
-  -- rows in it: unless the group's and the order's columns contain a key, ties
-  -- make the result the engine's.
+  -- `FIRST`/`LAST` (#55) pick a row by their order, `STRING_AGG` joins the
+  -- rows in it, and `MODE` (#53) breaks ties by it: unless the group's and the
+  -- order's columns contain a key, ties make the result the engine's. `MODE`
+  -- ordered by its argument's column is total: rows that tie have one value.
   | .aggregate r gs ms => r.windowsTotal cat A F K && ms.all fun m =>
-      !(m.fn matches .pick _ || m.fn matches .concat _) || (r.keys cat A F K).any fun k =>
-        k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
+      !(m.fn matches .pick _ || m.fn matches .concat _ || m.fn matches .mode) ||
+        (m.fn matches .mode && m.sort.any (m.arg == .field ·.col)) ||
+        (r.keys cat A F K).any fun k =>
+          k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort fns =>

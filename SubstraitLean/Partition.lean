@@ -300,6 +300,8 @@ def AggFn.decomposable : AggFn → Bool
     false
   -- A black box's laws say nothing of its partial results.
   | .bbox _ => false
+  -- A quantile or mode needs every value of the group (#53).
+  | .quantile _ _ _ | .mode => false
 
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]

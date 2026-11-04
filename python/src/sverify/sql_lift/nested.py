@@ -73,6 +73,16 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
             lst, k = (e.transform(node, copy=False) for e in n.expressions)
             return sge.Bracket(this=lst, expressions=[_index(k)])
         if name == "array_value":
+            if any(
+                isinstance(e, sge.Anonymous) and e.name.lower() == "array_value"
+                for e in n.expressions
+            ):
+                # Fixed-size arrays, which raise where their sizes differ; the
+                # model's lists do not.
+                raise Unsupported(
+                    "array_value of arrays is not supported: DuckDB's fixed-size arrays must "
+                    "agree in size, which the model's lists do not (#327)"
+                )
             return sge.Array(expressions=[e.transform(node, copy=False) for e in n.expressions])
         return n
 

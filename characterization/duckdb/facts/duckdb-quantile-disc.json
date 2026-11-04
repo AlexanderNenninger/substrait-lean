@@ -1,0 +1,73 @@
+{
+  "id": "duckdb-quantile-disc",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`QUANTILE_DISC`: the value at position ⌈n·q⌉, exact for a decimal fraction",
+  "verdict": "the reference's rule; a DOUBLE fraction rounds; negative fractions count from the top",
+  "area": "aggregates",
+  "constructs": [
+    "quantile_disc",
+    "quantile",
+    "median"
+  ],
+  "settings": {},
+  "description": [
+    "`QUANTILE_DISC(x, q)` takes the value at 0-based position `max(1, n − ⌊n − n·q⌋) − 1` of the `n` non-NULL values in order, which is `⌈n·q⌉ − 1` and the first value for `n·q ≤ 1`. For a DECIMAL fraction (a literal such as `0.25`) it computes this in integers, exactly; for a DOUBLE fraction in doubles. Doubles are in DuckDB's order, NaN above `+inf`. The result has the argument's type. No values give NULL.",
+    "`QUANTILE` is `QUANTILE_DISC`. `MEDIAN` of a value that is not a number is `QUANTILE_DISC(x, 0.5)` (of two strings, the first). A fraction outside [-1, 1] is a binder error; a negative one counts from the largest value (the sort is descending). A list of fractions gives a list."
+  ],
+  "reference": [
+    "`AggFn.quantile false num scale` (`SubstraitLean/Aggregate.lean`, #53): for the exact decimal `q = num / 10^scale` in [0, 1], the value at position `⌈n·q⌉` (at least the first) of the non-NULL values in `ORDER BY` order (`sortVals`, `discIndex`); NULL without values. The frontends write the fraction as a DECIMAL literal, so DuckDB's is the reference's.",
+    "Negative fractions, DOUBLE fractions and lists of fractions are refused by the parser and the frontends."
+  ],
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session for #53 (exact quantiles, mode, arg_min), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp#L225-L255"
+        }
+      ],
+      "notes": "Read at tag v2.0.0."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "session for #53 (exact quantiles, mode, arg_min), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT quantile_disc(x, 0.25), quantile_disc(x, 0.5), quantile_disc(x, 0), quantile_disc(x, 1), quantile_disc(x, 0.3) FROM (VALUES (10), (20), (30), (40)) t(x)",
+          "observed": "10, 20, 10, 40, 20"
+        },
+        {
+          "sql": "SELECT quantile_disc(x, 0.1), quantile_disc(x, 0.1::DOUBLE), quantile_disc(x, 0.7), quantile_disc(x, 0.7::DOUBLE) FROM range(10) t(x)",
+          "observed": "0, 0, 6, 6"
+        },
+        {
+          "sql": "SELECT median(x) FROM (VALUES ('a'), ('b')) t(x)",
+          "observed": "a"
+        },
+        {
+          "sql": "SELECT percentile_disc(0.25) WITHIN GROUP (ORDER BY x DESC), quantile(x, 0.25) FROM range(10) t(x)",
+          "observed": "7, 2"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 1.5) FROM (VALUES (1)) t(x)",
+          "observed": "Binder Error: QUANTILE can only take parameters in the range [-1, 1]"
+        },
+        {
+          "sql": "SELECT median(x), quantile_disc(x, 0.5) FROM (SELECT 1 x WHERE false)",
+          "observed": "NULL, NULL"
+        },
+        {
+          "test": "python/tests/test_aggregate.py::test_quantiles_mode_and_arg_min_agree_with_duckdb"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    53
+  ]
+}

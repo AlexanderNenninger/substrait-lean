@@ -1,0 +1,31 @@
+{
+  "id": "IB-3",
+  "project": "ibis",
+  "version": "12.0.0",
+  "status": "confirmed",
+  "status_note": "confirmed (ibis-framework 12.0.0, duckdb 2.0.0)",
+  "summary": "Ibis's DuckDB SQL for `argmin`/`argmax` is `FIRST(x ORDER BY key)`, which returns a NULL `x` at the extreme key and an `x` of a row whose key is NULL, where Ibis's other SQL backends write `min_by`/`max_by` (DuckDB's `arg_min`), which skip both.",
+  "repro": "For `t = ibis.memtable({\"x\": [1, None], \"k\": [1, 2]})`, `t.x.argmax(t.k)` on the DuckDB backend gives NULL (`FIRST(\"x\" ORDER BY \"k\" DESC)`), while DuckDB's `max_by(x, k)` and `arg_max(x, k)` give 1. For `x = [5]` and `k = [NULL]`, `argmin` gives 5 and `arg_min` NULL.",
+  "handling": "sverify's producer gives `argmin`/`argmax` DuckDB's `arg_min`/`arg_max` meaning, the rows where neither side is NULL (`aggregates.arg_min_max`, `duckdb-arg-min-nulls`). The coverage case \"argmin, argmax\" is compared with Lean and the other engines rather than with Ibis's DuckDB SQL (`NO_DUCKDB_SQL` in `coverage_cases/aggregation.py`), and the catalogue's `iot-downsample` differs from Ibis's DuckDB SQL on synthetic data with NULL readings.",
+  "found_by": "#53",
+  "issues": [
+    53
+  ],
+  "files": [
+    "python/src/sverify/ibis_substrait/aggregates.py",
+    "python/tools/sverify_dev/coverage_cases/aggregation.py"
+  ],
+  "facts": [
+    "duckdb-arg-min-nulls"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "duckdb": "2.0.0"
+      },
+      "note": "found by the catalogue probe of iot-downsample (#53)"
+    }
+  ]
+}

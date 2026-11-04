@@ -489,6 +489,22 @@ maintained, like a view with delta rules. The tests
 with a full recompute over random change streams on DuckDB, Polars and
 DataFusion.
 
+A window of aggregates over bounded RANGE frames of one time column
+(`sverify._touched.Framed`) is maintained by recomputing the rows near the
+change. A window row depends only on the rows of its partition whose time
+lies in its frame (`TouchedFrames.outRow_local` in
+[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)).
+So for frames from `start` to `end` around each row, `start ≤ 0 ≤ end`, and
+a batch whose changed rows lie in the touched partitions at times
+`[t0, t1]`, the output rows outside `[t0 - end, t1 - start]` keep their
+values, and the rows inside come out the same from the input narrowed to
+the touched partitions and the times `[t0 - end + start, t1 - start + end]`
+(`TouchedFrames.framed_batch`). Like the touched partitions
+(`TouchedGroups.touched_window_sound`), it needs no two input rows tied on
+the partition and time columns. The tests
+([`test_touched_frames.py`](../python/tests/test_touched_frames.py)) compare
+every refresh with a full recompute, duplicate and NULL times included.
+
 Later stages of #248, each with its own delta rule:
 
 * `MIN` and `MAX`, which need the group's values when the extreme is

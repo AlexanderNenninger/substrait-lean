@@ -121,7 +121,7 @@ intent = "Reduce each device's readings to one row per hour with the minimum, ma
 domain = "iot"
 source = { name = "QuestDB docs: SAMPLE BY", url = "https://questdb.com/docs/query/sql/sample-by/", licence = "Apache-2.0" }
 features = ["date_trunc", "group_by", "min_max", "avg", "count", "arg_max"]
-pitfalls = ["tie_order: 'last' is arbitrary between readings at the same instant", "float_nan: a NaN reading makes MAX NaN in DataFusion", "timezone_dst: hours in local time"]
+pitfalls = ["tie_order: 'last' is arbitrary between readings at the same instant", "float_nan: a NaN reading makes MAX NaN in DataFusion", "timezone_dst: hours in local time", "null_at_extreme: a NULL latest reading is skipped by argmax, kept by Ibis's DuckDB SQL"]
 ibis = '''
 q = readings.group_by(["device_id", _.ts.truncate("h").name("hour")]).aggregate(
     lo=_.temperature.min(),

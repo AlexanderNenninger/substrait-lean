@@ -441,6 +441,7 @@ def Measure.evalFast (rows : Relation) (m : Measure) : Value :=
   | .collect => AggFn.collect.apply (m.inputsFast (rows.mergeSort (sortLe m.sort)))
   | .pick last => (AggFn.pick last).apply (m.inputsFast (rows.mergeSort (sortLe m.sort)))
   | .concat sep => (AggFn.concat sep).apply (m.inputsFast (rows.mergeSort (sortLe m.sort)))
+  | .mode => AggFn.mode.apply (m.inputsFast (rows.mergeSort (sortLe m.sort)))
   | f => f.apply (m.inputsFast rows)
 
 theorem Measure.evalFast_eq (rows : Relation) (m : Measure) : m.evalFast rows = m.eval rows := by

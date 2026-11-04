@@ -814,9 +814,9 @@ PARAMS_NOTE = "proved for these parameter values only"
 DATA_CHECK = "checked on the output data"
 
 TIES_HINT = (
-    "rows may tie in the ORDER BY of a window or of first(), last() or group_concat(), so the "
-    "engine decides their order. Declare `unique(...)` on the partition (or grouping) and "
-    "order columns of the input."
+    "rows may tie in the ORDER BY of a window or of first(), last(), group_concat(), mode(), "
+    "argmin() or argmax(), so the engine decides their order. Declare `unique(...)` on the "
+    "partition (or grouping) and order columns of the input."
 )
 
 

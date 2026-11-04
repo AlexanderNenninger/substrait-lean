@@ -24,6 +24,7 @@ import SubstraitLean.Rows
 import SubstraitLean.Partition
 import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
+import SubstraitLean.TouchedFrames
 import SubstraitLean.IncrementalAgg
 import SubstraitLean.Guards
 import SubstraitLean.Profile

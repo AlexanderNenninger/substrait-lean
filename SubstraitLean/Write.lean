@@ -95,7 +95,12 @@ def aggregateFns : List (Nat × String) := [
   -- The covariance and correlation of pairs of doubles (#54).
   (507, "covar_samp"), (508, "covar_pop"), (509, "corr"),
   -- Strings joined in the measure's sort order (#55).
-  (510, "string_agg")]
+  (510, "string_agg"),
+  -- Exact quantiles and the mode (#53). `median` is `quantile_cont(x, 0.5)`,
+  -- and `arg_min(x, y)` is `first(x ORDER BY y)` over the rows where neither
+  -- is NULL; the parser reads them so, and they are written so.
+  (511, "median"), (512, "quantile_cont"), (513, "quantile_disc"), (514, "mode"),
+  (515, "arg_min"), (516, "arg_max")]
 
 /-- Window functions: new anchors 600–699. -/
 def windowFns : List (Nat × String) := [
@@ -146,6 +151,8 @@ def AggFn.anchor : AggFn → Nat
   | .cov sample => if sample then 507 else 508
   | .corr => 509
   | .concat _ => 510
+  | .quantile cont _ _ => if cont then 512 else 513
+  | .mode => 514
   | .bbox n => bbAnchor n
 
 def UnFn.anchor : UnFn → Nat
@@ -204,6 +211,7 @@ theorem AggFn.anchor_declared (f : AggFn) :
   case bit op => cases op <;> decide
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
   case pick last => cases last <;> decide
+  case quantile cont _ _ => cases cont <;> simp only [AggFn.anchor] <;> decide
   case cov sample => cases sample <;> decide
   case concat => simp only [AggFn.anchor]; decide
   all_goals decide
@@ -897,7 +905,8 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
           | .count | .iavg | .bit _ => .int
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
-          | .min | .max | .pick _ => wkind ks m.arg
+          | .min | .max | .pick _ | .quantile false _ _ | .mode => wkind ks m.arg
+          | .quantile true _ _ => .float
           | .concat _ => .str
           | .collect => .list (wkind ks m.arg)
           | .bbox n => .ofKind (Parse.bbAggKind n)
@@ -907,7 +916,8 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .count | .iavg | .bit _ => .int
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
-        | .min | .max | .pick _ => wkind ks m.arg
+        | .min | .max | .pick _ | .quantile false _ _ | .mode => wkind ks m.arg
+        | .quantile true _ _ => .float
         | .concat _ => .str
         | .collect => .list (wkind ks m.arg)
         | .bbox n => .ofKind (Parse.bbAggKind n)
@@ -983,6 +993,9 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
       -- `STRING_AGG`'s separator is its second argument (#55).
       | _ => match m.fn with
         | .concat sep => Json.arr #[obj [("value", arg)], obj [("value", writeLit .str (.str sep))]]
+        -- A quantile's fraction is its second argument, an exact decimal (#53).
+        | .quantile _ num scale => Json.arr #[obj [("value", arg)],
+            obj [("value", writeLit (.dec (scale + 1) scale) (.int num))]]
         | _ => Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   -- An integer `AVG` says so by its output type (`AggFn.iavg`).

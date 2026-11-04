@@ -4000,6 +4000,10 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .pick _ => a.nullable
   -- A string, or NULL without values.
   | .concat _ => ⟨true, none, false, false, true⟩
+  -- One of the values (#53).
+  | .quantile false _ _ | .mode => a.nullable
+  -- A double between two of the values: within the argument's interval.
+  | .quantile true _ _ => ⟨true, a.int, false, false, false⟩
   | .collect => AVal.top
   -- A black box's laws over values; its `empty` value without (#325).
   | .bbox n => BlackBox.aggAbs n valued
@@ -4455,6 +4459,31 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     rcases AggFn.apply_pick last (m.inputs (grp.mergeSort (sortLe m.sort))) with h | h
     · rw [h]; rfl
     · exact AVal.mem_nullable (hin' _ h)
+  case mode =>
+    have hin' : ∀ v ∈ m.inputs (grp.mergeSort (sortLe m.sort)), (m.arg.absD env fs).Mem v := by
+      intro v hv
+      obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
+      have hy' := (List.mergeSort_perm grp (sortLe m.sort)).mem_iff.mp hy
+      exact Expr.absD_sound (hall y hy').1 (hall y hy').2 (ks := []) (by simp [KsHold]) m.arg
+    rcases AggFn.apply_mode (m.inputs (grp.mergeSort (sortLe m.sort))) with h | h
+    · rw [h]; rfl
+    · exact AVal.mem_nullable (hin' _ h)
+  case quantile cont num scale =>
+    cases cont
+    · rcases AggFn.apply_disc num scale (m.inputs grp) with h | h
+      · rw [h]; rfl
+      · exact AVal.mem_nullable (hin _ h)
+    · rcases AggFn.apply_cont num scale (m.inputs grp) with h | ⟨c, l, h, hc, hl, hh, hb⟩
+      · rw [h]; rfl
+      · rw [hc]
+        obtain ⟨b, hb1, hlb⟩ := hin _ hl
+        obtain ⟨b', hb2, hhb⟩ := hin _ hh
+        rw [hb1] at hb2; cases hb2
+        refine ⟨b, hb1, ?_⟩
+        rcases hb with rfl | rfl | ⟨h1, h2⟩
+        · exact hlb
+        · exact hhb
+        · exact Bound.mem_between hlb hhb h1 h2
 
 theorem intSum_bounds {b : Bound} :
     ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .int i ∧ b.Mem i) →
