@@ -2,9 +2,9 @@
   "id": "DD-5",
   "project": "duckdb",
   "version": "2.0",
-  "status": "confirmed",
-  "status_note": "reproduces on 2.0.0 with the default `arrow_lossless_conversion = false`; with it on, both types export as opaque extension types. Possibly intended as a lossy mode: check the docs before filing.",
-  "summary": "DuckDB exports `HUGEINT` and `UHUGEINT` to Arrow as `decimal128(38, 0)` without a range check. A `UHUGEINT` of 2^127 or more arrives as a negative decimal (the maximum as -1), and values of 10^38 or more are decimals Arrow's validation rejects. Nothing raises.",
+  "status": "filed",
+  "status_note": "known upstream: [duckdb-python#568](https://github.com/duckdb/duckdb-python/issues/568) (UHUGEINT >= 2^127 negative), open, untriaged; the lossy decimal mapping is deliberate ([duckdb-python#104](https://github.com/duckdb/duckdb-python/issues/104)). The HUGEINT >= 10^38 half has no issue. Reproduces on 2.0.0 and the 2.0.1/2.1.0 nightlies; `arrow_converter.cpp` unchanged on main (02aa9fa).",
+  "summary": "DuckDB exports `HUGEINT` and `UHUGEINT` to Arrow as `decimal128(38, 0)` without a range check. A `UHUGEINT` of 2^127 or more arrives as a negative decimal (the maximum as -1), and positive values of 10^38 or more are decimals Arrow's validation rejects (pyarrow 26.0.1 accepts -2^127). Nothing raises.",
   "repro": [
     "```python\nimport duckdb\nduckdb.sql(\"SELECT '340282366920938463463374607431768211455'::UHUGEINT AS u, '170141183460469231731687303715884105727'::HUGEINT AS h\").to_arrow_table().to_pylist()\n```",
     "observed: `[{'u': Decimal('-1'), 'h': Decimal('170141183460469231731687303715884105727')}]`, and `validate(full=True)` of `h` raises \"Decimal value … does not fit in precision of decimal128(38, 0)\"."
@@ -25,6 +25,17 @@
         "duckdb": "2.0.0"
       },
       "note": "Python client 2.0.0, pyarrow from the repository's lock"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0",
+        "pyarrow": "26.0.1"
+      },
+      "note": "also nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630"
     }
+  ],
+  "upstream": [
+    "https://github.com/duckdb/duckdb-python/issues/568"
   ]
 }

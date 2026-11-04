@@ -3,10 +3,11 @@
   "project": "sqlglot",
   "version": "30.27.0",
   "status": "not a bug",
-  "status_note": "not a bug: out of scope upstream ([#8531](https://github.com/tobymao/sqlglot/issues/8531), [comment](https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6030704299))",
+  "status_note": "not a bug: out of scope upstream ([#8531](https://github.com/tobymao/sqlglot/issues/8531), [comment](https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6035457336)). Unchanged on 30.29.0 and main (bdaf7d1, 2026-11-04).",
   "upstream": [
     "https://github.com/tobymao/sqlglot/issues/8531",
-    "https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6030704299"
+    "https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6030704299",
+    "https://github.com/tobymao/sqlglot/pull/8532#issuecomment-6035457336"
   ],
   "summary": "Transpiling between dialects keeps the text of an operator whose meaning differs: `transpile(\"select 7/2\", read=\"postgres\", write=\"duckdb\")` gives `SELECT 7 / 2` (3 in Postgres, 3.5 in DuckDB). With a schema plus `annotate_types`, it becomes `CAST(TRUNC(a / b) AS BIGINT)` (right value, BIGINT where Postgres gives INTEGER).",
   "repro": "as stated in the summary",
@@ -22,6 +23,15 @@
         "sqlglot": "30.29.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "sqlglot": "30.29.0",
+        "sqlglot main": "main bdaf7d1",
+        "duckdb": "2.0.0"
+      },
+      "note": "repro on 30.27.0, 30.29.0 and main"
     }
   ]
 }

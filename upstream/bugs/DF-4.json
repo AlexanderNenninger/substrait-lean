@@ -2,9 +2,9 @@
   "id": "DF-4",
   "project": "datafusion",
   "version": "51",
-  "status": "confirmed",
-  "status_note": "confirmed on 51.0.0 and 55.0.0: a producer bug, DataFusion's own consumer reads the two columns swapped",
-  "summary": "`GROUP BY k, k` writes two grouping expressions, and the projection above reads the aggregate's columns shifted by one. Could also be sverify's reading of a repeated grouping expression: check first.",
+  "status": "filed",
+  "status_note": "filed [#27058](https://github.com/apache/datafusion/issues/27058), open; fix PR [#27073](https://github.com/apache/datafusion/pull/27073) open. Reproduces on 55.0.0; on main [#23468](https://github.com/apache/datafusion/pull/23468) shares the repeated key in `grouping_expressions` but still references it twice, so the round trip stays wrong",
+  "summary": "`GROUP BY k, k` writes two grouping expressions, and the projection above reads the aggregate's columns shifted by one. On main (since #23468) the key is written once but referenced twice in the grouping, and the round trip is still wrong.",
   "repro": "DuckDB `aggregate/group/test_group_by.test:149`",
   "found_by": "FACTS S6",
   "facts": [
@@ -17,6 +17,19 @@
         "datafusion": "55.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "datafusion": "55.0.0",
+        "substrait": "0.37.1",
+        "datafusion core": "55.1.0"
+      },
+      "note": "reproduces on 51.0.0 and 55.0.0; main read at ee55effccc, not run"
     }
+  ],
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/27058",
+    "https://github.com/apache/datafusion/pull/27073"
   ]
 }

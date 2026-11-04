@@ -3,7 +3,7 @@
   "project": "datafusion",
   "version": "51",
   "status": "not a bug",
-  "status_note": "not a bug: `datafusion.sql_parser.parse_float_as_decimal` defaults to false; [#14612](https://github.com/apache/datafusion/issues/14612) proposes flipping it",
+  "status_note": "not a bug: `datafusion.sql_parser.parse_float_as_decimal` defaults to false; [#14612](https://github.com/apache/datafusion/issues/14612) (open) proposes flipping it",
   "upstream": [
     "https://github.com/apache/datafusion/issues/14612"
   ],
@@ -20,6 +20,14 @@
         "datafusion": "55.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "datafusion": "55.0.0",
+        "datafusion core": "55.1.0"
+      },
+      "note": "same on 51.0.0 and 55.0.0"
     }
   ]
 }
