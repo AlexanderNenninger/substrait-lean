@@ -765,9 +765,9 @@ def test_ties_keep_their_order_in_a_large_streaming_sort():
     k = [(j * 7919) % 5 for j in range(n)]
     tab = pa.table({"k": pa.array(k, pa.int64()), "i": pa.array(range(n), pa.int64())})
     t = ibis.table({"k": "int64", "i": "int64"}, name="t")
-    out = pl.from_arrow(polars_engine.run(written(to_substrait_json(t.order_by("k"))), {"t": tab}))
+    out = pl.DataFrame(polars_engine.run(written(to_substrait_json(t.order_by("k"))), {"t": tab}))
     steps = out.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))["d"]
     assert out["k"].is_sorted() and steps.min() > 0
-    raw = pl.from_arrow(tab).lazy().sort("k").collect(engine="streaming")
+    raw = pl.DataFrame(tab).lazy().sort("k").collect(engine="streaming")
     raw_steps = raw.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))["d"]
     assert raw_steps.min() < 0  # what the shim is for
