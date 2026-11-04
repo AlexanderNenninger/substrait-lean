@@ -88,7 +88,10 @@ theorem ZCatalog.add_apply (cat Δ : ZCatalog) (t : String) : (cat + Δ) t = cat
 inputs. A left join can retract its null-padded rows, a semi or anti join
 depends on whether *any* right row matches, `DISTINCT` on whether a row was
 there before, and a fetch or a window on the other rows' positions, so none
-has a delta rule of this shape. A sort is just a bag in some order. -/
+has a delta rule of this shape. A sort is just a bag in some order.
+`DISTINCT` and `COUNT` and `SUM` per group do have delta rules, over a state
+kept beside the view: a count per row or per group, and each measure's
+count and sum (`LinearAgg` in `SubstraitLean/IncrementalAgg.lean`). -/
 def Rel.Incremental : Rel → Prop
   | .read _ | .values _ _ => True
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.Incremental

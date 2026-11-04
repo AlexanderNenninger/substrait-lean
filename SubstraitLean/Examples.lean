@@ -5,6 +5,7 @@ import SubstraitLean.Terms
 import SubstraitLean.Contracts
 import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
+import SubstraitLean.IncrementalAgg
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Rows
@@ -248,3 +249,7 @@ end Substrait.Examples
 #print axioms Substrait.TouchedGroups.touched_sound
 #print axioms Substrait.TouchedGroups.touched_eval
 #print axioms Substrait.TouchedGroups.touched_window_sound
+#print axioms Substrait.LinearAgg.aggregate_state
+#print axioms Substrait.LinearAgg.aggregate_maintained
+#print axioms Substrait.LinearAgg.distinct_state
+#print axioms Substrait.LinearAgg.distinct_maintained
