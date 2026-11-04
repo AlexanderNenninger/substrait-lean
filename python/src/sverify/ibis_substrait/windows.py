@@ -16,7 +16,7 @@ import ibis.expr.operations as ops
 from sverify.ibis_substrait._base import Exprs, _sort_key
 from sverify.ibis_substrait.aggregates import measure
 from sverify.ibis_substrait.temporal import _const_interval
-from sverify.plan_json import INTERVAL_MICROS, Json, Unsupported, call, column_of, literal
+from sverify.plan_json import INTERVAL_MICROS, Json, Unsupported, call, literal
 from sverify.plan_json import anchor as _anchor
 
 
@@ -136,11 +136,6 @@ def window(x: Exprs, op: Any) -> Json:
         m = measure(x, func)
         if "filter" in m or m["measure"]["invocation"] != "AGGREGATION_INVOCATION_ALL":
             raise Unsupported("window aggregates with where= or DISTINCT are not supported")
-        if not all(
-            column_of(a["value"]) is not None or "cast" in a["value"]
-            for a in m["measure"]["arguments"]
-        ):
-            raise Unsupported("window aggregates of expressions are not supported; use a column")
         fn = m["measure"]
         return {
             "windowFunction": {

@@ -302,8 +302,9 @@ def test_ntile_on_every_engine(n, k):
 def test_sliding_double_aggregates_are_refused():
     """DataFusion averages a sliding frame that has become empty to NaN, sums
     its doubles by retracting rows (rounding differently), and keeps a MIN
-    of a frame left with NULLs only: refused; a running frame (from UNBOUNDED
-    PRECEDING) is fine."""
+    of a frame left with NULLs only: the checker verifies these plans, and
+    `--write-datafusion` refuses them; a running frame (from UNBOUNDED
+    PRECEDING) is fine (#506)."""
     con = connect()
     create_table(
         con, "f", ibis.schema({"t": "int64", "v": "float64"}), [(1, 0.0), (2, None), (3, None)]
@@ -314,17 +315,18 @@ def test_sliding_double_aggregates_are_refused():
     assert any(
         r["a"] != r["a"] for r in collect(con._datafusion_session.sql(sliding)).to_pylist()
     )  # NaN
-    code, out, err = run_checker((), substrait_json(con, sliding))
+    assert run_checker((), substrait_json(con, sliding))[0] == 0
+    code, out, err = run_checker(("--write-datafusion",), substrait_json(con, sliding))
     assert code != 0 and "sliding frame" in out + err
     running = "SELECT t, AVG(v) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING) AS a FROM f"
-    assert run_checker((), substrait_json(con, running))[0] == 0
+    assert run_checker(("--write-datafusion",), substrait_json(con, running))[0] == 0
     stale = "SELECT t, MIN(v) OVER (ORDER BY t ROWS CURRENT ROW) AS m FROM f"
     assert [r["m"] for r in collect(con._datafusion_session.sql(stale)).to_pylist()] == [
         0.0,
         0.0,
         0.0,
     ]
-    assert run_checker((), substrait_json(con, stale))[0] != 0
+    assert run_checker(("--write-datafusion",), substrait_json(con, stale))[0] != 0
 
 
 def test_window_sums_may_wrap():
@@ -387,3 +389,65 @@ def test_sql_range_offsets_are_the_sort_keys_distance():
     rows = [(0, t, 0) for t in (1, 2, 4, 5, 7)] + [(1, 2, 0)]
     lean, expected = lean_and_duckdb(sql, rows)
     assert sorted(lean) == sorted(expected) == [(1, 1), (2, 3), (2, 3), (4, 1), (5, 2), (7, 1)]
+
+
+# --------------------------------------------------------------------------
+# Rolling means, MIN over a sliding frame, a window sum of an expression (#506)
+
+W = ibis.table(
+    ibis.schema({"s": "int64", "k": "int64", "ts": "timestamp", "v": "float64", "q": "int64"}),
+    name="w",
+)
+#: Ibis expressions the checker used to refuse: frames not from UNBOUNDED
+#: PRECEDING with an AVG or MIN, and an aggregate of an expression.
+SLIDING_EXPRS = [
+    W.select("k", m=W.v.mean().over(ibis.window(order_by="ts", preceding=2, following=0))),
+    W.select(
+        "k",
+        m=W.v.mean().over(
+            ibis.range_window(order_by="ts", preceding=ibis.interval(minutes=5), following=0)
+        ),
+    ),
+    W.select("k", a=W.q.min().over(ibis.window(order_by="ts", preceding=1, following=1))),
+    W.select("k", "s", a=(W.q * 2).sum().over(group_by="s")),
+]
+
+#: Distinct timestamps, `k` minutes in (the ROWS frames follow their order), doubles that
+#: are halves (their sums are exact), and NULLs.
+sliding_tables = st.lists(
+    st.tuples(
+        st.one_of(st.none(), st.integers(0, 2)),
+        st.integers(0, 30),
+        st.one_of(st.none(), st.integers(-8, 8).map(lambda k: k / 2)),
+        st.one_of(st.none(), st.integers(-5, 5)),
+    ),
+    max_size=10,
+    unique_by=lambda r: r[1],
+)
+
+
+def _rounded(rows: list[dict]) -> list[tuple]:
+    return [
+        tuple(round(v, 6) + 0.0 if isinstance(v, float) else v for v in r.values()) for r in rows
+    ]
+
+
+@pytest.mark.parametrize("i", range(len(SLIDING_EXPRS)))
+@settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(rows=sliding_tables)
+def test_sliding_frames_and_expressions_match_duckdb(i, rows):
+    """Lean's values, DuckDB running Ibis's own SQL, and DuckDB running the
+    plan Lean writes agree (#506)."""
+    from datetime import datetime, timedelta
+
+    rows = [(s, m, datetime(2026, 1, 1) + timedelta(minutes=m), v, q) for s, m, v, q in rows]
+    expr = SLIDING_EXPRS[i]
+    con = connect()
+    create_table(con, "w", W.schema(), rows)
+    expected = _rounded(duckdb_ibis(con, expr).to_pylist())
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"w": rows})))
+    assert canonical(lean) == canonical(expected)
+    written = written_plan(json.dumps(plan))
+    got = _rounded(run_plan(con, written, "duckdb").to_pylist())
+    assert canonical(got) == canonical(expected)
