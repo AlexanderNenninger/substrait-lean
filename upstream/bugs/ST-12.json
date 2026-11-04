@@ -1,5 +1,5 @@
 {
-  "id": "ST-11",
+  "id": "ST-12",
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
@@ -13,7 +13,8 @@
   ],
   "found_by": "the characterization pipeline, round 1 (execution area)",
   "issues": [
-    444
+    444,
+    604
   ],
   "files": [
     "characterization/areas.json",
