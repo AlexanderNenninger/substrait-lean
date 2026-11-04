@@ -1,0 +1,35 @@
+{
+  "id": "polars-null-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`sort`: NULLs first, ascending and descending",
+  "verdict": "`NULLS_FIRST` by default in both directions",
+  "area": "relations",
+  "constructs": [
+    "sort",
+    "top_k",
+    "rank"
+  ],
+  "settings": {},
+  "description": "`sort` puts NULLs first by default, ascending and descending; `nulls_last=True` puts them last, per key when given a list. So Polars's default is the same NULL placement in both directions, where SQL's convention flips it with the direction.",
+  "reference": "The key's direction states the NULL placement; `SORT_DIRECTION_UNSPECIFIED` is `NULLS_LAST` (D8). Polars is native for every stated direction with `nulls_last`; its default differs from DuckDB's `NULLS_LAST` (duckdb-F2).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "sort-doubles"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "sort-null-default"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

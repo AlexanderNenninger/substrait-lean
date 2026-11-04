@@ -1,0 +1,46 @@
+{
+  "id": "polars-nan-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "NaN sorts above +inf, in comparisons and in sorts",
+  "verdict": "`nan_order: GREATEST` natively, ascending and descending",
+  "area": "doubles",
+  "constructs": [
+    "<",
+    ">",
+    "sort",
+    "rank",
+    "median",
+    "quantile"
+  ],
+  "settings": {},
+  "description": "`NaN > x` is true for every number x, `inf < NaN` is true, and `sort` puts NaN after +inf ascending and first (after the NULLs) descending. `rank`, `median` and `quantile` use the same order, so `median(1, 2, NaN)` is 2.",
+  "reference": "`GREATEST`: NaN above +inf in sorts and in `<`.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 < Float64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "sort-doubles"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "rank-descending-nan"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "median-nan"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

@@ -2767,6 +2767,105 @@
    }
   },
   {
+   "construct": "Float64 == Float64",
+   "function": "equal",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64 < Float64",
+   "function": "lt",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.is_null()",
+   "function": "is_null",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "pl.max_horizontal(Float64, Float64)",
+   "function": "greatest",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 20,
+     "examples": [
+      {
+       "row": "[0.0, nan]",
+       "polars": "ok 0.0",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[0.5, nan]",
+       "polars": "ok 0.5",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[1.0, nan]",
+       "polars": "ok 1.0",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[-1.0, nan]",
+       "polars": "ok -1.0",
+       "lean": "ok nan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "pl.min_horizontal(Float64, Float64)",
+   "function": "least",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
    "construct": "int-sum-types",
    "area": "integers",
    "code": "{t: (str(df(x=([1], t)).select(pl.col('x').sum()).dtypes[0]), df(x=([2**(b-1)-1, 1], t)).select(pl.col('x').sum()).item()) for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
@@ -2933,6 +3032,168 @@
    "area": "decimals",
    "code": "(df(x=['1.00', '2.01']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).item(), str(df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).dtypes[0]))",
    "observed": "(1.505, 'Float64')"
+  },
+  {
+   "construct": "nan-compare",
+   "area": "doubles",
+   "code": "df(a=[nan, nan, 1.0, inf, 0.0, None], b=[nan, 1.0, nan, nan, -0.0, None]).select((pl.col('a') == pl.col('b')).alias('eq'), (pl.col('a') < pl.col('b')).alias('lt'), (pl.col('a') > pl.col('b')).alias('gt'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
+   "observed": "[(True, False, False, True), (False, False, True, False), (False, True, False, False), (False, True, False, False), (True, False, False, True), (None, None, None, True)]"
+  },
+  {
+   "construct": "nan-is-in",
+   "area": "doubles",
+   "code": "df(a=[nan, 1.0, None]).select(pl.col('a').is_in([nan])).to_series().to_list()",
+   "observed": "[True, False, None]"
+  },
+  {
+   "construct": "sort-doubles",
+   "area": "relations",
+   "code": "{f'{d=} {n=}': df(x=[1.0, nan, None, -inf, inf, 0.0, -1.0]).sort('x', descending=d, nulls_last=n)['x'].to_list() for d in (False, True) for n in (False, True)}",
+   "observed": "{'d=False n=False': [None, -inf, -1.0, 0.0, 1.0, inf, nan], 'd=False n=True': [-inf, -1.0, 0.0, 1.0, inf, nan, None], 'd=True n=False': [None, nan, inf, 1.0, 0.0, -1.0, -inf], 'd=True n=True': [nan, inf, 1.0, 0.0, -1.0, -inf, None]}"
+  },
+  {
+   "construct": "sort-zero-sign",
+   "area": "relations",
+   "code": "df(x=[0.0, -0.0, 0.0, -0.0], i=[0, 1, 2, 3]).sort('x', maintain_order=True).rows()",
+   "observed": "[(0.0, 0), (-0.0, 1), (0.0, 2), (-0.0, 3)]"
+  },
+  {
+   "construct": "sort-null-default",
+   "area": "relations",
+   "code": "[df(x=[2, None, 1]).sort('x', descending=d)['x'].to_list() for d in (False, True)]",
+   "observed": "[[None, 1, 2], [None, 2, 1]]"
+  },
+  {
+   "construct": "sort-strings-bools",
+   "area": "relations",
+   "code": "(df(s=['b', 'B', 'a', '\u00e9', 'Z', '', None]).sort('s')['s'].to_list(), df(s=[True, None, False]).sort('s')['s'].to_list())",
+   "observed": "([None, '', 'B', 'Z', 'a', 'b', '\u00e9'], [None, False, True])"
+  },
+  {
+   "construct": "sort-stable",
+   "area": "relations",
+   "code": "[df(k=[i % 7 for i in range(200_000)], i=range(200_000)).lazy().sort('k', maintain_order=m).collect(engine=e).select((pl.col('i').diff().over('k') < 0).any()).item() for m in (False, True) for e in ('in-memory', 'streaming')]",
+   "observed": "[False, False, False, False]"
+  },
+  {
+   "construct": "min-max-nan",
+   "area": "aggregates",
+   "code": "df(x=[1.0, nan, None, -inf, inf]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max'), pl.col('x').nan_min().alias('nan_min'), pl.col('x').nan_max().alias('nan_max'), pl.col('x').arg_max().alias('arg_max'), pl.col('x').sort().last().alias('sort_last')).rows()",
+   "observed": "[(-inf, inf, nan, nan, 4, nan)]"
+  },
+  {
+   "construct": "min-max-only-nan",
+   "area": "aggregates",
+   "code": "df(x=[nan, None]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max')).rows()",
+   "observed": "[(nan, nan)]"
+  },
+  {
+   "construct": "median-nan",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, nan]).select(pl.col('x').median().alias('median'), pl.col('x').quantile(0.5, 'lower').alias('lower')).rows()",
+   "observed": "[(2.0, 2.0)]"
+  },
+  {
+   "construct": "group-nan-zero",
+   "area": "relations",
+   "code": "df(x=[1.0, nan, None, nan, 0.0, -0.0, None]).group_by('x', maintain_order=True).agg(pl.len()).rows()",
+   "observed": "[(1.0, 1), (nan, 2), (None, 2), (0.0, 2)]"
+  },
+  {
+   "construct": "unique-nan-zero",
+   "area": "relations",
+   "code": "(df(x=[nan, 0.0, -0.0, nan, None, None]).unique(maintain_order=True)['x'].to_list(), df(x=[nan, 0.0, -0.0, nan, None]).select(pl.col('x').n_unique()).item())",
+   "observed": "([nan, 0.0, None], 3)"
+  },
+  {
+   "construct": "join-nan-zero-null",
+   "area": "relations",
+   "code": "[df(x=[nan, 0.0, -0.0, None]).join(df(x=[nan, 0.0, None], y=[1, 2, 3]), on='x', nulls_equal=n).sort('y').rows() for n in (False, True)]",
+   "observed": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]"
+  },
+  {
+   "construct": "int-float-compare",
+   "area": "doubles",
+   "code": "df(i=[2**53 + 1], f=[2.0**53]).select((pl.col('i') == pl.col('f')).alias('eq'), (pl.col('i') > pl.col('f')).alias('gt')).rows()",
+   "observed": "[(True, False)]"
+  },
+  {
+   "construct": "kleene",
+   "area": "relations",
+   "code": "df(a=[True, False, None, None], b=[None, None, None, True]).select((pl.col('a') & pl.col('b')).alias('and'), (pl.col('a') | pl.col('b')).alias('or'), (~pl.col('a')).alias('not')).rows()",
+   "observed": "[(None, True, False), (False, None, True), (None, None, None), (None, True, None)]"
+  },
+  {
+   "construct": "any-all-nulls",
+   "area": "aggregates",
+   "code": "df(x=[True, None]).select(pl.col('x').all().alias('all'), pl.col('x').all(ignore_nulls=False).alias('all_kleene'), pl.col('x').any(ignore_nulls=False).alias('any_kleene')).rows()",
+   "observed": "[(True, None, True)]"
+  },
+  {
+   "construct": "count-nulls",
+   "area": "aggregates",
+   "code": "df(x=[1, None, None]).select(pl.col('x').count().alias('count'), pl.col('x').len().alias('len'), pl.col('x').null_count().alias('nulls')).rows()",
+   "observed": "[(1, 3, 2)]"
+  },
+  {
+   "construct": "aggregates-empty",
+   "area": "aggregates",
+   "code": "df(x=([None, None], pl.Int64)).select(pl.col('x').min().alias('min'), pl.col('x').first().alias('first'), pl.col('x').count().alias('count'), pl.col('x').mode().alias('mode').implode()).rows()",
+   "observed": "[(None, None, 0, [None])]"
+  },
+  {
+   "construct": "first-last",
+   "area": "aggregates",
+   "code": "df(g=[1, 1, 1, 2], x=[None, 3, None, 4]).group_by('g', maintain_order=True).agg(pl.col('x').first().alias('first'), pl.col('x').last().alias('last'), pl.col('x').first(ignore_nulls=True).alias('first_nn'), pl.col('x').last(ignore_nulls=True).alias('last_nn')).rows()",
+   "observed": "[(1, None, None, 3, 3), (2, 4, 4, 4, 4)]"
+  },
+  {
+   "construct": "first-input-order",
+   "area": "aggregates",
+   "code": "[df(k=[i % 10 for i in range(200_000)], i=range(200_000)).lazy().group_by('k').agg(pl.col('i').first().alias('f'), pl.col('i').min().alias('m'), pl.col('i').last().alias('l'), pl.col('i').max().alias('M'), pl.col('i').alias('all')).collect(engine=e).select(((pl.col('f') == pl.col('m')) & (pl.col('l') == pl.col('M')) & (pl.col('all').list.eval(pl.element().diff().drop_nulls().min() > 0).list.first())).all()).item() for e in ('in-memory', 'streaming')]",
+   "observed": "[True, True]"
+  },
+  {
+   "construct": "arg-min-max-ties",
+   "area": "aggregates",
+   "code": "df(x=[1, 3, 3, 1]).select(pl.col('x').arg_max().alias('arg_max'), pl.col('x').arg_min().alias('arg_min')).rows()",
+   "observed": "[(1, 0)]"
+  },
+  {
+   "construct": "mode-ties",
+   "area": "aggregates",
+   "code": "df(x=[3, 1, 2, 2, 1, 3]).select(pl.col('x').mode().sort()).to_series().to_list()",
+   "observed": "[1, 2, 3]"
+  },
+  {
+   "construct": "string-agg",
+   "area": "aggregates",
+   "code": "df(g=[1, 1, 1], x=['a', None, 'b']).group_by('g').agg(pl.col('x').str.join(',')).item(0, 'x')",
+   "observed": "'a,b'"
+  },
+  {
+   "construct": "top-k-ties",
+   "area": "relations",
+   "code": "df(x=[1, 1, 1, 0], i=[0, 1, 2, 3]).top_k(2, by='x').sort('i').rows()",
+   "observed": "[(1, 0), (1, 1)]"
+  },
+  {
+   "construct": "rank-methods",
+   "area": "windows",
+   "code": "df(x=[2, 1, 2, None]).select(*(pl.col('x').rank(m).alias(m) for m in ['average', 'min', 'max', 'dense', 'ordinal'])).rows()",
+   "observed": "[(2.5, 2, 3, 2, 2), (1.0, 1, 1, 1, 1), (2.5, 2, 3, 2, 3), (None, None, None, None, None)]"
+  },
+  {
+   "construct": "rank-descending-nan",
+   "area": "windows",
+   "code": "df(x=[2.0, nan, 1.0, None]).select(pl.col('x').rank('min').alias('asc'), pl.col('x').rank('min', descending=True).alias('desc')).rows()",
+   "observed": "[(2, 2), (3, 1), (1, 3), (None, None)]"
+  },
+  {
+   "construct": "window-lag-first",
+   "area": "windows",
+   "code": "df(g=[1, 1, 2], x=[3, 1, 2]).select(pl.col('x').first().over('g').alias('first'), pl.col('x').shift(1).over('g').alias('lag'), pl.col('x').cum_sum().over('g').alias('cum')).rows()",
+   "observed": "[(3, None, 3), (3, 3, 4), (2, None, 2)]"
   }
  ]
 }

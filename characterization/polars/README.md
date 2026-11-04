@@ -91,3 +91,24 @@ means Polars's own expression gives the reference result.
 | `quantile_disc`, `quantile_cont`, `median` | `quantile_interp` | a value of the input; any double between neighbours | `nearest` by default; `linear` for `median` | [quantile](facts/polars-quantile.json) |
 | decimals | result type | the YAML's (`multiply`: s₁ + s₂) | `Decimal(38, max(s₁, s₂))` | [decimal-arith](facts/polars-decimal-arith.json) |
 | | `decimal_rescale` | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` ([ST-8](../../upstream/bugs/ST-8.json)) | |
+
+### NULLs, NaN and order
+
+| Function (types) | Option | Reference | Polars | Fact |
+|---|---|---|---|---|
+| `equal`, grouping, `DISTINCT`, joins (`fp64`) | `nan_equality` | `NAN_IS_NAN` | native | [nan-equality](facts/polars-nan-equality.json) |
+| `lt`, sorts, `rank`, `median` (`fp64`) | `nan_order` | `GREATEST` | native | [nan-order](facts/polars-nan-order.json) |
+| `max`, `greatest`, `arg_max` (`fp64`) | `nan_order` | `GREATEST`: `max(1, NaN)` is NaN | NaN skipped unless all NaN; `nan_max` native | [min-max-nan](facts/polars-min-max-nan.json) |
+| `equal`, sorts, grouping (`fp64`) | `zero_sign` | `ONE_ZERO` | one zero; a group key keeps the zero seen first | [zero-order](facts/polars-zero-order.json) |
+| sort key | `null_order` | as the key states; `NULLS_LAST` for `UNSPECIFIED` | `NULLS_FIRST` by default in both directions; native with `nulls_last` | [null-order](facts/polars-null-order.json) |
+| sort, `fetch` | `tie_order` | any order | stable on the probe; guaranteed with `maintain_order` | [sort-stability](facts/polars-sort-stability.json) |
+| strings, booleans | order | code points; `false < true` | native | [string-order](facts/polars-string-order.json) |
+| `aggregate` keys, joins | NULL keys | one group; `=` skips NULL | native (`nulls_equal` for `IS NOT DISTINCT FROM`) | [null-keys](facts/polars-null-keys.json) |
+| `and`, `or`, `not`, `bool_and`, `bool_or` | | Kleene; aggregates skip NULLs | native | [kleene](facts/polars-kleene.json) |
+| `count`, aggregates of no values | | `count` skips NULLs; NULL | native, but `sum` is 0 | [count-empty](facts/polars-count-empty.json) |
+| `first`, `last`, `arg_min`, `arg_max` | `tie_pick` | any row | the first (last) in input order, deterministic | [first-last](facts/polars-first-last.json), [arg-min-max](facts/polars-arg-min-max.json) |
+| `string_agg`, `array_agg` | `tie_order` | any order | input order; `str.join` skips NULLs | first-last |
+| `mode` | `tie_pick` | one value of the tie | every mode, as a list | [mode](facts/polars-mode.json) |
+| `rank`, `dense_rank`, `row_number` | | SQL's; NULLs ranked | `rank('min')`, `'dense'`, `'ordinal'`; NULL's rank is NULL; no `ntile`, `percent_rank`, `cume_dist` | [rank](facts/polars-rank.json) |
+| `lag`, `first_value`, windowed sums | `tie_order` | the window's order | `.over` in input order | [window-values](facts/polars-window-values.json) |
+| `i64` vs `fp64` comparison | | a cast first | compares as `Float64` | [int-float-compare](facts/polars-int-float-compare.json) |

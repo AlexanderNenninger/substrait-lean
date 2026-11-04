@@ -1,0 +1,52 @@
+{
+  "id": "polars-zero-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`-0.0` equals `0.0` in comparisons, sorts, grouping and joins",
+  "verdict": "one zero for equality and order; the first one seen is kept",
+  "area": "doubles",
+  "constructs": [
+    "==",
+    "sort",
+    "group_by",
+    "unique",
+    "join"
+  ],
+  "settings": {},
+  "description": "`0.0 == -0.0` is true, `sort` treats them as equal (with `maintain_order` the input order stays), and `group_by`, `unique` and joins put them together. The group's key and the surviving row of `unique` carry the zero seen first, which can be `-0.0`; arithmetic still tells them apart (polars-zero-sign).",
+  "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key is never `-0.0`.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "nan-compare"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "sort-zero-sign"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "group-nan-zero"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "unique-nan-zero"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "join-nan-zero-null"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}

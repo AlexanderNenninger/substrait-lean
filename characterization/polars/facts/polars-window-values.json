@@ -1,0 +1,32 @@
+{
+  "id": "polars-window-values",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Windows: `over` keeps the input order inside a partition",
+  "verdict": "`first().over`, `shift(1).over`, `cum_sum().over` in input order",
+  "area": "windows",
+  "constructs": [
+    "over",
+    "shift",
+    "first",
+    "cum_sum"
+  ],
+  "settings": {},
+  "description": "An expression `.over(g)` runs per partition in input order: `first().over('g')` is the partition's first row, `shift(1).over('g')` the previous row (NULL at the start), `cum_sum().over('g')` the running sum. A window order is a sort before (or `order_by=` in `over`).",
+  "reference": "`lag`, `lead`, `first_value` and windowed aggregates over the window's order and frame; ties in any order (`tie_order`).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "window-lag-first"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}
