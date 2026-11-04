@@ -397,10 +397,26 @@ keeps every file, and Sverify skips those with `amount <= 50` (`test_where_skips
 in `test_io_pruning.py`). An Iceberg refresh skips appended files the same
 way.
 
-Still to do: pruning from implied predicates. A contract on an upstream
-view can imply a predicate on a base column (for example `ts >= start`
-after a join on a key). We can push it to the scan, and engines do not
-derive it.
+A view can also imply a predicate on a base table that the query does not
+state, and engines do not derive one. With `o.ts >= c.since` in a join of
+orders and customers, and `since >= DATE '2026-01-01'` among the
+customers' preconditions, only orders from 2026 on can reach the result.
+`Rel.need` (`SubstraitLean/Implied.lean`) finds such predicates. It pushes
+a demand down the plan through filters, emits, projections, unions and
+inner joins. At a join, it refines the join condition and the demand on
+the other input's abstract values (`Rel.aeval`), carrying bounds across
+comparisons of two columns (`geTransfer`). Under an aggregate, a window, a
+left join or a `FETCH` it gives up. `Rel.need_eval` proves that the view
+gives the same result on any table that agrees with the original on the
+rows passing the predicate (`SameOn`). So a node's Delta or Iceberg source
+reads only those rows, adds the predicate to its `where`, and skips the
+files whose statistics rule it out
+(`test_a_predicate_the_view_implies_prunes_files` in
+`test_io_pruning.py`). The predicate rests on the preconditions, which
+every refresh establishes, and on facts that hold at every version (Delta
+CHECK constraints and a source's own condition). File statistics change
+between versions, so they are left out. A table whose preconditions fail
+on rows the predicate drops raises in fewer cases; the result is the same.
 
 ## 5. View matching and shared subplans (#82, later)
 

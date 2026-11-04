@@ -592,6 +592,12 @@ class Report:
     inferred: dict[str, list[Condition]] = field(default_factory=dict)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
+    implied: dict[str, str] = field(default_factory=dict)
+    """A SQL condition per input table that every row reaching the result
+    passes, given `requires` (#81, `Rel.need_eval` in
+    `SubstraitLean/Implied.lean`): the transformation gives the same result
+    on the table's rows that pass it. `sverify.io` sources read only those,
+    and skip the files whose statistics rule it out."""
     assumed: list[Issue] = field(default_factory=list)
     """The `SUM`s assumed to fit their type in every group (64 bits for
     integers, the result's precision for decimals), inferred
@@ -928,6 +934,58 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
     if abstract.get("null"):
         parts.append("NULL")
     return " or ".join(parts) if parts else "nothing (no rows)"
+
+
+def _code_literal(dtype: Any, code: int) -> str | None:
+    """The SQL literal of a value Lean codes as the integer `code`, for the
+    types whose order is the order of their codes: integers, dates (days)
+    and timestamps without a time zone (microseconds). None for the rest."""
+    try:
+        if dtype.is_integer():
+            return str(code)
+        if dtype.is_date():
+            return f"DATE '{(_EPOCH + timedelta(days=code)).date().isoformat()}'"
+        if dtype.is_timestamp() and dtype.timezone is None and dtype.scale in (None, 6):
+            ts = _EPOCH + timedelta(microseconds=code)
+            return f"TIMESTAMP '{ts.isoformat(sep=' ', timespec='microseconds')}'"
+    except OverflowError:
+        return None
+    return None
+
+
+_INT64_ENDS = (-(2**63), 2**63 - 1)
+
+
+def _implied_sql(raw: Sequence[dict], schemas: Mapping[str, Any]) -> dict[str, str]:
+    """The implied predicates of Lean's report as SQL, per table: the
+    disjunction of each abstract row's column bounds. A bound on a type
+    without an order-preserving literal is left out, which only weakens the
+    condition; a table where some abstract row keeps no bound gets none."""
+    out: dict[str, str] = {}
+    for entry in raw:
+        schema = schemas.get(entry["table"])
+        if schema is None:
+            continue
+        names = list(schema.names)
+        disjuncts = []
+        for bounds in entry["any"]:
+            conj = []
+            for b in bounds:
+                col = names[b["col"]]
+                ref = '"' + col.replace('"', '""') + '"'
+                for op, v in ((">=", b["lo"]), ("<=", b["hi"])):
+                    if v is None or (schema[col].is_integer() and int(v) in _INT64_ENDS):
+                        continue  # no bound, or only the type's own range
+                    lit = _code_literal(schema[col], int(v))
+                    if lit is not None:
+                        conj.append(f"{ref} {op} {lit}")
+            if not conj:
+                break
+            disjuncts.append(" AND ".join(conj))
+        else:
+            if disjuncts:
+                out[entry["table"]] = " OR ".join(f"({d})" for d in disjuncts)
+    return out
 
 
 class Inferred(str):
@@ -1676,6 +1734,7 @@ def _verify_once(
         params=bound,
         bounds=_int_bounds(out["facts"], dtypes),
         rows=out.get("rows"),
+        implied=_implied_sql(out.get("implied", []), schemas),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)

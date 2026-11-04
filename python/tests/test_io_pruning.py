@@ -6,6 +6,7 @@ mirrors `StrStats.mayTrue`."""
 
 import math
 import warnings
+from datetime import datetime
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -15,8 +16,10 @@ import sqlglot as sg
 from deltalake import write_deltalake
 from hypothesis import given
 from hypothesis import strategies as st
+from ibis import _
 from pyiceberg.catalog.sql import SqlCatalog
 
+import sverify as sv
 from _pipelines import rows
 from sverify.incremental import arrow_rows
 from sverify.io import DeltaSource, IcebergSource
@@ -197,3 +200,98 @@ def test_iceberg_nan_is_never_pruned(catalog):
     src = IcebergSource(catalog, "db.readings", where="x > 100")
     got = sorted(arrow_rows(src.snapshot().table), key=lambda r: (math.isnan(r[0]), r[0]))
     assert got[:2] == [(200.0,), (300.0,)] and math.isnan(got[2][0])
+
+
+# -- Implied predicates -----------------------------------------------------------
+
+T0 = datetime(2025, 6, 1)
+T1 = datetime(2026, 3, 1)
+
+
+@sv.transform(requires={"customers": [_.since >= datetime(2026, 1, 1)]})
+def since_joining(orders, customers):
+    joined = orders.join(customers, orders.cid == customers.cid)
+    return joined.filter(orders.ts >= customers.since).select(orders.id, orders.amount)
+
+
+def lake(tmp_path):
+    orders, customers = tmp_path / "orders", tmp_path / "customers"
+    order_rows = pa.schema(
+        [
+            ("id", pa.int64()),
+            ("cid", pa.int64()),
+            ("ts", pa.timestamp("us")),
+            ("amount", pa.int64()),
+        ]
+    )
+
+    def order(rs):
+        return pa.Table.from_pylist(
+            [dict(zip(order_rows.names, r, strict=True)) for r in rs], schema=order_rows
+        )
+
+    write_deltalake(
+        orders,
+        order([(1, 1, T0, 10), (2, 2, T0, 20)]),
+        configuration={"delta.enableChangeDataFeed": "true"},
+    )
+    write_deltalake(orders, order([(3, 1, T1, 30), (4, 2, T1, 40)]), mode="append")
+    write_deltalake(
+        customers,
+        pa.table({"cid": [1, 2], "since": [datetime(2026, 2, 1), datetime(2026, 4, 1)]}),
+    )
+    return orders, customers, order
+
+
+def test_a_predicate_the_view_implies_prunes_files(tmp_path):
+    orders_path, customers_path, order = lake(tmp_path)
+    node = since_joining(DeltaSource(str(orders_path)), DeltaSource(str(customers_path)))
+    node.refresh(audit=True)
+    # The query states no condition on orders.ts alone, so a reader's
+    # pushdown has nothing to prune with. With `since >= 2026-01-01` on
+    # every customer, only orders from 2026 on can join: Lean derives it
+    # (`Rel.need_eval`) and the source skips the file of 2025 orders.
+    src = node._stage.pipe.sources["orders"]
+    assert src.implied == "(\"ts\" >= TIMESTAMP '2026-01-01 00:00:00.000000')"
+    assert len(src.skipped) == 1
+    assert rows(node) == [(3, 30)]
+    # Changes are filtered the same way, and the result stays that of the
+    # whole table.
+    write_deltalake(
+        orders_path, order([(5, 1, T0, 50), (6, 2, datetime(2026, 5, 1), 60)]), mode="append"
+    )
+    node.refresh(audit=True)
+    assert rows(node) == [(3, 30), (6, 60)]
+
+
+def test_no_implied_predicate_through_a_left_join(tmp_path):
+    orders_path, customers_path, _order = lake(tmp_path)
+
+    @sv.transform(requires={"customers": [_.since >= datetime(2026, 1, 1)]})
+    def kept(orders, customers):
+        joined = orders.left_join(customers, orders.cid == customers.cid)
+        return joined.select(orders.id, customers.since)
+
+    node = kept(DeltaSource(str(orders_path)), DeltaSource(str(customers_path)))
+    node.refresh()
+    assert node._stage.pipe.sources["orders"].implied is None
+    assert len(rows(node)) == 4
+
+
+def test_an_iceberg_source_reads_what_the_view_implies(catalog):
+    t = catalog.create_table("db.orders", schema=ORDERS)
+    t.append(orders([(1, 5), (2, 6)]))
+    t.append(orders([(3, 60), (4, 80)]))
+    limits = catalog.create_table("db.limits", schema=pa.schema([("id", pa.int64())]))
+    limits.append(pa.table({"id": [3, 4]}))
+
+    @sv.transform(requires={"limits": [_.id >= 3]})
+    def matched(o, limits):
+        return o.join(limits, o.id == limits.id).select(o.id, o.amount)
+
+    node = matched(IcebergSource(catalog, "db.orders"), IcebergSource(catalog, "db.limits"))
+    node.refresh(audit=True)
+    src = node._stage.pipe.sources["orders"]
+    assert src.implied == '("id" >= 3)'
+    assert len(src.skipped) == 1
+    assert rows(node) == [(3, 60), (4, 80)]

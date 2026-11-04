@@ -521,12 +521,19 @@ class _Stage:
         versions: dict[str, int],
         engine: Any,
         resume: Stored | None,
+        implied: dict[str, str] | None = None,
     ) -> _Stage:
+        """The stage, with each source in `implied` reading only the rows
+        that pass its predicate. Without `implied`, the predicates the
+        view implies on its sources are found (`_implied`), and the stage
+        is built again with them."""
         con = connect(engine if engine in ENGINES else "duckdb")
         pipe = Pipeline(con)
         mapping = {}
         for leaf in leaves:
             src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
+            if implied and leaf.name in implied:
+                src = src._restricted(implied[leaf.name])  # type: ignore[attr-defined]
             table = pipe.source(leaf.name, src, version=versions[leaf.name])
             mapping[leaf._expr.op()] = table.op()
         query = node._query()._expr
@@ -541,6 +548,11 @@ class _Stage:
             n += 1
             view_name = f"{name}_{n}"
         view = pipe.view(view_name, bound, resume=resume)
+        prunable = {t for t, src in pipe.sources.items() if hasattr(src, "_restricted")}
+        if implied is None and prunable:
+            found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
+            if found:
+                return _Stage._load(node, leaves, versions, engine, resume, found)
         stage = _Stage(pipe, view)
         stage.use(engine)
         return stage
@@ -552,6 +564,35 @@ class _Stage:
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
         return self.pipe.refresh(until=versions, audit=audit, retire=False)
+
+
+# Facts that hold at every version of a source: CHECK constraints, which
+# Delta enforces on every write, and a source's own filter. File statistics
+# change with each version, so a predicate implied from them could be wrong
+# at the next refresh.
+_STABLE_FACTS = ("Delta constraint", "source filter")
+
+
+def _implied(pipe: Pipeline, query: ir.Table) -> dict[str, str]:
+    """The predicate `query` implies on each source table (#81, Lean's
+    `Rel.need_eval`): the view's result is the same on the rows that pass
+    it. Derived from the preconditions, which every refresh establishes,
+    and the facts that hold at every version (`_STABLE_FACTS`)."""
+    from sverify.contracts import TableCondition, table_facts, verify
+
+    requires: dict[str, list[Any]] = {}
+    for t in pipe.sources:
+        conds: list[Any] = [
+            c for c in pipe.requires.get(t, []) if not isinstance(c, TableCondition)
+        ]
+        facts = table_facts(pipe.con.table(t)) or []
+        conds += [f.condition for f in facts if f.source in _STABLE_FACTS]
+        requires[t] = conds
+    try:
+        report = verify(query, requires=requires, ensures=[], counterexamples=0, infer=False)
+    except Exception:  # noqa: BLE001 - a plan the checker cannot read implies nothing
+        return {}
+    return report.implied
 
 
 @dataclass

@@ -27,6 +27,7 @@ one data file per partition (#466).
 from __future__ import annotations
 
 import contextlib
+import copy
 import os
 import uuid
 import warnings
@@ -326,6 +327,9 @@ class IcebergSource(Pipeable):
     ):
         self.catalog, self.identifier, self.where = catalog, identifier, where
         self.name = name or identifier.rsplit(".", 1)[-1]
+        self.implied: str | None = None
+        """The predicate a node's view implies on this table, if the source
+        reads only the rows that pass it (`_restricted`)."""
         self.skipped: list[str] = []
         # Whether `where` may hold in a data file, by path and schema: files
         # are immutable, so their statistics are proved about once.
@@ -342,6 +346,18 @@ class IcebergSource(Pipeable):
     def latest(self) -> int:
         """The current snapshot's sequence number (0 before the first)."""
         return _version(self.table().current_snapshot())
+
+    def _restricted(self, implied: str) -> IcebergSource:
+        """A copy that reads only the rows that also pass `implied`, a
+        predicate a node's view implies on this table (#81): the view gives
+        the same result on them (`Rel.need_eval` in
+        `SubstraitLean/Implied.lean`), and files whose statistics rule it
+        out are skipped."""
+        out = copy.copy(self)
+        out.where = implied if self.where is None else f"({self.where}) AND ({implied})"
+        out.implied = implied
+        out.skipped, out._kept = [], {}
+        return out
 
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
         schema = _arrow_schema(t)
