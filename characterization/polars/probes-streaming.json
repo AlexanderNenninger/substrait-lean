@@ -1607,8 +1607,8 @@
    "area": "aggregates",
    "code": "sorted({repr(df(g=[i % 3 for i in range(300_000)], x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).group_by('g').agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})",
    "differ": 1,
-   "in-memory": "['[50424.80000011842, 50401.90000011839, 50408.20000011843]', '[50424.80000011842, 50401.90000011841, 50408.20000011843]', '[50424.800000118434, 50401.900000118425, 50408.200000118435]', '[50424.80000011844, 50401.90000011841, 50408.20000011843]', '[50424.80000011844, 50401.90000011841, 50408.20000011844]']",
-   "streaming": "['[50424.80000011841, 50401.9000001184, 50408.200000118435]', '[50424.80000011841, 50401.90000011841, 50408.20000011843]', '[50424.80000011843, 50401.90000011842, 50408.200000118435]', '[50424.80000011844, 50401.900000118425, 50408.200000118435]', '[50424.80000011844, 50401.900000118425, 50408.20000011844]']"
+   "in-memory": "['[50424.80000011841, 50401.90000011841, 50408.20000011843]', '[50424.80000011842, 50401.900000118396, 50408.20000011843]', '[50424.80000011844, 50401.90000011841, 50408.20000011844]', '[50424.80000011844, 50401.900000118425, 50408.20000011844]']",
+   "streaming": "['[50424.80000011842, 50401.90000011839, 50408.20000011843]', '[50424.80000011842, 50401.900000118396, 50408.20000011843]', '[50424.80000011844, 50401.90000011841, 50408.20000011844]']"
   },
   {
    "construct": "s-var-runs",
@@ -1647,8 +1647,8 @@
    "area": "relations",
    "code": "df(g=[(i * 7919) % 1000 for i in range(100_000)]).group_by('g').len()['g'].to_list()[:8]",
    "differ": 1,
-   "in-memory": "[274, 396, 39, 691, 667, 289, 557, 149]",
-   "streaming": "[0, 919, 838, 676, 352, 271, 947, 866]"
+   "in-memory": "[950, 164, 158, 554, 149, 33, 691, 426]",
+   "streaming": "[0, 919, 838, 757, 676, 514, 352, 271]"
   },
   {
    "construct": "s-when-masks-cast",
@@ -1721,6 +1721,54 @@
    "differ": 0,
    "in-memory": "[(0, 50.0, 30.0), (1, 50.0, 30.0), (2, 50.0, 30.0)]",
    "streaming": "[(0, 50.0, 30.0), (1, 50.0, 30.0), (2, 50.0, 30.0)]"
+  },
+  {
+   "construct": "s-zero-sign-literal",
+   "area": "doubles",
+   "code": "{f'{e} {n}': [sum(math.copysign(1.0, v) < 0 for v in c) for c in pl.LazyFrame({'x': [-0.0, 0.0] * (n // 2)}).select(a=pl.col('x') + 0.0, s=pl.col('x') - (-0.0), z=pl.col('x') - 0.0, l=pl.lit(0.0) - pl.col('x')).collect(engine=e).get_columns()] for e in ('in-memory', 'streaming') for n in (4, 6000)}",
+   "differ": 0,
+   "in-memory": "{'in-memory 4': [2, 2, 2, 2], 'in-memory 6000': [3000, 3000, 3000, 3000], 'streaming 4': [0, 0, 2, 0], 'streaming 6000': [3000, 3000, 3000, 3000]}",
+   "streaming": "{'in-memory 4': [2, 2, 2, 2], 'in-memory 6000': [3000, 3000, 3000, 3000], 'streaming 4': [0, 0, 2, 0], 'streaming 6000': [3000, 3000, 3000, 3000]}"
+  },
+  {
+   "construct": "s-explode",
+   "area": "nested",
+   "code": "[(lambda f: [(lambda r: (len(r), r[:4]))(f.explode('l', **k).collect(engine=e).rows()) for k in ({}, {'empty_as_null': False, 'keep_nulls': False})])(pl.LazyFrame({'i': list(range(6000)), 'l': [[1, 2], [], None, [None]] * 1500})) for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[[(6000, [(0, 1), (0, 2), (2, None), (3, None)]), (4500, [(0, 1), (0, 2), (3, None), (4, 1)])], [(6000, [(0, 1), (0, 2), (2, None), (3, None)]), (4500, [(0, 1), (0, 2), (3, None), (4, 1)])]]",
+   "streaming": "[[(6000, [(0, 1), (0, 2), (2, None), (3, None)]), (4500, [(0, 1), (0, 2), (3, None), (4, 1)])], [(6000, [(0, 1), (0, 2), (2, None), (3, None)]), (4500, [(0, 1), (0, 2), (3, None), (4, 1)])]]"
+  },
+  {
+   "construct": "s-set-operations",
+   "area": "relations",
+   "code": "[(lambda a, b: (pl.concat([a, b]).collect(engine=e)['x'].to_list() == [1, 1, 2, None, None] * 1200 + [1, None, 3] * 2000, pl.concat([a, b]).unique(maintain_order=True).collect(engine=e).rows(), a.join(b, on='x', how='semi', nulls_equal=True).unique(maintain_order=True).collect(engine=e).rows(), a.join(b, on='x', how='anti', nulls_equal=True).unique(maintain_order=True).collect(engine=e).rows()))(pl.LazyFrame({'x': [1, 1, 2, None, None] * 1200}), pl.LazyFrame({'x': [1, None, 3] * 2000})) for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[(True, [(1,), (2,), (None,), (3,)], [(None,), (1,)], [(2,)]), (True, [(1,), (2,), (None,), (3,)], [(1,), (None,)], [(2,)])]",
+   "streaming": "[(True, [(1,), (2,), (None,), (3,)], [(None,), (1,)], [(2,)]), (True, [(1,), (2,), (None,), (3,)], [(1,), (None,)], [(2,)])]"
+  },
+  {
+   "construct": "s-literal-types",
+   "area": "frontend",
+   "code": "[[str(t) for t in pl.LazyFrame().select(pl.lit(1), pl.lit(2**40).alias('b'), pl.lit(2**63).alias('c'), pl.lit(2**64).alias('d'), pl.lit(1.5).alias('e'), pl.lit('x').alias('f'), pl.lit(None).alias('g'), pl.lit(True).alias('h'), pl.lit(Decimal('1.25')).alias('i')).collect(engine=e).dtypes] for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)'], ['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)']]",
+   "streaming": "[['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)'], ['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)']]"
+  },
+  {
+   "construct": "s-window-order",
+   "area": "windows",
+   "code": "[pl.LazyFrame({'g': [i % 7 for i in range(100_000)], 'i': list(range(100_000))}).select(lag=(pl.col('i').shift(1).over('g') == pl.col('i') - 7).all(), first=(pl.col('i').first().over('g') == pl.col('g')).all(), count=(pl.col('i').cum_count().over('g') == pl.col('i') // 7 + 1).all()).collect(engine=e).row(0) for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[(True, True, True), (True, True, True)]",
+   "streaming": "[(True, True, True), (True, True, True)]"
+  },
+  {
+   "construct": "s-zero-key-first",
+   "area": "relations",
+   "code": "[(lambda f: ([f.group_by('x', maintain_order=m).agg(pl.len()).collect(engine=e).rows() for m in (False, True)], f.unique().collect(engine=e).rows(), f.unique(maintain_order=True).collect(engine=e).rows()))(pl.LazyFrame({'x': [-0.0] + [0.0] * 99_999})) for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[([[(-0.0, 100000)], [(0.0, 100000)]], [(-0.0,)], [(-0.0,)]), ([[(-0.0, 100000)], [(0.0, 100000)]], [(-0.0,)], [(-0.0,)])]",
+   "streaming": "[([[(-0.0, 100000)], [(0.0, 100000)]], [(-0.0,)], [(-0.0,)]), ([[(-0.0, 100000)], [(0.0, 100000)]], [(-0.0,)], [(-0.0,)])]"
   }
  ]
 }

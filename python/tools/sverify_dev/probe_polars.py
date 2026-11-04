@@ -896,6 +896,47 @@ STREAMING_OBSERVATIONS: list[Observation] = [
        "df(g=[i % 3 for i in range(30_000)], x=[float(i % 101) for i in range(30_000)])"
        ".group_by('g').agg(pl.col('x').median().alias('m'),"
        " pl.col('x').quantile(0.3, 'linear').alias('q')).sort('g').rows()"),
+    # Each engine through a lazy `collect(engine=e)`, for the facts whose
+    # step under test is not a `StreamingFrame` method, or needs many morsels.
+    # Negative zeros per column of `x + 0.0`, `x - (-0.0)`, `x - 0.0`,
+    # `0.0 - x` over x = -0.0, 0.0, … (polars-zero-sign): 4 rows, then 6000.
+    _o("s-zero-sign-literal", "doubles",
+       "{f'{e} {n}': [sum(math.copysign(1.0, v) < 0 for v in c) for c in"
+       " pl.LazyFrame({'x': [-0.0, 0.0] * (n // 2)}).select(a=pl.col('x') + 0.0,"
+       " s=pl.col('x') - (-0.0), z=pl.col('x') - 0.0, l=pl.lit(0.0) - pl.col('x'))"
+       ".collect(engine=e).get_columns()] for e in ('in-memory', 'streaming') for n in (4, 6000)}"),
+    _o("s-explode", "nested",
+       "[(lambda f: [(lambda r: (len(r), r[:4]))(f.explode('l', **k).collect(engine=e).rows())"
+       " for k in ({}, {'empty_as_null': False, 'keep_nulls': False})])"
+       "(pl.LazyFrame({'i': list(range(6000)), 'l': [[1, 2], [], None, [None]] * 1500}))"
+       " for e in ('in-memory', 'streaming')]"),
+    _o("s-set-operations", "relations",
+       "[(lambda a, b: (pl.concat([a, b]).collect(engine=e)['x'].to_list()"
+       " == [1, 1, 2, None, None] * 1200 + [1, None, 3] * 2000,"
+       " pl.concat([a, b]).unique(maintain_order=True).collect(engine=e).rows(),"
+       " a.join(b, on='x', how='semi', nulls_equal=True).unique(maintain_order=True)"
+       ".collect(engine=e).rows(),"
+       " a.join(b, on='x', how='anti', nulls_equal=True).unique(maintain_order=True)"
+       ".collect(engine=e).rows()))"
+       "(pl.LazyFrame({'x': [1, 1, 2, None, None] * 1200}), pl.LazyFrame({'x': [1, None, 3] * 2000}))"
+       " for e in ('in-memory', 'streaming')]"),
+    _o("s-literal-types", "frontend",
+       "[[str(t) for t in pl.LazyFrame().select(pl.lit(1), pl.lit(2**40).alias('b'),"
+       " pl.lit(2**63).alias('c'), pl.lit(2**64).alias('d'), pl.lit(1.5).alias('e'),"
+       " pl.lit('x').alias('f'), pl.lit(None).alias('g'), pl.lit(True).alias('h'),"
+       " pl.lit(Decimal('1.25')).alias('i')).collect(engine=e).dtypes]"
+       " for e in ('in-memory', 'streaming')]"),
+    _o("s-window-order", "windows",
+       "[pl.LazyFrame({'g': [i % 7 for i in range(100_000)], 'i': list(range(100_000))}).select("
+       "lag=(pl.col('i').shift(1).over('g') == pl.col('i') - 7).all(),"
+       " first=(pl.col('i').first().over('g') == pl.col('g')).all(),"
+       " count=(pl.col('i').cum_count().over('g') == pl.col('i') // 7 + 1).all())"
+       ".collect(engine=e).row(0) for e in ('in-memory', 'streaming')]"),
+    _o("s-zero-key-first", "relations",
+       "[(lambda f: ([f.group_by('x', maintain_order=m).agg(pl.len()).collect(engine=e).rows()"
+       " for m in (False, True)], f.unique().collect(engine=e).rows(),"
+       " f.unique(maintain_order=True).collect(engine=e).rows()))"
+       "(pl.LazyFrame({'x': [-0.0] + [0.0] * 99_999})) for e in ('in-memory', 'streaming')]"),
 ]  # fmt: skip
 
 

@@ -24,7 +24,12 @@
     "mean",
     "cast"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "Arithmetic on decimals returns `Decimal(38, max(s₁, s₂))` for `+`, `-`, `*` and `/` (an integer operand counts as scale 0), and `sum` returns `Decimal(38, s)`: the result's precision is always 38, so `Decimal(6, 2) * 1000` gives 9999990.00 and overflows only past 38 digits, where it raises (`ComputeError`).",
     "A result with more digits than the scale rounds half to even: `0.05 * 0.5` is 0.02, `1.00 / 8` is 0.12, a cast from scale 3 to scale 1 makes 1.050 into 1.0 and 1.150 into 1.2, and a double cast to a decimal rounds half to even on its exact value (0.625 is 0.62). Division by zero raises. `mean` of decimals is a `Float64`."
@@ -84,6 +89,42 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-result-types"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-rounding"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-overflow"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-precision-38"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-divide-by-zero"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-mean"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

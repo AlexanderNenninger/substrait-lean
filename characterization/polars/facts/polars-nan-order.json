@@ -21,7 +21,12 @@
     "median",
     "quantile"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "`NaN > x` is true for every number x, `inf < NaN` is true, and `sort` puts NaN after +inf ascending and first (after the NULLs) descending. `rank`, `median` and `quantile` use the same order, so `median(1, 2, NaN)` is 2.",
   "reference": "`GREATEST`: NaN above +inf in sorts and in `<`.",
   "status": "no-finding",
@@ -114,6 +119,33 @@
       "notes": [
         "Pins the NaN order of `Float32` comparisons: NaN is greater than +inf and every number, and equal to NaN. The streaming sort test pins that the streaming engine places NaN, the infinities and the zeros of a `Float32` key as the in-memory sort does; it compares the engines and states no order of its own.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64 < Float64"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "sort-doubles"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "rank-descending-nan"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "median-nan"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
       ]
     }
   ]
