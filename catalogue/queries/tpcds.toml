@@ -306,9 +306,9 @@ q = (
 )
 '''
 # Not proved: the monthly sums, rescaled to compare with the average, may overflow their
-# decimal type until row caps bound exact sums (#470), and the division under
-# `avg_monthly_sales != 0` is not seen as guarded. TPC-DS gives approximate row counts
-# only, so no cap is stated.
+# decimal type, since no row cap bounds them (#470): TPC-DS gives approximate row counts
+# only, so no cap is stated. The division under `avg_monthly_sales != 0` is not seen as
+# guarded.
 requires = '''
 {
     'store_sales': [_.ss_sales_price.between(0, 300)],
@@ -346,8 +346,8 @@ q = rev.mutate(
     revenueratio=rev.itemrevenue * 100 / rev.itemrevenue.sum().over(ibis.window(group_by="i_class"))
 ).order_by(["i_category", "i_class", "i_item_id", "i_item_desc", "revenueratio"])
 '''
-# Not proved: `itemrevenue * 100` may overflow its decimal type until row caps bound
-# exact sums (#470), and a class's revenue may be 0 (the preconditions allow a price of
+# Not proved: `itemrevenue * 100` may overflow its decimal type, since no row cap bounds
+# the sum (#470), and a class's revenue may be 0 (the preconditions allow a price of
 # 0), so the ratio may divide by zero.
 requires = '''
 {
