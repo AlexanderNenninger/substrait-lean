@@ -8,12 +8,12 @@ import pytest
 from sverify import _support, black_box
 from sverify.sql import Unsupported
 
-WRITE_LEAN = Path(__file__).resolve().parents[2] / "SubstraitLean" / "Write.lean"
+FUNCTIONS_LEAN = Path(__file__).resolve().parents[2] / "SubstraitLean" / "Functions.lean"
 
 
 def lean_functions() -> set[str]:
-    """The function names Lean's written plans declare (`Write.lean`)."""
-    return set(re.findall(r'\(\d+, "([a-z0-9_]+)"\)', WRITE_LEAN.read_text()))
+    """The function names Lean's written plans declare (`Functions.lean`'s tables)."""
+    return set(re.findall(r'name := "([a-z0-9_]+)"', FUNCTIONS_LEAN.read_text()))
 
 
 def test_rows_are_functions_lean_writes() -> None:

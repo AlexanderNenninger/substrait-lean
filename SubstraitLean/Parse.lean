@@ -1,5 +1,6 @@
 import Lean.Data.Json
 import SubstraitLean.Keys
+import SubstraitLean.Functions
 
 /-!
 # Parsing Substrait JSON plans
@@ -1229,16 +1230,17 @@ def replacement (p r : String) (global : Bool) (a : Expr) : J Expr :=
 `mkCall` maps Substrait standard-extension functions onto the modelled ones,
 one area at a time, the areas of `Write.lean`: core, strings, temporal,
 nested. Each area's `mk…Call?` gives `none` for a function it does not know.
-A new function goes at the end of its area's dispatcher, so pull requests for
-different areas touch different lines. No two areas share a name, so the
-order `mkCall` tries them in does not matter. -/
+Its last arm reads the area's table (`SubstraitLean/Functions.lean`): a row
+marked `.plain` is read as its constructor, so a function that maps
+one-to-one onto a constructor needs only its row. The others get an arm of
+their own, at the end of the area's dispatcher before the table's arm, so
+pull requests for different areas touch different lines. No two areas share
+a name, so the order `mkCall` tries them in does not matter. -/
 
 /-- Logic, comparison and arithmetic. Comparisons are derived: `a > b := b <
 a`, `a ≤ b := ¬(b < a)`; under null-propagation these agree with the direct
 definitions. -/
 def mkCoreCall? : String → List Expr → Option (J Expr)
-  | "not", [a] => some <| pure (.un .not a)
-  | "is_null", [a] => some <| pure (.un .isNull a)
   | "is_not_null", [a] => some <| pure (.un .not (.un .isNull a))
   -- `x IS TRUE`, `x IS NOT FALSE`, …: never `NULL`.
   | "is_true", [a] => some <| pure (.ifThen a (.lit (.bool true)) (.lit (.bool false)))
@@ -1246,19 +1248,11 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   | "is_false", [a] => some <| pure (.ifThen (.un .not a) (.lit (.bool true)) (.lit (.bool false)))
   | "is_not_false", [a] =>
     some <| pure (.ifThen (.un .not a) (.lit (.bool false)) (.lit (.bool true)))
-  | "negate", [a] => some <| pure (.un .neg a)
   -- Some producers write unary minus as a one-argument `subtract`.
   | "subtract", [a] => some <| pure (.un .neg a)
-  | "add", [a, b] => some <| pure (.bin .add a b)
-  | "subtract", [a, b] => some <| pure (.bin .sub a b)
-  | "multiply", [a, b] => some <| pure (.bin .mul a b)
-  | "equal", [a, b] => some <| pure (.bin .eq a b)
   | "not_equal", [a, b] => some <| pure (.un .not (.bin .eq a b))
-  | "lt", [a, b] => some <| pure (.bin .lt a b)
   -- A shim's guards (#185), which `--write-duckdb` writes.
   | "sverify_raise", [a, .lit (.str msg)] => some <| pure (.un (.raise msg) a)
-  | "sverify_pair", [a, b] => some <| pure (.bin .pair a b)
-  | "sverify_is_number", [a] => some <| pure (.un .isNum a)
   | "gt", [a, b] => some <| pure (.bin .lt b a)
   | "lte", [a, b] => some <| pure (.un .not (.bin .lt b a))
   | "gte", [a, b] => some <| pure (.un .not (.bin .lt a b))
@@ -1294,14 +1288,13 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   | "is_not_distinct_from", [a, b] => some <| pure (notDistinct a b)
   | "is_distinct_from", [a, b] => some <| pure (.un .not (notDistinct a b))
   -- Integer division and remainder truncate; doubles go to `mkFloatCall`.
-  | "divide", [a, b] => some <| pure (.bin .idiv a b)
-  | "modulus", [a, b] => some <| pure (.bin .imod a b)
-  | "power", [a, b] => some <| pure (.bin .ipow a b)
   -- Bitwise operations of integers (`SubstraitLean/Numeric.lean`); `NOT x`
   -- is `x XOR -1`.
   | "bitwise_not", [a] => some <| pure (.bin (.bit .xor) a (.lit (.int (-1))))
-  | name, [a, b] => (BitOp.ofName? name).map fun op => (pure (.bin (.bit op) a b) : J Expr)
-  | _, _ => none
+  -- Substrait's names of the shifts; DataFusion's are the table's.
+  | "shift_left", [a, b] => some <| pure (.bin (.bit .shl) a b)
+  | "shift_right", [a, b] => some <| pure (.bin (.bit .shr) a b)
+  | name, args => (Functions.read? Functions.core .plain name args).map pure
 where
   notDistinct (a b : Expr) : Expr :=
     .ifThen (.un .isNull a) (.un .isNull b)
@@ -1313,16 +1306,10 @@ where
 
 /-- Strings (`SubstraitLean/Text.lean`). -/
 def mkStringCall? : String → List Expr → Option (J Expr)
-  | "upper", [a] => some <| pure (.un .upper a)
-  | "lower", [a] => some <| pure (.un .lower a)
-  | "character_length", [a] | "char_length", [a] | "length", [a] => some <| pure (.un .length a)
-  | "str_concat", [a, b] => some <| pure (.bin .concat a b)
+  | "char_length", [a] | "length", [a] => some <| pure (.un .length a)
   | "concat", a :: as => some <| pure (as.foldl (.bin .concat) a)
-  | "strpos", [a, b] => some <| pure (.bin .strpos a b)
-  | "starts_with", [a, b] => some <| pure (.bin .startsWith a b)
-  | "ends_with", [a, b] => some <| pure (.bin .endsWith a b)
   -- The third argument is the escape character; `NULL` means a backslash.
-  | "like", [a, b] | "like", [a, b, .lit .null] => some <| pure (.bin .like a b)
+  | "like", [a, b, .lit .null] => some <| pure (.bin .like a b)
   | "like", [_, _, _] =>
     some <| throw "LIKE … ESCAPE is not modelled yet; match a literal % or _ with contains or starts_with"
   | "substring", [s, a] => some <| pure (.bin (.substr none true) s a)
@@ -1333,18 +1320,11 @@ def mkStringCall? : String → List Expr → Option (J Expr)
   | "btrim", [a] => some <| pure (.bin (.trim true true) a (.lit (.str " ")))
   | "ltrim", [a] => some <| pure (.bin (.trim true false) a (.lit (.str " ")))
   | "rtrim", [a] => some <| pure (.bin (.trim false true) a (.lit (.str " ")))
-  | "btrim", [a, b] => some <| pure (.bin (.trim true true) a b)
-  | "ltrim", [a, b] => some <| pure (.bin (.trim true false) a b)
-  | "rtrim", [a, b] => some <| pure (.bin (.trim false true) a b)
-  | "reverse", [a] => some <| pure (.un .reverse a)
-  | "ascii", [a] => some <| pure (.un .ascii a)
   | "replace", [a, .lit (.str p), .lit (.str r)] => some <| pure (.un (.replace p r) a)
   | "replace", [_, _, _] => some <| throw "replace needs a constant pattern and replacement"
-  | "repeat", [a, n] => some <| pure (.bin .strRepeat a n)
-  | "ilike", [a, b] | "ilike", [a, b, .lit .null] => some <| pure (.bin .ilike a b)
+  | "ilike", [a, b, .lit .null] => some <| pure (.bin .ilike a b)
   | "ilike", [_, _, _] =>
     some <| throw "ILIKE … ESCAPE is not modelled yet; match a literal % or _ with contains or starts_with on lower(…)"
-  | "levenshtein", [a, b] => some <| pure (.bin .levenshtein a b)
   | "regexp_match", _ =>
     some <| throw "regexp_match is only supported as array_length(regexp_match(s, p))"
   -- A constant pattern in `Text.simpleRegex`, which DuckDB checks when it
@@ -1360,9 +1340,7 @@ def mkStringCall? : String → List Expr → Option (J Expr)
   | "regexp_replace", [_, .lit (.str _), .lit (.str _), .lit (.str fl)] =>
     some <| throw s!"regexp_replace with the flags '{fl}' is not supported (only 'g')"
   | "regexp_replace", _ => some <| throw "regexp_replace needs a constant pattern and replacement"
-  | "md5", [a] => some <| pure (.un .md5 a)
-  | "sha256", [a] => some <| pure (.un .sha256 a)
-  | _, _ => none
+  | name, args => (Functions.read? Functions.strings .plain name args).map pure
 
 /-- Dates and times (`SubstraitLean/Time.lean`). -/
 def mkTemporalCall? : String → List Expr → Option (J Expr)
@@ -1382,16 +1360,13 @@ def mkTemporalCall? : String → List Expr → Option (J Expr)
     match Time.parseFormat fmt.toList with
     | some _ => pure (.un (.strftime fmt) a)
     | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
-  -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
-  | "date_diff", [d, e] => some <| pure (.bin .dateDiff d e)
-  | _, _ => none
+  | name, args => (Functions.read? Functions.temporal .plain name args).map pure
 
 /-- Lists and structs. -/
 def mkNestedCall? : String → List Expr → Option (J Expr)
   -- sverify's own `lt` of two lists, which `Write.lean` writes as `list_lt` (#207).
   | "list_lt", [a, b] => some <| pure (.bin .lt a b)
-  | "cardinality", [a] => some <| pure (.un .cardinality a)
-  | _, _ => none
+  | name, args => (Functions.read? Functions.nested .plain name args).map pure
 
 /-- Maps Substrait standard-extension functions onto the modelled ones: the
 first area that knows the function, else an error. -/
@@ -1444,10 +1419,6 @@ def doubleJ (fns : List (Nat × String)) (j : Json) : Bool := declaredKind fns j
 
 /-- Arithmetic whose result is a double. -/
 def mkFloatCall : String → List Expr → J Expr
-  | "add", [a, b] => pure (.bin .fadd a b)
-  | "subtract", [a, b] => pure (.bin .fsub a b)
-  | "multiply", [a, b] => pure (.bin .fmul a b)
-  | "divide", [a, b] => pure (.bin .fdiv a b)
   -- Substrait has no `modulus` of doubles, but DataFusion writes one; it is
   -- C's `fmod`, as DuckDB, DataFusion and Spark compute `%`, and raises on a
   -- zero divisor, as on integers (#203).
@@ -1457,19 +1428,12 @@ def mkFloatCall : String → List Expr → J Expr
     pure (.ifThen (.bin .eq a (.lit (.int FloatCode.nan))) a (.un .fneg a))
   -- `ABS` negates the codes below zero (negatives and `-∞`).
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .fneg a) a)
-  | "power", [a, b] => pure (.bin .fpow a b)
-  | "floor", [a] => pure (.un .ffloor a)
-  | "ceil", [a] => pure (.un .fceil a)
-  | "round", [a] => pure (.un .fround a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
   -- `SubstraitLean/Numeric.lean`.
-  | "atan2", [y, x] => pure (.bin .fatan2 y x)
-  | "logb", [x, b] => pure (.bin .flogb x b)
-  | name, [a] => match FMath.ofName? name with
-    | some f => pure (.un (.fmath f) a)
-    | none => throw s!"unsupported double function {name}/1"
-  | name, args => throw s!"unsupported double function {name}/{args.length}"
+  | name, args => match Functions.read? Functions.core .float name args with
+    | some e => pure e
+    | none => throw s!"unsupported double function {name}/{args.length}"
 
 /-- `x · 10ᵏ`: a decimal brought to a scale `k` digits larger (#27). -/
 def upscale (k : Nat) (x : Expr) : Expr :=
@@ -1574,12 +1538,9 @@ partial def segments (cols : List Kind) (base : Expr) (seg : Json) :
   | none => return e
 
 /-- The higher-order functions on lists (`functions_list.yaml`). -/
-def hofFn? : String → Option HoFn
-  | "any_match" => some .anyMatch
-  | "all_match" => some .allMatch
-  | "transform" => some .transform
-  | "filter" => some .filter
-  | _ => none
+def hofFn? (name : String) : Option HoFn :=
+  Functions.nested.findSome? fun r =>
+    if r.name == name then match r.ctor with | some (.hof f) => some f | _ => none else none
 
 /-- A JSON object's entries. -/
 def entries (kvs : Std.TreeMap.Raw String Json compare) : List (String × Json) :=

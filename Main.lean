@@ -306,6 +306,10 @@ def main (args : List String) : IO UInt32 := do
     -- The black boxes' table (#325), for sverify.black_box's test.
     IO.println blackBoxJson.compress
     return 0
+  | ["--functions"] => do
+    -- The function tables (#544, #269), for the Python mirror's agreement test.
+    IO.println Functions.tableJson.compress
+    return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB (#241); a golden test.
     for (c, how, _) in duckdbOn.coverage do
@@ -320,5 +324,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions"
     return 1
