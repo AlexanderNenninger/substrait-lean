@@ -7,8 +7,9 @@ import base64
 import json
 import math
 import re
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
@@ -3390,6 +3391,41 @@ def order_matters(r: Rel) -> bool:
             return order_matters(a) or order_matters(b)
 
 
+def inputs(r: Rel) -> list[Rel]:
+    """A node's inputs, in the order of Lean's `Rel.inputs` (`Marks.input`)."""
+    match r:
+        case Read() | Values():
+            return []
+        case Cross(left=a, right=b) | Join(left=a, right=b) | UnionAll(left=a, right=b):
+            return [a, b]
+        case Semi(left=a, right=b):
+            return [a, b]
+        case _:
+            return [r.input]
+
+
+def unchecked_slots(r: Rel, marks: dict) -> dict[int, frozenset[int]]:
+    """The slots of each node of `r` whose expressions run without their checks,
+    by node (`id`), from a contract report's `unchecked` (`Rel.marksJson`).
+    Raises `Unsupported` when the marks are for another plan."""
+    out: dict[int, frozenset[int]] = {}
+
+    def walk(x: Rel, m: Any) -> None:
+        kids = inputs(x)
+        if (
+            not isinstance(m, dict)
+            or m.get("node") != type(x).__name__
+            or len(m.get("inputs", ())) != len(kids)
+        ):
+            raise Unsupported("the unchecked expressions are for another plan")
+        out[id(x)] = frozenset(m.get("slots", ()))
+        for k, mk in zip(kids, m["inputs"], strict=True):
+            walk(k, mk)
+
+    walk(r, marks)
+    return out
+
+
 ORD = "o"
 
 
@@ -3397,6 +3433,11 @@ ORD = "o"
 class _Writer:
     d: Dialect
     tie_free: bool = False
+    unchecked: dict[int, frozenset[int]] = field(default_factory=dict)
+    """The slots per node (`id`) whose expressions run without checks
+    (`Rel.evalG_marks`): a filter's, join's or semi-join's condition is slot 0,
+    a projection's expressions are slots 0, 1, …, and slot 0 of an aggregate
+    is all of its grouping expressions and measures' arguments and filters."""
     n: int = 0
 
     def alias(self) -> str:
@@ -3414,6 +3455,19 @@ class _Writer:
 
     def select(self, items: list[str], from_: str, rest: str = "") -> str:
         return f"SELECT {', '.join(items)} FROM {from_}" + (f" {rest}" if rest else "")
+
+    @contextmanager
+    def slot(self, r: Rel, i: int) -> Iterator[None]:
+        """Write slot `i` of node `r` without its checks if it is unchecked."""
+        if i not in self.unchecked.get(id(r), ()) or not self.d.guards:
+            yield
+            return
+        d = self.d
+        self.d = replace(d, guards=False)
+        try:
+            yield
+        finally:
+            self.d = d
 
     def passthrough(self, alias: str, n: int, ordered: bool) -> list[str]:
         items = [f"{self.ref(alias, self.c(i))} AS {self.c(i)}" for i in range(n)]
@@ -3476,7 +3530,8 @@ class _Writer:
                 a = self.alias()
                 ks = kinds(i)
                 self.check_refs(cond, len(ks))
-                where = d.is_true(self.expr(cond, lambda j: self.ref(a, self.c(j)), ks, "bool"))
+                with self.slot(r, 0):
+                    where = d.is_true(self.expr(cond, lambda j: self.ref(a, self.c(j)), ks, "bool"))
                 return self.select(
                     self.passthrough(a, n, ordered),
                     d.subquery(self.rel(i, ordered), a),
@@ -3489,7 +3544,8 @@ class _Writer:
                 items = [f"{self.ref(a, self.c(j))} AS {self.c(j)}" for j in range(m)]
                 for j, e in enumerate(es):
                     self.check_refs(e, m)
-                    sql = self.expr(e, lambda x: self.ref(a, self.c(x)), ks, expr_kind(e, ks))
+                    with self.slot(r, j):
+                        sql = self.expr(e, lambda x: self.ref(a, self.c(x)), ks, expr_kind(e, ks))
                     items.append(f"{sql} AS {self.c(m + j)}")
                 if ordered:
                     items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
@@ -3525,7 +3581,8 @@ class _Writer:
                 def side(j: int) -> str:
                     return self.ref(la, self.c(j)) if j < nl else self.ref(ra, self.c(j - nl))
 
-                on = self.expr(r.on, side, ks, "bool")
+                with self.slot(r, 0):
+                    on = self.expr(r.on, side, ks, "bool")
                 join = "INNER JOIN" if r.type == "inner" else "LEFT JOIN"
                 return self.select(items, f"{lsub} {join} {rsub} ON {on}")
             case Fetch(input=i, offset=off, count=cnt):
@@ -3586,7 +3643,8 @@ class _Writer:
                 def side(j: int) -> str:
                     return self.ref(la, self.c(j)) if j < nl else self.ref(ra, self.c(j - nl))
 
-                cond = d.is_true(self.expr(on, side, kinds(left) + kinds(right), "bool"))
+                with self.slot(r, 0):
+                    cond = d.is_true(self.expr(on, side, kinds(left) + kinds(right), "bool"))
                 rsub = d.subquery(self.rel(right, False), ra)
                 exists = f"{'NOT ' if anti else ''}EXISTS (SELECT 1 FROM {rsub} WHERE {cond})"
                 return self.select(
@@ -3612,17 +3670,24 @@ class _Writer:
             case Distinct(input=i):
                 return self.distinct(i, ordered)
             case Aggregate(input=i, groups=gs, measures=ms):
-                return self.aggregate(i, gs, ms, ordered)
+                return self.aggregate(i, gs, ms, ordered, 0 in self.unchecked.get(id(r), ()))
         raise Unsupported(f"unsupported relation {type(r).__name__}")
 
     def aggregate(
-        self, i: Rel, groups: Sequence[Expr], measures: Sequence[Measure], ordered: bool
+        self,
+        i: Rel,
+        groups: Sequence[Expr],
+        measures: Sequence[Measure],
+        ordered: bool,
+        unchecked: bool = False,
     ) -> str:
         """`aggregateEval`. Three steps: the grouping expressions and each
         measure's argument (NULL on rows its filter drops) on every input row;
         for `DISTINCT` measures, the argument only on the first row of each
         value in its group; then `GROUP BY` the groups, as `Value`s. Groups
-        come in order of their first row."""
+        come in order of their first row. `unchecked`: write the grouping
+        expressions and the measures' arguments and filters without checks
+        (the measures themselves keep theirs)."""
         d = self.d
         ks = kinds(i)
         m = len(ks)
@@ -3641,17 +3706,22 @@ class _Writer:
         # A DISTINCT measure's argument on the first row of each of its values.
         d_cols = [d.quote(f"d{k}") for k in range(len(measures))]
         g_kinds = [expr_kind(g, ks) for g in groups]
-        items = [
-            f"{self.expr(g, ref, ks, k)} AS {c}"
-            for g, k, c in zip(groups, g_kinds, g_cols, strict=True)
-        ]
-        for ms, c in zip(measures, m_cols, strict=True):
-            k = expr_kind(ms.arg, ks)
-            x = self.expr(ms.arg, ref, ks, k)
-            if ms.filter is not None:
-                keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
-                x = d.case_when(keep, x, d.null(k))
-            items.append(f"{x} AS {c}")
+        if unchecked:
+            self.d = replace(d, guards=False)
+        try:
+            items = [
+                f"{self.expr(g, ref, ks, k)} AS {c}"
+                for g, k, c in zip(groups, g_kinds, g_cols, strict=True)
+            ]
+            for ms, c in zip(measures, m_cols, strict=True):
+                k = expr_kind(ms.arg, ks)
+                x = self.expr(ms.arg, ref, ks, k)
+                if ms.filter is not None:
+                    keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
+                    x = d.case_when(keep, x, d.null(k))
+                items.append(f"{x} AS {c}")
+        finally:
+            self.d = d
         # `first`, `last` and `string_agg` (#55): each measure's sort keys, as
         # `Value.le` sorts.
         orders: list[list[tuple[str, SortKey, Kind | None]]] = []
@@ -4516,7 +4586,14 @@ def _no_fields() -> str:
     raise Unsupported("virtual table rows cannot refer to fields")
 
 
-def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool = True) -> str:
+def to_sql(
+    plan: dict,
+    dialect: Dialect,
+    *,
+    tie_free: bool = False,
+    guards: bool = True,
+    unchecked: dict | None = None,
+) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
     The result has the plan's output names (`RelRoot.names`, else `c0`, …),
@@ -4533,6 +4610,11 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     pass it for a plan whose contract report is `guard_free`, and run the
     SQL on data that meets the contract's preconditions.
 
+    `unchecked` leaves them out of some expressions only: pass a contract
+    report's `unchecked` for the same plan, and run the SQL on data that
+    meets its preconditions (`Rel.evalG_marks`). The other expressions, and
+    every aggregate, keep their checks.
+
     Args:
         plan: A Substrait JSON plan, parsed (`json.loads`), such as a
             node's `plan` or `sverify.engines.written_plan`'s output.
@@ -4541,6 +4623,9 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
         tie_free: Promise that windows have no ties on their PARTITION BY
             and ORDER BY columns. Default: False.
         guards: Write the run-time checks. Default: True.
+        unchecked: The expressions to write without checks, as a contract
+            report's `unchecked` (`sverify.Report.unchecked`) for this plan.
+            Default: None (all of them keep their checks).
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4548,7 +4633,8 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
 
     Raises:
         Unsupported: The plan is outside the Lean model, its root names do
-            not match its columns, or the dialect cannot express it.
+            not match its columns, the dialect cannot express it, or
+            `unchecked` is for another plan.
 
     Examples:
         The plan of a transform, as Snowflake SQL:
@@ -4583,6 +4669,8 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     for k in kinds(p.root):
         dialect.result_kind(k)
     w = _Writer(dialect, tie_free)
+    if unchecked is not None:
+        w.unchecked = unchecked_slots(p.root, unchecked)
     ordered = order_matters(p.root)
     a = w.alias()
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]

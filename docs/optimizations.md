@@ -73,6 +73,14 @@ meets a contract.
 * `Rel.guardFree_sound`: the same, derived from `Rel.mayIssues` under the
   contract's preconditions. `substrait-check --contract` reports this as
   `guard_free`, and `sverify.Report.guard_free` exposes it.
+* `Rel.evalG_marks`: the same per expression. `Rel.marks` lists, per node,
+  the expressions without abstract issues on the inputs `Rel.mayIssues`
+  analyses them on (a filter's, join's or semi-join's condition, each of a
+  projection's expressions, and an aggregate's expressions together), as a
+  tree parallel to the plan. `Rel.evalG` runs those with unchecked functions
+  and the rest with Lean's, and gives `Rel.eval` with no hypothesis on the
+  other issues. `substrait-check --contract` reports the tree as
+  `unchecked`, and `sverify.Report.unchecked` exposes it.
 
 To keep the `SUM` case apart, `Safety.lean` reports its issue as
 `Issue.sumWraps`, named "SUM overflow". `verify` assumes it away (inferred,
@@ -97,6 +105,14 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
 `polars_engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
+`to_sql(plan, dialect, unchecked=report.unchecked)` drops the checks of the
+expressions `unchecked` lists and keeps the others, and every aggregate's.
+The writer checks that the tree's nodes are the plan's, so a report on
+another plan raises `Unsupported`. In `SELECT a // b, a * b` with
+`0 ≤ a ≤ 1000` and `b ≥ 1`, the division loses its `CASE` and the product
+keeps its overflow check (`test_per_expression_guards` in
+`python/tests/test_guards.py`). The Polars engine still drops all of its
+checks or none.
 
 **Benchmark** (`python/scripts/bench_optimizations.py`, homelab, 10⁶ rows,
 `a // b`, `a % b`, `a * 3 + b` under a filter, preconditions `0 ≤ a ≤ 10⁶`,
@@ -111,8 +127,8 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 be ⊤, so `a * b` kept its overflow guard even when both columns are bounded.
 It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
 so such products go guard-free; a half-open range still gives ⊤. The
-elimination is also all or nothing per plan; per-expression elimination is a
-follow-up in #83.
+elimination was also all or nothing per plan; `Rel.evalG_marks` now decides
+per expression (#83).
 
 ## 2. Sharded evaluation
 
