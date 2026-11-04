@@ -1,6 +1,7 @@
 import Lean.Data.Json
 import SubstraitLean.Keys
 import SubstraitLean.Functions
+import SubstraitLean.Options
 
 /-!
 # Parsing Substrait JSON plans
@@ -996,14 +997,52 @@ def eagerly (c : Expr) (xs : List Expr) : Expr :=
 /-! ## Function options
 
 Substrait lets a plan choose some behaviours (`overflow`, `rounding`, …); a
-consumer takes the first preference it supports. An option is accepted when
-the model's behaviour is one of its preferences, or when the behaviours differ
-only on rows where `SubstraitLean/Safety.lean` reports an error anyway (what
-`MIN / -1` gives); anything else is refused. -/
+consumer takes the first preference it supports. The reference's choices are
+`Profile.reference.table` (`SubstraitLean/Options.lean`, #444): an option is
+known for a call when its group takes it, and accepted when the reference's
+choice is one of its preferences. A choice may also accept behaviours that
+differ from the model's only on rows where `SubstraitLean/Safety.lean`
+reports an error anyway (what `MIN / -1` gives); anything else is refused. -/
+
+/-- The group whose options a call of `base` takes (`Functions.groups`), on
+doubles when `float`; `none` for a call that takes none. The names the parser
+reads options of, by their rows in `Functions.lean`; `contains` (read as
+`strpos`) has no row of its own, and the remainder of doubles is
+`sverify_fmod`'s row. sverify's own functions have no YAML, so no options. -/
+def optionGroup (base : String) (float : Bool) : Option String :=
+  match base with
+  | "add" | "subtract" | "multiply" => some (if float then "fp.arith" else "int.arith")
+  | "negate" => some (if float then "fp.neg" else "int.arith")
+  | "power" => some (if float then "fp.elem" else "int.pow")
+  | "divide" => some (if float then "fp.div" else "int.div")
+  | "modulus" => some (if float then "fp.mod" else "int.mod")
+  | "abs" => if float then none else some "int.abs"
+  | "sum" | "avg" => some (if float then "agg.fsum" else "agg.isum")
+  | "round" => if float then some "fp.round" else none
+  -- Of integers too: they are converted to doubles, as `avg`'s.
+  | "variance" | "std_dev" => some "agg.var"
+  | "like" | "contains" | "starts_with" | "ends_with" | "strpos" => some "str.match"
+  | "upper" | "lower" => some "str.case"
+  | "substring" => some "str.sub"
+  -- The elementary functions and logarithms, of integers too.
+  | b => if doubleFns.contains b then (Functions.all.find? (·.name == b)).map (·.group) else none
 
 /-- The preferences an option of `base` may list (`none`: any), and whether
 the option is known at all. `float` says the call is on doubles. -/
-def optionAccepts (base : String) (float : Bool) : String → Option (Option (List String))
+def optionAccepts (base : String) (float : Bool) (opt : String) : Option (Option (List String)) :=
+  (optionGroup base float).bind (Profile.reference.table.accepts · opt)
+
+/-! ### The table changes nothing
+
+`optionAccepts` as it was before the table (#444 step 1a), and a check that
+the lookup agrees with it on every name the function tables or the parser
+know, on integers and on doubles, for every option Substrait's YAMLs name. Two
+differences: `variance` and `std_dev` of integers now accept `rounding`
+(`TIE_TO_EVEN`), as `avg` of integers does, since both convert to doubles;
+and `avg` of integers would accept `overflow` (`ERROR`) as `sum` does, which
+no plan reaches: `parseMeasure` reads `avg`'s options as of doubles. -/
+
+private def optionAcceptsBefore (base : String) (float : Bool) : String → Option (Option (List String))
   -- Integer overflow raises at the declared width (#202). `+`, `-`, `×` and
   -- negation of integers also wrap around (`SILENT`) or clamp (`SATURATE`)
   -- when the plan asks (`UnFn.fit`, #241); `mkScalar` refuses them on decimals.
@@ -1056,6 +1095,29 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
   | "negative_start" =>
     if base == "substring" then some (some ["WRAP_FROM_END", "LEFT_OF_BEGINNING"]) else none
   | _ => none
+
+
+/-- Every option the YAMLs of `substrait-extensions` 0.106.0 name, and one they don't. -/
+private def yamlOptions : List String :=
+  ["case_sensitivity", "char_set", "complex_number_result", "direction", "distribution",
+   "division_type", "dotall", "ignore_nulls", "multiline", "nan_equality", "negative_start",
+   "null_handling", "on_division_by_zero", "on_domain_error", "on_log_zero", "overflow",
+   "padding", "rounding", "no_such_option"]
+
+private def optionNames : List String :=
+  (Functions.all.map (·.name) ++ doubleFns ++
+    ["contains", "concat", "sum", "avg", "variance", "std_dev", "modulus", "abs", "power"]).eraseDups
+
+#guard optionNames.all fun base => [false, true].all fun float => yamlOptions.all fun o =>
+  optionAccepts base float o == optionAcceptsBefore base float o ||
+    (["variance", "std_dev"].contains base && !float && o == "rounding") ||
+    (base == "avg" && !float && o == "overflow")
+
+-- Each group `optionGroup` gives a name with a row is one of that name's rows'.
+#guard optionNames.all fun base => [false, true].all fun float =>
+  match optionGroup base float, Functions.all.filter (·.name == base) with
+  | some g, rows@(_ :: _) => rows.any (·.group == g) || (base == "modulus" && g == "fp.mod")
+  | _, _ => true
 
 def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
   let base := baseName name

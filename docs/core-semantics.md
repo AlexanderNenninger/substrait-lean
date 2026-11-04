@@ -160,19 +160,23 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 
 | Area | Group | Functions | Options |
 |---|---|---|---|
-| core | `int.arith` | `add`, `subtract`, `multiply`, `negate`, `power` on integers | `overflow` |
+| core | `int.arith` | `add`, `subtract`, `multiply`, `negate` on integers | `overflow` |
+| core | `int.pow` | `power` on integers | `overflow` (`ERROR` only), `on_domain_error` (none occurs) |
 | core | `int.abs` | `abs` on integers | `overflow` |
-| core | `int.div` | `divide` on integers | `overflow` (`MIN / -1`), `on_division_by_zero` |
-| core | `int.mod` | `modulus` on integers | `on_division_by_zero`, `division_type`, `min_mod_neg_one` |
+| core | `int.div` | `divide` on integers | `overflow` (`MIN / -1`), `on_division_by_zero`, `on_domain_error` (none occurs) |
+| core | `int.mod` | `modulus` on integers | `overflow`, `on_division_by_zero`, `division_type`, `min_mod_neg_one` |
 | core | `int.bit` | `bitwise_and`, `bitwise_or`, `bitwise_xor` | none |
 | core | `int.shift` | `bitwise_shift_left`, `bitwise_shift_right` | `shift_range` |
 | core | `dec.arith` | `add`, `subtract`, `multiply`, `negate`, `abs` on decimals | `overflow` (`ERROR` only), `decimal_rescale` |
 | core | `dec.div` | `divide`, `modulus` on decimals, `sverify_decimal_div` | refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
-| core | `fp.arith` | `add`, `subtract`, `multiply`, `negate` on doubles | `rounding`, `nan_creation`, `zero_sign` |
-| core | `fp.div` | `divide` on doubles, `sverify_fmod` | `rounding`, `on_division_by_zero`, `nan_creation`, `zero_sign` |
+| core | `fp.arith` | `add`, `subtract`, `multiply` on doubles | `rounding`, `nan_creation`, `zero_sign` |
+| core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
+| core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
+| core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
 | core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
-| core | `fp.round` | `round`, `floor`, `ceil` | `rounding` (`round` only) |
+| core | `fp.round` | `round` | `rounding` |
+| core | `fp.floor` | `floor`, `ceil` | none |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
@@ -187,7 +191,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | nested | `list.plain` | `array_length`, `cardinality`, `any_match`, `all_match`, `transform`, `filter` | none |
 | aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result` |
 | aggregates | `agg.fsum` | `sum`, `avg` of doubles | `sum_order`, `rounding`, `nan_creation` |
-| aggregates | `agg.stat` | `variance`, `std_dev`, `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `stat_degenerate` |
+| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `stat_degenerate` |
+| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `stat_degenerate` |
 | aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` |
 | aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_order` |
 | aggregates | `agg.pick` | `first`, `last`, `arg_min`, `arg_max`, `mode` | `tie_pick` |
@@ -242,9 +247,10 @@ def options : List OptionSpec := [
   … ]
 ```
 
-`#guard`s check that every `core` is the union of `yaml` and `extra`'s
-behaviours, that ids are unique, and that every fact id names a file of
-`characterization/*/facts/`.
+Checks by `decide` (`SubstraitLean/Options.lean`) reject a repeated id or
+behaviour, and a `yaml` value or `extra` behaviour outside `core`; the rest of
+`core` is sverify's own (`ONE_ZERO`, `DROP_BITS`). `tests/test_functions.py`
+checks that every fact id names a file of `characterization/*/facts/`.
 
 ### The functions table
 
@@ -263,9 +269,12 @@ def groups : List (String × List String) := [
   … ]
 ```
 
-A function's options are its group's. `optionAccepts` (`Parse.lean`) becomes
-a lookup: an option is known for a function when its group lists it, and
-accepted when the profile's choice meets the plan's preferences.
+A function's options are its group's. `optionAccepts` (`Parse.lean`) is a
+lookup: `optionGroup` gives a call's group (by its name, and whether it is of
+doubles), an option is known for the call when its group lists it, and
+accepted when the reference's choice meets the plan's preferences
+(`ProfileTable.accepts`). A `#guard` checks the lookup against the
+hand-written function it replaced, on every name and option.
 
 ### The choices table
 
@@ -275,6 +284,9 @@ inductive Choice where
   | oneOf (bs : List Behaviour)
   /-- The plan's first preference among these; any of them where it states none. -/
   | asked (bs : List Behaviour) (dflt : List Behaviour)
+  /-- The option never applies to the group's inputs (`on_domain_error` of
+  integers): every preference is accepted. -/
+  | any
 
 structure ProfileTable where
   name : String
@@ -356,7 +368,8 @@ Python reads them for four things:
 The Lean tables are the source. A test dumps them as JSON (an `#eval` in
 `Examples.lean`, or `substrait-check --tables`) and compares them with the
 Python tables row by row, as `tests/test_black_box.py` does for the black
-boxes. Decided ([D1](#d1-where-the-tables-live)).
+boxes. `substrait-check --options` prints the options, the groups' options
+and the reference's choices. Decided ([D1](#d1-where-the-tables-live)).
 
 ### The realizability table
 

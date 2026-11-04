@@ -27,6 +27,28 @@ def lean_rows() -> tuple[dict, ...]:
     return tuple(json.loads(out.stdout))
 
 
+@functools.cache
+def lean_options() -> dict:
+    """Lean's options table, the groups' options and the reference's choices
+    (`SubstraitLean/Options.lean`), as `substrait-check --options` prints them."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    return json.loads(out.stdout)
+
+
+def lean_choice(profile: str, group: str, option: str) -> fns.Choice:
+    """`ProfileTable.choice?`: the group's own row, else the option's."""
+    rows = lean_options()["choices"][profile]
+    found = [r for r in rows if r["group"] == group and r["option"] == option] or [
+        r for r in rows if r["group"] is None and r["option"] == option
+    ]
+    assert found, (profile, group, option)
+    c = found[0]["choice"]
+    assert c["kind"] in ("oneOf", "asked"), c
+    return fns.Choice(tuple(c["behaviours"]), tuple(c["default"]) if "default" in c else None)
+
+
 @pytest.mark.parametrize("f", fns.FUNCTIONS, ids=lambda f: f.name)
 def test_rows_are_lean_functions(f: fns.Fn) -> None:
     """Each row is Lean's: its area, anchor, group and the group's options,
@@ -36,6 +58,34 @@ def test_rows_are_lean_functions(f: fns.Fn) -> None:
     for r in rows:
         assert (r["area"], r["anchor"], r["group"]) == (f.area, f.anchor, f.group)
         assert tuple(r["options"]) == f.options
+
+
+def test_options_are_lean() -> None:
+    """Each option is Lean's row (D1), and each group has Lean's options."""
+    lean = {o["id"]: o for o in lean_options()["options"]}
+    for o in fns.OPTIONS.values():
+        row = lean[o.id]
+        assert (row["substrait"], tuple(row["core"])) == (o.substrait, o.core), o.id
+        assert tuple(tuple(e) for e in row["extra"]) == o.extra, o.id
+    for group, options in fns.GROUPS.items():
+        assert tuple(lean_options()["groups"][group]) == options, group
+
+
+@pytest.mark.parametrize("f", fns.FUNCTIONS, ids=lambda f: f.name)
+def test_reference_is_lean(f: fns.Fn) -> None:
+    """The reference's choice at each of a row's options is Lean's
+    (`Profile.reference.table`)."""
+    for option, c in f.reference.items():
+        assert c == lean_choice("reference", f.group, option), (f.name, option)
+
+
+def test_lean_facts_exist() -> None:
+    """Every fact Lean's options table cites is a document of `characterization/`."""
+    facts = {fact for o in lean_options()["options"] for _, fact in o["extra"]}
+    assert facts
+    for fact in facts:
+        engine = fact.split("-")[0]
+        assert (ROOT / "characterization" / engine / "facts" / f"{fact}.json").exists(), fact
 
 
 def test_strings_complete() -> None:
