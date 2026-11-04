@@ -1,6 +1,7 @@
 module
 
 public import FloatBounds.Epsilon
+public import FloatBounds.Arith
 
 /-!
 # `ε` through double arithmetic (#568)
@@ -30,8 +31,9 @@ Polars, the characterization's round 5). Polars divides by a literal as
 `rule_div_recip`, `Δ (1 + u)² + (3u + u²) F + (u (1 + u)(ma + εa) + 2u) tiny`.
 
 Each rule assumes the exact results do not overflow, `F + Δ ≤ maxFinite`.
-Elementary functions (`exp`, `log`, `sin`, …) are the platform's `libm`,
-which IEEE 754 does not require to round correctly; they have no rule here.
+`exp` is the platform's `libm` on both sides, trusted to one ulp
+(`NativeLink.exp`): `rule_exp`, from `|exp x − exp y| ≤ exp M · |x − y|`. The
+other elementary functions (`log`, `sin`, …) have no rule here.
 -/
 
 @[expose] public section
@@ -204,6 +206,50 @@ theorem StdModel.rule_div_recip {a a' b εa ma lb : ℝ} (hlb : 0 < lb) (hb : lb
           (M.fl (a / b) - a / b)
         have := abs_add_le (M.fl (a' * M.fl (1 / b)) - a' / b) (a' / b - a / b); linarith
     _ ≤ _ := by nlinarith
+
+/-- `|exp x − exp y| ≤ exp M · |x − y|` for `x, y ≤ M`. -/
+theorem abs_exp_sub_exp_le {x y M : ℝ} (hx : x ≤ M) (hy : y ≤ M) :
+    |Real.exp x - Real.exp y| ≤ Real.exp M * |x - y| := by
+  wlog hxy : y ≤ x generalizing x y
+  · rw [abs_sub_comm, abs_sub_comm x y]; exact this hy hx (by linarith)
+  have h1 : 1 - (x - y) ≤ Real.exp (-(x - y)) := by
+    have := Real.add_one_le_exp (-(x - y)); linarith
+  have e : Real.exp x - Real.exp y = Real.exp x * (1 - Real.exp (-(x - y))) := by
+    rw [mul_sub, mul_one, ← Real.exp_add]; ring_nf
+  have hpos : 0 ≤ Real.exp x - Real.exp y := by
+    have := Real.exp_le_exp.mpr hxy; linarith
+  rw [abs_of_nonneg hpos, abs_of_nonneg (by linarith), e]
+  have := Real.exp_le_exp.mpr hx
+  have := Real.exp_pos x
+  nlinarith
+
+/-- **`exp`**, the platform's `libm` on both sides (one ulp, `NativeLink.exp`):
+where `a ≤ ha` and the engine's input is within `εa`,
+`εa · exp (ha + εa) · (1 + 2u) + 4u (exp ha + tiny)`. -/
+theorem rule_exp {a a' εa ha r e : ℝ} (hεa : |a' - a| ≤ εa) (hha : a ≤ ha)
+    (hr : |r - Real.exp a| ≤ 2 * u * (Real.exp a + tiny))
+    (he : |e - Real.exp a'| ≤ 2 * u * (Real.exp a' + tiny)) :
+    |e - r| ≤ εa * Real.exp (ha + εa) * (1 + 2 * u) + 4 * u * (Real.exp ha + tiny) := by
+  have hu := u_pos
+  have h0 : 0 ≤ εa := le_trans (abs_nonneg _) hεa
+  have ha' : a' ≤ ha + εa := by have := le_abs_self (a' - a); linarith
+  have hd : |Real.exp a' - Real.exp a| ≤ εa * Real.exp (ha + εa) := by
+    have := abs_exp_sub_exp_le ha' (show a ≤ ha + εa by linarith)
+    have := mul_le_mul_of_nonneg_left hεa (Real.exp_pos (ha + εa)).le
+    linarith
+  have hEa : Real.exp a ≤ Real.exp ha := Real.exp_le_exp.mpr hha
+  have hEa' : Real.exp a' ≤ Real.exp ha + εa * Real.exp (ha + εa) := by
+    have := le_abs_self (Real.exp a' - Real.exp a); linarith
+  calc |e - r| = |(e - Real.exp a') + (Real.exp a' - Real.exp a) - (r - Real.exp a)| := by ring_nf
+    _ ≤ |e - Real.exp a'| + |Real.exp a' - Real.exp a| + |r - Real.exp a| := by
+        have := abs_sub_le_add ((e - Real.exp a') + (Real.exp a' - Real.exp a)) (r - Real.exp a)
+        have := abs_add_le (e - Real.exp a') (Real.exp a' - Real.exp a); linarith
+    _ ≤ 2 * u * (Real.exp ha + εa * Real.exp (ha + εa) + tiny) + εa * Real.exp (ha + εa)
+        + 2 * u * (Real.exp ha + tiny) := by
+        have := mul_le_mul_of_nonneg_left (add_le_add_right hEa' tiny) (by positivity : (0 : ℝ) ≤ 2 * u)
+        have := mul_le_mul_of_nonneg_left (add_le_add_right hEa tiny) (by positivity : (0 : ℝ) ≤ 2 * u)
+        linarith
+    _ = _ := by ring
 
 end FloatBounds
 

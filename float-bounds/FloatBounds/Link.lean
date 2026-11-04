@@ -20,6 +20,8 @@ proved from that model; Lean has no lemmas about the model yet.
 `FloatCode.ofFloat` in `SubstraitLean/Float.lean` uses: a code's magnitude is
 `|x| · 2¹⁰⁷⁴`.
 
+`exp` is trusted to one ulp: the platform's `libm` (#582).
+
 `native_sum_error` is the bound of `sum_error` for a fold of native doubles,
 `xs.foldl (· + ·) 0`, which is `floatSum` in `SubstraitLean/Aggregate.lean`
 on codes; `native_avg_error` adds `AVG`'s division by the count.
@@ -53,6 +55,12 @@ structure NativeLink where
     (a / b).isFinite ∧ (a / b).toReal = model.fl (a.toReal / b.toReal)
   sqrt : ∀ a : Float, a.isFinite → 0 ≤ a.toReal →
     a.sqrt.isFinite ∧ a.sqrt.toReal = model.fl (Real.sqrt a.toReal)
+  /-- `exp` is the platform's `libm`, which IEEE 754 does not require to
+  round correctly: within one ulp, `2u (|z| + tiny)`, of the exact value
+  (glibc's manual states 1 ulp; macOS measured 0.502, duckdb-ulp-libm and
+  polars-ulp-libm), and finite where that value is. -/
+  exp : ∀ a : Float, a.isFinite → Real.exp a.toReal ≤ maxFinite →
+    a.exp.isFinite ∧ |a.exp.toReal - Real.exp a.toReal| ≤ 2 * u * (Real.exp a.toReal + tiny)
   ofNat_exact : ∀ n : ℕ, n ≤ 2 ^ 53 → (Float.ofNat n).isFinite ∧ (Float.ofNat n).toReal = n
   zero_exact : (0 : Float).isFinite ∧ (0 : Float).toReal = 0
 

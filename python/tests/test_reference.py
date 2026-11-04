@@ -624,7 +624,8 @@ INFINITE = "overflow to infinity"
     ("sql", "requires", "errors"),
     [
         ("SELECT x + y AS v FROM f", [], ["domain error", INFINITE]),
-        ("SELECT x + y AS v FROM f", FINITE, [INFINITE]),
+        # Within 1e300 each, the sum stays below the largest double (#582).
+        ("SELECT x + y AS v FROM f", FINITE, []),
         ("SELECT x - y AS v FROM f", [], ["domain error", INFINITE]),
         ("SELECT x * y AS v FROM f", [], ["domain error", INFINITE]),
         ("SELECT x * y AS v FROM f", FINITE, [INFINITE]),
@@ -747,6 +748,33 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
         ref.run(con, engine)
     with pytest.raises(Exception, match="overflow"):
         ref.run(con, engine, check_inputs=False)
+
+
+def test_bounds_rule_out_overflow_to_infinity():
+    """#582: a double `+`, `-`, `*`, `/` or `exp` whose inputs' bounds keep
+    the exact result well below the largest double is finite
+    (`FloatCode.add_scaled` …, `FloatCode.exp_fin`, proved in `float-bounds`),
+    so the reference assumes nothing there. Chains are bounded too."""
+    tables = {"f": {"x": "float64", "y": "float64"}}
+    kinds = lambda sql, req: [i.kind for i in verify(sql, tables, req).issues]  # noqa: E731
+    sqls = [
+        "SELECT x * 1.1 AS v FROM f",
+        "SELECT x + y AS v FROM f",
+        "SELECT x - y AS v FROM f",
+        "SELECT (x + y) * x AS v FROM f",
+        "SELECT x / y AS v FROM f",
+        "SELECT exp(x) AS v FROM f",
+    ]
+    for sql in sqls:
+        assert INFINITE in kinds(sql, []), sql
+    req = ["x >= -1000000", "x <= 1000000", "y >= 1", "y <= 10"]
+    for sql in sqls[:-1]:
+        assert INFINITE not in kinds(sql, req), sql
+    # `exp` overflows past about 709.78.
+    assert INFINITE not in kinds("SELECT exp(x) AS v FROM f", ["x <= 709"])
+    assert INFINITE in kinds("SELECT exp(x) AS v FROM f", ["x <= 710"])
+    # A divisor that may be near zero may still overflow.
+    assert INFINITE in kinds("SELECT x / y AS v FROM f", ["x >= 0", "x <= 1000000", "y > 0"])
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
