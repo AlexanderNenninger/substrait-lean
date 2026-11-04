@@ -739,7 +739,9 @@ tables. A table format plays four roles:
   way, and the condition becomes a fact about every row for the contracts.
 * A sink that carries the contract. `node.write(DeltaSink(uri))` and
   `node.write(IcebergSink(catalog, identifier))` store a node in one commit
-  per state, exactly once (keyed by the source versions).
+  per state, exactly once (keyed by the source versions). A Delta source
+  dropped and created again at the same path has a new table id, which the
+  contract records: its sinks are rewritten from the new table.
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg), and the commit records the plan hash, the
   source versions and the contract. A job that reads the table gets its

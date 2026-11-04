@@ -24,6 +24,7 @@ from sverify.io._common import (
     Contract,
     SinkWrite,
     check_same_state,
+    other_tables,
     sink_schema,
     view_contract_record,
 )
@@ -120,8 +121,10 @@ class Sink:
     rows added and removed since the last write, or the whole table, with
     the contract to record. sverify writes each state exactly once: it skips
     a state whose `contract.epoch` the sink has already committed
-    (`committed`), unless another plan (`contract.plan`) committed it: then
-    the whole table replaces that plan's rows. By default that record is
+    (`committed`), unless another plan (`contract.plan`) committed it, or
+    the committed state was computed from other tables (a source with
+    another table id, `contract.table_ids`, or at a lower version: dropped
+    and created again): then the whole table replaces those rows. By default that record is
     kept in memory; override `committed` to read it back from the sink, so
     a restarted job does not write a state again. The nodes reading the stored node read what this
     process wrote, with its exact changes, unless `source` returns a source
@@ -283,9 +286,11 @@ class Sink:
             # The last write raised after its commit landed: the sink holds
             # that state, as a restarted job finds it. Write on from there.
             self._written, self._last = pending
-        if done is not None and done.plan != contract.plan:
-            # Another plan's rows: neither skip this epoch nor write a change
-            # on top of them; replace them.
+        if done is not None and (done.plan != contract.plan or other_tables(done, contract)):
+            # Another plan's rows, or rows computed from other tables (a
+            # source dropped and created again, #516): neither skip this
+            # epoch, which says nothing about these inputs, nor write a
+            # change on top of them; replace them.
             self._written = None
         elif done is not None and done.epoch >= contract.epoch:
             check_same_state(self.location, done, contract)

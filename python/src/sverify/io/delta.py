@@ -335,6 +335,28 @@ class DeltaSource(Pipeable):
         self._kept: dict[tuple[str, str], bool] = {}
         # Whether `where` may hold in a file, by path and schema: files are
         # immutable, so their statistics are proved about once.
+        self._ids: dict[int, str] = {}
+        # The table id (`metaData.id`) at each version read: a table dropped
+        # and created again at `uri` has a new one (#516).
+
+    def _seen(self, dt: DeltaTable) -> DeltaTable:
+        """Remember the id of the table at `dt`'s version."""
+        if len(self._ids) >= 64:
+            del self._ids[min(self._ids)]
+        self._ids[dt.version()] = str(dt.metadata().id)
+        return dt
+
+    def _table_id(self, version: int | None = None) -> str | None:
+        """The id of the table read at `version` (default: the latest), for
+        a sink to record with the version (`Contract.table_ids`); None if
+        there is no table at `version`."""
+        if version is not None and version in self._ids:
+            return self._ids[version]
+        try:
+            dt = self.table(version)
+        except Exception:  # noqa: BLE001 - no such table or version
+            return None
+        return str(dt.metadata().id)  # a UUID; the stubs say int
 
     def _facts(
         self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
@@ -383,7 +405,7 @@ class DeltaSource(Pipeable):
         root = local_path(self.uri)
         if root is None:
             return None
-        dt = self.table(version)
+        dt = self._seen(self.table(version))
         meta = dt.metadata()
         features = set(dt.protocol().reader_features or [])
         mapping = meta.configuration.get("delta.columnMapping.mode", "none")
@@ -438,7 +460,7 @@ class DeltaSource(Pipeable):
             The version, the rows (those passing `where`, if given) and the
             facts.
         """
-        dt = self.table(version)
+        dt = self._seen(self.table(version))
         v = dt.version()
         rows, files = self._rows(dt)
         return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
@@ -504,9 +526,22 @@ class DeltaSource(Pipeable):
         """
         dt = self.table(until)
         end = dt.version()
+        was, now = self._ids.get(since), str(dt.metadata().id)
+        self._seen(dt)
         files = file_stats(dt)
         snapshot_facts = self._facts(dt, files, f"file stats @v{end}")
         schema = _arrow_schema(dt)
+        if (was is not None and was != now) or end < since:
+            # Dropped and created again: v`since` was another table's (#516).
+            why = f"table id {was} → {now}" if was not in (None, now) else f"now at v{end}"
+            return SourceBatch.from_snapshot(
+                since,
+                end,
+                self._rows(dt)[0],
+                reason=f"{self.uri} was created again since v{since} ({why})",
+                snapshot_facts=snapshot_facts,
+                schema=schema,
+            )
         if end == since:
             return SourceBatch.unchanged(since, snapshot_facts, schema)
         try:
@@ -616,8 +651,10 @@ class DeltaSink(Sink):
 
     Each commit carries the transaction `(app_id, epoch)`, where the epoch is
     the sum of the node's source versions; a state whose epoch the table has
-    already committed is skipped, unless another plan committed it: then the
-    table is overwritten, schema and constraints included. The first write creates the table with
+    already committed is skipped, unless another plan committed it, or it
+    was computed from a source table that has since been dropped and created
+    again (`Contract.table_ids`): then the table is overwritten, schema and
+    constraints included. The first write creates the table with
     Change Data Feed enabled, NOT NULL columns and CHECK constraints for the
     node's proved guarantees; later writes MERGE the change (each changed row
     deleted and re-inserted with its new multiplicity) in one commit. A new
