@@ -225,23 +225,15 @@ theorem UnFn.apply_isNum (v : Value) : UnFn.apply .isNum v = .bool v.isNum := by
 
 /-! The special codes' order, which the generated proofs compare with. -/
 
-theorem FloatCode.negInf_lt_zero : FloatCode.negInf < 0 := by
-  have := FloatCode.maxMag_pos
-  simp [FloatCode.negInf, FloatCode.ofMag, FloatCode.infMag, FloatCode.nanMag]
-  omega
+theorem FloatCode.negInf_lt_zero : FloatCode.negInf < 0 := fp64.negInf_lt_zero
 
-theorem FloatCode.zero_lt_posInf : 0 < FloatCode.posInf := by
-  have := FloatCode.maxMag_pos
-  simp [FloatCode.posInf, FloatCode.ofMag, FloatCode.infMag]
-  omega
+theorem FloatCode.zero_lt_posInf : 0 < FloatCode.posInf := fp64.zero_lt_posInf
 
-theorem FloatCode.posInf_lt_nan : FloatCode.posInf < FloatCode.nan := by
-  have := FloatCode.maxMag_pos
-  simp [FloatCode.posInf, FloatCode.nan, FloatCode.ofMag, FloatCode.infMag, FloatCode.nanMag]
+theorem FloatCode.posInf_lt_nan : FloatCode.posInf < FloatCode.nan := fp64.posInf_lt_nan
 
 set_option exponentiation.threshold 3000 in
 theorem FloatCode.one_lt_posInf : FloatCode.one < FloatCode.posInf := by
-  rw [FloatCode.posInf_eq]; unfold FloatCode.maxMag FloatCode.one; decide
+  rw [FloatCode.posInf_eq, FloatCode.maxMag_def]; unfold FloatCode.one; decide
 
 theorem FloatCode.zero_lt_one : (0 : Int) < FloatCode.one := by
   unfold FloatCode.one

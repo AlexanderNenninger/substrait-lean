@@ -1250,7 +1250,7 @@ theorem convAbs_sound (c : FloatCode.FiniteMonoConv) {f : UnFn}
   rw [hf]
   mem_cases h with i b hb hi
   · simp [convAbs, Value.mapInt, AVal.Mem, AVal.nonInt, hn]
-  · have := c.bounds i
+  · have : FloatCode.negInf < c.conv i ∧ c.conv i < FloatCode.posInf := c.bounds i
     refine ⟨⟨some (b.lo.elim (FloatCode.negInf + 1) c.conv), some (b.hi.elim (FloatCode.posInf - 1) c.conv)⟩,
       by simp [convAbs, hb], ?_, ?_⟩ <;> intro x hx <;>
       simp only [Option.some.injEq] at hx <;> subst hx

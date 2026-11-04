@@ -1,3 +1,4 @@
+import SubstraitLean.FloatFormat
 import SubstraitLean.Value
 import SubstraitLean.BlackBox
 import SubstraitLean.Rounding
