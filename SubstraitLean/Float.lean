@@ -445,6 +445,7 @@ abbrev FiniteMonoConv := fp64.FiniteMonoConv
 `2¹⁰²³`. -/
 abbrev IntToDouble := fp64.IntConv
 
+set_option exponentiation.threshold 1100 in
 /-- `ofIntExact`, behind a constant the kernel does not unfold: proofs about
 plans use only the properties above, as they did of the native conversion
 before, and type-checking them never computes a rounding. -/
@@ -468,6 +469,7 @@ theorem ofInt_mono {i j : Int} (h : i ≤ j) : ofInt i ≤ ofInt j := intToDoubl
 /-- Integers up to `2⁵³` in magnitude convert exactly. -/
 theorem ofInt_exact {i : Int} (h : i.natAbs ≤ 2 ^ 53) : ofInt i = exactCode i := intToDouble.exact h
 
+set_option exponentiation.threshold 1100 in
 /-- Integers up to `2¹⁰²³` in magnitude convert within half a unit in the last
 place, `|fl(n) − n| ≤ 2⁻⁵³ · |n|` (as magnitudes `· 2¹⁰⁷⁴`). -/
 theorem ofInt_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
