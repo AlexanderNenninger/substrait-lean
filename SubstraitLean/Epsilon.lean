@@ -151,7 +151,11 @@ knows more, the columns' types and what the preconditions rule out, and its
 * a comparison's NaN and zeros options (`cmp`), where no comparison has a
   double side;
 * `min_mod_neg_one`, where every integer `%`'s dividend is bounded above
-  `-2⁶³` by the preconditions. -/
+  `-2⁶³` by the preconditions;
+* a value-side or open option of an expression whose result reaches neither
+  the output nor the rows kept (`liveReads`): a projected column nothing reads.
+  An error-side option counts wherever it is met, since an engine may still
+  compute such a column and raise. -/
 
 /-- Every aggregate of a plan: its input, keys and measures. -/
 def aggNodes : Rel → List (Rel × List Expr × List Measure)
@@ -214,6 +218,44 @@ def minModPossible (env : List AVal) : Expr → Bool
     | none => true
   | _ => false
 
+/-- The column a expression reads, by `ShardCheck.reads`. -/
+abbrev colRefs (e : Expr) : List Nat := ShardCheck.reads e
+
+/-- The options whose behaviour can reach the plan's output columns `live` or
+decide which rows it keeps: those of the expressions computing live columns,
+filters, join conditions, grouping keys, sort keys and `DISTINCT`; not those
+of a projected column nothing reads. -/
+def liveReads (cat : Catalog) : Rel → List Nat → List Read
+  | .read _, _ | .values _ _, _ => []
+  | .filter r c, live => c.reads ++ liveReads cat r (live ++ colRefs c)
+  | .project r es, live =>
+    let n := r.arity cat
+    let used := es.zipIdx.filter fun (_, i) => live.contains (n + i)
+    used.flatMap (·.1.reads) ++
+      liveReads cat r (live.filter (· < n) ++ used.flatMap (colRefs ·.1))
+  | .emit r m, live => liveReads cat r (live.filterMap (m[·]?))
+  | .cross a b, live =>
+    let na := a.arity cat
+    liveReads cat a (live.filter (· < na)) ++ liveReads cat b ((live.filter (na ≤ ·)).map (· - na))
+  | .unionAll a b, live => liveReads cat a live ++ liveReads cat b live
+  | .join a b _ on, live | .semi a b _ on, live =>
+    let na := a.arity cat
+    let refs := live ++ colRefs on
+    on.reads ++ joinReads ++ liveReads cat a (refs.filter (· < na)) ++
+      liveReads cat b ((refs.filter (na ≤ ·)).map (· - na))
+  | .fetch r _ _, live => liveReads cat r live
+  | .window r _ _ _, _ => liveReads cat r (List.range (r.arity cat))
+  | .orderBy r keys, live => sortReads keys ++ liveReads cat r (live ++ keys.map (·.col))
+  | .distinct r, _ => keyReads ++ liveReads cat r (List.range (r.arity cat))
+  | .unnest r c, live => liveReads cat r (live ++ [c])
+  | .aggregate r gs ms, live =>
+    let k := gs.length
+    let used := ms.zipIdx.filter fun (_, i) => live.contains (k + i)
+    gs.flatMap Expr.reads ++ (if gs.isEmpty then [] else keyReads) ++
+      used.flatMap (Measure.reads ·.1) ++
+      liveReads cat r (gs.flatMap colRefs ++
+        used.flatMap fun (m, _) => colRefs m.arg ++ (m.filter.map colRefs).getD [])
+
 /-- `"depends"` of a `--contract` request. -/
 def depends (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return .null
@@ -241,7 +283,13 @@ def depends (input : Json) : Except String Json := do
   let ctx := exprCtx (Write.planSchemas plan) cat A F T plan.root
   let cmp := ctx.any fun (e, cols, _) => (subExprs e).any (cmpDouble cols)
   let minMod := ctx.any fun (e, _, env) => (subExprs e).any (minModPossible env)
-  let reads := plan.root.reads.filter fun (g, o, _) =>
+  -- Error-side options count wherever they are met (an engine may evaluate a
+  -- column nothing reads, and raise); the others where they reach the output.
+  let live := liveReads cat plan.root (List.range (plan.root.arity cat))
+  let raises (o : String) : Bool :=
+    (Profile.reference.tools.find? (·.option == o)).any (·.tool == .raise)
+  let reads := (plan.root.reads.filter fun p => raises p.2.1 || live.contains p).filter
+    fun (g, o, _) =>
     !(g == "rel.keys" && !keys) && !(o == "empty_group_aggregates" && !empty) &&
       !(o == "avg_int_result" && !iavg) && !(g == "cmp" && !cmp) &&
       !(o == "min_mod_neg_one" && !minMod)

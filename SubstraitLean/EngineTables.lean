@@ -89,7 +89,9 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
-    (none, "sum_order", .oneOf ["SEQUENTIAL"]),
+    -- Sequential at one thread; partials merged in finishing order at more, or
+    -- spilled; a constant vector as one `fl(k · x)` (#633).
+    (none, "sum_order", .oneOf ["ANY", "SCALED_CONSTANT"]),
     (none, "avg_int_result", .oneOf ["EXACT_TRUNCATE"]),
     (none, "empty_group_aggregates", .oneOf ["NULL"]),
     (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_LAST"]),
@@ -122,10 +124,12 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
-  -- One value at a time: one of the orders the reference allows (`FloatSums`);
-  -- which order depends on the parallel plan, so at two threads or more runs
-  -- vary (3 to 4 values in 5 runs). `fsum` (Kahan) does not vary.
-  (none, "sum_order", { ObsRow.native ["duckdb-sum-double", "duckdb-avg-double"] with
+  -- Partials merged in finishing order are trees the reference allows, but a
+  -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
+  -- bound. Which order depends on the parallel plan, so at two threads or more
+  -- runs vary (3 to 4 values in 5 runs). `fsum` (Kahan) does not vary.
+  (none, "sum_order", { ObsRow.approxWithin "plan" ["duckdb-sum-double", "duckdb-avg-double"] with
+    note := "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633).",
     rerun := some { floats := .within "plan" },
     rerunEvidence := .probed ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }),
   (none, "avg_int_result", .native ["duckdb-R6"]),
@@ -185,7 +189,8 @@ def Profile.polars.table : ProfileTable where
     -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
     -- target): pairwise, Kahan over groups.
-    (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY"]),
+    -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
+    (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).

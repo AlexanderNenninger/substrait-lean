@@ -171,7 +171,8 @@ structure Report where
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
-  /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
+  /-- Does every window order its partitions totally (`Rel.windowsTotal`), and
+  every `FETCH` take rows an `ORDER BY` on a key fixes (`Rel.fetchesTotal`)? -/
   deterministic : Bool := true
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
@@ -451,7 +452,10 @@ def check (input : Json) : Except String Report := do
           (a.render d, a.json d))
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
-  let deterministic := transform.all (·.root.windowsTotal cat A F inputKeys)
+  -- Windows that order their partitions totally, and `FETCH`es below an
+  -- `ORDER BY` on a key: otherwise a rerun may give other rows (D10).
+  let deterministic := transform.all fun p =>
+    p.root.windowsTotal cat A F inputKeys && p.root.fetchesTotal cat A F inputKeys
   let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
   let keys ← match transform with
     | some p =>
