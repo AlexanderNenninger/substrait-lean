@@ -333,6 +333,10 @@ def main (args : List String) : IO UInt32 := do
     -- observations, and the reference's tools (#444).
     IO.println tablesJson.compress
     return 0
+  | ["--realizability"] => do
+    -- `obligations reference E` per engine: the realizability table (#444, step 3b).
+    IO.println realizabilityJson.compress
+    return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB (#241); a golden test.
     for (c, how, _) in duckdbOn.coverage do
@@ -347,5 +351,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --transfer"
     return 1

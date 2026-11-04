@@ -60,6 +60,7 @@ import SubstraitLean.Observations
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.Transfer
+import SubstraitLean.Obligations
 import SubstraitLean.Epsilon
 import SubstraitLean.Parse
 import SubstraitLean.Pretty

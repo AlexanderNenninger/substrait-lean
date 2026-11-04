@@ -481,9 +481,15 @@ def Rel.dependenciesJson (r : Rel) : Json :=
     ("missing", Json.mkObj (engineTables.map fun (t, _) => (t.name,
       Json.arr <| ((t.missingIn r.functions).map fun (f, ids) =>
         Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray))),
+    -- A shim the plan needs at an option, unless every read there states a
+    -- preference the engine gives as stated (a key's `NULLS LAST` on Polars):
+    -- the shim is for the reference's default (#444, step 3b).
     ("shims", Json.mkObj (engineTables.map fun (t, obs) => (t.name,
       Json.arr <| ((reads.map fun p => (p.1, p.2.1)).eraseDups.filterMap fun (g, o) =>
-        (obs.row? g o).bind fun row => row.shim.map fun sh =>
+        let stated := reads.filter fun p => p.1 == g && p.2.1 == o
+        if stated.all (fun p => !p.2.2.isEmpty &&
+            (t.allows g o p.2.2).all (Profile.reference.table.allows g o p.2.2).contains) then none
+        else (obs.row? g o).bind fun row => row.shim.map fun sh =>
           Json.mkObj [("group", toJson g), ("option", toJson o), ("shim", toJson sh)]).toArray)))]
 
 /-! ## The transfer check, on a dependency report -/
@@ -551,9 +557,12 @@ and option it meets, with the reference's behaviours there. -/
 def readsJson (reads : List Read) : Json :=
   let keys := (reads.map fun (g, o, _) => (g, o)).eraseDups
   Json.arr <| (keys.map fun (g, o) =>
-    let bs := (reads.filter fun (g', o', _) => g' == g && o' == o).flatMap fun (_, _, ps) =>
-      Profile.reference.table.allows g o ps
-    Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups)]).toArray
+    let here := reads.filter fun (g', o', _) => g' == g && o' == o
+    let bs := here.flatMap fun (_, _, ps) => Profile.reference.table.allows g o ps
+    -- Whether every read states its preference (a key's `NULLS FIRST`): an
+    -- engine that gives a stated preference as stated needs no shim there.
+    Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups),
+      ("stated", toJson (here.all fun (_, _, ps) => !ps.isEmpty))]).toArray
 
 /-- The dependency report of a contract's transformation, from `Rel.reads`. -/
 def Rel.dependsJson (r : Rel) : Lean.Json := readsJson r.reads

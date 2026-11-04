@@ -460,6 +460,20 @@ follow it with reasonable effort") as a check. The cells are the shims;
 their count per engine is how [few shims](#what-a-proof-under-the-reference-guarantees)
 is measured.
 
+The table is [realizability.md](realizability.md): `obligations reference E`
+for DuckDB and Polars (`SubstraitLean/Obligations.lean`), printed by
+`substrait-check --realizability` and rendered by
+`python -m sverify_dev.realizability --write`. The file is committed with
+the change that alters it, and `tests/test_realizability.py` fails until it
+is current. Lean checks that no row differs from the reference without a
+shim, an observation or a precondition (`obligations_consistent`), that
+every shim has a cost class and evidence (`obligations_shims_evidenced`),
+and that every theorem a row names exists. Each row is computed from the
+reference's choices and tools and the engine's choices and observation
+rows; behaviours of an open option that are one of the reference's though
+named apart (`SEQUENTIAL` is one order of `ANY`) are listed in
+`behaviourRefines`.
+
 ### Classes of an engine's functions
 
 Each row of the realizability table, for an engine, a function and its
@@ -578,7 +592,7 @@ The relation covers every move sverify makes:
 |---|---|---|
 | A rewrite within a profile | `(P, t) ⊑ (P, r)` | `Rel.Refines` ([Allowed.lean](../SubstraitLean/Allowed.lean)), `Rel.refines_of_perm` |
 | A narrower profile, the same plan | `(P, r) ⊑ (core, r)` when `P`'s choices are within the core's | step 1c's `Rel.AllowedP_mono` |
-| Lowering to an engine | `(E, T_E r) ⊑ (reference, r)` | `Rel.duckdb_shim_allowed`, `Lowering.lower_correct`, `Rel.guardFree_allowed` |
+| Lowering to an engine | `(E, T_E r) ⊑ (reference, r)` | `Rel.duckdb_refines` (from `Rel.duckdb_shim_allowed` and `Lowering.lowerRel_raises`), `Lowering.lower_correct`, `Rel.guardFree_allowed` |
 | Lifting from a source language | `(X, s) ⊑ (P, L s)`: whatever `X` does with `s` is allowed for the lifted plan under `P` | the SQLGlot lift, trusted and tested; `LiftDuckDB`'s entries proved per rule (#242) |
 | A round trip | `(Substrait, s) ⊑ (core, read s)` and back | step 2 |
 
@@ -891,7 +905,7 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |  |
 | 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |  |
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |  |
-| 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |  |
+| 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included (`Rel.duckdb_refines`, `Lowering.lowerRel_raises`). | [realizability.md](realizability.md) |
 | 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
 | 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |  |
 | 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. |  |
