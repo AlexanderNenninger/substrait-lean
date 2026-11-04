@@ -1,0 +1,99 @@
+{
+  "id": "polars-elem-rounding",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Elementary functions: Rust's libm calls, in the column's float type",
+  "verdict": "`sqrt` correctly rounded; the rest is the platform's libm; `x ** n` for a literal n from 2 to 9 multiplies",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.elem", "option": "rounding", "types": ["fp32", "fp64"]}
+  ],
+  "constructs": [
+    "sqrt",
+    "exp",
+    "sin",
+    "cos",
+    "tan",
+    "arcsin",
+    "arccos",
+    "arctan",
+    "arctan2",
+    "**"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`sqrt`, `exp`, `sin`, `cos`, `tan`, `arcsin`, `arccos`, `arctan`, `arctan2` and `**` are generic over the float type and call Rust's `f32` or `f64` method: `Float32` computes in single precision and returns `Float32`, `Float64` in double. `sqrt` is IEEE's correctly rounded square root; the others go to the platform's libm (`sinf`, `exp`, `pow`, …), which promises no correct rounding, so their last bits can differ between macOS and Linux. Integer inputs are cast to `Float64` first.",
+    "`x ** y` with a literal exponent takes shortcuts: 1 returns `x`, 0.5 is `sqrt(x)`, and an integer from 2 to 9 multiplies `x` by itself that many times, rounding after each product, where `powf` rounds once. With a column exponent it is `powf`, except that a one-row exponent of 2 is `x * x`."
+  ],
+  "reference": "The reference computes these with Lean's `Float` (the platform's libm); only NULL, the sign and the domain are exact, the last bits are each engine's (#54).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/trigonometry.rs#L7-L32"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/trigonometry.rs#L90-L178"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/trigonometry.rs#L52-L88"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L37-L70",
+          "note": "`pow_on_floats`: the literal shortcuts, then `Pow::pow` (`powf`)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L11-L35",
+          "note": "`pow_on_chunked_arrays`: a one-row exponent of 2 is `base * base`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L191-L221"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/log.rs#L102-L123",
+          "note": "`exp` on `Float32` is `f32::exp`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L41-L44"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L69-L71"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L329-L331"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L721-L728"
+        }
+      ],
+      "notes": [
+        "Each function matches `Float32` and `Float64` and calls one generic body with `num_traits::Float`, so `Float32` never goes through `f64`. The output type is the input's float type (`map_to_float_dtype`, `pow_dtype`). Rust's `f32::sqrt` and `f64::sqrt` compile to the hardware instruction; the others call the platform's libm.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "note": "pl.DataFrame({'x': [49.0, 1.0, 0.5, 2.0, -0.0]}, schema={'x': pl.Float32}).select(sqrt, sin, exp, ** 0.3): every column Float32; sqrt(0.5) = 0.70710677, sin(1) = 0.84147096, exp(1) = 2.7182817, the correctly rounded single-precision values (Polars 2.1.0, macOS arm64)."
+        }
+      ],
+      "notes": "`Float32` stays in single precision."
+    }
+  ]
+}

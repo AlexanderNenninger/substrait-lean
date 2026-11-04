@@ -17,11 +17,12 @@
   "settings": {},
   "description": [
     "`cast(strict=False)` gives NULL where the cast is invalid; `wrap_numerical=True` wraps overflowing numeric casts instead of marking them invalid (`cast` page). The probes confirm both for integer and double casts (polars-cast-int, polars-cast-double-to-int) and strict parsing for strings (polars-cast-string).",
-    "Polars has no general `TRY(expr)`. String parsers (`str.to_integer`, `str.strptime`, `str.to_date`) take their own `strict` flag; which errors they turn into NULL, and whether a non-strict cast of nested types nulls the field or the row, goes to source and tests (py-polars/tests/unit/operations/test_cast.py: `test_nested_strict_casts_failing`, `test_strict_cast_nested`)."
+    "Polars has no general `TRY(expr)`. String parsers (`str.to_integer`, `str.strptime`, `str.to_date`) take their own `strict` flag; which errors they turn into NULL, and whether a non-strict cast of nested types nulls the field or the row, goes to source and tests (py-polars/tests/unit/operations/test_cast.py: `test_nested_strict_casts_failing`, `test_strict_cast_nested`).",
+    "Round 2 (source): a strict cast is the non-strict cast followed by a check (`handle_casting_failures`) that raises when the output has more NULLs than the input; for nested targets the strictness is passed down to the children. So `strict=False` returns whatever the non-strict kernel produced: NULL for every value it cannot represent, with no classification of error kinds. Errors raised before the kernel (an unsupported pair of types, raised when the plan is typed) are not affected. `CastOptions` has three modes: `Strict` (the default), `NonStrict` and `Overflowing` (`wrap_numerical=True`)."
   ],
   "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB only, and other engines refuse it until #271 (`docs/reference-semantics.md`).",
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -32,6 +33,26 @@
           "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.cast.html"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/mod.rs#L490-L507",
+          "note": "strict: cast non-strictly, then handle_casting_failures; nested types keep Strict inside"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/utils/series.rs#L67-L72",
+          "note": "handle_casting_failures"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/cast.rs#L19-L27",
+          "note": "CastOptions: Strict, NonStrict, Overflowing"
+        }
+      ],
+      "notes": "The string parsers' own strict flags were not read in this round."
     }
   ]
 }

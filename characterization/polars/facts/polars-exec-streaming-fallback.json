@@ -1,0 +1,124 @@
+{
+  "id": "polars-exec-streaming-fallback",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Streaming engine: operations handed to the in-memory engine",
+  "verdict": "per-node fallback for opaque UDFs, some joins, some group-bys, keep-last unique, median and implode, cumulative eval and non-elementwise functions",
+  "area": "execution",
+  "options": [
+    "streaming_fallback"
+  ],
+  "constructs": [
+    "LazyFrame.collect",
+    "map_batches",
+    "join",
+    "join_asof",
+    "group_by",
+    "unique",
+    "median",
+    "over",
+    "cum_sum"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "The streaming engine lowers the optimized plan node by node (`lower_ir`, `lower_expr`, `lower_group_by` in crates/polars-stream). What it cannot stream it wraps in a fallback node that sinks its whole input into a `DataFrame` and runs the in-memory engine on it: `InMemoryMap`, `InMemoryJoin` and `ColumnarFunction`, which the plan visualizer colours as \"in-memory engine fallback\". The rest of the query keeps streaming; there is no whole-query fallback (polars-exec-engine).",
+    "Relations that fall back: a `MapFunction` that is not streamable (`rechunk`, a fast count, an opaque Python or Rust UDF not marked streamable, such as `LazyFrame.map_batches`); a join that is not an equi, semi, anti, cross or range join, an as-of join whose `by` keys are not known sorted the same way, a join with a non-equality condition other than a fused predicate, and any join with `validate`; `unique(keep=\"last\", maintain_order=True)`; a group-by with an `apply`, with rolling or dynamic options (when not handled by the sorted rolling node), over object columns, or whose aggregations the streaming group-by cannot split (more than one non-elementwise input to one aggregation, non-elementwise post-processing, all expressions input-independent); an anonymous scan.",
+    "Expressions that fall back, each computed over the full input in its own node: `median` and `implode` as plain aggregations, a cumulative `eval`, a window `over` that cannot be lowered to a streaming group-by, and every non-elementwise function or UDF without its own streaming rule (`ColumnarFunction`), such as `map_batches` without `is_elementwise=True`.",
+    "What changes in a fallback node: the in-memory engine's algorithms (float sums, `group_by` row order) apply to that node's materialized input, so a fact probed in memory holds there, and one probed streaming may not. Evaluation order is the same in both: both evaluate expressions with polars-expr's physical expressions, so the masking of elementwise `when/then` branches (polars-exec-when-eager) applies in a fallback node too; a non-elementwise branch is computed over every row in either engine.",
+    "sverify's Polars translation reaches several of these: `map_batches` without `is_elementwise` (`_on_days`, the measure results), `LazyFrame.map_batches` (window computation), `implode` in an ungrouped aggregation, and `over`. Probes of `explain(engine=\"streaming\")` for each translated construct go to the next round."
+  ],
+  "reference": "The reference has no engines. A profile's facts hold for the engine they were probed on; sverify pins the streaming engine (#605), so a fact whose construct falls back must hold for the in-memory engine as well, and a probe must check which engine ran it.",
+  "status": "open",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/mod.rs#L265-L273",
+          "note": "InMemoryMap: sink everything, map with the in-memory engine"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/mod.rs#L572-L582",
+          "note": "InMemoryJoin"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/fmt.rs#L31-L37",
+          "note": "InMemoryMap, InMemoryJoin, ColumnarFunction, Recursive: in-memory fallback"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_ir.rs#L630-L710",
+          "note": "MapFunction: streamable functions as Map, the rest as InMemoryMap"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/functions/mod.rs#L164-L180",
+          "note": "is_streamable"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_ir.rs#L1463-L1508",
+          "note": "join: streaming kinds, as-of sortedness, match condition, validation"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_ir.rs#L1722-L1730",
+          "note": "otherwise InMemoryJoin"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_ir.rs#L1854-L1895",
+          "note": "unique keep=last with maintain_order: in-memory"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_ir.rs#L2202-L2250",
+          "note": "lower_subtree_to_inmem_engine (anonymous scans)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L1440-L1575",
+          "note": "group-by: objects, rolling, sorted, streaming, else build_group_by_fallback"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L893-L930",
+          "note": "try_build_streaming_group_by refuses apply, dynamic/rolling, input-independent"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L1100-L1110",
+          "note": "more than one non-elementwise input to an aggregation"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L1210-L1216",
+          "note": "non-elementwise post-select"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L408-L490",
+          "note": "build_fallback_node_with_ctx"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L1763-L1768",
+          "note": "cumulative eval falls back"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2276-L2279",
+          "note": "median, implode fall back"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2755-L2782",
+          "note": "over: streaming group-by or fallback"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2784-L2851",
+          "note": "generic ColumnarFunction for non-elementwise functions and UDFs; over falls back"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/convert.rs#L118-L119",
+          "note": "median and implode have no streaming reduction"
+        },
+        {
+          "file": "python/src/sverify/polars_engine.py",
+          "note": "map_batches without is_elementwise (L746, L1667), LazyFrame.map_batches (L1876), implode (L2239), over (L2078)"
+        }
+      ]
+    }
+  ]
+}

@@ -10,12 +10,17 @@
   ],
   "rows": [
     {"group": "fp.round", "option": "rounding", "types": ["fp64"]},
-    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "docs"}
+    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "round"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case.",
   "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO` (#335), the only value the model accepts. So the writer needs `mode='half_away_from_zero'`, which matches on every row.",
   "status": "open",
@@ -74,6 +79,25 @@
         }
       ],
       "notes": "`Expr.round` rounds \"floating point data\" with `mode` `half_to_even` (the default), `half_away_from_zero` or `to_zero`, described by value (`2.5` rounds to 2 under the default). The docstring names no float type, so it holds for `Float32` too. Settles the `Float32` row at docs level; the probes cover `Float64`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L141-L153",
+          "note": "The default mode is `f32::round_ties_even` or `f64::round_ties_even`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L75-L78",
+          "note": "`Float32` with 0 decimals applies the `f32` operation."
+        }
+      ],
+      "notes": [
+        "`round()` on `Float32` calls `f32::round_ties_even`, half to even as for `Float64`. With decimals it scales in `f64` and casts back.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
     }
   ],
   "issues": [

@@ -10,7 +10,8 @@
   ],
   "rows": [
     {"group": "int.arith", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
-    {"group": "int.pow", "option": "overflow", "types": ["i64"]}
+    {"group": "int.pow", "option": "overflow", "types": ["i64"]},
+    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "source"}
   ],
   "constructs": [
     "+",
@@ -19,7 +20,12 @@
     "unary -",
     "**"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "Integer arithmetic wraps at the operands' width (two's complement, Rust's `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `wrapping_neg`): `Int8` 127 + 1 is -128, `-MIN` is `MIN`. No setting makes it raise or saturate. Polars keeps the width of the operands; a literal takes the column's type.",
     "`**` on integers wraps too (`2 ** 63` is `-2⁶³` in `Int64`); a negative integer exponent raises (`InvalidOperationError`, the exponent is cast to `u32`)."
@@ -118,6 +124,37 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L72-L106",
+          "note": "`pow_to_uint_dtype`: an exponent literal of 2 to 10 multiplies the column by itself, any other calls `Pow::pow`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L108-L150",
+          "note": "`pow_on_series`: an integer base with an integer exponent, for every width by `with_match_physical_integer_type!`."
+        },
+        {
+          "url": "https://github.com/rust-num/num-traits/blob/num-traits-0.2.19/src/pow.rs#L73-L99",
+          "note": "num-traits 0.2.19 (Polars's Cargo.lock): `Pow<u32>` for i8, i16, i32, i64 is the primitive `pow`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/Cargo.toml#L210-L238",
+          "note": "Release profiles: none turns `overflow-checks` on."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/.github/workflows/release-python.yml#L293",
+          "note": "Wheels build with `--profile dist-release`."
+        }
+      ],
+      "notes": [
+        "Integer `**` with an integer exponent is one generic function, `pow_to_uint_dtype`, instantiated for each width by `with_match_physical_integer_type!`. An exponent literal from 2 to 10 multiplies the column by itself with the `*` kernel, which wraps (`wrapping_mul`, the same macro for i8 to i64); any other exponent calls num-traits's `Pow<u32>`, the primitive `i8::pow` to `i64::pow`. The wheels build with the `dist-release` profile, which inherits `release` and leaves `overflow-checks` off, so the primitive `pow` wraps too. So `Int8`, `Int16` and `Int32` wrap as the `Int64` probe does, and the result keeps the base's type (`pow_dtype`).",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
     }
   ],
   "issues": [

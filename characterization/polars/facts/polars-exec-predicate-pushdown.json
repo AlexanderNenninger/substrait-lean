@@ -19,7 +19,7 @@
   "description": [
     "The `cast` docstring says `strict` raises if the cast is invalid on the rows after predicates are pushed down. So the rows a strict cast sees are those the optimized plan reaches, which the optimizer decides: predicate pushdown applies filters as early as possible, at the scan (lazy optimizations guide). Neither page says whether a pushed filter can move above or below a raising expression, or whether the conditions of one `filter` are evaluated in order.",
     "sverify collects every translated plan with `predicate_pushdown=False` (`sverify.polars_engine.collect`), because pushdown would move its guards and filters below the filters before them, onto rows the plan never evaluates there. The other optimizations (simplify expressions, common subexpressions, slice pushdown) stay on.",
-    "Leads: crates/polars-plan/src/plans/optimizer/predicate_pushdown/, the streaming engine's filter node, and probes of a filter followed by a strict cast with and without pushdown, in memory and streaming."
+    "Round 2 (source): with pushdown on, Polars classifies each conjunct (`ExprPushdownGroup`): strict casts of a non-literal, `list.get`/`arr.get` with `null_on_oob=False`, `list.gather`, `replace_strict`, decimal and truncating arithmetic and strict `strptime` are fallible; non-elementwise expressions are barriers. A `filter(a & b)` is split into one filter per infallible conjunct below one filter of the fallible ones, so the fallible ones see fewer rows. A fallible predicate is not pushed past a filter, a join or any node that removes rows (`ir_removes_rows`); it may pass a projection that keeps every row. A fallible projection (`with_columns(x.cast(t))`) does not stop other predicates from moving below it, so the cast then raises on fewer rows; `POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS=1` keeps them above. The optimizer is shared by both engines; the streaming engine applies the optimized plan's filters per morsel. Gap: the list is closed, so raising functions outside it count as pushable, for example `str.to_integer(strict=True)` (a `FunctionOptions::elementwise()` string function). Such a predicate can move below a filter onto rows the plan removes there. sverify's `predicate_pushdown=False` avoids all of this; a probe of `filter(s != 'x').filter(s.str.to_integer() == 1)` with pushdown on goes to the next round."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee.",
   "status": "open",
@@ -50,6 +50,49 @@
         {
           "file": "python/src/sverify/polars_engine.py",
           "note": "collect: predicate_pushdown=False"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/properties/general.rs#L264-L345",
+          "note": "ExprPushdownGroup: Pushable, Fallible, Barrier; blocks_pushdown"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/mod.rs#L294-L355",
+          "note": "is_fallible_top_level: the closed list of fallible expressions"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/conversion/dsl_to_ir/mod.rs#L349-L382",
+          "note": "filter: pushable conjuncts first, fallible ones in a filter above"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/conversion/convert_utils.rs#L27-L82",
+          "note": "SplitPredicates"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/predicate_pushdown/utils.rs#L357-L635",
+          "note": "pushdown_eligibility: fallible predicates kept local above nodes that remove rows"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/predicate_pushdown/utils.rs#L638-L668",
+          "note": "ir_removes_rows: joins and filters remove rows"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/mod.rs#L93-L95",
+          "note": "POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/strings.rs#L263",
+          "note": "str.to_integer is plain elementwise, not in the fallible list"
+        },
+        {
+          "file": "python/src/sverify/polars_engine.py",
+          "note": "collect: predicate_pushdown=False, other optimizations (CSE) on"
         }
       ]
     }

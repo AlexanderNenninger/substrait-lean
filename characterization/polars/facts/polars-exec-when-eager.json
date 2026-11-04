@@ -2,8 +2,8 @@
   "id": "polars-exec-when-eager",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "`when/then/otherwise`, `&`, `|`, `coalesce`: every operand runs on every row",
-  "verdict": "no short-circuit: a raising branch raises on rows its condition excludes",
+  "title": "`when/then/otherwise` masks elementwise branches; `&`, `|` and `coalesce` evaluate every operand",
+  "verdict": "an elementwise branch sees NULL on the rows its condition excludes; other branches, `&`, `|` and `coalesce` run on every row",
   "area": "execution",
   "options": [
     "evaluation_order"
@@ -19,10 +19,12 @@
   ],
   "settings": {},
   "description": [
-    "The `when` docstring warns that Polars computes all expressions passed to `when-then-otherwise` in parallel and filters afterwards, so each expression must be valid on its own, whatever the conditions; its examples add that `when-then` always executes all expressions.",
-    "Most Polars arithmetic does not raise (integer division by zero gives NULL, integer overflow wraps: polars-int-divide, polars-int-arith), so the raising expressions are strict casts (polars-cast-int, polars-cast-double-to-int, polars-cast-string), string parsing and temporal errors (polars-temporal-errors). A `pl.when(c).then(x.cast(t))` therefore raises on a row `c` excludes when `x` does not fit `t`. The test of #29799 shows one exception the engine takes care of: a strict cast after masking a struct field succeeds only because masking nulled the field in every chunk.",
-    "The `coalesce` page says it folds left to right keeping the first non-null value, and is silent on whether later arguments run on the rows already decided. `&` and `|` are column operations; the docs do not say they short-circuit.",
-    "Leads: crates/polars-expr/src/expressions/ternary.rs, the `coalesce` kernel in crates/polars-ops, and py-polars/tests/unit/functions/test_when_then.py; probes of a strict cast in a `then` branch and in a later `coalesce` argument, in memory and streaming."
+    "The `when` docstring warns that Polars computes all expressions passed to `when-then-otherwise` in parallel and filters afterwards, so each expression must be valid on its own. The code at py-2.1.0 does better for most branches.",
+    "Masking (in memory and streaming): when a `then` or `otherwise` operand is elementwise and is not a bare column or literal, the planner records its input columns, and `TernaryExpr` evaluates it on a frame where those columns are NULL on the rows the condition does not send to it; a branch no row takes is skipped unless needed for broadcasting. The streaming engine keeps an elementwise expression whole in a select node, so the same code runs there. So `pl.when(c).then(x.cast(t))` does not raise on rows `c` excludes; Polars's tests check this on both engines, also for multi-chunk structs (#29799).",
+    "Still eager: a non-elementwise branch (aggregations, windows, `map_batches` without `is_elementwise=True`), which both engines compute on every row; every branch under `group_by().agg` or `over()`, where `evaluate_on_groups` runs all three operands with no masking; a branch whose inputs are only literals; and an elementwise branch that turns NULL into a raising value, such as `x.fill_null('bad').cast(t)`.",
+    "`coalesce` is an ordinary function whose arguments are all evaluated on every row before it folds them, and `&` and `|` evaluate both sides on every row (in parallel). This is the operand order ST-12 records, and the soundness bug #604.",
+    "The raising expressions in Polars are strict casts (polars-cast-int, polars-cast-double-to-int, polars-cast-string), string parsing and temporal errors (polars-temporal-errors); integer division by zero gives NULL and integer overflow wraps (polars-int-divide, polars-int-arith).",
+    "To probe: common subexpression elimination descends into ternary branches outside group_by and may hoist a subexpression that occurs twice into a column computed on every row, which would undo the masking; and a strict cast in a `then` branch, a later `coalesce` argument and under `group_by().agg`, on the streaming engine."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's Polars translation would need its `CASE` written so that a raising branch only sees its rows, or the issue analysis to treat Polars's `CASE` as eager.",
   "status": "open",
@@ -67,6 +69,66 @@
         }
       ],
       "notes": "Read, not replayed."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/ternary.rs#L110-L203",
+          "note": "evaluate: a branch with mask columns runs on a frame whose columns are nulled where the condition does not select it; a branch no row selects is skipped unless needed for broadcasting"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/planner.rs#L475-L528",
+          "note": "mask columns: the leaf columns of an elementwise branch that is not a bare column or literal"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/ternary.rs#L212-L227",
+          "note": "evaluate_on_groups (group_by agg, over): all three operands on every row, no masking"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L629-L636",
+          "note": "streaming: an elementwise expression stays whole in a select node, so the same TernaryExpr masks"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L1971-L1984",
+          "note": "streaming: a ternary with a non-elementwise operand has its operands lowered to separate streams over the full input"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/horizontal.rs#L341-L366",
+          "note": "coalesce receives every argument fully evaluated"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/apply.rs#L434-L445",
+          "note": "function inputs (coalesce's arguments) are all evaluated before the call"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/binary.rs#L312-L344",
+          "note": "& and |: both sides evaluated on every row, in parallel"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/cse/csee.rs#L74-L94",
+          "note": "CSE descends into ternary branches outside group_by"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/functions/test_when_then.py#L916-L960",
+          "note": "engine tests, in memory and streaming: a strict cast in an unselected branch does not raise"
+        }
+      ],
+      "notes": "Contradicts the title and verdict. At py-2.1.0 the in-memory and streaming engines mask an elementwise branch: before evaluating a `then`/`otherwise` that is elementwise and not a bare column or literal, they null its input columns on the rows the condition does not send to it, and skip a branch no row takes. So `pl.when(c).then(x.cast(t))` does not raise on rows `c` excludes. Still eager: a non-elementwise branch (aggregations, windows, `map_batches` without is_elementwise), every branch under group_by().agg or over() (evaluate_on_groups), a branch whose leaves are only literals, and an elementwise branch that turns NULL into a raising value (`x.fill_null('bad').cast(t)`). `coalesce` and `&`/`|` evaluate every operand on every row (ST-12, #604 for AND/OR). Lead to probe: CSE can hoist a subexpression that occurs twice, also inside a branch, into a column computed on every row before the select, which would undo the masking. The docstring's warning predates the masking. See the round 2 report for the proposed corrected fact."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/ternary.rs#L110-L227",
+          "note": "masking in evaluate; none in evaluate_on_groups"
+        }
+      ],
+      "notes": "Corrected title, verdict and description: round 1 read only the docstring and stated every operand runs on every row; the source reading above shows elementwise branches are masked. Kept the eager cases, `&`, `|` and `coalesce`. Status stays open."
     }
   ],
   "issues": [

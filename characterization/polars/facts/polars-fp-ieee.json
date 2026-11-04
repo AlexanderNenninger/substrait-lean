@@ -2,8 +2,8 @@
   "id": "polars-fp-ieee",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "`Float32` and `Float64` arithmetic: IEEE 754",
-  "verdict": "IEEE 754 rounding for `+ - * /` in both float types",
+  "title": "`Float32` and `Float64` arithmetic: IEEE 754 between columns",
+  "verdict": "IEEE 754 rounding for `+ - *`, and for `/` between two columns",
   "area": "doubles",
   "options": [
     "rounding"
@@ -18,14 +18,20 @@
     "*",
     "/"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
-    "Polars's user guide says `Float32` and `Float64` generally follow IEEE 754, with exceptions for NaN equality and order and for the sign of zero and NaN. Rounding is not among the exceptions, so `+ - * /` round as IEEE 754 binary32 and binary64 do, to nearest with ties to even.",
-    "The guide promises no error bound for other computations unless a function says so, so it does not settle the rounding of the elementary functions or logarithms."
+    "Polars's user guide says `Float32` and `Float64` generally follow IEEE 754, with exceptions for NaN equality and order and for the sign of zero and NaN. The kernels for `+ - *` are the IEEE operations in both float types, so they round as IEEE 754 binary32 and binary64 do, to nearest with ties to even. `/` between two columns of equal length is the IEEE quotient too.",
+    "A length-1 divisor against a longer column (a literal on a frame of two rows or more) is divided by multiplying with its reciprocal, two roundings: polars-double-scalar-divisor and PL-3.",
+    "The guide promises no error bound for other computations unless a function says so, so it does not settle the rounding of the elementary functions or logarithms (polars-elem-rounding, polars-log-base)."
   ],
   "reference": "`rounding: TIE_TO_EVEN` for `+ - × /` on doubles (native `Float`). `fp32` arithmetic is refused in every profile until #417's stage 3.",
   "status": "no-finding",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -42,6 +48,39 @@
         }
       ],
       "notes": "Polars's user guide says it generally follows IEEE 754 for `Float32` and `Float64`, with two exceptions: any NaN equals any other NaN and is greater than every non-NaN value, and operations guarantee nothing about the sign of zero or NaN or a NaN's payload (a sort or group by may make every zero +0 and every NaN a positive NaN). It promises no error bound unless a function says otherwise. The user guide is not versioned; the section reads the same at tag py-2.1.0."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L8-L31",
+          "note": "Column kernels: `l + r`, `l - r`, `l * r`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L45-L76",
+          "note": "Literal kernels: `x + c`, `x * c`, with shortcuts that return `x` for `c = 0` (add, subtract) and `c = 1`, exact."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L109-L126",
+          "note": "`prim_true_div` is `l / r`; `prim_true_div_scalar` multiplies by `1 / rhs`. One macro for pf16, f32, f64."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/arithmetic/numeric.rs#L105-L163"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/arity.rs#L894-L942"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/expression.rs#L10-L38"
+        }
+      ],
+      "notes": [
+        "Raises `fp.arith` rounding to source: `+ - *` are the IEEE operations for `f32` and `f64`, column by column and with a literal (whose shortcuts return `x` exactly). The streaming engine runs the same polars-expr kernels.",
+        "Corrects the `/` claim: IEEE only when both sides are columns of equal length (or both have length 1). With a length-1 divisor against a longer side, `x / c` is `x * (1 / c)`, which can miss by an ulp (`49.0 / 49.0` is 0.9999999999999999). Title, verdict and description now say so and link polars-double-scalar-divisor (PL-3).",
+        "Read at tag py-2.1.0 (commit 7f902bd3)."
+      ]
     }
   ]
 }

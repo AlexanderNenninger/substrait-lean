@@ -2,7 +2,7 @@
   "id": "polars-double-divide",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "Double `/`: IEEE",
+  "title": "Double `/` between columns: IEEE",
   "verdict": "`on_division_by_zero: IEEE`, but `±inf / ±inf` is NaN",
   "area": "doubles",
   "options": [
@@ -12,17 +12,25 @@
   ],
   "rows": [
     {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "source"},
     {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
     {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "docs"}
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "/"
   ],
-  "settings": {},
-  "description": "`/` on doubles is IEEE 754: `x / 0` is ±inf, `0 / 0` is NaN, `±inf / ±inf` is NaN. No setting changes it. With the `IEEE` candidate, only the four `±inf / ±inf` rows differ, as for DuckDB (duckdb-R15-double-arith).",
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`/` between two double columns is IEEE 754: `x / 0` is ±inf, `0 / 0` is NaN, `±inf / ±inf` is NaN. No setting changes it. With the `IEEE` candidate, only the four `±inf / ±inf` rows differ, as for DuckDB (duckdb-R15-double-arith).",
+    "A length-1 divisor against a longer column (a literal on a frame of two rows or more) is a multiplication by its reciprocal. Zero and infinite divisors give the same results there, but a subnormal divisor's reciprocal is inf, so `0.0 / 1e-310` is NaN and `1e-300 / 1e-310` is inf (polars-double-scalar-divisor, PL-3)."
+  ],
   "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257).",
   "status": "open",
   "evidence": "probe",
@@ -61,6 +69,62 @@
         }
       ],
       "notes": "`Expr.truediv`'s notes say zero division follows IEEE-754: `0/0` is an invalid operation and returns NaN, `n/0` on finite operands is ±infinity. The note is not tied to a float type, and the user guide says `Float32` and `Float64` both follow IEEE 754, so `Float32` division behaves the same (and `±inf / ±inf` is NaN, IEEE's invalid operation). Settles the `Float32` rows and `on_domain_error` (NaN for `0/0` and `±inf / ±inf`) at docs level; the probes cover `Float64`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L109-L126"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/mod.rs#L40-L63"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/arithmetic/numeric.rs#L105-L163",
+          "note": "`+ - * // %` on two ChunkedArrays: equal lengths take the array kernel, a length-1 side the scalar kernel."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/arity.rs#L894-L942"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/column/mod.rs#L1816-L1839",
+          "note": "A literal is a scalar column, passed to the operation as a one-value Series."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/expression.rs#L10-L38",
+          "note": "The streaming engine evaluates each expression with polars-expr's `PhysicalExpr` on every morsel, so it runs the same kernels."
+        }
+      ],
+      "notes": [
+        "`impl_float_arith_kernel!` is one macro instantiated for `pf16`, `f32` and `f64`, so `Float32` and `Float64` run the same operations. The streaming engine evaluates expressions through polars-expr on each morsel (`StreamExpr` in crates/polars-stream/src/expression.rs), so it shares these kernels with the in-memory engine. Column by column `/` is `l / r`, so `x / 0` is ±inf and `0 / 0` and `inf / inf` are NaN in `Float32`; with a literal divisor `x * (1 / c)` gives the same at `c = ±0` and `c = ±inf`.",
+        "The literal path creates NaN where IEEE does not: `0.0 / c` for a subnormal `c` is `0 * inf`, NaN (polars-double-scalar-divisor). So the `nan_creation` row's \"IEEE\" holds column by column only, and its `Float32` entry stays at the docs.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L109-L119"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/arithmetic/numeric.rs#L105-L163"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/arity.rs#L894-L942"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/expression.rs#L10-L38"
+        }
+      ],
+      "notes": [
+        "Corrects the description: the IEEE claim now covers `/` between two columns, and a second paragraph gives the literal path's NaN and inf for a subnormal divisor, with links to polars-double-scalar-divisor and PL-3. The `nan_creation` rows hold column by column; the `Float32` entry stays at the docs.",
+        "Read at tag py-2.1.0 (commit 7f902bd3)."
+      ]
     }
   ],
   "issues": [

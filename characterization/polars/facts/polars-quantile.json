@@ -9,15 +9,24 @@
     "quantile_interp"
   ],
   "rows": [
-    {"group": "agg.quant", "option": "quantile_interp", "types": ["fp64"]},
-    {"group": "agg.quant", "option": "quantile_interp", "types": ["i64"], "evidence": "docs"}
+    {"group": "agg.quant", "option": "quantile_interp", "types": ["i64", "fp64", "decimal"]}
   ],
   "constructs": [
     "quantile",
     "median"
   ],
-  "settings": {},
-  "description": "`quantile(q)` takes the `nearest` value by default (index `round(q · (n - 1))`); the other methods are `lower`, `higher`, `midpoint`, `linear` and `equiprobable`. `median` is `quantile(0.5, 'linear')`. At `q = 0.4` over 1, 2, 3, 4: nearest 2, lower 2, higher 3, midpoint 2.5, linear 2.2, equiprobable 2. NaN sorts above every number (polars-nan-order).",
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "`quantile(q)` takes the `nearest` value by default (index `round(q · (n - 1))`); the other methods are `lower`, `higher`, `midpoint`, `linear` and `equiprobable`. `median` is `quantile(0.5, 'linear')`. At `q = 0.4` over 1, 2, 3, 4: nearest 2, lower 2, higher 3, midpoint 2.5, linear 2.2, equiprobable 2. NaN sorts above every number (polars-nan-order).",
+    "The position is `f = q · (n - 1)` over the non-null values; `nearest` takes index `f.round()` (halves away from zero), `linear` gives `(f - ⌊f⌋) · (hi - lo) + lo` in `f64`, `midpoint` `(lo + hi) / 2`, and equal neighbours give `lo`. For neighbours of opposite sign near the double's range `hi - lo` overflows to inf, and the result leaves the interval.",
+    "Integers go through the same kernel (`QuantileDispatcher` for every `PolarsIntegerType`), each value read `to_f64`, so the result is `Float64`. Decimals: ungrouped, the kernel runs on the scaled `Int128` values, then divides by 10^scale (two roundings); grouped, the column is first cast to `Float64` (correctly rounded). The result is `Float64` in both cases.",
+    "The streaming engine has no quantile reduction: ungrouped, `quantile` runs as a columnar function on the collected column and `median` through the in-memory fallback; grouped, the query falls back to the in-memory group_by. So both engines run this kernel."
+  ],
   "reference": "`quantile_disc` takes a value of the input; `quantile_cont` any double between the neighbours (`contAllowed`).",
   "status": "open",
   "evidence": "probe",
@@ -56,6 +65,77 @@
         "The examples run on an Int64 column, so the methods and the Float64 result hold for integers. They agree with the probe: nearest takes index round(0.3 · 5) = 2. The docs do not mention decimal input.",
         "The docs at `stable` are those of Polars 2.1.0: their [source] links point at tag py-2.1.0."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/quantile.rs#L21-L112",
+          "note": "`quantile_idx` and the interpolations"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/quantile.rs#L266-L268",
+          "note": "`median` is `quantile(0.5, Linear)`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L271-L283",
+          "note": "`QuantileDispatcher` for every integer type, `f64` result"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/implementations/decimal.rs#L35-L47",
+          "note": "`apply_scale`: the `f64` result divided by the scale factor"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/implementations/decimal.rs#L508-L517",
+          "note": "decimal `median`: on the physical `Int128`, then scaled"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/implementations/decimal.rs#L535-L540",
+          "note": "decimal `quantile_reduce`: on the physical `Int128`, then scaled"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/dispatch.rs#L428-L428",
+          "note": "grouped decimal median: cast to `Float64`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/dispatch.rs#L467-L492",
+          "note": "grouped quantile: decimals cast to `Float64`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/convert.rs#L59-L120",
+          "note": "the streaming reductions: no quantile; `Median` is `todo!()`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2276-L2280",
+          "note": "ungrouped `median`: in-memory fallback"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2784-L2837",
+          "note": "other functions (`quantile`): a `ColumnarFunction` node over the collected input"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L534-L536",
+          "note": "grouped: only elementwise functions lower; others make the group_by fall back"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L709-L713",
+          "note": "grouped `median`: no streaming lowering"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Confirms the docs-level `i64` row."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "note": "Decimal(10, 2) column [1.10, 2.20, 3.35]: quantile(0.4, 'linear') 1.98 and median() 2.2, Float64, on both engines"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
     }
   ]
 }
