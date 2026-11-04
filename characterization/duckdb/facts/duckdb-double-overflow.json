@@ -5,6 +5,14 @@
   "title": "Double operations that overflow give `±inf`",
   "verdict": "IEEE: `±inf` where the reference raises",
   "area": "doubles",
+  "options": [
+    "float_overflow"
+  ],
+  "rows": [
+    {"group": "fp.arith", "option": "float_overflow", "types": ["fp32", "fp64"]},
+    {"group": "fp.div", "option": "float_overflow", "types": ["fp32", "fp64"]},
+    {"group": "agg.fsum", "option": "float_overflow", "types": ["fp32", "fp64"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -24,7 +32,8 @@
   "description": [
     "No double operation raises \"Overflow\": every one whose result is too large for a double gives `inf` or `-inf`, from finite inputs: `1e308 * 10`, `1e308 + 1e308`, `-1e308 - 1e308`, `1e308 / 1e-10`, `power(10, 400)`, `10.0 ** 400`, `exp(1000)` (`exp(709.0)` is finite), `sinh(1000)`, `cosh(1000)`, `gamma(200)`, `lgamma(1e308)`, `degrees(1e308)`, and `power(0, -1)`.",
     "Aggregates too: `sum` and `avg` of `1e308` and `1e308` are `inf`, grouped and over a window; `fsum` of them is NaN; `var_pop` of `1e308` and `-1e308` is `-inf`.",
-    "A cast of a double outside `FLOAT`'s range to `FLOAT` raises a conversion error, the one overflow that raises."
+    "A cast of a double outside `FLOAT`'s range to `FLOAT` raises a conversion error, the one overflow that raises.",
+    "`FLOAT` arithmetic overflows the same way, in single precision: `3e38::FLOAT + 3e38::FLOAT`, `* 10` and `/ 1e-3` are `inf`, `-3e38 - 3e38` is `-inf`, and the result stays `FLOAT`. `sum` and `avg` of `FLOAT` accumulate and return a `DOUBLE` (duckdb-float-sum-order), so `sum` of `3e38` and `3e38` is the finite 6.0000000109955115e+38; grouped, `sum` and `avg` of `1e308` and `1e308` are `inf`."
   ],
   "reference": "An operation on finite doubles whose result is `±inf` raises (`Issue.infinite`, #575): an inferred precondition the written plan checks on the data (`CASE WHEN … THEN error('overflow to infinity')`), as for a `SUM` that leaves 64 bits.",
   "status": "shimmed",
@@ -53,6 +62,30 @@
         }
       ],
       "notes": "Run one statement at a time on an in-memory connection with the default settings (`ieee_floating_point_ops` on)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline session (float_overflow rows), duckdb Python 2.0.0",
+      "evidence": [
+        {
+          "sql": "SELECT 3e38::FLOAT + 3e38::FLOAT, -3e38::FLOAT - 3e38::FLOAT, 3e38::FLOAT * 10::FLOAT, 3e38::FLOAT / 1e-3::FLOAT, typeof(3e38::FLOAT * 10::FLOAT)",
+          "observed": "inf, -inf, inf, inf, 'FLOAT'"
+        },
+        {
+          "sql": "SELECT sum(x), avg(x), typeof(sum(x)), typeof(avg(x)) FROM (VALUES (3e38::FLOAT), (3e38::FLOAT)) t(x)",
+          "observed": "6.0000000109955115e+38, 3.0000000054977558e+38, 'DOUBLE', 'DOUBLE'"
+        },
+        {
+          "sql": "SELECT g, sum(x), avg(x) FROM (VALUES (1, 1e308::DOUBLE), (1, 1e308::DOUBLE)) t(g, x) GROUP BY g",
+          "observed": "1, inf, inf"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/overflow/double_float_overflow.test#L8-L46",
+          "note": "`1e308::DOUBLE + 1e308::DOUBLE`, `*`, `/ 0.1` → inf; `2e38::FLOAT + 2e38::FLOAT`, `*`, `/ 0.1` → inf"
+        }
+      ],
+      "notes": "One statement at a time on an in-memory connection with the default settings."
     }
   ],
   "issues": [

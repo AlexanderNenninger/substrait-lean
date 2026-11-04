@@ -8,6 +8,9 @@
   "options": [
     "null_join_keys"
   ],
+  "rows": [
+    {"option": "null_join_keys", "types": ["any"]}
+  ],
   "constructs": [
     "group_by",
     "unique",

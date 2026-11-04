@@ -6,7 +6,11 @@
   "verdict": "byte offset from 0; NULL where `strpos` is 0",
   "area": "strings",
   "options": [
-    "negative_start"
+    "negative_start",
+    "string_positions"
+  ],
+  "rows": [
+    {"group": "str.match", "option": "string_positions", "types": ["string"]}
   ],
   "constructs": [
     "str.find"
