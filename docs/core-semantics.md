@@ -1232,8 +1232,8 @@ between runs.
 
 Sverify tightens the reference when that costs little in practicality. Where
 an engine differs from the reference on an edge case, the reference raises
-there, rather than the engine getting a shim, as long as the precondition
-that excludes the edge case rarely bites real queries: it is proved from the
+there, and the engine needs no shim, as long as the precondition that
+excludes the edge case rarely bites real queries: it is proved from the
 bounds or checked on the data by a guard. A guard costs a check where the
 precondition is not proved; a shim costs a rewrite on every run. D9's table
 records the tool for each option. This is how D9 chooses between raising and
