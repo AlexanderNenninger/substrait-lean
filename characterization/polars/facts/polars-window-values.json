@@ -5,6 +5,10 @@
   "title": "Windows: `over` keeps the input order inside a partition",
   "verdict": "`first().over`, `shift(1).over`, `cum_sum().over` in input order",
   "area": "windows",
+  "options": [
+    "default_window_frame",
+    "tie_order"
+  ],
   "constructs": [
     "over",
     "shift",

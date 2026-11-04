@@ -5,6 +5,9 @@
   "title": "`arg_min`, `arg_max`: the first index of a tie",
   "verdict": "the first of tied rows",
   "area": "aggregates",
+  "options": [
+    "tie_pick"
+  ],
   "constructs": [
     "arg_min",
     "arg_max"
