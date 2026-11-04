@@ -13,6 +13,8 @@ from deltalake import DeltaTable, write_deltalake
 from ibis import _
 
 import sverify as sv
+import sverify._state
+import sverify.incremental
 from _pipelines import (
     ORDERS,
     batch,
@@ -21,6 +23,7 @@ from _pipelines import (
     make_orders,
     orders_table,
     paid,
+    paid_nonzero,
     recomputed,
     rows,
     spy_on,
@@ -90,6 +93,90 @@ def test_a_failed_refresh_changes_nothing_and_a_retry_applies_once(tmp_path):
     assert rows(node) == [(1, "ada", 10), (2, "bob", 2)]
     assert batch(node).sources[0].mode == "unchanged"
     assert rows(node) == [(1, "ada", 10), (2, "bob", 2)]
+
+
+def _fail_after_apply(monkeypatch):
+    """DuckDB updates the states in place, then the commit fails."""
+    real = sverify._state.DuckDBStore.apply
+
+    def failing(self, updates):
+        real(self, updates)
+        raise MemoryError("out of memory")
+
+    monkeypatch.setattr(sverify._state.DuckDBStore, "apply", failing)
+
+
+def _fail_putting_the_source(monkeypatch):
+    """The commit fails registering the source's new contents."""
+    real = sverify.incremental.put_table
+
+    def failing(con, name, table):
+        if name == "orders":
+            raise MemoryError("out of memory")
+        real(con, name, table)
+
+    monkeypatch.setattr(sverify.incremental, "put_table", failing)
+
+
+def _fail_recording(monkeypatch):
+    """The commit fails recording a view's change for its sinks."""
+
+    def failing(self, delta):
+        raise MemoryError("out of memory")
+
+    monkeypatch.setattr(IncrementalView, "_record", failing)
+
+
+_BOUNDED = {"orders": [_.amount >= 0, _.amount < 1_000_000_000]}
+
+
+@sv.transform(requires=_BOUNDED)
+def per_customer(orders):
+    return orders.group_by("customer").aggregate(n=orders.count(), total=orders.amount.sum())
+
+
+@sv.transform(requires=_BOUNDED)
+def customers(orders):
+    return orders.select("customer").distinct()
+
+
+@sv.transform(requires={"paid": [_.amount >= 0, _.amount < 1_000_000_000]})
+def large(paid):
+    return paid.filter(paid.amount > 6)
+
+
+#: The views of #515: kept in DuckDB and updated in place, from a state per
+#: group (COUNT, SUM, DISTINCT: #248), and a view over a view.
+_RETRIED = {
+    "filter": lambda src: paid_nonzero(src),
+    "count_sum": lambda src: per_customer(src),
+    "distinct": lambda src: customers(src),
+    "two_stages": lambda src: large(paid_nonzero(src)),
+}
+
+
+@pytest.mark.parametrize("fail", [_fail_after_apply, _fail_putting_the_source, _fail_recording])
+@pytest.mark.parametrize("view", list(_RETRIED))
+def test_a_refresh_that_fails_in_the_commit_is_retried_once(tmp_path, monkeypatch, view, fail):
+    # #515: a failure after DuckDB updated a state in place left the view
+    # ahead of its source versions, and the retry applied the batch again.
+    src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
+    node = _RETRIED[view](src).write(DeltaSink(str(tmp_path / "out")))
+    node.refresh()
+    write_deltalake(src.uri, orders_table([(3, "ada", 9)]), mode="append")
+    DeltaTable(src.uri).delete("id = 2")
+    with monkeypatch.context() as m:
+        fail(m)
+        with pytest.raises(MemoryError):
+            node.refresh()
+    assert node.versions == {"orders": 1}
+    node.refresh()
+    assert node.versions == {"orders": 3}
+    assert rows(node) == recomputed(node, src) == delta_rows(str(tmp_path / "out"))
+    # The next batch applies on the right state too.
+    write_deltalake(src.uri, orders_table([(4, "cy", 3)]), mode="append")
+    node.refresh()
+    assert rows(node) == recomputed(node, src) == delta_rows(str(tmp_path / "out"))
 
 
 def test_no_cdf_recomputes_and_says_so(tmp_path):
