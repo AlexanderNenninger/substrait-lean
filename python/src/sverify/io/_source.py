@@ -24,7 +24,7 @@ from typing import Any, Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from sverify._weighted import expanded, negated, positive, weighted
+from sverify._weighted import ChangeLog, split, weighted
 from sverify.engine import plain_schema
 from sverify.incremental import (
     Snapshot,
@@ -87,7 +87,6 @@ def as_arrow(data: Any) -> pa.Table:
 
 @dataclass
 class _Entry:
-    version: int
     inserts: pa.Table
     deletes: pa.Table
     kind: Kind | None
@@ -101,9 +100,7 @@ class _State:
     version: int
     table: pa.Table
     cursor: Any = None
-    log: list[_Entry] = field(default_factory=list)
-    floor: int = 0
-    """The log holds every batch after this version."""
+    log: ChangeLog[_Entry] = field(default_factory=lambda: ChangeLog(KEEP))
     oldest: int = 0
     """The oldest version `snapshot` gives: versions below it are an
     earlier process's, or the table before the first read."""
@@ -296,13 +293,12 @@ class Source(Pipeable, ABC):
         st.fresh = False
         if version is None or version == st.version:
             return Snapshot(st.version, st.table, [])
-        if not max(st.floor, st.oldest) <= version < st.version:
+        if not max(st.log.floor, st.oldest) <= version < st.version:
             raise ValueError(f"{self.name} no longer keeps v{version} (latest: v{st.version})")
         # Undo the batches after `version`.
         undo = [
             t
-            for e in st.log
-            if e.version > version
+            for e in st.log.since(version) or []
             for t in (weighted(e.deletes, 1), weighted(e.inserts, -1))
         ]
         if not undo:
@@ -330,11 +326,11 @@ class Source(Pipeable, ABC):
             raise ValueError(f"{self.name} keeps only its latest read, v{st.version}")
         if since == st.version:
             return SourceBatch.unchanged(since, schema=st.table.schema)
-        if since < st.floor:
+        entries = st.log.since(since)
+        if entries is None:
             return SourceBatch.from_snapshot(
                 since, st.version, st.table, reason=f"{self.name}'s batches since v{since} are gone"
             )
-        entries = [e for e in st.log if e.version > since]
         kinds = {e.kind for e in entries if e.kind is not None}
         span = f"{self.name} v{since}→v{st.version}"
         texts = []
@@ -403,9 +399,7 @@ class Source(Pipeable, ABC):
             if rows.equals(st.table):
                 inserts = deletes = empty
             else:
-                diff = snapshot_diff(st.table, rows)
-                inserts = expanded(positive(diff))
-                deletes = expanded(positive(negated(diff)))
+                inserts, deletes = split(snapshot_diff(st.table, rows))
             table = rows
         elif batch.kind == "changes":
             inserts = rows
@@ -418,7 +412,7 @@ class Source(Pipeable, ABC):
             return
         st.version += 1
         st.table = table
-        self._log(_Entry(st.version, inserts, deletes, batch.kind, batch.cursor))
+        st.log.add(st.version, _Entry(inserts, deletes, batch.kind, batch.cursor))
 
     def _changed(self, table: pa.Table, inserts: pa.Table, deletes: pa.Table) -> pa.Table:
         """`table` after a batch of kind `"changes"`: `deletes` removed (one
@@ -426,13 +420,6 @@ class Source(Pipeable, ABC):
         without the work, such as `FlightSource`, overrides it."""
         change = pa.concat_tables([weighted(inserts, 1), weighted(deletes, -1)])
         return _apply_change(table, change, self.name)
-
-    def _log(self, entry: _Entry) -> None:
-        st = self._state
-        assert st is not None
-        st.log.append(entry)
-        if len(st.log) > KEEP:
-            st.floor = st.log.pop(0).version
 
     def _durable(self) -> bool:
         """Whether the source's cursors last across processes (`restore`)."""
@@ -446,7 +433,8 @@ class Source(Pipeable, ABC):
             return UNRECORDED
         if version == st.version:
             return st.cursor
-        return next((e.cursor for e in st.log if e.version == version), UNRECORDED)
+        entry = st.log.at(version)
+        return UNRECORDED if entry is None else entry.cursor
 
     def _resume_after(self, version: int, cursor: Any = UNRECORDED) -> None:
         """A sink recorded this source at `version` in an earlier process,
@@ -482,7 +470,7 @@ class Source(Pipeable, ABC):
         if st.version <= version:
             st.version = version + 1
             empty = st.table.schema.empty_table()
-            self._log(_Entry(st.version, empty, empty, None, st.cursor))
+            st.log.add(st.version, _Entry(empty, empty, None, st.cursor))
             st.oldest = st.version
 
     def _restored(self, version: int, cursor: Any) -> _State | None:
@@ -496,7 +484,9 @@ class Source(Pipeable, ABC):
         table = as_arrow(data)
         schema = self._declared if self._declared is not None else table.schema
         rows = self._fit(table, plain_schema(schema))
-        return _State(version, rows, value, floor=version, oldest=version, restored=True)
+        return _State(
+            version, rows, value, ChangeLog(KEEP, floor=version), oldest=version, restored=True
+        )
 
     def _reread(self, version: int) -> pa.Table:
         """For an audit: the whole table at `version`, read again."""

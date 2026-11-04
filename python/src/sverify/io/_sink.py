@@ -20,7 +20,7 @@ import pyarrow as pa
 
 from sverify._scan import Resident
 from sverify._state import DuckDBStore, arrow_of
-from sverify._weighted import consolidated, expanded, negated, positive, weighted
+from sverify._weighted import ChangeLog, consolidated, expanded, split, weighted
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource, first_line
 from sverify.io._common import (
     ConcurrentWriteError,
@@ -102,18 +102,21 @@ class SinkChange:
         return rows, DuckDBStore().keep_table(self._change)
 
     @cached_property
+    def _split(self) -> tuple[pa.Table, pa.Table]:
+        if self._change is None:
+            return self.table, self.schema.empty_table()
+        inserts, deletes = split(self.change)
+        return inserts.cast(self.schema), deletes.cast(self.schema)
+
+    @property
     def inserts(self) -> pa.Table:
         """The rows to add (with `replace`, every row)."""
-        if self._change is None:
-            return self.table
-        return expanded(positive(self.change)).cast(self.schema)
+        return self._split[0]
 
-    @cached_property
+    @property
     def deletes(self) -> pa.Table:
         """The rows to remove, one copy each (with `replace`, none)."""
-        if self._change is None:
-            return self.schema.empty_table()
-        return expanded(positive(negated(self.change))).cast(self.schema)
+        return self._split[1]
 
 
 class Sink:
@@ -503,7 +506,6 @@ class _TableSink[T](Sink, ABC):
 
 @dataclass
 class _Write:
-    version: int
     inserts: pa.Table | None
     deletes: pa.Table | None
 
@@ -518,8 +520,7 @@ class _Kept:
         self.epoch: int | None = None
         """The epoch of the state it holds."""
         self.table: pa.Table | None = None
-        self.log: list[_Write] = []
-        self.floor = 0
+        self.log: ChangeLog[_Write] = ChangeLog(KEEP)
 
     def put(self, epoch: int, table: pa.Table, change: tuple[pa.Table, pa.Table] | None) -> None:
         """The next version: `table`, which `change` (inserts, deletes) made
@@ -527,14 +528,9 @@ class _Kept:
         self.version += 1
         self.epoch, self.table = epoch, table
         if change is None:
-            self.log, self.floor = [], self.version
+            self.log.reset(self.version)
         else:
-            self._log(_Write(self.version, *change))
-
-    def _log(self, write: _Write) -> None:
-        self.log.append(write)
-        if len(self.log) > KEEP:
-            self.floor = self.log.pop(0).version
+            self.log.add(self.version, _Write(*change))
 
     def _resume_after(self, version: int, cursor: object = None) -> None:
         """Number the versions above `version`, which a sink downstream
@@ -546,7 +542,7 @@ class _Kept:
             self.version = version
         else:
             self.version = version + 1
-            self._log(_Write(self.version, None, None))
+            self.log.add(self.version, _Write(None, None))
 
     def _table(self) -> pa.Table:
         if self.table is None:
@@ -571,11 +567,11 @@ class _Kept:
             raise ValueError(f"{self.name} keeps only its latest write, v{self.version}")
         if since == self.version:
             return SourceBatch.unchanged(since)
-        if since < self.floor:
+        writes = self.log.since(since)
+        if writes is None:
             return SourceBatch.from_snapshot(
                 since, self.version, table, reason=f"{self.name} was rewritten since v{since}"
             )
-        writes = [w for w in self.log if w.version > since]
         empty = table.schema.empty_table()
 
         def rows(tables: list[pa.Table | None]) -> pa.Table:
