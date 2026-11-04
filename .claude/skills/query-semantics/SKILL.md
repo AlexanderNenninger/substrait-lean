@@ -1,80 +1,80 @@
 ---
 name: query-semantics
-description: Answer how sverify's frontends (the SQLGlot lift of DuckDB's SQL, the vendored Ibis producer) and backends (DuckDB, Polars, DataFusion, Spark, Snowflake) handle an example SQL query or Ibis expression, compared with the Lean model (Rel.eval). Use when asked "what does engine X do with this query", "does Lean accept/model this", "do the engines agree on …", "is this query portable", or to probe or compare a query across backends.
+description: Answer what sverify and each engine make of an example SQL query or Ibis expression, profile by profile - the strict reference that plans are verified under, the DuckDB and Polars engine profiles, and Substrait's own - with the route and class by which a verified plan reaches each engine, the characterization facts and upstream ledger entries behind them, and a probe that runs it. Use when asked "what does engine X do with this query", "does sverify verify/accept this", "do the engines agree on …", "is this query portable", "why is it refused on Polars", or to probe or compare a query across engines.
 ---
 
 Answer from the repository's static sources first:
-- `lookup.py` collects what the docs, notebooks, catalogue and code already say about the query's constructs.
+- `lookup.py` verifies the query under each profile (with `--table`) and collects the options it meets, each profile's choice rows, the engine facts and the upstream ledger entries.
 - `probe.py` runs the query only when those don't settle the question.
 
-Both scripts live in `.claude/skills/query-semantics/`. Paths below are relative to the repository root unless a command `cd`s to `python/`.
+Both live in `.claude/skills/query-semantics/`. The terms (reference, profile, option, choice, route, class, observation) are those of `docs/core-semantics.md`; read its Terminology and "Classes of an engine's functions" once.
+
+## How to frame the answer
+
+Answer per profile, never just "Lean vs engine":
+
+- Profiles. The reference (`semantics="reference"`, strict: raises where engines disagree) is what plans are verified under by default. `semantics="duckdb"` verifies DuckDB's SQL as DuckDB computes it, `semantics="polars"` an Ibis expression as Polars computes it, and `semantics="substrait"` (#600) under Substrait's own loose semantics. Say which of these verify the query.
+- Preconditions. Name what `sv.verify` inferred (`requires … (inferred)`, `assumes: … stays finite`). `Report.run` checks them on the data before a routed run, and by default once #606 lands (#604).
+- Routes (`sverify.routes.choose`, D13). Per engine with a profile (DuckDB, Polars): `native` (verified under the engine's profile), `reference` (verified under the reference, through its translation), `transfer` (another profile whose choices contain the engine's on every option the proof depends on), `recheck`, or refused with the reason.
+- Class (#568, D15). `refines`, `refines_up_to` an observation `q`, `approx` (within ε), `shim`, `refused`: the worst over the options the proof depends on. An option the engine realizes only up to `q` needs a postcondition whose observation `q` refines (`sv.equivalent(...)`, D11, D18), or the row's shim; say which. What a rerun must reproduce is a second observation (D20, #613).
+- Facts. Cite the engine facts the class rests on, with evidence level and status, and any ledger entry.
+- Engines outside the profiles (DataFusion, Spark, Snowflake; paused until #271) run the writer's shims, tested only. Mark their results as such.
 
 ## Prerequisites
 
-`uv` and the Lean toolchain (`elan`; if `lake` is not found, `export PATH=$HOME/.elan/bin:$PATH`). The probe needs `substrait-check`; build it once:
+`uv`, and a built `substrait-check`. In a worktree without a Lean build, point sverify at a checker of the same commit:
 
 ```bash
-lake build substrait-check
+export SVERIFY_CHECK=/path/to/substrait-lean/.lake/build/bin/substrait-check
 ```
 
-`--spark` needs a JVM (Java 17 or 21; `java -version`).
+Otherwise build it (`lake build substrait-check`; check the load first, CLAUDE.md). `--spark` needs a JVM (Java 17 or 21).
 
-## Step 1: static lookup (always first)
-
-```bash
-uv run --project python python .claude/skills/query-semantics/lookup.py \
-    --sql 'SELECT x, x NOT IN (2, NULL) AS ni, a / b AS q FROM n ORDER BY x DESC LIMIT 2'
-```
+## Step 1: lookup (always first)
 
 ```bash
 uv run --project python python .claude/skills/query-semantics/lookup.py \
-    --ibis 't.select("x", r=ibis.row_number().over(order_by="x"), q=t.x // t.y)'
+    --sql 'SELECT a, CASE WHEN b <> 0 THEN a / b END AS q FROM r' --table r 'a:int64,b:int64'
 ```
 
-- `--sql` is parsed as Postgres by sqlglot.
-- `--ibis` code sees one table `t` with columns `x y` (int64), `v` (float64), `s` (string), `ts` (timestamp), `d` (date) and `b` (boolean). It prints Ibis's SQL, then where the vendored producer translates each Ibis operation.
-- `--word nan --word collation` adds search words.
+```bash
+uv run --project python python .claude/skills/query-semantics/lookup.py \
+    --sql 'SELECT k, sum(v) AS s FROM m GROUP BY k' --table m 'k:string,v:float64' \
+    --requires m '_.v.between(-1e17, 1e17)' --requires m 'sv.max_rows(10**6)' \
+    --ensures 'sv.equivalent(floats=sv.within(abs=1e-6))'
+```
 
-It prints, per source:
+- `--sql` is DuckDB's SQL. `--table NAME COLS` (Ibis type names) turns on the profiles block; without it the options come from the SQL's syntax alone.
+- `--ibis` code sees the `--table` tables, or one table `t` with `x y` (int64), `v` (float64), `s` (string), `ts` (timestamp), `d` (date) and `b` (boolean). It prints where the vendored producer translates each Ibis operation.
+- `--requires TABLE EXPR` and `--ensures EXPR` take Ibis expressions over `_` and sverify's conditions (`sv.max_rows`, `sv.unique`, `sv.equivalent`).
+- `--word nan` adds search words; `--prose` adds the older catalogue prose.
+
+It prints:
 
 | section | source | answers |
 |---|---|---|
-| features | `catalogue/features.toml` | is the construct in the Lean model (`yes`/`partial`/`no`) |
-| pitfalls | `catalogue/pitfalls.toml` | what each engine does, plus the ids of backend_semantics.py's entries |
-| nb17 | `catalogue/backend_semantics.py` (`E(...)` entries) | per engine, Ibis backend, standard SQL and Snowflake; `picks` is the Lean model's answer |
-| nb17 §8 | `catalogue/backend_semantics.py` (`B(...)` entries) | DataFusion running checked plans, tagged agree/handled/GAP when the notebook runs |
-| parser | `SubstraitLean/Parse.lean` | how Lean reads the Substrait function, or that it refuses it |
-| backends | docstrings of `python/src/sverify/sql/{duckdb,snowflake,spark,core}.py` and `polars_engine.py` | how each backend is made to give Lean's value, and the divergences it works around |
-| catalogue | `catalogue/status.json` | real queries with the same features: verified? which engines run them? |
-| producer | `python/src/sverify/ibis_substrait/` (`_base.py` and one module per area) | (`--ibis`) the translation of each Ibis operation |
+| profiles | `sv.verify(semantics=…)`, `routes.choose` | verified under which profile, preconditions inferred, issues, route and class to DuckDB and Polars |
+| options | `substrait-check --functions`, the plan's `depends` | the (group, option) pairs the query meets |
+| choices | `substrait-check --options` | each profile's row: allowed behaviours, default, class, `q`, shim, rerun, facts |
+| facts | `characterization/<engine>/facts/*.json` | the facts for those options (by `rows` where a fact has them, else `options`) and functions, with evidence (`docs` < `source` < `engine_test` < `probe` < `fuzz` < `proof`) and status |
+| ledger | `upstream/bugs/*.json` | engine bugs and spec gaps (`ST-*`, `kind: spec-gap`) linked to those facts or naming the functions |
+| parser | `SubstraitLean/Parse.lean` | how the Substrait function is read, or refused |
+| prose (`--prose`) | `catalogue/pitfalls.toml`, `features.toml`, `backend_semantics.py`, engine module docstrings, `status.json` | older notes, from before the facts; the facts win where they disagree |
 
-Then **read the cited lines** before answering: the lookup only finds candidates. For a construct none of these cover, grep the sources yourself. Throws in `Parse.lean` and `Unsupported(` in `python/src/sverify` give the exact refusal. The README's sections on the producer and engines, and `catalogue/FINDINGS.md` ("Why engines refuse verified queries", "What each engine needs"), are the prose behind these.
+Then read the cited facts and lines before answering: the lookup finds candidates. A fact's `description`, `reference` and `provenance` say what the engine does, what the reference does, and how that is known. `python -m sverify_dev.facts --coverage <engine>` (from `python/`) lists the checklist items and choice-table rows that have no fact yet.
 
-Answer with one line per frontend and per backend:
-- Frontends: produces a plan? Lean accepts or refuses it, and why?
-- Backends running Lean's plan: same rows as `Rel.eval`, raises by design, or refused (translation `Unsupported`)?
-- Native: what the engine makes of the original SQL or Ibis code on its own, and whether that is the model's answer.
+Where something is still in review, the scripts say so and degrade: no engine choices table before #587 (routes then carry no class), no `Profile.substrait` before #600, no settings check before #598.
 
-Say which source each line rests on.
-
-## Step 2: probe (only if the static sources don't determine it)
+## Step 2: probe (only if the static sources don't settle it)
 
 Run from `python/`:
 
 ```bash
 cd python
 uv run python ../.claude/skills/query-semantics/probe.py \
-    --table n 'x:int64,s:string' '[(1, "a"), (2, None), (None, "c")]' \
-    --sql 'SELECT x, x IN (1, NULL) AS i, x NOT IN (2, NULL) AS ni FROM n' \
-    --ibis 't.select("x", i=t.x.isin([1, None]), ni=t.x.notin([2, None]))'
-```
-
-```bash
-cd python
-uv run python ../.claude/skills/query-semantics/probe.py \
-    --table r 'a:int64,b:int64,v:float64,ts:timestamp' \
-    '[(7, 2, 1.5, "2024-01-01 10:00:00"), (-7, 2, None, None), (None, 3, "nan", "2024-03-01 00:00:00")]' \
-    --sql 'SELECT a / b AS q, a % b AS m, v * 3 AS w, ts FROM r ORDER BY a DESC' --spark
+    --table n 'x:int64,s:string' '[(2, "a"), (None, "b"), (1, None), (3, "c")]' \
+    --sql 'SELECT x, s FROM n ORDER BY x DESC LIMIT 3' \
+    --ibis 'n.order_by(ibis.desc("x")).limit(3)'
 ```
 
 ```bash
@@ -82,32 +82,31 @@ cd python
 uv run python ../.claude/skills/query-semantics/probe.py --catalogue win-top-n-per-group
 ```
 
-Inputs:
-- `--table NAME COLS ROWS` (repeatable): `COLS` takes Ibis type names. `ROWS` is a Python literal list of tuples; timestamps and dates may be ISO strings, and doubles `"nan"`, `"inf"` or `"-inf"`.
-- `--ibis`: an expression over the tables (`t` is the first table), or statements that assign `q`.
-- `--catalogue ID`: a catalogue query with its synthetic tables.
+Inputs: `--table NAME COLS ROWS` (repeatable; `ROWS` a Python list of tuples, timestamps and dates as ISO strings, doubles as `"nan"`, `"inf"`, `"-inf"`), `--sql`, `--ibis` (an expression, or statements that assign `q`), `--catalogue ID`, `--requires`/`--ensures` as in the lookup, `--spark`.
 
-Output, in four blocks:
-1. **Frontends.** Each producer's plan, the checker's verdict, Lean's `Rel`, and `Rel.eval` on the given rows.
-2. **Backends on Lean's written plan.** DuckDB, Polars, DataFusion (and Spark with `--spark`), each shown as `= Lean`, `DIFFERS from Lean`, `raises (…)` or `refused`. Snowflake is SQL text only, never run.
-3. **Native SQL.** The query as written, on DataFusion, DuckDB, Polars SQL (and Spark).
-4. **Native Ibis.** The expression on Ibis's DuckDB, Polars and DataFusion backends.
+Output:
+1. Environment: package versions, each profile's fact versions against the installed engine (D14), the DuckDB settings the facts depend on (#598's table once it lands), and how Polars runs.
+2. Frontends: the lift's and the Ibis producer's plans, the checker's verdict under the reference, the `Rel`, and `Rel.eval` on the rows.
+3. Profiles: as in the lookup.
+4. Engines on the written plan: DuckDB and Polars, each `= Rel.eval`, `DIFFERS`, `raises` or `refused`, with the route and class under it; DataFusion (and Spark with `--spark`) marked outside the profiles; Snowflake as SQL text only.
+5. Native: the SQL as written on DuckDB, Polars SQL and DataFusion (and Spark), and the Ibis expression on Ibis's backends. No route applies; this is what the engine itself does.
 
-Rows compare as bags, or in order when an ORDER BY reaches the result. Doubles compare to 6 decimals, times as µs since the epoch, dates as days.
+Polars runs on its streaming engine, as sverify does (#605; the probe patches it in until then), with sverify's flags for plans and Polars's defaults for native queries. Rows compare as bags, or in order where a sort reaches the result; doubles to 6 decimals, times as µs, dates as days.
 
 ## Gotchas
 
-- **A difference under a window or FETCH may be legitimate.** Where sort keys tie, engines may number, pair or pick rows differently from `Rel.eval`'s stable order. The probe prints a note; check whether the differing rows tie (pitfall `tie_order`). In `win-top-n-per-group`, DataFusion "differs" only on two products tied at 85.
-- **`raises` on a backend is by design, not a bug.** For division by zero, i64 overflow or a bad cast, Lean's `Rel.eval` value is NULL. The engines running Lean's plan raise instead (`sverify: division by zero`); `SubstraitLean/Safety.lean` and the contract checks say when that can happen. Natively, DuckDB and Polars SQL give `inf`, and DataFusion and Spark raise.
-- **Polars SQL and the Polars expression API differ.** `x IN (1, NULL)` follows SQL in `pl.SQLContext`, but backend_semantics.py's N2 shows `pl.col('x').is_in([1, None])` ignoring the NULL. The probe runs Polars SQL; for the expression API, read the `polars:` field of the backend_semantics.py entry.
-- **Ibis is not SQL.** Chapter 17's "leaky" entries mean different things per Ibis backend: `row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`, and the default window frame is the whole partition. Give both `--sql` and `--ibis` when the question is about Ibis.
-- **Snowflake is never executed.** Its SQL is generated and (in the catalogue) parsed with sqlglot only. It refuses sorts, FETCH and windows over named tables (no row order) unless `tie_free=True`, and so does Spark for windows.
-- **Native DataFusion can be wrong** where Lean refuses. For example, `NOT IN (subquery)` with a NULL returns rows in DataFusion 51's own SQL; the parser refuses that plan, so nothing is proved.
-- **`catalogue/status.json` is a snapshot.** If the checker or producers changed on your branch, re-probe the query from `python/` with `uv run python -m sverify_dev.catalogue <query-id>`; `--write` re-probes everything and rewrites `status.json`.
-- **Notebook entries are static prose plus code.** The `why`, `std`, `snowflake` and `picks` fields are written answers. The row tables in the notebook are computed when it runs, so for actual rows, run the probe (or the notebook).
+- Give tables of at least 2 rows. Polars rewrites arithmetic with literals differently on a one-row frame (PL-3, `polars-zero-sign`), so a one-row probe can hide a difference. The probe warns.
+- A difference under a window or `LIMIT` may be allowed. Where sort keys tie, the reference leaves `tie_order` open; an engine that orders ties differently refines it up to the observation "ties permuted". Check whether the differing rows tie.
+- `raises` on an engine running the plan is by design where the reference raises: division by zero, i64 overflow, a double overflowing to ±∞ (#575). `Report.issues` and `Safety.lean` say where that can happen; a guard (`CASE WHEN b <> 0`) or a precondition removes it.
+- A float `SUM` or `AVG` verifies only once the inputs are bounded and NaN-free (`between` gives both, with `max_rows`); otherwise the report says `may fail: domain error`. Its order is the open option `sum_order`. Where an engine's row bounds the difference per plan (Polars streaming), the route checks that bound against the postcondition's tolerance (`sv.equivalent(floats=sv.within(...))`), and a rerun may differ in the last bits (D20).
+- Polars SQL and the Polars expression API differ, and Ibis is not SQL (`row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`). Give both `--sql` and `--ibis` when the question is about Ibis. `semantics="polars"` checks Ibis expressions only.
+- A run on a DuckDB or Polars version other than the profile's warns, another major version refuses (D14). A DuckDB setting a choice depends on (`default_null_order`, `integer_division`, …) refuses a routed run (#598).
+- `catalogue/status.json` is a snapshot. Re-probe one query from `python/` with `uv run python -m sverify_dev.catalogue <query-id>`.
 
 ## Troubleshooting
 
-- `memtable() got an unexpected keyword argument 'name'`, or `Parser Error: syntax error at or near "EXISTS"` from Ibis's DuckDB `create_table`: the pinned Ibis can't create tables from Arrow on DuckDB. The probe uses `ibis.memtable` for native Ibis runs; keep it that way.
-- `'pyarrow.lib.RecordBatchReader' object has no attribute 'columns'`: DuckDB's `.arrow()` returns a reader in this version; use `.fetch_arrow_table()`.
-- `ArrowTypeError: object of type <class 'str'> cannot be converted to int`: a row value doesn't match its column type. Timestamps and dates must be ISO strings in timestamp/date columns.
+- `this checker has no Profile.polars to check under yet`: the checker predates the engine tables (#587); the reference's route still applies.
+- `CheckerVersionError` or `FileNotFoundError` for `_bin/substrait-check`: set `SVERIFY_CHECK` (above).
+- `memtable() got an unexpected keyword argument 'name'`: the probe uses `ibis.memtable` for native Ibis runs; keep it that way.
+- `Relations no longer have fetchone()`: DuckDB 2.0; use `.fetchall()` or `.fetch_arrow_table()`.
+- `ArrowTypeError: object of type <class 'str'> cannot be converted to int`: a row value doesn't match its column type.
