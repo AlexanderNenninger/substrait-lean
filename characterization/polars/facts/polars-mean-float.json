@@ -6,20 +6,25 @@
   "verdict": "sum / n",
   "area": "aggregates",
   "options": [
-    "sum_order"
+    "sum_order",
+    "rounding"
   ],
   "rows": [
-    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32", "fp64"]}
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32", "fp64"]},
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp32", "fp64"], "evidence": "source"}
   ],
   "constructs": [
     "mean",
     "avg"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": "in-memory"
+  },
   "description": [
     "`mean` is the sum (polars-sum-float, pairwise or Kahan by path) divided by the count.",
     "The mean sums in `f64` whatever the input: `_sum_as_f64` (pairwise, `f32` lanes widened to `f64`) ungrouped, `KahanSum<f64>` per index group in memory. A `Float32` mean is that `f64` quotient rounded to `f32`.",
-    "Streaming: `NumMeanReducer` keeps an `f64` sum and a count; a morsel adds its `_sum_as_f64`, a grouped row adds itself (`reduce_one`), and pipelines merge by adding sums and counts. So a grouped mean is Kahan in memory and a plain left-to-right `f64` sum when streaming, as for `sum` (polars-sum-float)."
+    "Streaming: `NumMeanReducer` keeps an `f64` sum and a count; a morsel adds its `_sum_as_f64`, a grouped row adds itself (`reduce_one`), and pipelines merge by adding sums and counts. So a grouped mean is Kahan in memory and a plain left-to-right `f64` sum when streaming, as for `sum` (polars-sum-float).",
+    "Order class (in memory): (a) ungrouped, `_sum_as_f64`: the pairwise kernel per chunk (`Float32` lanes widened exactly to `f64`), chunks added in turn, then one division by the count; index-grouped, Kahan in `f64`, then the division; a `Float32` mean rounds the `f64` quotient to `f32`. (b) Pairwise: γ_{h+1} Σ|x_i| / n with h as in polars-sum-float (Higham §4.2); Kahan: (2u + O(nu²)) Σ|x_i| / n plus the quotient's u (§4.3); u = 2⁻⁵³; the `Float32` result adds one rounding at 2⁻²⁴. (c) The source below; s-group-mean-cancel (0.5 in memory). (d) Ungrouped `Float64`: ANY. Grouped (Kahan): no Lean order. `Float32`: the sum refines ANY on the widened values, but the final rounding to `f32` is outside `AggFn.avg`, which returns the double quotient."
   ],
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
@@ -94,6 +99,34 @@
         "Narrowed to the in-memory engine; the streaming engine is in polars-mean-float-streaming. Its grouped mean of 1e16, 1, 1, -1e16 is 0.25 or 0.0 depending on the run (in memory 0.5), which this fact did not say.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L135-L137",
+          "note": "_sum_as_f64"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L240-L246",
+          "note": "mean: _sum_as_f64 / count"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L952-L990",
+          "note": "agg_mean: KahanSum of f64 per index group"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L254-L265",
+          "note": "the first n mod 128 values added in turn, then mainsum + restsum"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
     }
   ],
   "issues": [

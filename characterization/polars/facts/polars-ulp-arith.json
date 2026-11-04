@@ -1,0 +1,94 @@
+{
+  "id": "polars-ulp-arith",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`+ - * /` round once; `/` by a literal and `x ** n` round more",
+  "verdict": "column ops ≤ 0.5 ulp; `x / c` < 1.5 ulp (1.2 seen); `x ** n` for literal n in 3..9 up to n − 1 ulp (3.8 seen)",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "fp32"
+  ],
+  "rows": [
+    {
+      "group": "fp.arith",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.elem",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/",
+    "**"
+  ],
+  "settings": {
+    "platform": "macOS arm64",
+    "engine": "streaming"
+  },
+  "description": [
+    "`+`, `-`, `*` and `/` of two columns are one IEEE operation in the column's type (`Float32` stays binary32): correctly rounded, ≤ 0.5 ulp, on every platform.",
+    "`x / c` with a literal (or any length-1) divisor is `x * (1 / c)` (PL-3, polars-double-scalar-divisor): two roundings. Bound: `1 / c` is off by at most 2^-53 relative (2^-24 for `Float32`), which is at most 1 ulp of the quotient, plus the product's 0.5, so < 1.5 ulp. Observed, fp64 / fp32: c = 49: 1.20 / 0.84 ulp; c = 7.3: 1.20 / 0.81; c = 0.1: 1.00 / 0.75; c = 10: 0.80 / 0.60; c = 3: 0.67 / 0.67. A third to a half of the quotients miss the correctly rounded value.",
+    "`x ** n` with a literal integer `n` from 2 to 9 multiplies `x` by itself `n − 1` times (polars-elem-rounding), rounding after each product: `n − 1` roundings, so up to about `n − 1` ulp. `x ** 2` is one product, correctly rounded. Observed max, fp64 / fp32: n = 3: 1.24 / 1.24; 4: 1.55 / 1.63; 5: 2.16 / 2.27; 6: 2.51 / 2.44; 7: 3.43 / 2.96; 8: 3.17 / 3.50; 9: 3.59 / 3.78 ulp, with 25 to 55 % of results off. DuckDB's `pow(x, n)` on the same inputs stays within 0.51 ulp (libm `pow`). These are hardware operations: the bounds hold on every platform."
+  ],
+  "reference": "`add`, `subtract`, `multiply` and `divide` round once (`rounding: TIE_TO_EVEN`); `power` is one libm `pow` call in Lean's `Float`. sverify's ε (#85) for Polars has to take 1.5 ulp for a division by a literal and n − 1 ulp for `x ** n`, or shim them (divide by a column, `pow` with a non-literal exponent).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (ulp bounds)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L109-L119",
+          "note": "prim_true_div_scalar: lhs * (1 / rhs)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L37-L70",
+          "note": "pow_on_floats: a literal integer exponent in 2..9 is `out = out * base` n − 1 times"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (ulp bounds)",
+      "evidence": [
+        {
+          "note": "pl.LazyFrame({'a': X, 'b': Y}).select(a + b, a - b, a * b, a / b).collect(engine='streaming'), Float64 and Float32, 3 000 rows: max 0.5000, 0.5000, 0.4994, 0.4999 ulp (fp64), 0.5 each (fp32); 0 off the correctly rounded value."
+        },
+        {
+          "note": "select(pl.col('a') / pl.lit(c, dtype=…)) for c in 49, 3, 10, 0.1, 7.3: fp64 max 1.2041 (1 490 of 3 000 off), 0.6667 (1 040), 0.8000 (1 018), 0.9999 (975), 1.2006 (1 550); fp32 0.8367 (755), 0.6667 (1 044), 0.6000 (606), 0.7500 (450), 0.8073 (670). Worst fp64 case: -0.8922618801772502 / 7.3."
+        },
+        {
+          "note": "select(pl.col('x') ** n) for n = 2 … 9, x in ±[0.5, 2]: fp64 max 0.49999, 1.2436, 1.5533, 2.1604, 2.5084, 3.4332, 3.1737, 3.5886 ulp (0, 772, 1 084, 1 264, 1 383, 1 520, 1 589, 1 656 of 3 000 off); fp32 0.4998, 1.2412, 1.6263, 2.2720, 2.4416, 2.9587, 3.5025, 3.7812. Worst fp64: 1.7975193975534105 ** 7."
+        }
+      ],
+      "notes": [
+        "Probe script ulp_probe.py (session scratchpad, not in the repository), run from python/ as `uv run --with mpmath python ulp_probe.py --n 3000 --seed 1 --out ulp.json`: about 3 000 inputs per operation and type, random and hard cases, against mpmath at 256 bits. 'bad' counts results that differ from the correctly rounded value; the max is in ulps of the result type at the exact value's binade. DuckDB runs on a table loaded from Parquet, Polars on a LazyFrame with collect(engine='streaming'), so the column kernels run. DuckDB 2.0.0 and Polars 2.1.0 (Python wheels), macOS 26.6 arm64, Python 3.12.11, mpmath 1.3.0.",
+        "Elementwise kernels are shared by the streaming and in-memory engines (polars-elem-rounding, polars-double-scalar-divisor); the probe collects with engine='streaming' on 3 000-row frames, so morsels hold more than one row and the literal paths run."
+      ]
+    }
+  ]
+}

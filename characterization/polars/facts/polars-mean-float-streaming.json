@@ -6,11 +6,16 @@
   "verdict": "f64 sum / n; grouped, the order of the additions varies between runs",
   "area": "aggregates",
   "options": [
-    "sum_order"
+    "sum_order",
+    "rounding",
+    "empty_group_aggregates"
   ],
   "rows": [
     {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
-    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32"], "evidence": "source"}
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32"], "evidence": "source"},
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]},
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp32"], "evidence": "source"},
+    {"group": "agg.fsum", "option": "empty_group_aggregates", "types": ["fp32", "fp64"], "evidence": "source"}
   ],
   "constructs": [
     "mean",
@@ -21,7 +26,8 @@
   },
   "description": [
     "On the streaming engine `mean` is `NumMeanReducer`: an `f64` sum and a count. A morsel adds its `_sum_as_f64`, a grouped row adds itself, and pipelines merge by adding sums and counts. A `Float32` mean is the `f64` quotient rounded to `f32`.",
-    "The grouping of the additions follows the scheduling of morsels, so a grouped mean can change between runs: one `Float64` group of 1e16, 1, 1, -1e16 gave 0.25 and 0.0 on different runs (in memory, Kahan: 0.5). The in-memory engine's algorithms are in polars-mean-float."
+    "The grouping of the additions follows the scheduling of morsels, so a grouped mean can change between runs: one `Float64` group of 1e16, 1, 1, -1e16 gave 0.25 and 0.0 on different runs (in memory, Kahan: 0.5). The in-memory engine's algorithms are in polars-mean-float.",
+    "Order class (streaming): (a) `NumMeanReducer` keeps an `f64` sum: ungrouped, each morsel adds its `_sum_as_f64` (pairwise per chunk) and pipelines merge in turn; grouped, each row is added in turn per pipeline and the pipelines' sums merge; one division by the count, rounded to `f32` for `Float32`. (b) Any tree: γ_{h+1} Σ|x_i| / n, h as in polars-sum-float-streaming, at most n − 1 (Higham §4.2), u = 2⁻⁵³; `Float32` adds one rounding at 2⁻²⁴. (c) The source below; s-group-mean-cancel (0.25 and 0.0 on different runs). (d) `Float64`: ANY. `Float32`: the `f64` sum of the widened values refines ANY, and the final rounding to `f32` is outside `AggFn.avg`."
   ],
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
@@ -60,6 +66,34 @@
       "notes": [
         "Carried over from polars-mean-float's round-2 reading. The `Float32` row rests on it: the probes ran `Float64` only."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L29-L52",
+          "note": "finish: f64 sum / count, cast to f32 for Float32"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L73-L124",
+          "note": "NumMeanReducer: reduce_ca adds _sum_as_f64, reduce_one and combine `+=`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104",
+          "note": "ungrouped: one state per pipeline, merged in pipeline order"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L457-L528",
+          "note": "grouped: reduce_one per row; combine_subset merges the pipelines' states"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
     }
   ],
   "issues": [

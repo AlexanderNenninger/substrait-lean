@@ -10,7 +10,12 @@
     "str.strip_chars_start",
     "str.strip_chars_end"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "`strip_chars()` with no argument is Rust's `str::trim`, every Unicode whitespace character (tab, newline, no-break space, em space). With characters it trims those: `strip_chars(' ')` is `btrim(s, ' ')` on every probe row.",
   "reference": "`btrim(s)` trims spaces only; `btrim(s, chars)` the given characters.",
   "status": "open",
@@ -42,6 +47,25 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.strip_chars(' ')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "strip-whitespace"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ]
 }

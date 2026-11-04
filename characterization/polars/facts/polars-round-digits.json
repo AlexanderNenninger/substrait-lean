@@ -14,7 +14,12 @@
   "constructs": [
     "round"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "`round(d)` multiplies by `10ᵈ`, rounds (half to even unless `mode` says otherwise) and divides back; from `d = 300` it splits the multiplier into powers of 2 and 5, from `d = 326` it returns the input, and a non-finite intermediate returns the input. The two roundings make ties of the decimal text round either way: `round(2.675, 2)` is 2.68 though the double is below 2.675, and `round(0.285, 2)` is 0.28.",
     "A negative `d` is refused by the Python API (`OverflowError`, `decimals` is a `u32`)."
@@ -73,6 +78,49 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64.round(1)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64.round(2)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64.round(16)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64.round(308)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64.round(309)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64.round(400)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "round-digits-ties"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "round-digits-negative"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

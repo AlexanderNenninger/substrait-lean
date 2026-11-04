@@ -8,7 +8,8 @@
   "options": [
     "on_division_by_zero",
     "nan_creation",
-    "on_domain_error"
+    "on_domain_error",
+    "float_overflow"
   ],
   "rows": [
     {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
@@ -16,7 +17,8 @@
     {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
     {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "float_overflow", "types": ["fp32", "fp64"]}
   ],
   "constructs": [
     "/"
@@ -29,7 +31,8 @@
   },
   "description": [
     "`/` between two double columns is IEEE 754: `x / 0` is ±inf, `0 / 0` is NaN, `±inf / ±inf` is NaN. No setting changes it. With the `IEEE` candidate, only the four `±inf / ±inf` rows differ, as for DuckDB (duckdb-R15-double-arith).",
-    "A length-1 divisor against a longer column (a literal on a frame of two rows or more) is a multiplication by its reciprocal. Zero and infinite divisors give the same results there, but a subnormal divisor's reciprocal is inf, so `0.0 / 1e-310` is NaN and `1e-300 / 1e-310` is inf (polars-double-scalar-divisor, PL-3)."
+    "A length-1 divisor against a longer column (a literal on a frame of two rows or more) is a multiplication by its reciprocal. Zero and infinite divisors give the same results there, but a subnormal divisor's reciprocal is inf, so `0.0 / 1e-310` is NaN and `1e-300 / 1e-310` is inf (polars-double-scalar-divisor, PL-3).",
+    "A quotient of finite values too large for the type is `±inf`: `-1e308 / 1e-10` is -inf in `Float64`, `-3e38 / 1e-3` is -inf in `Float32`, on both engines."
   ],
   "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257).",
   "status": "open",
@@ -143,6 +146,16 @@
       "notes": [
         "Pins the `Float32` results of a zero divisor: `x / 0` is inf and `0 / 0` NaN. The test runs each case on one-row operands and, through `BROADCAST_SERIES_COMBINATIONS`, with the left side broadcast to three rows against a one-row right side, which takes the reciprocal-divisor kernel (PL-3); `EXEC_OP_COMBINATIONS` runs it on `Series` (in memory) and as a lazy `select` with `collect()`. These inputs give the same results on the IEEE and the reciprocal path. Marked `slow`, which CI still runs. `±inf / ±inf` is not tested, so the `on_domain_error` row for `fp32` stays at the source.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline session (float_overflow rows), polars 2.1.0",
+      "evidence": [
+        {
+          "note": "pl.LazyFrame({'a': [big, -big], 'c': [10.0, small]}) with Float64 (big 1e308, small 1e-10) and Float32 (big 3e38, small 1e-3); select a / c; pl.LazyFrame(...).collect(engine=e) for e in ('in-memory', 'streaming'), polars 2.1.0 → Float64: 1e+307, -inf; Float32: 3.000000106909804e+37, -inf; streaming the same"
+        }
       ]
     }
   ],

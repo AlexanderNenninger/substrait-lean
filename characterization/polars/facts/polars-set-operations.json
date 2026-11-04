@@ -14,7 +14,12 @@
     "unique",
     "join"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "Polars has no set-operation node: `pl.concat` is `UNION ALL`, and `unique` after it is `UNION`. `INTERSECT` and `EXCEPT` are a semi and an anti join on every column with `nulls_equal=True`, then `unique`: without `nulls_equal` NULL rows never match (a semi join drops them, an anti join keeps them).",
     "`INTERSECT ALL` and `EXCEPT ALL` have no direct form; the reference's numbering of equal rows (a `cum_count` over every column) would write them."
@@ -34,6 +39,26 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "set-operations"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-set-operations"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`pl.concat` of two frames runs eagerly, in memory; s-set-operations runs the union, intersect and except lazily on each engine, on 6000 and 6000 rows. `UNION ALL` keeps both inputs in order on both engines, and the results hold the same rows. The intersect's two rows came out in another order (in memory NULL first, streaming 1 first), which the fact does not pin.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

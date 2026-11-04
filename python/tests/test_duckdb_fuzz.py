@@ -27,7 +27,9 @@ def test_agree():
 def test_overflow():
     big = 2**63 - 1
     out = _check("SELECT (i + i) AS c0 FROM t AS q", [(big, None, *T_ROW[2:])])
-    assert not out.agree
+    # `verify` reports the overflow, so a verified plan excludes the input:
+    # an expected refusal, not a finding (#638).
+    assert out.agree
     assert out.lean == f'[["{2 * big}"]]'  # unbounded
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in addition")
     assert duckdb_fuzz.kind(out) == "error: Out of Range Error: Overflow in addition of INT"
@@ -36,8 +38,9 @@ def test_overflow():
 
 def test_division_by_zero():
     out = _check("SELECT (i % j) AS c0 FROM t AS q", [(7, 0, *T_ROW[2:])])
-    assert (out.agree, out.lean) == (False, '[["NULL"]]')
+    assert (out.agree, out.lean) == (True, '[["NULL"]]')
     assert out.duckdb.startswith("error: Invalid Input Error: Division by zero")
+    assert any("division by zero" in i for i in out.issues)
 
 
 def test_aimed_restores():
@@ -74,3 +77,21 @@ def test_doubles_divide_as_doubles():
     (#619)."""
     out = _check("SELECT (d / d) AS c0 FROM t AS q", [(None, None, 0.0, *T_ROW[3:])])
     assert out.duckdb == '[["nan"]]'
+
+
+def test_aimed_swaps_the_double_values_and_restores_them():
+    before = (fuzz.VALUES[fuzz.DOUBLE], fuzz.LITERALS[fuzz.DOUBLE], dict(fuzz._KINDS))
+    with duckdb_fuzz.aimed(duckdb_fuzz.TARGETS["float_special"]):
+        assert fuzz.VALUES[fuzz.DOUBLE] is not before[0]
+        assert "neg" in fuzz._KINDS[fuzz.DOUBLE] and "cast_int" not in fuzz._KINDS[fuzz.DOUBLE]
+    assert (fuzz.VALUES[fuzz.DOUBLE], fuzz.LITERALS[fuzz.DOUBLE], dict(fuzz._KINDS)) == before
+    with duckdb_fuzz.aimed(duckdb_fuzz.TARGETS["eval_order"]):
+        assert fuzz.VALUES[fuzz.DOUBLE] is before[0]
+
+
+def test_an_error_verify_reports_is_an_expected_refusal():
+    # DuckDB raises; `Rel.eval` gives rows; `verify` reports the overflow, so
+    # a verified plan's precondition excludes the input (#638).
+    out = _check("SELECT (i - 1) AS c0 FROM t AS q", [(-(2**63), *T_ROW[1:])])
+    assert out.duckdb.startswith("error: ") and not out.lean.startswith("error: ")
+    assert out.agree and any("overflow" in i for i in out.issues)
