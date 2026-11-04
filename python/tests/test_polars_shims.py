@@ -485,3 +485,178 @@ def test_an_untaken_branch_neither_raises_nor_leaks(case):
         assert [y is None for (y,) in lean] == [y is None for (y,) in polars]
     else:
         assert lean == polars
+
+
+# --- Native in place of numpy ------------------------------------------------------
+
+POWERS = [(a, b) for a in (-3, -2, -1, 0, 1, 2, 3, 7, 2**31, -(2**31), MIN, MAX)
+          for b in (0, 1, 2, 3, 31, 32, 62, 63, 64, 65, 127, 128, 200, MAX)]  # fmt: skip
+
+
+def _pow(a: int, b: int) -> int | None:
+    """`BinFn.ipow`, NULL where it leaves 64 bits."""
+    if abs(a) <= 1:
+        return a**b if a != -1 else (1 if b % 2 == 0 else -1)
+    if b > 64:
+        return None
+    p = a**b
+    return p if MIN <= p <= MAX else None
+
+
+def test_integer_powers_are_native_and_exact():
+    df = pl.DataFrame({"a": [a for a, _ in POWERS], "b": [b for _, b in POWERS]})
+    got = df.select(polars_engine._ipow(pl.col("a"), pl.col("b")).alias("p"))["p"].to_list()
+    assert got == [_pow(a, b) for a, b in POWERS]
+
+
+def test_integer_powers_match_lean():
+    from _pipelines import integer_powers
+
+    rows = [(0, a, b) for a in (-3, -1, 0, 2, 3) for b in (0, 1, 2, 31, 39)]
+    rows += [(1, a, b) for a in (-1, 0, 1) for b in (63, 64, 65, 200)]
+    con = connect()
+    create_table(con, "r", INTS, rows)
+    sql = "SELECT pow(a, b) AS p FROM r"
+    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    plan = json.loads(written_plan(json.dumps(plan)))
+    lean = lean_rows(json.dumps(inline_tables(plan, {"r": rows})))
+    assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+
+
+#: Days from 0001-01-01 to 9999-12-31 at month ends and leap days.
+DAYS = sorted({polars_engine.DAY_MIN, polars_engine.DAY_MAX, -1, 0, 59, 60, 11016, 11017, 18321,
+               -719162 + 30, 2932896 - 30, *range(10950, 11400, 7)})  # fmt: skip
+
+
+@pytest.mark.parametrize("months", [-13, -1, 1, 3, 12, 25])
+def test_month_arithmetic_is_native_and_the_calendars(months):
+    """`Time.addMonths` and `truncDay` as Polars integer expressions, against
+    the same integer formulas in Python and Polars's own calendar."""
+    df = pl.DataFrame({"d": DAYS + [None]})
+    d = pl.col("d")
+    out = df.select(
+        a=polars_engine.add_months_days(months, d),
+        m=polars_engine.trunc_days("month", d),
+        q=polars_engine.trunc_days("quarter", d),
+        y=polars_engine.trunc_days("year", d),
+    )
+    dates = df.select(d.cast(pl.Date))["d"]
+    want_m = dates.dt.truncate("1mo").cast(pl.Int64).to_list()
+    want_q = dates.dt.truncate("1q").cast(pl.Int64).to_list()
+    want_y = dates.dt.truncate("1y").cast(pl.Int64).to_list()
+    assert out["m"].to_list() == want_m
+    assert out["q"].to_list() == want_q
+    assert out["y"].to_list() == want_y
+    shifted = df.select(d.cast(pl.Date).dt.offset_by(f"{months}mo").cast(pl.Int64))["d"]
+    inside = [polars_engine.DAY_MIN <= x <= polars_engine.DAY_MAX if x is not None else True
+              for x in shifted.to_list()]  # fmt: skip
+    for got, want, ok in zip(out["a"].to_list(), shifted.to_list(), inside, strict=True):
+        if ok:
+            assert got == want
+
+
+@pytest.mark.parametrize("n", [2, 5001])
+def test_double_division_by_a_constant_is_exact(n):
+    """PL-3 (polars-double-scalar-divisor): Polars divides a column by a
+    constant through its reciprocal, also broadcast to a column and on the
+    streaming engine, so `fdiv` and `fmod` keep numpy."""
+    rows = [(0, 49.0), (1, 0.0), (2, 1e-300)] * n
+    lf = pl.LazyFrame({"x": [x for _, x in rows]})
+    ours = lf.select(
+        q=polars_engine.fdiv(pl.col("x"), pl.lit(49.0)),
+        m=polars_engine.fmod(pl.col("x"), pl.lit(49.0)),
+        t=polars_engine.fdiv(pl.col("x"), pl.lit(1e-310)),
+    )
+    ours = polars_engine.collect(ours)
+    assert ours.row(0) == (1.0, 0.0, math.inf)
+    assert ours.row(1) == (0.0, 0.0, 0.0)
+    assert ours.row(2)[2] == 1e-300 / 1e-310
+    sql = "SELECT g, x / 49.0 AS q, x % 49.0 AS m FROM r"
+    lean, polars = lean_and_polars(FLOATS, rows[:6], sql, doubles=True)
+    for (g, q, m), (h, q2, m2) in zip(polars, lean, strict=True):
+        assert g == h and math.isclose(q, q2, abs_tol=1e-6) and math.isclose(m, m2, abs_tol=1e-6)
+
+
+def test_a_difference_of_zeros_is_the_one_zero():
+    """polars-zero-sign: with more than one row, the in-memory engine
+    computes `0.0 - x` as `-x`; the sum and difference go through `canon`."""
+    rows = [(0, 0.0), (1, 0.0), (2, 0.0)]
+    con = connect()
+    create_table(con, "r", FLOATS, rows)
+    plan = written_plan(
+        substrait_json(con, "SELECT 0.0 - x AS a, x + 0.0 AS b FROM r", "reference")
+    )
+    out = polars_engine.run(plan, {"r": con.arrow["r"]})
+    assert all(math.copysign(1.0, v) == 1.0 for c in ("a", "b") for v in out[c].to_pylist())
+    assert pl.LazyFrame({"x": [0.0] * 3}).select(pl.lit(0.0) - pl.col("x")).collect(
+        engine="in-memory"
+    ).row(0) == (-0.0,)
+
+
+@pytest.mark.parametrize(
+    "measure",
+    ["COUNT(a)", "MIN(a)", "MAX(a)", "MIN(s)", "MAX(s)"],
+)
+def test_native_measures_match_lean(measure):
+    schema = ibis.schema({"g": "int64", "a": "int64", "s": "string"})
+    rows = [(1, None, None), (2, 5, "b"), (2, -3, "a"), (3, 7, "z"), (4, 1, "é"), (4, 1, "e"),
+            (5, MIN, "日"), (5, MAX, "本")]  # fmt: skip
+    lean, polars = lean_and_polars(schema, rows, f"SELECT g, {measure} AS m FROM r GROUP BY g")
+    assert lean == polars
+
+
+@pytest.mark.parametrize(
+    "measure", ["VAR_SAMP(x)", "VAR_POP(x)", "STDDEV_SAMP(x)", "STDDEV_POP(x)"]
+)
+def test_native_variances_match_lean(measure):
+    rows = [(1, None), (2, 1.0), (2, 3.0), (3, 2.0), (4, -0.0), (4, -0.0), (5, 0.5), (5, 1.5),
+            (5, -2.5)]  # fmt: skip
+    sql = f"SELECT g, {measure} AS m FROM r GROUP BY g"
+    lean, polars = lean_and_polars(FLOATS, rows, sql, doubles=True)
+    assert [g for g, _ in lean] == [g for g, _ in polars]
+    for (_, want), (_, got) in zip(lean, polars, strict=True):
+        assert (want is None and got is None) or math.isclose(want, got, abs_tol=1e-6)
+    assert all(math.copysign(1.0, m) == 1.0 for _, m in polars if m == 0.0)
+
+
+def test_variance_of_an_infinity_is_guarded():
+    con = connect()
+    create_table(con, "r", FLOATS, [(1, math.inf), (1, 1.0)])
+    plan = written_plan(
+        substrait_json(con, "SELECT g, VAR_POP(x) AS v FROM r GROUP BY g", "reference")
+    )
+    with pytest.raises(polars_engine.DomainError, match="infinity"):
+        polars_engine.run(plan, {"r": con.arrow["r"]})
+
+
+def test_array_agg_of_nothing_is_null():
+    schema = ibis.schema({"g": "int64", "a": "int64"})
+    rows = [(1, None), (2, 5), (2, -3)]
+    t = ibis.table(schema, name="r")
+    plan = written_plan(to_substrait_json(t.group_by("g").agg(l=t.a.collect()).order_by("g")))
+    con = connect()
+    create_table(con, "r", schema, rows)
+    lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
+    polars = rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    assert lean == polars
+    assert polars[0][1] is None
+
+
+def test_greatest_and_least_of_doubles_put_nan_above_all():
+    rows = [(0, math.nan), (1, 1.0), (2, None)]
+    sql = "SELECT g, GREATEST(x, 2.0) AS a, LEAST(x, 2.0) AS b, LEAST(x, x) AS c FROM r"
+    lean, polars = lean_and_polars(FLOATS, rows, sql, doubles=True)
+    assert repr(lean) == repr(polars)
+
+
+@pytest.mark.parametrize("op", ["bit_and", "bit_or", "bit_xor"])
+def test_native_bit_aggregates_match_lean(op):
+    schema = ibis.schema({"g": "int64", "a": "int64"})
+    rows = [(1, None), (2, 5), (2, -3), (3, 7), (4, MIN), (4, MAX), (4, 6)]
+    t = ibis.table(schema, name="r")
+    expr = t.group_by("g").agg(m=getattr(t.a, op)()).order_by("g")
+    plan = written_plan(to_substrait_json(expr))
+    con = connect()
+    create_table(con, "r", schema, rows)
+    lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
+    assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))

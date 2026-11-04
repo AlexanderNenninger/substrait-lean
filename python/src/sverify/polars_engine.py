@@ -21,7 +21,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 * Doubles have one zero and one NaN, as the float codes of
   `SubstraitLean/Float.lean` do: `-inf < … < 0.0 < … < inf < NaN`, `-0.0` is
   `0.0` and NaN equals itself. Comparisons, join keys, window partitions and
-  sort keys use an integer key with that order (`_float_key`), and doubles
+  sort keys use a key with that order (`_float_key`: the one zero and the
+  one positive NaN, which Polars orders and compares that way), and doubles
   read from a table or made by an operation that can give `-0.0` go through
   `canon`.
 * Integers are unbounded in Lean. Columns are widened to `Int64` on read.
@@ -69,7 +70,6 @@ from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 
 try:
-    import numpy as np
     import polars as pl
 except ImportError as e:
     raise ImportError("the Polars engine needs polars: pip install 'sverify[polars]'") from e
@@ -177,22 +177,17 @@ def col(i: int) -> str:
 canon = shims.one_zero
 
 
-def _order_bits(s: pl.Series) -> pl.Series:
-    """IEEE bits mapped so that integer order is the model's: `-0.0` is
-    `0.0`, and every NaN is one NaN above `inf`. Nulls are masked by the
-    caller."""
-    x = s.cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64) + 0.0
-    bits = x.view(np.int64)
-    key = np.where(bits < 0, bits ^ np.int64(I64_MAX), bits)
-    key = np.where(np.isnan(x), np.int64(I64_MAX), key)
-    return pl.Series(key, dtype=pl.Int64)
-
-
 def _float_key(e: pl.Expr) -> pl.Expr:
+    """A double with the model's order and equality: `-0.0` is `0.0`, and
+    every NaN is the one positive NaN, which Polars puts above `inf` and
+    makes equal to itself in sorts, comparisons, groups and joins
+    (polars-nan-order, polars-nan-equality, on both engines)."""
     return (
-        pl.when(e.is_null())
-        .then(pl.lit(None, pl.Int64))
-        .otherwise(e.map_batches(_order_bits, return_dtype=pl.Int64, is_elementwise=True))
+        pl.when(e.is_nan())
+        .then(pl.lit(math.nan, pl.Float64))
+        .when(e == 0.0)
+        .then(pl.lit(0.0, pl.Float64))
+        .otherwise(e)
     )
 
 
@@ -381,51 +376,85 @@ def arith_type(name: str, a: DType, b: DType) -> DType:
     return out
 
 
+def _numpy() -> Any:
+    """numpy, for the two operations of doubles Polars cannot do exactly
+    (`fdiv`, `fmod`); imported only when a plan has them."""
+    try:
+        import numpy as np
+    except ImportError as e:
+        raise ImportError(
+            "dividing doubles on Polars needs numpy: pip install 'sverify[polars]'"
+        ) from e
+    return np
+
+
 def _ieee_divide(s: pl.Series) -> pl.Series:
+    np = _numpy()
     x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
     y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         return pl.Series(np.divide(x, y), dtype=pl.Float64)
 
 
 def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     """IEEE division. Polars divides a column by a constant by multiplying with
-    its reciprocal, which rounds differently (`1.0000000000000004e16 / 10`);
-    numpy divides each pair."""
+    its reciprocal, which rounds differently (`1.0000000000000004e16 / 10`,
+    `49.0 / 49.0` is `0.9999999999999999`, PL-3, polars-double-scalar-divisor),
+    also when the constant is broadcast to a column (`pl.repeat`, a column
+    made from a literal), and on the streaming engine; numpy divides each
+    pair."""
     both = pl.struct(x.alias("x"), y.alias("y"))
     q = both.map_batches(_ieee_divide, return_dtype=pl.Float64, is_elementwise=True)
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(q)
 
 
 def _fmod(s: pl.Series) -> pl.Series:
+    np = _numpy()
     x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
     y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         return pl.Series(np.fmod(x, y), dtype=pl.Float64)
 
 
 def fmod(x: pl.Expr, y: pl.Expr) -> pl.Expr:
-    """C's `fmod` (`FloatCode.fmod`), the sign of `x`. Polars' `%` floors (the
-    sign of `y`) and makes `x % inf` NaN; numpy's `fmod` is C's."""
+    """C's `fmod` (`FloatCode.fmod`), the sign of `x`, which is exact. Polars'
+    `%` floors (the sign of `y`), makes `x % inf` NaN, and goes through the
+    reciprocal of a constant divisor (PL-3: `49.0 % 49.0` is `49.0`); no
+    Polars expression gives an exact remainder, and numpy's `fmod` is C's."""
     both = pl.struct(x.alias("x"), y.alias("y"))
     r = both.map_batches(_fmod, return_dtype=pl.Float64, is_elementwise=True)
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(r)
 
 
-def _ipow(s: pl.Series) -> pl.Series:
-    """`BinFn.ipow` where it is defined and fits 64 bits, else NULL."""
-    out = []
-    for a, b in zip(s.struct.field("a").to_list(), s.struct.field("b").to_list(), strict=True):
-        ok = a is not None and b is not None and b >= 0 and (b <= 64 or abs(a) <= 1)
-        p = a**b if ok else None
-        out.append(p if p is not None and I64_MIN <= p <= I64_MAX else None)
-    return pl.Series(out, dtype=pl.Int64)
+#: Beyond 64 bits: a magnitude a power is clamped to, so that the product of
+#: two clamped values still fits 128 bits.
+_POW_CLAMP = 2**63 + 1
+
+
+def _clamp(x: pl.Expr) -> pl.Expr:
+    return x.clip(-_POW_CLAMP, _POW_CLAMP)
+
+
+def _ipow(a: pl.Expr, b: pl.Expr) -> pl.Expr:
+    """`BinFn.ipow` where it is defined and fits 64 bits, else NULL: square
+    and multiply over the exponent's 7 low bits on 128 bits, clamping each
+    step outside 64 bits. An exponent of 64 or more overflows unless
+    `|a| ≤ 1`, where the power is `a`'s for the exponent's parity."""
+    base, acc = _clamp(a.cast(pl.Int128)), pl.lit(1, pl.Int128)
+    e = b.clip(0, 127).cast(pl.Int128)
+    for k in range(7):
+        bit = (e // (2**k)) % 2 == 1
+        acc = _clamp(pl.when(bit).then(acc * base).otherwise(acc))
+        base = _clamp(base * base)
+    small = pl.when(a == 1).then(1).when(a == 0).then(0).otherwise(1 - 2 * (b % 2))
+    p = pl.when(b >= 64).then(pl.when(a.is_between(-1, 1)).then(small)).otherwise(acc)
+    ok = a.is_not_null() & b.is_not_null() & (b >= 0) & p.is_between(I64_MIN, I64_MAX)
+    return pl.when(ok).then(p).cast(pl.Int64)
 
 
 def ipow(a: Val, b: Val) -> Val:
     """Integer powers. Exponents beyond 64 overflow unless `|a| ≤ 1`."""
-    both = pl.struct(a.expr.alias("a"), b.expr.alias("b"))
-    value = both.map_batches(_ipow, return_dtype=pl.Int64, is_elementwise=True)
+    value = _ipow(a.expr.cast(pl.Int64), b.expr.cast(pl.Int64))
     known = a.expr.is_not_null() & b.expr.is_not_null()
     negative = known & (b.expr < 0)
     return Val(
@@ -713,8 +742,8 @@ def _days(v: Val) -> pl.Expr:
 
 def _month_index(d: Any) -> tuple[Any, Any]:
     """`Time.monthIndex` of days `d` (`12 · year + month - 1`), and the day
-    of the month from 0: the civil calendar in integer arithmetic (on NumPy
-    arrays, floor division as Lean's)."""
+    of the month from 0: the civil calendar in integer arithmetic (floor
+    division as Lean's)."""
     z = d + 719468
     era = z // 146097
     doe = z - era * 146097
@@ -736,14 +765,9 @@ def _month_start(i: Any) -> Any:
 
 
 def _on_days(f: Any, d: pl.Expr) -> pl.Expr:
-    """`f` on an `Int64` expression of days, as one NumPy step (NULLs kept)."""
-
-    def apply(s: pl.Series) -> pl.Series:
-        nulls = s.is_null()
-        out = pl.Series(f(s.fill_null(0).to_numpy().astype(np.int64)), dtype=pl.Int64)
-        return pl.select(pl.when(nulls).then(None).otherwise(out)).to_series()
-
-    return d.cast(pl.Int64).map_batches(apply, return_dtype=pl.Int64)
+    """`f` on an `Int64` expression of days: Polars's `//` and `%` of
+    integers floor, as Lean's do (polars-int-divide), and NULLs stay."""
+    return f(d.cast(pl.Int64))
 
 
 def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
@@ -751,7 +775,7 @@ def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
 
     def f(x: Any) -> Any:
         i, dom = _month_index(x)
-        return np.minimum(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
+        return pl.min_horizontal(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
 
     return _on_days(f, d)
 
@@ -1297,8 +1321,10 @@ class Exprs:
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             x, y = a.expr, b.expr
-            # A sum or difference is never -0.0 here; the others can be.
-            ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
+            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
+            # in-memory engine (polars-zero-sign), so a sum or difference can
+            # be `-0.0` too.
+            ops = {"add": canon(x + y), "subtract": canon(x - y), "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
@@ -1394,7 +1420,20 @@ class Exprs:
         if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
             raise Unsupported(f"{name} of {t}")
         keys = [ordered(v.expr, t) for v in vals]
-        best = pl.max_horizontal(keys) if name.startswith("greatest") else pl.min_horizontal(keys)
+        if t == pl.Float64:
+            # `max_horizontal` and `min_horizontal` skip NaN (polars-min-max-nan);
+            # NaN is the greatest double here.
+            nan = pl.any_horizontal([k.is_nan() for k in keys])
+            finite = [pl.when(~k.is_nan()).then(k) for k in keys]
+            if name.startswith("greatest"):
+                best = pl.when(nan).then(pl.lit(math.nan)).otherwise(pl.max_horizontal(finite))
+            else:
+                least = pl.min_horizontal(finite)
+                best = pl.when(least.is_null() & nan).then(pl.lit(math.nan)).otherwise(least)
+        elif name.startswith("greatest"):
+            best = pl.max_horizontal(keys)
+        else:
+            best = pl.min_horizontal(keys)
         e = pl.coalesce([pl.when(k == best).then(v.expr) for k, v in zip(keys, vals, strict=True)])
         return Val(e, t, issues(*vals))
 
@@ -1664,6 +1703,9 @@ class Measure:
         def apply(s: pl.Series) -> pl.Series:
             return pl.Series([_aggregate(fn, distinct, vs) for vs in s.to_list()], dtype=out)
 
+        if fn == "collect" and not distinct:
+            # `ARRAY_AGG` of no values is NULL; Polars's list is empty.
+            return pl.when(values.list.len() == 0).then(None).otherwise(values)
         r = values.map_batches(apply, return_dtype=out)
         return r.cast(self.arg.dtype) if physical else r
 
@@ -1690,6 +1732,38 @@ class Measure:
                  inf: shims.agg_makes_infinite(v.sum(), v)},
                 v,
                 ((pl.col(nan), DomainError, f"{self.fn} of +inf and -inf would make a NaN"),
+                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+            )  # fmt: skip
+        if self.fn == "count":
+            return NativeAgg({name: v.count().cast(pl.Int64)}, v)
+        if self.fn in ("min", "max"):
+            # `pickFold`: equal values are the same value, so which of them
+            # is kept does not show. Times aggregate as their integers.
+            agg = v.min() if self.fn == "min" else v.max()
+            temporal = self.arg.dtype in (US, pl.Date)
+            return NativeAgg({name: agg}, v.cast(self.arg.dtype) if temporal else v)
+        if self.fn in ("bit_and", "bit_or", "bit_xor"):
+            # `AggFn.bit`; NULL for no values, as Polars gives.
+            agg = {"bit_and": v.bitwise_and(), "bit_or": v.bitwise_or(),
+                   "bit_xor": v.bitwise_xor()}[self.fn]  # fmt: skip
+            return NativeAgg({name: shims.sum_empty_null(agg, v)}, v)
+        if self.fn == "fmax":
+            # By the codes' order NaN is the greatest double; Polars's `max`
+            # skips it (polars-min-max-nan).
+            agg = pl.when(v.is_nan().any()).then(pl.lit(math.nan)).otherwise(v.max())
+            return NativeAgg({name: canon(agg)}, v)
+        if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
+            # `AggFn.var` (#54) with Polars's algorithm (`stat_algo = GENERIC`
+            # allows it); a sample of one is NULL in both. An infinity makes
+            # a deviation NaN (#257); finite values may overflow (#575).
+            ddof = 1 if self.fn.endswith("_samp") else 0
+            agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
+            bad, inf = f"{name}_bad", f"{name}_inf"
+            return NativeAgg(
+                {name: canon(agg), bad: v.is_infinite().any(),
+                 inf: shims.agg_makes_infinite(agg, v)},
+                v,
+                ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
                  (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
             )  # fmt: skip
         return None
