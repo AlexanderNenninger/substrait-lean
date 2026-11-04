@@ -27,7 +27,6 @@ one data file per partition (#466).
 from __future__ import annotations
 
 import contextlib
-import copy
 import os
 import uuid
 import warnings
@@ -98,18 +97,14 @@ from sverify.incremental import (
 )
 from sverify.io import _engine
 from sverify.io._common import (
-    FILTER,
     ColumnStats,
     Contract,
     SinkWrite,
+    _TableSource,
     filter_rows,
-    prune,
     q,
-    rows_fact,
-    stats_facts,
 )
 from sverify.io._sink import Sink, SinkChange
-from sverify.steps import Pipeable
 
 CONTRACT = "Iceberg contract"
 KEY = "sverify.contract"
@@ -154,6 +149,10 @@ def _ancestry(t: Table) -> list[IcebergSnapshot]:
 
 def _at(t: Table, version: int) -> IcebergSnapshot | None:
     return next((s for s in _ancestry(t) if s.sequence_number == version), None)
+
+
+def _table_id(t: Table) -> str:
+    return str(t.metadata.table_uuid)
 
 
 def _version(s: IcebergSnapshot | None) -> int:
@@ -284,15 +283,16 @@ def contract_facts(t: Table) -> list[Fact]:
     ]
 
 
-class IcebergSource(Pipeable):
+class IcebergSource(_TableSource):
     """An Iceberg table of a catalog, read by snapshot sequence number, as
     the input of transforms. `name` is the table's name in the plans that
     read it (default: the last part of `identifier`).
 
     A refresh reads the files that appends added since the version a node's
     state was computed from; after row-level deletes or overwrites it diffs
-    the data files that changed. Tables with equality deletes cannot be
-    read.
+    the data files that changed. A table dropped and created again under
+    `identifier` (a new table UUID) is read in full. Tables with equality
+    deletes cannot be read.
 
     With `where` (a SQL condition on the columns), the source is the rows on
     which it is TRUE: snapshots read only the data files whose statistics do
@@ -325,15 +325,8 @@ class IcebergSource(Pipeable):
         where: str | None = None,
         name: str | None = None,
     ):
-        self.catalog, self.identifier, self.where = catalog, identifier, where
-        self.name = name or identifier.rsplit(".", 1)[-1]
-        self.implied: str | None = None
-        """The predicate a node's view implies on this table, if the source
-        reads only the rows that pass it (`_restricted`)."""
-        self.skipped: list[str] = []
-        # Whether `where` may hold in a data file, by path and schema: files
-        # are immutable, so their statistics are proved about once.
-        self._kept: dict[tuple[str, str], bool] = {}
+        self.catalog, self.identifier = catalog, identifier
+        super().__init__(name or identifier.rsplit(".", 1)[-1], where)
 
     def table(self) -> Table:
         """The table as the catalog loads it now (a `pyiceberg.table.Table`)."""
@@ -347,47 +340,32 @@ class IcebergSource(Pipeable):
         """The current snapshot's sequence number (0 before the first)."""
         return _version(self.table().current_snapshot())
 
-    def _restricted(self, implied: str) -> IcebergSource:
-        """A copy that reads only the rows that also pass `implied`, a
-        predicate a node's view implies on this table (#81): the view gives
-        the same result on them (`Rel.need_eval` in
-        `SubstraitLean/Implied.lean`), and files whose statistics rule it
-        out are skipped."""
-        out = copy.copy(self)
-        out.where = implied if self.where is None else f"({self.where}) AND ({implied})"
-        out.implied = implied
-        out.skipped, out._kept = [], {}
-        return out
+    def _id_at(self, version: int | None) -> str:
+        # A catalog loads only the table it has now. Its UUID is the id at
+        # every version: a version the table never had is another table's,
+        # which `other_tables` tells by the version going down.
+        return _table_id(self.table())
+
+    def _read_at(self, t: Table, version: int) -> None:
+        """Remember the id of the table read at `version`."""
+        self._seen(version, _table_id(t))
 
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
         schema = _arrow_schema(t)
         stats = [_stats(e, schema.names) for e in files]
-        filtered = [] if self.where is None else [Fact(self.where, FILTER)]
-        return (
-            contract_facts(t)
-            + stats_facts(stats, schema, source)
-            + rows_fact(stats, source)
-            + filtered
-        )
+        return self._facts_of(contract_facts(t), stats, schema, source)
 
-    def _keep(
+    def _keep_entries(
         self, t: Table, files: list[dict[str, Any]], *, record: bool = True
     ) -> list[dict[str, Any]]:
         """The manifest entries of the data files that may hold rows passing
-        `where` (`prune`); with `record`, records the others in `skipped`."""
+        `where` (`_keep`)."""
         if self.where is None:
             return files
         schema = _arrow_schema(t)
-        key = str(schema)
         stats = {e["data_file"]["file_path"]: _stats(e, schema.names) for e in files}
-        new = {p: st for p, st in stats.items() if (p, key) not in self._kept}
-        if new:
-            kept = prune(new, schema, self.where)
-            self._kept.update({(p, key): p in kept for p in new})
-        keep = [e for e in files if self._kept[(e["data_file"]["file_path"], key)]]
-        if record:
-            self.skipped = sorted(set(stats) - {e["data_file"]["file_path"] for e in keep})
-        return keep
+        keep = self._keep(stats, schema, record=record)
+        return [e for e in files if e["data_file"]["file_path"] in keep]
 
     def _filter(self, rows: pa.Table) -> pa.Table:
         return rows if self.where is None else filter_rows(rows, self.where)
@@ -398,7 +376,7 @@ class IcebergSource(Pipeable):
         files = _live_files(t, s)
         if self.where is None:
             return _read(t, s), files
-        keep = self._keep(t, files)
+        keep = self._keep_entries(t, files)
         paths = {e["data_file"]["file_path"] for e in keep}
         tasks = [task for p, task in _tasks(t, s).items() if p in paths]
         return self._filter(_scan(t, tasks).cast(_arrow_schema(t))), keep
@@ -424,6 +402,7 @@ class IcebergSource(Pipeable):
         if version is not None and s is None and version != 0:
             raise ValueError(f"{self.identifier} has no snapshot with sequence number {version}")
         v = _version(s)
+        self._read_at(t, v)
         rows, files = self._rows(t, s)
         return Snapshot(v, rows, self._facts(t, files, f"file stats @v{v}"))
 
@@ -437,7 +416,7 @@ class IcebergSource(Pipeable):
         s = t.current_snapshot() if version is None else _at(t, version)
         if (version is not None and s is None and version != 0) or not _by_name(t):
             return None
-        live = self._keep(t, _live_files(t, s))
+        live = self._keep_entries(t, _live_files(t, s))
         paths = {e["data_file"]["file_path"] for e in live}
         files: list[str] = []
         deletes: dict[str, set[str]] = {}
@@ -455,6 +434,7 @@ class IcebergSource(Pipeable):
                     return None
                 deletes.setdefault(d.file_path, set()).add(task.file.file_path)
         v = _version(s)
+        self._read_at(t, v)
         deleted = _deleted_rows(deletes) if deletes else None
         scan = Scan(
             tuple(sorted(files)), _arrow_schema(t), deleted, self.where, f"{self.name}@v{v}"
@@ -518,21 +498,36 @@ class IcebergSource(Pipeable):
         if until is not None and current is None and until != 0:
             raise ValueError(f"{self.identifier} has no snapshot with sequence number {until}")
         end = _version(current)
+        now = _table_id(t)
+        was = self._other_table(since, now)
+        self._read_at(t, end)
         files = _live_files(t, current)
-        snapshot_facts = self._facts(t, self._keep(t, files, record=False), f"file stats @v{end}")
+        snapshot_facts = self._facts(
+            t, self._keep_entries(t, files, record=False), f"file stats @v{end}"
+        )
+        schema = _arrow_schema(t)
+        if was is not None:
+            # Dropped and created again: v`since` was another table's (#533).
+            return self._full(
+                since,
+                end,
+                self._rows(t, current)[0],
+                f"{self.identifier} was created again since v{since} (table uuid {was} → {now})",
+                snapshot_facts,
+                schema,
+            )
         if end == since:
             return SourceBatch.unchanged(since, snapshot_facts)
         between = [s for s in _ancestry(t) if since < _version(s) <= end]
         old = _at(t, since)
-        schema = _arrow_schema(t)
         if since != 0 and old is None:
-            return SourceBatch.from_snapshot(
+            return self._full(
                 since,
                 end,
                 self._rows(t, current)[0],
-                reason=f"Iceberg snapshot v{since} is not an ancestor of v{end} (expired?)",
-                snapshot_facts=snapshot_facts,
-                schema=schema,
+                f"Iceberg snapshot v{since} is not an ancestor of v{end} (expired?)",
+                snapshot_facts,
+                schema,
             )
         appends = all(
             s.summary is not None and s.summary.operation == Operation.APPEND for s in between
@@ -546,13 +541,13 @@ class IcebergSource(Pipeable):
                     self._filter(_scan(t, came).cast(schema)),
                 )
             except Exception as e:
-                return SourceBatch.from_snapshot(
+                return self._full(
                     since,
                     end,
                     self._rows(t, current)[0],
-                    reason=f"Iceberg snapshots v{since}→v{end} unreadable: {first_line(e)}",
-                    snapshot_facts=snapshot_facts,
-                    schema=schema,
+                    f"Iceberg snapshots v{since}→v{end} unreadable: {first_line(e)}",
+                    snapshot_facts,
+                    schema,
                 )
             paths = {task.file.file_path for task in came}
             changed = [e for e in files if e["data_file"]["file_path"] in paths]
@@ -572,7 +567,9 @@ class IcebergSource(Pipeable):
                 ),
             )
         # Appended files whose statistics rule `where` out add no rows.
-        added = self._keep(t, [e for e in files if int(e["sequence_number"]) > since], record=False)
+        added = self._keep_entries(
+            t, [e for e in files if int(e["sequence_number"]) > since], record=False
+        )
         paths = {e["data_file"]["file_path"] for e in added}
         assert current is not None
         tasks = [

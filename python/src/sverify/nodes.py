@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     import polars
 
     from sverify.contracts import ContractedTransform
-    from sverify.io._common import SinkWrite
+    from sverify.io._common import Contract, SinkWrite
 
 
 class Sink(Protocol):
@@ -76,6 +76,8 @@ class Sink(Protocol):
     def _stored(self) -> Stored | None: ...
 
     def _source(self) -> Source: ...
+
+    def committed(self) -> Contract | None: ...
 
 
 class Node:
@@ -483,14 +485,19 @@ def _recreated(sink: Sink, leaves: Sequence[Node], stored: Stored) -> bool:
     the stored version, its table id is not the one the sink recorded (it
     was dropped and created again, #516). Then the stored state is not a
     state of the sources, and the node is computed again."""
-    committed = getattr(sink, "committed", None)
-    ids = getattr(committed(), "table_ids", None) if committed is not None else None
+    from sverify.io._common import _TableSource
+
+    committed = sink.committed()
+    ids = committed.table_ids if committed is not None else None
     if not ids:
         return False
     for leaf in leaves:
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
-        at = getattr(src, "_table_id", None)
-        if leaf.name in ids and at is not None and at(stored.sources[leaf.name]) != ids[leaf.name]:
+        if (
+            leaf.name in ids
+            and isinstance(src, _TableSource)
+            and src._table_id(stored.sources[leaf.name]) != ids[leaf.name]
+        ):
             return True
     return False
 
@@ -545,13 +552,15 @@ class _Stage:
         that pass its predicate. Without `implied`, the predicates the
         view implies on its sources are found (`_implied`), and the stage
         is built again with them."""
+        from sverify.io._common import _TableSource
+
         con = connect(engine if engine in ENGINES else "duckdb")
         pipe = Pipeline(con)
         mapping = {}
         for leaf in leaves:
             src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
-            if implied and leaf.name in implied:
-                src = src._restricted(implied[leaf.name])  # type: ignore[attr-defined]
+            if implied and leaf.name in implied and isinstance(src, _TableSource):
+                src = src._restricted(implied[leaf.name])
             table = pipe.source(leaf.name, src, version=versions[leaf.name])
             mapping[leaf._expr.op()] = table.op()
         query = node._query()._expr
@@ -566,7 +575,7 @@ class _Stage:
             n += 1
             view_name = f"{name}_{n}"
         view = pipe.view(view_name, bound, resume=resume)
-        prunable = {t for t, src in pipe.sources.items() if hasattr(src, "_restricted")}
+        prunable = {t for t, src in pipe.sources.items() if isinstance(src, _TableSource)}
         if implied is None and prunable:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
             if found:

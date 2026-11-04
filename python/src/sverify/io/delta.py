@@ -21,7 +21,6 @@ Feed.
 
 from __future__ import annotations
 
-import copy
 import math
 import os
 import time
@@ -59,20 +58,16 @@ from sverify.contracts import Fact
 from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
 from sverify.io import _engine
 from sverify.io._common import (
-    FILTER,
     ColumnStats,
     ConcurrentWriteError,
     Contract,
     SinkWrite,
+    _TableSource,
     filter_rows,
-    prune,
     q,
-    rows_fact,
-    stats_facts,
 )
 from sverify.io._sink import Sink, SinkChange
 from sverify.io._storage import Options, resolve
-from sverify.steps import Pipeable
 
 CONSTRAINT = "Delta constraint"
 INSERT = ("insert", "update_postimage")
@@ -130,15 +125,6 @@ def file_stats(dt: DeltaTable) -> dict[str, dict[str, ColumnStats]]:
     }
 
 
-def _facts(dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str) -> list[Fact]:
-    stats = list(files.values())
-    return (
-        constraint_facts(dt)
-        + stats_facts(stats, _arrow_schema(dt), source, hi_slack=TIMESTAMP_SLACK)
-        + rows_fact(stats, source)
-    )
-
-
 # Operations that leave the table's configuration as it was.
 _SAME_CONFIG = {
     "WRITE",
@@ -181,6 +167,10 @@ def _last_contract(dt: DeltaTable) -> tuple[Contract | None, bool]:
         if len(commits) < n:
             return None, False
         seen, n = n, n * 2
+
+
+def _table_id(dt: DeltaTable) -> str:
+    return str(dt.metadata().id)  # a UUID; the stubs say int
 
 
 def _cdf_on(dt: DeltaTable) -> bool:
@@ -244,7 +234,7 @@ def _deleted(dt: DeltaTable, paths: dict[str, str]) -> pa.Table | None:
     return pa.table({"file": pa.concat_arrays(files), "pos": pa.concat_arrays(positions)})
 
 
-class DeltaSource(Pipeable):
+class DeltaSource(_TableSource):
     """A Delta table read by version, as the input of transforms.
 
     With `where` (a SQL condition on the columns), the source is the rows on
@@ -322,6 +312,8 @@ class DeltaSource(Pipeable):
         ```
     """
 
+    hi_slack = TIMESTAMP_SLACK
+
     def __init__(
         self,
         uri: str,
@@ -330,77 +322,28 @@ class DeltaSource(Pipeable):
         where: str | None = None,
         name: str | None = None,
     ):
-        self.uri, self.storage_options, self.where = str(uri), storage_options, where
-        self.name = name or _basename(self.uri)
-        self.implied: str | None = None
-        """The predicate a node's view implies on this table, if the source
-        reads only the rows that pass it (`_restricted`)."""
-        self.skipped: list[str] = []
-        """The files the last snapshot did not read."""
-        self._kept: dict[tuple[str, str], bool] = {}
-        # Whether `where` may hold in a file, by path and schema: files are
-        # immutable, so their statistics are proved about once.
-        self._ids: dict[int, str] = {}
-        # The table id (`metaData.id`) at each version read: a table dropped
-        # and created again at `uri` has a new one (#516).
+        self.uri, self.storage_options = str(uri), storage_options
+        super().__init__(name or _basename(self.uri), where)
 
-    def _seen(self, dt: DeltaTable) -> DeltaTable:
-        """Remember the id of the table at `dt`'s version."""
-        if len(self._ids) >= 64:
-            del self._ids[min(self._ids)]
-        self._ids[dt.version()] = str(dt.metadata().id)
+    def _id_at(self, version: int | None) -> str:
+        return _table_id(self.table(version))
+
+    def _read_at(self, dt: DeltaTable) -> DeltaTable:
+        """Remember the id of the table at `dt`'s version (`metaData.id`)."""
+        self._seen(dt.version(), _table_id(dt))
         return dt
-
-    def _table_id(self, version: int | None = None) -> str | None:
-        """The id of the table read at `version` (default: the latest), for
-        a sink to record with the version (`Contract.table_ids`); None if
-        there is no table at `version`."""
-        if version is not None and version in self._ids:
-            return self._ids[version]
-        try:
-            dt = self.table(version)
-        except Exception:  # noqa: BLE001 - no such table or version
-            return None
-        return str(dt.metadata().id)  # a UUID; the stubs say int
-
-    def _restricted(self, implied: str) -> DeltaSource:
-        """A copy that reads only the rows that also pass `implied`, a
-        predicate a node's view implies on this table (#81): the view gives
-        the same result on them (`Rel.need_eval` in
-        `SubstraitLean/Implied.lean`), and files whose statistics rule it
-        out are skipped."""
-        out = copy.copy(self)
-        out.where = implied if self.where is None else f"({self.where}) AND ({implied})"
-        out.implied = implied
-        out.skipped, out._kept = [], {}
-        return out
 
     def _facts(
         self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
     ) -> list[Fact]:
-        filtered = [] if self.where is None else [Fact(self.where, FILTER)]
-        return _facts(dt, files, source) + filtered
-
-    def _keep(self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]]) -> set[str]:
-        """The files that may hold rows passing `where` (`prune`); records
-        the others in `skipped`."""
-        if self.where is None:
-            return set(files)
-        schema = _arrow_schema(dt)
-        new = {p: s for p, s in files.items() if (p, str(schema)) not in self._kept}
-        if new:
-            kept = prune(new, schema, self.where, hi_slack=TIMESTAMP_SLACK)
-            self._kept.update({(p, str(schema)): p in kept for p in new})
-        keep = {p for p in files if self._kept[(p, str(schema))]}
-        self.skipped = sorted(set(files) - keep)
-        return keep
+        return self._facts_of(constraint_facts(dt), list(files.values()), _arrow_schema(dt), source)
 
     def _rows(self, dt: DeltaTable) -> tuple[pa.Table, dict[str, dict[str, ColumnStats]]]:
         """The source's rows at `dt`'s version, and the files they come from."""
         files = file_stats(dt)
         if self.where is None:
             return _read(dt), files
-        keep = self._keep(dt, files)
+        keep = self._keep(files, _arrow_schema(dt))
         if _deletion_vectors(dt):
             table = _read(dt)  # delta-rs reads deletion vectors only whole
         else:
@@ -422,14 +365,14 @@ class DeltaSource(Pipeable):
         root = local_path(self.uri)
         if root is None:
             return None
-        dt = self._seen(self.table(version))
+        dt = self._read_at(self.table(version))
         meta = dt.metadata()
         features = set(dt.protocol().reader_features or [])
         mapping = meta.configuration.get("delta.columnMapping.mode", "none")
         if meta.partition_columns or mapping != "none" or features - _NATIVE_FEATURES:
             return None
         files = file_stats(dt)
-        keep = self._keep(dt, files)
+        keep = self._keep(files, _arrow_schema(dt))
         paths = _local_files(root, keep)
         if paths is None:
             return None
@@ -477,7 +420,7 @@ class DeltaSource(Pipeable):
             The version, the rows (those passing `where`, if given) and the
             facts.
         """
-        dt = self._seen(self.table(version))
+        dt = self._read_at(self.table(version))
         v = dt.version()
         rows, files = self._rows(dt)
         return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
@@ -543,21 +486,22 @@ class DeltaSource(Pipeable):
         """
         dt = self.table(until)
         end = dt.version()
-        was, now = self._ids.get(since), str(dt.metadata().id)
-        self._seen(dt)
+        now = _table_id(dt)
+        was = self._other_table(since, now)
+        self._read_at(dt)
         files = file_stats(dt)
         snapshot_facts = self._facts(dt, files, f"file stats @v{end}")
         schema = _arrow_schema(dt)
-        if (was is not None and was != now) or end < since:
+        if was is not None or end < since:
             # Dropped and created again: v`since` was another table's (#516).
-            why = f"table id {was} → {now}" if was not in (None, now) else f"now at v{end}"
-            return SourceBatch.from_snapshot(
+            why = f"table id {was} → {now}" if was is not None else f"now at v{end}"
+            return self._full(
                 since,
                 end,
                 self._rows(dt)[0],
-                reason=f"{self.uri} was created again since v{since} ({why})",
-                snapshot_facts=snapshot_facts,
-                schema=schema,
+                f"{self.uri} was created again since v{since} ({why})",
+                snapshot_facts,
+                schema,
             )
         if end == since:
             return SourceBatch.unchanged(since, snapshot_facts, schema)
@@ -569,13 +513,13 @@ class DeltaSource(Pipeable):
             self._check_cdf(dt, since, end)
             cdf = pa.table(dt.load_cdf(starting_version=since + 1, ending_version=end).read_all())
         except Exception as e:
-            return SourceBatch.from_snapshot(
+            return self._full(
                 since,
                 end,
                 self._rows(dt)[0],
-                reason=f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
-                snapshot_facts=snapshot_facts,
-                schema=schema,
+                f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
+                snapshot_facts,
+                schema,
             )
         if self.where is not None:
             cdf = filter_rows(cdf, self.where)

@@ -15,7 +15,6 @@ from sverify.io import IcebergSink, IcebergSource
 
 SCHEMA = pa.schema([("id", pa.int64()), ("amount", pa.int64())])
 ORDERS, SINK = "db.orders", "db.paid"
-NO_TABLE_ID = pytest.mark.xfail(strict=True, reason="#533: IcebergSource has no table identity")
 
 
 @sv.transform(requires={"orders": [_.amount >= 0]})
@@ -84,7 +83,6 @@ def test_recreated_at_lower_versions_restarted_job(lake):
     assert job(cat).refresh().writes[0].mode == "skipped"
 
 
-@NO_TABLE_ID
 def test_recreated_at_higher_versions_same_process(lake):
     cat, node = lake
     recreate(cat, [10, 11], more=4)  # now at v5: v4 is the new table's
@@ -95,7 +93,6 @@ def test_recreated_at_higher_versions_same_process(lake):
     )
 
 
-@NO_TABLE_ID
 def test_recreated_at_higher_versions_restarted_job(lake):
     cat, _node = lake
     recreate(cat, [10, 11], more=4)
@@ -105,7 +102,6 @@ def test_recreated_at_higher_versions_restarted_job(lake):
     assert ids(cat) == [10, 11, 100, 101, 102, 103]
 
 
-@NO_TABLE_ID
 def test_the_contract_records_the_table_uuid(lake):
     cat, _node = lake
     contract = IcebergSource(cat, SINK).contract()
