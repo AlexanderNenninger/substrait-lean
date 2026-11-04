@@ -26,12 +26,14 @@ one data file per partition (#466).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 import warnings
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import pyarrow as pa
@@ -41,6 +43,7 @@ import pyarrow.parquet as pq
 try:
     from pyiceberg.catalog import Catalog
     from pyiceberg.conversions import to_bytes
+    from pyiceberg.exceptions import CommitFailedException
     from pyiceberg.expressions import AlwaysTrue
     from pyiceberg.io.pyarrow import (
         ArrowScan,
@@ -60,6 +63,7 @@ try:
         ManifestEntry,
         ManifestEntryStatus,
         ManifestFile,
+        ManifestWriter,
         ManifestWriterV2,
     )
     from pyiceberg.partitioning import (
@@ -71,7 +75,7 @@ try:
     from pyiceberg.schema import Schema, index_name_by_id
     from pyiceberg.table import FileScanTask, Table, TableProperties, Transaction, WriteTask
     from pyiceberg.table.metadata import TableMetadata
-    from pyiceberg.table.snapshots import Operation
+    from pyiceberg.table.snapshots import Operation, Summary
     from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
     from pyiceberg.table.update.snapshot import _FastAppendFiles
     from pyiceberg.transforms import Transform, UnknownTransform, parse_transform
@@ -763,6 +767,176 @@ def _spec_fields(t: Table) -> list[tuple[str | None, str]]:
     return [(schema.find_column_name(f.source_id), str(f.transform)) for f in t.spec().fields]
 
 
+EMPTY: dict[str, str] = {}
+
+
+class _Rewrite(_FastAppendFiles):
+    """A `replace` snapshot: it removes data files and delete files and adds
+    data files of the same rows (compaction). pyiceberg 0.12 has no
+    compaction, writes no delete manifests, and refuses the summary of a
+    `replace`."""
+
+    def __init__(self, removed: list[DataFile], **kwargs: Any):
+        super().__init__(operation=Operation.OVERWRITE, **kwargs)
+        self._removed = {f.file_path for f in removed}
+        for f in removed:
+            self.delete_data_file(f)
+
+    def _validate_concurrency(self) -> None:
+        # A retry on top of another writer's snapshot would drop delete files
+        # that writer added for the files this one rewrites: fail instead.
+        if self._commit_window is not None and not self._commit_window.is_empty():
+            raise CommitFailedException("the table changed during the compaction")
+
+    def _existing_manifests(self) -> list[ManifestFile]:
+        """The parent's manifests, without the removed files: rewritten (as
+        `existing` entries) where they held one, dropped where they held
+        nothing else."""
+        out = []
+        for manifest in super()._existing_manifests():
+            entries = manifest.fetch_manifest_entry(io=self._io, discard_deleted=True)
+            kept = [e for e in entries if e.data_file.file_path not in self._removed]
+            if len(kept) == len(entries):
+                out.append(manifest)
+                continue
+            if not kept:
+                continue
+            spec = self.spec(manifest.partition_spec_id)
+            writer: ManifestWriter = (
+                _DeleteManifestWriter(
+                    spec=spec,
+                    schema=self.schema(),
+                    output_file=self.new_manifest_output(),
+                    snapshot_id=self._snapshot_id,
+                    avro_compression=self._compression,
+                )
+                if manifest.content == ManifestContent.DELETES
+                else self.new_manifest_writer(spec)
+            )
+            with writer:
+                for e in kept:
+                    writer.add_entry(
+                        ManifestEntry.from_args(
+                            status=ManifestEntryStatus.EXISTING,
+                            snapshot_id=e.snapshot_id,
+                            sequence_number=e.sequence_number,
+                            file_sequence_number=e.file_sequence_number,
+                            data_file=e.data_file,
+                        )
+                    )
+            out.append(writer.to_manifest_file())
+        return out
+
+    def _summary(self, snapshot_properties: dict[str, str] = EMPTY) -> Summary:
+        out = super()._summary(snapshot_properties)
+        return Summary(Operation.REPLACE, **out.additional_properties)
+
+
+def _compaction(t: Table) -> tuple[list[FileScanTask], list[DataFile]]:
+    """What a compaction of the current snapshot rewrites: in each partition
+    of the current spec, the data files with position deletes and, if there
+    are two or more, the files under the target file size; and the delete
+    files that no data file it keeps reads."""
+    s = t.current_snapshot()
+    if s is None:
+        return [], []
+    spec = t.spec()
+    target = int(
+        t.properties.get(
+            TableProperties.WRITE_TARGET_FILE_SIZE_BYTES,
+            TableProperties.WRITE_TARGET_FILE_SIZE_BYTES_DEFAULT,
+        )
+    )
+    groups: dict[Record, list[FileScanTask]] = {}
+    tasks = list(_tasks(t, s).values())
+    for task in tasks:
+        if task.file.spec_id == spec.spec_id and task.file.file_format == FileFormat.PARQUET:
+            groups.setdefault(task.file.partition, []).append(task)
+    rewrite: list[FileScanTask] = []
+    for group in groups.values():
+        if any(
+            d.content != DataFileContent.POSITION_DELETES for x in group for d in x.delete_files
+        ):
+            continue
+        small = [x for x in group if x.file.file_size_in_bytes < target]
+        deleted = [x for x in group if x.delete_files]
+        picked = {x.file.file_path: x for x in deleted + (small if len(small) > 1 else [])}
+        rewrite += picked.values()
+    chosen = {x.file.file_path for x in rewrite}
+    read = {d.file_path for x in tasks if x.file.file_path not in chosen for d in x.delete_files}
+    gone: dict[str, DataFile] = {}
+    for x in tasks:
+        for d in x.delete_files:
+            if d.file_path not in read:
+                gone[d.file_path] = d
+    return rewrite, list(gone.values())
+
+
+def _compact(t: Table, props: dict[str, str]) -> dict[str, int]:
+    """Rewrite what `_compaction` picks as one `replace` snapshot with the
+    snapshot properties `props`; the counts of files it removed and added."""
+    rewrite, deletes = _compaction(t)
+    if not rewrite and not deletes:
+        return {"data_files_removed": 0, "delete_files_removed": 0, "data_files_added": 0}
+    rows = _scan(t, rewrite)
+    with t.transaction() as tx:
+        added = _data_files(tx.table_metadata, rows, t.io)
+        snapshot = _Rewrite(
+            [x.file for x in rewrite] + deletes,
+            transaction=tx,
+            io=t.io,
+            snapshot_properties=props,
+        )
+        for f in added:
+            snapshot.append_data_file(f)
+        snapshot.commit()
+    return {
+        "data_files_removed": len(rewrite),
+        "delete_files_removed": len(deletes),
+        "data_files_added": len(added),
+    }
+
+
+def _files(t: Table, snapshots: Sequence[IcebergSnapshot], seen: dict[str, set[str]]) -> set[str]:
+    """Every file the snapshots reference: manifest lists, manifests, and
+    the data and delete files of their entries. `seen` caches manifests."""
+    out: set[str] = set()
+    for s in snapshots:
+        out.add(s.manifest_list)
+        for m in s.manifests(t.io):
+            if m.manifest_path not in seen:
+                entries = m.fetch_manifest_entry(io=t.io, discard_deleted=False)
+                seen[m.manifest_path] = {e.data_file.file_path for e in entries}
+            out.add(m.manifest_path)
+            out |= seen[m.manifest_path]
+    return out
+
+
+def _expire(t: Table, keep: set[int], older_than: datetime) -> tuple[int, int]:
+    """Expire the snapshots older than `older_than` that are not in `keep`
+    nor a branch or tag head, and delete the files only they referenced.
+    The numbers of snapshots expired and files deleted."""
+    protected = {ref.snapshot_id for ref in t.metadata.refs.values()}
+    cutoff = older_than.timestamp() * 1000
+    gone = [
+        s
+        for s in t.snapshots()
+        if s.timestamp_ms < cutoff and s.snapshot_id not in keep | protected
+    ]
+    if not gone:
+        return 0, 0
+    ids = {s.snapshot_id for s in gone}
+    seen: dict[str, set[str]] = {}
+    before = _files(t, gone, seen)
+    t.maintenance.expire_snapshots().by_ids(sorted(ids)).commit()
+    t = t.refresh()
+    unused = before - _files(t, t.snapshots(), seen)
+    for path in sorted(unused):
+        with contextlib.suppress(FileNotFoundError):
+            t.io.delete(path)
+    return len(gone), len(unused)
+
+
 class IcebergSink(Sink):
     """Stores a node in an Iceberg table, exactly once per state:
     `node.write(IcebergSink(catalog, identifier))`, written by every
@@ -799,6 +973,22 @@ class IcebergSink(Sink):
     an existing table that differs from them warns once
     (`IcebergSink.create_options_ignored`).
 
+    Every write adds a snapshot and small files: a refresh that deletes rows
+    adds a position delete file and a data file, which readers open and the
+    sink's next write searches. `compact_every` compacts the table
+    (`maintain`) after every so many writes: in each partition, it rewrites
+    the data files with position deletes, and the small files where there
+    are two or more, as data files of their live rows, and drops the delete
+    files no remaining data file reads, in one `replace` snapshot. With
+    `snapshot_retention`, it then expires the snapshots older than that
+    (keeping the `min_snapshots` newest and the sink's own last snapshot)
+    and deletes the files only they referenced. A compaction snapshot
+    carries the contract, and a restarted job resumes past it, as it does
+    past another writer's compaction. pyiceberg rewrites the table's
+    metadata file on every commit; the table properties
+    `write.metadata.delete-after-commit.enabled` and
+    `write.metadata.previous-versions-max` (`properties`) bound those.
+
     Args:
         catalog: A pyiceberg catalog.
         identifier: The sink table's identifier; the first write creates it.
@@ -816,10 +1006,20 @@ class IcebergSink(Sink):
         properties: Table properties of the table the first write creates,
             such as `"write.target-file-size-bytes"`, besides the sink's own
             (`sverify.*`). Default: None.
+        compact_every: Compact the table after every this many writes of
+            this process (`maintain`). Default: None, never.
+        snapshot_retention: With `compact_every`, then expire the snapshots
+            older than this and delete the files only they referenced
+            (`maintain(expire=...)`). Nodes reading the stored node from an
+            expired snapshot read the whole table, so keep it longer than
+            the gap between their refreshes. Default: None, no expiry.
+        min_snapshots: The newest snapshots of the table's history an
+            expiry keeps, however old. Default: 1.
 
     Raises:
         ValueError: A transform of `partition_by` is unknown, or
-            `properties` sets a `sverify.*` property.
+            `properties` sets a `sverify.*` property, or `compact_every` or
+            `min_snapshots` is below 1.
 
     Attributes:
         catalog: The catalog.
@@ -829,6 +1029,10 @@ class IcebergSink(Sink):
         partition_by: The partition fields, as `(column, Transform, name or
             None)`.
         properties: `properties`, or an empty dict.
+        compact_every: Writes between compactions, or None.
+        snapshot_retention: The expiry's retention after a compaction, or
+            None.
+        min_snapshots: The newest snapshots an expiry keeps.
 
     Examples:
         A sink partitioned by day, at a location of its own:
@@ -858,6 +1062,9 @@ class IcebergSink(Sink):
         location: str | None = None,
         partition_by: Sequence[PartitionField] | None = None,
         properties: Mapping[str, str] | None = None,
+        compact_every: int | None = None,
+        snapshot_retention: timedelta | None = None,
+        min_snapshots: int = 1,
     ):
         self.catalog, self.identifier = catalog, identifier
         name = name or identifier.rsplit(".", 1)[-1]
@@ -869,6 +1076,14 @@ class IcebergSink(Sink):
             raise ValueError(f"properties: {mine} are the sink's own")
         self._checked = False
         """Whether an existing table was compared with the create options."""
+        if compact_every is not None and compact_every < 1:
+            raise ValueError(f"compact_every must be at least 1, got {compact_every}")
+        if min_snapshots < 1:
+            raise ValueError(f"min_snapshots must be at least 1, got {min_snapshots}")
+        self.compact_every, self.snapshot_retention = compact_every, snapshot_retention
+        self.min_snapshots = min_snapshots
+        self._writes = 0
+        """Writes of this process since the last compaction."""
 
     def source(self) -> IcebergSource:
         """The table as a source, for the nodes that read the stored node."""
@@ -896,6 +1111,88 @@ class IcebergSink(Sink):
             return None
         epoch = int(mine[0].summary.get(EPOCH, "-1"))  # type: ignore[union-attr]
         return replace(Contract.from_json(text), epoch=epoch)
+
+    def _own(self, t: Table) -> tuple[list[IcebergSnapshot], dict[str, str]]:
+        """The current snapshot's ancestry down to the sink's last snapshot,
+        and that snapshot's sverify properties, if the snapshots after it only
+        rewrite files (`replace`); else nothing."""
+        text = t.properties.get(KEY)
+        if text is None:
+            return [], {}
+        plan, run = Contract.from_json(text).plan, []
+        for a in _ancestry(t):
+            run.append(a)
+            summary = a.summary
+            if summary is None:
+                break
+            if summary.get(APP) == self.app_id and summary.get(PLAN) == plan:
+                own = {k: summary.get(k) for k in (PLAN, EPOCH, APP)}
+                return run, {k: v for k, v in own.items() if v is not None}
+            if summary.operation != Operation.REPLACE:
+                break
+        return [], {}
+
+    def maintain(
+        self, *, expire: timedelta | None = None, min_snapshots: int | None = None
+    ) -> dict[str, int]:
+        """Compact the table, and with `expire`, expire the snapshots older
+        than that and delete the files only they referenced. The compaction
+        rewrites, in each partition of the current spec, the data files with
+        position deletes, and the files under `write.target-file-size-bytes`
+        where there are two or more, as data files of their live rows, and
+        drops the delete files that no remaining data file reads, in one
+        `replace` snapshot. It records the sverify properties of the sink's
+        last snapshot, if no other writer changed rows since, so a restarted
+        job resumes past it. The expiry keeps the `min_snapshots` newest
+        snapshots, the sink's last snapshot and the ones after it, and branch
+        and tag heads.
+
+        Args:
+            expire: How old a snapshot may be and still be read. Nodes
+                reading the stored node from an older snapshot read the
+                whole table. Default: None, no expiry.
+            min_snapshots: The newest snapshots the expiry keeps. Default:
+                the sink's `min_snapshots`.
+
+        Returns:
+            The counts of data files the compaction removed and added
+            (`"data_files_removed"`, `"data_files_added"`) and of delete
+            files it removed (`"delete_files_removed"`), and with `expire`,
+            of snapshots expired (`"snapshots_expired"`) and files deleted
+            (`"files_deleted"`); empty if the table does not exist.
+
+        Raises:
+            CommitFailedException: Another writer committed to the table
+                during the compaction (pyiceberg's).
+        """
+        if not self.catalog.table_exists(self.identifier):
+            return {}
+        t = self.catalog.load_table(self.identifier)
+        out: dict[str, int] = dict(_compact(t, self._own(t)[1]))
+        if expire is not None:
+            t = self.catalog.load_table(self.identifier)
+            run, _ = self._own(t)
+            keep = {
+                s.snapshot_id for s in run + _ancestry(t)[: min_snapshots or self.min_snapshots]
+            }
+            now = datetime.now(UTC)
+            out["snapshots_expired"], out["files_deleted"] = _expire(t, keep, now - expire)
+        return out
+
+    def _commit(self) -> SinkWrite:
+        out = super()._commit()
+        if out.mode == "skipped" or self.compact_every is None:
+            return out
+        self._writes += 1
+        if self._writes >= self.compact_every:
+            self._writes = 0
+            try:
+                self.maintain(expire=self.snapshot_retention)
+            except Exception as e:  # noqa: BLE001 - the write is committed
+                warnings.warn(
+                    f"{self.identifier}: maintenance failed: {first_line(e)}", stacklevel=2
+                )
+        return out
 
     def _create(self, schema: pa.Schema, contract: Contract) -> Table:
         """Create the table with the create options and the contract, in
