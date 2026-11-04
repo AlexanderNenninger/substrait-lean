@@ -212,7 +212,7 @@ function of integers through their signs. -/
 theorem signedCode_mono {f : Nat → Nat} (hf : ∀ {a b}, a ≤ b → f a ≤ f b) (_h0 : f 0 = 0)
     {i j : Int} (h : i ≤ j) :
     signedCode (decide (i < 0)) (f i.natAbs) ≤ signedCode (decide (j < 0)) (f j.natAbs) := by
-  unfold signedCode
+  unfold signedCode FloatFormat.signedCode
   by_cases hi : i < 0 <;> by_cases hj : j < 0
   · have := hf (a := j.natAbs) (b := i.natAbs) (by omega)
     simp only [hi, hj, decide_true, ↓reduceIte]
@@ -265,7 +265,7 @@ theorem ofDecimalExact_rel {n : Int} {s : Nat} (h0 : n ≠ 0) (hn : n.natAbs < 2
   refine ⟨roundRat (n.natAbs * 2 ^ 1074) (10 ^ s), ?_, r1, r2⟩
   -- Far below overflow: `M ≤ 2 · |n| · 2¹⁰⁷⁴ < 2¹²⁰²`.
   have hM : roundRat (n.natAbs * 2 ^ 1074) (10 ^ s) ≤ maxMag := by
-    have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := by unfold maxMag; rfl
+    have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := maxMag_def
     have hDM : roundRat (n.natAbs * 2 ^ 1074) (10 ^ s) ≤ 10 ^ s * roundRat (n.natAbs * 2 ^ 1074) (10 ^ s) :=
       Nat.le_mul_of_pos_left _ hD
     have hbig : n.natAbs * 2 ^ 1074 ≤ 2 ^ 127 * 2 ^ 1074 := Nat.mul_le_mul_right _ (Nat.le_of_lt hn)
@@ -280,7 +280,7 @@ theorem ofDecimalExact_rel {n : Int} {s : Nat} (h0 : n ≠ 0) (hn : n.natAbs < 2
     rw [hm]
     exact Nat.le_trans hM2 (Nat.le_trans (Nat.mul_le_mul_left 2 hbig) hcap)
   have hMi : ((roundRat (n.natAbs * 2 ^ 1074) (10 ^ s) : Nat) : Int) ≤ maxMag := by exact_mod_cast hM
-  unfold ofDecimalExact signedCode
+  unfold ofDecimalExact signedCode FloatFormat.signedCode
   generalize roundRat (n.natAbs * 2 ^ 1074) (10 ^ s) = M at hMi ⊢
   generalize (maxMag : Int) = X at hMi ⊢
   split <;> (try split) <;> omega
@@ -421,11 +421,11 @@ double: `CAST(CAST(n AS DOUBLE) AS BIGINT) = n`. -/
 theorem toInt?_ofInt {n : Int} (h : n.natAbs ≤ 2 ^ 53) : toInt? (ofInt n) = some n := by
   rw [ofInt_exact h]
   have hbig : n.natAbs * K ≤ maxMag := by
-    have hm' : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := by unfold maxMag; rfl
+    have hm' : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := maxMag_def
     rw [hm']; unfold K
     exact Nat.le_trans (Nat.mul_le_mul_right _ h) (by decide +kernel)
   have hdiv : n.natAbs * K / K = n.natAbs := Nat.mul_div_cancel _ K_pos
-  unfold toInt? exactCode
+  unfold toInt? exactCode FloatFormat.exactCode; rw [fp64_scale]
   by_cases h0 : n = 0
   · subst h0; simp [mag]
   have hm : ∀ M : Nat, ((2 * (M : Int) + 1).natAbs - 1) / 2 = M ∧

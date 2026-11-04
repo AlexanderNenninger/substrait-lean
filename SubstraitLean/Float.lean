@@ -1,3 +1,5 @@
+import SubstraitLean.FloatFormat
+
 /-!
 # Floats and timestamps as integers
 
@@ -9,7 +11,9 @@ has one zero and one NaN, so `-0.0` never appears in a result (`-1 · 0.0` is
 puts `-0.0` below `+0.0` and negative NaNs first; `sverify` canonicalizes
 DataFusion's inputs and results instead.)
 
-A double is represented by an integer *code* with exactly that order: for
+A double is represented by an integer *code* with exactly that order
+(`SubstraitLean/FloatFormat.lean` states the codes for every format; doubles
+are its instance `fp64`): for
 magnitude `m` (`|x| · 2¹⁰⁷⁴` for finite `x`, which is an exact integer;
 `M + 1` for ∞, `M + 2` for NaN) the code is `±(2m + 1)`, and zero is `0`.
 Comparing doubles is then comparing codes, so filters such as `v > 0.5` or
@@ -28,19 +32,18 @@ day/second intervals are microseconds.
 namespace Substrait.FloatCode
 
 /-- Magnitude of the largest finite double: (2⁵³ − 1) · 2⁹⁷¹ · 2¹⁰⁷⁴. -/
-@[irreducible] def maxMag : Nat := (2 ^ 53 - 1) * 2 ^ 2045
-def infMag : Nat := maxMag + 1
-def nanMag : Nat := maxMag + 2
+abbrev maxMag : Nat := fp64.maxMag
+abbrev infMag : Nat := fp64.infMag
+abbrev nanMag : Nat := fp64.nanMag
 
-/-- The code of magnitude `m`: zero has one code, `0`, and NaN is never
-negative. -/
-def ofMag (negative : Bool) (m : Nat) : Int :=
-  let c : Int := 2 * m + 1
-  if m = 0 then 0 else if negative ∧ m ≠ nanMag then -c else c
+/-- The code of magnitude `m` (`FloatFormat.ofMag`). -/
+abbrev ofMag : Bool → Nat → Int := fp64.ofMag
 
-def posInf : Int := ofMag false infMag
-def negInf : Int := ofMag true infMag
-def nan : Int := ofMag false nanMag
+abbrev posInf : Int := fp64.posInf
+abbrev negInf : Int := fp64.negInf
+abbrev nan : Int := fp64.nan
+
+theorem maxMag_def : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := fp64_maxMag
 
 /-- The code of a native double. -/
 def ofFloat (f : Float) : Int :=
@@ -87,10 +90,8 @@ turn NaN into a code below `-∞`, so the parser writes `negate` as
 `CASE WHEN x = NaN THEN x ELSE -x END`, as SQL engines have one NaN. -/
 def neg (c : Int) : Int := -c
 
-/-- A code strictly between `-∞` and `+∞`: other codes become the largest
-finite double of their sign. -/
-def finite (c : Int) : Int :=
-  if posInf ≤ c then ofMag false maxMag else if c ≤ negInf then ofMag true maxMag else c
+/-- A code strictly between `-∞` and `+∞` (`FloatFormat.finite`). -/
+abbrev finite : Int → Int := fp64.finite
 
 /-- `n` rounded to a multiple of `2ˢ`, halves to the even multiple (IEEE's
 round to nearest). -/
@@ -128,28 +129,13 @@ can use that the conversion is monotone (`ofIntExact_mono`). -/
 def ofIntExact (i : Int) : Int :=
   max (-(2 * (maxMag : Int) + 1)) (min (2 * (maxMag : Int) + 1) (ofIntRaw i))
 
-theorem posInf_eq : posInf = 2 * maxMag + 3 := by
-  simp only [posInf, ofMag, infMag, Nat.add_one_ne_zero, ite_false, Bool.false_eq_true,
-    false_and]
-  omega
+theorem posInf_eq : posInf = 2 * maxMag + 3 := fp64.posInf_eq
 
-theorem negInf_eq : negInf = -(2 * maxMag + 3) := by
-  have : maxMag + 1 ≠ nanMag := by simp [nanMag]
-  simp only [negInf, ofMag, infMag, Nat.add_one_ne_zero, ite_false, true_and, this, ne_eq,
-    not_false_eq_true, ite_true]
-  omega
+theorem negInf_eq : negInf = -(2 * maxMag + 3) := fp64.negInf_eq
 
-set_option exponentiation.threshold 2048 in
-theorem maxMag_pos : 0 < maxMag := by
-  unfold maxMag; exact Nat.mul_pos (Nat.sub_pos_of_lt (Nat.one_lt_two_pow (by decide)))
-    (Nat.two_pow_pos _)
+theorem maxMag_pos : 0 < maxMag := fp64.maxMag_pos (by decide)
 
-theorem finite_bounds (c : Int) : negInf < finite c ∧ finite c < posInf := by
-  have hM := maxMag_pos
-  have hn : maxMag ≠ nanMag := by simp [nanMag]
-  simp only [finite, ofMag, posInf_eq, negInf_eq, Nat.pos_iff_ne_zero.1 hM, ite_false, hn,
-    Bool.false_eq_true, false_and, true_and, ne_eq, not_false_eq_true, ite_true]
-  split <;> (try split) <;> omega
+theorem finite_bounds (c : Int) : negInf < finite c ∧ finite c < posInf := fp64.finite_bounds (by decide) c
 
 theorem ofIntExact_bounds (i : Int) : negInf < ofIntExact i ∧ ofIntExact i < posInf := by
   simp only [ofIntExact, posInf_eq, negInf_eq]; omega
@@ -313,9 +299,7 @@ theorem ofIntExact_mono {i j : Int} (h : i ≤ j) : ofIntExact i ≤ ofIntExact 
   simp only [ofIntExact]; omega
 
 /-- The code of an integer that is a double exactly (`|i| ≤ 2⁵³`). -/
-def exactCode (i : Int) : Int :=
-  let m : Int := (i.natAbs * 2 ^ 1074 : Nat)
-  if i = 0 then 0 else if i < 0 then -(2 * m + 1) else 2 * m + 1
+abbrev exactCode : Int → Int := fp64.exactCode
 
 set_option exponentiation.threshold 2100 in
 theorem roundSig_exact {n : Nat} (h : n ≤ 2 ^ 53) : roundSig n = n := by
@@ -350,17 +334,16 @@ theorem ofIntExact_exact {i : Int} (h : i.natAbs ≤ 2 ^ 53) : ofIntExact i = ex
   have hr := roundSig_exact h
   have hM : ((i.natAbs * 2 ^ 1074 : Nat) : Int) ≤ maxMag := by
     have : i.natAbs * 2 ^ 1074 ≤ maxMag := by
-      have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := by unfold maxMag; rfl
+      have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := maxMag_def
       rw [hm]
       exact Nat.le_trans (Nat.mul_le_mul_right _ h) (by decide)
     exact_mod_cast this
   have h0 : (0 : Int) ≤ ((i.natAbs * 2 ^ 1074 : Nat) : Int) := Int.natCast_nonneg _
-  simp only [ofIntExact, ofIntRaw, exactCode, hr]
+  simp only [ofIntExact, ofIntRaw, exactCode, FloatFormat.exactCode, fp64_scale, hr]
   split <;> (try split) <;> omega
 
 /-- The code of magnitude `m` (`|x| · 2¹⁰⁷⁴`), negative if `neg`. -/
-def signedCode (neg : Bool) (m : Nat) : Int :=
-  if m = 0 then 0 else if neg then -(2 * (m : Int) + 1) else 2 * (m : Int) + 1
+abbrev signedCode : Bool → Nat → Int := FloatFormat.signedCode
 
 /-- Rounding to a multiple of `2ˢ` moves by at most half of it. -/
 theorem roundTo2_err (s n : Nat) (hs : 1 ≤ s) :
@@ -432,7 +415,7 @@ theorem ofIntExact_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
   have htop : roundSig i.natAbs ≤ 2 ^ 1023 := by
     have := roundSig_mono h; rwa [roundSig_pow (by decide)] at this
   have hM : roundSig i.natAbs * 2 ^ 1074 ≤ maxMag := by
-    have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := by unfold maxMag; rfl
+    have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := maxMag_def
     have e : (2 : Nat) ^ 1023 * 2 ^ 1074 = 2 ^ 52 * 2 ^ 2045 := by
       simp only [← Nat.pow_add]
     rw [hm]
@@ -445,7 +428,7 @@ theorem ofIntExact_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
   have hne : roundSig i.natAbs * 2 ^ 1074 ≠ 0 := Nat.mul_ne_zero (by omega) (by
     exact Nat.pos_iff_ne_zero.1 (Nat.two_pow_pos _))
   refine ⟨roundSig i.natAbs * 2 ^ 1074, ?_, ?_, ?_⟩
-  · unfold ofIntExact ofIntRaw signedCode
+  · unfold ofIntExact ofIntRaw signedCode FloatFormat.signedCode
     generalize roundSig i.natAbs * 2 ^ 1074 = M at hMi hne ⊢
     generalize (maxMag : Int) = X at hMi ⊢
     simp only [h0, hne, ↓reduceIte]
@@ -454,22 +437,13 @@ theorem ofIntExact_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
   · rw [← Nat.mul_assoc, ← Nat.mul_assoc]; exact Nat.mul_le_mul_right _ r1
   · rw [← Nat.mul_assoc, ← Nat.mul_assoc]; exact Nat.mul_le_mul_right _ r2
 
-/-- A monotone conversion to finite doubles: of integers, and of decimals at
-one scale. The checker bounds its results by the conversions of the ends. -/
-structure FiniteMonoConv where
-  conv : Int → Int
-  bounds : ∀ i, negInf < conv i ∧ conv i < posInf
-  mono : ∀ {i j}, i ≤ j → conv i ≤ conv j
+/-- A monotone conversion to finite doubles (`FloatFormat.FiniteMonoConv`). -/
+abbrev FiniteMonoConv := fp64.FiniteMonoConv
 
-/-- A conversion of integers to doubles, with what the checker knows of it. -/
-structure IntToDouble extends FiniteMonoConv where
-  ne_zero : ∀ {i}, i ≠ 0 → conv i ≠ 0
-  /-- Integers up to `2⁵³` in magnitude are doubles exactly. -/
-  exact : ∀ {i}, i.natAbs ≤ 2 ^ 53 → conv i = exactCode i
-  /-- Up to `2¹⁰²³`, within half a unit in the last place: `2⁻⁵³`, relatively. -/
-  rel : ∀ {i}, i ≠ 0 → i.natAbs ≤ 2 ^ 1023 → ∃ M, conv i = signedCode (decide (i < 0)) M ∧
-    2 ^ 53 * M ≤ (2 ^ 53 + 1) * (i.natAbs * 2 ^ 1074) ∧
-    (2 ^ 53 - 1) * (i.natAbs * 2 ^ 1074) ≤ 2 ^ 53 * M
+/-- A conversion of integers to doubles, with what the checker knows of it
+(`FloatFormat.IntConv`): exact up to `2⁵³`, within `2⁻⁵³` relatively up to
+`2¹⁰²³`. -/
+abbrev IntToDouble := fp64.IntConv
 
 /-- `ofIntExact`, behind a constant the kernel does not unfold: proofs about
 plans use only the properties above, as they did of the native conversion

@@ -51,7 +51,7 @@ def toInt? (c : Int) : Option Int :=
 /-! ## Monotonicity -/
 
 theorem maxMag_eq : maxMag = (2 ^ 53 - 1) * 2 ^ 971 * K := by
-  unfold maxMag K; rw [Nat.mul_assoc, ← Nat.pow_add]
+  rw [maxMag_def]; unfold K; rw [Nat.mul_assoc, ← Nat.pow_add]
 
 theorem floorMag_mono {m n : Nat} (h : m ≤ n) : floorMag m ≤ floorMag n :=
   Nat.mul_le_mul_right _ (Nat.div_le_div_right h)
