@@ -14,7 +14,7 @@
   "constructs": [
     "cast"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`Int64` to `Float64` rounds to the nearest double (2⁵³ + 1 is 2⁵³). `Float64` to `Float32` rounds to the nearest float, overflows to inf and underflows to 0.",
   "reference": "The conversions between integers and doubles are opaque constants with proved properties (`SubstraitLean/Conversions.lean`), the same in every profile; `fp32` arithmetic is refused until #417.",
   "status": "no-finding",

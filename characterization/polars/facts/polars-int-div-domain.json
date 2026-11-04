@@ -1,0 +1,55 @@
+{
+  "id": "polars-int-div-domain",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `//` has no domain error",
+  "verdict": "every input is in the domain; zero divisors and `MIN // -1` are other options",
+  "area": "integers",
+  "options": [
+    "on_domain_error"
+  ],
+  "rows": [
+    {"group": "int.div", "option": "on_domain_error", "types": ["i8", "i16", "i32", "i64"]}
+  ],
+  "constructs": [
+    "//",
+    "floordiv"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "Integer floor division gives a quotient for every pair of operands but two kinds: a zero divisor is NULL (`on_division_by_zero`) and `MIN // -1` wraps to `MIN` (`overflow`), both in polars-int-divide. No input raises or gives a value of its own. The kernels are one macro for `Int8` to `Int64`. `/` on integers divides doubles (polars-int-true-divide).",
+  "reference": "`divide` on integers: `on_domain_error` never applies (`int.div` in docs/core-semantics.md, `Choice.any`).",
+  "status": "no-finding",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L35-L45",
+          "note": "Column by column: a zero divisor is masked to NULL, the rest is `wrapping_floor_div_mod`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L103-L140",
+          "note": "A literal divisor: 0 gives NULL, -1 negates (wrapping), others divide the absolute values."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L39-L68"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L230-L234"
+        }
+      ],
+      "notes": [
+        "One macro instantiates the integer kernels for i8 to i64, so the reading covers every width. Each path handles a zero divisor and `MIN // -1` and returns a quotient for every other input.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    }
+  ]
+}

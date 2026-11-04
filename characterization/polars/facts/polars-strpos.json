@@ -11,7 +11,7 @@
   "constructs": [
     "str.find"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`str.find(t)` returns the byte offset of the first match, from 0, or NULL when there is none: `find('héllo', 'l')` is 3 (the character position is 2), and `find('', 'a')` is NULL. The empty pattern is found at 0.",
   "reference": "`strpos(s, t)` is the 1-based character position of the first match, 0 when there is none (#209). A writer adds 1 and maps NULL to 0, and on text that is not ASCII it needs the character position (the bytes before the match are not the characters).",
   "status": "open",

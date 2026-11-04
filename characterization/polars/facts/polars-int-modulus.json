@@ -19,7 +19,12 @@
     "%",
     "mod"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "`%` on integers is the remainder of floor division, with the sign of the divisor (`-1 % 2` is 1, `1 % -7` is -6). A zero divisor gives NULL, and `MIN % -1` is 0.",
   "reference": "`modulus` with `division_type: TRUNCATE` (the remainder has the dividend's sign); `FLOOR` is refused by the model. `on_division_by_zero: ERROR` when omitted. So the reference matches Polars only where the operands have the same sign or the remainder is 0.",
   "status": "open",
@@ -75,6 +80,35 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L39-L68",
+          "note": "`wrapping_floor_div_mod`: `wrapping_div` and `wrapping_rem`, then the divisor is added to a nonzero remainder whose sign differs from it."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L76-L80"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L60-L70",
+          "note": "Column by column: a zero divisor is masked to NULL."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L174-L208",
+          "note": "A literal divisor: 0 gives an all-NULL column, ±1 fills 0, any other a strength-reduced unsigned remainder with the divisor's sign."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L230-L234"
+        }
+      ],
+      "notes": [
+        "Confirms the probes for every width: one macro (`impl_signed_arith_kernel!`) instantiates the kernels for i8, i16, i32, i64 and i128. The remainder is `wrapping_rem` moved into the divisor's sign class, so it is a floor remainder; `MIN % -1` is 0 because `wrapping_rem` gives 0 there (and a literal `-1` divisor fills 0).",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
     }
   ]
 }

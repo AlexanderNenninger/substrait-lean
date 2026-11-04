@@ -1,0 +1,58 @@
+{
+  "id": "polars-int-mod-overflow",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `%` never overflows",
+  "verdict": "no overflow at any width; `MIN % -1` is 0",
+  "area": "integers",
+  "options": [
+    "overflow"
+  ],
+  "rows": [
+    {"group": "int.mod", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]}
+  ],
+  "constructs": [
+    "%",
+    "mod"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`%` on integers has no overflowing input. The kernel takes `wrapping_rem` and, when the remainder is nonzero and its sign differs from the divisor's, adds the divisor: the sum lies strictly between 0 and the divisor, so it fits. `MIN % -1` is 0 (`wrapping_rem`), and a literal divisor of ±1 fills 0. One macro instantiates the kernels for `Int8` to `Int64`, so every width behaves the same. The floor remainder and NULL for a zero divisor are in polars-int-modulus.",
+  "reference": "`modulus` on integers is the truncated remainder (`Int.tmod`), which never overflows either; `MIN % -1` is 0 (`min_mod_neg_one`).",
+  "status": "no-finding",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L39-L68"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L76-L80"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L60-L70"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L174-L208",
+          "note": "A literal divisor: the remainder of the absolute values, below |divisor|, with the divisor's sign."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L230-L234",
+          "note": "`impl_signed_arith_kernel!` for i8, i16, i32, i64, i128."
+        }
+      ],
+      "notes": [
+        "The kernels are one generic macro, so the reading covers i8 to i64. The adjustment `mod_ += other` only runs when the remainder and the divisor have opposite signs, where the sum cannot overflow. The wheels build without `overflow-checks` (polars-int-arith), so the wrapping operations cannot panic either.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    }
+  ]
+}

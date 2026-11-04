@@ -11,7 +11,7 @@
   "constructs": [
     "dt.strftime"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`dt.strftime` uses chrono's specifiers: `%j` the day of the year, `%a` the short weekday, `%U` the week with weeks starting Sunday, `%V` the ISO week; `%.f` printed `.600` for 600 000 µs (the shortest of 3, 6 or 9 digits).",
   "reference": "`strftime` is opaque in the reference (`time.part`); DuckDB's specifiers are its own.",
   "status": "open",

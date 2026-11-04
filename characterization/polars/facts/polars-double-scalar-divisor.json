@@ -1,0 +1,107 @@
+{
+  "id": "polars-double-scalar-divisor",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Dividing by a literal multiplies by its reciprocal",
+  "verdict": "`x / c` is `x * (1 / c)`: not correctly rounded, NaN or inf for a subnormal `c`; `49.0 % 49.0` is 49.0",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "nan_creation",
+    "division_type"
+  ],
+  "rows": [
+    {"group": "fp.div", "option": "rounding", "types": ["fp64"]},
+    {"group": "fp.div", "option": "rounding", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "source"}
+  ],
+  "constructs": [
+    "/",
+    "//",
+    "%"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "When one operand of `/`, `//` or `%` on floats has length 1 and the other more (a literal, `pl.lit`, or a one-row column against a longer one), Polars computes the reciprocal of the divisor once and multiplies: `x / c` is `x * (1 / c)`, `x // c` is `floor(x * (1 / c))`, `x % c` is `x - c * floor(x * (1 / c))`. Two roundings replace one, so `x / c` can miss the IEEE quotient by an ulp: `49.0 / 49.0` is 0.9999999999999999, and then `49.0 // 49.0` is 0.0 and `49.0 % 49.0` is 49.0. Recorded as PL-3.",
+    "For a subnormal `c` the reciprocal overflows to inf: `0.0 / 1e-310` is NaN where IEEE gives 0.0, and `1e-300 / 1e-310` is inf where IEEE gives 1e10 (`%` gives -inf). The same holds for `Float32` below about 2.9e-39.",
+    "On a one-row frame, or a one-row morsel of the streaming engine, both sides have length 1 and the IEEE kernel runs, so the one-row probes do not show it, and a small frame under streaming (split into one-row morsels) does not either. Two columns of equal length use `l / r`. Both engines share the kernels."
+  ],
+  "reference": "`divide` on doubles is the IEEE quotient, rounded once (`rounding: TIE_TO_EVEN`), and creates no NaN from non-NaN inputs other than `0/0` and `inf/inf`, which raise. `sverify_fmod` is the truncated remainder, smaller than the divisor in magnitude.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L78-L103",
+          "note": "`floor_div`, `trunc_div` and `mod` with a literal divisor use `inv = 1 / rhs`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L109-L119",
+          "note": "`prim_true_div_scalar` is `prim_wrapping_mul_scalar(lhs, 1 / rhs)`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L124-L126"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/mod.rs#L52-L63",
+          "note": "`legacy_div_scalar`, which `ChunkedArray / ChunkedArray` reaches for floats, is `true_div_scalar`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/binary.rs#L134-L144",
+          "note": "`/` on floats is `left / right` on the columns."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/arithmetic/numeric.rs#L105-L163",
+          "note": "`+ - * // %` on two ChunkedArrays: equal lengths take the array kernel, a length-1 side the scalar kernel."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/arity.rs#L894-L942"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/column/mod.rs#L1816-L1839",
+          "note": "A literal is a scalar column, passed to the operation as a one-value Series."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/expression.rs#L10-L38",
+          "note": "The streaming engine evaluates each expression with polars-expr's `PhysicalExpr` on every morsel, so it runs the same kernels."
+        }
+      ],
+      "notes": [
+        "`impl_float_arith_kernel!` is one macro instantiated for `pf16`, `f32` and `f64`, so `Float32` and `Float64` run the same operations. The streaming engine evaluates expressions through polars-expr on each morsel (`StreamExpr` in crates/polars-stream/src/expression.rs), so it shares these kernels with the in-memory engine. The broadcast in `apply_binary_kernel_broadcast_owned` sends a length-1 right side to the scalar kernel, and a literal reaches it as a one-value Series.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "note": "pl.DataFrame({'x': [49.0, 3.0, -0.0, 0.0, 0.5]}).select(pl.col('x') / 49.0, pl.col('x') % 49.0, pl.col('x') // 49.0): 0.9999999999999999, 49.0 and 0.0 for x = 49.0. The same on pl.DataFrame({'x': [49.0]}): 1.0 and 0.0."
+        },
+        {
+          "note": "pl.DataFrame({'x': [0.0, 1e-300, 2.0]}).select(pl.col('x') / 1e-310, pl.col('x') % 1e-310, pl.col('x') // 1e-310): [nan, inf, inf], [nan, -inf, -inf], [nan, inf, inf]. On pl.DataFrame({'x': [0.0]}): 0.0."
+        },
+        {
+          "note": "pl.DataFrame({'x': [0.0, 1.0, 0.5]}, schema={'x': pl.Float32}).select(pl.col('x') / pl.lit(1e-40, dtype=pl.Float32)): [nan, inf, inf]."
+        },
+        {
+          "note": "pl.LazyFrame({'x': [49.0] * 5000 + [0.0]}).select(pl.col('x') / 49.0, pl.col('x') % 49.0).collect(engine='streaming'): 0.9999999999999999 and 49.0 for x = 49.0. The same query on a 4-row LazyFrame gave the IEEE results (1.0, 0.0, and 1e-300 / 1e-310 = 10000000000.00003) under streaming and the deviations under engine='in-memory'."
+        }
+      ],
+      "notes": "Polars 2.1.0, macOS arm64. Streaming splits a small frame into one-row morsels, where both sides have length 1 and the IEEE kernel runs; morsels of two rows or more take the literal path, as the in-memory engine does."
+    }
+  ]
+}

@@ -3,7 +3,7 @@
   "engine": "polars",
   "engine_version": "py-2.1.0",
   "title": "Platform dependence: undocumented",
-  "verdict": "docs silent on libm, SIMD and NaN canonicalization",
+  "verdict": "elementary functions use Rust's f64 methods, so the platform's libm; integer powers below 10 by repeated multiplication",
   "area": "execution",
   "options": [
     "platform"
@@ -12,16 +12,19 @@
     "sin",
     "pow",
     "exp",
-    "log"
+    "log",
+    "sqrt"
   ],
-  "settings": {},
+  "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
-    "The Polars docs say nothing about platform-dependent results. Rust's `f64` methods (`sin`, `exp`, `powf`) lower to the platform's math library, so their last bits may differ between macOS arm64 (probes) and Linux x86_64 (CI); this is general Rust behaviour, not yet checked in Polars's kernels.",
-    "Leads: crates/polars-compute/src/arithmetic/, the trigonometry kernels in crates/polars-plan/src/dsl/function_expr/trigonometry.rs; rerun characterization/polars/probes.json on homelab and diff."
+    "The Polars docs say nothing about platform-dependent results.",
+    "Source at py-2.1.0: the trigonometric, hyperbolic, `exp`, `log` and `pow` kernels call `num_traits::Float` methods (`v.sin()`, `v.exp()`, `v.log(base)`, `Pow::pow`), which for `f64` are Rust's standard methods and lower to the platform's libm. The `libm` crate is a dependency of polars-ops but only for `scalbn` in `round`, which is exact. So the last bits of the elementary functions may differ between macOS arm64 (probes) and Linux x86_64 (CI).",
+    "`pow` with a scalar exponent takes shortcuts: 1 returns the base, 0.5 calls `sqrt` (so `(-inf) ** 0.5` is NaN and `(-0.0) ** 0.5` is -0.0, where IEEE `pow` gives inf and +0), and an integral exponent from 2 to 9 multiplies the base by itself, which rounds after each product. A column exponent calls `pow` for every row. These are platform-independent but can differ from `pow` in the last bits.",
+    "Next round: rerun characterization/polars/probes.json on homelab and diff."
   ],
   "reference": "The reference treats the elementary functions as black boxes with stated laws, so a last-bit difference is allowed.",
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -34,6 +37,37 @@
         }
       ],
       "notes": "Silent on platform. The libm claim is general knowledge of Rust's standard library and goes to source next round."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/trigonometry.rs#L90-L145",
+          "note": "trigonometric kernels: Float methods"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/log.rs#L60-L75",
+          "note": "log(base): Float::log"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/log.rs#L110-L120",
+          "note": "exp: Float::exp"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L37-L70",
+          "note": "pow: shortcuts for scalar exponents 1, 0.5 and 2..9"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L110",
+          "note": "libm::scalbn, the only libm crate use"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/Cargo.toml#L31",
+          "note": "libm dependency"
+        }
+      ]
     }
   ]
 }

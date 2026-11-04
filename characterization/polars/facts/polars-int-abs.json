@@ -14,7 +14,7 @@
   "constructs": [
     "abs"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`abs` is `wrapping_abs`: `abs(MIN)` is `MIN` at every width. Every other value is exact.",
   "reference": "`abs` with `overflow: ERROR`, the only value the model accepts for it (`SILENT` and `SATURATE` are refused), so `abs(MIN)` is an overflow issue.",
   "status": "open",

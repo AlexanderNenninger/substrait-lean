@@ -10,7 +10,7 @@
     "raise_set"
   ],
   "rows": [
-    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp"]}
+    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp", "timestamp_tz"]}
   ],
   "constructs": [
     "+",
@@ -18,10 +18,16 @@
     "dt.offset_by",
     "cast"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
   "description": [
     "Date arithmetic is not limited to 0001-01-01 … 9999-12-31: one day before 0001-01-01 is 0000-12-31 and one after 9999-12-31 is +10000-01-01; timestamps (microseconds) reach year 12736 and beyond.",
-    "A date is an `Int32` of days, wider than chrono's `NaiveDate` (about ±262 000 years). Casting such a day count to `Date` succeeds, `dt.year()` of it is NULL, and turning it into text or a Python value panics (`PanicException: out-of-range date`, PL-2)."
+    "A date is an `Int32` of days, wider than chrono's `NaiveDate` (about ±262 000 years). Casting such a day count to `Date` succeeds, `dt.year()` of it is NULL, and turning it into text or a Python value panics (`PanicException: out-of-range date`, PL-2).",
+    "A `Datetime` with a time zone adds a `Duration` on its physical `Int64` (UTC) and keeps the zone, the same addition as a naive timestamp, so it has no `date_range` limit either: Europe/Berlin 9999-12-31 12:00 plus a day is +10000-01-01 12:00 CET, and 0001-01-01 12:00 minus a day is 0000-12-31 12:00 LMT. `dt.offset_by` with months works in local time and crosses both bounds the same way."
   ],
   "reference": "`date_range`: date arithmetic raises outside 0001-01-01 … 9999-12-31 (#251).",
   "status": "open",
@@ -57,6 +63,37 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (temporal)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/implementations/datetime.rs#L107-L139",
+          "note": "`Datetime(tu, tz)` ± `Duration`: `Int64` arithmetic, then `into_datetime(tu, tz)`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/utils/supertype.rs#L393-L405",
+          "note": "`Duration` with a zoned or naive `Datetime`: the `Datetime`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-time/src/offset_by.rs#L30-L63",
+          "note": "`offset_by` on a zoned `Datetime` adds through `Duration::add` with the zone"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (temporal)",
+      "evidence": [
+        {
+          "note": "Datetime('us', 'Europe/Berlin') column [9999-12-31 12:00, 0001-01-01 12:00]: + pl.duration(days=1) gives years 10000 and 1, - pl.duration(days=1) years 9999 and 0, dt.offset_by('1mo') +10000-01-31 and 0001-02-01, dt.offset_by('-1mo') 9999-11-30 and 0000-12-01, on both engines"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
     }
   ],
   "issues": [

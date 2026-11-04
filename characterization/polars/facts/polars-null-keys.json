@@ -13,7 +13,7 @@
     "unique",
     "join"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`group_by` and `unique` put the NULLs in one group. A join does not match NULL keys unless `nulls_equal=True`.",
   "reference": "Grouping and `DISTINCT` put NULLs together; an equi-join's `=` does not match NULL (and `IS NOT DISTINCT FROM` keys do).",
   "status": "no-finding",

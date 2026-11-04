@@ -14,7 +14,7 @@
   "constructs": [
     "str.slice"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "No offset or length makes `str.slice` raise: an offset of 2⁴⁰ gives `''`, and `slice(-2⁴⁰, 2⁴¹)` the whole string.",
   "reference": "`substring_range`: offsets outside `[-2³², 2³²)` raise (#336), as DuckDB does (duckdb-substring-range).",
   "status": "open",

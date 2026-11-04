@@ -2,8 +2,8 @@
   "id": "polars-exec-size-limits",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "Size limits: decimal precision 38 documented; strings and lists not",
-  "verdict": "Decimal: 128 bits, at most 38 digits; other limits undocumented",
+  "title": "Size limits: decimal precision 38; strings 4 GiB - 1 (panic past it); rows 2^32 - 1 by default",
+  "verdict": "Decimal: at most 38 digits; a string or binary over u32::MAX bytes panics; the default runtime caps a frame at 2^32 - 1 rows",
   "area": "execution",
   "options": [
     "size_limits"
@@ -14,15 +14,15 @@
     "Binary",
     "List"
   ],
-  "settings": {},
+  "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
     "`Decimal` is a 128-bit type with at most 38 digits of precision (also the default when the precision is not given) and a non-negative scale. The page does not say what an overflow does.",
-    "The docs give no limit for strings, binaries, lists or nesting depth. Strings and binaries are stored as Arrow binary views, whose length field is 32 bits as far as Arrow's format goes, and lists as large lists with 64-bit offsets; both are to confirm in source.",
-    "Leads: crates/polars-arrow/src/array/binview/view.rs (the view's length), py-polars/tests/unit/datatypes/test_decimal.py for decimal overflow (polars-decimal-arith covers arithmetic)."
+    "Source at py-2.1.0: strings and binaries are binary views whose `length` is a `u32`. The builder asserts `bytes.len() <= u32::MAX` (`push_value_into_buffer`), so a longer value panics (a `PanicException` in Python) where it would be an error elsewhere. Lists are `ListArray<i64>`, with 64-bit offsets checked on push (`Offsets::try_push` returns an `overflow` error). Row indices are `IdxSize`, a `u32` in the default `polars-runtime-32` that `pip install polars` brings; `polars[rt64]` switches to `u64` (`bigidx`). Past 2^32 - 1 rows the default runtime reports \"Polars' maximum length reached. Consider installing 'polars[rt64]'.\", as an error at most sites and a panic at some (`expect(LENGTH_LIMIT_MSG)`).",
+    "Leads: py-polars/tests/unit/datatypes/test_decimal.py for decimal overflow (polars-decimal-arith covers arithmetic)."
   ],
   "reference": "The reference caps decimals at 38 digits and raises past them; it has no limit on string, blob or list lengths.",
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -31,6 +31,49 @@
       "evidence": [
         {
           "url": "https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Decimal.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-arrow/src/array/binview/view.rs#L20-L29",
+          "note": "View: u32 length, buffer index and offset"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-arrow/src/array/binview/mutable.rs#L299-L301",
+          "note": "assert!(bytes.len() <= u32::MAX)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-arrow/src/array/binview/mod.rs#L55",
+          "note": "one data buffer holds at most i32::MAX bytes"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/datatypes/mod.rs#L250-L256",
+          "note": "ListType: ListArray<i64>"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-arrow/src/offset.rs#L125-L139",
+          "note": "offset overflow is an error"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/index.rs#L8-L11",
+          "note": "IdxSize: u32 unless bigidx"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-python/Cargo.toml#L337-L338",
+          "note": "rt64 and rtcompat turn on bigidx"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/pyproject.toml#L36-L48",
+          "note": "polars depends on polars-runtime-32; rt64 is an extra"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-error/src/constants.rs#L12-L17",
+          "note": "LENGTH_LIMIT_MSG"
         }
       ]
     }

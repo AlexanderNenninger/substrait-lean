@@ -9,7 +9,7 @@
     "nan_order"
   ],
   "rows": [
-    {"group": "agg.order", "option": "nan_order", "types": ["fp64"]},
+    {"group": "agg.order", "option": "nan_order", "types": ["fp32", "fp64"]},
     {"group": "cmp", "option": "nan_order", "types": ["fp64"]}
   ],
   "constructs": [
@@ -21,10 +21,16 @@
     "nan_max",
     "nan_min"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
   "description": [
     "`max` over 1, NaN, -inf, inf is inf and `arg_max` points at inf, though `sort` puts NaN last: the aggregates skip NaN, and give NaN only when there is nothing else (`max(NaN, NULL)` is NaN). `pl.max_horizontal(x, NaN)` is x. `nan_max` and `nan_min` propagate NaN.",
-    "`min` and `min_horizontal` agree with NaN-as-greatest, since a NaN is never the least of a group with a number."
+    "`min` and `min_horizontal` agree with NaN-as-greatest, since a NaN is never the least of a group with a number.",
+    "`Float32` and `Float64` share the code, and the streaming reducers call the in-memory kernel per morsel and merge with the same `min_ignore_nan`, so both widths and both engines skip NaN."
   ],
   "reference": "`MAX`, `greatest` follow `nan_order: GREATEST`, so `max(1, NaN)` is NaN. The writer needs `nan_max` (or a sort) for `max` of doubles and a NaN check for `greatest`; 20 of 144 rows of `greatest` differ.",
   "status": "open",
@@ -53,6 +59,65 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/min_max.rs#L87-L133",
+          "note": "floats: `min_ignore_nan` is `f32::min`/`f64::min`, `max_ignore_nan` `max`; one macro for `f32` and `f64`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/min_max/simd.rs#L239-L256",
+          "note": "SIMD kernel: `simd_min`/`simd_max` from a NaN start, then `reduce_min`/`reduce_max`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/min_max/simd.rs#L373-L374",
+          "note": "the kernel for `f32` (16 lanes) and `f64` (8 lanes)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L139-L192",
+          "note": "`ChunkAgg::min`/`max`: the sorted flag's first or last value, else the kernel per chunk merged by `min_ignore_nan`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/min_max.rs#L17-L99",
+          "note": "streaming: `Min`/`Max` for `Float32` and `Float64` unless `propagate_nans` (`nan_min`, `nan_max`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/min_max.rs#L217-L270",
+          "note": "streaming `Min`/`Max`: `reduce_ca` is `ChunkAgg::min`/`max`, `combine` is `MinMax::min_ignore_nan`/`max_ignore_nan`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L494-L540",
+          "note": "in-memory grouped `min`: `min_ignore_nan` per group"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104",
+          "note": "ungrouped streaming reduce: each pipeline folds its morsels into a local state (`update_group`), the local states merge in pipeline order (`combine_subset`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L396-L455",
+          "note": "`VecGroupedReduction`: `update_group` calls `reduce_ca` on a morsel; `update_groups_subset` calls `reduce_one` per row"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L457-L528",
+          "note": "`update_groups_while_evicting` (per row `reduce_one`) and `combine_subset` (`combine`)"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "note": "Float32 and Float64 column [1.0, NaN, -1.0] in one group: min -1.0 and max 1.0, in select and group_by, in memory and streaming"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
     }
   ]
 }

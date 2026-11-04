@@ -17,7 +17,7 @@
     "str.contains",
     "str.replace_all"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`starts_with`, `ends_with`, `contains(literal=True)` and `replace_all(literal=True)` are case-sensitive and agree with the reference on every probe row (the empty prefix matches everything). Case-insensitive matching is a regex flag, `(?i)`.",
   "reference": "`starts_with`, `ends_with`, `replace` with `case_sensitivity: CASE_SENSITIVE`.",
   "status": "no-finding",

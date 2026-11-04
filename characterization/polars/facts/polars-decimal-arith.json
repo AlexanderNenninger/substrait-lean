@@ -24,7 +24,7 @@
     "mean",
     "cast"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "Arithmetic on decimals returns `Decimal(38, max(s₁, s₂))` for `+`, `-`, `*` and `/` (an integer operand counts as scale 0), and `sum` returns `Decimal(38, s)`: the result's precision is always 38, so `Decimal(6, 2) * 1000` gives 9999990.00 and overflows only past 38 digits, where it raises (`ComputeError`).",
     "A result with more digits than the scale rounds half to even: `0.05 * 0.5` is 0.02, `1.00 / 8` is 0.12, a cast from scale 3 to scale 1 makes 1.050 into 1.0 and 1.150 into 1.2, and a double cast to a decimal rounds half to even on its exact value (0.625 is 0.62). Division by zero raises. `mean` of decimals is a `Float64`."

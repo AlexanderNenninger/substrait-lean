@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "cmp", "option": "nan_order", "types": ["fp64"]},
-    {"group": "cmp", "option": "nan_order", "types": ["fp32"], "evidence": "docs"},
+    {"group": "cmp", "option": "nan_order", "types": ["fp32"], "evidence": "source"},
     {"group": "agg.quant", "option": "nan_order", "types": ["fp64"]}
   ],
   "constructs": [
@@ -21,7 +21,7 @@
     "median",
     "quantile"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`NaN > x` is true for every number x, `inf < NaN` is true, and `sort` puts NaN after +inf ascending and first (after the NULLs) descending. `rank`, `median` and `quantile` use the same order, so `median(1, 2, NaN)` is 2.",
   "reference": "`GREATEST`: NaN above +inf in sorts and in `<`.",
   "status": "no-finding",
@@ -66,6 +66,36 @@
         }
       ],
       "notes": "Polars's user guide says it generally follows IEEE 754 for `Float32` and `Float64`, with two exceptions: any NaN equals any other NaN and is greater than every non-NaN value, and operations guarantee nothing about the sign of zero or NaN or a NaN's payload (a sort or group by may make every zero +0 and every NaN a positive NaN). It promises no error bound unless a function says otherwise. The user guide is not versioned; the section reads the same at tag py-2.1.0. NaN above every non-NaN value is stated for both float types, so it settles `cmp`'s `Float32` row; the probes cover `Float64`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/total_ord.rs#L317-L372",
+          "note": "`impl_float_eq_ord!` for pf16, f32, f64: NaN equals NaN and is the largest value."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/comparisons/simd.rs#L171-L286",
+          "note": "`impl_float_total_ord_kernel!` for f32 and f64: the column comparison kernels."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/total_ord.rs#L24-L48",
+          "note": "`canonical_f32` and `canonical_f64`: `x + 0.0`, every NaN one quiet NaN, for hashing (group by, unique, joins)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/total_ord.rs#L384-L402"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/sort/mod.rs#L109-L115",
+          "note": "Sorting uses `TotalOrd::tot_cmp`."
+        }
+      ],
+      "notes": [
+        "Equality, order, sorting and hashing of floats are one generic implementation for `f32` and `f64` (and `pf16`), so `Float32` behaves as the `Float64` probes show.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
     }
   ]
 }

@@ -13,7 +13,7 @@
     "/",
     "truediv"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`/` on integers casts both operands to `Float64` and divides: `7 / 2` is 3.5, `x / 0` is ±inf, `0 / 0` is NaN. Integers above 2⁵³ round on the way.",
   "reference": "Substrait's `divide` on integers returns the integer type and truncates. A plan that divides integers to a double casts first, and the double division's options apply (polars-double-divide).",
   "status": "open",

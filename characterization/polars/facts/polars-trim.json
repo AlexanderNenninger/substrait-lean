@@ -10,7 +10,7 @@
     "str.strip_chars_start",
     "str.strip_chars_end"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`strip_chars()` with no argument is Rust's `str::trim`, every Unicode whitespace character (tab, newline, no-break space, em space). With characters it trims those: `strip_chars(' ')` is `btrim(s, ' ')` on every probe row.",
   "reference": "`btrim(s)` trims spaces only; `btrim(s, chars)` the given characters.",
   "status": "open",
