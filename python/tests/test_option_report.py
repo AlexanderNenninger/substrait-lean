@@ -175,3 +175,36 @@ def test_contract_reports_its_dependencies(tmp_path):
     depends = {(d["group"], d["option"]): d["behaviours"] for d in report["depends"]}
     assert depends[("int.arith", "overflow")] == ["ERROR"]
     assert depends[("rel.sort", "null_order")] == ["NULLS_LAST"]
+
+
+def test_contract_epsilon_per_double_aggregate(monkeypatch):
+    """B1: a float `SUM`/`AVG` row is `approx` with `{"floats": {"bound":
+    "plan"}}`; `--contract` gives each such output column its bound, from
+    the bounds and row caps the preconditions state (#85)."""
+    import sverify as sv
+    from sverify import contracts
+
+    seen: dict[str, str] = {}
+    run = contracts.run_checker
+
+    def spy(args, stdin):
+        out = run(args, stdin)
+        seen["out"] = out[1]
+        return out
+
+    monkeypatch.setattr(contracts, "run_checker", spy)
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    sv.verify(
+        t.group_by("k").aggregate(total=t.x.sum(), mean=t.x.mean(), n=t.x.count()),
+        requires={"t": [ibis._.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
+    )
+    eps = json.loads(seen["out"])["epsilon"]
+    assert set(eps) == {"total", "mean"}
+    # About twice γ(n)·n·B: 2 · 10⁶ · 2⁻⁵³ · 10⁶ · 10⁶.
+    assert 200 < eps["total"]["abs"] < 250
+    assert 2e-4 < eps["mean"]["abs"] < 2.5e-4
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    rows = {(r["group"], r["option"]): r for r in json.loads(out.stdout)["choices"]["polars"]}
+    assert rows[(None, "sum_order")]["q"] == {"floats": {"bound": "plan"}}

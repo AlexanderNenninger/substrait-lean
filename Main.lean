@@ -207,8 +207,10 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
             | .ok p => p.root.dependsJson
             | .error _ => Lean.Json.null
           | none => Lean.Json.null
+        -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
+        let eps := (Epsilon.epsilon j).toOption.getD (Lean.Json.mkObj [])
         IO.println (report.json |>.setObjVal! "profile" "reference"
-          |>.setObjVal! "depends" depends).compress
+          |>.setObjVal! "depends" depends |>.setObjVal! "epsilon" eps).compress
         return if report.allProved then 0 else 4
   if flag == "--shard" then
     match Lean.Json.parse input with

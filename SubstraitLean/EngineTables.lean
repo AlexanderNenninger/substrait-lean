@@ -184,7 +184,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound.
-  (none, "sum_order", .approxWithin "#85" ["polars-sum-float", "polars-mean-float"]),
+  (none, "sum_order", .approxWithin "plan" ["polars-sum-float", "polars-mean-float"]),
   (none, "avg_int_result", .shimmed "avg_int_declared" ["polars-avg-int"]),
   (none, "empty_group_aggregates", .shimmed "sum_empty_null" ["polars-sum-int"]),
   (none, "null_order", .shimmed "null_order" ["polars-null-order"]),
