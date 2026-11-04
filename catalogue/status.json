@@ -229,15 +229,13 @@
   }
  },
  "fin-ohlc": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate ArgMin is not supported",
+  "checker": "verified",
+  "incremental": false,
   "native": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate ArgMin is not supported",
-   "native": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: first is not yet supported on Polars; see #271",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
  "fin-bollinger": {
@@ -337,10 +335,14 @@
   }
  },
  "h2o-groupby-q6": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Median is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: quantile_cont is not yet supported on Polars; see #271",
+   "snowflake": "refused: quantile_cont is not yet supported on snowflake; see #271"
+  }
  },
  "h2o-groupby-q7": {
   "checker": "verified",
@@ -523,10 +525,14 @@
   }
  },
  "iot-downsample": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate ArgMax is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "differs",
+   "polars": "refused: min of doubles is not yet supported on Polars; see #271",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "iot-latest-reading": {
   "checker": "verified",
@@ -828,10 +834,14 @@
   }
  },
  "pa-median-order-value": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Median is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: quantile_cont is not yet supported on Polars; see #271",
+   "snowflake": "refused: quantile_cont is not yet supported on snowflake; see #271"
+  }
  },
  "pa-zscore-outliers": {
   "checker": "rejected",
@@ -1632,10 +1642,14 @@
   }
  },
  "win-latest-argmax": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate ArgMax is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: first is not yet supported on Polars; see #271",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "win-top-n-per-group": {
   "checker": "verified",

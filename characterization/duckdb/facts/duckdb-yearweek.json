@@ -1,0 +1,69 @@
+{
+  "id": "duckdb-yearweek",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "yearweek subtracts the ISO week in the years up to 0, and raises in DuckDB's first year",
+  "verdict": "decided: yearweek is a black box, NULL where DuckDB raises",
+  "area": "temporal",
+  "constructs": [
+    "yearweek",
+    "weekday"
+  ],
+  "settings": {},
+  "description": [
+    "`yearweek(d)` is the ISO year of `d` times 100 plus its ISO week where the ISO year is above 0, and the ISO year times 100 minus the week where it is 0 or below: the day before 0001-01-01 (ISO year 0, week 52) gives -52, and DuckDB's `DATE '-0010-01-05'` gives -1001. A timestamp is read as its date.",
+    "`yearweek`, `weekday` and `dayofweek` of an infinite date are NULL. `weekday(d)` is `dayofweek(d)`, Sunday 0.",
+    "`yearweek`, `week` and `isoyear` raise a Conversion Error (`Date out of range: -5877641-1-1`) on DuckDB's dates before 5877641-01-04 BC (day -2147483453), whose ISO year starts before DuckDB's first date, 5877642-06-25 BC. `year`, `weekday` and `dayofweek` do not."
+  ],
+  "reference": [
+    "`yearweek` is a black box (#328), strict, with no `nonNull` law because of the infinite dates, and bounded by DuckDB's dates: -587764053 to 588158053. Before 5877641-01-04 BC it is NULL (`BlackBox.yearweekMin`), as `date_part` is NULL outside chrono's dates, and its SQL guards DuckDB's call there. Lean's evaluator (`BlackBox.yearweek`) computes DuckDB's value, signs included. `weekday` lifts to `date_part('dow', d)`, exact."
+  ],
+  "status": "decided",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session for #328 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {
+          "sql": "SELECT year(DATE '0001-01-01' - 1), isoyear(DATE '0001-01-01' - 1), week(DATE '0001-01-01' - 1), yearweek(DATE '0001-01-01' - 1)",
+          "observed": "0, 0, 52, -52"
+        },
+        {
+          "sql": "SELECT yearweek(DATE '2024-01-01'), yearweek(DATE '2021-01-01'), yearweek(DATE '-0010-01-05'), yearweek(DATE '-0010-12-28'), yearweek(DATE '0001-01-01')",
+          "observed": "202401, 202053, -1001, -1052, 101"
+        },
+        {
+          "sql": "SELECT yearweek('infinity'::DATE), weekday('infinity'::DATE), weekday('-infinity'::DATE)",
+          "observed": "NULL, NULL, NULL"
+        },
+        {
+          "sql": "SELECT weekday(DATE '2024-01-07'), dayofweek(DATE '2024-01-07'), isodow(DATE '2024-01-07')",
+          "observed": "0, 0, 7"
+        },
+        {
+          "sql": "SELECT yearweek(DATE '5881580-07-10')",
+          "observed": "588158028"
+        },
+        {
+          "sql": "SELECT yearweek(d), week(d), isoyear(d) FROM t  -- d: Arrow date32 -2147483454 (5877641-01-03 BC)",
+          "observed": "Conversion Error: Date out of range: -5877641-1-1"
+        },
+        {
+          "sql": "SELECT year(d), weekday(d) FROM t  -- d: Arrow date32 -2147483454 and -2147483646",
+          "observed": "(-5877640, 0), (-5877641, 4)"
+        },
+        {
+          "sql": "SELECT DATE '5877641-01-04 (BC)' - DATE '1970-01-01', yearweek(DATE '5877641-01-04 (BC)')",
+          "observed": "-2147483453, -587764001"
+        },
+        {
+          "test": "python/tests/test_black_box.py::test_yearweek_keeps_its_laws_on_random_data"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    328
+  ]
+}

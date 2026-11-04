@@ -59,7 +59,7 @@ class Touched:
     input rows in the touched buckets' time range."""
     framed: Framed | None = None
     """For windows with bounded RANGE frames over one time column: the rows
-    near the change, recomputed. Tested, not proved."""
+    near the change, recomputed (`TouchedFrames.framed_batch`)."""
 
 
 @dataclass(frozen=True)
@@ -76,10 +76,13 @@ class Framed:
     widened by the frame (`__lo`, `__hi`), and these rows replace the
     state's rows of those partitions and times.
 
-    That the other output rows keep their values rests on a window value
-    depending only on the rows in its frame. Sverify tests it (equality with
-    a full recompute on random streams); Lean does not prove it yet (#294),
-    so the strategy is reported as tested, unlike the proved ones."""
+    That the other output rows keep their values, and the recomputed ones
+    get their full values, is `TouchedFrames.framed_batch` in
+    `SubstraitLean/TouchedFrames.lean`: a window value depends only on the
+    rows of its partition in its frame (`TouchedFrames.outRow_local`). It
+    assumes no two input rows tie on the partition columns and `ts`, and
+    `start ≤ 0 ≤ end`, so `_frame` widens the span to hold the row itself.
+    A batch with a NULL time recomputes whole partitions instead."""
 
     ts: str
     """The input's time column."""
@@ -196,7 +199,9 @@ def _frame(proj: Any) -> tuple[ops.Field, timedelta, timedelta] | None:
         fields.add(key.arg)
     if len(fields) != 1:
         return None
-    return fields.pop(), min(starts), max(ends)
+    # The span holds the row itself (`TouchedFrames.framed_sound` needs
+    # `start ≤ 0 ≤ end`): the recompute must read the rows it outputs.
+    return fields.pop(), min(*starts, timedelta(0)), max(*ends, timedelta(0))
 
 
 def _framed(name, proj, groups, touched, view_over, f, col, start, end) -> Framed:

@@ -1,8 +1,9 @@
 """Windows over bounded RANGE frames of a time column, maintained by
-recomputing the rows near the change (`sverify._touched.Framed`). Lean does
-not prove this strategy yet (#294), so these tests carry it: every refresh
-equals a full recompute on random streams with late rows, rows on the frame
-edges, duplicate times and NULL times."""
+recomputing the rows near the change (`sverify._touched.Framed`). Lean
+proves the strategy for inputs without ties on the partition and time
+columns (`TouchedFrames.framed_batch`, #458); these tests check every
+refresh against a full recompute on random streams with late rows, rows on
+the frame edges, duplicate times and NULL times."""
 
 import random
 from datetime import datetime, timedelta
@@ -130,15 +131,40 @@ def test_a_change_far_from_the_rest_recomputes_only_its_neighbourhood():
     assert rows(node) == recomputed(node, src)
 
 
-def test_status_and_summary_say_the_strategy_is_tested_not_proved():
+def test_a_frame_that_ends_before_the_row_recomputes_the_rows_it_reaches():
+    """Alone, a frame from 10 to 3 minutes before the row spans `[-10, -3]`:
+    the recompute must still read the rows it outputs, so the span is
+    widened to `[-10, 0]` (`framed_batch` needs `start ≤ 0 ≤ end`)."""
+
+    def windows(samples):
+        earlier = ibis.window(
+            group_by="host",
+            order_by="ts",
+            range=(-ibis.interval(minutes=10), -ibis.interval(minutes=3)),
+        )
+        return samples.select("host", "ts", "cpu", earlier=samples.cpu.sum().over(earlier))
+
+    src = StaticSource(samples([("a", m, 1) for m in range(60)]), name="samples")
+    node = src.pipe(windows)
+    node.refresh()
+    spec = view(node).touched
+    assert spec is not None and spec.framed is not None
+    assert (spec.framed.start, spec.framed.end) == (-timedelta(minutes=10), timedelta(0))
+    src.apply(sv.Changes(inserts=samples([("a", 20, 100)])))
+    node.refresh(audit=True)
+    assert rows(node) == recomputed(node, src)
+
+
+def test_status_and_summary_name_the_strategy():
     src = StaticSource(samples([("a", 1, 5), ("a", 2, 7)]), name="samples")
     node = src.pipe(frames(["host"]))
     node.refresh()
-    assert "touched frames recomputed (tested, not proved;" in str(node.status())
+    assert "touched frames recomputed (no delta rules:" in str(node.status())
+    assert any(s.framed for s in node.status().nodes)
     src.apply(sv.Changes(inserts=samples([("a", 3, 9)])))
     out = node.refresh()["windows"]
-    assert "row(s) in touched frames recomputed (tested, not proved)" in out.summary()
-    assert "(tested, not proved)" in str(out.report)
+    assert "row(s) in touched frames recomputed" in out.summary()
+    assert "not proved" not in str(out.report)
 
 
 def test_a_rows_frame_or_an_unbounded_frame_is_not_framed():

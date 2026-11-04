@@ -1,4 +1,6 @@
 import SubstraitLean.Value
+import SubstraitLean.Float
+import SubstraitLean.Time
 
 /-!
 # Black-box functions (#325)
@@ -39,7 +41,8 @@ differential tests pin each black box to DuckDB, and the laws are checked
 on random data (`python/tests/test_black_box.py`).
 
 Lean's evaluator computes the black boxes it has an evaluator for
-(`evalScalar`, `base64`) and panics at the others, so `substrait-check`
+(`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, and `signbit`
+away from `±0.0` and NaN) and panics at the others, so `substrait-check`
 refuses to print rows rather than print wrong ones.
 -/
 
@@ -52,6 +55,12 @@ def blackBoxUrn : String := "extension:io.sverify:black_box"
 (`SubstraitLean/Float.lean`). -/
 inductive Ty where
   | int | double | str | bool
+  /-- A date, as days since 1970-01-01. -/
+  | date
+  /-- An integer, string or boolean: a value whose type its `Value` shows.
+  A double's code or a date is an integer too, so a scalar whose result
+  depends on the type (`printf`) takes this. -/
+  | atom
   /-- Any value (an aggregate's argument). -/
   | any
   deriving Repr, DecidableEq
@@ -59,9 +68,10 @@ inductive Ty where
 /-- Is `v` NULL or a value of the type? -/
 def Ty.has : Ty → Value → Bool
   | _, .null => true
-  | .int, .int _ | .double, .int _ => true
+  | .int, .int _ | .double, .int _ | .date, .int _ => true
   | .str, .str _ => true
   | .bool, .bool _ => true
+  | .atom, .int _ | .atom, .str _ | .atom, .bool _ => true
   | .any, _ => true
   | _, _ => false
 
@@ -135,7 +145,33 @@ row needs: its lift rule and its SQL, both from the row's name. -/
 def scalars : List Scalar := [
   -- `base64(encode(s))`: the UTF-8 bytes of `s` in base64 (DuckDB's `base64`
   -- takes a BLOB). Not NULL for a string.
-  { name := "base64", args := [.str], result := .str, laws := [.nonNull], sample := .str "" }]
+  { name := "base64", args := [.str], result := .str, laws := [.nonNull], sample := .str "" },
+  -- `printf(fmt, x)` and `format(fmt, x)` of one value (#328): C's and
+  -- Python's format strings. Strict, and raise on a format that does not fit
+  -- the value (`printf('%d', 'x')`, `format('{} {}', 1)`). DuckDB formats a
+  -- signed integer as a BIGINT whatever its width, so `x` is an `atom`.
+  { name := "printf", args := [.str, .atom], result := .str, raises := .sometimes,
+    laws := [.nonNull], sample := .str "" },
+  { name := "format", args := [.str, .atom], result := .str, raises := .sometimes,
+    laws := [.nonNull], sample := .str "" },
+  -- `octet_length(encode(s))` and `strlen(s)`: the number of UTF-8 bytes of
+  -- `s` (#328). Lean evaluates them.
+  { name := "octet_length", args := [.str], result := .int, laws := [.nonNull, .atLeast 0],
+    sample := .int 0 },
+  { name := "strlen", args := [.str], result := .int, laws := [.nonNull, .atLeast 0],
+    sample := .int 0 },
+  -- `signbit(x)`: the sign bit of a double (#328), TRUE for `-0.0` and a
+  -- negative NaN, which the model's codes do not tell from `+0.0` and NaN
+  -- (`SubstraitLean/Float.lean`). Lean evaluates it elsewhere.
+  { name := "signbit", args := [.double], result := .bool, laws := [.nonNull],
+    sample := .bool false },
+  -- `yearweek(d)`: the ISO year times 100 plus the ISO week, the week
+  -- subtracted in the years up to 0 (`duckdb-yearweek`). NULL for an
+  -- infinite date, and before 5877641-01-04 BC (`yearweekMin`), where DuckDB
+  -- raises, as `date_part` is NULL outside chrono's dates. The bounds are
+  -- those of DuckDB's dates, to 5881580 AD. Lean evaluates it.
+  { name := "yearweek", args := [.date], result := .int,
+    laws := [.atLeast (-587764053), .atMost 588158053], sample := .int 0 }]
 
 /-- The aggregate black boxes. -/
 def aggregates : List Aggregate := [
@@ -184,9 +220,31 @@ def base64 (s : String) : String := String.ofList (base64Bytes s.toUTF8.toList)
 def unevaluated {α : Type} [Inhabited α] (name : String) : α :=
   panic! s!"{name} is a black box Lean does not evaluate"
 
+/-- The first day DuckDB's `yearweek` takes, 5877641-01-04 BC: before it, the
+start of its ISO year is not a DuckDB date. -/
+def yearweekMin : Int := -2147483453
+
+/-- `yearweek(d)` of the day `d`: the ISO year of its Thursday times 100,
+plus its ISO week, which DuckDB subtracts in the years up to 0. -/
+def yearweek (d : Int) : Value :=
+  if d < yearweekMin then .null else
+    let y := Time.monthIndex (d - (d + 3) % 7 + 3) / 12
+    let w := Time.isoWeek d
+    .int (if 0 < y then y * 100 + w else y * 100 - w)
+
+#guard yearweek (-1) == .int 197001 && yearweek 19723 == .int 202401 &&
+  yearweek 18628 == .int 202053
+#guard yearweek Time.dayMin == .int 101 && yearweek (Time.dayMin - 1) == .int (-52)
+#guard yearweek yearweekMin == .int (-587764001) && yearweek (yearweekMin - 1) == .null
+
 /-- The scalar black boxes Lean evaluates. -/
 def evalScalar : String → List Value → Value
   | "base64", [.str s] => .str (base64 s)
+  | "octet_length", [.str s] | "strlen", [.str s] => .int s.utf8ByteSize
+  -- The sign of `±0.0` and of NaN is not in their codes.
+  | "signbit", [.int c] =>
+    if c == 0 || c == FloatCode.nan then unevaluated "signbit at ±0.0 or NaN" else .bool (c < 0)
+  | "yearweek", [.int d] => yearweek d
   | name, _ => unevaluated name
 
 def evalAgg (name : String) (_ : List Value) : Value := unevaluated name

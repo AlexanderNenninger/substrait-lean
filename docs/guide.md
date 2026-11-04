@@ -668,11 +668,12 @@ Window aggregates over bounded RANGE frames of one time column, such as the
 sum over the last five minutes per host, recompute only the rows near the
 change: for a batch whose rows span `[t0, t1]`, the output rows from
 `t0 - end` to `t1 - start` of the touched partitions (or of the whole
-table, without `PARTITION BY`), from the input rows in that span widened by
-the frame. This strategy is tested, not proved: Lean does not yet prove that
-a window value depends only on the rows in its frame (#458), so `status()`
-says "touched frames recomputed (tested, not proved)", and so does the
-refresh summary. The tests
+table, without `PARTITION BY`), from the input rows in that span
+widened by the frame. Lean proves that a window value depends only on the
+rows in its frame, so this equals a full recompute for inputs without ties
+on the partition and time columns (`TouchedFrames.framed_batch` in
+[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)),
+and `status()` says "touched frames recomputed". The tests
 ([`test_touched_frames.py`](../python/tests/test_touched_frames.py)) compare
 every refresh with a full recompute on random streams with late rows, rows
 on the frame edges, and duplicate and NULL times.

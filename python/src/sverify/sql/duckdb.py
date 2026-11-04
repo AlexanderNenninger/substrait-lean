@@ -173,6 +173,20 @@ class DuckDBDialect(Dialect):
     def collect(self, v: str, order: Sequence[str]) -> str:
         return f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
 
+    def quantile(self, cont: bool, v: str, q: str) -> str:
+        # DuckDB reads a decimal fraction exactly (#53). Its interpolation
+        # `lo·(1−d) + hi·d` may round past the values, and gives NaN between
+        # -inf and +inf; the model keeps it between them, and so does the
+        # clamp (`duckdb-quantile-cont-interpolation`).
+        if not cont:
+            return f"quantile_disc({v}, {q})"
+        return f"LEAST(GREATEST(quantile_cont({v}, {q}), MIN({v})), MAX({v}))"
+
+    def mode(self, v: str, order: Sequence[str]) -> str:
+        # Its input in this order, DuckDB keeps the value seen first of those
+        # that tie (`characterization/duckdb/facts/duckdb-mode-ties.json`).
+        return f"mode({v} ORDER BY {', '.join(order)})"
+
     def unnest_from(self, source: str, lst: str, alias: str) -> str:
         e, i = self.quote("e"), self.quote("i")
         return f"{source}, UNNEST({lst}) WITH ORDINALITY AS {alias}({e}, {i})"

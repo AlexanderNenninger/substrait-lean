@@ -12,6 +12,7 @@ import json
 import math
 import subprocess
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -78,7 +79,9 @@ def test_a_black_box_is_under_sverifys_urn():
     assert "extensionUrnReference" not in exts["str_concat"]
     written = json.loads(written_plan(json.dumps(plan)))
     ref = {e["extensionFunction"]["name"]: e["extensionFunction"] for e in written["extensions"]}
-    assert ref["base64"]["functionAnchor"] == 700 and ref["entropy"]["functionAnchor"] == 701
+    anchors = {b.name: 700 + i for i, b in enumerate(black_box.TABLE)}
+    assert ref["base64"]["functionAnchor"] == 700
+    assert ref["entropy"]["functionAnchor"] == anchors["entropy"]
     assert ref["entropy"]["extensionUrnReference"] == 1
     assert "extensionUrnReference" not in ref["add"]
 
@@ -230,3 +233,206 @@ def test_base64_keeps_its_laws_on_random_data(vs):
             assert r["b"] == base64.b64encode(r["s"].encode()).decode()
     result = check(query, {"t": t})
     assert result.ok, f"{result.stage}: {result.detail}"
+
+
+# -- #328: scalars -------------------------------------------------------------
+
+#: Lean evaluates these, so oracles A and C. `signbit` away from `±0.0` and
+#: NaN, whose sign the model's codes drop; `weekday` is `dayofweek`, exact.
+SCALARS_328 = [
+    "SELECT id, octet_length(encode(customer)) AS o, strlen(customer || 'é') AS s FROM orders",
+    "SELECT id, yearweek(day) AS y, weekday(day) AS w, yearweek(DATE '0001-01-01') AS z"
+    " FROM orders",
+    "SELECT id, signbit(price) AS b, signbit(-price) AS c FROM orders WHERE price <> 0",
+]
+#: Lean does not evaluate `printf` and `format`: oracle C only.
+FORMATS = [
+    "SELECT id, printf('%05d|', amount) AS p, format('{}-', customer) AS f FROM orders",
+    "SELECT id, printf('%s!', customer) AS p, format('{:>4}', qty) AS f,"
+    " printf('%d', amount > 3) AS b FROM orders",
+]
+
+
+@pytest.mark.parametrize("query", SCALARS_328)
+def test_328_scalars_through_oracles_a_and_c(query):
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("query", FORMATS)
+def test_printf_written_back_is_duckdbs(query, semantics):
+    plan = json.dumps(lift(query, SCHEMAS, semantics).plan)
+    code, out, err = run_checker((), plan)
+    assert code == 0, err or out
+    got = duckdb_engine.run(written_plan(plan), TABLES)
+    assert _rows(got) == _rows(duckdb_result(query, TABLES))
+
+
+def test_printf_may_raise():
+    # `printf('%d', 'x')` raises: `verify` reports a possible domain error.
+    report = sv.verify("SELECT printf('%d', customer) AS p FROM orders", tables=SCHEMAS)
+    assert any("domain" in str(e) for e in report.errors), report
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize(
+    ("query", "ensures"),
+    [
+        ("SELECT octet_length(encode(customer)) AS o, strlen(customer) AS s FROM orders",
+         ["o IS NULL OR o >= 0", "s IS NULL OR s >= 0"]),
+        ("SELECT strlen(customer) AS s FROM orders WHERE customer IS NOT NULL",
+         ["s IS NOT NULL", "s >= 0"]),
+        ("SELECT signbit(price) AS b FROM orders WHERE price IS NOT NULL", ["b IS NOT NULL"]),
+        ("SELECT yearweek(day) AS y FROM orders",
+         ["y IS NULL OR y BETWEEN -587764053 AND 588158053"]),
+        ("SELECT weekday(day) AS w FROM orders", ["w IS NULL OR w BETWEEN 0 AND 6"]),
+        ("SELECT printf('%s', customer) AS p FROM orders WHERE customer IS NOT NULL",
+         ["p IS NOT NULL"]),
+    ],
+)  # fmt: skip
+def test_the_328_laws_prove_contracts(query, ensures, semantics):
+    report = sv.verify(
+        query, tables=SCHEMAS, ensures=ensures, counterexamples=0, semantics=semantics
+    )
+    # `printf` may raise, so its report has an error, and its law still holds.
+    assert all(c.proved for c in report.ensures), report
+
+
+def test_what_the_328_laws_do_not_say_stays_unproved():
+    # `yearweek` of an infinite date is NULL; `octet_length` has no upper bound.
+    for query, ensures in [
+        ("SELECT yearweek(day) AS y FROM orders WHERE day IS NOT NULL", ["y IS NOT NULL"]),
+        ("SELECT octet_length(encode(customer)) AS o FROM orders", ["o <= 1000"]),
+        ("SELECT printf('%s', customer) AS p FROM orders", ["p IS NOT NULL"]),
+    ]:
+        report = sv.verify(query, tables=SCHEMAS, ensures=ensures, counterexamples=0)
+        assert not any(c.proved for c in report.ensures)
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("SELECT printf('%f', price) FROM orders", "printf of a float64"),
+        ("SELECT printf('%s', day) FROM orders", "printf of a date"),
+        ("SELECT printf('%d %d', id, amount) FROM orders", "takes 2 argument"),
+        ("SELECT octet_length(customer) FROM orders", "BLOB"),
+        ("SELECT yearweek(placed) FROM orders", "yearweek of a timestamp"),
+        # An INTERVAL, which the model lacks.
+        ("SELECT age(placed, placed) FROM orders", "unknown function age"),
+    ],
+)
+def test_328_refusals_say_what(query, message):
+    with pytest.raises(Refused, match=message):
+        lift(query, SCHEMAS)
+
+
+@settings(max_examples=40, deadline=None)
+@given(vs=st.lists(st.one_of(st.none(), st.text(max_size=6)), max_size=8))
+def test_byte_lengths_keep_their_laws_on_random_data(vs):
+    # The UTF-8 byte length, NULL for NULL: exact, so oracles A and C.
+    t = pa.table({"s": pa.array(vs, pa.string())})
+    query = "SELECT s, octet_length(encode(s)) AS o, strlen(s) AS n FROM t"
+    for r in duckdb_result(query, {"t": t}).to_pylist():
+        want = None if r["s"] is None else len(r["s"].encode())
+        assert r["o"] == r["n"] == want
+    result = check(query, {"t": t})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def _days_from_civil(y: int, m: int, d: int) -> int:
+    # Proleptic Gregorian, astronomical years (H. Hinnant's `days_from_civil`).
+    y -= m <= 2
+    era = y // 400
+    yoe = y - era * 400
+    doy = (153 * (m + (-3 if m > 2 else 9)) + 2) // 5 + d - 1
+    return era * 146097 + yoe * 365 + yoe // 4 - yoe // 100 + doy - 719468
+
+
+def _year(z: int) -> int:
+    z += 719468
+    era = z // 146097
+    doe = z - era * 146097
+    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    return yoe + era * 400 + (mp >= 10)
+
+
+def _yearweek(d: int) -> int:
+    # `BlackBox.yearweek`: the ISO year of the Thursday, and the ISO week,
+    # subtracted in the years up to 0 (`duckdb-yearweek`).
+    thursday = d - (d + 3) % 7 + 3
+    y = _year(thursday)
+    w = (thursday - _days_from_civil(y, 1, 1)) // 7 + 1
+    return y * 100 + w if y > 0 else y * 100 - w
+
+
+#: DuckDB's dates, as days: 5877642 BC (its first) to 5881580 AD (its last),
+#: without the infinities.
+_DAYS = st.one_of(
+    st.integers(-2_147_483_646, 2_147_483_646),
+    st.integers(-800_000, 3_000_000),
+    st.sampled_from([-719_163, -719_162, 0, -1, 19_723, 18_628]),
+)
+
+
+@settings(max_examples=60, deadline=None)
+@given(days=st.lists(st.one_of(st.none(), _DAYS), max_size=8))
+def test_yearweek_keeps_its_laws_on_random_data(days):
+    # Within its bounds, NULL for NULL, and the formula of Lean's evaluator.
+    # Python's dates end at 9999, so the days stay integers here.
+    # Before 5877641-01-04 BC DuckDB raises (the black box is NULL there).
+    days = [d for d in days if d is None or d >= -2_147_483_453]
+    t = pa.table({"d": pa.array(days, pa.int32()).cast(pa.date32())})
+    rows = duckdb_result("SELECT yearweek(d) AS y FROM t", {"t": t}).column("y").to_pylist()
+    for y, d in zip(rows, days, strict=True):
+        if d is None:
+            assert y is None
+        else:
+            assert y == _yearweek(d) and -587764053 <= y <= 588158053
+
+
+@settings(max_examples=30, deadline=None)
+@given(days=st.lists(st.one_of(st.none(), st.integers(-719_162, 2_932_896)), max_size=6))
+def test_yearweek_is_leans_on_random_dates(days):
+    # Oracles A and C over the reference's dates, 0001-01-01 to 9999-12-31.
+    t = pa.table({"d": pa.array(days, pa.int32()).cast(pa.date32())})
+    result = check("SELECT d, yearweek(d) AS y, weekday(d) AS w FROM t", {"t": t})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    vs=st.lists(
+        st.one_of(st.none(), st.floats(), st.sampled_from([0.0, -0.0, math.nan, -math.nan])),
+        max_size=8,
+    )
+)
+def test_signbit_keeps_its_laws_on_random_data(vs):
+    # Not NULL for a double, and the sign bit, `-0.0` and negative NaNs
+    # included (`duckdb-signbit`).
+    t = pa.table({"x": pa.array(vs, pa.float64())})
+    rows = duckdb_result("SELECT x, signbit(x) AS b FROM t", {"t": t}).to_pylist()
+    for r, v in zip(rows, vs, strict=True):
+        assert r["b"] == (None if v is None else math.copysign(1.0, v) < 0)
+
+
+@settings(max_examples=40, deadline=None)
+@given(
+    fmt=st.one_of(st.none(), st.sampled_from(["%d", "%s", "%5.2f", "<%x>", "{}", "{:>3}", "a"])),
+    vs=st.lists(st.one_of(st.none(), st.integers(-(2**63), 2**63 - 1)), max_size=6),
+)
+def test_printf_keeps_its_laws_on_random_data(fmt, vs):
+    # Strict, and a string where it does not raise.
+    t = pa.table({"x": pa.array(vs, pa.int64())})
+    for fn in ("printf", "format"):
+        q = f"SELECT x, {fn}(?, x) AS p FROM t"
+        con = duckdb.connect()
+        con.register("t", t)
+        try:
+            rows = con.execute(q, [fmt]).fetchall()
+        except Exception:  # noqa: BLE001, S112 - it may raise: `raises` says so
+            continue
+        for x, p in rows:
+            assert (p is None) == (x is None or fmt is None)

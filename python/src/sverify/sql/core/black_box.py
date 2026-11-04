@@ -12,10 +12,12 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sverify import black_box
-from sverify.sql.core._base import Bin, Expr, Kind, Un, _Writer, register
+from sverify.sql.core._base import Bin, Expr, Kind, Lit, Un, _Writer, register
 
 #: The kind of each `black_box.Ty`; `any` takes the argument's own.
-KINDS: dict[str, Kind] = {"int": "int", "double": "float", "str": "str", "bool": "bool"}
+KINDS: dict[str, Kind] = {
+    "int": "int", "double": "float", "str": "str", "bool": "bool", "date": "date",
+}  # fmt: skip
 
 
 def call(name: str, args: list[Expr]) -> Expr | None:
@@ -39,7 +41,8 @@ def result_kind(name: str) -> Kind | None:
 def expr(
     self: _Writer, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], ctx: Kind | None
 ) -> str | None:
-    """`_Writer.expr` of the black boxes: the dialect's SQL of the row."""
+    """`_Writer.expr` of the black boxes: the dialect's SQL of the row. An
+    `atom` or `any` argument is written with its own kind."""
     match e:
         case Un(op="black_box", arg=a, param=name):
             args = [a]
@@ -50,7 +53,10 @@ def expr(
     row = black_box.SCALARS[name]
     sqls = [
         self.expr(x, ref, cols, None)
-        if ty == "any"
+        if ty not in KINDS
+        # A constant date is an integer, its days.
+        else self.d.date_lit(x.value)
+        if ty == "date" and isinstance(x, Lit) and isinstance(x.value, int)
         else self.operand(x, KINDS[ty], ref, cols, name)
         for x, ty in zip(args, row.args, strict=True)
     ]

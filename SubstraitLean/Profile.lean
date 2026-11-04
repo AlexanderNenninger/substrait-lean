@@ -702,6 +702,7 @@ theorem aggregateEvalI_map {I : Impl} {f : Expr → Expr} {gs : List Expr} {ms :
     case collect => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case pick => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case concat => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
+    case mode => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     all_goals rw [hin m hm sub hsub]
   unfold aggregateEvalI aggregateEval
   simp only [List.isEmpty_map]
