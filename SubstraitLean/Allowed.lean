@@ -12,8 +12,9 @@ or raises. `Rel.eval` computes one allowed result, a witness
 
 The reference leaves these choices to the engine:
 
-* the order of rows, except what an `ORDER BY` promises, and how the ties of
-  an `ORDER BY` or of a window's order are broken;
+* the order of rows, except what an `ORDER BY` promises, how the ties of an
+  `ORDER BY` or of a window's order are broken, and the order of a clustered
+  sort key's groups;
 * the order in which an aggregate takes its rows: `FIRST`/`LAST`, `collect`
   and `string_agg` take them in their sort order with ties broken any way,
   and without a sort in any order;
@@ -194,9 +195,8 @@ def Rel.Allowed (cat : Catalog) : Rel → Relation → Prop
       s.Pairwise (sortLe sort · · = true) ∧ out.Perm (windowRows part fns [] s)
   | .semi a b anti on, out => ∃ x y, a.Allowed cat x ∧ b.Allowed cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row != anti)
-  -- The input sorted, ties in any order.
-  | .orderBy r keys, out => ∃ i, r.Allowed cat i ∧ out.Perm i ∧
-      out.Pairwise (sortLe keys · · = true)
+  -- The input sorted, ties and a clustered key's groups in any order.
+  | .orderBy r keys, out => ∃ i, r.Allowed cat i ∧ out.Perm i ∧ SortAllowed keys out
   | .distinct r, out => ∃ i, r.Allowed cat i ∧ out.Perm (dedup i)
   | .aggregate r gs ms, out => ∃ i, r.Allowed cat i ∧ ∃ o, out.Perm o ∧ aggAllowed gs ms i o
   | .unnest r c, out => ∃ i, r.Allowed cat i ∧ out.Perm (i.flatMap (unnestRow c))
@@ -212,7 +212,7 @@ theorem Rel.eval_allowed (cat : Catalog) : ∀ r : Rel, r.Allowed cat (r.eval ca
   | .fetch r _ cnt => ⟨_, eval_allowed cat r, by cases cnt <;> rfl⟩
   | .window r _ sort _ => ⟨_, eval_allowed cat r, _, List.mergeSort_perm _ _,
       List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total _, .refl _⟩
-  | .orderBy r keys => ⟨_, eval_allowed cat r, List.mergeSort_perm _ _,
+  | .orderBy r keys => ⟨_, eval_allowed cat r, List.mergeSort_perm _ _, .of_sorted <|
       List.pairwise_mergeSort (sortLe_totalPre keys).trans (sortLe_totalPre keys).total _⟩
   | .distinct r | .unnest r _ => ⟨_, eval_allowed cat r, .refl _⟩
   | .aggregate r gs ms => ⟨_, eval_allowed cat r, _, .refl _, aggregateEval_allowed gs ms _⟩

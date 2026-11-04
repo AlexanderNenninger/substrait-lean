@@ -1993,15 +1993,25 @@ def parseColumn (fns : List (Nat × String)) (cols : List Kind) (what : String) 
   | .field i => pure i
   | _ => throw s!"window {what} must be columns"
 
-def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J SortKey := do
+/-- A sort field. A `SortRel`'s (`rel`) may also leave its direction
+unspecified, read as ascending with the NULL placement open, or be clustered
+(D6, `SortKey.nullsOpen`, `SortKey.clustered`); a window's or a measure's
+order must state one. -/
+def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) (rel : Bool := false) :
+    J SortKey := do
   let col ← parseColumn fns cols "sort keys" (← field s "expr")
-  let (desc, nullsFirst) ← match field? s "direction" with
-    | some (.str "SORT_DIRECTION_ASC_NULLS_FIRST") => pure (false, true)
-    | some (.str "SORT_DIRECTION_ASC_NULLS_LAST") => pure (false, false)
-    | some (.str "SORT_DIRECTION_DESC_NULLS_FIRST") => pure (true, true)
-    | some (.str "SORT_DIRECTION_DESC_NULLS_LAST") => pure (true, false)
-    | d => throw s!"unsupported sort direction: {(d.map (·.compress)).getD "unspecified"}"
-  return { col, desc, nullsFirst }
+  match field? s "direction" with
+    | some (.str "SORT_DIRECTION_ASC_NULLS_FIRST") => return { col, nullsFirst := true }
+    | some (.str "SORT_DIRECTION_ASC_NULLS_LAST") => return { col }
+    | some (.str "SORT_DIRECTION_DESC_NULLS_FIRST") => return { col, desc := true, nullsFirst := true }
+    | some (.str "SORT_DIRECTION_DESC_NULLS_LAST") => return { col, desc := true }
+    | none | some (.str "SORT_DIRECTION_UNSPECIFIED") =>
+      if rel then return { col, nullsOpen := true }
+      else throw "a window's or a measure's sort direction must be specified"
+    | some (.str "SORT_DIRECTION_CLUSTERED") =>
+      if rel then return { col, clustered := true }
+      else throw "a window's or a measure's sort direction cannot be clustered"
+    | some d => throw s!"unsupported sort direction: {d.compress}"
 
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
@@ -2733,7 +2743,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
     | "sort" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
-      pure (.orderBy inp (← (← arrD r "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)))
+      pure (.orderBy inp (← (← arrD r "sorts").mapM fun k => (parseSortKey fns cols k true : J SortKey)))
     | "aggregate" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)

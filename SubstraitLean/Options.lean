@@ -124,27 +124,174 @@ def OptionSpec.find? (id : String) : Option OptionSpec := options.find? (·.id =
 
 /-- A profile's choice at one option. -/
 inductive Choice where
-  /-- Any of these behaviours, whatever the plan prefers; `oneOf []` refuses. -/
+  /-- One of these behaviours: the plan's first preference among them, any of
+  them where it states none; `oneOf []` refuses. The same as `asked bs bs`. -/
   | oneOf (bs : List Behaviour)
   /-- The plan's first preference among `bs`; any of `dflt` where it states none. -/
   | asked (bs : List Behaviour) (dflt : List Behaviour)
   /-- The option never applies to the group's inputs (`on_domain_error` of
-  integers): every preference is accepted, and any of the core's behaviours. -/
+  integers): every preference is accepted, and any of the core's behaviours
+  the plan prefers. -/
   | any
+  /-- Any of the plan's preferences among `bs`, or any of `bs` where it states
+  none: the core's choice, which allows every behaviour a consumer may
+  deliver, where a profile delivers the first it supports. -/
+  | loose (bs : List Behaviour)
   deriving Repr, DecidableEq
 
 /-- The behaviours a plan may prefer for the choice to accept it; `none`:
 every preference. A plan whose preferences miss them is refused. -/
 def Choice.accepted : Choice → Option (List Behaviour)
-  | .oneOf bs | .asked bs _ => some bs
+  | .oneOf bs | .asked bs _ | .loose bs => some bs
   | .any => none
 
-/-- Does the choice allow only behaviours of `core`? The premise of the
-refinement `Allowed_P ⊆ Allowed_core` (step 1c), per choice. -/
+/-- Does the choice allow only behaviours of `core`? -/
 def Choice.within (core : List Behaviour) : Choice → Bool
-  | .oneOf bs => bs.all core.contains
+  | .oneOf bs | .loose bs => bs.all core.contains
   | .asked bs d => bs.all core.contains && d.all core.contains && d.all bs.contains
   | .any => true
+
+/-- Substrait's rule: the first of the preferences `ps` that `s` supports, or
+`d` where `ps` is empty; nothing (the plan is refused) where `s` supports none. -/
+def Choice.pick (s d ps : List Behaviour) : List Behaviour :=
+  match ps.find? (s.contains ·) with
+  | some p => [p]
+  | none => if ps.isEmpty then d else []
+
+/-- The behaviours the choice allows for a call whose plan prefers `ps`
+(`[]`: the plan states none). `core` is the option's. -/
+def Choice.allows (core : List Behaviour) : Choice → List Behaviour → List Behaviour
+  | .oneOf bs, ps => pick bs bs ps
+  | .asked s d, ps => pick s d ps
+  | .loose bs, ps => if ps.isEmpty then bs else ps.filter (bs.contains ·)
+  | .any, ps => if ps.isEmpty then core else ps.filter (core.contains ·)
+
+private def subset (a b : List Behaviour) : Bool := a.all (b.contains ·)
+
+private def Choice.asAsked : Choice → Option (List Behaviour × List Behaviour)
+  | .oneOf bs => some (bs, bs)
+  | .asked s d => some (s, d)
+  | _ => none
+
+/-- A decidable test that `c` allows no more than `d`, for every list of
+preferences (`Choice.le_sound`). Against an `asked` choice, `c` must support
+the same behaviours, since the first preference it supports is the one it
+delivers. -/
+def Choice.le (core : List Behaviour) (c d : Choice) : Bool :=
+  match d with
+  | .loose S => match c with
+    | .oneOf bs | .loose bs => subset bs S
+    | .asked s dflt => subset s S && subset dflt S
+    | .any => subset core S
+  | .any => match c with
+    | .oneOf bs | .loose bs => subset bs core
+    | .asked s dflt => subset s core && subset dflt core
+    | .any => true
+  | _ => match c.asAsked, d.asAsked with
+    | some (s, dflt), some (s', dflt') => subset s s' && subset s' s && subset dflt dflt'
+    | _, _ => false
+
+private theorem mem_of_subset {a b : List Behaviour} (h : subset a b = true) {x : Behaviour}
+    (hx : x ∈ a) : x ∈ b := by
+  simp only [subset, List.all_eq_true, List.contains_iff_mem] at h
+  exact h x hx
+
+private theorem mem_pick {s d ps : List Behaviour} {b : Behaviour} (h : b ∈ Choice.pick s d ps) :
+    (b ∈ ps ∧ b ∈ s) ∨ (ps = [] ∧ b ∈ d) := by
+  unfold Choice.pick at h
+  split at h
+  · next p hp =>
+    simp only [List.mem_singleton] at h; subst h
+    exact .inl ⟨List.mem_of_find?_eq_some hp, by simpa using List.find?_some hp⟩
+  · split at h
+    · next he => exact .inr ⟨List.isEmpty_iff.mp he, h⟩
+    · simp at h
+
+private theorem pick_congr {s s' d d' ps : List Behaviour} (h₁ : subset s s' = true)
+    (h₂ : subset s' s = true) (hd : subset d d' = true) {b : Behaviour}
+    (h : b ∈ Choice.pick s d ps) : b ∈ Choice.pick s' d' ps := by
+  have hc : (fun x => s.contains x) = fun x => s'.contains x := by
+    funext x
+    apply Bool.eq_iff_iff.mpr
+    simp only [List.contains_iff_mem]
+    exact ⟨mem_of_subset h₁, mem_of_subset h₂⟩
+  unfold Choice.pick at h ⊢
+  rw [hc] at h
+  cases hf : ps.find? (s'.contains ·) with
+  | some p => rw [hf] at h; exact h
+  | none =>
+    rw [hf] at h
+    by_cases he : ps.isEmpty
+    · simp only [he, ite_true] at h ⊢; exact mem_of_subset hd h
+    · simp [he] at h
+
+/-- **`Choice.le` is sound**: whatever the plan prefers, `c` allows no
+behaviour `d` does not. -/
+theorem Choice.le_sound {core : List Behaviour} {c d : Choice} (h : c.le core d = true)
+    {ps : List Behaviour} {b : Behaviour} (hb : b ∈ c.allows core ps) : b ∈ d.allows core ps := by
+  cases d with
+  | loose S =>
+    simp only [allows]
+    cases c with
+    | oneOf bs | asked bs _ =>
+      simp only [le, Bool.and_eq_true] at h
+      simp only [allows] at hb
+      rcases mem_pick hb with ⟨hp, hs⟩ | ⟨rfl, hd⟩
+      · have : ps.isEmpty = false := by cases ps <;> simp_all
+        simp only [this, Bool.false_eq_true, ite_false, List.mem_filter, List.contains_iff_mem]
+        first
+          | exact ⟨hp, decide_eq_true (mem_of_subset h hs)⟩
+          | exact ⟨hp, decide_eq_true (mem_of_subset h.1 hs)⟩
+          | exact ⟨hp, by simpa using mem_of_subset h.1 hs⟩
+          | exact ⟨hp, by simpa using mem_of_subset h hs⟩
+      · simp only [List.isEmpty_nil, ite_true]
+        first | exact mem_of_subset h hd | exact mem_of_subset h.2 hd
+    | loose bs =>
+      simp only [le] at h
+      simp only [allows] at hb
+      split at hb
+      · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact mem_of_subset h hb
+      · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
+        simp only [List.mem_filter, List.contains_iff_mem] at hb ⊢
+        exact ⟨hb.1, mem_of_subset h hb.2⟩
+    | any =>
+      simp only [le] at h
+      simp only [allows] at hb
+      split at hb
+      · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact mem_of_subset h hb
+      · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
+        simp only [List.mem_filter, List.contains_iff_mem] at hb ⊢
+        exact ⟨hb.1, by simpa using mem_of_subset h (by simpa using hb.2)⟩
+  | any =>
+    simp only [allows]
+    cases c with
+    | oneOf bs | asked bs _ =>
+      simp only [le, Bool.and_eq_true] at h
+      simp only [allows] at hb
+      rcases mem_pick hb with ⟨hp, hs⟩ | ⟨rfl, hd⟩
+      · have : ps.isEmpty = false := by cases ps <;> simp_all
+        simp only [this, Bool.false_eq_true, ite_false, List.mem_filter, List.contains_iff_mem]
+        first
+          | exact ⟨hp, by simpa using mem_of_subset h hs⟩
+          | exact ⟨hp, by simpa using mem_of_subset h.1 hs⟩
+      · simp only [List.isEmpty_nil, ite_true]
+        first | exact mem_of_subset h hd | exact mem_of_subset h.2 hd
+    | loose bs =>
+      simp only [le] at h
+      simp only [allows] at hb
+      split at hb
+      · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact mem_of_subset h hb
+      · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
+        simp only [List.mem_filter, List.contains_iff_mem] at hb ⊢
+        exact ⟨hb.1, by simpa using mem_of_subset h (by simpa using hb.2)⟩
+    | any => exact hb
+  | oneOf bs' | asked bs' _ =>
+    cases c with
+    | oneOf bs | asked bs _ =>
+      simp only [le, asAsked, Bool.and_eq_true] at h
+      simp only [allows] at hb ⊢
+      exact pick_congr h.1.1 h.1.2 h.2 hb
+    | loose _ | any => simp [le, asAsked] at h
 
 /-- Where an engine's behaviour comes from (engine profiles only, step 3b). -/
 inductive Realization where
@@ -177,6 +324,84 @@ def ProfileTable.accepts (t : ProfileTable) (group name : String) :
   let o ← options.find? (·.substrait == some name)
   let opts ← Functions.groups.lookup group
   if opts.contains o.id then (t.choice? group o.id).map Choice.accepted else none
+
+/-- The behaviours the profile allows at `option` for a function of `group`,
+where the plan prefers `ps`; `[]` where it has no choice there. -/
+def ProfileTable.allows (t : ProfileTable) (group option : String) (ps : List Behaviour) :
+    List Behaviour :=
+  match t.choice? group option, OptionSpec.find? option with
+  | some c, some o => c.allows o.core ps
+  | _, _ => []
+
+/-- `t` allows no more than `u`, at every group, option and list of
+preferences: the premise of `Rel.AllowedP_mono`. -/
+def ProfileTable.Le (t u : ProfileTable) : Prop :=
+  ∀ group option ps b, b ∈ t.allows group option ps → b ∈ u.allows group option ps
+
+/-- The choice of the row without a group. -/
+def ProfileTable.dflt? (t : ProfileTable) (option : String) : Option Choice :=
+  (t.choices.find? fun (g, o, _) => g.isNone && o == option).map (·.2.2)
+
+/-- The groups the table has rows of its own for, at `option`. -/
+def ProfileTable.groupsAt (t : ProfileTable) (option : String) : List String :=
+  t.choices.filterMap fun (g, o, _) => if o == option then g else none
+
+theorem ProfileTable.choice?_of_not_mem {t : ProfileTable} {g o : String}
+    (h : g ∉ t.groupsAt o) : t.choice? g o = t.dflt? o := by
+  unfold choice? dflt?
+  rw [List.find?_eq_none.mpr]
+  rintro ⟨g', o', c⟩ hm
+  simp only [Bool.and_eq_true, beq_iff_eq, not_and]
+  rintro rfl rfl
+  exact h (List.mem_filterMap.mpr ⟨_, hm, by simp⟩)
+
+private def leOpt (core : List Behaviour) : Option Choice → Option Choice → Bool
+  | none, _ => true
+  | some c, some d => c.le core d
+  | some _, none => false
+
+private theorem leOpt_sound {core : List Behaviour} {c d : Option Choice}
+    (h : leOpt core c d = true) {ps : List Behaviour} {b : Behaviour}
+    (hb : b ∈ (match c with | some c => c.allows core ps | none => [])) :
+    b ∈ (match d with | some d => d.allows core ps | none => []) := by
+  cases c with
+  | none => simp at hb
+  | some c => cases d with
+    | none => simp [leOpt] at h
+    | some d => exact Choice.le_sound h hb
+
+/-- A decidable test of `Le` (`ProfileTable.le_of_leB`): per option, the rows
+without a group and the groups either table names. -/
+def ProfileTable.leB (t u : ProfileTable) : Bool :=
+  options.all fun o => leOpt o.core (t.dflt? o.id) (u.dflt? o.id) &&
+    (t.groupsAt o.id ++ u.groupsAt o.id).all fun g => leOpt o.core (t.choice? g o.id) (u.choice? g o.id)
+
+theorem ProfileTable.le_of_leB {t u : ProfileTable} (h : t.leB u = true) : t.Le u := by
+  intro g o ps b hb
+  unfold allows at hb ⊢
+  cases hf : OptionSpec.find? o with
+  | none => simp [hf] at hb
+  | some spec =>
+    have hmem := List.mem_of_find?_eq_some hf
+    have hid : spec.id = o := by simpa using List.find?_some hf
+    subst hid
+    simp only [leB, List.all_eq_true, Bool.and_eq_true] at h
+    obtain ⟨hd, hg⟩ := h spec hmem
+    have key : leOpt spec.core (t.choice? g spec.id) (u.choice? g spec.id) = true := by
+      by_cases hin : g ∈ t.groupsAt spec.id ++ u.groupsAt spec.id
+      · exact hg g hin
+      · rw [List.mem_append, not_or] at hin
+        rw [choice?_of_not_mem hin.1, choice?_of_not_mem hin.2]; exact hd
+    have hb' : b ∈ (match t.choice? g spec.id with | some c => c.allows spec.core ps | none => []) := by
+      rw [hf] at hb
+      cases hc : t.choice? g spec.id <;> rw [hc] at hb <;> simp_all
+    have := leOpt_sound key hb'
+    cases hc : u.choice? g spec.id <;> rw [hc] at this <;> simp_all
+
+/-- The core: every option `loose` over all its behaviours. -/
+def Profile.core.table : ProfileTable where
+  name := "core"
+  choices := options.map fun o => (none, o.id, .loose o.core)
 
 /-- The reference's choices (`docs/core-semantics.md`, the catalogue's
 "Reference" column). -/
@@ -265,6 +490,10 @@ example : Profile.reference.table.choices.all fun (g, o, c) =>
     ((OptionSpec.find? o).map (c.within ·.core)).getD false := by
   decide +kernel
 
+/-- **The reference refines the core**, choice by choice. -/
+theorem Profile.reference_le_core : Profile.reference.table.Le Profile.core.table :=
+  ProfileTable.le_of_leB (by decide +kernel)
+
 /-! ## For the Python mirror -/
 
 open Lean (Json toJson) in
@@ -272,6 +501,7 @@ def Choice.json : Choice → Json
   | .oneOf bs => Json.mkObj [("kind", "oneOf"), ("behaviours", toJson bs)]
   | .asked bs d => Json.mkObj [("kind", "asked"), ("behaviours", toJson bs), ("default", toJson d)]
   | .any => Json.mkObj [("kind", "any")]
+  | .loose bs => Json.mkObj [("kind", "loose"), ("behaviours", toJson bs)]
 
 open Lean (Json toJson) in
 /-- The options, the groups' options and the reference's choices as JSON:

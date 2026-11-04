@@ -116,7 +116,8 @@ def Rel.renderLines : Rel → List String
 where
   indent (ls : List String) : List String := ls.map ("  " ++ ·)
   key (k : SortKey) : String :=
-    s!"${k.col}{if k.desc then " DESC" else ""}{if k.nullsFirst then " NULLS FIRST" else ""}"
+    if k.clustered then s!"${k.col} CLUSTERED" else
+    s!"${k.col}{if k.desc then " DESC" else ""}{if k.firstNulls then " NULLS FIRST" else ""}{if k.nullsOpen then " NULLS ANY" else ""}"
 
 def Rel.render (r : Rel) : String := "\n".intercalate r.renderLines
 

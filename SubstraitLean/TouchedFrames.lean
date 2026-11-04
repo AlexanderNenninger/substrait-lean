@@ -91,7 +91,7 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
     cases u <;> simp [spanVal] <;> omega
   all_goals
     cases u <;> cases v <;> simp_all [spanVal, SortKey.nullRank] <;>
-      (try (cases hn : k.nullsFirst <;> simp_all)) <;> omega
+      (try (cases hn : k.firstNulls <;> simp_all)) <;> omega
 
 /-- An aggregate (or `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE`) over a RANGE
 frame of the key `k` whose bounds lie in `[start, stop]`. -/
