@@ -24,10 +24,16 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   sort keys use an integer key with that order (`_float_key`), and doubles
   read from a table or made by an operation that can give `-0.0` go through
   `canon`.
-* Integers are unbounded in Lean. Columns are widened to `Int64` on read, and
-  arithmetic runs on 128 bits. A result outside 64 bits raises
-  `IntegerOverflow` instead of wrapping as DataFusion does. Division and
-  remainder truncate toward zero (`Int.tdiv`, `Int.tmod`; Polars floors).
+* Integers are unbounded in Lean. Columns are widened to `Int64` on read.
+  `+`, `-` and `*` of `Int64` run natively, and a guard on 128 bits raises
+  `IntegerOverflow` where Polars would wrap. Division and remainder truncate
+  toward zero (`Int.tdiv`, `Int.tmod`; Polars floors).
+* Where Polars's native value differs from the reference's on inputs the
+  reference does not raise on, a shim of `sverify._polars_shims` gives the
+  reference's (#444): truncating division, `ROUND`'s halves, an empty `SUM`,
+  the integer `AVG`, one zero, each sort key's NULL placement and stable
+  ties. `SUM` and `AVG` of a group run as Polars's own aggregations, with
+  those shims; `sum_order = ANY` lets Polars add doubles in its own order.
 * Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
@@ -52,13 +58,14 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import pyarrow as pa
 
 from sverify import _plan_read, _support
+from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 
 try:
@@ -84,37 +91,77 @@ class Unsupported(ValueError):
 class RuntimeIssue(ArithmeticError):
     """A runtime error happened on a row the operator evaluates: one of the
     `Issue`s of `SubstraitLean/Safety.lean`, which a checked plan is proved
-    free of."""
+    free of. `issue` is its `Issue.name`, which `guards` selects by."""
+
+    issue = "raised by a guard"
 
 
 class IntegerOverflow(RuntimeIssue):
     """`+`, `-`, `*` or negation left 64 bits. DataFusion wraps around; the
     model's integers are unbounded, so the only faithful answer is to stop."""
 
+    issue = "overflow"
+
+
+class SumOverflow(IntegerOverflow):
+    """An integer `SUM` left 64 bits (`Issue.sumWraps`); Polars wraps."""
+
+    issue = "SUM overflow"
+
 
 class Overflow(RuntimeIssue):
     """`MIN / -1` or an integer `POWER` outside 64 bits: DataFusion fails."""
+
+    issue = "overflow"
 
 
 class DivisionByZero(RuntimeIssue):
     """Integer division or remainder by zero, or a double divided by zero."""
 
+    issue = "division by zero"
+
 
 class NegativeExponent(RuntimeIssue):
     """`POWER` of integers with a negative exponent."""
+
+    issue = "negative exponent"
 
 
 class BadCast(RuntimeIssue):
     """`CAST(double AS BIGINT)` of NaN, ±∞ or a value outside 64 bits."""
 
+    issue = "cast out of range"
+
 
 class BadRegex(RuntimeIssue):
     """A regular expression that does not compile."""
+
+    issue = "invalid regular expression"
 
 
 class DomainError(RuntimeIssue):
     """An argument outside a function's domain (`sqrt` of a negative, a
     shift count outside 0–63, …): Substrait's `on_domain_error` = ERROR."""
+
+    issue = "domain error"
+
+
+class InfiniteResult(RuntimeIssue):
+    """An operation on finite doubles whose result is `±∞` (`Issue.infinite`,
+    #575): the reference assumes none, and the job checks it where the
+    report lists it as assumed. Checked only when `guards` names it."""
+
+    issue = "overflow to infinity"
+
+
+#: The issues `guards=True` checks: all but `InfiniteResult`, which #575
+#: makes an assumed precondition (`Rel.eval` keeps the IEEE `±∞`).
+ALL_GUARDS = frozenset(
+    {"overflow", "SUM overflow", "division by zero", "negative exponent", "cast out of range",
+     "invalid regular expression", "domain error", "raised by a guard"}
+)  # fmt: skip
+#: `guards=False`: the integer `SUM`s, which a `guard_free` report assumes fit.
+NO_GUARDS = frozenset({"SUM overflow"})
 
 
 def col(i: int) -> str:
@@ -125,9 +172,7 @@ def col(i: int) -> str:
 # --- Doubles: one zero, one NaN ---------------------------------------------
 
 
-def canon(e: pl.Expr) -> pl.Expr:
-    """`-0.0` as `0.0`. (Not `e + 0.0`: eager Polars skips adding a zero.)"""
-    return pl.when(e == 0.0).then(pl.lit(0.0, pl.Float64)).otherwise(e)
+canon = shims.one_zero
 
 
 def _order_bits(s: pl.Series) -> pl.Series:
@@ -365,12 +410,6 @@ def fmod(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(r)
 
 
-def tdiv(a: pl.Expr, b: pl.Expr) -> pl.Expr:
-    """Quotient truncated toward zero (`Int.tdiv`); Polars' `//` floors."""
-    q = a // b
-    return pl.when((a % b != 0) & ((a < 0) != (b < 0))).then(q + 1).otherwise(q)
-
-
 def _ipow(s: pl.Series) -> pl.Series:
     """`BinFn.ipow` where it is defined and fits 64 bits, else NULL."""
     out = []
@@ -495,11 +534,6 @@ BITWISE = (
 def shift_left(a: int, b: int) -> int:
     """`BitOp.shl` for `b` in 0–63: the bits shifted out are lost."""
     return ((a << b) + 2**63) % 2**64 - 2**63
-
-
-def strpos(s: str, t: str) -> int:
-    """`Text.strpos`: the 1-based position of the first `t`, 0 if none."""
-    return s.find(t) + 1
 
 
 _LIKE: dict[str, re.Pattern] = {}
@@ -1002,9 +1036,7 @@ class Exprs:
         )
         if wrap:
             # `Text.substrWrap`: a negative start counts from the end (#209).
-            length = s.expr.str.len_chars().cast(pl.Int64)
-            shifted = pl.when(a.expr < 0).then(a.expr + length + 1).otherwise(a.expr)
-            a = Val(shifted, pl.Int64, a.issues)
+            a = Val(shims.substring_wrap(a.expr, s.expr), pl.Int64, a.issues)
         return Val(substr(s, a, n), pl.String, (*issues(s, a), err))
 
     def cast(self, c: dict) -> Val:
@@ -1191,7 +1223,7 @@ class Exprs:
             if name == "ceil":
                 return Val(canon(e.ceil()), t, a.issues)
             if name == "round":
-                return Val(canon(e.round(0, mode="half_away_from_zero")), t, a.issues)
+                return Val(canon(shims.round_half_away(e)), t, a.issues)
             # `|x|`, which a split double's partial rows report (#428).
             if name == "abs":
                 return Val(canon(e.abs()), t, a.issues)
@@ -1262,12 +1294,17 @@ class Exprs:
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
+            # `fmod` is exact: it never overflows (#575).
+            inf = () if name == "modulus" else (
+                issue(shims.makes_infinite(ops[name], x, y) & y.ne(0.0), InfiniteResult,
+                      f"{name} overflows to infinity"),
+            )  # fmt: skip
             if name not in ("divide", "modulus"):
-                return Val(ops[name], pl.Float64, (*issues(a, b), nan))
+                return Val(ops[name], pl.Float64, (*issues(a, b), nan, *inf))
             # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
-            return Val(ops[name], pl.Float64, (*issues(a, b), zero, nan))
+            return Val(ops[name], pl.Float64, (*issues(a, b), zero, nan, *inf))
         if name in ("add", "subtract") and ta == pl.Time:
             raise Unsupported(
                 "a time of day plus an interval is not yet supported on Polars; see #271"
@@ -1286,6 +1323,14 @@ class Exprs:
             return narrow(wide(a) * wide(b), INTERVAL, name, a, b)
         if name in ("add", "subtract", "multiply"):
             out = arith_type(name, ta, tb)
+            if out == pl.Int64:
+                # Native: Polars wraps where the reference raises
+                # (`Issue.wraps`), which only the guard sees.
+                x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
+                w = {"add": x + y, "subtract": x - y, "multiply": x * y}[name]
+                bad = issue(shims.int_overflows(x, y, name), IntegerOverflow,
+                            f"{name} leaves 64 bits")  # fmt: skip
+                return Val(w, out, (*issues(a, b), bad))
             x, y = wide(a), wide(b)
             w = {"add": x + y, "subtract": x - y, "multiply": x * y}[name]
             return narrow(w, out, name, a, b)
@@ -1294,17 +1339,14 @@ class Exprs:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             if name == "power":
                 return ipow(a, b)
-            x, y = wide(a), wide(b)
-            zero = b.expr.eq_missing(0)
-            y = pl.when(zero).then(1).otherwise(y)
-            by_zero = issue(zero & a.expr.is_not_null(), DivisionByZero, f"{name} by zero")
+            # Native `//` and `%` floor; the shims truncate. A zero divisor
+            # gives NULL in Polars and `MIN / -1` wraps: the guards raise.
+            x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
+            by_zero = issue(shims.zero_divisor(x, y), DivisionByZero, f"{name} by zero")
             if name == "modulus":
-                r = (x - y * tdiv(x, y)).cast(pl.Int64)
-                return Val(pl.when(zero).then(None).otherwise(r), pl.Int64,
-                           (*issues(a, b), by_zero))  # fmt: skip
-            q = narrow(tdiv(x, y), pl.Int64, "division", a, b, kind=Overflow)
-            return Val(pl.when(zero).then(None).otherwise(q.expr), pl.Int64,
-                       (*q.issues, by_zero))  # fmt: skip
+                return Val(shims.int_mod_trunc(x, y), pl.Int64, (*issues(a, b), by_zero))
+            wraps = issue(shims.div_overflows(x, y), Overflow, "division leaves 64 bits")
+            return Val(shims.int_div_trunc(x, y), pl.Int64, (*issues(a, b), wraps, by_zero))
         strings = ("str_concat", "strpos", "starts_with", "ends_with", "like", "substring",
                    "btrim", "ltrim", "rtrim", "repeat", "levenshtein", "ilike")  # fmt: skip
         if name in strings:
@@ -1370,7 +1412,7 @@ class Exprs:
             e = x.str.starts_with(y) if name == "starts_with" else x.str.ends_with(y)
             return Val(e, pl.Boolean, found)
         if name == "strpos":
-            return Val(_rows(strpos, pl.Int64, a, b), pl.Int64, found)
+            return Val(shims.strpos_chars(x, y), pl.Int64, found)
         if name == "levenshtein":
             return Val(_rows(levenshtein, pl.Int64, a, b), pl.Int64, found)
         if name == "ilike":
@@ -1397,11 +1439,10 @@ class Exprs:
         except OverflowError:
             m = math.inf
         x, ml = a.expr, pl.lit(m, pl.Float64)
-        half = "half_away_from_zero"
         if d >= 0:
-            r, fallback = fdiv((x * ml).round(0, mode=half), ml), x
+            r, fallback = fdiv(shims.round_half_away(x * ml), ml), x
         else:
-            r, fallback = (fdiv(x, ml)).round(0, mode=half) * ml, pl.lit(0.0, pl.Float64)
+            r, fallback = shims.round_half_away(fdiv(x, ml)) * ml, pl.lit(0.0, pl.Float64)
         out = pl.when(~x.is_finite()).then(x).when(~r.is_finite()).then(fallback).otherwise(r)
         return Val(canon(out), pl.Float64, a.issues)
 
@@ -1420,11 +1461,11 @@ def _raise_issues(issues: tuple[Issue, ...]):
     return check
 
 
-def guard(lf: pl.LazyFrame, vals: list[Val]) -> pl.LazyFrame:
+def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS) -> pl.LazyFrame:
     """Raise if any row of `lf` runs into an issue of `vals`, which an operator
     evaluates on exactly these rows. A filter is never pruned, and `collect`
     keeps it in place (no predicate pushdown), so it sees the same rows."""
-    found = issues(*vals)
+    found = tuple(i for i in issues(*vals) if i.kind.issue in checks)
     if not found:
         return lf
     flags = pl.struct([i.flag.alias(f"i{k}") for k, i in enumerate(found)])
@@ -1558,12 +1599,8 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
     return min(vs) if fn == "min" else max(vs)
 
 
-SORT_DIRECTIONS = {
-    "SORT_DIRECTION_ASC_NULLS_FIRST": (False, False),
-    "SORT_DIRECTION_ASC_NULLS_LAST": (False, True),
-    "SORT_DIRECTION_DESC_NULLS_FIRST": (True, False),
-    "SORT_DIRECTION_DESC_NULLS_LAST": (True, True),
-}
+#: `(descending, nulls_last)` per direction (`shims.null_order`).
+SORT_DIRECTIONS = shims.SORT_DIRECTIONS
 
 
 def _is_abs(j: dict, ex: Exprs) -> bool:
@@ -1615,6 +1652,44 @@ class Measure:
 
         r = values.map_batches(apply, return_dtype=out)
         return r.cast(self.arg.dtype) if physical else r
+
+    def native(self, name: str) -> NativeAgg | None:
+        """The measure as Polars's own aggregation of the column `name` (the
+        argument on the kept rows), with the reference's shims; None where it
+        runs row by row (`result`)."""
+        if self.distinct:
+            return None
+        v = pl.col(name)
+        if self.fn == "sum":
+            return NativeAgg(
+                {name: shims.int_sum(v)},
+                pl.when(shims.sum_leaves_i64(v)).then(None).otherwise(v).cast(pl.Int64),
+                ((shims.sum_leaves_i64(v), SumOverflow, "SUM leaves 64 bits"),),
+            )
+        if self.fn == "iavg":
+            return NativeAgg({name: shims.avg_int_declared(v)}, v)
+        if self.fn in ("fsum", "avg"):
+            nan, inf = f"{name}_nan", f"{name}_inf"
+            agg = shims.float_sum(v) if self.fn == "fsum" else shims.float_avg(v)
+            return NativeAgg(
+                {name: agg, nan: shims.sum_makes_nan(v),
+                 inf: shims.agg_makes_infinite(v.sum(), v)},
+                v,
+                ((pl.col(nan), DomainError, f"{self.fn} of +inf and -inf would make a NaN"),
+                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+            )  # fmt: skip
+        return None
+
+
+@dataclass(frozen=True)
+class NativeAgg:
+    """A measure Polars aggregates natively: the aggregations (by column), the
+    result read from them, and the flags of the issues it may raise, read
+    from them too."""
+
+    aggs: dict[str, pl.Expr]
+    result: pl.Expr
+    flags: tuple[tuple[pl.Expr, type[RuntimeIssue], str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1787,15 +1862,32 @@ def python_windows(
     return lf.map_batches(compute, schema=schema)
 
 
+#: Which runtime issues to check: True for `ALL_GUARDS`, False for
+#: `NO_GUARDS`, or the issues by their `Issue.name` (`RuntimeIssue.issue`).
+Guards = bool | Collection[str]
+
+
+def checks_of(guards: Guards) -> frozenset[str]:
+    if guards is True:
+        return ALL_GUARDS
+    if guards is False:
+        return NO_GUARDS
+    names = frozenset(guards)
+    unknown = names - ALL_GUARDS - {InfiniteResult.issue}
+    if unknown:
+        raise ValueError(f"unknown issues to guard: {sorted(unknown)}")
+    return names
+
+
 class Translator:
-    def __init__(self, plan: dict, tables: Tables, guards: bool = True):
+    def __init__(self, plan: dict, tables: Tables, guards: Guards = True):
         _support.check(plan, "Polars", Unsupported)
         self.functions = _plan_read.function_names(plan, Unsupported)
         self.tables = tables
-        self.guards = guards
+        self.checks = checks_of(guards)
 
     def guard(self, lf: pl.LazyFrame, vals: list[Val]) -> pl.LazyFrame:
-        return guard(lf, vals) if self.guards else lf
+        return guard(lf, vals, self.checks)
 
     def exprs(self, dtypes: list[DType]) -> Exprs:
         return Exprs(self.functions, dtypes)
@@ -2045,18 +2137,17 @@ class Translator:
         NULL placement, values in `Value.le` order (strings by code point,
         which is UTF-8 byte order, as Polars sorts them)."""
         by, desc, nulls_last = [], [], []
-        directions = SORT_DIRECTIONS
         for s in sorts:
-            d = s.get("direction")
-            if d not in directions:
-                raise Unsupported(f"unsupported sort direction {d}")
+            d = shims.null_order(s.get("direction"))
+            if d is None:
+                raise Unsupported(f"unsupported sort direction {s.get('direction')}")
             key = self.column(ex, s["expr"])
             by.append(ordered(key.expr, key.dtype))
-            desc.append(directions[d][0])
-            nulls_last.append(directions[d][1])
+            desc.append(d[0])
+            nulls_last.append(d[1])
         if not by:
             return lf
-        return lf.sort(by, descending=desc, nulls_last=nulls_last, maintain_order=True)
+        return lf.sort(by, descending=desc, nulls_last=nulls_last, **shims.tie_order())
 
     def sort(self, r: dict) -> Frame:
         """`Rel.orderBy`."""
@@ -2104,8 +2195,14 @@ class Translator:
                 for i, (key, _, _) in enumerate(m.sorts)
             ]
         )
-        values = []
+        # Native aggregations (`Measure.native`), and the lists of values
+        # the others compute their measure from (`Measure.result`).
+        values, aggs = [], []
+        natives = [m.native(f"__sv_m{j}") for j, m in enumerate(ms)]
         for j, m in enumerate(ms):
+            if (nat := natives[j]) is not None:
+                aggs += [e.alias(k) for k, e in nat.aggs.items()]
+                continue
             v = pl.col(f"__sv_m{j}")
             if m.sorts:
                 # `Measure.eval`: the group's rows in a stable sort by the keys.
@@ -2118,12 +2215,22 @@ class Translator:
             values.append(v.drop_nulls())
         if groups:
             firsts = [pl.col(f"__sv_v{k}").first() for k in range(len(groups))]
-            out = lf.group_by(keys, maintain_order=True).agg(firsts + values)
+            out = lf.group_by(keys, maintain_order=True).agg(firsts + values + aggs)
         else:
-            out = lf.select([v.implode() for v in values])
+            out = lf.select([v.implode() for v in values] + aggs)
+        # The issues of whole groups: an integer `SUM` that leaves 64 bits, …
+        out = self.guard(out, [
+            Val(pl.lit(None), pl.Null, tuple(issue(f, k, msg) for f, k, msg in nat.flags))
+            for nat in natives if nat is not None
+        ])  # fmt: skip
         out = out.select(
             [pl.col(f"__sv_v{k}").alias(col(k)) for k in range(len(groups))]
-            + [m.result(pl.col(f"__sv_m{j}")).alias(col(len(groups) + j)) for j, m in enumerate(ms)]
+            + [
+                (m.result(pl.col(f"__sv_m{j}")) if nat is None else nat.result).alias(
+                    col(len(groups) + j)
+                )
+                for j, (m, nat) in enumerate(zip(ms, natives, strict=True))
+            ]
         )
         return out, [materialize(g.dtype) for g in groups] + [m.dtype for m in ms]
 
@@ -2352,7 +2459,7 @@ class Translator:
 
 
 def _translate(
-    plan: str | dict, tables: Tables, guards: bool = True
+    plan: str | dict, tables: Tables, guards: Guards = True
 ) -> tuple[pl.LazyFrame, list[str]]:
     """The plan's `LazyFrame`, with its columns still positional (`c0`, `c1`,
     …) and cast to their output types, and the root's column names."""
@@ -2367,7 +2474,7 @@ def _translate(
     return lf.select([pl.col(col(i)).cast(materialize(t)) for i, t in enumerate(dtypes)]), names
 
 
-def to_lazy(plan: str | dict, tables: Tables, *, guards: bool = True) -> pl.LazyFrame:
+def to_lazy(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pl.LazyFrame:
     """The `LazyFrame` for a plan in Lean's written form, over `tables`
     (by name; columns in schema order). Columns are named by `RelRoot.names`;
     a Polars frame cannot hold two columns of one name, so a plan whose root
@@ -2376,7 +2483,10 @@ def to_lazy(plan: str | dict, tables: Tables, *, guards: bool = True) -> pl.Lazy
 
     `guards=False` leaves out the per-row checks for runtime issues (`guard`);
     only for a plan whose contract report is `guard_free`, on data that meets
-    its preconditions (`Rel.guardFree_sound`). Integer `SUM` keeps its check."""
+    its preconditions (`Rel.guardFree_sound`). Integer `SUM` keeps its check.
+    A collection of `Issue.name`s checks exactly those: for a plan verified
+    under the reference, the issues its report assumes (`Report.assumed`:
+    "SUM overflow", "overflow to infinity", #575)."""
     lf, names = _translate(plan, tables, guards)
     if len(set(names)) != len(names):
         raise Unsupported(f"root names {names} repeat a name; use `run`")
@@ -2390,7 +2500,7 @@ def collect(lf: pl.LazyFrame) -> pl.DataFrame:
     return lf.collect(optimizations=pl.QueryOptFlags(predicate_pushdown=False))
 
 
-def run(plan: str | dict, tables: Tables, *, guards: bool = True) -> pa.Table:
+def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:
     """Run a plan in Lean's written form on Polars (`guards`: see `to_lazy`).
     The columns are named by `RelRoot.names`, repeats included."""
     lf, names = _translate(plan, tables, guards)
