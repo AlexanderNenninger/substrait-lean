@@ -70,6 +70,7 @@ import functools
 import inspect
 import json
 import math
+import re
 import warnings
 import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
@@ -514,6 +515,15 @@ class Issue:
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
     there is nothing to suggest."""
+    column: str | None = None
+    """For a "SUM overflow": the column the SUM adds up, named as in its
+    hint (the base table's column where it is passed on unchanged). None if
+    `expr` is not a single column."""
+
+    @property
+    def what(self) -> str:
+        """The column, or else the expression, a report names the issue by."""
+        return self.column or self.expr
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.expr}"
@@ -651,7 +661,7 @@ class Report:
                 lines.append(f"  counterexample: {c.counterexample}")
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
-        lines += [f"assumes: SUM of {i.expr} {SUM_ASSUMED}" for i in self.assumed]
+        lines += [f"assumes: SUM of {i.what} {SUM_ASSUMED}" for i in self.assumed]
         for i in self.errors:
             lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
             if i.hint:
@@ -691,7 +701,7 @@ class Report:
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
-        inferred += [f"SUM of `{i.expr}` {SUM_ASSUMED}" for i in self.assumed]
+        inferred += [f"SUM of `{i.what}` {SUM_ASSUMED}" for i in self.assumed]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
@@ -1615,6 +1625,7 @@ def _verify_once(
                 i["expr"],
                 i["error"],
                 _hint(i["bound"], schemas, assumable) if i["error"] else None,
+                _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
             )
             for i in out["issues"]
         ],
@@ -1745,6 +1756,26 @@ def overflow_hints(
             if (hint := _sum_hint(op, requires)) is not None:
                 hints.append(hint)
     return list(dict.fromkeys(hints))
+
+
+def _sum_column(transform: ir.Table | str, expr: str) -> str | None:
+    """The column an integer `SUM` that Lean names `expr` (`$i`, its
+    input's i-th column) adds up, named as `_sum_hint` names it, if exactly
+    one `SUM` of the transformation matches."""
+    if isinstance(transform, str) or not re.fullmatch(r"\$\d+", expr):
+        return None
+    names = set()
+    for op in transform.op().find(ops.Sum):
+        arg = op.arg  # type: ignore[attr-defined]
+        rels = list(arg.relations)
+        if not arg.dtype.is_integer() or len(rels) != 1 or not isinstance(arg, ops.Field):
+            continue
+        cols = rels[0].schema.names
+        if arg.name not in cols or f"${cols.index(arg.name)}" != expr:
+            continue
+        origin = _value_origin(arg)
+        names.add(origin[1] if origin else arg.name)
+    return names.pop() if len(names) == 1 else None
 
 
 def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | None:
