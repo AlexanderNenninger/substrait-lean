@@ -203,6 +203,14 @@ def nanCase : BinFn → Int → Int → Bool
 
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
+/-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
+`+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
+is a square root, NaN. The reference raises (a domain error, as for a finite
+negative base), so a verified plan never meets it and no engine needs a shim. -/
+def negInfPow (a b : Int) : Bool :=
+  decide (a = FloatCode.negInf) && decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) &&
+    FloatCode.floor b != b
+
 def BinFn.issue : BinFn → Value → Value → Option Issue
   | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
   | .add, .int a, .int b => wrapIf (a + b)
@@ -220,7 +228,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .fadd, .int a, .int b => nanIssue .fadd a b
   | .fsub, .int a, .int b => nanIssue .fsub a b
   | .fmul, .int a, .int b => nanIssue .fmul a b
-  | .fpow, .int a, .int b => nanIssue .fpow a b
+  | .fpow, .int a, .int b => if negInfPow a b then some .domain else nanIssue .fpow a b
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
@@ -438,6 +446,27 @@ theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (
       subst this
       simpa using h5
 
+/-- May the inputs be a `negInfPow`? Where the base may be `-∞` and the
+exponent is not a constant integer. -/
+def mayNegInfPow (aa ab : AVal) : Bool :=
+  aa.has FloatCode.negInf && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
+
+theorem mayNegInfPow_sound {aa ab : AVal} {a b : Int} (ha : aa.Mem (.int a))
+    (hb : ab.Mem (.int b)) (h : negInfPow a b = true) : mayNegInfPow aa ab = true := by
+  simp only [negInfPow, Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨h1, _⟩, _⟩, h4⟩ := h
+  subst h1
+  simp only [mayNegInfPow, AVal.has_of_mem ha, Bool.true_and, Bool.not_eq_true']
+  obtain ⟨bd, hbd, hm⟩ := hb
+  rw [hbd]
+  simp only [Option.any_some]
+  cases hp : bd.point with
+  | none => rfl
+  | some k =>
+    have := Bound.point_mem hp hm
+    subst this
+    simpa using h4
+
 /-- `nz`: the divisor is never the integer 0; `sz`: the first argument's
 size, if it is a constant string. -/
 def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat → List Issue
@@ -454,7 +483,8 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .fadd, aa, ab, _, _, _ => if BinFn.mayNan .fadd aa ab then [.domain] else []
   | .fsub, aa, ab, _, _, _ => if BinFn.mayNan .fsub aa ab then [.domain] else []
   | .fmul, aa, ab, _, _, _ => if BinFn.mayNan .fmul aa ab then [.domain] else []
-  | .fpow, aa, ab, _, _, _ => if BinFn.mayNan .fpow aa ab then [.domain] else []
+  | .fpow, aa, ab, _, _, _ =>
+    if BinFn.mayNan .fpow aa ab || mayNegInfPow aa ab then [.domain] else []
   | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
@@ -865,13 +895,25 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       subst hk
       rename_i hn
       right; simp [BinFn.mayNan_sound ha hb hn]
-  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j | fpow.int.int i j =>
+  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j =>
     simp only [BinFn.mayIssue]
     simp only [nanIssue] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     subst hk
     rename_i hn
     simp [BinFn.mayNan_sound ha hb hn]
+  case fpow.int.int i j =>
+    simp only [BinFn.mayIssue]
+    split at hk
+    · simp only [Option.some.injEq] at hk
+      subst hk
+      rename_i hn
+      simp [mayNegInfPow_sound ha hb hn]
+    · simp only [nanIssue] at hk
+      split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk
+      rename_i _ hn
+      simp [BinFn.mayNan_sound ha hb hn]
   case ipow.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     obtain ⟨x, hx, hi⟩ := ha

@@ -1,0 +1,38 @@
+{
+  "id": "duckdb-R15-power-neginf",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`power(-inf, y)` for a finite non-integer `y`: IEEE's `+inf` or `0`",
+  "verdict": "IEEE value where the reference raises",
+  "area": "doubles",
+  "constructs": [
+    "power"
+  ],
+  "settings": {
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "`power(-inf, y)` for a finite `y` that is not an integer gives IEEE 754's value under either setting of `ieee_floating_point_ops`: `+inf` for `y > 0` (`0.5`, `1.5`) and `0.0` for `y < 0` (`-0.5`). Integer exponents give `+inf` (`2.0`) and `-inf` (`3.0`), and an infinite exponent `+inf` or `0.0`. A finite negative base to a non-integer power is NaN (duckdb-R15-elementary).",
+  "reference": "`power(-inf, y)` for a finite non-integer `y` raises a domain error (`negInfPow` in `SubstraitLean/Safety.lean`), as a finite negative base does; Polars's `** 0.5` gives NaN there. `Profile.duckdb` states DuckDB's value (`duckNegInfPow`).",
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "session wonderful-taussig-b9376c, duckdb Python 2.0.0",
+      "evidence": [
+        {
+          "sql": "SELECT power('-inf'::DOUBLE, 0.5), power('-inf'::DOUBLE, 1.5), power('-inf'::DOUBLE, -0.5), power('-inf'::DOUBLE, 2.0), power('-inf'::DOUBLE, 3.0)",
+          "observed": "inf, inf, 0.0, inf, -inf"
+        },
+        {
+          "sql": "SET ieee_floating_point_ops = false; SELECT power('-inf'::DOUBLE, 0.5), power('-inf'::DOUBLE, -0.5)",
+          "observed": "inf, 0.0"
+        }
+      ],
+      "notes": "Polars 2.1.0 on the same inputs: NaN for 0.5 (a square root), inf for 1.5, 0.0 for -0.5."
+    }
+  ]
+}
