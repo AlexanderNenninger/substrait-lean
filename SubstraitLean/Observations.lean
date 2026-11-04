@@ -18,9 +18,8 @@ and the reference's tool per option (D9).
   evidence: a Lean proof, or a test or fact. The engine profiles fill these
   (step 3a); the reference refines itself exactly.
 * The tool table: per option, whether the reference raises, chooses a value
-  or leaves it open, the precondition a raise puts on every plan that meets
-  it, and, per engine, how many of the engine's rows at the option need a
-  shim. -/
+  or leaves it open, and the precondition a raise puts on every plan that
+  meets it. `SubstraitLean/EngineTables.lean` adds each engine's shim count. -/
 
 namespace Substrait
 
@@ -242,14 +241,8 @@ def Profile.reference.tools : List ToolRow := [
   { option := "float_to_int", tool := .choose },
   { option := "cast_failure", tool := .raise,
     precondition := "every value a cast with UNSPECIFIED failure behaviour converts" },
-  { option := "distribution", tool := .choose }]
-
-/-- The engine profiles' tables (step 3a fills it). -/
-def engineTables : List (ProfileTable × ObsTable) := []
-
-/-- How many of an engine's rows at `option` need a shim. -/
-def shimCount (obs : ObsTable) (option : String) : Nat :=
-  (obs.filter fun (_, o, r) => o == option && r.shim.isSome).length
+  { option := "distribution", tool := .choose },
+  { option := "empty_group_aggregates", tool := .choose }]
 
 /-! ## Checks -/
 
@@ -297,25 +290,5 @@ open Lean (Json toJson) in
 def obsTableJson (t : ObsTable) : Json :=
   Json.arr <| (t.map fun (g, o, r) => Json.mkObj [
     ("group", toJson g), ("option", toJson o), ("row", r.json)]).toArray
-
-open Lean (Json toJson) in
-/-- The tool table, with each engine's shim count per option. -/
-def toolsJson : Json :=
-  Json.arr <| (Profile.reference.tools.map fun r => Json.mkObj [
-    ("option", toJson r.option),
-    ("tool", toJson (match r.tool with
-      | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open")),
-    ("precondition", toJson r.precondition),
-    ("shims", Json.mkObj (engineTables.map fun (t, obs) => (t.name, toJson (shimCount obs r.option))))
-  ]).toArray
-
-open Lean (Json toJson) in
-/-- `substrait-check --options`: the options, the groups' options, each
-profile's choices and observation rows, and the tool table. -/
-def tablesJson : Json :=
-  optionsJson
-    |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs)] ++
-      engineTables.map fun (t, obs) => (t.name, obsTableJson obs)))
-    |>.setObjVal! "tools" toolsJson
 
 end Substrait

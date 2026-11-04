@@ -91,7 +91,7 @@
         {"id": "stat_degenerate", "kind": "option", "question": "`CORR` of one pair or a constant side; a statistical aggregate of a single value."},
         {"id": "quantile_interp", "kind": "option", "question": "`QUANTILE_CONT`, `QUANTILE_DISC`, `MEDIAN`: the position and interpolation."},
         {"id": "tie_pick", "kind": "option", "question": "Which row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE` take among ties."},
-        {"id": "empty_group_aggregates", "kind": "extra", "question": "Aggregates of no rows or of NULLs only (`SUM`, `COUNT`, `MIN`, `AVG`)."},
+        {"id": "empty_group_aggregates", "kind": "option", "question": "Aggregates of no rows or of NULLs only (`SUM`, `COUNT`, `MIN`, `AVG`)."},
         {"id": "nonfinite_aggregates", "kind": "extra", "question": "Aggregates of ±inf and NaN inputs."}
       ]
     },
