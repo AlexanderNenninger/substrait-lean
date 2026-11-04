@@ -316,7 +316,8 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.
 
-Not supported yet: correlated scalar subqueries, parameters (`ibis.param`),
+Not supported yet: correlated scalar subqueries, unbound parameters
+(`sv.verify(expr, params={p: 10})` checks an `ibis.param` with its value),
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
