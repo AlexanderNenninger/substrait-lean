@@ -540,6 +540,102 @@ built from a native double). Code negation is the one exception: it sends
 NaN to `negNan`, and `canon_neg` shows that `canon` of it is the parser's
 negation, which keeps NaN.
 
+## The Substrait profile
+
+`Profile.substrait.table` (`SubstraitLean/SubstraitProfile.lean`) states
+Substrait's semantics as the extension YAMLs at `substrait-extensions`
+0.106.0 and Substrait's docs give it, in the format of the reference's and
+the engines' tables:
+
+- an option of the YAMLs is `.asked yaml yaml`: the plan's first preference
+  among the values the YAML lists for that function, any of them where the
+  plan states none, since the YAMLs give no defaults and an omitted option
+  leaves the consumer free to choose. Per-function lists narrow it by group:
+  integer `divide` truncates, double `divide` has four `on_division_by_zero`
+  values, `round` ten roundings;
+- sverify's own options take what Substrait fixes: IEEE 754's two zeros and
+  signed NaNs (`zero_sign`, `nan_kind`), IEEE's `==` and unordered NaN in
+  `cmp`, `sum`'s NULL for no values, `avg` of integers truncating to the
+  declared type, positions counting characters from 1, `MIN % -1` as `0`;
+- every other option is the core's (`loose` over its behaviours), each such
+  gap an `ST` entry ([D3](#d3-behaviours-outside-the-yaml)): `nan_creation`
+  ([ST-5](../upstream/bugs/ST-5.json)), `float_overflow`
+  ([ST-9](../upstream/bugs/ST-9.json)), the statistical aggregates
+  ([ST-3](../upstream/bugs/ST-3.json)), NaN in grouping and sorts
+  ([ST-4](../upstream/bugs/ST-4.json)), casts
+  ([ST-6](../upstream/bugs/ST-6.json));
+- a sort key's `UNSPECIFIED` direction leaves the NULL placement open, and
+  `CLUSTERED` is the adjacency relation
+  ([D6](#d6-sort-keys-without-a-null-order)).
+
+Lean proves `Profile.substrait_le_core` by `decide` on the table, so
+`Rel.allowed_substrait_core` gives `Allowed_substrait ⊆ Allowed_core` by
+`Rel.AllowedP_mono`. Two `decide` checks show the two siblings apart: neither
+table is within the other.
+
+`verify(semantics="substrait")` checks an Ibis transformation under it.
+`substrait-check --contract` with `"profile": "substrait"` proves the
+contract under the reference, then runs the transfer check on the
+transformation (`transferB`, sound by `Rel.transfer_of_transferB`): the proof
+holds under Substrait when Substrait allows only behaviours the reference
+allows at every option the plan meets. Otherwise no postcondition is proved
+there, and the report's `transfer` names each option with both profiles'
+behaviours. An integer `+` already fails it, since Substrait leaves
+`overflow` open where the reference raises. No route runs a plan on
+Substrait: the profile is one to check under.
+
+Where the two differ, generated from the tables by `substrait-check
+--profile-diff` (`python -m sverify_dev.profile_diff --write`;
+`tests/test_substrait_profile.py` fails while it is stale). "Any preference"
+is a choice that accepts every value the plan states.
+
+<!-- substrait-diff:start -->
+| Option | Group | Substrait | Reference | Reference's tool |
+|---|---|---|---|---|
+| `overflow` | all others | `ERROR`, `SILENT`, `SATURATE` | `ERROR` | raise |
+| `overflow` | `int.arith` | `ERROR`, `SILENT`, `SATURATE` | `ERROR`, `SILENT`, `SATURATE`; `ERROR` by default | raise |
+| `on_division_by_zero` | all others | `ERROR`, `NULL` | `ERROR`, `NULL`; `ERROR` by default | raise |
+| `on_division_by_zero` | `fp.div` | `IEEE`, `LIMIT`, `NULL`, `ERROR` | `ERROR`, `IEEE`, `NULL`, `LIMIT`; `ERROR` by default | raise |
+| `on_division_by_zero` | `fp.mod` | `IEEE`, `LIMIT`, `NULL`, `ERROR` | `ERROR`, `NULL`; `ERROR` by default | raise |
+| `division_type` | all others | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
+| `division_type` | `fp.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
+| `shift_range` | all others | `ERROR`, `ZERO`, `DROP_BITS` | `DROP_BITS` | raise |
+| `decimal_rescale` | all others | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `TIE_AWAY_FROM_ZERO` | choose |
+| `rounding` | all others | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN` | choose |
+| `rounding` | `fp.round` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR`, `AWAY_FROM_ZERO`, `TIE_DOWN`, `TIE_UP`, `TIE_TOWARDS_ZERO`, `TIE_TO_ODD` | `TIE_AWAY_FROM_ZERO` | choose |
+| `on_domain_error` | all others | `NAN`, `ERROR` | `ERROR` | raise |
+| `on_domain_error` | `fp.div` | `NAN`, `NULL`, `ERROR` | `ERROR` | raise |
+| `on_domain_error` | `fp.log` | `NAN`, `NULL`, `ERROR` | `ERROR` | raise |
+| `on_domain_error` | `int.div` | `NULL`, `ERROR` | any preference; `NAN`, `NULL`, `ERROR` by default | raise |
+| `on_log_zero` | all others | `NAN`, `ERROR`, `MINUS_INFINITY` | `ERROR` | raise |
+| `nan_creation` | all others | `NAN`, `ERROR` | `ERROR` | raise |
+| `zero_sign` | all others | `IEEE` | `ONE_ZERO` | choose |
+| `nan_equality` | all others | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
+| `nan_equality` | `cmp` | `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
+| `nan_order` | all others | `GREATEST`, `UNORDERED` | `GREATEST` | choose |
+| `nan_order` | `cmp` | `UNORDERED` | `GREATEST` | choose |
+| `nan_kind` | all others | `IEEE` | `ONE_NAN` | choose |
+| `negative_start` | all others | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`; `WRAP_FROM_END` by default | choose |
+| `substring_range` | all others | `COMPUTE` | `ERROR` | raise |
+| `case_sensitivity` | all others | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | choose |
+| `char_set` | all others | `UTF8`, `ASCII_ONLY` | `UTF8` | choose |
+| `null_handling` | all others | `IGNORE_NULLS`, `ACCEPT_NULLS` | `ACCEPT_NULLS` | choose |
+| `date_range` | all others | `ERROR`, `COMPUTE` | `ERROR` | raise |
+| `time_interval_months` | all others | `DROP_MONTHS`, `ERROR` | refused | raise |
+| `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
+| `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
+| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `KAHAN` | `ANY` | leave open |
+| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN` | `GENERIC` | leave open |
+| `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
+| `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
+| `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
+| `null_order` | all others | `NULLS_FIRST`, `NULLS_LAST` | `NULLS_FIRST`, `NULLS_LAST`; `NULLS_LAST` by default | choose |
+| `float_to_int` | all others | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | `TRUNCATE` | choose |
+| `cast_failure` | all others | `THROW_EXCEPTION`, `RETURN_NULL` | `THROW_EXCEPTION`, `RETURN_NULL`; `THROW_EXCEPTION` by default | raise |
+| `distribution` | all others | `SAMPLE`, `POPULATION` | `SAMPLE`, `POPULATION`; `SAMPLE` by default | choose |
+| `float_overflow` | all others | `ERROR`, `INFINITY` | `ERROR` | raise |
+<!-- substrait-diff:end -->
+
 ## Translations between profiles
 
 A plan means something only under a profile, so the unit sverify reasons
@@ -881,7 +977,7 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 1a | The options table, `Choice`, `ProfileTable`, and `Profile.reference.table`. | `optionAccepts` equals the reference table's lookup (`#guard` over every group and option); no behaviour change. | #578 |
 | 1b | `-0.0` and the signed NaN in `FloatFormat`, with `canon`. | `canon` is idempotent and order-preserving; every existing operation commutes with it on the reference's codes. | In progress; with #575 |
 | 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |  |
-| 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |  |
+| 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). | [The Substrait profile](#the-substrait-profile) |
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |  |
 | 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |  |
 | 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
@@ -1054,6 +1150,7 @@ This design pass found seven, each checked against Substrait's `main` at
 | [ST-7](../upstream/bugs/ST-7.json) | what `SORT_DIRECTION_UNSPECIFIED` means | `null_order` (D6) |
 | [ST-9](../upstream/bugs/ST-9.json) | a result of finite doubles beyond the largest double: `±inf` or an error | double overflow to `±∞` (#575) |
 | [ST-10](../upstream/bugs/ST-10.json) | `upper`, `lower` with `char_set: UTF8`: Unicode's simple or full case mapping | `char_set` |
+| [ST-11](../upstream/bugs/ST-11.json) | integer `power` with a negative exponent | none: the reference raises (`Issue.negExponent`), D2 |
 
 `CLUSTERED` needs no entry: Substrait's `relations/basics.md` defines it.
 

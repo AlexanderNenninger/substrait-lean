@@ -189,6 +189,37 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
   IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names df).compress
   return 0
 
+open Lean (Json toJson) in
+/-- A `--contract` report under the profile the request names (`"profile"`).
+Under the reference it is the report as it is. Under Substrait, the
+reference's proof carries over when the transfer check passes on the
+transformation: Substrait allows only behaviours the reference allows at every
+option it meets (`Rel.transfer_of_transferB`). Where it does not, no
+postcondition or key is proved under Substrait, and `"transfer"` names the
+options. Engine profiles are not checked under yet: their requests get the
+reference's report, which says so. -/
+def underProfile (j : Json) (report : Json) (proved : Bool) : Except String (Json × Bool) := do
+  let name := (j.getObjValAs? String "profile").toOption.getD "reference"
+  unless name == "substrait" do return (report.setObjVal! "profile" "reference", proved)
+  let tj ← j.getObjVal? "transform"
+  let plan ← ContractCheck.parseJsonPlan tj
+  let P := Profile.reference.table
+  let S := Profile.substrait.table
+  let failures := plan.root.reads.eraseDups.filter fun p => !S.leAtB P p
+  let report := report.setObjVal! "profile" "substrait"
+  if failures.isEmpty then
+    return (report.setObjVal! "transfer" (Json.mkObj [("from", "reference"), ("ok", true),
+      ("failures", Json.arr #[])]), proved)
+  let unprove (k : String) (r : Json) : Json :=
+    match r.getObjValAs? (Array Json) k with
+    | .ok xs => r.setObjVal! k (Json.arr (xs.map (·.setObjVal! "proved" false)))
+    | .error _ => r
+  let rows := failures.map fun (g, o, ps) => Json.mkObj [("group", toJson g), ("option", toJson o),
+    ("preferences", toJson ps), ("substrait", toJson (S.allows g o ps)),
+    ("reference", toJson (P.allows g o ps))]
+  return (unprove "keys" (unprove "ensures" report) |>.setObjVal! "transfer"
+    (Json.mkObj [("from", "reference"), ("ok", false), ("failures", Json.arr rows.toArray)]), false)
+
 /-- One request of `--serve`: the mode flag (empty for the default check)
 and the input text. -/
 def runOn (flag : String) (input : String) : IO UInt32 := do
@@ -198,16 +229,17 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
     | .ok j => match ContractCheck.check j with
       | .error e => IO.eprintln s!"error: {e}"; return 1
       | .ok report =>
-        -- The profile it was checked under (the reference: checking under an
-        -- engine's profile is not built yet, so a request for one gets the
-        -- reference's report, which says so), and the options the
-        -- transformation meets (#444).
+        -- The profile it was checked under (`underProfile`), and the options
+        -- the transformation meets (#444).
         let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
         -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
         let eps := (Epsilon.epsilon j).toOption.getD (Lean.Json.mkObj [])
-        IO.println (report.json |>.setObjVal! "profile" "reference"
-          |>.setObjVal! "depends" depends |>.setObjVal! "epsilon" eps).compress
-        return if report.allProved then 0 else 4
+        match underProfile j (report.json |>.setObjVal! "depends" depends
+            |>.setObjVal! "epsilon" eps) report.allProved with
+        | .error e => IO.eprintln s!"error: {e}"; return 1
+        | .ok (out, proved) =>
+          IO.println out.compress
+          return if proved then 0 else 4
   if flag == "--shard" then
     match Lean.Json.parse input with
     | .error e => IO.eprintln s!"error: {e}"; return 1
@@ -328,6 +360,10 @@ def main (args : List String) : IO UInt32 := do
     match Lean.Json.parse input >>= transferJson with
     | .ok out => IO.println out.compress; return 0
     | .error e => IO.eprintln s!"error: {e}"; return 1
+  | ["--profile-diff"] => do
+    -- Where Substrait's choices and the reference's differ (#444 step 2).
+    IO.println substraitDiffJson.compress
+    return 0
   | ["--options"] => do
     -- The options, the groups' options, the profiles' choices and
     -- observations, and the reference's tools (#444).
@@ -347,5 +383,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --profile-diff | --transfer"
     return 1

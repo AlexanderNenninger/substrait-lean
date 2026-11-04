@@ -454,7 +454,8 @@ def ProfileTable.missingIn (t : ProfileTable) (fns : List String) : List (String
 
 /-- The profiles a report compares. -/
 def reportProfiles : List (ProfileTable × ObsTable) :=
-  (Profile.reference.table, Profile.reference.obs) :: engineTables
+  (Profile.reference.table, Profile.reference.obs) ::
+    (Profile.substrait.table, Profile.substrait.obs) :: engineTables
 
 open Lean (Json toJson) in
 /-- `substrait-check --dependencies`: the options the plan meets, each with
@@ -488,10 +489,11 @@ def Rel.dependenciesJson (r : Rel) : Json :=
 
 /-! ## The transfer check, on a dependency report -/
 
-/-- The profiles by name: the reference, the core, and the engines (DuckDB under
-its default settings). -/
+/-- The profiles by name: the reference, the core, Substrait, and the engines
+(DuckDB under its default settings). -/
 def profileNamed (name : String) : Option (ProfileTable × ObsTable) :=
-  ((Profile.reference.table, Profile.reference.obs) :: (Profile.core.table, []) :: engineTables).find?
+  ((Profile.reference.table, Profile.reference.obs) :: (Profile.core.table, []) ::
+    (Profile.substrait.table, Profile.substrait.obs) :: engineTables).find?
     (·.1.name == name)
 
 /-- What `t` allows at `group` (`none`: the row without a group) and `option`. -/
