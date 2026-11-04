@@ -1079,7 +1079,10 @@ Before the plan runs, the preconditions, the inferred bounds and the
 assumed `SUM`s are checked on the data, and a batch that breaks one raises
 `PreconditionError` with the precondition.
 `deterministic=True` refuses a plan whose result is not determined up to
-row order. Each engine profile names the versions its facts were probed at
+row order. `node.refresh(engine=..., route="auto")` chooses a route for
+every node the same way and records it in each entry's `route`. A stored
+node always needs a result determined up to row order, since its sink
+commits each epoch once. Each engine profile names the versions its facts were probed at
 (DuckDB 2.0.0, Polars 2.1.0): another version warns, another major version
 is refused.
 
