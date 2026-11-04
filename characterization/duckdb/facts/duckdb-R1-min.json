@@ -10,7 +10,8 @@
   ],
   "rows": [
     {"group": "int.abs", "option": "overflow", "types": ["i64"]},
-    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]}
+    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.abs", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "source"}
   ],
   "constructs": [
     "abs",
@@ -53,6 +54,26 @@
           "file": "characterization/duckdb/fuzz__int_division.json"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/abs.hpp#L42-L87",
+          "note": "TryAbsOperator: int8_t, int16_t, int32_t, int64_t and hugeint_t specialisations raise `Overflow on abs` at the minimum"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L247-L290",
+          "note": "abs on TINYINT … HUGEINT binds TryAbsOperator"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L121-L223",
+          "note": "PropagateAbsStats swaps in the unchecked AbsOperator only when the input's statistics exclude the minimum"
+        }
+      ],
+      "notes": "`abs(MIN)` raises on every signed width; each width has its own specialisation, so the reading covers i8, i16 and i32 as well."
     }
   ],
   "issues": [

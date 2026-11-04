@@ -11,7 +11,8 @@
   ],
   "rows": [
     {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp64"]},
-    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]}
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "%",
@@ -102,6 +103,26 @@
         }
       ],
       "notes": "NaN for a zero divisor or an infinite dividend (duckdb-R15-double-modulus)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1317-L1330",
+          "note": "BindBinaryFloatingPoint: NaN from std::fmod with ieee_floating_point_ops, else BinaryZeroCheckWrapper raises or gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1204-L1222",
+          "note": "BinaryZeroCheckWrapper: a zero divisor raises `Division by zero` or sets NULL by error_on_division_by_zero"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469",
+          "note": "FLOAT % binds as DOUBLE % does"
+        }
+      ],
+      "notes": "FLOAT `%` by zero is NaN under `ieee_floating_point_ops` (the default), as DOUBLE's is."
     }
   ],
   "issues": [

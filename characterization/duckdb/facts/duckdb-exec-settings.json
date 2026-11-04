@@ -31,12 +31,12 @@
     "The configuration reference lists these settings, with their defaults, as changing what a query computes:",
     "- `default_null_order` (`NULLS_LAST`) and `default_order` (`ASCENDING`): sort keys without a placement or direction (duckdb-F2).\n- `integer_division` (false): whether `/` of integers divides as integers (duckdb-F1).\n- `error_on_division_by_zero` (true) and `ieee_floating_point_ops` (true): division by zero raises or gives NULL; double edge cases give NaN and ±inf or errors and NULL (duckdb-R2, R4, R5, R15-*).\n- `default_collation` (empty): the collation of every string comparison and sort without a `COLLATE`. sverify's SQL writes no collation and assumes byte order (duckdb-F4).\n- `scalar_subquery_error_on_multiple_rows` (true, deprecated): off, a scalar subquery with several rows returns an arbitrary one.\n- `preserve_insertion_order` (true): off, rows without `ORDER BY` may come in any order (duckdb-exec-row-order).\n- `regex_match_operator_semantics` (`partial`): whether the regex match operators match the whole string.\n- `dialect_compatibility_mode` (`NONE`): emulates another engine's dialect, for example `spark`; the page does not say what it changes.\n- `old_implicit_casting` (false, deprecated) and `legacy_disable_null_type` (false): implicit casts and the NULL type at bind time.\n- `TimeZone` and `Calendar` (the host's): ICU's time-zone-aware functions (duckdb-time-zones).",
     "Frontend-only, for SQL that sverify does not write: `order_by_non_integer_literal`, `preserve_identifier_case`, `lambda_syntax`, `table_function_identifier_conversion`, `search_path`.",
-    "`threads` changes no value except through the order of order-sensitive aggregates (double `SUM`, `first`, `list`) and of rows without `ORDER BY` when `preserve_insertion_order` is off. `enable_optimizer` and `disabled_optimizers` can change which rows a raising expression sees (duckdb-exec-filter-pushdown). The docs mark neither as result-changing.",
+    "Round 2 (source): `regex_match_operator_semantics` changes only which function the parser writes for the operators `~`, `!~`, `~*` and `!~*`: `regexp_matches` (partial, the default) or `regexp_full_match` (full). The functions themselves do not read it, so sverify's SQL, which writes `regexp_matches(…)` as a function, is unaffected; setting it logs a deprecation warning. `dialect_compatibility_mode` has two values, `NONE` and `SPARK`; in v2.0.0 the binder reads it only to treat `GROUP BY all` and `ORDER BY all` as `GROUP BY ALL` and `ORDER BY ALL` when no column is named `all`. Neither changes a value sverify's SQL computes.",
     "What `dialect_compatibility_mode` and `regex_match_operator_semantics` change, and whether sverify's SQL reaches it (it writes `regexp_matches`, a function, for the match operator), goes to source in a later round."
   ],
   "reference": "The reference has no settings: each choice is an option of the plan (null_order, division_type, on_division_by_zero, nan_creation), and a profile's facts hold under the settings they record (`sverify._engine_settings`, #444).",
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -49,6 +49,37 @@
         },
         {
           "url": "https://duckdb.org/docs/2.0/sql/dialect/order_preservation.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/parser/peg/transformer/transform_expression.cpp#L948-L953",
+          "note": "the operators map to regexp_full_match under FULL, else regexp_matches"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/parser/peg/transformer/transform_expression.cpp#L985-L1008",
+          "note": "~, !~, ~*, !~* read the setting"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/main/settings/custom_settings.cpp#L2072-L2078",
+          "note": "setting it warns that it is deprecated"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/enums/dialect_compatibility_mode.hpp#L15",
+          "note": "NONE, SPARK"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/binder/query_node/bind_select_node.cpp#L188-L200",
+          "note": "SPARK: ORDER BY all as ORDER BY ALL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/binder/query_node/bind_select_node.cpp#L592-L606",
+          "note": "SPARK: GROUP BY all as GROUP BY ALL"
         }
       ]
     }

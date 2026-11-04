@@ -27,11 +27,12 @@
   "settings": {},
   "description": [
     "DuckDB names both distributions: `var_samp` and `stddev_samp` divide by `count(x) - 1` (Bessel's correction), `var_pop` and `stddev_pop` by `count(x)`. `variance` is an alias of `var_samp` and `stddev` of `stddev_samp`.",
-    "The docs give these per function, without listing the argument types; the types here rest on the functions taking any numeric argument. The docs' formulas (`(sum(x^2) - sum(x)^2 / count(x)) / (count(x) - 1)`) define the result; the algorithm is Welford's (duckdb-var-stddev)."
+    "The docs give these per function, without listing the argument types; the types here rest on the functions taking any numeric argument. The docs' formulas (`(sum(x^2) - sum(x)^2 / count(x)) / (count(x) - 1)`) define the result; the algorithm is Welford's (duckdb-var-stddev).",
+    "Round 2 (source): `variance` is an alias of `var_samp` and `stddev` of `stddev_samp` in the function list. Each of the four has one `DOUBLE` overload, so `BIGINT` and `DECIMAL` arguments are cast to `DOUBLE` first (duckdb-stat-arg-types); the distribution is the same for every argument type. `var_samp` divides by `count - 1` and is NULL for one value; `var_pop` divides by `count` and is 0 for one value."
   ],
   "reference": "Substrait's `variance` and `std_dev` take `distribution` (`SAMPLE`, `POPULATION`); sverify reads an omitted one as `SAMPLE` (`SubstraitLean/Options.lean`, `Parse.lean`), and the lift writes `VAR_SAMP`/`VAR_POP` (`sql_lift/_base.py`, `_distribution`). DuckDB's defaults agree.",
   "status": "no-finding",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -44,6 +45,26 @@
         }
       ],
       "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0). Per-type overloads are for round 2 (source)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/functions.json#L55-L78",
+          "note": "aliases: stddev of stddev_samp, variance of var_samp"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/stddev.cpp#L7-L33",
+          "note": "DOUBLE -> DOUBLE overloads only"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L82-L124",
+          "note": "VarSamp, VarPop, STDDevSamp, STDDevPop finalize"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
     }
   ]
 }

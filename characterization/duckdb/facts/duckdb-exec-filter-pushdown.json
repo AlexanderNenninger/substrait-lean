@@ -2,8 +2,8 @@
   "id": "duckdb-exec-filter-pushdown",
   "engine": "duckdb",
   "engine_version": "2.0.0",
-  "title": "Filter pushdown: a raising filter stays above a projection, but may cross a join",
-  "verdict": "raising filters kept above projections; pushed into join inputs (to probe)",
+  "title": "Filter pushdown: a raising filter crosses a join, and runs on one input even when the other is empty",
+  "verdict": "raising filters kept above projections; pushed into join inputs, outside the reference's loose model only when the other input is empty (to probe)",
   "area": "execution",
   "options": [
     "evaluation_order"
@@ -15,8 +15,9 @@
   ],
   "settings": {},
   "description": [
-    "Undocumented. In the optimizer at v2.0.0, a filter that can raise (`CanThrow`) is not pushed through a projection: it stays on top (`pushdown_projection.cpp`). Only internal barrier expressions (`__internal_barrier`, for secure views) are held above every operator that can remove rows (`FilterPushdown::Rewrite`).",
-    "An inner join is turned into a cross product whose conditions and the filters above it are pushed to the side they reference, with no `CanThrow` test in `pushdown_inner_join.cpp` or `pushdown_left_join.cpp`. So `SELECT … FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` appears to evaluate `10 // a.x` on rows of `a` that find no partner, which the reference never evaluates. This is from reading the code: a probe must confirm it.",
+    "Undocumented. In the optimizer at v2.0.0, a filter that can raise (`CanThrow`) is not pushed through a projection: it stays on top (`pushdown_projection.cpp`), and filter pullup keeps fallible predicates below a projection. Only internal barrier expressions (`__internal_barrier`, for secure views) are held above every operator that can remove rows (`FilterPushdown::Rewrite`).",
+    "An inner join is turned into a cross product whose conditions and the filters above it are pushed to the side they reference, with no `CanThrow` test (`pushdown_inner_join.cpp`, `pushdown_cross_product.cpp`); a left join pushes its left-side filters the same way (`pushdown_left_join.cpp`), and the join order optimizer moves filters to the lowest join that binds them. A filter over a filter merges both conjunct lists, the upper one first.",
+    "The reference's issue analysis already allows most of this: filter and join conditions are evaluated on `Rel.loose`, the input with filters removed and inner joins widened to cross joins (`SubstraitLean/Safety.lean`), so a `WHERE` over an inner or left join covers every row of each input, and a merged filter covers the rows the lower filter would remove. The gap left is an empty other input: the loose cross product is then empty and the reference reports no issue, while DuckDB evaluates the pushed filter on every row of the side it was pushed into. So `SELECT … FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1` with `b` empty appears to raise on `a.x = 0`. This is from reading the code: a probe must confirm it (the hash join may skip the probe side when the build side is empty).",
     "The other way round, DuckDB can raise less than the reference: a `LIMIT` stops the scan, so `WHERE s::INT = 10 LIMIT 1` does not raise on the unconvertible rows after the first match (DuckDB's test). That keeps the no-error guarantee."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's DuckDB SQL writes a filter over a join as a `WHERE` over the join, which the optimizer is then free to push.",
@@ -61,6 +62,54 @@
         }
       ],
       "notes": "Read, not replayed. Leads on main (paths at v2.0.0 to check): test/optimizer/pullup_join_expression_semantics.test, test/sql/optimizer/secure_view_fallible_functions.test, test/sql/window/window_scalarized_canthrow.test."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/pushdown/pushdown_cross_product.cpp#L80-L105",
+          "note": "filters go to the side they reference, no CanThrow test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/pushdown/pushdown_left_join.cpp#L134-L149",
+          "note": "left join: left-side filters pushed into the left input, no CanThrow test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/pushdown/pushdown_outer_join.cpp#L122-L127",
+          "note": "full outer join: the coalesce-key pushdown skips filters that CanThrow"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/pushdown/pushdown_filter.cpp#L9-L24",
+          "note": "filter over filter: the upper filter's conjuncts are added first, then the lower's, into one filter set"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/pullup/pullup_projection.cpp#L82-L88",
+          "note": "filter pullup keeps fallible predicates and their guards below a projection"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/filter_combiner.cpp#L1309-L1312",
+          "note": "derived bounds never duplicate a throwing comparison"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/tree/v2.0.0/src/optimizer/join_order",
+          "note": "the join order optimizer has no CanThrow or IsVolatile test: it moves filters and join conditions to the lowest join that binds them"
+        }
+      ],
+      "notes": "Confirms round 1's reading: inner joins (via the cross product) and the left side of left joins push filters into their inputs whatever CanThrow says; only projections, filter pullup through projections, full-outer coalesce pushdown and derived bounds test it. Filter over filter merges both conjunct lists, upper first, so a raising upper conjunct can run before the lower filter's guard. Checked against the reference's loose model (Rel.loose, SubstraitLean/Safety.lean L1031-L1075): filter conditions are evaluated on the input with filters removed and inner joins widened to cross joins, so a WHERE over an inner or left join already covers every row of each input, except when the other input is empty (the cross product is then empty while DuckDB still scans the pushed side). The description's 'which the reference never evaluates' overstates the gap; see the round 2 report."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "file": "SubstraitLean/Safety.lean",
+          "note": "Rel.loose: filters removed, inner joins as cross joins; HasIssue evaluates filter and join conditions on it"
+        }
+      ],
+      "notes": "Narrowed title, verdict and description to the empty-input case: round 1 said the pushed filter runs on rows the reference never evaluates, but Rel.loose covers every row of each input unless the other input is empty. Status stays open."
     }
   ]
 }

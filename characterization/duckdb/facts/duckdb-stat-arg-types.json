@@ -1,0 +1,131 @@
+{
+  "id": "duckdb-stat-arg-types",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Statistical aggregates of integers and decimals: cast to `DOUBLE` first",
+  "verdict": "one `DOUBLE` overload each; `BIGINT` and `DECIMAL` arguments are cast, then the doubles' algorithm",
+  "area": "aggregates",
+  "options": [
+    "rounding",
+    "stat_algo",
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "var_samp",
+    "var_pop",
+    "stddev_samp",
+    "stddev_pop",
+    "variance",
+    "stddev",
+    "covar_samp",
+    "covar_pop",
+    "corr"
+  ],
+  "settings": {},
+  "description": [
+    "`var_samp`, `var_pop`, `stddev_samp`, `stddev_pop` (and the aliases `variance`, `stddev`) each have a single overload, `DOUBLE` to `DOUBLE`; `covar_samp`, `covar_pop` and `corr` a single `(DOUBLE, DOUBLE)` one. A `BIGINT` or `DECIMAL` argument binds through the implicit cast to `DOUBLE`. `BIGINT` to `DOUBLE` is the C++ conversion, round to nearest, exact up to 2^53. `DECIMAL` to `DOUBLE` is correctly rounded: one division by an exact power of ten when the operands are exact, otherwise fast_float's decimal-to-binary conversion.",
+    "`stat_algo`: from the cast on, the algorithm is the doubles' one: Welford with Chan's merge (duckdb-var-stddev), the online co-moment (duckdb-covar), three states for `corr` (duckdb-corr).",
+    "`rounding`: every step is native IEEE double arithmetic, `+ - * /`, one `fma` in the merge and `sqrt`, under the default floating-point environment (round to nearest, ties to even). No setting selects another mode.",
+    "`stat_degenerate`: a cast `BIGINT` or `DECIMAL(38)` is finite and below 1e38 in magnitude, so the squared deviations stay far below `DBL_MAX` and no ±inf reaches the update. NaN comes only from `corr`'s `std_x * std_y == 0` (one pair, a constant side), as for doubles. `var_samp` and `stddev_samp` of one value are NULL, `var_pop` and `stddev_pop` of one value 0, no values NULL."
+  ],
+  "reference": [
+    "`rounding`: the reference's doubles are native `Float` (`TIE_TO_EVEN`).",
+    "`stat_algo`: the generic properties (#85). `variance` and `std_dev` of integers reach `AggFn.var` through `.un .itof` (`parseMeasure`), the conversion DuckDB's cast makes; `parseMeasure` takes them of doubles and integers only, so a decimal argument is refused.",
+    "`stat_degenerate`: NULL for `corr`'s degenerate cases and raise for ±inf (docs/core-semantics.md). DuckDB's NaN for `corr` is handled as for doubles (duckdb-corr); ±inf cannot arise from these types."
+  ],
+  "status": "open",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/stddev.cpp#L7-L33",
+          "note": "var_samp, var_pop, stddev_samp, stddev_pop: DOUBLE -> DOUBLE only"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/functions.json#L55-L78",
+          "note": "aliases stddev (stddev_samp) and variance (var_samp)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/covar.cpp#L6-L18",
+          "note": "covar_pop, covar_samp: (DOUBLE, DOUBLE)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/corr.cpp#L9-L13",
+          "note": "corr: (DOUBLE, DOUBLE)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L99-L110",
+          "note": "ImplicitCastBigint: DOUBLE among the implicit targets"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L199-L207",
+          "note": "ImplicitCastDecimal: FLOAT, DOUBLE"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/operator/cast_operators.cpp#L3347-L3368",
+          "note": "TryCastDecimalToFloatingPoint: exact fast path or fast_float"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L82-L124",
+          "note": "finalize: sample of one NULL, population of one 0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/corr.hpp#L44-L53",
+          "note": "corr: NaN when std_x * std_y == 0"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

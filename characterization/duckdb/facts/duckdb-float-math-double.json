@@ -1,0 +1,94 @@
+{
+  "id": "duckdb-float-math-double",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Math functions compute in DOUBLE, also for FLOAT",
+  "verdict": "fp32 inputs widen to DOUBLE and the result is DOUBLE; `round(FLOAT)` stays FLOAT",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "on_domain_error",
+    "on_log_zero"
+  ],
+  "rows": [
+    {"group": "fp.elem", "option": "rounding", "types": ["fp32"]},
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"]},
+    {"group": "fp.log", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "fp.log", "option": "on_domain_error", "types": ["fp32"]},
+    {"group": "fp.log", "option": "on_log_zero", "types": ["fp32"]},
+    {"group": "fp.round", "option": "rounding", "types": ["fp32"]}
+  ],
+  "constructs": [
+    "sqrt",
+    "exp",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "power",
+    "ln",
+    "log",
+    "log10",
+    "log2",
+    "round"
+  ],
+  "settings": {
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power`, `ln`, `log`, `log10` and `log2` each have one signature, of DOUBLE to DOUBLE. A FLOAT argument is cast to DOUBLE, which is exact (`TryCastWithOverflowCheck(float, double)` is a plain conversion), and the result is a DOUBLE: one libm call on doubles, rounded once to binary64. DuckDB has no binary32 version of these functions, so a FLOAT input gets the fp64 answer.",
+    "The bodies are C++ `<cmath>` (`std::log`, `std::log10`, `std::log2`, `std::sqrt`, …) on doubles, so their rounding is the platform libm's, which is faithful but not always correctly rounded. `log(b, x)` is `log10(x) / log10(b)`, two roundings and a division.",
+    "Domain and log of zero for FLOAT inputs are those of DOUBLE (duckdb-R15-math-domain): with `ieee_floating_point_ops` on, NaN outside the domain and `-inf` for a logarithm of 0; with it off, `cannot take logarithm of zero`, `… of a negative number`, `ASIN is undefined outside [-1,1]`, and `sin`, `cos`, `tan` of `±inf` raise.",
+    "`round` has FLOAT overloads. `round(FLOAT)` rounds half away from zero, exact for a float; `round(FLOAT, d)` widens to double, computes `round(x · 10^d) / 10^d` there, and converts back to FLOAT, so it rounds twice (to binary64, then binary32). `inf` and NaN return the input."
+  ],
+  "reference": "The elementary functions and logarithms of `fp32` would round to binary32 (`rounding: TIE_TO_EVEN`); `on_domain_error` and `on_log_zero` are `ERROR`. Lean refuses arithmetic on FLOAT values (duckdb-R12), so a plan casts them to DOUBLE first, which is what DuckDB does itself. For `fp64` the reference is Lean's native `Float`, also a libm call.",
+  "status": "open",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L22-L42",
+          "note": "BindIEEEFloatingUnary/Binary: UnaryFunction<double, double, …>, BinaryFunction<double, double, double, …>"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1306-L1320",
+          "note": "exp: DOUBLE only"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1414-L1439",
+          "note": "sqrt: DOUBLE only; raises on a negative input with ieee_floating_point_ops off"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1468-L1608",
+          "note": "ln, log10, log(b, x), log2: DOUBLE only; std::log, std::log10, std::log2; zero and negative inputs raise with ieee_floating_point_ops off"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1827-L1998",
+          "note": "sin, cos, tan (NoInfiniteDoubleWrapper), asin, atan, atan2, acos: DOUBLE only"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1001-L1037",
+          "note": "RoundOperatorPrecision and RoundOperator: computed in double, LossyNumericCast to the result type"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1152-L1231",
+          "note": "round: FLOAT overloads instantiate the operators at float"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_cast.hpp#L174-L178",
+          "note": "FLOAT to DOUBLE: result = double(input)"
+        }
+      ]
+    }
+  ]
+}

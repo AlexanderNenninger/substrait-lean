@@ -23,7 +23,8 @@
     "The executor at v2.0.0: `CASE` evaluates each `WHEN` on the rows still undecided and each `THEN` only on the rows its `WHEN` selects, `ELSE` on the rest (`execute_case.cpp`). `COALESCE` evaluates each argument only on the rows still NULL (`execute_operator.cpp`). So a raising branch or argument runs only on the rows that reach it.",
     "`AND` and `OR` run two ways. As a value (in a `SELECT` list, or inside a `CASE` result), `Execute` evaluates every child on every row and combines them, so `SELECT x <> 0 AND 10 // x > 1` raises on `x = 0`. As a condition (`WHERE`, a `CASE` `WHEN`, a join filter), `Select` evaluates the children one after the other, each on the rows the earlier ones left undecided. The adaptive filter permutes the children at run time by observed cost, but not when one of them can raise (`Expression::CanThrow`) or holds a barrier, and the optimizer's cost ordering (`ExpressionHeuristics`) also leaves such a conjunction in its written order. DuckDB's own test checks that `WHERE id <> 0 AND s::INT = 10` does not raise on the rows `id <> 0` removes, also when the filter is pushed into a dictionary-compressed segment or a Parquet dictionary.",
     "Constant folding does not raise: an expression whose folding fails is left in place (`constant_folding.cpp`), so `CASE WHEN false THEN 1 // 0 END` is evaluated at run time, lazily.",
-    "To settle at the next rounds: probes of `SELECT a AND b` with a raising `b`, of a `WHERE` that writes the raising conjunct first, and of which functions `CanThrow` misses (a function marked as not raising that does raise would be permuted)."
+    "To settle at the next rounds: probes of `SELECT a AND b` with a raising `b`, of a `WHERE` that writes the raising conjunct first, and of which functions `CanThrow` misses (a function marked as not raising that does raise would be permuted).",
+    "Round 2 (source): common subexpression elimination respects the lazy forms: inside a `CASE` or a conjunction it counts only the first child as a new candidate, so a subexpression of a `THEN` is hoisted only when it also occurs where it is evaluated unconditionally (`cse_optimizer.cpp`). One eager path remains: the `CASE` simplification rule evaluates every foldable `WHEN` at plan time with `EvaluateScalar`, which throws, where constant folding uses `TryEvaluateScalar` and leaves a failing expression alone. So `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END` appears to raise while planning, even on an empty table or when every row takes the first branch. From reading only: a probe must confirm it (ST-12 covers the operand order of `AND`/`OR`, #604)."
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. Lean evaluates `CASE` lazily and `and`/`or` on both operands (Kleene), the same model.",
   "status": "open",
@@ -97,6 +98,29 @@
         }
       ],
       "notes": "Read, not replayed."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/cse_optimizer.cpp#L49-L95",
+          "note": "CSE: in CASE and conjunctions only the first child adds candidates"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/case_simplification.cpp#L15-L46",
+          "note": "foldable WHEN evaluated with EvaluateScalar, which throws"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/constant_folding.cpp#L28-L42",
+          "note": "constant folding uses TryEvaluateScalar and keeps a failing expression"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_function_expression.cpp#L66-L73",
+          "note": "IsFoldable ignores CanThrow"
+        }
+      ]
     }
   ],
   "issues": [

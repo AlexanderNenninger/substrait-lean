@@ -11,7 +11,9 @@
   ],
   "rows": [
     {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]}
+    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "%"
@@ -42,6 +44,30 @@
         }
       ],
       "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1432-L1442",
+          "note": "ModuloOperator<float>, <double>: std::fmod, truncating, NaN for a zero divisor or an infinite dividend"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469",
+          "note": "% of FLOAT and of DOUBLE: BindBinaryFloatingPoint<ModuloOperator>"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/catalog/default/default_functions.cpp#L150",
+          "note": "the SQL function fmod is a macro, x - y * floor(x / y): floored, and inexact"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html",
+          "note": "fmod: the floored definition, always DOUBLE"
+        }
+      ],
+      "notes": "`%` on FLOAT is `std::fmod` at float, as on DOUBLE. The function named `fmod` is a different thing: a macro that floors (`fmod(-7.5, 2) = 0.5`, where `-7.5 % 2 = -1.5`) and computes through `/`, `*`, `floor` and `-`, so it rounds. The docs describe that macro correctly; facts that call `%` C's fmod mean `std::fmod`. The lift reads only `%` as `sverify_fmod`."
     }
   ],
   "issues": [

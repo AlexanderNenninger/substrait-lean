@@ -22,7 +22,7 @@
       "types": [
         "list"
       ],
-      "evidence": "docs"
+      "evidence": "source"
     }
   ],
   "constructs": [
@@ -91,6 +91,34 @@
         }
       ],
       "notes": "Docs for DuckDB 2.0 confirm GREATEST for a NULL element. They define one LIST ordering for the comparison operators; that `min` and `max` of lists use it is read from that, not stated (agg.order row)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/distributive/minmax.cpp#L322-L334",
+          "note": "GetMinMaxOperator: LIST, STRUCT, ARRAY take the sort-key path"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/distributive/minmax.cpp#L239-L302",
+          "note": "VectorMinMaxBase: keep the smaller sort key; MIN ascending, MAX descending, NULLS_LAST"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/function/aggregate/sort_key_helpers.hpp#L17-L25",
+          "note": "UnaryUpdate: CreateSortKey with OrderModifiers(ORDER_TYPE, NULLS_LAST)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/create_sort_key.cpp#L104-L125",
+          "note": "nested children: NULLS_LAST under ASC, NULLS_FIRST under DESC"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/create_sort_key.cpp#L700-L731",
+          "note": "lists: element validity bytes unflipped, end-of-list delimiter"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). `min` and `max` of a list compare sort keys: ascending with child NULLs last for `min`, descending with child NULLs first for `max`, so a NULL element is greater than every value in both, and a proper prefix sorts first. This is the list order of the comparison operators, `GREATEST`."
     }
   ],
   "issues": [
