@@ -46,13 +46,13 @@ def test_double_division_is_ieee_but_for_nan():
 # repository's files are not here.
 @pytest.mark.slow
 @pytest.mark.skipif(
-    not (slt.LEDGER / "probes.json").is_file(),
+    not (slt.REPLAY_DIR / "probes.json").is_file(),
     reason="characterization/ of the repository is not here",
 )
 def test_probes_json_is_current():
     """`probes.json` is what the harness finds now (rerun
     `python -m sverify_dev.probe --write` after a model or DuckDB change)."""
-    recorded = json.loads((slt.LEDGER / "probes.json").read_text())
+    recorded = json.loads((slt.REPLAY_DIR / "probes.json").read_text())
     assert recorded["duckdb"] == duckdb.__version__
     now = probe.probe_all(log=lambda _: None)
 

@@ -1,0 +1,28 @@
+{
+  "id": "DF-11",
+  "project": "datafusion",
+  "version": "51",
+  "status": "fixed upstream",
+  "status_note": "fixed upstream in 54.0.0 ([#22049](https://github.com/apache/datafusion/issues/22049))",
+  "fixed_in": "54.0.0",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/22049"
+  ],
+  "summary": "`NTILE(k)` computes `⌊i · min(k, n) / n⌋ + 1`, which spreads the larger buckets out; the SQL standard (and DuckDB, Spark, Snowflake, PostgreSQL) puts the `n % k` larger buckets first.",
+  "repro": "`select ntile(4) over (order by i) from (values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) t(i)` gives `1 1 1 2 2 3 3 3 4 4`; the standard gives `1 1 1 2 2 2 3 3 4 4` (DataFusion 51.0.0)",
+  "handling": "Lean's `ntileOf` is the standard's; `datafusion_plan` refuses NTILE",
+  "found_by": "M2 (ntile)",
+  "files": [
+    "python/src/sverify/engine.py",
+    "docs/reference-semantics.md"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

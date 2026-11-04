@@ -162,7 +162,7 @@ schema and the source's filter. DuckDB reads it as a view over
 passes through Python. Columns are cast to the types DuckDB gives the Arrow
 schema, a column no file has is NULL, and doubles are read as the model has
 them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
-(`upstream/LEDGER.md` DD-4). Looking a scan up in `con.arrow` reads it into
+([`upstream/bugs/DD-4.json`](../upstream/bugs/DD-4.json)). Looking a scan up in `con.arrow` reads it into
 Arrow, which is how the other engines get it. A refresh holds the table as the
 files of the new version, after DuckDB checks that the batch's deletes are in
 the old files. If those files were vacuumed, the views reading the table are

@@ -273,7 +273,7 @@ def expand_table_shorthand(query: str) -> str:
     """`query` with DuckDB's `TABLE t` (`SELECT * FROM t`) written out where a
     query may stand: at the start, after `(`, or as an operand of `UNION`,
     `EXCEPT` or `INTERSECT`. SQLGlot does not parse the shorthand
-    (upstream/LEDGER.md, SG-6); DuckDB's tests use it to compare results."""
+    (upstream/bugs/SG-6.json); DuckDB's tests use it to compare results."""
     from sqlglot.tokens import TokenType
 
     try:
@@ -1543,7 +1543,7 @@ def _check_numbers(query: str) -> None:
     """Refuse a number with an underscore that is not between two digits
     (`1__2`, `1._5`). DuckDB reads such an underscore as the start of an
     alias (`1__2` is 1 named `__2`); SQLGlot reads every underscore as a digit
-    separator (12), upstream/LEDGER.md SG-4."""
+    separator (12), upstream/bugs/SG-4.json."""
     for m in _NUMBER.finditer(_QUOTED.sub(" ", query)):
         if re.search(r"(?<!\d)_|_(?!\d)", m.group()):
             raise Unsupported(

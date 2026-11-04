@@ -46,7 +46,7 @@ def _key(r: Mapping) -> tuple[str, int, str]:
     return r["file"], r["line"], r["sql"]
 
 
-def skipped_files(out: Path = slt.LEDGER) -> dict[str, str]:
+def skipped_files(out: Path = slt.REPLAY_DIR) -> dict[str, str]:
     """The files the ledgers' replay skipped as a whole, with the reason."""
     found: dict[str, str] = {}
     for p in sorted(out.glob("*.json")):
@@ -67,7 +67,7 @@ def newly_skipped(skips: Mapping[str, str], before: Mapping[str, str]) -> list[s
     ]
 
 
-def ledger(out: Path = slt.LEDGER) -> dict[tuple[str, int, str], str]:
+def ledger(out: Path = slt.REPLAY_DIR) -> dict[tuple[str, int, str], str]:
     """Each replayed query's class, by file, line and SQL, from the ledgers."""
     found: dict[tuple[str, int, str], str] = {}
     for p in sorted(out.glob("*.json")):

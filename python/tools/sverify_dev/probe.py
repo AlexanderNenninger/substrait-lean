@@ -286,7 +286,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
     found = probe_all()
     if args.write:
-        out = slt.LEDGER / "probes.json"
+        out = slt.REPLAY_DIR / "probes.json"
         head = {"duckdb": duckdb.__version__, "probes": found}
         out.write_text(json.dumps(head, indent=1) + "\n")
         print(f"-> {out}")

@@ -73,7 +73,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `characterization/` | What each engine does, as a diff against the reference model: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/facts/)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
-| `upstream/LEDGER.md` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream |
+| `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)) |
 | `changelog.d/` | One fragment per user-visible change; the release folds them into `CHANGELOG.md` |
 
 ## Documents

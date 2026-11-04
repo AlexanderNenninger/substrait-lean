@@ -1,0 +1,26 @@
+{
+  "id": "DD-1",
+  "project": "duckdb",
+  "version": "2.0",
+  "status": "filed",
+  "status_note": "`levenshtein`: filed [#25113](https://github.com/duckdb/duckdb/issues/25113), fixed after 2.0.0 (nightlies give 1); `reverse`: not a bug, it reverses grapheme clusters on purpose",
+  "upstream": [
+    "https://github.com/duckdb/duckdb/issues/25113"
+  ],
+  "summary": "`levenshtein` counts bytes, not code points, on non-ASCII text, and `reverse` works on grapheme clusters. Possibly intended: check the docs before filing.",
+  "repro": "`levenshtein('é', 'e')`",
+  "handling": "sverify raises \"non-ASCII text differs between engines\" for these on DuckDB (#195)",
+  "found_by": "#195",
+  "prs": [
+    195
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

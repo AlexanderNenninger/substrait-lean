@@ -1,0 +1,27 @@
+{
+  "id": "DF-8",
+  "project": "datafusion",
+  "version": "51",
+  "status": "filed",
+  "status_note": "filed [#25208](https://github.com/apache/datafusion/issues/25208) (bitmask), open; the layout ([#17910](https://github.com/apache/datafusion/issues/17910)) is fixed on main, not released",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/25208",
+    "https://github.com/apache/datafusion/issues/17910"
+  ],
+  "summary": "The Substrait producer encodes grouping sets against the spec: the extra column is a bitmask where the spec says the grouping set's index, and the grouping expressions are laid out differently.",
+  "repro": "TPC-DS q27/q36 (#229)",
+  "handling": "Grouping sets come through the SQLGlot lift instead (M2)",
+  "found_by": "pi3, #229",
+  "issues": [
+    229
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

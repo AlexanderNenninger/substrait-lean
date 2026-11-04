@@ -1,0 +1,23 @@
+{
+  "id": "DF-10",
+  "project": "datafusion",
+  "version": "51",
+  "status": "confirmed",
+  "status_note": "confirmed on 51.0.0 and 55.0.0: renaming the functions to `bitwise_shift_*` makes the plan run",
+  "summary": "The Substrait consumer doesn't know Substrait's `shift_left`/`shift_right`.",
+  "repro": "a plan calling them, run through `from_substrait_plan`",
+  "handling": "DataFusion refuses those plans",
+  "found_by": "#215",
+  "prs": [
+    215
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

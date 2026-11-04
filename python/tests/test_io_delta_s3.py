@@ -1,5 +1,5 @@
 """A `DeltaSink` on S3 (moto's server, in another process: delta-rs hangs
-against one in this process, `upstream/LEDGER.md` DL-1): writes, maintenance
+against one in this process, `upstream/bugs/DL-1.json`): writes, maintenance
 and a restart past another writer's compaction."""
 
 import socket
