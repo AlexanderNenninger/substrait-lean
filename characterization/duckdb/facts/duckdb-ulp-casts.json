@@ -23,7 +23,8 @@
     "Integers up to 64 bits convert with `static_cast<double>` or `<float>`, one hardware rounding to nearest even: ≤ 0.5 ulp, also above 2^53 (observed 0 of 3 000 off, BIGINT to DOUBLE and to FLOAT).",
     "A DECIMAL with a nonzero scale converts with one division when the unscaled value is below 2^53 and 10^scale is exact, otherwise through fast_float's decimal algorithm: correctly rounded, ≤ 0.5 ulp, to DOUBLE and to FLOAT (observed 0 off for DECIMAL(18, 6), (18, 17), (38, 10), (38, 30), (38, 2)).",
     "HUGEINT, and a DECIMAL(38, 0) whose scale 0 takes the integer path, convert as `double(lower) + double(upper) · 2^64`, and for `upper = -1` as `-double(2^64 - 1 - lower) - 1`: two roundings, so not always the nearest double. Bound by the formula: < 1 ulp; observed max 0.625 ulp, 5 of 3 000 HUGEINT and 4 of 1 687 DECIMAL(38, 0) values off, e.g. CAST(-55927220547740261 AS DOUBLE) is -55927220547740256 where the nearest double is -55927220547740264, and -9223372036854776833 gives -2^63 where the nearest is -2^63 - 2048. HUGEINT to FLOAT goes through that double, a third rounding (0 off in the probe).",
-    "All of these are integer and hardware operations: platform-independent."
+    "All of these are integer and hardware operations: platform-independent.",
+    "The docs are silent on how integer and DECIMAL casts to floating point round: a docs gap. No upstream test pins the HUGEINT double rounding; it may change between versions."
   ],
   "reference": "Casts of integers and decimals to doubles round once to nearest, ties to even (Lean's `Float.ofInt`, `Float.ofScientific`). A HUGEINT reaches a plan only from a sum or an explicit cast; sverify's ε for that cast would be 1 ulp.",
   "status": "open",
@@ -77,6 +78,23 @@
       "notes": [
         "Probe script ulp_probe.py (session scratchpad, not in the repository), run from python/ as `uv run --with mpmath python ulp_probe.py --n 3000 --seed 1 --out ulp.json`: about 3 000 inputs per operation and type, random and hard cases, against mpmath at 256 bits. 'bad' counts results that differ from the correctly rounded value; the max is in ulps of the result type at the exact value's binade. DuckDB runs on a table loaded from Parquet, Polars on a LazyFrame with collect(engine='streaming'), so the column kernels run. DuckDB 2.0.0 and Polars 2.1.0 (Python wheels), macOS 26.6 arm64, Python 3.12.11, mpmath 1.3.0.",
         "DuckDB's casts run on a table materialised first: a CAST right on read_csv is pushed into the scan and parses the text, which an earlier run measured by mistake."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/decimal_float_cast.test#L21-L40", "note": "DECIMAL to DOUBLE and FLOAT agree with the correctly rounded string casts (issue #22837)"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/expression/test_float_identity.test#L110-L125", "note": "BIGINT 2^53+1 converts to 2^53 (DOUBLE); INTEGER 2^24+1 to 2^24 (FLOAT): ties to even"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/typecasting.html", "note": "silent on how integer and DECIMAL casts to floating point round"}
       ]
     }
   ]

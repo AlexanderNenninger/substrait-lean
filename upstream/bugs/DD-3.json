@@ -28,6 +28,13 @@
         "duckdb": "2.0.0"
       },
       "note": "also nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "reverse pass: VarPop/STDDevPop Finalize returns count > 1 ? dsquared / count : 0, so a single NaN gives 0 (extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L93-L123); probe select var_pop(x), stddev_pop(x) from (values ('nan'::double)) t(x) gives (0.0, 0.0); the var_pop docs are silent on one value and NaN; no upstream test"
     }
   ],
   "upstream": [

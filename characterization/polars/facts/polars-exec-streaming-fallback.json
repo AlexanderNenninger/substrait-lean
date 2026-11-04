@@ -27,11 +27,13 @@
     "Relations that fall back: a `MapFunction` that is not streamable (`rechunk`, a fast count, an opaque Python or Rust UDF not marked streamable, such as `LazyFrame.map_batches`); a join that is not an equi, semi, anti, cross or range join, an as-of join whose `by` keys are not known sorted the same way, a join with a non-equality condition other than a fused predicate, and any join with `validate`; `unique(keep=\"last\", maintain_order=True)`; a group-by with an `apply`, with rolling or dynamic options (when not handled by the sorted rolling node), over object columns, or whose aggregations the streaming group-by cannot split (more than one non-elementwise input to one aggregation, non-elementwise post-processing, all expressions input-independent); an anonymous scan.",
     "Expressions that fall back, each computed over the full input in its own node: `median` and `implode` as plain aggregations, a cumulative `eval`, a window `over` that cannot be lowered to a streaming group-by, and every non-elementwise function or UDF without its own streaming rule (`ColumnarFunction`), such as `map_batches` without `is_elementwise=True`.",
     "What changes in a fallback node: the in-memory engine's algorithms (float sums, `group_by` row order) apply to that node's materialized input, so a fact probed in memory holds there, and one probed streaming may not. Evaluation order is the same in both: both evaluate expressions with polars-expr's physical expressions, so the masking of elementwise `when/then` branches (polars-exec-when-eager) applies in a fallback node too; a non-elementwise branch is computed over every row in either engine.",
-    "sverify's Polars translation reaches several of these: `map_batches` without `is_elementwise` (`_on_days`, the measure results), `LazyFrame.map_batches` (window computation), `implode` in an ungrouped aggregation, and `over`. Probes of `explain(engine=\"streaming\")` for each translated construct go to the next round."
+    "sverify's Polars translation reaches several of these: `map_batches` without `is_elementwise` (`_on_days`, the measure results), `LazyFrame.map_batches` (window computation), `implode` in an ungrouped aggregation, and `over`. Probes of `explain(engine=\"streaming\")` for each translated construct go to the next round.",
+    "The docs are silent on which constructs fall back and a fallback node's results differing: a docs gap.",
+    "No upstream test pins the fallback of `map_batches`, `LazyFrame.map_batches` or `implode`; it may change between versions."
   ],
   "reference": "The reference has no engines. A profile's facts hold for the engine they were probed on; sverify pins the streaming engine (#605), so a fact whose construct falls back must hold for the in-memory engine as well, and a probe must check which engine ran it.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -117,6 +119,32 @@
         {
           "file": "python/src/sverify/polars_engine.py",
           "note": "map_batches without is_elementwise (L746, L1667), LazyFrame.map_batches (L1876), implode (L2239), over (L2078)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/streaming/",
+          "note": "operations not implemented for streaming fall back to the in-memory engine; lists none, says the user does not have to know (silent on result differences)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_group_by.py#L520-L540",
+          "note": "nested aggregation falls back and gives the in-memory result (streaming)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_scalar_window.py#L208-L226",
+          "note": "over forms that are not lowered to a scalar window match the in-memory result; no upstream test for map_batches, LazyFrame.map_batches or implode fallbacks"
         }
       ]
     }

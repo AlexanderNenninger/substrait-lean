@@ -25,7 +25,10 @@
   },
   "description": [
     "`sum` of `Int8`, `Int16`, `UInt8` and `UInt16` returns `Int64`; `Int32` and `Int64` keep their type and wrap, ungrouped and grouped (`Int32` 2³¹-1 + 1 is -2³¹).",
-    "The sum of no values, or of NULLs only, is 0, also per group: Substrait's `sum0`. `product` of no values is 1."
+    "The sum of no values, or of NULLs only, is 0, also per group: Substrait's `sum0`. `product` of no values is 1.",
+    "Both engines wrap, by different code: in memory `wrapping_sum_arr` calls `wrapping_add`; the streaming `NumSumReducer` adds with `+=`, which wraps because Polars's release builds leave overflow checks off.",
+    "The docs are silent on `Int32` and `Int64` sums wrapping: a docs gap.",
+    "No upstream test pins the wrap; it may change between versions."
   ],
   "reference": "`sum` of integers returns the input type, with `overflow: ERROR` (an inferred precondition checked on the data, #316, #437), and NULL for no values (`functions_arithmetic.yaml`: \"The sum of zero elements yields null\").",
   "status": "open",
@@ -84,6 +87,74 @@
         "Streaming gives what in memory gives on every probe and observation cited here.",
         "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L27-L44",
+          "note": "SumCast: u8, u16, i8, i16 sum as i64; u32, u64, i32, i64 keep their type"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/sum.rs#L178-L203",
+          "note": "in memory: wrapping_sum_arr / wrapping_sum_arr_upcast, wrapping_add"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/sum.rs#L16-L60",
+          "note": "streaming new_sum_reduction: NumSumReducer per physical type; null_on_empty uses VecMaskGroupedReduction"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/sum.rs#L80-L113",
+          "note": "streaming: init zero; reduce_one, reduce_ca and combine use `+=`, which wraps in release builds"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/Cargo.toml#L210-L212",
+          "note": "release profile: lto and debug only, overflow-checks stay off"
+        }
+      ],
+      "notes": "Added to the description: the in-memory and streaming kernels and why both wrap."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.sum.html",
+          "note": "states Int8/UInt8/Int16/UInt16 → Int64 and 0 for no non-null values; silent on Int32/Int64 wrapping"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_list.py#L316-L358",
+          "note": "`test_list_sum_and_dtypes`: sum dtypes Int8/Int16/UInt8/UInt16 → Int64, Int32 → Int32, Int64 → Int64 (eager)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_optimizations.py#L178-L211",
+          "note": "`test_count_guarded_sum`, in-memory and streaming: when(count > 0).then(sum) becomes sum(null_on_empty=true), same result. No upstream test of integer overflow wrapping"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_group_by.py#L313-L337",
+          "note": "streaming grouped sums over every integer dtype match the eager total"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "Int32 [2**31 - 1, 1]: sum() is -2147483648 with engine in-memory and streaming (POLARS_IDEAL_MORSEL_SIZE=64), polars 2.1.0, macOS arm64"
+        }
       ]
     }
   ],

@@ -27,7 +27,9 @@
     "`PearsonState` returns `dp_xy / sqrt(dp_xx * dp_yy)` if `dp_xx * dp_yy > 0`, else NaN: one pair or a zero variance is NaN. Not clamped to [-1, 1]. `dp_xx * dp_yy` can overflow or underflow before the square root.",
     "No pairs: null in the streaming reducer; the in-memory path (`polars-ops` `cov.rs`) returns NaN.",
     "Integers become doubles (`as f64`) and decimals are cast to `Float64` in memory, so the degenerate cases are those of doubles: one pair or a constant side is NaN for `Int64` and `Decimal` too. Above 2⁵³ distinct integers can round to one double: `corr` of 2⁶², 2⁶² + 1, 2⁶² + 2 with 1, 2, 3 is NaN.",
-    "The streaming reduction accepts primitive numerics only: `corr` of a `Decimal` column raises `InvalidOperationError` on the default lazy engine and succeeds in memory. No pairs is null when streaming and NaN in memory (above)."
+    "The streaming reduction accepts primitive numerics only: `corr` of a `Decimal` column raises `InvalidOperationError` on the default lazy engine and succeeds in memory. No pairs is null when streaming and NaN in memory (above).",
+    "The docs are silent on one pair, a constant side and no pairs, the types `corr` takes and the engines: a docs gap.",
+    "No upstream test pins no pairs or a `Decimal` input; they may change between versions."
   ],
   "reference": [
     "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
@@ -171,6 +173,52 @@
         "Confirms PL-5 for `corr`: the same query (with `cov` and `corr` of `Decimal` columns) raises on the streaming engine and gives 0.9707253433941508 in memory.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.corr.html",
+          "note": "silent on degenerate inputs (one pair, a constant side, no pairs), on accepted dtypes and on the engines; no engine-support directive"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L40-L42",
+          "note": "`test_corr_nan`: a = [1.0, 1.0], b = [1.0, 2.0] gives NaN (eager, in memory). No upstream test pins no-pairs (null streaming, NaN in memory) or Decimal input"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L269-L293",
+          "note": "no test of cov/corr on Decimal; skew's streaming-vs-in-memory hypothesis test includes pl.Decimal in its dtypes, so the suite expects decimal parity for moment reductions"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-5, which this fact records."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.cov.html",
+          "note": "no dtypes and no engine-support directive; pl.corr likewise"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-5, which this fact records."
     }
   ],
   "issues": [

@@ -28,7 +28,8 @@
   "settings": {},
   "description": [
     "Welford's online update: `mean_differential = (x - mean) / count`, `new_mean = mean + mean_differential`, `dsquared += (x - new_mean) * (x - mean)`. Partial states merge by Chan et al.: `delta = s.mean - t.mean`, `mean = fma(n_s / n, delta, t.mean)`, `M2 = M2_s + M2_t + delta * delta * n_s * n_t / n`.",
-    "No values is NULL; the sample variance of one value is NULL; the population variance of one value is 0. No clamp and no finiteness check: 1.5.6 raised `OutOfRange` (\"VARSAMP is out of range!\") on non-finite values, 2.0 gives NaN (duckdb-nonfinite-aggregates)."
+    "No values is NULL; the sample variance of one value is NULL; the population variance of one value is 0. No clamp and no finiteness check: 1.5.6 raised `OutOfRange` (\"VARSAMP is out of range!\") on non-finite values, 2.0 gives NaN (duckdb-nonfinite-aggregates).",
+    "The docs are silent on the algorithm and on one value: a docs gap."
   ],
   "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
@@ -63,6 +64,22 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The exported state is Welford's (count, mean, M2), the algorithm round 2 read. The inputs are `INTEGER` cast exactly to `DOUBLE`, and the overflow and infinity cases are `DOUBLE`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "var_*, stddev_*: definitions only; silent on Welford/Chan and on one value"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/aggregates/var_stddev.test#L10-L18", "note": "list_stddev_samp([1]), list_var_samp([1]) → NULL"}
+      ]
     }
   ],
   "issues": [

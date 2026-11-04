@@ -28,7 +28,8 @@
   },
   "description": [
     "Integer arithmetic wraps at the operands' width (two's complement, Rust's `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `wrapping_neg`): `Int8` 127 + 1 is -128, `-MIN` is `MIN`. No setting makes it raise or saturate. Polars keeps the width of the operands; a literal takes the column's type.",
-    "`**` on integers wraps too (`2 ** 63` is `-2⁶³` in `Int64`); a negative integer exponent raises (`InvalidOperationError`, the exponent is cast to `u32`)."
+    "`**` on integers wraps too (`2 ** 63` is `-2⁶³` in `Int64`); a negative integer exponent raises (`InvalidOperationError`, the exponent is cast to `u32`).",
+    "The docs are silent on integer overflow: a docs gap."
   ],
   "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR` when the plan omits it (#202); `SILENT` when the plan asks. Polars gives `SILENT` natively; `ERROR` needs a guard, at each width.",
   "status": "open",
@@ -177,6 +178,21 @@
       "notes": [
         "The tests pin wrapping `+ - *` and negation at `Int8`. For `**` they pin that the result keeps the base's width at every signed width, but no input overflows, so the `int.pow` overflow rows for `i8` to `i32` stay at the source reading.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.add.html",
+          "note": "add/sub/mul/neg docstrings silent on integer overflow"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L6963-L7000",
+          "note": "Expr.pow: an integer to a positive integer is an integer; cast to float for a negative exponent"
+        }
       ]
     }
   ],

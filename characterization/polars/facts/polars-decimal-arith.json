@@ -32,7 +32,8 @@
   },
   "description": [
     "Arithmetic on decimals returns `Decimal(38, max(s₁, s₂))` for `+`, `-`, `*` and `/` (an integer operand counts as scale 0), and `sum` returns `Decimal(38, s)`: the result's precision is always 38, so `Decimal(6, 2) * 1000` gives 9999990.00 and overflows only past 38 digits, where it raises (`ComputeError`).",
-    "A result with more digits than the scale rounds half to even: `0.05 * 0.5` is 0.02, `1.00 / 8` is 0.12, a cast from scale 3 to scale 1 makes 1.050 into 1.0 and 1.150 into 1.2, and a double cast to a decimal rounds half to even on its exact value (0.625 is 0.62). Division by zero raises. `mean` of decimals is a `Float64`."
+    "A result with more digits than the scale rounds half to even: `0.05 * 0.5` is 0.02, `1.00 / 8` is 0.12, a cast from scale 3 to scale 1 makes 1.050 into 1.0 and 1.150 into 1.2, and a double cast to a decimal rounds half to even on its exact value (0.625 is 0.62). Division by zero raises. `mean` of decimals is a `Float64`.",
+    "The docs are silent on the result's precision and scale and on the half-to-even rounding: a docs gap."
   ],
   "reference": "`functions_arithmetic_decimal.yaml` gives the result types (multiply: scale s₁ + s₂, divide: max(6, s₁ + p₂ + 1), precision capped at 38 by borrowing scale) and no rounding; the reference rounds half away from zero (`decimal_rescale`). Decimal division is refused until #27. ST-8 records the open rounding.",
   "status": "open",
@@ -124,6 +125,55 @@
         "Streaming gives what in memory gives on every probe and observation cited here.",
         "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/sum.rs#L134-L215",
+          "note": "streaming decimal sum: i128 checked_add with a sticky overflow sentinel; finish() raises 'overflow in decimal addition in sum' past 38 digits."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L333-L357",
+          "note": "`test_decimal_arithmetic`: Decimal(20, 10) + - * / all give Decimal(38, 10); 0.1 / 20.1 == 0.0049751244, 10.1 * 10.19 == 102.919; eager, in memory."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L1221-L1230",
+          "note": "`test_decimal_mul_rounds_half_even`: [0.25, 0.35, -0.25, -0.35] * 0.5 == [0.12, 0.18, -0.12, -0.18] as Decimal(38, 2), eager."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L784-L794",
+          "note": "`test_decimal_arithmetic_schema_int`: an integer operand counts as scale 0, result Decimal(38, 6); s / 3 == 0.333333."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L1104-L1135",
+          "note": "sum to Decimal(38, s), overflow past 38 digits raises ComputeError, partial sums past 38 digits allowed; parametrized engine in ['streaming', 'in-memory']."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_decimal.py#L1438-L1446",
+          "note": "`test_decimal_div_by_zero_mixed_scale`: 1.5 / 0.000 raises ComputeError 'division by zero'."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Decimal.html",
+          "note": "Precision 38 is the default and the maximum (SRC py-polars/src/polars/datatypes/classes.py L447-L459); silent on result precision and scale of arithmetic and on its rounding."
+        }
       ]
     }
   ],

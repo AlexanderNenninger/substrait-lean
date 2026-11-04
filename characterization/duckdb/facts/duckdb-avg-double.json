@@ -19,7 +19,8 @@
   "settings": {},
   "description": [
     "`AVG(DOUBLE)` is the plain sequential sum (duckdb-sum-double) divided by the count; `favg` uses the Kahan sum (duckdb-kahan-sum).",
-    "Order class: (a) the sum of duckdb-sum-double (sequential per state, partials merged in finishing order, a constant run as one product), then one division by the count (`state.value / state.count`, the count exact as a double). (b) γ_{h+1} Σ|x_i| / n on the mean, h as for the sum (at most n − 1), so at most γ_n Σ|x_i| / n (Higham §4.2 for the sum, one more rounding for the quotient); within #85's `avgTolScaled`, which allows γ_{n+2}. (c) The source below; `avg(0.1)` over 10 constant rows is 0.1, where the sequential sum gives 0.09999999999999999. (d) `AggFn.avg` is the `sum_order` choice divided by n, so this refines SEQUENTIAL at one thread without constant vectors and ANY otherwise, with the same open point for a constant run's product."
+    "Order class: (a) the sum of duckdb-sum-double (sequential per state, partials merged in finishing order, a constant run as one product), then one division by the count (`state.value / state.count`, the count exact as a double). (b) γ_{h+1} Σ|x_i| / n on the mean, h as for the sum (at most n − 1), so at most γ_n Σ|x_i| / n (Higham §4.2 for the sum, one more rounding for the quotient); within #85's `avgTolScaled`, which allows γ_{n+2}. (c) The source below; `avg(0.1)` over 10 constant rows is 0.1, where the sequential sum gives 0.09999999999999999. (d) `AggFn.avg` is the `sum_order` choice divided by n, so this refines SEQUENTIAL at one thread without constant vectors and ANY otherwise, with the same open point for a constant run's product.",
+    "The docs are silent on the algorithm and on the constant run's product: a docs gap. No upstream test pins the constant run's product or the dependence on thread order; it may change between versions."
   ],
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
@@ -71,6 +72,23 @@
         }
       ],
       "notes": "DuckDB 2.0.0 (Python, macOS arm64), a scratch script at threads = 1."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "avg: affected by ordering; silent on the algorithm and the constant-run product"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17", "note": "avg(9007199254740992.0, 1.0) → 4503599627370496: the plain double sum, then one division"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_avg.test#L19-L23", "note": "AVG(3::DOUBLE) → 3, AVG(NULL::DOUBLE) → NULL"}
+      ]
     }
   ],
   "issues": [

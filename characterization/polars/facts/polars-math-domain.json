@@ -34,7 +34,11 @@
       "streaming"
     ]
   },
-  "description": "`sqrt`, the logarithms, `arcsin`, `arccos` and `**` give NaN outside their domain (`sqrt(-1)`, `log(-1)`, `arcsin(2.5)`, `(-1) ** 0.5`), `log(0)` is -inf, and `sin`, `cos`, `tan` of ±inf are NaN. Inside the domain they are Rust's `f64` functions (the platform's libm).",
+  "description": [
+    "`sqrt`, the logarithms, `arcsin`, `arccos` and `**` give NaN outside their domain (`sqrt(-1)`, `log(-1)`, `arcsin(2.5)`, `(-1) ** 0.5`), `log(0)` is -inf, and `sin`, `cos`, `tan` of ±inf are NaN. Inside the domain they are Rust's `f64` functions (the platform's libm).",
+    "The docs are silent on results outside a function's domain: a docs gap.",
+    "No upstream test pins `log(0)`, `log(-1)`, `(-1) ** 0.5` or `sin(±inf)`; they may change between versions."
+  ],
   "reference": "`on_domain_error: ERROR` and `on_log_zero: ERROR` (#215); `sin(±inf)` is a domain issue.",
   "status": "open",
   "evidence": "probe",
@@ -144,6 +148,32 @@
         }
       ],
       "notes": "`on_log_zero` on `Float32`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L115-L124",
+          "note": "`test_sqrt_neg_inf`: sqrt([-inf, -9, 0, 9, inf]) == [nan, nan, 0.0, 3.0, inf] (compared as strings), eager, in memory."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/series/test_series.py#L1872-L1900",
+          "note": "`test_trigonometric`: sin, cos, tan, arcsin, arccos, arctan and the hyperbolics of [0.0, pi, None, nan] equal numpy's (arcsin(pi), arccos(pi) NaN), eager, in memory. No upstream test of log(0) = -inf, log(-1), (-1) ** 0.5 or sin(inf)."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "'Polars generally follows the IEEE 754 floating point standard' (data-types-and-structures.md L178-L179); the function docstrings say nothing on domain errors."
+        }
+      ]
     }
   ],
   "issues": [

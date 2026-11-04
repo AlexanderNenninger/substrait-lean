@@ -91,13 +91,20 @@ def delta (plan : Plan) : IO UInt32 := do
   return 0
 
 /-- A result value, printed by its column's kind: integers (unbounded in the
-model, so `MAX + 1` is a value) exactly, doubles as doubles. A column of
-unknown kind falls back to `Value.render`. -/
-def renderCell : Kind → Value → String
+model, so `MAX + 1` is a value) exactly, doubles as doubles, and the values
+in a list or struct by their own kinds (a decimal in a list with its scale,
+#628). A column of unknown kind falls back to `Value.render`. -/
+partial def renderCell : Kind → Value → String
   | .float, .int c => s!"{FloatCode.toFloat c}d"
   | .dec _ s, .int i => decimalString s i
   | .int, .int i | .time, .int i | .date, .int i => toString i
+  | .list k, .list vs => "[" ++ ", ".intercalate (vs.map (renderCell k)) ++ "]"
+  | .struct ks, .list vs =>
+    "[" ++ ", ".intercalate ((vs.zipIdx).map fun (v, i) => renderCell (ks.getD i .other) v) ++ "]"
   | _, v => v.render
+
+#guard renderCell (.list (.dec 4 1)) (.list [.int 10, .null, .int 25]) == "[1.0, NULL, 2.5]"
+#guard renderCell (.struct [.str, .dec 9 3]) (.list [.str "a", .int 1500]) == "[\"a\", 1.500]"
 
 /-- A value as JSON, doubles as their codes (`SubstraitLean/Float.lean`). -/
 def valueJson : Value → Lean.Json

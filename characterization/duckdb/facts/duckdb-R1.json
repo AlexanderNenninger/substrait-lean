@@ -24,7 +24,8 @@
   "settings": {},
   "description": [
     "DuckDB raises `Out of Range Error: Overflow …` at the declared width, `TINYINT` included, which is the reference (native). If a plan asks for `SILENT` or `SATURATE`, it needs a shim: compute in `HUGEINT` and wrap, `((x::HUGEINT + y + 2^(w-1)) % 2^w + 2^w) % 2^w - 2^(w-1)`, or clamp, `LEAST(GREATEST(x::HUGEINT + y, MIN_w), MAX_w)`, then cast back. `HUGEINT` holds every `i64` product, so both are exact. The written plan must emit the arithmetic at its declared width (S2 in the [README](README.md)).",
-    "Frontend (duckdb-F3): DuckDB gives an integer literal the narrowest type that holds it, so `100::TINYINT + 50` is an `i8` addition in DuckDB, and an `i64` one in DataFusion's plan."
+    "Frontend (duckdb-F3): DuckDB gives an integer literal the narrowest type that holds it, so `100::TINYINT + 50` is an `i8` addition in DuckDB, and an `i64` one in DataFusion's plan.",
+    "The docs are silent on integer arithmetic raising at the operands' declared width: a docs gap."
   ],
   "reference": [
     "Substrait and the reference: `add`, `subtract`, `multiply`, `negate` and `abs` on `i8`/`i16`/`i32`/`i64` return the same type; `divide` on integers overflows for `MIN / -1`. With `overflow` omitted, the reference raises when the result does not fit the declared type.",
@@ -99,6 +100,34 @@
         }
       ],
       "notes": "`overflow: ERROR` matches, under every setting. `sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L508-L515", "note": "integer + binds AddOperatorOverflowCheck at the argument type"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/add.hpp#L85-L95", "note": "AddOperatorOverflowCheck throws Overflow in addition when TryAddOperator fails"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L182-L205", "note": "TryAddOperator for int8..int64: checked at the declared width"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L418-L434", "note": "INTEGER_LITERAL casts implicitly to any integer type it fits (F3)"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/literal_types.html", "note": "integer literals are INTEGER_LITERAL, implicitly convertible to any integer type that holds them"},
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html", "note": "storing values outside the range raises; silent on arithmetic overflow at the operand width"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/overflow/integer_overflow.test#L5-L22", "note": "100::TINYINT + 50::TINYINT and -2::TINYINT + -127::TINYINT → Out of Range Error: Overflow"}
+      ]
     }
   ],
   "issues": [

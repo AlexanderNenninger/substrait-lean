@@ -20,8 +20,9 @@
   "settings": {},
   "description": [
     "`list_cosine_similarity`, `list_cosine_distance`, `list_distance`, `list_inner_product` and `list_negative_inner_product` of two `DOUBLE[]` raise an Invalid Input Error where a list holds a NULL (`left argument can not contain NULL values`) or the two differ in length (`list dimensions must be equal`). A NULL list gives NULL.",
-    "For two empty lists the cosine similarity and distance are NULL, the distance and the inner products `0.0`. Where a list is zero, or holds NaN or an infinity, the cosine similarity and distance are NaN. Otherwise the similarity stays in [-1, 1] and the distance in [0, 2]: 400000 random pairs, and `a` against `a` and `-a`, gave exactly 1.0, 0.0, -1.0 and 2.0 at the ends.",
-    "The `array_*` functions (`array_cosine_similarity`, `array_distance`, `array_inner_product`, …) take fixed-size ARRAYs only: on two `DOUBLE[]` they fail to bind. `array_cross_product` takes `DOUBLE[3]`, to which a list converts, and raises a Conversion Error for another length; its result is a `DOUBLE[3]`."
+    "For two empty lists the cosine similarity and distance are NULL, the distance and the inner products `0.0`. Where a list is zero, or holds NaN or an infinity, the cosine similarity and distance are NaN. Otherwise the similarity stays in [-1, 1] and the distance in [0, 2]: `CosineSimilarityOp` clamps a finite similarity to [-1, 1] and rescales by the largest magnitude on overflow or underflow, and the distance is `1 −` the similarity. 400000 random pairs, and `a` against `a` and `-a`, gave exactly 1.0, 0.0, -1.0 and 2.0 at the ends. (Corrected 2026-11-04: the range rested on random samples; the source's clamp guarantees it.)",
+    "The `array_*` functions (`array_cosine_similarity`, `array_distance`, `array_inner_product`, …) take fixed-size ARRAYs only: on two `DOUBLE[]` they fail to bind. `array_cross_product` takes `DOUBLE[3]`, to which a list converts, and raises a Conversion Error for another length; its result is a `DOUBLE[3]`.",
+    "The docs are silent on NULL elements, unequal lengths, empty lists, NaN and the range: a docs gap."
   ],
   "reference": [
     "Each is a black box (#327), strict, that may raise. Laws: the similarity at least `-1.0` (NaN is above every number in the model's codes, so `<= 1` is not a law), the cosine distance at least `+0.0`, the distance not NULL and at least `+0.0`, the inner products and the cross product not NULL. The model has no fixed-size ARRAY, so a list stands for one and the `array_*` names lift to the `list_*` functions; the cross product is written as a `DOUBLE[]`."
@@ -44,6 +45,34 @@
         {"sql": "SELECT array_cross_product([1.0,0,0]::DOUBLE[], [0.0,1,0]::DOUBLE[]), typeof(array_cross_product([1.0,0,0]::DOUBLE[], [0.0,1,0]::DOUBLE[]))", "observed": "[0.0, 0.0, 1.0], DOUBLE[3]"},
         {"sql": "SELECT array_cross_product([1.0,0]::DOUBLE[], [0.0,1]::DOUBLE[])", "observed": "Conversion Error: Cannot cast list with length 2 to array with length 3"},
         {"test": "python/tests/test_black_box.py::test_vectors_keep_their_laws_on_random_data"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/list/list_distance.cpp#L33-L59", "note": "ListGenericFold: NULL child → InvalidInput (checked per child vector), unequal lengths → InvalidInput, empty → NULL unless ALLOW_EMPTY"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/array_kernels.hpp#L40-L104", "note": "CosineSimilarityOp: Clamp to [-1, 1]; ScaledSimilarity on overflow/underflow; NaN for zero, NaN or infinite vectors; ALLOW_EMPTY false. CosineDistanceOp = 1 - similarity"}
+      ],
+      "notes": "Corrected the description: the [-1, 1] range of the cosine similarity is the source's clamp, no longer only random samples."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/list_cosine_similarity.test#L26-L44", "note": "NULL element → error; lengths 3 vs 4 → 'list dimensions must be equal'; ([], []) → NULL"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/list_inner_product.test#L4-L7", "note": "list_inner_product([], []) → 0.0"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/array/array_cosine_similarity_extreme.test#L5-L33", "note": "extreme magnitudes → 1.0 / 2.0; NaN, zero and inf vectors → NaN"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/list#list_cosine_similaritylist1-list2", "note": "'same-sized lists' only; NULLs, lengths, empty lists, NaN and range not stated (docs gap)"}
       ]
     }
   ],

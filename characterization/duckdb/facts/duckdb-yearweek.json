@@ -16,7 +16,8 @@
   "description": [
     "`yearweek(d)` is the ISO year of `d` times 100 plus its ISO week where the ISO year is above 0, and the ISO year times 100 minus the week where it is 0 or below: the day before 0001-01-01 (ISO year 0, week 52) gives -52, and DuckDB's `DATE '-0010-01-05'` gives -1001. A timestamp is read as its date.",
     "`yearweek`, `weekday` and `dayofweek` of an infinite date are NULL. `weekday(d)` is `dayofweek(d)`, Sunday 0.",
-    "`yearweek`, `week` and `isoyear` raise a Conversion Error (`Date out of range: -5877641-1-1`) on DuckDB's dates before 5877641-01-04 BC (day -2147483453), whose ISO year starts before DuckDB's first date, 5877642-06-25 BC. `year`, `weekday` and `dayofweek` do not."
+    "`yearweek`, `week` and `isoyear` raise a Conversion Error (`Date out of range: -5877641-1-1`) on DuckDB's dates before 5877641-01-04 BC (day -2147483453), whose ISO year starts before DuckDB's first date, 5877642-06-25 BC. `year`, `weekday` and `dayofweek` do not.",
+    "The docs are silent on the sign rule for ISO years at or below 0 and on the raise near the minimum date: a docs gap. No upstream test pins that raise; it may change between versions."
   ],
   "reference": [
     "`yearweek` is a black box (#328), strict, with no `nonNull` law because of the infinite dates, and bounded by DuckDB's dates: -587764053 to 588158053. Before 5877641-01-04 BC it is NULL (`BlackBox.yearweekMin`), as `date_part` is NULL outside chrono's dates, and its SQL guards DuckDB's call there. Lean's evaluator (`BlackBox.yearweek`) computes DuckDB's value, signs included. `weekday` lifts to `date_part('dow', d)`, exact."
@@ -64,6 +65,34 @@
         {
           "test": "python/tests/test_black_box.py::test_yearweek_keeps_its_laws_on_random_data"
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/date/date_part.cpp#L428-L439", "note": "YearWeekFromParts: yyyy * 100 + (yyyy > 0 ? ww : -ww)"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types/date.cpp#L551-L569", "note": "GetISOYearWeek: ISO week one of the year, or of the year before; the year before the minimum date raises"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types/date.cpp#L174", "note": "ConversionException 'Date out of range: y-m-d'"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/date/test_date_part.test#L565-L572", "note": "-infinity → NULL; 0044-03-15 (BC) → yearweek -4311"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/date/yearweek_bc_statistics.test#L5-L34", "note": "BC yearweeks: -9910 seven times; min -9952, max -9101"}
+      ],
+      "notes": "The Conversion Error before 5877641-01-04 BC is not pinned upstream."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/datepart#yearweekdate", "note": "YYYYWW; the sign rule for ISO years ≤ 0 is not stated (docs gap)"}
       ]
     }
   ],

@@ -57,7 +57,8 @@
     "tan exceeds 1 ulp on macOS: 1 252 of 3 000 results miss the correctly rounded value, at moderate arguments too, e.g. tan(1.0391439199447632) = 1.7002787929535204 where the correctly rounded value is 1.7002787929535208 (1.9 ulp). log(b, x) misses on a quarter of the inputs. ln, log10 and log2 were correctly rounded on every probed input but log2 once (0.502); exp, pow, atan2 within 0.51.",
     "Cast back to FLOAT, every FLOAT-input result above was within 0.5 ulp of binary32 (0 off the correctly rounded binary32 value for each function): the extra rounding from DOUBLE to FLOAT can only matter when the DOUBLE lies within its own error of a binary32 midpoint.",
     "Linux x86_64 (glibc, version unknown; the bounds are the glibc 2.39 manual's): exp, ln, sin, cos, asin, acos, atan, pow 1 ulp; log10, log2 2 ulp; atan2, tan, sqrt no known error; log(b, x) then about 2 · 2 + 0.5 ulp by its formula. To be measured on homelab.",
-    "Linux x86_64 (glibc 2.39), same 3000 inputs per function: most functions are within about 0.5 ulp where macOS is not (sin 0.50 against 0.77, acos 0.50 against 0.89, tan at moderate arguments 0.51 against 2.4), but `cos` and `tan` of DOUBLE reach 7.95 and 14.36 ulp at x = 5.319372648326541e+255, near a zero of `cos` (glibc gives cos = -4.68716592425462e-19, the exact value is -4.6871659242546276e-19; macOS is within 0.05 ulp there, checked with mpmath at 3000 bits). `log10` reaches 1.35 ulp on Linux (0.50 on macOS) and `log(b, x)` 1.47 to 1.56. So no libm-backed function has a platform-independent bound below glibc's: take the larger of the two columns, and more for huge arguments of `cos` and `tan`."
+    "Linux x86_64 (glibc 2.39), same 3000 inputs per function: most functions are within about 0.5 ulp where macOS is not (sin 0.50 against 0.77, acos 0.50 against 0.89, tan at moderate arguments 0.51 against 2.4), but `cos` and `tan` of DOUBLE reach 7.95 and 14.36 ulp at x = 5.319372648326541e+255, near a zero of `cos` (glibc gives cos = -4.68716592425462e-19, the exact value is -4.6871659242546276e-19; macOS is within 0.05 ulp there, checked with mpmath at 3000 bits). `log10` reaches 1.35 ulp on Linux (0.50 on macOS) and `log(b, x)` 1.47 to 1.56. So no libm-backed function has a platform-independent bound below glibc's: take the larger of the two columns, and more for huge arguments of `cos` and `tan`.",
+    "The docs are silent on the math functions' accuracy: a docs gap. No upstream test pins this, and none can, since DuckDB's sqllogictests compare floating results within 1 %; it may change between versions."
   ],
   "reference": "The reference computes these with Lean's `Float`, which calls the same platform libm, and fixes `rounding: TIE_TO_EVEN`; the core leaves the last bits to each engine (#54). sverify's ε for a function is the engine's bound on the platform it runs on (#85), so the ε table needs a column per platform.",
   "status": "open",
@@ -155,6 +156,22 @@
         }
       ],
       "notes": "Same seed and inputs as the macOS measurement."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html", "note": "IEEE 754 to the extent the processor, OS and compiler support it; no accuracy stated for math functions"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594", "note": "float results compared approximately (1 %): no upstream test can pin ulps"}
+      ]
     }
   ]
 }

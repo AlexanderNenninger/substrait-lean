@@ -18,11 +18,12 @@
   "description": [
     "`cast(strict=False)` gives NULL where the cast is invalid; `wrap_numerical=True` wraps overflowing numeric casts instead of marking them invalid (`cast` page). The probes confirm both for integer and double casts (polars-cast-int, polars-cast-double-to-int) and strict parsing for strings (polars-cast-string).",
     "Polars has no general `TRY(expr)`. String parsers (`str.to_integer`, `str.strptime`, `str.to_date`) take their own `strict` flag; which errors they turn into NULL, and whether a non-strict cast of nested types nulls the field or the row, goes to source and tests (py-polars/tests/unit/operations/test_cast.py: `test_nested_strict_casts_failing`, `test_strict_cast_nested`).",
-    "Round 2 (source): a strict cast is the non-strict cast followed by a check (`handle_casting_failures`) that raises when the output has more NULLs than the input; for nested targets the strictness is passed down to the children. So `strict=False` returns whatever the non-strict kernel produced: NULL for every value it cannot represent, with no classification of error kinds. Errors raised before the kernel (an unsupported pair of types, raised when the plan is typed) are not affected. `CastOptions` has three modes: `Strict` (the default), `NonStrict` and `Overflowing` (`wrap_numerical=True`)."
+    "Round 2 (source): a strict cast is the non-strict cast followed by a check (`handle_casting_failures`) that raises when the output has more NULLs than the input; for nested targets the strictness is passed down to the children. So `strict=False` returns whatever the non-strict kernel produced: NULL for every value it cannot represent, with no classification of error kinds. Errors raised before the kernel (an unsupported pair of types, raised when the plan is typed) are not affected. `CastOptions` has three modes: `Strict` (the default), `NonStrict` and `Overflowing` (`wrap_numerical=True`).",
+    "The docs are silent on nested targets, where the field becomes NULL: a docs gap."
   ],
   "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB only, and other engines refuse it until #271 (`docs/reference-semantics.md`).",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -53,6 +54,25 @@
         }
       ],
       "notes": "The string parsers' own strict flags were not read in this round."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_cast.py#L1075-L1085",
+          "note": "test_strict_cast_nested: ['42', '10a'] to Struct({x: Int32}) raises strict; strict=False gives [{x: 42}, {x: None}] (eager, in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_cast.py#L797-L812",
+          "note": "test_nested_strict_casts_failing: strict nested casts raise 'conversion from'"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_cast.py#L995-L1011",
+          "note": "time-unit overflow: strict raises, strict=False gives NULL (DataFrame.select, in memory)"
+        }
+      ]
     }
   ]
 }

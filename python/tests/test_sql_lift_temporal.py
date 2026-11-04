@@ -71,6 +71,10 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT day + INTERVAL 1 HOUR AS d FROM orders", "hours or less"),
         ("SELECT extract(epoch FROM placed) FROM orders", "date part EPOCH"),
         ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
+        # `ago` negates; SQLGlot drops it from one unit (#626, SG-8).
+        ("SELECT placed + INTERVAL '1 day ago' AS p FROM orders", "ago"),
+        ("SELECT placed + INTERVAL '-3 microseconds ago' AS p FROM orders", "ago"),
+        ("SELECT placed + INTERVAL '1 day 2 hours ago' AS p FROM orders", "ago"),
     ],
 )
 def test_refusals_say_what(query, message):

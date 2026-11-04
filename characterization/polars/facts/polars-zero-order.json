@@ -26,7 +26,10 @@
       "streaming"
     ]
   },
-  "description": "`0.0 == -0.0` is true, `sort` treats them as equal (with `maintain_order` the input order stays), and `group_by`, `unique` and joins put them together. Without `maintain_order`, the group's key and the surviving row of `unique` carry the zero seen first, which can be `-0.0`; with `group_by(maintain_order=True)` the key was `0.0` in a probe where `-0.0` came first. Polars promises neither. Arithmetic still tells the zeros apart (polars-zero-sign).",
+  "description": [
+    "`0.0 == -0.0` is true, `sort` treats them as equal (with `maintain_order` the input order stays), and `group_by`, `unique` and joins put them together. Without `maintain_order`, the group's key and the surviving row of `unique` carry the zero seen first, which can be `-0.0`; with `group_by(maintain_order=True)` the key was `0.0` in a probe where `-0.0` came first. Polars promises neither. Arithmetic still tells the zeros apart (polars-zero-sign).",
+    "No upstream test pins which zero a group key or `unique` keeps, or zero grouping on the streaming engine; it may change between versions."
+  ],
   "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key is never `-0.0`.",
   "status": "open",
   "evidence": "probe",
@@ -165,7 +168,8 @@
       "notes": [
         "Streaming gives what in memory gives on every probe and observation cited here.",
         "s-zero-key-first groups and dedups 100 000 zeros, `-0.0` first, lazily on each engine: `group_by` without `maintain_order`, `unique()` and `unique(maintain_order=True)` keep `-0.0`, the zero seen first; `group_by(maintain_order=True)` gives the key `0.0`, on both engines. That is not the zero seen first, which the description says; reported for review, description unchanged.",
-        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64.",
+        "join-nan-zero-null's recorded differ 1 is a tie order: `sort('y')` ties the rows 0.0 and -0.0 (both y = 2), and the engines list them in different orders. The join results are the same set of rows on both engines; it is no engine difference."
       ]
     },
     {
@@ -180,6 +184,25 @@
       ],
       "notes": [
         "Corrects the verdict and description after s-zero-key-first, on both engines: `group_by` without `maintain_order` and `unique` (with and without `maintain_order`) keep `-0.0`, the zero seen first, but `group_by(maintain_order=True)` gives the key `0.0`. The description had said the key is always the zero seen first."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_float.py#L149-L193",
+          "note": "`test_group_by_float`: -0.0 and 0.0 land in one group (and -nan with nan), keys x and (x, a), maintain_order True and False, eager, in memory."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_float.py#L67-L128",
+          "note": "`test_unique`, `test_unique_counts`: [-0.0, -nan, 0.0, None, 1.0, nan] has 4 unique values, counts [2, 2, 1, 1]; the expected 0.0 does not pin the sign (assert_series_equal holds -0.0 == 0.0)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_float.py#L196",
+          "note": "`test_joins`: -0.0 joins 0.0, NaN joins NaN, eager. No upstream test pins which zero a group key or unique row keeps, nor zero grouping on the streaming engine."
+        }
       ]
     }
   ],

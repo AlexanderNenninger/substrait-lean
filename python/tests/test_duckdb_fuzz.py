@@ -95,3 +95,63 @@ def test_an_error_verify_reports_is_an_expected_refusal():
     out = _check("SELECT (i - 1) AS c0 FROM t AS q", [(-(2**63), *T_ROW[1:])])
     assert out.duckdb.startswith("error: ") and not out.lean.startswith("error: ")
     assert out.agree and any("overflow" in i for i in out.issues)
+
+
+I64_MIN, I64_MAX = -(2**63), 2**63 - 1
+
+
+def _check_u(sql: str, k: int) -> duckdb_fuzz.Outcome:
+    query = fuzz.Query(sql, {"c0": INT}, ordered=" ORDER BY " in sql)
+    return duckdb_fuzz.check(query, {"t": [], "u": [(k, None)]})
+
+
+@pytest.mark.parametrize(
+    ("sql", "k", "error"),
+    [
+        ("SELECT DISTINCT (k * k) AS c0 FROM u AS q", 9007199254740993, "multiplication"),
+        ("SELECT DISTINCT (- (k * 9223372036854775807)) AS c0 FROM u AS q", 2, "multiplication"),
+        ("SELECT DISTINCT (abs(k) IS NULL) AS c0 FROM u AS q ORDER BY c0", I64_MIN, "abs"),
+        ("SELECT DISTINCT (k + (- k)) AS c0 FROM u AS q ORDER BY c0", I64_MIN, "negation"),
+    ],
+)
+def test_ledger_overflows_are_expected_refusals(sql, k, error):
+    """The fuzz ledgers' (`characterization/duckdb/fuzz__*.json`) overflows
+    of 2026-11: DuckDB raises, `Rel.eval` gives rows, `verify` reports the
+    overflow (#638)."""
+    out = _check_u(sql, k)
+    assert out.duckdb.startswith("error: Out of Range Error: Overflow") and error in out.duckdb
+    assert out.agree and any("overflow" in i for i in out.issues)
+
+
+def test_ledger_overflow_under_a_filter_and_a_nested_one():
+    out = _check("SELECT COUNT(b) AS c0 FROM t AS q WHERE (i = (i * i))", [(I64_MAX, *T_ROW[1:])])
+    assert out.duckdb.startswith("error: Out of Range Error: Overflow in multiplication")
+    assert out.agree and out.lean == '[["0"]]'
+    sql = "SELECT DISTINCT b AS c0, b AS c1, (i + (i - j)) AS c2 FROM t AS q ORDER BY c0, c1, c2"
+    out = _check(sql, [T_ROW, (0, I64_MIN, *T_ROW[2:])], ordered=True)
+    assert out.duckdb.startswith("error: Out of Range Error: Overflow in subtraction")
+    assert out.agree and any("overflow" in i for i in out.issues)
+
+
+@pytest.mark.parametrize(
+    ("sql", "row", "rows"),
+    [
+        # `%` of doubles by zero is NaN on DuckDB and under `semantics="duckdb"`.
+        ("SELECT DISTINCT (- (d % d)) AS c0 FROM t AS q", (None, None, 0.0), '[["nan"]]'),
+        ("SELECT DISTINCT (d + (d % d)) AS c0 FROM t AS q", (None, None, 0.0), '[["nan"]]'),
+        # `/` of integers is a double division on DuckDB's defaults (#619):
+        # `0 / 0` is NaN, and `i64 min / -1` does not overflow.
+        ("SELECT DISTINCT (i / i) AS c0 FROM t AS q", (0, None, None), '[["nan"]]'),
+        (
+            "SELECT COUNT(b) AS c0 FROM t AS q WHERE (i = (j / -1))",
+            (None, I64_MIN, None),
+            '[["0"]]',
+        ),
+    ],
+)
+def test_ledger_rows_that_now_agree(sql, row, rows):
+    """The ledgers' other disagreements, from a connection with
+    `integer_division` on or before the NaN modelling: both sides now give
+    the same rows."""
+    out = _check(sql, [(*row, *T_ROW[3:])])
+    assert out.agree and out.lean == out.duckdb == rows

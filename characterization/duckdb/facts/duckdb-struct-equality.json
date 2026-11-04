@@ -20,7 +20,8 @@
   "settings": {},
   "description": [
     "`{'a': 1, 'b': NULL} = {'a': 1, 'b': NULL}` is true, and so is `[1, NULL] = [1, NULL]`: a NULL inside a struct or list equals NULL. A NULL struct or list compared with anything is NULL. Grouping and joins on struct keys put equal structs, NULL fields included, together.",
-    "Order is field by field, a NULL field after every value, in comparisons as in `ORDER BY`: `{a: 1, b: NULL} < {a: 1, b: 2}` is false and `>` true; ascending order puts `{a: NULL, b: 0}` last and descending first."
+    "Order is field by field, a NULL field after every value, in comparisons as in `ORDER BY`: `{a: 1, b: NULL} < {a: 1, b: 2}` is false and `>` true; ascending order puts `{a: NULL, b: 0}` last and descending first.",
+    "The docs are silent on a NULL struct compared with anything giving NULL: a docs gap."
   ],
   "reference": [
     "Equality is structural, and NULLs inside lists and structs are equal, as in grouping (reference-semantics.md, NULL and Nested). Lists order element by element, three-valued in `<` (a NULL element that decides gives NULL) and NULL greatest in `ORDER BY` (#207); DuckDB's lists are two-valued in `<` (R11, shimmed with `list_lt`). Structs are the lists of their fields, so the same split would hold.",
@@ -55,6 +56,33 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector_operations/comparison_operators.cpp#L311-L320", "note": "DistinctNullComparator: NULL = NULL, NULL greater than any value"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector_operations/comparison_operators.cpp#L326-L366", "note": "NestedValidity: a NULL struct or list → NULL result"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector_operations/comparison_operators.cpp#L394-L446", "note": "StructComparator: children compared with distinct semantics for every comparison operator, field by field"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/struct/struct_null_members.test#L18-L60", "note": "{'x': 1, 'y': NULL} = itself → true; < {'x': 1, 'y': 2} → false; NULL struct → NULL"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/struct/struct_comparison.test#L17-L64", "note": "a NULL struct compared with any operator → NULL"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/struct#comparison-and-ordering", "note": "NULL entries in the same position are equal; a NULL entry is larger than any non-NULL value"}
+      ]
     }
   ],
   "issues": [

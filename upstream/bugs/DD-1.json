@@ -29,6 +29,13 @@
         "duckdb": "2.0.0"
       },
       "note": "also nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630, which give 1"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "reverse pass: levenshtein's DP runs over bytes (extension/core_functions/scalar/string/levenshtein.cpp#L15-L60), reverse over grapheme clusters (extension/core_functions/scalar/string/reverse.cpp#L24-L29); the text docs say 'single-character edits'; no upstream test covers either on non-ASCII text"
     }
   ]
 }
