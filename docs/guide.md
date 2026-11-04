@@ -500,12 +500,14 @@ bounds every group at once; this bounds each group alone, so a table may
 grow without limit while each customer's rows stay few:
 
 ```python
-per_customer = orders.group_by("customer").aggregate(total=orders.amount.sum())
+sales = ibis.table({"customer": "string", "amount": "int64"}, name="sales")
+per_customer = sales.group_by("customer").aggregate(total=sales.amount.sum())
 report = sv.verify(
     per_customer,
-    requires={"orders": [_.amount >= 0, _.amount <= 10**6, sv.rows_per(["customer"], at_most=10**12)]},
+    requires={"sales": [_.amount >= 0, _.amount <= 10**6, sv.rows_per(["customer"], at_most=10**12)]},
 )
-# No "may fail: SUM overflow": each group's sum is at most 10¹² · 10⁶.
+assert not report.assumed and not report.errors
+# Each group's sum is at most 10¹² · 10⁶, which fits 64 bits.
 ```
 
 * Filters, sorts, `LIMIT`, `DISTINCT`, semi-joins, projections and
