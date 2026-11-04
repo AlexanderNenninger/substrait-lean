@@ -38,25 +38,38 @@ namespace Substrait
 
 /-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour. -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
-  if b = "ANY" then FloatSums vs c
+  if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
   else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
-  else False
+  -- Not modelled (Kahan's compensated sum): any double.
+  else True
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour. An
 engine's own algorithm (`WELFORD_CHAN`) is not modelled here: it meets the
 generic properties (`StatProps`), which is all this allows of it. -/
 def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else False
+  if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
 
 /-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour: a double
 between the neighbours, which DuckDB's linear interpolation is (clamped). -/
 def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
-  if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v else False
+  if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v else True
+
+/-- The options `AggFn.AllowedP` interprets. -/
+def aggInterpreted : List String := ["sum_order", "stat_algo", "quantile_interp"]
+
+/-- Does `t` allow an aggregate a behaviour the reference does not, at an
+option `AggFn.AllowedP` does not interpret (`overflow`, `avg_int_result`,
+`empty_group_aggregates`, …)? Then it may give any value, as a call may
+(`CallExtra`). -/
+def AggExtra (t : ProfileTable) (f : AggFn) : Prop :=
+  ∃ r, Functions.rowOf (.agg f) = some r ∧ ∃ os, Functions.groups.lookup r.group = some os ∧
+    ∃ o ∈ os, o ∉ aggInterpreted ∧ ∃ b ∈ t.allows r.group o [],
+      b ∉ Profile.reference.table.allows r.group o []
 
 /-! ## Aggregates -/
 
-/-- `AggFn.Allowed` with the choices of `t`. -/
-def AggFn.AllowedP (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
+/-- `AggFn.Allowed` with the choices of `t` at the options it interprets. -/
+def AggFn.AllowedChoice (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
   | .fsum => if vs = [] then v = .null else
       ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, SumOrder b vs c ∧ v = .int c
@@ -68,6 +81,11 @@ def AggFn.AllowedP (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) 
   | .quantile true num scale => if vs = [] then v = .null else
       ∃ b ∈ t.allows "agg.quant" "quantile_interp" [], QuantInterp b num scale vs v
   | _ => v = f.apply vs
+
+/-- `AggFn.Allowed` with the choices of `t`, or any value where `t` allows a
+behaviour this does not model (`AggExtra`). -/
+def AggFn.AllowedP (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
+  f.AllowedChoice t vs v ∨ AggExtra t f
 
 /-- `Measure.Allowed` with the choices of `t` and the functions of `I`. -/
 def Measure.AllowedP (t : ProfileTable) (I : Impl) (m : Measure) (rows : Relation)
@@ -168,8 +186,11 @@ section Mono
 variable {t u : ProfileTable} (h : t.Le u)
 include h
 
-theorem AggFn.AllowedP.mono {f : AggFn} {vs : List Value} {v : Value} :
-    f.AllowedP t vs v → f.AllowedP u vs v := by
+theorem AggExtra.mono {f : AggFn} : AggExtra t f → AggExtra u f :=
+  fun ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩ => ⟨r, hr, os, hos, o, ho, hi, b, h _ _ _ _ hb, hn⟩
+
+theorem AggFn.AllowedChoice.mono {f : AggFn} {vs : List Value} {v : Value} :
+    f.AllowedChoice t vs v → f.AllowedChoice u vs v := by
   have hb : ∀ {g o : String} {P : Behaviour → Prop}, (∃ b ∈ t.allows g o [], P b) →
       ∃ b ∈ u.allows g o [], P b := fun ⟨b, hb, rest⟩ => ⟨b, h _ _ _ _ hb, rest⟩
   intro hf
@@ -177,17 +198,21 @@ theorem AggFn.AllowedP.mono {f : AggFn} {vs : List Value} {v : Value} :
   case quantile cont num scale =>
     cases cont
     · exact hf
-    · simp only [AggFn.AllowedP] at hf ⊢
+    · simp only [AggFn.AllowedChoice] at hf ⊢
       split at hf
       · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hf
       · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]; exact hb hf
   case fsum | avg =>
-    simp only [AggFn.AllowedP] at hf ⊢
+    simp only [AggFn.AllowedChoice] at hf ⊢
     split at hf
     · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hf
     · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]; exact hb hf
   case var | cov | corr => exact hb hf
   all_goals exact hf
+
+theorem AggFn.AllowedP.mono {f : AggFn} {vs : List Value} {v : Value} :
+    f.AllowedP t vs v → f.AllowedP u vs v :=
+  Or.imp (AggFn.AllowedChoice.mono h) (AggExtra.mono h)
 
 theorem Measure.AllowedP.mono {I : Impl} {m : Measure} {rows : Relation} {v : Value} :
     m.AllowedP t I rows v → m.AllowedP u I rows v := fun ⟨s, hs, hsort, hf⟩ =>
@@ -289,12 +314,16 @@ theorem reference_allows_quant :
 theorem reference_allows_clustered :
     Profile.reference.table.allows "rel.sort" "clustered" [] = ["ADJACENT"] := by decide
 
+theorem AggExtra.not_reference (f : AggFn) : ¬AggExtra Profile.reference.table f :=
+  fun ⟨_, _, _, _, _, _, _, _, hb, hn⟩ => hn hb
+
 theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
     f.AllowedP Profile.reference.table vs v ↔ f.Allowed vs v := by
+  rw [AggFn.AllowedP, or_iff_left (AggExtra.not_reference f)]
   cases f
   case quantile cont num scale =>
-    cases cont <;> simp [AggFn.AllowedP, AggFn.Allowed, reference_allows_quant, QuantInterp]
-  all_goals simp [AggFn.AllowedP, AggFn.Allowed, reference_allows_sum, reference_allows_var,
+    cases cont <;> simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_quant, QuantInterp]
+  all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_sum, reference_allows_var,
     reference_allows_stat, SumOrder, StatAlgo]
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :

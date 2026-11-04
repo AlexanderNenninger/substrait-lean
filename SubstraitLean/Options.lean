@@ -93,13 +93,15 @@ def options : List OptionSpec := [
   { id := "list_null_order", substrait := none, core := ["NULL", "GREATEST", "LEAST"],
     extra := [("GREATEST", "duckdb-R11")] },
   -- Aggregates, windows and relations
-  { id := "sum_order", substrait := none, core := ["ANY", "SEQUENTIAL"],
-    extra := [("SEQUENTIAL", "duckdb-sum-double")] },
+  { id := "sum_order", substrait := none, core := ["ANY", "SEQUENTIAL", "PAIRWISE", "KAHAN"],
+    extra := [("SEQUENTIAL", "duckdb-sum-double"), ("PAIRWISE", "polars-sum-float"),
+      ("KAHAN", "polars-sum-float")] },
   { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN"],
     extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
   { id := "stat_degenerate", substrait := none, core := ["NULL", "NAN", "ERROR"],
     extra := [("NAN", "duckdb-corr")] },
-  { id := "avg_int_result", substrait := none, core := ["DECLARED_TYPE"] },
+  { id := "avg_int_result", substrait := none, core := ["DECLARED_TYPE", "FP64", "EXACT_TRUNCATE"],
+    extra := [("FP64", "polars-avg-int"), ("EXACT_TRUNCATE", "duckdb-R6")] },
   { id := "quantile_interp", substrait := none, core := ["BETWEEN", "LINEAR"],
     extra := [("LINEAR", "duckdb-quantile-cont-interpolation")] },
   { id := "tie_pick", substrait := none, core := ["ANY_ROW", "FIRST_READ"],
@@ -118,7 +120,10 @@ def options : List OptionSpec := [
   -- Which variance `variance` and `std_dev` compute (#54): a function's
   -- parameter more than a behaviour, and every profile reads it.
   { id := "distribution", substrait := some "distribution", core := ["SAMPLE", "POPULATION"],
-    yaml := ["SAMPLE", "POPULATION"] }]
+    yaml := ["SAMPLE", "POPULATION"] },
+  -- `SUM` of no values (or NULLs only): NULL (the YAML's `sum`), or 0 (`sum0`).
+  { id := "empty_group_aggregates", substrait := none, core := ["NULL", "ZERO"],
+    extra := [("ZERO", "polars-sum-int")] }]
 
 def OptionSpec.find? (id : String) : Option OptionSpec := options.find? (·.id == id)
 
@@ -471,7 +476,8 @@ def Profile.reference.table : ProfileTable where
     (none, "float_to_int", .oneOf ["TRUNCATE"]),
     (none, "cast_failure", .asked ["THROW_EXCEPTION", "RETURN_NULL"] ["THROW_EXCEPTION"]),
     -- The sample's unless the plan asks for the population's (#54).
-    (none, "distribution", .asked ["SAMPLE", "POPULATION"] ["SAMPLE"])]
+    (none, "distribution", .asked ["SAMPLE", "POPULATION"] ["SAMPLE"]),
+    (none, "empty_group_aggregates", .oneOf ["NULL"])]
 
 /-! ## Checks -/
 

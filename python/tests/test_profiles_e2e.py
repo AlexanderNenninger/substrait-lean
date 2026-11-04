@@ -451,7 +451,8 @@ def test_f2_duckdb_plan_transfers_to_polars(con) -> None:
     assert math.inf in out["polars"].column("z").to_pylist()
 
 
-@classes
+# Needs the engines' choices (the transfer check), not their classes: it holds
+# from the DuckDB and Polars tables on (#587).
 def test_f3_duckdb_null_order_is_refused_on_polars(con) -> None:
     """Route (c) fails: a sort read with DuckDB's default NULL order,
     verified under `Profile.duckdb`; Polars puts NULLs first, and the
