@@ -1,0 +1,37 @@
+{
+  "id": "ST-2",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "`atan2` takes `on_domain_error: [NAN, ERROR]`, but the YAML does not say what its domain is, so whether `atan2(0, 0)` is a domain error is open. IEEE 754 and C's `atan2` give `±0` (or `±π`) there.",
+  "repro": [
+    "`atan2(0.0::fp64, 0.0::fp64)` with `on_domain_error: ERROR`: raise, or `0`?",
+    "DuckDB 2.0: `atan2(0, 0)` is `0` under every setting."
+  ],
+  "handling": [
+    "The reference raises (`Issue.domain`); the core allows `0` as well. DuckDB's written plan raises at `(0, 0)`.",
+    "Could be expressed as: State the domain of `atan2` in its description (all pairs, following IEEE 754, or all but `(0, 0)`)."
+  ],
+  "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
+  "issues": [
+    444
+  ],
+  "files": [
+    "docs/core-semantics.md"
+  ],
+  "facts": [
+    "duckdb-R15-atan2"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the extension YAMLs and site/docs on main; the gap is there"
+    }
+  ]
+}

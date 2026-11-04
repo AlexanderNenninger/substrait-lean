@@ -78,6 +78,8 @@ def validate(docs: dict[Path, Bug], root: Path = ROOT) -> list[str]:
         prefix = PREFIXES[b["project"]]
         if not b["id"].startswith(f"{prefix}-"):
             problems.append(f"{where}: a {b['project']} bug's id starts with {prefix}-")
+        if b.get("kind") == "spec-gap" and b["project"] != "substrait":
+            problems.append(f"{where}: only Substrait's entries are spec gaps")
         for file in b.get("files", []):
             if not (repo / file).exists():
                 problems.append(f"{where}: no file {file}")

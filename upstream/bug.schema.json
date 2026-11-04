@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/upstream/bug.schema.json",
   "title": "Upstream bug",
-  "description": "One bug or surprising behaviour that sverify found in a project it builds on (SQLGlot, an engine, Ibis, delta-rs, Substrait's tooling), with enough to file it upstream. Stored as upstream/bugs/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
+  "description": "One bug or surprising behaviour that sverify found in a project it builds on (SQLGlot, an engine, Ibis, delta-rs, Substrait's tooling), or a gap in Substrait's spec, with enough to file it upstream. Stored as upstream/bugs/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "project", "status", "status_note", "summary", "repro", "found_by", "checked"],
@@ -16,6 +16,7 @@
       "description": "The upstream project.",
       "enum": ["sqlglot", "datafusion", "duckdb", "deltalake", "polars", "spark", "ibis", "substrait"]
     },
+    "kind": {"description": "bug (the default): the project does something wrong; spec-gap: Substrait's spec leaves a behaviour unstated that it could express (an option, an option's value, a default), and engines differ there. Only Substrait's entries are spec gaps.", "enum": ["bug", "spec-gap"]},
     "version": {"description": "The version the bug was found on (a version or a range).", "type": "string"},
     "status": {
       "description": "unverified: seen, not yet reduced to a minimal repro or checked against the latest upstream release; confirmed: minimal repro on the stated version; filed: reported upstream (the link in upstream); fixed upstream: in the release fixed_in; not a bug: with the reason in status_note.",

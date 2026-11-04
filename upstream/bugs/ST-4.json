@@ -1,0 +1,40 @@
+{
+  "id": "ST-4",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "`fp32` and `fp64` have IEEE 754's range and precision (`type_classes.md`), and `equal` is `x == y`, but nothing says how NaN and `-0.0` compare, group, sort or deduplicate. `index_in` alone has an option for it (`nan_equality`). Sorting follows the type's \"quality function\", which is not defined for NaN or `-0.0`.",
+  "repro": [
+    "`GROUP BY x`, `DISTINCT`, a join on `x`, `ORDER BY x` and `equal(x, x)` with `x` in `{NaN, -0.0, 0.0}`.",
+    "DuckDB 2.0: one NaN, equal to itself and above `+inf`; `-0.0` sorts before `0.0`; `signbit` sees a NaN's sign."
+  ],
+  "handling": [
+    "The core leaves `nan_equality`, `nan_order`, `zero_sign` and `nan_kind` open; the reference has one NaN, equal to itself and greatest, and one zero (#89).",
+    "Could be expressed as: Extend `nan_equality` to `equal`, the comparisons and the relations that compare keys, and add an option or a stated rule for NaN's place in a sort and for `-0.0`."
+  ],
+  "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
+  "issues": [
+    444
+  ],
+  "files": [
+    "docs/core-semantics.md"
+  ],
+  "facts": [
+    "duckdb-R14",
+    "duckdb-signbit",
+    "duckdb-arg-min-nulls",
+    "duckdb-quantile-disc"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the extension YAMLs and site/docs on main; the gap is there"
+    }
+  ]
+}

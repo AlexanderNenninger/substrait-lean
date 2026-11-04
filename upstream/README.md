@@ -12,6 +12,15 @@ same PR as the workaround. Engine behaviour that is documented and intended,
 and differs from the reference model, goes into that engine's
 characterization (`characterization/<engine>/facts/`) and profile.
 
+Gaps in Substrait's spec are entries too, with `kind: "spec-gap"`: a behaviour
+the extension YAMLs or the docs leave unstated though Substrait could express
+it (an option, an option's value, a default), where engines differ. The entry
+says what is unstated, how an option could express it, what each engine does
+(its `facts`), and how sverify's core handles it
+([core-semantics.md](../docs/core-semantics.md), D3). It is checked against
+Substrait's current `main` before it is added, and stays `unverified`
+until it is checked against Substrait's open issues.
+
 The id is the project's prefix and the next free number:
 
 | Prefix | Project |
@@ -23,7 +32,7 @@ The id is the project's prefix and the next free number:
 | `PL` | Polars |
 | `SP` | Spark |
 | `IB` | Ibis |
-| `ST` | Substrait's tooling |
+| `ST` | Substrait: its tooling and its spec |
 
 The status is `unverified` (seen, not yet reduced to a minimal repro or
 checked against the latest upstream release), `confirmed` (minimal repro on

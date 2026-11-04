@@ -1,0 +1,34 @@
+{
+  "id": "ST-7",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "A sort field's direction is required (`relations/basics.md`), and the directions it lists are the four of NULL placement, a custom function and clustered. `SORT_DIRECTION_UNSPECIFIED`, the enum's default value, is not described: an error, or a direction the consumer picks?",
+  "repro": "A `SortRel` whose field has `direction: SORT_DIRECTION_UNSPECIFIED` over a column with NULLs.",
+  "handling": [
+    "The core reads it as the NULL placement left open (docs/core-semantics.md, D6); the reference and each engine fix one (DuckDB: NULLs last). The parser refuses it until #444's step 1c.",
+    "Could be expressed as: Say whether `SORT_DIRECTION_UNSPECIFIED` is invalid or means a consumer-chosen direction and NULL placement."
+  ],
+  "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
+  "issues": [
+    444
+  ],
+  "files": [
+    "docs/core-semantics.md"
+  ],
+  "facts": [
+    "duckdb-F2"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the extension YAMLs and site/docs on main; the gap is there"
+    }
+  ]
+}
