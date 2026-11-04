@@ -180,6 +180,12 @@ structure ObsRow where
   /-- Where the engine executes the row's functions, if not its default
   (Polars: streaming; `"in-memory"` where streaming falls back). -/
   engine : Option String := none
+  /-- What the engine's behaviour rests on, beyond the reference's
+  preconditions: proved from the bounds where possible, else checked on the
+  data, as #575's are. -/
+  precondition : String := ""
+  /-- Why the row is as it is. -/
+  note : String := ""
   deriving Repr, DecidableEq
 
 /-- A row says what its class needs: `refines` is exact, `refinesUpTo` is

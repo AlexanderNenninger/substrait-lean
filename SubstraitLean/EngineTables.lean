@@ -223,10 +223,12 @@ def Profile.polars.obs : ObsTable := [
   (none, "tie_order", .native ["polars-sort-stability", "polars-first-last"]),
   (none, "tie_pick", .native ["polars-first-last"]),
   (some "fp.round", "rounding", .shimmed "round_half_away" ["polars-round"]),
-  -- Until the shim is proved, a quotient by a scalar is not claimed exact.
-  (some "fp.div", "rounding", .shimmed "column_divisor" ["polars-scalar-divisor"]),
-  (some "fp.mod", "division_type",
-    .shimmed "column_divisor" ["polars-double-modulus", "polars-scalar-divisor"]),
+  (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
+    precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
+    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }),
+  (some "fp.mod", "division_type", { ObsRow.shimmed "column_divisor"
+      ["polars-double-modulus", "polars-scalar-divisor"] with
+    note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }),
   (some "fp.arith", "zero_sign", { ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }),
   (none, "float_overflow", .native ["polars-double-arith"]),
@@ -325,6 +327,8 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
         [("q", r.q.sparseJson)] ++
         (if r.deterministic then [] else [("deterministic", toJson false)]) ++
         (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
+        (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
+        (if r.note == "" then [] else [("note", toJson r.note)]) ++
         (match r.evidence with
           | .proved thm => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ([] : List String))]
           | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
