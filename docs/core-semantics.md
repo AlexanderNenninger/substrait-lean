@@ -37,6 +37,11 @@ Three kinds of semantics, each with one job.
   creation, domain errors, division by zero, out-of-range casts and dates),
   it raises. Where it picks a value, it picks one every engine can produce
   ([principle 3](reference-semantics.md#principles)).
+  The reference may still choose a behaviour some engine needs a shim for,
+  where that keeps the profile practical for users (the NULL order, rounding
+  ties). Each such choice costs a shim on every engine that differs, so these
+  choices are few and deliberate: the reference prefers raising, proved
+  absent for a verified plan, or a choice every engine gives natively.
 - Engine profiles say what each engine does, from
   `characterization/<engine>/facts/`, and refine the core. A plan verified
   under the reference reaches an engine through a translation, shimmed only
@@ -602,16 +607,50 @@ proving that `lift(write(T r))` refines `r` with the same refinement checker.
 `obligations P Q` is what both need: the entries to prove, or the conditions
 to check.
 
-### What a proof under the reference gives
+### What a proof under the reference guarantees
 
-A plan verified under the reference, `requires R ⇒ ensures E`, never raises
-under it, and keeps `E` on every engine with a sound translation, along every chain of them, and for
+A plan verified under the reference, `requires R ⇒ ensures E`, keeps `E` on
+every engine with a sound translation, along every chain of them, and for
 every choice the reference leaves open (ties, order-free `FIRST`, clustered
 groups). It does not carry upward, to the core or to `Profile.substrait`,
 whose allowed sets are larger; a Substrait consumer gets `E` only through a
 translation that shims the choices `E` needs. And refinement keeps
 properties of every outcome: that a plan returns some row is not one of them.
 [#444's comment on translations](https://github.com/AlexanderNenninger/substrait-lean/issues/444#issuecomment-6630983452) sets this out.
+
+Beyond `E`, the proof has five goals:
+
+1. No error, given the checked preconditions. Where the inferred bounds prove
+   a precondition, the plan cannot raise. Where a precondition is checked on
+   the data, the error moves to the input boundary: a bad batch is refused
+   before anything runs, with the violated precondition as the message, and
+   no refresh fails halfway.
+2. No new non-finite values. A NaN or `±∞` from the inputs stays allowed, as
+   `semantics="duckdb"` models them; the plan creates none the inputs did
+   not hold. With #85's bounds, every floating result has a usable error
+   bound. Today the reference raises where an operation would create a NaN
+   and on a zero divisor ([No operation creates a NaN](reference-semantics.md#core-numbers-and-nulls));
+   a finite operation whose result overflows to `±∞` (`exp(1000)`) does not
+   raise yet, so that half of the goal is open.
+3. A result determined up to row order. Leaving an option open is the third
+   tool beside raising and choosing a value: it costs no shim, and the
+   contract must not tell the open choices apart (#568's invariance under an
+   observation `q`). A proof that the output is fixed up to row order makes
+   reruns, incremental refreshes and idempotent sink epochs reproducible,
+   and where it fails the proof names the place (a `LIMIT` without
+   `ORDER BY`).
+4. Explicit intent overrides strictness. Options the plan states
+   (`TRY_CAST`, `NULLS FIRST`, a rounding mode, flooring division) are
+   honoured at their shim cost; strictness applies to the defaults and to
+   what Substrait leaves unspecified.
+5. Minimal shimming is a measure the proof does not carry: the
+   [realizability table](#the-realizability-table)'s shim count per engine,
+   so the cost of each new choice of the reference shows.
+
+The stricter the reference, the more preconditions a plan must prove or
+check on the data. For each strict choice, the test is whether its
+precondition is usually provable from the bounds or cheap to check; where
+it is neither, the reference picks a value or leaves the option open.
 
 What a plan needs from the reference is often less than all of it. The
 weakest set of constraints under which the plan still verifies names the
