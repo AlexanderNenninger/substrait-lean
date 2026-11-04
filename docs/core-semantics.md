@@ -502,19 +502,35 @@ about the middle, and both ends are covered by it.
 `⊑` is reflexive and transitive, because both of its parts are inclusions.
 So the identity is a sound translation, and sound translations compose, as
 CompCert's passes do ([Prior work](#refinement-of-programs)): if
-`T : P → Q` and `U : Q → R` are sound, so is `U ∘ T : P → R`. Profiles and
-sound translations form a preorder, and every path through it is sound. Two
-consequences:
+`T : P → Q` and `U : Q → R` are sound, so is `U ∘ T : P → R`. Sverify uses
+composition along one path, from the reference to an engine: a lift, the
+checked plan, then the engine's translation, each step sound on its own. The
+translation switch of #444 (step 5) then needs nothing new per query: the
+query's proof is about `(reference, r)`, and each engine's translation is
+proved once.
 
-- The translation switch of #444 (step 5) needs nothing new per query:
-  the query's proof is about `(reference, r)`, and each engine's translation
-  is sound on its own.
-- A translation between two engines (a plan checked under DuckDB's profile,
-  run on Polars) does not have to go through the reference. Going through it
-  would lose plans: DuckDB's `∞ − ∞` is NaN and the reference raises there,
-  so a DuckDB-checked plan has no sound translation into the reference on
-  those rows. The obligations below come from any two profiles' rows
-  directly.
+### Which plans run on an engine
+
+Profiles are siblings under the core, and sverify has no translations
+between them, so no shims for them either. A plan runs on the engine `E`
+in one of three ways:
+
+1. Verified under `Profile.E`: it runs natively.
+2. Verified under the reference: it runs through the translation from the
+   reference to `E`, whose realizability row is proved once per engine, so
+   it costs a plan nothing.
+3. Verified under another profile `P`, with a proof that transfers to
+   `Profile.E` by the option-wise check: for every option the proof depends
+   on (the option dependency report, step 3c), `E`'s choices are within
+   `P`'s. By monotonicity (`Rel.AllowedP_mono`, applied per option) the
+   proof then holds under `Profile.E` as it is. The check is a table lookup
+   and needs no new proof.
+
+Otherwise the checker runs again, under `Profile.E` or the reference. That is
+automatic and costs checker time, and where it fails the plan is refused on
+`E`. A proof under the core holds under every profile by monotonicity, but
+few plans verify there ([Terminology](#terminology)). Translations are linear
+in the number of engines: one per engine, from the reference.
 
 ### Obligations, option by option
 
@@ -541,7 +557,10 @@ where the precondition is checked on the data. The second case is left for
 the value choices.
 
 `obligations P Q` lists, for every group and option, which case holds and
-which shim or precondition discharges it. It is generated from `P`'s and
+which shim or precondition discharges it. Sverify translates from the
+reference only ([Which plans run on an engine](#which-plans-run-on-an-engine)),
+so `P` is the reference wherever a shim is written; for other pairs only the
+first case, `q ⊆ p`, is used, as the option-wise transfer check. It is generated from `P`'s and
 `Q`'s choices rows and the shim table, so it stays current with the facts.
 Two of its rows are tables this page already has:
 `obligations reference E` is the [realizability table](#the-realizability-table)
@@ -575,13 +594,14 @@ A sort key's NULL placement shows each case of the table. Take a plan with
   profile. On DuckDB, `q` is `NULLS_LAST` by default, so it needs the shim:
   the written SQL says `NULLS FIRST`. The writers do this for every key
   today, so DuckDB realizes every placement.
-- A `CLUSTERED` key under Substrait allows any order with equal keys
-  adjacent. An engine without clustering realizes it by sorting on the
-  keys: a sorted order is clustered, so `q ⊆ p`, at the cost of a sort.
+- A `CLUSTERED` key allows any order with equal keys adjacent, under the
+  reference as under Substrait. An engine without clustering realizes it by
+  sorting on the keys: a sorted order is clustered, at the cost of a sort.
 
-`obligations substrait duckdb` holds the first and last of these,
-`obligations reference duckdb` the second and third, each generated from the
-`null_order` and `clustered` rows of the two profiles.
+`obligations reference duckdb` holds the last three of these, generated from
+the `null_order` and `clustered` rows of the two profiles. The first is the
+option-wise transfer check from `Profile.substrait` to DuckDB's profile:
+`q ⊆ p`, so the proof holds there with no shim.
 
 ### Proved once, or checked per plan
 
@@ -746,10 +766,10 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |
 | 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |
-| 3b | `obligations P Q` for any two profiles, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |
-| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. |
+| 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |
+| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. |
 | 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile translated to the second engine directly. | Soundness of the second engine's translation from `obligations reference E`, and of the direct one from `obligations duckdb E`; the query's proof reused by composition. |
+| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. |
 
 Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
 different tables. The Lean side of step 0 and 1a can merge into one PR if
