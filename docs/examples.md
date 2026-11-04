@@ -109,10 +109,11 @@ still needs the precondition. Guarding the division itself,
 
 `route="auto"` chooses how the proof reaches the engine and refuses the plan
 where none applies. The route names the plan's class on that engine:
-`refines` (every result the engine gives, the reference allows), `shim`
-(after a proved translation), `approx` (within a float bound), or
-`refines_up_to` an observation
-([D13](core-semantics.md#d13-choosing-the-route)).
+`exact` (every result the engine gives, the reference allows), `observed`
+(equal under an observation the postcondition states, a float tolerance
+included), `shim` (after a proved translation) or `refused`
+([D13](core-semantics.md#d13-choosing-the-route),
+[D22](core-semantics.md#d22-four-route-classes-and-tolerances-are-observations)).
 
 ```python
 con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 250, 30]}))
@@ -147,9 +148,10 @@ on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")
 print(means.observation.equal(on_duckdb, on_polars))
 # True
-print(means.routes["polars"].cls)
-# approx
 ```
+
+The route to Polars is `observed`: equal under the observation, here a
+tolerance of `1e-6` on doubles.
 
 Without the observation, the postcondition asks for exact doubles, and the
 route to Polars is refused with the bound it could prove.
@@ -192,7 +194,7 @@ totals.refresh(engine="polars", route="auto")
 readings.apply(sv.Changes(inserts=[(1, 0.5)]))
 print(totals.refresh(engine="polars", route="auto"))
 # sums:
-#   route on polars: reference: ... [approx, tested]
+#   route on polars: reference: ...
 # ...
 #   view sums: 1 touched group(s) recomputed
 #   wrote sums from readings@v1: merge v2, 1 row(s) written, 1 deleted
@@ -214,7 +216,7 @@ t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on [refines]
+# transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on ...
 
 divided = sv.verify(t.select(t.id, unit=t.total // t.qty), semantics="duckdb")
 try:

@@ -1029,10 +1029,10 @@ def _(mo):
     `node.refresh(engine=..., route="auto")` choose how it reaches the
     engine, and refuse the plan with the reason where nothing does (D13 in
     [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)).
-    The route names the plan's class on the engine: `refines` (every result
-    the engine gives, the reference allows), `shim` (after a proved
-    translation), `approx` (within the plan's float bound) or
-    `refines_up_to` an observation. Before the plan runs, its preconditions
+    The route names the plan's class on the engine: `exact` (every result
+    the engine gives, the reference allows), `observed` (equal under an
+    observation the postcondition states, a float tolerance included),
+    `shim` (after a proved translation) or `refused`. Before the plan runs, its preconditions
     are checked on the data. We take the join to Polars:
     """)
     return
