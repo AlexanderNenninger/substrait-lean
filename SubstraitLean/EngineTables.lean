@@ -61,7 +61,7 @@ def ObsRow.approxWithin (b : String) (ids : List String) : ObsRow :=
 /-- The row, proved by the theorem `thm` (`SubstraitLean/PolarsShims.lean`),
 whose trusted model rests on the row's facts. -/
 def ObsRow.proved (r : ObsRow) (thm : String) : ObsRow :=
-  { r with evidence := .proved thm (match r.evidence with | .tested ids => ids | _ => []) }
+  { r with evidence := .proved thm (match r.evidence with | .tested ids | .probed ids => ids | _ => []) }
 
 /-! ## DuckDB -/
 
@@ -121,14 +121,25 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
-  -- One value at a time: one of the orders the reference allows (`FloatSums`).
-  (none, "sum_order", .native ["duckdb-sum-double", "duckdb-avg-double"]),
+  -- One value at a time: one of the orders the reference allows (`FloatSums`);
+  -- which order depends on the parallel plan, so at two threads or more runs
+  -- vary (3 to 4 values in 5 runs). `fsum` (Kahan) does not vary.
+  (none, "sum_order", { ObsRow.native ["duckdb-sum-double", "duckdb-avg-double"] with
+    rerun := some { floats := .within "plan" },
+    rerunEvidence := .probed ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }),
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
   (none, "clustered", .shimmed "ORDER BY the keys" []),
-  (none, "tie_order", .native ["duckdb-mode-ties"]),
-  (none, "tie_pick", .native ["duckdb-mode-ties", "duckdb-arg-min-nulls"]),
+  -- Ties come in the order threads read the rows.
+  -- `ORDER BY`, `row_number`, `ntile`, `lag` and `list` without a total order:
+  -- ties, and a list's elements, come in a different order run to run.
+  (none, "tie_order", { ObsRow.native ["duckdb-sort-ties", "duckdb-mode-ties"] with
+    rerun := some { rows := .tiesPermuted, elements := .multiset },
+    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }),
+  (none, "tie_pick", { ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
+    rerun := some { rows := .tiesPermuted },
+    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }),
   (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
   (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
   (none, "negative_start", .native ["duckdb-R13"]),
@@ -136,7 +147,8 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "string_positions", .native []),
   (none, "null_join_keys", .native []),
   -- Welford with Chan's merge meets the generic properties the reference allows.
-  (none, "stat_algo", .native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"]),
+  (none, "stat_algo", { ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
+    rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
@@ -211,9 +223,9 @@ def Profile.polars.obs : ObsTable := [
   -- (groups) is not, so within #85's bound.
   -- Run to run the order varies (morsels, pipelines), within the plan's bound.
   (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
-    deterministic := false }),
+    rerun := some { floats := .within "plan" } }),
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
-    deterministic := false }),
+    rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
   -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
   (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
@@ -226,8 +238,11 @@ def Profile.polars.obs : ObsTable := [
   -- per key, Polars orders as `sortLe`.
   (none, "null_order", (ObsRow.native ["polars-null-order"]).proved "Polars.null_order"),
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
-  (none, "tie_order", (ObsRow.native ["polars-sort-stability", "polars-first-last"]).proved "Polars.tie_order"),
-  (none, "tie_pick", .native ["polars-first-last"]),
+  -- A streaming sort of a large input does not keep ties in input order.
+  (none, "tie_order", ({ ObsRow.native ["polars-sort-stability", "polars-first-last"] with
+    rerun := some { rows := .tiesPermuted } }).proved "Polars.tie_order"),
+  -- `first` and `last` follow input order on streaming, run after run.
+  (none, "tie_pick", { ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }),
   (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
   (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
     precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
@@ -246,9 +261,36 @@ def Profile.polars.obs : ObsTable := [
 
 /-! ## The engines -/
 
+/-- The options whose functions an engine computes row by row, or exactly
+whatever the order (integer sums, a placement a key fixes, a sorted
+quantile): every run gives the same result, as each row's facts were probed
+to give, where `rerun` is not set already. The others stay unknown. -/
+def rerunExact : List String :=
+  ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
+   "rounding", "nan_creation", "float_overflow", "negative_start", "case_sensitivity",
+   "string_positions", "avg_int_result", "empty_group_aggregates", "null_order",
+   "null_join_keys", "quantile_interp"]
+
+/-- Each row with what reruns give: exact where `rerunExact` says so, with the
+row's facts as evidence; a variation keeps its own. -/
+def withReruns (obs : ObsTable) : ObsTable :=
+  obs.map fun (g, o, r) =>
+    -- A row's correctness theorem is no evidence for its reruns: keep its facts.
+    let ev := match r.evidence with
+      | .tested ids | .proved _ ids => Evidence.tested ids | e => e
+    match r.rerun with
+    | some _ => (g, o, if r.rerunEvidence == .none then { r with rerunEvidence := ev } else r)
+    | none =>
+      -- A sum's sign of zero is the row's own; a group key's or `min`'s zero is
+      -- the one seen first, or the platform's: not settled here.
+      -- Exact only with evidence: a row without facts stays unknown.
+      if ev != .none && (rerunExact.contains o || (o == "zero_sign" && g == some "fp.arith")) then (g, o, { r with rerun := some Obs.exact, rerunEvidence := ev })
+      else (g, o, r)
+
 /-- The engine profiles, under DuckDB's default settings. -/
 def engineTables : List (ProfileTable × ObsTable) :=
-  [(Profile.duckdb.table {}, Profile.duckdb.obs), (Profile.polars.table, Profile.polars.obs)]
+  [(Profile.duckdb.table {}, withReruns Profile.duckdb.obs),
+   (Profile.polars.table, withReruns Profile.polars.obs)]
 
 /-- **Every DuckDB setting refines the core.** -/
 theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
@@ -331,13 +373,22 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
           | .approx, _ => "approx" | .refused, _ => "refused")),
          ("shim", toJson r.shim)] ++
         [("q", r.q.sparseJson)] ++
-        (if r.deterministic then [] else [("deterministic", toJson false)]) ++
+        (match r.rerun with
+          | none => []
+          | some q =>
+            [("rerun", q.sparseJson), ("deterministic", toJson (q == Obs.exact))] ++
+            match r.rerunEvidence with
+            | .proved thm _ => [("rerun_evidence", toJson "proved"), ("rerun_theorem", toJson thm)]
+            | .tested ids => [("rerun_evidence", toJson "tested"), ("rerun_facts", toJson ids)]
+            | .probed ids => [("rerun_evidence", toJson "probe"), ("rerun_facts", toJson ids)]
+            | .none => []) ++
         (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
         (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
         (if r.note == "" then [] else [("note", toJson r.note)]) ++
         (match r.evidence with
           | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
           | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
+          | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
           | .none => [("facts", toJson ([] : List String))])
     let toolFields : List (String × Json) := if !reference then [] else
       match Profile.reference.tools.find? (·.option == o) with

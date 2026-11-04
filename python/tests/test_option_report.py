@@ -211,3 +211,37 @@ def test_contract_epsilon_per_double_aggregate(monkeypatch):
     )
     rows = {(r["group"], r["option"]): r for r in json.loads(out.stdout)["choices"]["polars"]}
     assert rows[(None, "sum_order")]["q"] == {"floats": {"bound": "plan"}}
+
+
+def test_rerun_variation():
+    """D20: what two runs of an engine may differ in, next to its `q`; absent
+    where every run gives the same result."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    choices = json.loads(out.stdout)["choices"]
+    polars = {(r["group"], r["option"]): r for r in choices["polars"]}
+    duck = {(r["group"], r["option"]): r for r in choices["duckdb"]}
+    assert polars[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
+    assert polars[(None, "sum_order")]["deterministic"] is False
+    assert polars[(None, "sum_order")]["rerun_evidence"] == "tested"
+    assert polars[(None, "tie_order")]["rerun"] == {"rows": "ties permuted"}
+    assert duck[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
+    assert duck[(None, "sum_order")]["rerun_evidence"] == "probe"
+    assert duck[(None, "tie_order")]["rerun"] == {"rows": "ties permuted", "elements": "multiset"}
+    # Known exact: written as {}, with its own evidence.
+    for row in (
+        polars[(None, "tie_pick")],
+        duck[(None, "overflow")],
+        polars[("fp.arith", "zero_sign")],
+    ):
+        assert row["rerun"] == {} and row["deterministic"] is True, row
+        assert row["rerun_evidence"] == "tested" and row["rerun_facts"], row
+    # Not known: no rerun at all.
+    assert "rerun" not in polars[("agg.order", "zero_sign")]
+    assert "rerun" not in duck[(None, "zero_sign")]
+    # Every known rerun has evidence of its own.
+    for engine in ("duckdb", "polars"):
+        for r in choices[engine]:
+            if "rerun" in r:
+                assert r.get("rerun_evidence") in ("tested", "probe", "proved"), (engine, r)
