@@ -213,6 +213,10 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
     | "--write" => pure (write false)
     | "--write-datafusion" => pure (write true)
     | "--outcomes" => pure outcomes
+    | "--dependencies" => pure fun plan => do
+        -- The options the plan meets and the transfer check (#444).
+        IO.println plan.root.dependenciesJson.compress
+        return 0
     | _ => IO.eprintln s!"unknown mode {flag}"; return 1
   match parsePlan input with
   | .ok plan => mode plan
@@ -323,11 +327,11 @@ def main (args : List String) : IO UInt32 := do
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
-        "--eval-spec"].contains flag then
+        "--eval-spec", "--dependencies"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options"
     return 1
