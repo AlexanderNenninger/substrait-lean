@@ -28,8 +28,9 @@ from __future__ import annotations
 
 import os
 import uuid
+import warnings
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any, Literal
 
@@ -73,6 +74,7 @@ try:
     from pyiceberg.table.snapshots import Operation
     from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
     from pyiceberg.table.update.snapshot import _FastAppendFiles
+    from pyiceberg.transforms import Transform, UnknownTransform, parse_transform
     from pyiceberg.typedef import Record
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
@@ -735,6 +737,32 @@ def _commit_rows(
     snapshot.commit()
 
 
+PartitionField = tuple[str, str | Transform[Any, Any]] | tuple[str, str | Transform[Any, Any], str]
+"""A partition field of `IcebergSink(partition_by=...)`: a column, a
+transform (`"identity"`, `"day"`, `"bucket[16]"`, … or a pyiceberg
+`Transform`) and optionally the field's name."""
+
+
+def _partition_fields(
+    fields: Sequence[PartitionField],
+) -> list[tuple[str, Transform[Any, Any], str | None]]:
+    out: list[tuple[str, Transform[Any, Any], str | None]] = []
+    for f in fields:
+        column, transform = f[0], f[1]
+        name = f[2] if len(f) > 2 else None
+        t = parse_transform(transform) if isinstance(transform, str) else transform
+        if isinstance(t, UnknownTransform) or not isinstance(t, Transform):
+            raise ValueError(f"partition_by: unknown transform {transform!r} of {column!r}")
+        out.append((column, t, name))
+    return out
+
+
+def _spec_fields(t: Table) -> list[tuple[str | None, str]]:
+    """The current spec's fields as (source column, transform)."""
+    schema = t.schema()
+    return [(schema.find_column_name(f.source_id), str(f.transform)) for f in t.spec().fields]
+
+
 class IcebergSink(Sink):
     """Stores a node in an Iceberg table, exactly once per state:
     `node.write(IcebergSink(catalog, identifier))`, written by every
@@ -762,6 +790,15 @@ class IcebergSink(Sink):
     `ValueError` if the table holds this state's epoch from other contents
     of a `StaticSource`.
 
+    The first write creates the table with `location`, the partition fields
+    of `partition_by` and the table `properties` beside the sink's own, in
+    one commit (#468). A catalog without a default location, such as Unity
+    Catalog's Iceberg REST catalog on a schema without a managed storage
+    root, needs `location`. They only apply to a table the sink creates: an
+    overwrite keeps the table's location, spec and properties, and a sink on
+    an existing table that differs from them warns once
+    (`IcebergSink.create_options_ignored`).
+
     Args:
         catalog: A pyiceberg catalog.
         identifier: The sink table's identifier; the first write creates it.
@@ -769,12 +806,47 @@ class IcebergSink(Sink):
             `"sverify:<name>"`.
         name: The table's name in the plans that read the stored node.
             Default: the last part of `identifier`.
+        location: The location of the table the first write creates.
+            Default: None, the catalog's default.
+        partition_by: The partition fields of the table the first write
+            creates, each `(column, transform)` or `(column, transform,
+            name)`; a transform is `"identity"`, `"year"`, `"month"`,
+            `"day"`, `"hour"`, `"bucket[N]"`, `"truncate[W]"` or a pyiceberg
+            `Transform`. Default: None, unpartitioned.
+        properties: Table properties of the table the first write creates,
+            such as `"write.target-file-size-bytes"`, besides the sink's own
+            (`sverify.*`). Default: None.
+
+    Raises:
+        ValueError: A transform of `partition_by` is unknown, or
+            `properties` sets a `sverify.*` property.
 
     Attributes:
         catalog: The catalog.
         identifier: The sink table's identifier.
         name: The table's name in the plans that read the stored node.
+        table_location: `location`, or None.
+        partition_by: The partition fields, as `(column, Transform, name or
+            None)`.
+        properties: `properties`, or an empty dict.
+
+    Examples:
+        A sink partitioned by day, at a location of its own:
+
+        ```python
+        IcebergSink(
+            catalog,
+            "lake.daily",
+            location="s3://lake/daily",
+            partition_by=[("day", "day"), ("host", "identity")],
+            properties={"write.target-file-size-bytes": str(64 << 20)},
+        )
+        ```
     """
+
+    create_options_ignored = "create options ignored"
+    """The start of the warning a sink on an existing table gives when the
+    table differs from its `location`, `partition_by` or `properties`."""
 
     def __init__(
         self,
@@ -783,10 +855,20 @@ class IcebergSink(Sink):
         *,
         app_id: str | None = None,
         name: str | None = None,
+        location: str | None = None,
+        partition_by: Sequence[PartitionField] | None = None,
+        properties: Mapping[str, str] | None = None,
     ):
         self.catalog, self.identifier = catalog, identifier
         name = name or identifier.rsplit(".", 1)[-1]
         super().__init__(name, app_id=app_id, location=identifier)
+        self.table_location = location
+        self.partition_by = _partition_fields(partition_by or [])
+        self.properties = {str(k): str(v) for k, v in (properties or {}).items()}
+        if mine := sorted(k for k in self.properties if k.startswith("sverify.")):
+            raise ValueError(f"properties: {mine} are the sink's own")
+        self._checked = False
+        """Whether an existing table was compared with the create options."""
 
     def source(self) -> IcebergSource:
         """The table as a source, for the nodes that read the stored node."""
@@ -814,6 +896,48 @@ class IcebergSink(Sink):
             return None
         epoch = int(mine[0].summary.get(EPOCH, "-1"))  # type: ignore[union-attr]
         return replace(Contract.from_json(text), epoch=epoch)
+
+    def _create(self, schema: pa.Schema, contract: Contract) -> Table:
+        """Create the table with the create options and the contract, in
+        one commit."""
+        self._checked = True
+        props = {**self.properties, KEY: contract.to_json()}
+        if not self.partition_by:
+            return self.catalog.create_table(
+                self.identifier, schema=schema, location=self.table_location, properties=props
+            )
+        tx = self.catalog.create_table_transaction(
+            self.identifier, schema=schema, location=self.table_location, properties=props
+        )
+        with tx.update_spec() as update:
+            for column, transform, field in self.partition_by:
+                update.add_field(column, transform, field)
+        return tx.commit_transaction()
+
+    def _check_existing(self, t: Table) -> None:
+        """Warn, once, where an existing table differs from the create
+        options, which apply only to a table the sink creates."""
+        if self._checked:
+            return
+        self._checked = True
+        differs = []
+        if self.table_location is not None and (
+            t.location().rstrip("/") != self.table_location.rstrip("/")
+        ):
+            differs.append(f"location {t.location()!r}, not {self.table_location!r}")
+        if self.partition_by:
+            want = [(c, str(tr)) for c, tr, _ in self.partition_by]
+            if _spec_fields(t) != want:
+                differs.append(f"partition fields {_spec_fields(t)}, not {want}")
+        other = {k: v for k, v in self.properties.items() if t.properties.get(k) != v}
+        if other:
+            differs.append(f"other values of the properties {sorted(other)}")
+        if differs:
+            warnings.warn(
+                f"{self.identifier}: {self.create_options_ignored}: the existing table has "
+                + "; ".join(differs),
+                stacklevel=2,
+            )
 
     def _write_native(
         self, t: Table, created: bool, change: SinkChange, props: dict[str, str]
@@ -883,11 +1007,10 @@ class IcebergSink(Sink):
         props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}
         created = not self.catalog.table_exists(self.identifier)
         if created:
-            t = self.catalog.create_table(
-                self.identifier, schema=schema, properties={KEY: contract.to_json()}
-            )
+            t = self._create(schema, contract)
         else:
             t = self.catalog.load_table(self.identifier)
+            self._check_existing(t)
         if change.native is not None and (created or not change.replace):
             done = self._write_native(t, created, change, props)
             if done is not None:

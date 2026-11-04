@@ -665,10 +665,11 @@ the JSON plumbing.
 
 [Safety.lean](../SubstraitLean/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
-`may fail: …` (a `VerificationError` from `@sv.transform`). An integer `SUM`
-that may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
-group (inferred; checked on the data while the job runs …)`, and is an error
-with `infer=False`.
+`may fail: …` (a `VerificationError` from `@sv.transform`). A `SUM` that
+may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
+group (inferred; checked on the data while the job runs …)` (or
+`fits DECIMAL(38, 2)` for a decimal `SUM`, #316), and is an error with
+`infer=False`.
 
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
@@ -679,7 +680,8 @@ with `infer=False`.
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
   allows.
-* An integer `SUM` leaving 64 bits is ruled out where the plan bounds a group's
+* An integer `SUM` leaving 64 bits, or a decimal `SUM` leaving its precision
+  (`Measure.sumOk`, #316), is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
   bounds each value (`Measure.sumFits`). Row caps on the inputs count too
   ([Rows.lean](../SubstraitLean/Rows.lean), #219): a capped read is a `FETCH`

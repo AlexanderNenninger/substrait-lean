@@ -279,9 +279,11 @@ except VerificationError as e:
 ```
 
 * Conditions are Ibis expressions (`_.amount >= 0`) or SQL snippets
-  (`"amount >= 0"`). SQL transformations are checked with
+  (`"amount >= 0"`), whichever language the transformation is in. SQL
+  transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
-  report.
+  report; an Ibis condition there reads the query's output, or in `requires`
+  its input table ([#438](https://github.com/AlexanderNenninger/substrait-lean/issues/438)).
 * `requires` maps each input to its conditions. A transformation with one
   input also takes a plain list, `requires=[_.amount >= 0]`. A key that
   names no input raises a `ValueError` that lists the inputs (#408).
@@ -354,7 +356,8 @@ and proves `share` ([Inferred bounds](#inferred-bounds)).
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
-wraps around there; the reference raises). An integer `SUM` leaving 64 bits
+wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
+or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316)),
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
 `requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
@@ -594,8 +597,14 @@ string, date and list functions of
 [#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)) and
 refuses the rest, saying what.
 
-A node without delta rules (left join, aggregate, window, `DISTINCT`,
-`LIMIT`) is recomputed and diffed instead, and `status()` says so. An
+A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
+over an input with delta rules, is maintained from a count and a sum per
+group, which each batch's change adds to
+(`LinearAgg.aggregate_maintained` in
+[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
+A node without delta rules (left join, other aggregates, window, `LIMIT`) is
+recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
 touches: Sverify takes the group keys of the input rows the batch inserts or
 deletes, recomputes those groups from the new input (a semi-join on the
@@ -737,6 +746,10 @@ tables. A table format plays four roles:
   preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
   position delete files and a data file of the new rows.
+  `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
+  properties={...})` creates its table at that location, partitioned and
+  with those properties, which a catalog without a default location, such
+  as Unity Catalog's, needs (#468).
 
 Schema changes. A batch whose data fits the old schema (added columns,
 widened types whose values still fit) is read in it, and the report names

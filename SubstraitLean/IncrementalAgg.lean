@@ -1,0 +1,345 @@
+import SubstraitLean.TouchedGroups
+import SubstraitLean.TableFormat
+
+/-!
+# Delta rules for `COUNT`, `SUM` and `DISTINCT` (#248, stage 1)
+
+`COUNT` and integer `SUM` per group are linear over Z-sets: each is a sum of
+`g(row) · weight` over the input (`ZSet.lin`). So a view can keep, per group,
+
+* the number of input rows (`rowsIn`),
+* for each measure, the number of values it adds up (rows that pass its
+  `FILTER` and whose argument is not NULL, `valuesIn`), and their exact sum
+  (`sumIn`),
+
+and add a batch's change to them: the state of `old + Δ` is the state of
+`old` plus the state of `Δ` (`ZSet.lin_append`). A group is in the output
+while it has rows, so groups appear when their count leaves 0 and disappear
+when it returns to 0. `DISTINCT` is the same with no measures: a count per
+row, and a row is in the output while its count is positive.
+
+* `outRow_eq`: on a Z-set with the weights of a bag, the state's output row
+  of a group is the aggregate's row (`Measure.eval`) for every `COUNT` and
+  `SUM` measure without `DISTINCT`.
+* `aggregate_state`: the aggregate is the output rows of the groups with a
+  positive count, in any order.
+* `aggregate_maintained`: after a batch, the aggregate is the old rows of
+  the groups the batch does not touch, and the rows of the touched groups
+  from the old state plus the state of the change. This is what
+  `sverify._linear` computes.
+* `distinct_state`, `distinct_maintained`: the same for `DISTINCT`.
+
+The change `Δ` only has to have the right weights (`ChangeFeed`): a change
+feed may delete and re-insert a row.
+
+`SUM` is exact here. An engine adds up 64-bit integers, so a `SUM` whose
+result leaves 64 bits is an error, which the contract checker assumes away
+and the job checks on the data (`Report.assumed`). The maintained sum is the
+exact sum of the group's values, so checking that it fits is the same check.
+-/
+
+namespace Substrait
+namespace LinearAgg
+
+/-- A measure with a delta rule: `COUNT` or integer `SUM`, without
+`DISTINCT`. (`FILTER` is allowed, and `ORDER BY` changes nothing.) -/
+def Linear (m : Measure) : Prop := (m.fn = .count ∨ m.fn = .sum) ∧ m.distinct = false
+
+/-- The row passes the measure's `FILTER`. -/
+def keeps (m : Measure) (row : Row) : Bool :=
+  match m.filter with
+  | none => true
+  | some c => (c.eval row).isTrue
+
+/-- The row adds a value to the measure: it passes the filter, and the
+argument is not NULL. -/
+def counts (m : Measure) (row : Row) : Bool := keeps m row && m.arg.eval row != .null
+
+def intOf : Value → Int
+  | .int i => i
+  | _ => 0
+
+def ind (b : Bool) (x : Int) : Int := if b then x else 0
+
+/-- The weight of group `k`'s rows. -/
+def rowsIn (gs : List Expr) (k : Row) (z : ZSet) : Int :=
+  ZSet.lin (fun r => ind (groupKey gs r == k) 1) z
+
+/-- The weight of the values measure `m` adds up in group `k`. -/
+def valuesIn (gs : List Expr) (m : Measure) (k : Row) (z : ZSet) : Int :=
+  ZSet.lin (fun r => ind (groupKey gs r == k && counts m r) 1) z
+
+/-- The weighted sum of the values measure `m` adds up in group `k`. -/
+def sumIn (gs : List Expr) (m : Measure) (k : Row) (z : ZSet) : Int :=
+  ZSet.lin (fun r => ind (groupKey gs r == k && counts m r) (intOf (m.arg.eval r))) z
+
+/-- A measure's value from the group's state: the count of values for
+`COUNT`; for `SUM`, NULL without values, else the sum. -/
+def finish (m : Measure) (n s : Int) : Value :=
+  match m.fn with
+  | .count => .int n
+  | _ => if n = 0 then .null else .int s
+
+/-- Group `k`'s output row, from the state of `z`. -/
+def outRow (gs : List Expr) (ms : List Measure) (z : ZSet) (k : Row) : Row :=
+  k ++ ms.map fun m => finish m (valuesIn gs m k z) (sumIn gs m k z)
+
+/-! ## The state adds up -/
+
+theorem rowsIn_append (gs : List Expr) (k : Row) (a b : ZSet) :
+    rowsIn gs k (a ++ b) = rowsIn gs k a + rowsIn gs k b := ZSet.lin_append _ _ _
+
+theorem valuesIn_append (gs : List Expr) (m : Measure) (k : Row) (a b : ZSet) :
+    valuesIn gs m k (a ++ b) = valuesIn gs m k a + valuesIn gs m k b := ZSet.lin_append _ _ _
+
+theorem sumIn_append (gs : List Expr) (m : Measure) (k : Row) (a b : ZSet) :
+    sumIn gs m k (a ++ b) = sumIn gs m k a + sumIn gs m k b := ZSet.lin_append _ _ _
+
+/-- The state only depends on the weights. -/
+theorem outRow_congr {gs : List Expr} {ms : List Measure} {z z' : ZSet}
+    (h : ∀ r, z.weight r = z'.weight r) (k : Row) : outRow gs ms z k = outRow gs ms z' k := by
+  simp only [outRow, valuesIn, sumIn, ZSet.lin_congr _ h]
+
+theorem rowsIn_congr {gs : List Expr} {z z' : ZSet} (h : ∀ r, z.weight r = z'.weight r)
+    (k : Row) : rowsIn gs k z = rowsIn gs k z' := ZSet.lin_congr _ h
+
+/-- A functional that vanishes on every row of `z` is 0 on it. -/
+theorem lin_zero {g : Row → Int} {z : ZSet} (h : ∀ x ∈ z, g x.1 = 0) : ZSet.lin g z = 0 := by
+  induction z with
+  | nil => rfl
+  | cons x z ih =>
+      rw [ZSet.lin_cons, h x List.mem_cons_self,
+        ih fun y hy => h y (List.mem_cons_of_mem _ hy)]
+      simp
+
+/-! ## On bags -/
+
+theorem lin_lift (g : Row → Int) (rows : Relation) :
+    ZSet.lin g (ZSet.lift rows) = (rows.map g).sum := by
+  induction rows with
+  | nil => rfl
+  | cons a rows ih => simp only [ZSet.lift, List.map_cons] at ih ⊢; rw [ZSet.lin_cons, ih]; simp
+
+theorem sum_ind_one (p : Row → Bool) (rows : Relation) :
+    (rows.map fun r => ind (p r) 1).sum = (rows.filter p).length := by
+  induction rows with
+  | nil => rfl
+  | cons a rows ih =>
+      simp only [ind] at ih
+      simp only [List.map_cons, List.sum_cons, ih, List.filter_cons, ind]
+      split <;> simp <;> omega
+
+theorem sum_ind (p : Row → Bool) (f : Row → Int) (rows : Relation) :
+    (rows.map fun r => ind (p r) (f r)).sum = ((rows.filter p).map f).sum := by
+  induction rows with
+  | nil => rfl
+  | cons a rows ih =>
+      simp only [ind] at ih
+      simp only [List.map_cons, List.sum_cons, ih, List.filter_cons, ind]
+      split <;> simp
+
+theorem intSum_eq (vs : List Value) : intSum vs = (vs.map intOf).sum := by
+  induction vs with
+  | nil => rfl
+  | cons v vs ih => cases v <;> simp [intSum, intOf, ih]
+
+/-- The values a measure without `DISTINCT` adds up are its argument on the
+rows that count. -/
+theorem inputs_eq {m : Measure} (hd : m.distinct = false) (rows : Relation) :
+    m.inputs rows = (rows.filter (counts m)).map m.arg.eval := by
+  have hk : m.kept rows = rows.filter (keeps m) := by
+    unfold Measure.kept keeps; cases m.filter <;> simp <;> exact (List.filter_eq_self.mpr fun _ _ => rfl).symm
+  simp only [Measure.inputs, hd, Bool.false_eq_true, ↓reduceIte, hk, List.filter_map,
+    List.filter_filter]
+  congr 1
+  exact List.filter_congr fun x _ => by simp [counts, Bool.and_comm]
+
+theorem groupRows_filter (gs : List Expr) (rows : Relation) (k : Row) (p : Row → Bool) :
+    (groupRows gs rows k).filter p = rows.filter fun r => groupKey gs r == k && p r := by
+  simp [groupRows, List.filter_filter, Bool.and_comm]
+
+theorem rowsIn_lift (gs : List Expr) (rows : Relation) (k : Row) :
+    rowsIn gs k (ZSet.lift rows) = (groupRows gs rows k).length := by
+  rw [rowsIn, lin_lift, sum_ind_one]; rfl
+
+/-- **The state gives the aggregate's row**, for `COUNT` and `SUM`. -/
+theorem finish_eval {gs : List Expr} {m : Measure} (hm : Linear m) (rows : Relation) (k : Row) :
+    finish m (valuesIn gs m k (ZSet.lift rows)) (sumIn gs m k (ZSet.lift rows)) =
+      m.eval (groupRows gs rows k) := by
+  have hs : m.fn.sorts = false := by rcases hm.1 with h | h <;> simp [h, AggFn.sorts]
+  rw [Measure.eval_eq hs, inputs_eq hm.2, groupRows_filter, valuesIn, sumIn, lin_lift, lin_lift,
+    sum_ind_one, sum_ind]
+  generalize hl : rows.filter (fun r => groupKey gs r == k && counts m r) = l
+  rcases hm.1 with h | h
+  · simp [finish, h, AggFn.apply]
+  · simp only [finish, h, AggFn.apply]
+    cases l with
+    | nil => simp
+    | cons a l => simp [intSum_eq, List.map_map, Function.comp_def] <;> omega
+
+/-- On a Z-set with the weights of a bag, a group's output row from the
+state is the aggregate's row. -/
+theorem outRow_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, Linear m)
+    {rows : Relation} {z : ZSet} (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) (k : Row) :
+    outRow gs ms z k = k ++ ms.map (·.eval (groupRows gs rows k)) := by
+  rw [outRow_congr hz, outRow]
+  exact congrArg (k ++ ·) (List.map_congr_left fun m hm => finish_eval (hms m hm) rows k)
+
+theorem mem_keys_iff {gs : List Expr} {rows : Relation} {k : Row} :
+    k ∈ dedup (rows.map (groupKey gs)) ↔ 0 < rowsIn gs k (ZSet.lift rows) := by
+  rw [mem_dedup, rowsIn_lift, groupRows, Int.natCast_pos, List.length_pos_iff_exists_mem]
+  simp only [List.mem_map, List.mem_filter, beq_iff_eq]
+
+theorem nodup_dedup {α : Type} [DecidableEq α] (l : List α) : (dedup l).Nodup :=
+  List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l)
+
+/-! ## Aggregates -/
+
+variable {gs : List Expr} {ms : List Measure}
+
+/-- **The aggregate from the state**: on a Z-set `z` with the weights of the
+bag `rows`, the aggregate of `rows` is the output rows of the groups whose
+count is positive, listed once each in any order. -/
+theorem aggregate_state (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m) {rows : Relation} {z : ZSet}
+    (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) {ks : List Row} (hnd : ks.Nodup)
+    (hks : ∀ k, k ∈ ks ↔ 0 < rowsIn gs k z) :
+    (aggregateEval gs ms rows).Perm (ks.map (outRow gs ms z)) := by
+  have hge : gs.isEmpty = false := by simpa using hg
+  simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte]
+  rw [show (fun k => k ++ ms.map (·.eval (groupRows gs rows k))) = outRow gs ms z from
+    funext fun k => (outRow_eq hms hz k).symm]
+  refine List.Perm.map _ ((List.perm_ext_iff_of_nodup (nodup_dedup _) hnd).mpr fun k => ?_)
+  rw [mem_keys_iff, hks, rowsIn_congr hz]
+
+/-- **Maintaining `COUNT` and `SUM` per group.** A batch changes the input
+bag from `rows` to `rows'` by a change `Δ` (with the right weights), and
+every row of `Δ` has a group key in `K`. Then the aggregate of `rows'` is
+the old aggregate's rows of the groups outside `K`, and for the groups in
+`K` that still have rows (`ks`), the output row of the old state plus the
+state of `Δ`. -/
+theorem aggregate_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m)
+    {rows rows' : Relation} {Δ : ZSet}
+    (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
+    {K : Row → Bool} (hK : ∀ x ∈ Δ, K (groupKey gs x.1) = true)
+    {ks : List Row} (hnd : ks.Nodup)
+    (hks : ∀ k, k ∈ ks ↔ K k = true ∧ 0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k Δ) :
+    (aggregateEval gs ms rows').Perm
+      ((aggregateEval gs ms rows).filter (fun o => !K (o.take gs.length)) ++
+        ks.map fun k => k ++ ms.map fun m =>
+          finish m (valuesIn gs m k (ZSet.lift rows) + valuesIn gs m k Δ)
+            (sumIn gs m k (ZSet.lift rows) + sumIn gs m k Δ)) := by
+  have hge : gs.isEmpty = false := by simpa using hg
+  let ku := (dedup (rows.map (groupKey gs))).filter fun k => !K k
+  -- Outside `K`, the change adds nothing to a group's state.
+  have hzero : ∀ k, K k = false → ∀ g : Row → Int, (∀ r, groupKey gs r ≠ k → g r = 0) →
+      ZSet.lin g Δ = 0 := fun k hk g hg' => lin_zero fun x hx => hg' x.1 fun he => by
+    have := hK x hx; rw [he, hk] at this; exact Bool.false_ne_true this
+  have hout : ∀ k, K k = false → outRow gs ms (ZSet.lift rows ++ Δ) k = outRow gs ms (ZSet.lift rows) k := by
+    intro k hk
+    simp only [outRow, valuesIn, sumIn, ZSet.lin_append]
+    refine congrArg (k ++ ·) (List.map_congr_left fun m _ => ?_)
+    rw [hzero k hk (fun r => ind (groupKey gs r == k && counts m r) 1)
+        (fun r hr => by simp [ind, hr]),
+      hzero k hk (fun r => ind (groupKey gs r == k && counts m r) (intOf (m.arg.eval r)))
+        (fun r hr => by simp [ind, hr])]
+    simp
+  have hrows : ∀ k, K k = false → rowsIn gs k Δ = 0 := fun k hk =>
+    hzero k hk _ fun r hr => by simp [ind, hr]
+  -- The new aggregate, from the state of `old ++ Δ`, over the keys `ku ++ ks`.
+  have hdisj : ∀ a ∈ ku, ∀ b ∈ ks, a ≠ b := fun a ha b hb he => by
+    have h1 := (List.mem_filter.mp ha).2
+    have h2 := ((hks b).mp hb).1
+    rw [he, h2] at h1; simp at h1
+  have hnd' : (ku ++ ks).Nodup :=
+    List.nodup_append.mpr ⟨(nodup_dedup _).filter _, hnd, hdisj⟩
+  have hmem : ∀ k, k ∈ ku ++ ks ↔ 0 < rowsIn gs k (ZSet.lift rows ++ Δ) := by
+    intro k
+    rw [List.mem_append, List.mem_filter, mem_keys_iff, hks, rowsIn_append]
+    cases hk : K k
+    · simp [hrows k hk]
+    · simp
+  have hnew := aggregate_state hg hms hΔ hnd' hmem
+  refine hnew.trans (.of_eq ?_)
+  rw [List.map_append]
+  congr 1
+  · -- The untouched groups keep their old rows.
+    simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte, ku]
+    rw [List.filter_map]
+    have hf : (dedup (rows.map (groupKey gs))).filter
+        ((fun o : Row => !K (o.take gs.length)) ∘
+          fun k => k ++ ms.map (·.eval (groupRows gs rows k))) =
+        (dedup (rows.map (groupKey gs))).filter fun k => !K k :=
+      List.filter_congr fun k hk => by
+        obtain ⟨r, -, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+        simp only [Function.comp_apply, List.take_left' (groupKey_length' gs r)]
+    rw [hf]
+    refine List.map_congr_left fun k hk => ?_
+    have hk' := (List.mem_filter.mp hk).2
+    rw [hout k (by simpa using hk'), outRow_eq hms (fun _ => rfl)]
+  · refine List.map_congr_left fun k _ => ?_
+    simp only [outRow, valuesIn_append, sumIn_append]
+where
+  groupKey_length' (gs : List Expr) (r : Row) : (groupKey gs r).length = gs.length := by
+    simp [groupKey]
+
+/-! ## `DISTINCT` -/
+
+theorem weight_lift_nonneg : ∀ (rows : Relation) (k : Row), 0 ≤ (ZSet.lift rows).weight k
+  | [], _ => by simp [ZSet.lift, ZSet.weight_nil]
+  | a :: rows, k => by
+      have := weight_lift_nonneg rows k
+      simp only [ZSet.lift, List.map_cons] at this ⊢
+      rw [ZSet.weight_cons]
+      split <;> omega
+
+theorem weight_lift_pos {rows : Relation} {k : Row} :
+    0 < (ZSet.lift rows).weight k ↔ k ∈ rows := by
+  induction rows with
+  | nil => simp [ZSet.lift, ZSet.weight_nil]
+  | cons a rows ih =>
+      have hn := weight_lift_nonneg rows k
+      simp only [ZSet.lift, List.map_cons] at ih hn ⊢
+      rw [ZSet.weight_cons, List.mem_cons]
+      by_cases h : a = k
+      · subst h; simp only [↓reduceIte, true_or, iff_true]; omega
+      · simp only [h, ↓reduceIte, Int.zero_add, ih]
+        exact ⟨Or.inr, fun h' => h'.resolve_left (Ne.symm h)⟩
+
+/-- **`DISTINCT` from a count per row**: on a Z-set `z` with the weights of
+the bag `rows`, `DISTINCT` of `rows` is the rows whose count is positive. -/
+theorem distinct_state {rows : Relation} {z : ZSet}
+    (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) {ks : List Row} (hnd : ks.Nodup)
+    (hks : ∀ k, k ∈ ks ↔ 0 < z.weight k) : (dedup rows).Perm ks :=
+  (List.perm_ext_iff_of_nodup (nodup_dedup _) hnd).mpr fun k => by
+    rw [mem_dedup, hks, hz, weight_lift_pos]
+
+/-- **Maintaining `DISTINCT`.** A batch changes the input bag from `rows`
+to `rows'` by `Δ` (with the right weights), and every row of `Δ` is in `K`.
+Then `DISTINCT` of `rows'` is the old output's rows outside `K` and the rows
+in `K` whose old count plus the change's is positive: a row is emitted when
+its count leaves 0 and retracted when it returns to 0. -/
+theorem distinct_maintained {rows rows' : Relation} {Δ : ZSet}
+    (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
+    {K : Row → Bool} (hK : ∀ x ∈ Δ, K x.1 = true) {ks : List Row} (hnd : ks.Nodup)
+    (hks : ∀ k, k ∈ ks ↔ K k = true ∧ 0 < (ZSet.lift rows).weight k + Δ.weight k) :
+    (dedup rows').Perm ((dedup rows).filter (fun r => !K r) ++ ks) := by
+  have hzero : ∀ k, K k = false → Δ.weight k = 0 := fun k hk => by
+    rw [ZSet.weight_eq_lin]
+    exact lin_zero fun x hx => by
+      have := hK x hx
+      by_cases he : x.1 = k
+      · rw [he, hk] at this; exact absurd this Bool.false_ne_true
+      · simp [he]
+  have hdisj : ∀ a ∈ (dedup rows).filter (fun r => !K r), ∀ b ∈ ks, a ≠ b := fun a ha b hb he => by
+    have h1 := (List.mem_filter.mp ha).2
+    rw [he, ((hks b).mp hb).1] at h1; simp at h1
+  refine (List.perm_ext_iff_of_nodup (nodup_dedup _)
+    (List.nodup_append.mpr ⟨(nodup_dedup _).filter _, hnd, hdisj⟩)).mpr fun k => ?_
+  rw [mem_dedup, ← weight_lift_pos, ← hΔ, ZSet.weight_append, List.mem_append, List.mem_filter,
+    mem_dedup, ← weight_lift_pos, hks]
+  cases hk : K k
+  · simp [hzero k hk]
+  · simp
+
+end LinearAgg
+end Substrait
