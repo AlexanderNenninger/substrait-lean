@@ -1,6 +1,6 @@
 """#609, D21: a constant subexpression that raises raises for the whole plan.
 DuckDB folds a `CASE`'s constant conditions when it plans the query, with the
-evaluator that raises (DD-5), so the plan raises on any data, an empty table
+evaluator that raises (DD-7), so the plan raises on any data, an empty table
 included, whichever branch the rows take. The reference counts every such
 constant as raising, and no precondition rules it out."""
 
@@ -59,7 +59,7 @@ def test_duckdb_raises_on_the_issues_query_on_any_data(rows):
 
 
 def test_an_integer_cast_of_a_constant_string_is_refused():
-    """`CAST('a' AS INTEGER) = 1` in a later `WHEN` (DD-5): the checker refuses
+    """`CAST('a' AS INTEGER) = 1` in a later `WHEN` (DD-7): the checker refuses
     the plan outright."""
     sql = "SELECT CASE WHEN x > 0 THEN 1 WHEN CAST('a' AS INTEGER) = 1 THEN 2 END AS v FROM t"
     with pytest.raises(ValueError, match="cannot cast"):
