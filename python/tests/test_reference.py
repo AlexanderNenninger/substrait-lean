@@ -724,3 +724,21 @@ def test_lean_prints_integers_beyond_64_bits():
     ]
     plan = json.loads(substrait_json(c, "SELECT -a AS n FROM mx"))
     assert lean_values(json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))) == [(2**63,)]
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_overflow_to_infinity_is_the_references_precondition(engine):
+    """#575: `Issue.infinite` is a precondition of the reference. A plan
+    verified under DuckDB's semantics, which allows ±inf, assumes nothing and
+    runs without the check; the reference's plan refuses the batch."""
+    con = connect()
+    put_table(con, "f", pa.table({"x": [1e308, 1.0], "y": [10.0, 2.0]}))
+    sql = "SELECT x * y AS v FROM f"
+    tables = {"f": con.table("f")}
+    duck = sv.verify(sql, tables=tables, semantics="duckdb")
+    assert INFINITE not in [i.kind for i in duck.issues + duck.assumed]
+    assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
+    ref = sv.verify(sql, tables=tables)
+    assert [i.kind for i in ref.assumed] == [INFINITE]
+    with pytest.raises(Exception, match="overflow"):
+        ref.run(con, engine)

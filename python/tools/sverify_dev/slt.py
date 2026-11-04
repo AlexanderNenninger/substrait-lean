@@ -828,7 +828,9 @@ class Replay:
 
         engine_ok: bool | None
         try:
-            got = run_plan(self.con, written_plan(plan), "duckdb")
+            # The plan has DuckDB's semantics, which allows ±inf: no check of
+            # the reference's overflow precondition (#575).
+            got = run_plan(self.con, written_plan(plan), "duckdb", finite=False)
             eng_rows = self.fmt.rows(got)
             res.engine = _show(eng_rows)
             engine_ok = outcome(eng_rows, None, ordered)
@@ -840,11 +842,6 @@ class Replay:
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
-        elif lean_ok and "overflow to infinity" in (res.engine or ""):
-            # DuckDB gives `±inf`, which `Rel.eval` keeps; the reference raises
-            # there and the written plan checks it on the data (#575).
-            res.cls, res.side = "disagree", "engine"
-            res.reason = "reference: an overflow to ±inf raises (#575)"
         else:
             res.cls = "disagree"
             res.side = (

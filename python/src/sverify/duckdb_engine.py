@@ -27,10 +27,10 @@ from sverify.sql.duckdb import DUCKDB
 
 
 @functools.lru_cache(maxsize=4096)
-def _sql(plan: str, guards: bool = True) -> str:
+def _sql(plan: str, guards: bool = True, finite: bool = True) -> str:
     """`to_sql` of a JSON plan, memoized: an incremental view runs the same
     delta plans on every batch."""
-    return to_sql(json.loads(plan), DUCKDB, guards=guards)
+    return to_sql(json.loads(plan), DUCKDB, guards=guards, finite=finite)
 
 
 _DB: duckdb.DuckDBPyConnection | None = None
@@ -52,6 +52,7 @@ def run(
     *,
     guards: bool = True,
     keep: Literal[False] = False,
+    finite: bool = True,
 ) -> pa.Table: ...
 
 
@@ -62,6 +63,7 @@ def run(
     *,
     guards: bool = True,
     keep: Literal[True],
+    finite: bool = True,
 ) -> Resident: ...
 
 
@@ -71,6 +73,7 @@ def run(
     *,
     guards: bool = True,
     keep: bool = False,
+    finite: bool = True,
 ) -> pa.Table | Resident:
     """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or
     tables DuckDB reads where they are (`sverify._scan.Native`: Parquet
@@ -80,9 +83,13 @@ def run(
     The process's database serves every call (`sverify._duckdb`; opening
     one costs ~10 ms), through a cursor of the engine's own; the tables are
     created for the call, as temporary tables, and dropped after it.
-    `guards=False`: see `sverify.sql.to_sql`."""
+    `guards=False`, `finite=False`: see `sverify.sql.to_sql`."""
     global _DB
-    sql = _sql(plan, guards) if isinstance(plan, str) else to_sql(plan, DUCKDB, guards=guards)
+    sql = (
+        _sql(plan, guards, finite)
+        if isinstance(plan, str)
+        else to_sql(plan, DUCKDB, guards=guards, finite=finite)
+    )
     # `to_sql` numbers a table's rows with `rowid` where the plan needs their order.
     ordered = DUCKDB.row_ordinal() in sql
     with _LOCK:

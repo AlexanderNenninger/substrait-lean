@@ -213,16 +213,13 @@ def test_an_unproved_ensures_names_the_condition():
 def test_the_semantics_changes_what_the_contract_can_prove():
     # DuckDB's `/` by zero is inf, so a zero divisor is never an error there;
     # the reference raises on one, which `verify` reports. Both raise on
-    # `inf / inf`, which would be NaN (#257), and both assume that finite
-    # values do not overflow to `±inf` (#575): the plan the lift writes has
-    # no IEEE overflow to state DuckDB's `inf` with.
+    # `inf / inf`, which would be NaN (#257). An overflow to `±inf` is the
+    # reference's precondition only (#575): DuckDB's semantics allows it.
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
     duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="duckdb", t=t)
     ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
-    assert [i.kind for i in sv.verify(duck, infer=False).issues] == [
-        "domain error",
-        "overflow to infinity",
-    ]
+    assert [i.kind for i in sv.verify(duck, infer=False).issues] == ["domain error"]
+    assert "overflow to infinity" in [i.kind for i in sv.verify(ref, infer=False).issues]
     assert any("zero" in str(i) for i in sv.verify(ref, infer=False).issues)
 
 

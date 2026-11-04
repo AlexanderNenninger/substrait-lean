@@ -9,7 +9,9 @@ rows (`max_rows`) is proved finite (#85's error bounds), and elsewhere
 `Report.assumed` lists the precondition ("stays finite where its inputs
 are") and the job checks it on the data: the SQL sverify writes for DuckDB
 raises `overflow to infinity` where it fails, and so does the Polars engine.
-With `infer=False` it is an error that makes the report unproved. `±∞` from
+With `infer=False` it is an error that makes the report unproved. A plan verified
+with `semantics="duckdb"`, where DuckDB's `±inf` is the answer, makes no such
+assumption, and `Report.run` writes no check of it. `±∞` from
 the data passes through as before. So a plan verified under the reference
 creates no NaN and no `±∞` its inputs did not hold
 ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575),
