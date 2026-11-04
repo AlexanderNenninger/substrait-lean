@@ -115,6 +115,12 @@ PROBES: list[Probe] = [
     ),
     Probe("{0}.log(2)", "log2", F, "float64"),
     Probe("pl.arctan2({0}, {1})", "atan2", FF, "float64"),
+    # Comparisons of doubles: NaN's equality and order (`nan_equality`, `nan_order`).
+    Probe("{0} == {1}", "equal", FF, "boolean"),
+    Probe("{0} < {1}", "lt", FF, "boolean"),
+    Probe("{0}.is_null()", "is_null", F, "boolean"),
+    Probe("pl.max_horizontal({0}, {1})", "greatest", FF, "float64"),
+    Probe("pl.min_horizontal({0}, {1})", "least", FF, "float64"),
 ]  # fmt: skip
 
 
@@ -242,6 +248,104 @@ OBSERVATIONS: list[Observation] = [
     _o("decimal-mean", "decimals",
        "(df(x=['1.00', '2.01']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).item(),"
        " str(df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).dtypes[0]))"),
+    # NaN, -0.0 and NULL: equality, order, grouping.
+    _o("nan-compare", "doubles",
+       "df(a=[nan, nan, 1.0, inf, 0.0, None], b=[nan, 1.0, nan, nan, -0.0, None]).select("
+       "(pl.col('a') == pl.col('b')).alias('eq'), (pl.col('a') < pl.col('b')).alias('lt'),"
+       " (pl.col('a') > pl.col('b')).alias('gt'), pl.col('a').eq_missing(pl.col('b')).alias('eqm'))"
+       ".rows()"),
+    _o("nan-is-in", "doubles",
+       "df(a=[nan, 1.0, None]).select(pl.col('a').is_in([nan])).to_series().to_list()"),
+    _o("sort-doubles", "relations",
+       "{f'{d=} {n=}': df(x=[1.0, nan, None, -inf, inf, 0.0, -1.0])"
+       ".sort('x', descending=d, nulls_last=n)['x'].to_list()"
+       " for d in (False, True) for n in (False, True)}"),
+    _o("sort-zero-sign", "relations",
+       "df(x=[0.0, -0.0, 0.0, -0.0], i=[0, 1, 2, 3]).sort('x', maintain_order=True).rows()"),
+    _o("sort-null-default", "relations",
+       "[df(x=[2, None, 1]).sort('x', descending=d)['x'].to_list() for d in (False, True)]"),
+    _o("sort-strings-bools", "relations",
+       "(df(s=['b', 'B', 'a', 'é', 'Z', '', None]).sort('s')['s'].to_list(),"
+       " df(s=[True, None, False]).sort('s')['s'].to_list())"),
+    _o("sort-stable", "relations",
+       "[df(k=[i % 7 for i in range(200_000)], i=range(200_000)).lazy()"
+       ".sort('k', maintain_order=m).collect(engine=e)"
+       ".select((pl.col('i').diff().over('k') < 0).any()).item()"
+       " for m in (False, True) for e in ('in-memory', 'streaming')]"),
+    _o("min-max-nan", "aggregates",
+       "df(x=[1.0, nan, None, -inf, inf]).select(pl.col('x').min().alias('min'),"
+       " pl.col('x').max().alias('max'), pl.col('x').nan_min().alias('nan_min'),"
+       " pl.col('x').nan_max().alias('nan_max'), pl.col('x').arg_max().alias('arg_max'),"
+       " pl.col('x').sort().last().alias('sort_last')).rows()"),
+    _o("min-max-only-nan", "aggregates",
+       "df(x=[nan, None]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max'))"
+       ".rows()"),
+    _o("median-nan", "aggregates",
+       "df(x=[1.0, 2.0, nan]).select(pl.col('x').median().alias('median'),"
+       " pl.col('x').quantile(0.5, 'lower').alias('lower')).rows()"),
+    _o("group-nan-zero", "relations",
+       "df(x=[1.0, nan, None, nan, 0.0, -0.0, None]).group_by('x', maintain_order=True)"
+       ".agg(pl.len()).rows()"),
+    _o("unique-nan-zero", "relations",
+       "(df(x=[nan, 0.0, -0.0, nan, None, None]).unique(maintain_order=True)['x'].to_list(),"
+       " df(x=[nan, 0.0, -0.0, nan, None]).select(pl.col('x').n_unique()).item())"),
+    _o("join-nan-zero-null", "relations",
+       "[df(x=[nan, 0.0, -0.0, None]).join(df(x=[nan, 0.0, None], y=[1, 2, 3]), on='x',"
+       " nulls_equal=n).sort('y').rows() for n in (False, True)]"),
+    _o("int-float-compare", "doubles",
+       "df(i=[2**53 + 1], f=[2.0**53]).select((pl.col('i') == pl.col('f')).alias('eq'),"
+       " (pl.col('i') > pl.col('f')).alias('gt')).rows()"),
+    # NULLs in logic and aggregates.
+    _o("kleene", "relations",
+       "df(a=[True, False, None, None], b=[None, None, None, True]).select("
+       "(pl.col('a') & pl.col('b')).alias('and'), (pl.col('a') | pl.col('b')).alias('or'),"
+       " (~pl.col('a')).alias('not')).rows()"),
+    _o("any-all-nulls", "aggregates",
+       "df(x=[True, None]).select(pl.col('x').all().alias('all'),"
+       " pl.col('x').all(ignore_nulls=False).alias('all_kleene'),"
+       " pl.col('x').any(ignore_nulls=False).alias('any_kleene')).rows()"),
+    _o("count-nulls", "aggregates",
+       "df(x=[1, None, None]).select(pl.col('x').count().alias('count'),"
+       " pl.col('x').len().alias('len'), pl.col('x').null_count().alias('nulls')).rows()"),
+    _o("aggregates-empty", "aggregates",
+       "df(x=([None, None], pl.Int64)).select(pl.col('x').min().alias('min'),"
+       " pl.col('x').first().alias('first'), pl.col('x').count().alias('count'),"
+       " pl.col('x').mode().alias('mode').implode()).rows()"),
+    # Ties and order inside a group.
+    _o("first-last", "aggregates",
+       "df(g=[1, 1, 1, 2], x=[None, 3, None, 4]).group_by('g', maintain_order=True)"
+       ".agg(pl.col('x').first().alias('first'), pl.col('x').last().alias('last'),"
+       " pl.col('x').first(ignore_nulls=True).alias('first_nn'),"
+       " pl.col('x').last(ignore_nulls=True).alias('last_nn')).rows()"),
+    _o("first-input-order", "aggregates",
+       "[df(k=[i % 10 for i in range(200_000)], i=range(200_000)).lazy().group_by('k')"
+       ".agg(pl.col('i').first().alias('f'), pl.col('i').min().alias('m'),"
+       " pl.col('i').last().alias('l'), pl.col('i').max().alias('M'),"
+       " pl.col('i').alias('all')).collect(engine=e)"
+       ".select(((pl.col('f') == pl.col('m')) & (pl.col('l') == pl.col('M'))"
+       " & (pl.col('all').list.eval(pl.element().diff().drop_nulls().min() > 0).list.first()))"
+       ".all()).item() for e in ('in-memory', 'streaming')]"),
+    _o("arg-min-max-ties", "aggregates",
+       "df(x=[1, 3, 3, 1]).select(pl.col('x').arg_max().alias('arg_max'),"
+       " pl.col('x').arg_min().alias('arg_min')).rows()"),
+    _o("mode-ties", "aggregates",
+       "df(x=[3, 1, 2, 2, 1, 3]).select(pl.col('x').mode().sort()).to_series().to_list()"),
+    _o("string-agg", "aggregates",
+       "df(g=[1, 1, 1], x=['a', None, 'b']).group_by('g')"
+       ".agg(pl.col('x').str.join(',')).item(0, 'x')"),
+    _o("top-k-ties", "relations",
+       "df(x=[1, 1, 1, 0], i=[0, 1, 2, 3]).top_k(2, by='x').sort('i').rows()"),
+    # Windows.
+    _o("rank-methods", "windows",
+       "df(x=[2, 1, 2, None]).select(*(pl.col('x').rank(m).alias(m) for m in"
+       " ['average', 'min', 'max', 'dense', 'ordinal'])).rows()"),
+    _o("rank-descending-nan", "windows",
+       "df(x=[2.0, nan, 1.0, None]).select(pl.col('x').rank('min').alias('asc'),"
+       " pl.col('x').rank('min', descending=True).alias('desc')).rows()"),
+    _o("window-lag-first", "windows",
+       "df(g=[1, 1, 2], x=[3, 1, 2]).select(pl.col('x').first().over('g').alias('first'),"
+       " pl.col('x').shift(1).over('g').alias('lag'),"
+       " pl.col('x').cum_sum().over('g').alias('cum')).rows()"),
 ]  # fmt: skip
 
 

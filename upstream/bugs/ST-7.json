@@ -19,7 +19,8 @@
     "docs/core-semantics.md"
   ],
   "facts": [
-    "duckdb-F2"
+    "duckdb-F2",
+    "polars-null-order"
   ],
   "checked": [
     {

@@ -1,0 +1,41 @@
+{
+  "id": "polars-sort-stability",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`sort` is stable on the probe, guaranteed only with `maintain_order`",
+  "verdict": "ties keep input order (guaranteed with `maintain_order=True`)",
+  "area": "relations",
+  "constructs": [
+    "sort",
+    "top_k"
+  ],
+  "settings": {},
+  "description": [
+    "Sorting 200 000 rows on a key with 7 values kept the input order within each key, in memory and streaming, with and without `maintain_order`. Polars documents order among ties only for `maintain_order=True`.",
+    "`top_k` keeps 2 of 3 tied rows; which ones is not documented."
+  ],
+  "reference": "`tie_order`: any order of the ties, and any rows of a tie for a `fetch`. Every behaviour is allowed.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "sort-stable"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "sort-zero-sign"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "top-k-ties"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

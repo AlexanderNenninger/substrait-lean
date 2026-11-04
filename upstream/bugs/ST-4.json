@@ -27,7 +27,11 @@
     "duckdb-arg-min-nulls",
     "duckdb-quantile-disc",
     "polars-zero-sign",
-    "polars-nan-sign"
+    "polars-nan-sign",
+    "polars-nan-equality",
+    "polars-nan-order",
+    "polars-min-max-nan",
+    "polars-zero-order"
   ],
   "checked": [
     {
