@@ -234,8 +234,12 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
         let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
         -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
         let eps := (Epsilon.epsilon j).toOption.getD (Lean.Json.mkObj [])
+        -- The same carried through the arithmetic, per engine.
+        let byEngine := (Epsilon.epsilonByEngine j ["duckdb", "polars"]).toOption.getD
+          (Lean.Json.mkObj [])
         match underProfile j (report.json |>.setObjVal! "depends" depends
-            |>.setObjVal! "epsilon" eps) report.allProved with
+            |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine)
+            report.allProved with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
           IO.println out.compress
