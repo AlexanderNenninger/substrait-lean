@@ -211,3 +211,19 @@ def test_contract_epsilon_per_double_aggregate(monkeypatch):
     )
     rows = {(r["group"], r["option"]): r for r in json.loads(out.stdout)["choices"]["polars"]}
     assert rows[(None, "sum_order")]["q"] == {"floats": {"bound": "plan"}}
+
+
+def test_rerun_variation():
+    """D20: what two runs of an engine may differ in, next to its `q`; absent
+    where every run gives the same result."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    choices = json.loads(out.stdout)["choices"]
+    polars = {(r["group"], r["option"]): r for r in choices["polars"]}
+    duck = {(r["group"], r["option"]): r for r in choices["duckdb"]}
+    assert polars[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
+    assert polars[(None, "tie_order")]["rerun"] == {"rows": "ties permuted"}
+    assert duck[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
+    assert "rerun" not in polars[(None, "tie_pick")]  # input order on streaming
+    assert "rerun" not in duck[(None, "overflow")]

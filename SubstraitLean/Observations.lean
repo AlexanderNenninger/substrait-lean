@@ -25,8 +25,9 @@ namespace Substrait
 
 /-! ## Observations -/
 
-/-- Rows: as a sequence, or as a multiset (their order forgotten). -/
-inductive RowsObs | sequence | multiset
+/-- Rows: as a sequence, as a sequence up to the order of rows that tie in
+the plan's order, or as a multiset (their order forgotten). -/
+inductive RowsObs | sequence | tiesPermuted | multiset
   deriving Repr, DecidableEq
 
 /-- A list's elements: as a sequence, or as a multiset. -/
@@ -79,9 +80,10 @@ structure Obs where
 /-- The identity: everything observed. -/
 def Obs.exact : Obs := {}
 
-def RowsObs.le : RowsObs → RowsObs → Bool
-  | .sequence, _ | .multiset, .multiset => true
-  | .multiset, .sequence => false
+def RowsObs.rank : RowsObs → Nat
+  | .sequence => 0 | .tiesPermuted => 1 | .multiset => 2
+
+def RowsObs.le (a b : RowsObs) : Bool := a.rank ≤ b.rank
 
 def FloatObs.le : FloatObs → FloatObs → Bool
   | .exact, _ => true
@@ -121,7 +123,7 @@ def Obs.le (q' q : Obs) : Bool :=
 theorem Obs.le_refl (q : Obs) : q.le q = true := by
   obtain ⟨r, l, f, z, t, s, e, d⟩ := q
   cases r <;> cases l <;> cases f <;> cases z <;> cases t <;> cases d <;>
-    simp [Obs.le, RowsObs.le, ElemsObs.le, DecObs.le, FloatObs.le, ZeroNaNObs.le, TimeObs.le]
+    simp [Obs.le, RowsObs.le, RowsObs.rank, ElemsObs.le, DecObs.le, FloatObs.le, ZeroNaNObs.le, TimeObs.le]
 
 theorem Obs.le_trans {a b c : Obs} (hab : a.le b = true) (hbc : b.le c = true) : a.le c = true := by
   obtain ⟨r₁, l₁, f₁, z₁, t₁, s₁, e₁, d₁⟩ := a
@@ -129,7 +131,7 @@ theorem Obs.le_trans {a b c : Obs} (hab : a.le b = true) (hbc : b.le c = true) :
   obtain ⟨r₃, l₃, f₃, z₃, t₃, s₃, e₃, d₃⟩ := c
   simp only [Obs.le, Bool.and_eq_true, decide_eq_true_eq] at hab hbc ⊢
   refine ⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, by omega⟩, by omega⟩
-  · cases r₁ <;> cases r₂ <;> cases r₃ <;> simp_all [RowsObs.le]
+  · simp only [RowsObs.le, decide_eq_true_eq] at *; omega
   · cases l₁ <;> cases l₂ <;> cases l₃ <;> simp_all [ElemsObs.le]
   · cases d₁ <;> cases d₂ <;> cases d₃ <;> simp_all [DecObs.le]
   · cases f₁ <;> cases f₂ <;> cases f₃ <;> simp_all [FloatObs.le]
@@ -139,7 +141,7 @@ theorem Obs.le_trans {a b c : Obs} (hab : a.le b = true) (hbc : b.le c = true) :
 theorem Obs.exact_le (q : Obs) : Obs.exact.le q = true := by
   obtain ⟨r, l, f, z, t, s, e, d⟩ := q
   cases r <;> cases l <;> cases f <;> cases z <;> cases t <;> cases d <;>
-    simp [Obs.le, Obs.exact, RowsObs.le, ElemsObs.le, DecObs.le, FloatObs.le, ZeroNaNObs.le,
+    simp [Obs.le, Obs.exact, RowsObs.le, RowsObs.rank, ElemsObs.le, DecObs.le, FloatObs.le, ZeroNaNObs.le,
       TimeObs.le, StringObs.rank, ErrorObs.rank]
 
 /-! ## Classes -/
@@ -174,9 +176,10 @@ structure ObsRow where
   /-- The shim that makes it so, if any: a written argument, a rewrite, a guard. -/
   shim : Option String := none
   evidence : Evidence := .none
-  /-- The engine gives the same result on every run (`false`: its choice
-  varies run to run, within `q`; D10 reads it). -/
-  deterministic : Bool := true
+  /-- What may differ between two runs of the engine on the same input (D20):
+the identity where every run gives the same result. D10's determinism and
+the Python side's `rerun ⊑ q` check read it. -/
+  rerun : Obs := Obs.exact
   /-- Where the engine executes the row's functions, if not its default
   (Polars: streaming; `"in-memory"` where streaming falls back). -/
   engine : Option String := none
@@ -308,7 +311,8 @@ example : Profile.reference.obs.all (·.2.2.wf) := by decide +kernel
 open Lean (Json toJson) in
 def Obs.json (q : Obs) : Json :=
   Json.mkObj [
-    ("rows", toJson (match q.rows with | .sequence => "sequence" | .multiset => "multiset")),
+    ("rows", toJson (match q.rows with
+      | .sequence => "sequence" | .tiesPermuted => "ties permuted" | .multiset => "multiset")),
     ("elements", toJson (match q.elements with | .sequence => "sequence" | .multiset => "multiset")),
     -- A named bound (#85's): the plan's own, which `verify`'s float bounds compute.
     ("floats", match q.floats with | .exact => toJson "exact" | .within b => Json.mkObj [("bound", toJson b)]),

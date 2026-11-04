@@ -116,14 +116,18 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
-  -- One value at a time: one of the orders the reference allows (`FloatSums`).
-  (none, "sum_order", .native ["duckdb-sum-double", "duckdb-avg-double"]),
+  -- One value at a time: one of the orders the reference allows (`FloatSums`);
+  -- which order depends on the parallel plan, so runs vary.
+  (none, "sum_order", { ObsRow.native ["duckdb-sum-double", "duckdb-avg-double"] with
+    rerun := { floats := .within "plan" } }),
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
   (none, "clustered", .shimmed "ORDER BY the keys" []),
-  (none, "tie_order", .native ["duckdb-mode-ties"]),
-  (none, "tie_pick", .native ["duckdb-mode-ties", "duckdb-arg-min-nulls"]),
+  -- Ties come in the order threads read the rows.
+  (none, "tie_order", { ObsRow.native ["duckdb-mode-ties"] with rerun := { rows := .tiesPermuted } }),
+  (none, "tie_pick", { ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
+    rerun := { rows := .tiesPermuted } }),
   (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
   (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
   (none, "negative_start", .native ["duckdb-R13"]),
@@ -131,7 +135,8 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "string_positions", .native []),
   (none, "null_join_keys", .native []),
   -- Welford with Chan's merge meets the generic properties the reference allows.
-  (none, "stat_algo", .native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"]),
+  (none, "stat_algo", { ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
+    rerun := { floats := .within "plan" } }),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
@@ -206,9 +211,9 @@ def Profile.polars.obs : ObsTable := [
   -- (groups) is not, so within #85's bound.
   -- Run to run the order varies (morsels, pipelines), within the plan's bound.
   (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
-    deterministic := false }),
+    rerun := { floats := .within "plan" } }),
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
-    deterministic := false }),
+    rerun := { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
   -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
   (some "agg.order", "zero_sign", { ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
@@ -220,7 +225,9 @@ def Profile.polars.obs : ObsTable := [
   -- choices say (`transferB`).
   (none, "null_order", .native ["polars-null-order"]),
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
-  (none, "tie_order", .native ["polars-sort-stability", "polars-first-last"]),
+  -- A streaming sort of a large input does not keep ties in input order.
+  (none, "tie_order", { ObsRow.native ["polars-sort-stability", "polars-first-last"] with
+    rerun := { rows := .tiesPermuted } }),
   (none, "tie_pick", .native ["polars-first-last"]),
   (some "fp.round", "rounding", .shimmed "round_half_away" ["polars-round"]),
   (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
@@ -325,7 +332,8 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
           | .approx, _ => "approx" | .refused, _ => "refused")),
          ("shim", toJson r.shim)] ++
         [("q", r.q.sparseJson)] ++
-        (if r.deterministic then [] else [("deterministic", toJson false)]) ++
+        (if r.rerun == Obs.exact then [] else
+          [("rerun", r.rerun.sparseJson), ("deterministic", toJson false)]) ++
         (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
         (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
         (if r.note == "" then [] else [("note", toJson r.note)]) ++
