@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import ibis
 import ibis.expr.types as ir
@@ -52,8 +52,9 @@ if TYPE_CHECKING:
     import pandas
     import polars
 
-    from sverify.contracts import ContractedTransform
+    from sverify.contracts import ContractedTransform, Report
     from sverify.io._common import Contract, SinkWrite
+    from sverify.routes import Route, RouteKind
 
 
 class Sink(Protocol):
@@ -275,12 +276,25 @@ class Node:
         """
         return _Stored(self, sink)
 
-    def refresh(self, *, engine: Any = "duckdb", audit: bool = False) -> Refresh:
+    def refresh(
+        self,
+        *,
+        engine: Any = "duckdb",
+        audit: bool = False,
+        route: RouteKind | Literal["auto"] | None = None,
+    ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
         stored ones. `engine` runs the plans: `"duckdb"` (in memory),
         `"polars"`, `"datafusion"`, `"spark"` or a Spark session. With
         `audit`, every batch is compared with recomputation before it is
         applied (`AuditError`).
+
+        A stored node's sink commits each state once, by its epoch, so a
+        rerun must give the same rows: a node whose result is not determined
+        up to row order (its report's `deterministic`) is refused before
+        anything runs (#444, D10). With `route`, each node's proof is also
+        taken to `engine` by a route (`sverify.routes.choose`, D13), or the
+        refresh is refused; `StageRefresh.route` records it.
 
         Each node is refreshed once per call, upstream first, against each
         source's latest version when the call starts, and every stored node
@@ -295,6 +309,10 @@ class Node:
                 may differ from one refresh to the next.
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.
+            route: None (the default) runs each plan as before; `"auto"`
+                chooses a route for each node with a contract; `"native"`,
+                `"reference"`, `"transfer"` or `"recheck"` takes that one or
+                refuses.
 
         Returns:
             A `Refresh`: what was done to each node, upstream first.
@@ -309,6 +327,9 @@ class Node:
                 contract, proved against the old schema, cannot follow.
             sverify.errors.AuditError: With `audit`, a batch disagrees with
                 recomputation; nothing was applied.
+            sverify.errors.RouteError: A stored node's result is not
+                determined up to row order, or, with `route`, no route takes
+                a node's proof to `engine`; nothing was refreshed.
 
         Examples:
             With `r` from the `Node` example:
@@ -319,7 +340,7 @@ class Node:
             r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
             ```
         """
-        return group(self).refresh(engine=engine, audit=audit)
+        return group(self).refresh(engine=engine, audit=audit, route=route)
 
     def status(self) -> Status:
         """Where the node stands: the source versions of its state, where it
@@ -414,7 +435,9 @@ class Node:
         walk(self._query())
         return out
 
-    def _refresh(self, pins: dict[int, int], engine: Any, audit: bool) -> StageRefresh:
+    def _refresh(
+        self, pins: dict[int, int], engine: Any, audit: bool, route: Route | None = None
+    ) -> StageRefresh:
         leaves = self._leaves()
         for leaf in leaves:
             if isinstance(leaf, _Stored):
@@ -422,7 +445,7 @@ class Node:
                 pins.setdefault(id(leaf), leaf._reader.latest())
         versions = {leaf.name: pins[id(leaf)] for leaf in leaves}
         sink = self.sink if isinstance(self, _Stored) else None
-        out = StageRefresh(self.name, None)
+        out = StageRefresh(self.name, None, route=route)
         if self._stage is None:
             self._stage = _Stage.build(self, leaves, versions, engine, sink)
             out.started = self._stage.view.resumed or "computed"
@@ -649,6 +672,9 @@ class StageRefresh:
     """On the first refresh: the postconditions the node's transform did not
     prove and checks on its output (`on_unproved="runtime"`), checked on the
     full result (later batches: `report.postconditions`)."""
+    route: Route | None = None
+    """With `refresh(route=...)`: how the node's proof reached the engine
+    (D13), with its class; None without a route or a contract."""
 
     @property
     def notable(self) -> list[str]:
@@ -714,6 +740,8 @@ class StageRefresh:
             lines.append(f"  {self.started}")
         lines += [f"  requires {p}" for p in self.preconditions]
         lines += [f"  ensures {p}" for p in self.postconditions]
+        if self.route is not None:
+            lines.append(f"  route on {self.route.engine}: {self.route}")
         if self.report is not None:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
         if self.write is not None:
@@ -853,7 +881,13 @@ class Group:
             visit(n)
         return order
 
-    def refresh(self, *, engine: Any = "duckdb", audit: bool = False) -> Refresh:
+    def refresh(
+        self,
+        *,
+        engine: Any = "duckdb",
+        audit: bool = False,
+        route: RouteKind | Literal["auto"] | None = None,
+    ) -> Refresh:
         """Refresh every node against the same source versions (each
         source's latest when the refresh starts), sharing the stored nodes
         they read: each is refreshed and written once. See `Node.refresh`.
@@ -863,6 +897,8 @@ class Group:
                 `"polars"`, `"datafusion"`, `"spark"` or a Spark session.
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.
+            route: How each node's proof reaches `engine`; see
+                `Node.refresh`.
 
         Returns:
             A `Refresh` with an entry for every node refreshed: the nodes and
@@ -875,8 +911,12 @@ class Group:
                 contract cannot follow.
             sverify.errors.AuditError: With `audit`, a batch disagrees with
                 recomputation; nothing was applied.
+            sverify.errors.RouteError: A stored node is not determined up to
+                row order, or no route takes a node's proof to `engine`;
+                nothing was refreshed.
         """
         order = self._order()
+        chosen = _routes(order, engine, route)
         for n in order:
             if isinstance(n, _Stored) and n._stage is None:
                 _continue_versions(n)
@@ -885,7 +925,7 @@ class Group:
             for leaf in n._leaves():
                 if isinstance(leaf, _Source) and id(leaf) not in pins:
                     pins[id(leaf)] = leaf.source.latest()
-        return Refresh([n._refresh(pins, engine, audit) for n in order])
+        return Refresh([n._refresh(pins, engine, audit, chosen.get(id(n))) for n in order])
 
     def status(self) -> Status:
         """Where each node stands (`Node.status`).
@@ -942,6 +982,56 @@ def _continue_versions(node: _Stored) -> None:
             resume(contract.sources[name], cursors[name])
         elif name in contract.sources:
             resume(contract.sources[name])
+
+
+def _proof(node: Node) -> Report | None:
+    """The report of the contract that made the node's result, if any."""
+    prov = _lookup(node._query()._expr.op())
+    return None if prov is None else prov.report
+
+
+def _routes(
+    order: Sequence[Node], engine: Any, route: RouteKind | Literal["auto"] | None
+) -> dict[int, Route]:
+    """Each node's route to `engine` (by `id`), checked before anything runs.
+    A stored node needs a result determined up to row order: its sink
+    commits each epoch once (D10)."""
+    from sverify import routes
+
+    out: dict[int, Route] = {}
+    for n in order:
+        report = _proof(n)
+        if report is None:
+            continue
+        stored = isinstance(n, _Stored)
+        if route is None:
+            if stored and not report.deterministic:
+                e = routes.engine_name(engine)
+                raise routes.RouteError(
+                    routes.Route(
+                        e,
+                        None,
+                        report.semantics,
+                        f"{n.name}'s result is not determined up to row order, and its sink "
+                        "commits each epoch once, so a rerun must give the same rows; "
+                        f"{TIES}",
+                        False,
+                        cls="refused",
+                    )
+                )
+            continue
+        chosen = routes.choose(report, engine, route, deterministic=stored)
+        if chosen.refused:
+            raise routes.RouteError(replace(chosen, reason=f"{n.name}: {chosen.reason}"))
+        out[id(n)] = chosen
+    return out
+
+
+#: How to make a result determined up to row order.
+TIES = (
+    "declare `unique(...)` on the partition (or grouping) and order columns of the input, "
+    "or give first(), last() and windows a total order"
+)
 
 
 def group(*nodes: Node) -> Group:
