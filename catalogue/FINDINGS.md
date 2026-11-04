@@ -392,15 +392,16 @@ Over the 131 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 25 |
 | snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 22 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 15, "scale": | 22 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 10 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 8 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 4 |
+| polars: refused: first is not yet supported on Polars; see #271 | 3 |
+| snowflake: refused: first is not yet supported on snowflake; see #271 | 3 |
 | duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
 | polars: error: divide by zero (1 row(s)) | 2 |
-| polars: refused: first is not yet supported on Polars; see #271 | 2 |
 | polars: refused: max of doubles is not yet supported on Polars; see #271 | 2 |
 | snowflake: refused: MAX of doubles is not yet supported on snowflake; see #271 | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
@@ -410,8 +411,7 @@ Over the 131 queries that verify (some only as DOUBLE):
 | polars: refused: regexp_replace is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: regexp_replace is not yet supported on snowflake; see #271 | 1 |
 | polars: refused: corr is not yet supported on Polars; see #271 | 1 |
-| snowflake: refused: covariance and correlation are not yet supported on snowflake; see #271 | 1 |
-| polars: refused: min of doubles is not yet supported on Polars; see #271 | 1 |
+| snowflake: refused: corr is not yet supported on snowflake; see #271 | 1 |
 | polars: refused: md5 is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: md5 is not yet supported on snowflake; see #271 | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
