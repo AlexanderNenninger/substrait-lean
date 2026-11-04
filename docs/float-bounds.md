@@ -73,6 +73,42 @@ contract checker trusts, in the integer form it uses (a value `x` scaled to
 decoding of codes with more than 53 significant bits (`Decoded`). `core_sign`
 keeps signs exact: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`.
 
+## Sharded `SUM` and `AVG` (stage 5)
+
+`--shard` and `sverify.engines.run_sharded` with `float_order="any"` add each
+shard's doubles, then the partial sums (`floatPartial`, `floatCombine` in
+`SubstraitLean/Partition.lean`), where the reference adds all of them in one
+pass. [`Shard.lean`](../float-bounds/FloatBounds/Shard.lean) bounds the
+difference from what the partial rows report ([#428](https://github.com/AlexanderNenninger/substrait-lean/issues/428)):
+
+| Theorem | Bound |
+|---|---|
+| `sharded_near` | two phases against one pass over the same `n` values in any order: `(γ (m + k) + γ n) · (mag xs + k · tiny)` |
+| `sharded_avg_near` | the same for the means: `(γ (m + k + 2) + γ (n + 2)) · (mag xs + k · tiny) / n` |
+| `mag_le_absSum`, `mag_flatten_le` | the shards' rounded `SUM(\|x\|)`s, adding up to `A`, bound the magnitude: `(1 − γ m) · mag xs ≤ A + n · tiny` |
+| `shardTol_le`, `shardAvgTol_le` | both bounds with `mag xs ≤ (A + n · tiny) / (1 − γ m)`, scaled by `2¹⁰⁷⁴` and rounded up: `shardTolScaled n m k As`, `shardAvgTolScaled` |
+| `core_shard_sum`, `core_shard_avg` | the facts the core trusts, for codes of magnitude at most `Bs` with `n ≤ 2³²` and `n (Bs + 2·2⁵²) ≤ 2²⁰⁹⁶` |
+| `sharded_near_of_bound`, `sharded_avg_near_of_bound` | before running, with at most `N` values, each `\|x\| ≤ B`, in at most `k` shards: `(γ (N + k) + γ N) · (N (B + tiny) + k · tiny)` and `(γ (N + k + 2) + γ (N + 2)) · (B + tiny + k · tiny)` |
+
+Each shard reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split double,
+after the columns `floatCombine` reads (`floatBoundParts`). The counts give
+`n`, `m` and `k`, the `SUM(|x|)`s give `A`, and the `MAX(|x|)`s show the
+values far from overflow. The core trusts `core_shard_sum` and
+`core_shard_avg` as two axioms (`floatSum_twoPhase`, `floatAvg_twoPhase` in
+`Partition.lean`, with the tolerances defined there as here), and
+`floatSplit_sum` and `floatSplit_avg` apply them to a group's shards:
+`floatPartial`'s `SUM` and `COUNT`, combined as `floatCombine` combines them,
+against the measure on the whole group. `absPart_eval` says what the
+`SUM(|x|)` column holds.
+
+`run_sharded(..., tolerance=True)` computes the bound per group from the
+partial rows, with exact rationals, and `sverify.partition.apriori_tolerance`
+gives it before running from a row cap and a bound on `|x|`. A bounded column
+is a plain copy of a split `SUM` or `AVG`; an expression of one gets no
+bound, and a `HAVING` that reads one may keep a group near its threshold that
+the reference drops (`Sharded.rows_exact`). The bound is about the two-phase
+plan as Lean evaluates it, each shard adding its values in one pass.
+
 ## `VARIANCE`, `STDDEV`, `COVAR` and `CORR`
 
 Engines compute the co-moment `C = Σ (xᵢ − x̄)(yᵢ − ȳ)` (the variance is the

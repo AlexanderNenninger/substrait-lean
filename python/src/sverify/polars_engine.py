@@ -1218,6 +1218,9 @@ class Exprs:
                 return Val(canon(e.ceil()), t, a.issues)
             if name == "round":
                 return Val(canon(e.round(0, mode="half_away_from_zero")), t, a.issues)
+            # `|x|`, which a split double's partial rows report (#428).
+            if name == "abs":
+                return Val(canon(e.abs()), t, a.issues)
             if name in FMATH_NATIVE or name in FMATH_ROWS:
                 return self.fmath(name, a)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
@@ -1569,6 +1572,9 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
         return acc / len(vs) + 0.0 if fn == "avg" else acc
+    if fn == "fmax":
+        # By the codes' order: NaN above every double.
+        return math.nan if any(math.isnan(v) for v in vs) else max(vs) + 0.0
     # `pickFold` keeps the first extreme; equal values are the same value here.
     return min(vs) if fn == "min" else max(vs)
 
@@ -1579,6 +1585,12 @@ SORT_DIRECTIONS = {
     "SORT_DIRECTION_DESC_NULLS_FIRST": (True, False),
     "SORT_DIRECTION_DESC_NULLS_LAST": (True, True),
 }
+
+
+def _is_abs(j: dict, ex: Exprs) -> bool:
+    """Is `j` a call of `abs`?"""
+    f = j.get("scalarFunction")
+    return isinstance(f, dict) and ex.function(f.get("functionReference")) == "abs"
 
 
 @dataclass(frozen=True)
@@ -1604,7 +1616,7 @@ class Measure:
             return pl.List(materialize(self.arg.dtype))
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             return pl.Float64
-        return pl.Float64 if self.fn in ("fsum", "avg") else materialize(self.arg.dtype)
+        return pl.Float64 if self.fn in ("fsum", "avg", "fmax") else materialize(self.arg.dtype)
 
     @property
     def values(self) -> pl.Expr:
@@ -2193,6 +2205,10 @@ class Translator:
             fn = "iavg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
             fn = name
+        elif name == "max" and t == pl.Float64 and _is_abs(args[0], ex):
+            # `MAX(|x|)`, which a split double's partial rows report (#428):
+            # no `-0.0`, so only NaN, the largest double in Lean, needs care.
+            fn = "fmax"
         elif name in ("min", "max") and t == pl.Float64:
             raise Unsupported(f"{name} of doubles is not yet supported on Polars; see #271")
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):

@@ -3,18 +3,19 @@ the combined result of a plan run shard by shard equals its result on all
 the data, and plans whose result would depend on the split are refused."""
 
 import json
+import math
 from collections.abc import Sequence
 
 import ibis
 import pyarrow as pa
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from sverify import polars_engine
 from sverify.engine import connect, create_table, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify.partition import NotShardable, run_sharded, split
+from sverify.partition import NotShardable, apriori_tolerance, run_sharded, split
 from sverify.testing import canonical
 
 pytestmark = pytest.mark.backend("polars")
@@ -165,8 +166,9 @@ def test_split_keys_are_checked_on_the_data():
 @SETTINGS
 @given(data=rows_and_shards)
 def test_float_order_any(sql: str, data):
-    """Unproved, but small integers add exactly as doubles, so here the
-    result is still Lean's."""
+    """Within a bound (`test_sharded_doubles_within_the_reported_tolerance`),
+    and small integers add exactly as doubles, so here the result is
+    Lean's."""
     rows, where = data
     plan = plan_of(sql)
     with pytest.raises(NotShardable, match="not associative"):
@@ -358,3 +360,220 @@ def test_integer_avg_truncates_the_whole_mean():
     shards = [{"r": arrow(rows[:1])}, {"r": arrow(rows[1:])}]
     got = run_sharded(plan, shards, sharded=["r"])
     assert canonical(tuple(r.values()) for r in got.to_pylist()) == canonical([(0, None), (1, 4)])
+
+
+# -- Split double sums within a proved bound (#428) --------------------------
+
+F = ibis.schema({"g": "int64", "x": "float64"})
+
+
+def float_plan(sql: str) -> str:
+    con = connect()
+    create_table(con, "f", F)
+    return substrait_json(con, sql)
+
+
+def f_arrow(rows: list[tuple]) -> pa.Table:
+    return pa.table(
+        {
+            "g": pa.array([g for g, _ in rows], pa.int64()),
+            "x": pa.array([x for _, x in rows], pa.float64()),
+        }
+    )
+
+
+def f_shards(rows: list[tuple], where: list[int]) -> list[dict[str, pa.Table]]:
+    pairs = list(zip(rows, where, strict=True))
+    return [{"f": f_arrow([r for r, k in pairs if k == i])} for i in range(4)]
+
+
+def lean_sum(xs: list[float]) -> float | None:
+    """`floatSum`: the values added in one pass, in order, from `0.0`."""
+    if not xs:
+        return None
+    s = 0.0
+    for x in xs:
+        s += x
+    return s
+
+
+def lean_groups(rows: list[tuple]) -> dict[int | None, list[float]]:
+    out: dict[int | None, list[float]] = {}
+    for g, x in rows:
+        out.setdefault(g, [])
+        if x is not None:
+            out[g].append(x)
+    return out
+
+
+#: Doubles that cancel, and that span every magnitude a double has.
+ADVERSARIAL = [
+    1e16,
+    -1e16,
+    1.0,
+    -1.0,
+    3.0,
+    0.1,
+    1e-300,
+    -1e-300,
+    1e300,
+    -1e300,
+    2.0**53,
+    -(2.0**53),
+]
+doubles = st.one_of(
+    st.sampled_from(ADVERSARIAL),
+    st.floats(-1e300, 1e300, allow_nan=False, allow_infinity=False),
+    st.builds(lambda m, e: m * 10.0**e, st.floats(-10, 10), st.integers(-300, 299)),
+    st.none(),
+)
+#: The bound is cheap to check, so the double tests try more splits.
+FLOAT_SETTINGS = settings(SETTINGS, max_examples=100)
+f_rows_and_shards = st.lists(st.tuples(st.integers(0, 2), doubles), max_size=16).flatmap(
+    lambda rows: st.tuples(
+        st.just(rows), st.lists(st.integers(0, 3), min_size=len(rows), max_size=len(rows))
+    )
+)
+
+
+def test_tolerance_matches_lean():
+    """`shard_tol_scaled` and `shard_avg_tol_scaled` are `FloatCode`'s
+    (the `#guard`s in `SubstraitLean/Partition.lean`)."""
+    from sverify.partition import shard_avg_tol_scaled, shard_tol_scaled
+
+    assert shard_tol_scaled(0, 0, 0, 0) == 0
+    assert str(shard_tol_scaled(1, 1, 1, 2**1074)).startswith(
+        "6741349255733686649825204000179208364406"
+    )
+    assert str(shard_tol_scaled(1000, 300, 4, 3 * 2**1080)).startswith(
+        "5626060434865814519377634568766342"
+    )
+    assert str(shard_avg_tol_scaled(1, 1, 1, 2**1074)).startswith(
+        "1572981493004527217599265855828681376492"
+    )
+    # About (γ 2 + γ 1) · (1 + 2 tiny) for one value of 1.0 in one shard.
+    assert shard_tol_scaled(1, 1, 1, 2**1074) / 2**1074 == pytest.approx(3 * 2.0**-53, rel=1e-6)
+
+
+def test_split_reports_where_the_bound_is():
+    plan = float_plan("SELECT g, SUM(x) AS s, AVG(x) AS m, COUNT(*) AS n FROM f GROUP BY g")
+    s = split(plan, ["f"], float_order="any")
+    assert not s.proved
+    fb = s.float_bounds
+    assert fb is not None and fb["keys"] == 1
+    assert [m["kind"] for m in fb["measures"]] == ["sum", "avg"]
+    assert fb["columns"] == [{"key": 0}, {"bounded": 0}, {"bounded": 1}, {"exact": True}]
+    assert s.bounded == {1: 0, 2: 1}
+    assert not fb["filters_read_doubles"]
+    # The partial rows hold `SUM(|x|)` (written as `abs`), `COUNT(x)` and `MAX(|x|)`.
+    assert {"sum", "count", "max"} <= measures(s.partial)
+    assert "abs" in functions(s.partial)
+    # An exact split reports none.
+    assert (
+        split(float_plan("SELECT g, COUNT(*) AS n FROM f GROUP BY g"), ["f"]).float_bounds is None
+    )
+
+
+def functions(plan: dict) -> set[str]:
+    """The names of every function a plan declares."""
+    return {e["extensionFunction"]["name"] for e in plan["extensions"]}
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT g, SUM(x) AS s, AVG(x) AS m FROM f GROUP BY g",
+        "SELECT SUM(x) AS s, AVG(x) AS m, COUNT(x) AS n FROM f",
+        "SELECT AVG(x) AS m, g FROM f WHERE g > 0 GROUP BY g",
+    ],
+)
+@FLOAT_SETTINGS
+@given(data=f_rows_and_shards)
+def test_sharded_doubles_within_the_reported_tolerance(sql: str, data):
+    """Cancelling values and values from 1e-300 to 1e300, split at random:
+    each sharded `SUM`/`AVG` is within its reported τ of Lean's one-pass
+    value, and τ is finite."""
+    rows, where = data
+    plan = float_plan(sql)
+    shards = [
+        {"f": f_arrow([r for r, k in zip(rows, where, strict=True) if k == i])} for i in range(4)
+    ]
+    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    assert got.rows_exact
+    grouped = "GROUP BY" in sql
+    kept = [r for r in rows if "WHERE" not in sql or r[0] > 0]
+    groups = lean_groups(kept) if grouped else {None: [x for _, x in kept if x is not None]}
+    table = got.table.to_pylist()
+    assert len(table) == len(groups)
+    for i, row in enumerate(table):
+        xs = groups[row["g"]] if grouped else groups[None]
+        s = lean_sum(xs)
+        for name, want in (("s", s), ("m", None if s is None else s / len(xs))):
+            if name not in row:
+                continue
+            tau = got.tolerance[name][i]
+            assert math.isfinite(tau)
+            if want is None:
+                assert row[name] is None
+            else:
+                assert abs(row[name] - want) <= tau, (name, row[name], want, tau)
+
+
+@FLOAT_SETTINGS
+@given(data=f_rows_and_shards)
+def test_apriori_tolerance_bounds_the_split(data):
+    """From a cap on the rows and a bound on `|x|`, before running."""
+    rows, where = data
+    xs = [x for _, x in rows if x is not None]
+    assume(xs)
+    plan = float_plan("SELECT SUM(x) AS s, AVG(x) AS m FROM f")
+    shards = [
+        {"f": f_arrow([r for r, k in zip(rows, where, strict=True) if k == i])} for i in range(4)
+    ]
+    got = run_sharded(plan, shards, sharded=["f"], float_order="any").to_pylist()[0]
+    bound = max(abs(x) for x in xs)
+    s = lean_sum(xs)
+    assert s is not None
+    assert abs(got["s"] - s) <= apriori_tolerance("sum", len(rows), bound, 4)
+    assert abs(got["m"] - s / len(xs)) <= apriori_tolerance("avg", len(rows), bound, 4)
+
+
+def test_cancellation_is_within_the_tolerance():
+    """`1e16 + 1 − 1e16` is `0` in one pass and `1` split in two; the bound
+    scales with `Σ|x|`, so it covers both."""
+    plan = float_plan("SELECT SUM(x) AS s FROM f")
+    shards = [{"f": f_arrow([(0, 1e16), (0, -1e16)])}, {"f": f_arrow([(0, 1.0)])}]
+    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    assert got.table.to_pylist() == [{"s": 1.0}]
+    assert lean_sum([1e16, 1.0, -1e16]) == 0.0
+    assert 1.0 <= got.tolerance["s"][0] < 20.0
+
+
+def test_no_bound_where_it_does_not_carry_over():
+    """An expression of a split double has no bound, a `HAVING` on one may
+    keep other rows, and a group with NaN or near overflow has none."""
+    plan = float_plan("SELECT g, SUM(x) * 2 AS s2 FROM f GROUP BY g HAVING SUM(x) > 1")
+    shards = [{"f": f_arrow([(0, 1.5), (1, 3.0)])}, {"f": f_arrow([(0, 1.0)])}]
+    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    assert not got.rows_exact
+    assert got.tolerance["s2"] == [math.inf, math.inf]
+    plan = float_plan("SELECT g, SUM(x) AS s FROM f GROUP BY g")
+    shards = [{"f": f_arrow([(0, math.nan), (1, 1e308), (2, 1.0)])}, {"f": f_arrow([(1, 1e308)])}]
+    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    tau = {r["g"]: t for r, t in zip(got.table.to_pylist(), got.tolerance["s"], strict=True)}
+    assert tau[0] == math.inf and tau[1] == math.inf and math.isfinite(tau[2])
+
+
+def test_tolerance_without_the_keys_in_the_output():
+    """Without the grouping keys, each row gets the largest τ of any group."""
+    plan = float_plan("SELECT SUM(x) AS s FROM f GROUP BY g")
+    shards = [{"f": f_arrow([(0, 1.0), (1, 1e10)])}, {"f": f_arrow([(1, 1.0)])}]
+    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    big = run_sharded(
+        float_plan("SELECT g, SUM(x) AS s FROM f GROUP BY g"),
+        shards,
+        sharded=["f"],
+        float_order="any",
+        tolerance=True,
+    )
+    assert got.tolerance["s"] == [max(big.tolerance["s"])] * 2
