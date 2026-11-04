@@ -23,6 +23,7 @@ Usage, from `python/`:
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import shutil
@@ -142,8 +143,26 @@ def rewrite_links(text: str, source: Path, local: Mapping[str, str]) -> str:
     return _LINK.sub(fix, text)
 
 
+#: Tables fit the page and wrap: long code spans and lists of facts would
+#: otherwise widen a table past the screen. Great Docs gives a table in its
+#: scroll wrapper `width: max-content`, which this overrides.
+TABLE_STYLE = """```{=html}
+<style>
+main table, main .gd-table-scroll > table {
+  table-layout: fixed; width: 100% !important; min-width: 0; font-size: 0.85rem;
+}
+main table th, main table td {
+  overflow-wrap: anywhere; white-space: normal; vertical-align: top;
+}
+main table code { white-space: normal; }
+</style>
+```
+
+"""
+
+
 def front(title: str, description: str) -> str:
-    return f'---\ntitle: "{title}"\ndescription: "{description}"\n---\n\n'
+    return f'---\ntitle: "{title}"\ndescription: "{description}"\n---\n\n' + TABLE_STYLE
 
 
 def strip_title(text: str) -> str:
@@ -447,29 +466,90 @@ def index_page(bugs: Mapping[str, dict], facts: Mapping[str, dict]) -> str:
         _FILTER,
         '<p id="ledger-count"></p>',
         "",
-        "::: {#ledger-entries}",
-        "| Id | Kind | Project | Status | Options | Summary |",
-        "|---|---|---|---|---|---|",
+        entries_table(bugs, facts),
+        "",
     ]
-    engines = {f["id"]: f["engine"] for f in facts.values()}
+    return "\n".join(out)
+
+
+#: The index table's longest summary, in characters.
+SUMMARY_MAX = 160
+
+_STYLE = """<style>
+#ledger-entries th:nth-child(1) { width: 16%; }
+#ledger-entries th:nth-child(2), #ledger-entries th:nth-child(3),
+#ledger-entries th:nth-child(4) { width: 11%; }
+#ledger-entries th:nth-child(5) { width: 14%; }
+#ledger-entries th:nth-child(6) { width: 37%; }
+</style>"""
+
+
+def plain(text: str | list[str], n: int = SUMMARY_MAX) -> str:
+    """One line of plain text: the first sentence of `text`, without Markdown
+    (links keep their text, code spans their content), at most `n`
+    characters."""
+    text = " ".join(_paragraphs(text) if not isinstance(text, str) else [text])
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"<(https?://[^>]*)>", r"\1", text)
+    text = " ".join(text.replace("`", "").split())
+    first = re.split(r"(?<=\.)\s", text, maxsplit=1)[0]
+    if len(first) <= n:
+        return first
+    return first[: n - 2].rsplit(" ", 1)[0] + " …"
+
+
+def _row(href: str, ident: str, cells: list[str]) -> str:
+    tds = "".join(f"<td>{html.escape(c)}</td>" for c in cells)
+    return f'<tr><td><a href="{href}"><code>{html.escape(ident)}</code></a></td>{tds}</tr>'
+
+
+def entries_table(bugs: Mapping[str, dict], facts: Mapping[str, dict]) -> str:
+    """Every ledger entry, one row each, as HTML: the cells are plain text,
+    so no entry's Markdown can break the table."""
+    rows = []
     for b in bugs.values():
+        page = "spec-gaps" if b.get("kind") == "spec-gap" else "upstream-bugs"
         kind = "spec gap" if b.get("kind") == "spec-gap" else "bug"
-        summary = _paragraphs(b["summary"])[0]
-        out.append(
-            f"| {bug_link(b['id'], bugs)} | {kind} | {PROJECTS.get(b['project'], b['project'])} "
-            f"| {b['status']} | | {cell(_short(summary))} |"
+        project = PROJECTS.get(b["project"], b["project"])
+        rows.append(
+            _row(
+                f"{page}.html#{b['id']}",
+                b["id"],
+                [kind, project, b["status"], "", plain(b["summary"])],
+            )
         )
     for f in facts.values():
-        opts = " ".join(f.get("options", []))
-        groups = " ".join(sorted({r["group"] for r in f.get("rows", []) if "group" in r}))
-        out.append(
-            f"| {fact_link(f['id'], engines)} | fact ({f['area']}) "
-            f"| {PROJECTS.get(f['engine'], f['engine'])} {f['engine_version']} "
-            f"| {f['status']}, {f['evidence']} | {cell(' '.join([opts, groups]).strip())} "
-            f"| {cell(f['title'])}: {cell(_short(f['verdict']))} |"
+        opts = f.get("options", []) + sorted(
+            {r["group"] for r in f.get("rows", []) if "group" in r}
         )
-    out += [":::", ""]
-    return "\n".join(out)
+        project = f"{PROJECTS.get(f['engine'], f['engine'])} {f['engine_version']}"
+        rows.append(
+            _row(
+                f"{page_id(f['engine'])}.html#{f['id']}",
+                f["id"],
+                [
+                    f"fact ({f['area']})",
+                    project,
+                    f"{f['status']}, {f['evidence']}",
+                    " ".join(opts),
+                    plain(f"{plain(f['title'], 999)}: {plain(f['verdict'], 999)}"),
+                ],
+            )
+        )
+    head = "".join(
+        f"<th>{h}</th>" for h in ("Id", "Kind", "Project", "Status", "Options", "Summary")
+    )
+    return "\n".join(
+        [
+            "```{=html}",
+            _STYLE,
+            '<table id="ledger-entries" class="table">',
+            f"<thead><tr>{head}</tr></thead><tbody>",
+            *rows,
+            "</tbody></table>",
+            "```",
+        ]
+    )
 
 
 def _short(text: str, n: int = 200) -> str:
