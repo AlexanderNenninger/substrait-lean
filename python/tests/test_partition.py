@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 
 from sverify import polars_engine
 from sverify.engine import connect, create_table, run_plan, substrait_json, written_plan
+from sverify.ibis_substrait import to_substrait_json
 from sverify.partition import NotShardable, run_sharded, split
 from sverify.testing import canonical
 
@@ -265,3 +266,95 @@ def test_partial_sum_may_overflow_where_the_total_does_not():
     shards = [{"r": arrow(rows[::2])}, {"r": arrow(rows[1::2])}]
     got = run_sharded(plan, shards, sharded=["r"])
     assert got.to_pylist() == [{"s": 0}]
+
+
+def int_avg(expr) -> str:
+    """The Ibis expression's plan with every `avg` made Substrait's `avg` of
+    `i64` with an `i64` result (`AggFn.iavg`): the exact mean, truncated
+    toward zero. (The SQL lift writes `AVG` as a `SUM` and a `COUNT` divided
+    as doubles.)"""
+    p = json.loads(to_substrait_json(expr))
+    names = {e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
+             for e in p["extensions"]}  # fmt: skip
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            m = node.get("measure")
+            if isinstance(m, dict) and names.get(m["functionReference"]) == "avg":
+                m["outputType"] = {"i64": {"nullability": "NULLABILITY_NULLABLE"}}
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(p)
+    return json.dumps(p)
+
+
+def measures(plan: dict) -> set[str]:
+    """The names of the aggregate functions a plan's measures call."""
+    names = {e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
+             for e in plan["extensions"]}  # fmt: skip
+    found: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if isinstance(node.get("measure"), dict):
+                found.add(names[node["measure"]["functionReference"]])
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan)
+    return found
+
+
+r_table = ibis.table(R, name="r")
+s_table = ibis.table(S, name="s")
+_j = r_table.join(s_table, "b")
+_f = r_table.filter(r_table.a > -2)
+
+#: Integer `AVG`s, split into a `SUM` and a `COUNT` per shard (#245).
+INT_AVG = {
+    "grouped": r_table.group_by("b").aggregate(m=r_table.a.mean()),
+    "global": r_table.aggregate(m=r_table.c.mean(), n=r_table.count(), hi=r_table.a.max()),
+    "mixed": _f.group_by("b").aggregate(m=_f.c.mean(), s=_f.a.sum(), m2=_f.a.mean()).order_by("b"),
+    "filtered": r_table.group_by("b").aggregate(m=r_table.a.mean(where=r_table.c > 0)),
+    "joined": _j.group_by("d").aggregate(m=_j.a.mean()),
+}
+
+
+@pytest.mark.parametrize("name", INT_AVG)
+@SETTINGS
+@given(data=rows_and_shards)
+def test_integer_avg_splits_into_sum_and_count(name: str, data):
+    rows, where = data
+    plan = int_avg(INT_AVG[name])
+    s = split(plan, ["r"])
+    assert (s.mode, s.proved) == ("two_phase", True)
+    assert measures(s.partial) <= {"sum", "count", "min", "max"}
+    pairs = list(zip(rows, where, strict=True))
+    shards = [{"r": arrow([row for row, k in pairs if k == i])} for i in range(4)]
+    s_rows = pa.table({"b": [b for b, _ in S_ROWS], "d": [d for _, d in S_ROWS]})
+    got = run_sharded(plan, shards, sharded=["r"], broadcast={"s": s_rows})
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+def test_integer_avg_truncates_the_whole_mean():
+    """The mean of -7, -8 and 5 is -3, truncated toward zero. The shards' own
+    means, -7 and -1, would average to -4."""
+    plan = int_avg(r_table.aggregate(m=r_table.a.mean()))
+    rows = [(-7, 0, 0), (-8, 0, 0), (5, 0, None)]
+    shards = [{"r": arrow(rows[:1])}, {"r": arrow(rows[1:])}, {"r": arrow([])}]
+    got = run_sharded(plan, shards, sharded=["r"])
+    assert got.to_pylist() == [{"m": -3}]
+    assert reference(plan, rows) == canonical([(-3,)])
+    # A group without values is NULL, also when some shards have it.
+    plan = int_avg(r_table.group_by("b").aggregate(m=r_table.c.mean()))
+    rows = [(1, 0, None), (2, 0, None), (3, 1, 4)]
+    shards = [{"r": arrow(rows[:1])}, {"r": arrow(rows[1:])}]
+    got = run_sharded(plan, shards, sharded=["r"])
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == canonical([(0, None), (1, 4)])

@@ -28,6 +28,11 @@ shard on its own, with the results combined afterwards.
   `MAX` may be `DISTINCT` (it changes nothing); `COUNT` and `SUM` may be
   when their argument is the whole split key, so that no value is on two
   shards (`Measure.SplitOk`).
+* `Rel.eval_algebraic`: algebraic aggregates, a final expression over
+  distributive partials (#245), split the same way, and the final
+  expressions run after combining. The integer `AVG` is a `SUM` and a
+  `COUNT` per shard, then `SUM / COUNT`, when its argument is an integer
+  (`IntArgs`).
 * `Rel.shardSplit_sound`: `Rel.shardSplit` turns a plan into the plan each
   shard runs and the plan that combines their outputs, with filters,
   projections and sorts above the aggregate moved to the combining plan.
@@ -1565,6 +1570,310 @@ theorem Rel.eval_twoPhase {S : String → Bool} {K : String → Option (List Nat
   rw [flatMap_eq_flatten_map]
   exact this.symm
 
+/-! ## Algebraic aggregates
+
+An aggregate is algebraic when a final expression computes it from a tuple
+of distributive partial aggregates (#245): each shard computes the partials,
+the combining phase combines each of them (`combineMeasures`), and the final
+expression gives the result. The theorem is `Rel.eval_algebraic`, for any
+measure with partials (`Measure.part`, `Measure.part₂`) and a final
+expression (`algFinal`) for which `Measure.final_eval` holds.
+
+The instance is the integer `AVG` (`AggFn.iavg`): the `SUM` of its values and
+their `COUNT`, and the final `SUM / COUNT` (`BinFn.idiv`: truncated toward
+zero, NULL without values). It is exact, but the model's `iavg` clamps the
+mean between the smallest and largest integer (`clampInts`), which changes
+nothing only when every value is an integer. `IntArgs` vouches for that, from
+the tables' column types (`IntArgs.ofTypes`). -/
+
+def Value.intOrNull : Value → Bool
+  | .null | .int _ => true
+  | _ => false
+
+/-- Expressions that give only integers or NULL on the rows of a plan. -/
+abbrev IntArgs := Rel → Expr → Bool
+
+def IntArgs.Sound (I : IntArgs) (cat : Catalog) : Prop :=
+  ∀ r e, I r e = true → r.WF cat → ∀ row ∈ r.eval cat, (e.eval row).intOrNull = true
+
+/-- `IntArgs` from the tables' column types `A`, by abstract evaluation. -/
+def IntArgs.ofTypes (cat : Catalog) (A : String → List AVal) : IntArgs := fun r e =>
+  let a := e.absD (r.aeval cat A (fun _ => []) WindowKeys.none) []
+  !a.tt && !a.ff && !a.str
+
+theorem AVal.intOrNull_of_mem {a : AVal} {v : Value} (h : a.Mem v) (ht : a.tt = false)
+    (hf : a.ff = false) (hs : a.str = false) : v.intOrNull = true := by
+  cases v with
+  | null => rfl
+  | int _ => rfl
+  | bool b => cases b <;> simp_all [AVal.Mem]
+  | str _ => simp_all [AVal.Mem]
+  | list _ => simp_all [AVal.Mem]
+
+/-- Sound for rows of the declared types. -/
+theorem IntArgs.ofTypes_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row) : (IntArgs.ofTypes cat A).Sound cat := by
+  intro r e h hw row hrow
+  simp only [ofTypes, Bool.and_eq_true, Bool.not_eq_true'] at h
+  have hm := Rel.aeval_sound hcat hA (F := fun _ => []) (fun _ _ _ => by simp [FactsHold])
+    (T := WindowKeys.none) (fun _ _ _ h _ => by simp [WindowKeys.none] at h) (sz := false) hw
+    (by simp) row hrow
+  exact AVal.intOrNull_of_mem
+    (Expr.absD_sound hm (by simp [FactsHold]) (by simp [KsHold]) e) h.1.1 h.1.2 h.2
+
+theorem ediv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (h₂ : s ≤ n * hi) :
+    lo ≤ s / n ∧ s / n ≤ hi :=
+  ⟨Int.le_ediv_of_mul_le hn (by rw [Int.mul_comm]; exact h₁),
+    Int.ediv_le_of_le_mul hn (by rw [Int.mul_comm]; exact h₂)⟩
+
+/-- A truncated mean lies between the bounds of the values. -/
+theorem tdiv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (h₂ : s ≤ n * hi) :
+    lo ≤ s.tdiv n ∧ s.tdiv n ≤ hi := by
+  rcases Int.le_total 0 s with hs | hs
+  · rw [Int.tdiv_eq_ediv_of_nonneg hs]; exact ediv_mean_between hn h₁ h₂
+  · have : s.tdiv n = -((-s).tdiv n) := by rw [Int.neg_tdiv, Int.neg_neg]
+    rw [this, Int.tdiv_eq_ediv_of_nonneg (by omega)]
+    have := ediv_mean_between (lo := -hi) (hi := -lo) (s := -s) hn
+      (by rw [Int.mul_neg]; omega) (by rw [Int.mul_neg]; omega)
+    omega
+
+theorem intSum_between {lo hi : Int} : ∀ {vs : List Value},
+    (∀ v ∈ vs, ∃ i, v = .int i ∧ lo ≤ i ∧ i ≤ hi) →
+      (vs.length : Int) * lo ≤ intSum vs ∧ intSum vs ≤ (vs.length : Int) * hi
+  | [], _ => by simp [intSum]
+  | v :: vs, h => by
+    obtain ⟨i, rfl, h₁, h₂⟩ := h v (by simp)
+    have ih := intSum_between (vs := vs) fun w hw => h w (by simp [hw])
+    simp only [intSum, List.length_cons, Int.natCast_add, Int.natCast_one, Int.add_mul, Int.one_mul]
+    omega
+
+/-- Of integers, the truncated mean needs no clamping. -/
+theorem clampInts_mean {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v = .int i) (hne : vs ≠ []) :
+    clampInts vs ((intSum vs).tdiv vs.length) = (intSum vs).tdiv vs.length := by
+  unfold clampInts
+  split
+  · rename_i hx
+    obtain ⟨v, hv⟩ := List.exists_mem_of_ne_nil _ hne
+    obtain ⟨i, rfl⟩ := h v hv
+    have : i ∈ intsOf vs := mem_intsOf.mpr hv
+    simp [hx] at this
+  · rename_i x xs hx
+    have hb : ∀ v ∈ vs, ∃ i, v = .int i ∧ xs.foldl min x ≤ i ∧ i ≤ xs.foldl max x := by
+      intro v hv
+      obtain ⟨i, rfl⟩ := h v hv
+      have hi : i ∈ x :: xs := by rw [← hx]; exact mem_intsOf.mpr hv
+      exact ⟨i, rfl, foldl_min_le x xs i hi, foldl_max_ge x xs i hi⟩
+    have hn : (0 : Int) < vs.length := by
+      cases vs with
+      | nil => exact absurd rfl hne
+      | cons _ _ => simp only [List.length_cons]; omega
+    obtain ⟨h₁, h₂⟩ := intSum_between hb
+    obtain ⟨h₃, h₄⟩ := tdiv_mean_between hn h₁ h₂
+    rw [Int.max_eq_left h₃, Int.min_eq_left h₄]
+
+/-- The partial measure in `m`'s own column: the `SUM` of an integer `AVG`. -/
+def Measure.part (m : Measure) : Measure := if m.fn = .iavg then { m with fn := .sum } else m
+
+/-- The second partial measure, of an integer `AVG` only: its `COUNT`. -/
+def Measure.part₂ (m : Measure) : Option Measure :=
+  if m.fn = .iavg then some { m with fn := .count } else none
+
+/-- The partial measures of `ms`: one per measure, then the `COUNT`s of the
+integer `AVG`s. -/
+def algParts (ms : List Measure) : List Measure := ms.map Measure.part ++ ms.filterMap Measure.part₂
+
+/-- Where the second partial of measure `i` is among `algParts ms`. -/
+def algPos₂ (ms : List Measure) (i : Nat) : Nat :=
+  ms.length + ((ms.take i).filterMap Measure.part₂).length
+
+/-- The final expressions over a combined row, whose first `k` columns are
+the keys and the rest the partials: `SUM / COUNT` for an integer `AVG`, the
+partial itself for the others. -/
+def algFinal (k : Nat) (ms : List Measure) : List Expr :=
+  ms.mapIdx fun i m =>
+    if m.fn = .iavg then .bin .idiv (.field (k + i)) (.field (k + algPos₂ ms i)) else .field (k + i)
+
+/-- The columns of the result among the combined row and its final values:
+the keys, then the final values. -/
+def algOut (k : Nat) (ms : List Measure) : List Nat :=
+  List.range k ++ (List.range ms.length).map (k + (algParts ms).length + ·)
+
+/-- Combine the partial rows of `algParts` (keys first), then compute the
+final values. -/
+def algCombine (k : Nat) (ms : List Measure) (input : Rel) : Rel :=
+  .emit (.project (.aggregate input (keyFields k) (combineMeasures k (algParts ms))) (algFinal k ms))
+    (algOut k ms)
+
+/-- What `algCombine` does to each combined row. -/
+def algFinish (k : Nat) (ms : List Measure) (row : Row) : Row :=
+  (algOut k ms).map ((row ++ (algFinal k ms).map (·.eval row)).getD · .null)
+
+theorem algCombine_eval (k : Nat) (ms : List Measure) (input : Rel) (C : Catalog) :
+    (algCombine k ms input).eval C =
+      (aggregateEval (keyFields k) (combineMeasures k (algParts ms)) (input.eval C)).map
+        (algFinish k ms) := by
+  simp only [algCombine, Rel.eval, List.map_map]
+  rfl
+
+/-- **The final step**: `SUM / COUNT` of an integer `AVG`'s values is the
+`AVG`, when they are integers. -/
+theorem Measure.final_eval {m : Measure} (hm : m.fn = .iavg) {rows : Relation}
+    (hint : ∀ row ∈ rows, (m.arg.eval row).intOrNull = true) :
+    BinFn.idiv.apply (({ m with fn := .sum } : Measure).eval rows)
+      (({ m with fn := .count } : Measure).eval rows) = m.eval rows := by
+  have hs : ({ m with fn := .sum } : Measure).eval rows = AggFn.sum.apply (m.inputs rows) :=
+    Measure.eval_eq rfl rows
+  have hc : ({ m with fn := .count } : Measure).eval rows = AggFn.count.apply (m.inputs rows) :=
+    Measure.eval_eq rfl rows
+  have he : m.eval rows = AggFn.iavg.apply (m.inputs rows) := by
+    rw [Measure.eval_eq (by rw [hm]; rfl), hm]
+  have hi : ∀ v ∈ m.inputs rows, ∃ i, v = .int i := by
+    intro v hv
+    obtain ⟨hn, row, hrow, rfl⟩ := Measure.mem_inputs hv
+    have := hint row hrow
+    revert hn this
+    cases m.arg.eval row <;> simp [Value.intOrNull]
+  rw [hs, hc, he]
+  generalize m.inputs rows = vs at hi
+  cases vs with
+  | nil => rfl
+  | cons v vs =>
+    simp only [AggFn.apply, BinFn.apply]
+    rw [ite_eq_right_of_eq_false _ _ (eq_false (by simp; omega)), clampInts_mean hi (List.cons_ne_nil _ _)]
+
+theorem filterMap_getD_take {α β : Type} (f : α → Option β) (l : List α) {i : Nat}
+    (hi : i < l.length) {b : β} (hb : f l[i] = some b) (d : β) :
+    (l.filterMap f).getD ((l.take i).filterMap f).length d = b := by
+  have hl : l.filterMap f = (l.take i).filterMap f ++ b :: (l.drop (i + 1)).filterMap f := by
+    conv => lhs; rw [← List.take_append_drop i l, List.drop_eq_getElem_cons hi]
+    rw [List.filterMap_append, List.filterMap_cons_some hb]
+  rw [hl]
+  simp [List.getD_eq_getElem?_getD]
+
+theorem algParts_length_ge (ms : List Measure) : ms.length ≤ (algParts ms).length := by
+  simp [algParts]
+
+/-- `algFinish` turns a group's partials into its result. -/
+theorem algFinish_eval {k : Nat} {ms : List Measure} {key : Row} (hk : key.length = k)
+    {g : Relation} (hint : ∀ m ∈ ms, m.fn = .iavg → ∀ row ∈ g, (m.arg.eval row).intOrNull = true) :
+    algFinish k ms (key ++ (algParts ms).map (·.eval g)) = key ++ ms.map (·.eval g) := by
+  subst hk
+  generalize hrow : key ++ (algParts ms).map (·.eval g) = row
+  have hlen : row.length = key.length + (algParts ms).length := by rw [← hrow]; simp
+  -- The partials of measure `i`.
+  have hp : ∀ i (hi : i < ms.length), row.getD (key.length + i) .null = ms[i].part.eval g := by
+    intro i hi
+    rw [← hrow, getD_append_len, algParts, List.map_append, List.getD_eq_getElem?_getD,
+      List.getElem?_append_left (by simpa using hi)]
+    simp [hi]
+  have hp₂ : ∀ i (hi : i < ms.length), ms[i].fn = .iavg →
+      row.getD (key.length + algPos₂ ms i) .null = ({ ms[i] with fn := .count } : Measure).eval g := by
+    intro i hi hf
+    have e : ∀ l : List Measure, l.filterMap (fun m => (Measure.part₂ m).map (·.eval g)) =
+        (l.filterMap Measure.part₂).map (·.eval g) := fun l => (List.map_filterMap ..).symm
+    have key := filterMap_getD_take (fun m => (Measure.part₂ m).map (·.eval g)) ms hi
+      (b := ({ ms[i] with fn := .count } : Measure).eval g) (by simp [Measure.part₂, hf]) .null
+    rw [e, e, List.length_map, List.getD_eq_getElem?_getD] at key
+    rw [← hrow, getD_append_len, algParts, List.map_append, algPos₂, List.getD_eq_getElem?_getD,
+      List.getElem?_append_right (by simp), List.length_map, List.length_map,
+      Nat.add_sub_cancel_left]
+    exact key
+  unfold algFinish algOut
+  rw [List.map_append]
+  congr 1
+  · apply List.ext_getElem (by simp)
+    intro j h₁ h₂
+    simp only [List.length_map, List.length_range] at h₁
+    simp only [List.getElem_map, List.getElem_range]
+    rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (by rw [hlen]; omega), ← hrow,
+      List.getElem?_append_left h₁]
+    simp [List.getElem?_eq_getElem h₁]
+  · apply List.ext_getElem (by simp)
+    intro i h₁ h₂
+    simp only [List.length_map] at h₂
+    simp only [List.getElem_map, List.getElem_range]
+    rw [show key.length + (algParts ms).length + i = row.length + i by rw [hlen], getD_append_len,
+      algFinal, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_mapIdx,
+      List.getElem?_eq_getElem h₂]
+    simp only [Option.map_some, Option.getD_some]
+    by_cases hf : ms[i].fn = .iavg
+    · simp only [hf, ↓reduceIte, Expr.eval, BinFn.apply]
+      rw [hp i h₂, hp₂ i h₂ hf, Measure.part, ite_eq_left_of_eq_true _ _ (eq_true hf)]
+      exact Measure.final_eval hf (hint _ (List.getElem_mem h₂) hf)
+    · simp only [hf, ↓reduceIte, Expr.eval]
+      rw [hp i h₂, Measure.part, ite_eq_right_of_eq_false _ _ (eq_false hf)]
+
+/-- `m` splits over the shards of `r`, whose split key is at `kc`, as a
+distributive aggregate or an algebraic one. -/
+def Measure.algebraic (I : IntArgs) (r : Rel) (kc : Option (List Nat)) (m : Measure) : Bool :=
+  if m.fn = .iavg then
+    I r m.arg && m.part.twoPhase kc && ({ m with fn := .count } : Measure).twoPhase kc
+  else m.twoPhase kc
+
+theorem algParts_twoPhase {I : IntArgs} {r : Rel} {kc : Option (List Nat)} {ms : List Measure}
+    (h : ∀ m ∈ ms, m.algebraic I r kc = true) : ∀ p ∈ algParts ms, p.twoPhase kc = true := by
+  intro p hp
+  simp only [algParts, List.mem_append, List.mem_map, List.mem_filterMap] at hp
+  rcases hp with ⟨m, hm, rfl⟩ | ⟨m, hm, he⟩
+  · have := h m hm
+    unfold Measure.algebraic at this
+    unfold Measure.part
+    split
+    · rename_i hf
+      rw [ite_eq_left_of_eq_true _ _ (eq_true hf)] at this
+      simp only [Bool.and_eq_true] at this
+      have h' := this.1.2
+      rw [Measure.part, ite_eq_left_of_eq_true _ _ (eq_true hf)] at h'
+      exact h'
+    · rename_i hf
+      rwa [ite_eq_right_of_eq_false _ _ (eq_false hf)] at this
+  · have := h m hm
+    unfold Measure.part₂ at he
+    split at he
+    · rename_i hf
+      rw [Option.some.injEq] at he
+      subst he
+      rw [Measure.algebraic, ite_eq_left_of_eq_true _ _ (eq_true hf)] at this
+      simp only [Bool.and_eq_true] at this
+      exact this.2
+    · simp at he
+
+theorem aggregateEval_algFinish {gs : List Expr} {ms : List Measure} {rows : Relation}
+    (hint : ∀ m ∈ ms, m.fn = .iavg → ∀ row ∈ rows, (m.arg.eval row).intOrNull = true) :
+    (aggregateEval gs (algParts ms) rows).map (algFinish gs.length ms) = aggregateEval gs ms rows := by
+  unfold aggregateEval
+  split
+  · rename_i hg
+    have : gs = [] := List.isEmpty_iff.mp hg
+    subst this
+    have := algFinish_eval (k := 0) (key := []) rfl hint
+    simpa using this
+  · rw [List.map_map]
+    refine List.map_congr_left fun key hk => ?_
+    exact algFinish_eval (length_of_mem_keys hk) fun m hm hf row hrow => by
+      simp only [groupRows, List.mem_filter] at hrow
+      exact hint m hm hf row hrow.1
+
+/-- **Algebraic aggregation over shards**: every shard computes the partials,
+then they are combined and the final expressions give the aggregate. -/
+theorem Rel.eval_algebraic {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) {I : IntArgs}
+    (hI : I.Sound cat) (hne : cs ≠ []) {r : Rel} {gs : List Expr} {ms : List Measure}
+    (hw : r.WF cat) (hr : r.linear S K T cat = true)
+    (hms : ∀ m ∈ ms, m.algebraic I r (r.keyCols S K T cat) = true) :
+    (aggregateEval gs ms (r.eval cat)).Perm
+      ((aggregateEval (keyFields gs.length) (combineMeasures gs.length (algParts ms))
+        (cs.flatMap fun c => aggregateEval gs (algParts ms) (r.eval c))).map
+          (algFinish gs.length ms)) := by
+  have hint : ∀ m ∈ ms, m.fn = .iavg → ∀ row ∈ r.eval cat, (m.arg.eval row).intOrNull = true := by
+    intro m hm hf row hrow
+    have := hms m hm
+    rw [Measure.algebraic, ite_eq_left_of_eq_true _ _ (eq_true hf)] at this
+    simp only [Bool.and_eq_true] at this
+    exact hI r m.arg this.1.1 hw row hrow
+  rw [← aggregateEval_algFinish hint]
+  exact (eval_twoPhase hs hT hne hw hr (algParts_twoPhase hms)).map _
+
 /-! ### Doubles, unproved -/
 
 /-- The partial measures for splitting `SUM`/`AVG` of doubles: `AVG` as a
@@ -1596,35 +1905,39 @@ def floatCombine (k : Nat) (ms : List Measure) (input : Rel) : Rel :=
 
 /-- The aggregate below the filters, projections and sorts at the top of a plan,
 split into the plan each shard runs and the plan that combines their
-results, which reads them from the table `P`. With `floats`, `SUM` and `AVG`
-of doubles split too (`floatCombine`, unproved). -/
+results, which reads them from the table `P`. Integer `AVG`s whose argument
+`I` vouches for split as algebraic aggregates (`algCombine`). With `floats`,
+`SUM` and `AVG` of doubles split too (`floatCombine`, unproved). -/
 def Rel.splitAgg (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys) (cat : Catalog)
-    (P : String)
+    (I : IntArgs) (P : String)
     (floats : Bool) : Rel → Option (Rel × Rel)
   | .aggregate r gs ms =>
       if r.linear S K T cat && ms.all (·.twoPhase (r.keyCols S K T cat)) then
         some (.aggregate r gs ms,
           .aggregate (.read P) (keyFields gs.length) (combineMeasures gs.length ms))
+      else if r.linear S K T cat && ms.all (·.algebraic I r (r.keyCols S K T cat)) then
+        some (.aggregate r gs (algParts ms), algCombine gs.length ms (.read P))
       else if floats && r.linear S K T cat && ms.all (·.floatSplittable (r.keyCols S K T cat)) then
         some (.aggregate r gs (ms.flatMap floatPartial), floatCombine gs.length ms (.read P))
       else none
-  | .filter r c => (r.splitAgg S K T cat P floats).map fun pq => (pq.1, .filter pq.2 c)
-  | .project r es => (r.splitAgg S K T cat P floats).map fun pq => (pq.1, .project pq.2 es)
-  | .emit r m => (r.splitAgg S K T cat P floats).map fun pq => (pq.1, .emit pq.2 m)
-  | .orderBy r keys => (r.splitAgg S K T cat P floats).map fun pq => (pq.1, .orderBy pq.2 keys)
+  | .filter r c => (r.splitAgg S K T cat I P floats).map fun pq => (pq.1, .filter pq.2 c)
+  | .project r es => (r.splitAgg S K T cat I P floats).map fun pq => (pq.1, .project pq.2 es)
+  | .emit r m => (r.splitAgg S K T cat I P floats).map fun pq => (pq.1, .emit pq.2 m)
+  | .orderBy r keys => (r.splitAgg S K T cat I P floats).map fun pq => (pq.1, .orderBy pq.2 keys)
   | _ => none
 
 /-- Sharded evaluation of `r`: the plan each shard runs, and the plan that
 combines their results (read from the table `P`). A linear plan's results
 are just concatenated. -/
 def Rel.shardSplit (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys) (cat : Catalog)
-    (P : String)
+    (I : IntArgs) (P : String)
     (floats : Bool) (r : Rel) : Option (Rel × Rel) :=
-  if r.linear S K T cat then some (r, .read P) else r.splitAgg S K T cat P floats
+  if r.linear S K T cat then some (r, .read P) else r.splitAgg S K T cat I P floats
 
 theorem Rel.splitAgg_sound {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys} {P : String}
-    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) (hne : cs ≠ []) {C : Catalog} :
-    ∀ {r p q : Rel}, r.WF cat → r.splitAgg S K T cat P false = some (p, q) →
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) {I : IntArgs}
+    (hI : I.Sound cat) (hne : cs ≠ []) {C : Catalog} :
+    ∀ {r p q : Rel}, r.WF cat → r.splitAgg S K T cat I P false = some (p, q) →
       (C P).rows = cs.flatMap p.eval → (r.eval cat).Perm (q.eval C)
   | .aggregate r gs ms, p, q, hw, h, hC => by
     simp only [splitAgg] at h
@@ -1636,27 +1949,35 @@ theorem Rel.splitAgg_sound {S : String → Bool} {K : String → Option (List Na
       simp only [eval, hC]
       exact eval_twoPhase hs hT hne hw.1 hc.1 hc.2
     · split at h
-      · rename_i hc; simp at hc
-      · simp at h
+      · rename_i hc
+        simp only [Bool.and_eq_true, List.all_eq_true] at hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        rw [algCombine_eval]
+        simp only [eval, hC]
+        exact eval_algebraic hs hT hI hne hw.1 hc.1 hc.2
+      · split at h
+        · rename_i hc; simp at hc
+        · simp at h
   | .filter r c, p, q, hw, h, hC | .project r c, p, q, hw, h, hC | .emit r c, p, q, hw, h, hC => by
     simp only [splitAgg] at h
-    cases hr : r.splitAgg S K T cat P false with
+    cases hr : r.splitAgg S K T cat I P false with
     | none => simp [hr] at h
     | some pq =>
       simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      have ih := splitAgg_sound hs hT hne (r := r) hw.1 hr hC
+      have ih := splitAgg_sound hs hT hI hne (r := r) hw.1 hr hC
       simp only [eval]
       first | exact ih.filter _ | exact ih.map _
   | .orderBy r keys, p, q, hw, h, hC => by
     simp only [splitAgg] at h
-    cases hr : r.splitAgg S K T cat P false with
+    cases hr : r.splitAgg S K T cat I P false with
     | none => simp [hr] at h
     | some pq =>
       simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       simp only [eval]
-      exact (List.mergeSort_perm _ _).trans ((splitAgg_sound hs hT hne (r := r) hw.1 hr hC).trans
+      exact (List.mergeSort_perm _ _).trans ((splitAgg_sound hs hT hI hne (r := r) hw.1 hr hC).trans
         (List.mergeSort_perm _ _).symm)
   | .read _, _, _, _, h, _ | .values _ _, _, _, _, h, _ | .cross _ _, _, _, _, h, _
   | .join _ _ _ _, _, _, _, h, _ | .fetch _ _ _, _, _, _, h, _ | .unionAll _ _, _, _, _, h, _
@@ -1666,8 +1987,9 @@ theorem Rel.splitAgg_sound {S : String → Bool} {K : String → Option (List Na
 /-- **Sharded evaluation is sound**: run `p` on every shard, put the results
 in table `P`, and `q` gives the plan's result. -/
 theorem Rel.shardSplit_sound {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys} {P : String}
-    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) (hne : cs ≠ []) {C : Catalog}
-    {r p q : Rel} (hw : r.WF cat) (h : r.shardSplit S K T cat P false = some (p, q))
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) {I : IntArgs}
+    (hI : I.Sound cat) (hne : cs ≠ []) {C : Catalog}
+    {r p q : Rel} (hw : r.WF cat) (h : r.shardSplit S K T cat I P false = some (p, q))
     (hC : (C P).rows = cs.flatMap p.eval) : (r.eval cat).Perm (q.eval C) := by
   unfold shardSplit at h
   split at h
@@ -1676,7 +1998,7 @@ theorem Rel.shardSplit_sound {S : String → Bool} {K : String → Option (List 
     obtain ⟨rfl, rfl⟩ := h
     simp only [eval, hC]
     exact eval_sharded hs hT hw hl
-  · exact splitAgg_sound hs hT hne hw h hC
+  · exact splitAgg_sound hs hT hI hne hw h hC
 
 /-! ## 64-bit partial sums -/
 
