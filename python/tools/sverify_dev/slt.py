@@ -609,17 +609,30 @@ class Replay:
         return rows
 
     def check_types(self, name: str) -> None:
-        """Refuse a table with a `HUGEINT` or `UHUGEINT` column (#618).
-        DuckDB exports both to Arrow as `decimal128(38, 0)` without a range
-        check (DD-5): a `UHUGEINT` of 2^127 or more arrives negative (the
-        maximum as -1), and values of 10^38 or more are invalid decimals. The
-        model has neither type, and a `DECIMAL(38, 0)` computes differently."""
+        """Refuse a table whose `HUGEINT` or `UHUGEINT` values Arrow cannot
+        hold (#618). DuckDB exports both as `decimal128(38, 0)` without a
+        range check (DD-5): a value of 10^38 or more is an invalid decimal,
+        and a `UHUGEINT` of 2^127 or more arrives negative (the maximum as
+        -1). Smaller values export exactly. A 128-bit integer inside a list
+        or struct is refused whatever its value."""
         rel = self.db.sql(f'SELECT * FROM "{name}" LIMIT 0')
+        limit = 10**38
         for col, t in zip(rel.columns, rel.types, strict=True):
-            if _HUGE.search(str(t)):
+            kind = str(t).upper()
+            if not _HUGE.search(kind):
+                continue
+            q = '"' + col.replace('"', '""') + '"'
+            if kind == "HUGEINT":
+                out = f"{q} >= {limit} OR {q} <= -{limit}"
+            elif kind == "UHUGEINT":
+                out = f"{q} >= {limit}"
+            else:
+                out = "true"
+            found = self.db.sql(f'SELECT count(*) FROM "{name}" WHERE {out}').fetchall()[0][0]
+            if found:
                 raise ValueError(
-                    f"column {col} of {name} is {t}, which DuckDB's Arrow export "
-                    "reads as decimal128(38, 0) and can wrap (DD-5)"
+                    f"column {col} of {name} is {t} with values DuckDB's Arrow export "
+                    "(decimal128(38, 0)) cannot hold (DD-5)"
                 )
 
     def condense(

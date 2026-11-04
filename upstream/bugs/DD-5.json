@@ -9,7 +9,7 @@
     "```python\nimport duckdb\nduckdb.sql(\"SELECT '340282366920938463463374607431768211455'::UHUGEINT AS u, '170141183460469231731687303715884105727'::HUGEINT AS h\").to_arrow_table().to_pylist()\n```",
     "observed: `[{'u': Decimal('-1'), 'h': Decimal('170141183460469231731687303715884105727')}]`, and `validate(full=True)` of `h` raises \"Decimal value … does not fit in precision of decimal128(38, 0)\"."
   ],
-  "handling": "sverify has no 128-bit integers; the replay harness (`sverify_dev.slt`) refuses tables with a `HUGEINT` or `UHUGEINT` column before mirroring them through Arrow (#618)",
+  "handling": "sverify has no 128-bit integers. The replay harness (`sverify_dev.slt`) mirrors a `HUGEINT` or `UHUGEINT` column through Arrow only when all its values are below 10^38 in magnitude, which export exactly, and refuses the table otherwise, or when the column is nested (#618)",
   "found_by": "the characterization pipeline's round 3 (DuckDB's `uhugeint_try_cast.test` L115 replayed through `sverify_dev.slt`)",
   "issues": [
     618
