@@ -670,6 +670,10 @@ OBSERVATIONS: list[Observation] = [
     _o("sum-infinities", "aggregates",
        "SELECT sum(d)::VARCHAR, sum(f)::VARCHAR, typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE,"
        " 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)"),
+    _o("sum-empty", "aggregates",
+       "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM"
+       " (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f,"
+       " 1::TINYINT AS i WHERE false) t"),
     _o("var-bigint-decimal", "aggregates",
        "SELECT typeof(var_samp(x)), round(var_samp(x), 12), round(var_pop(x), 12),"
        " typeof(var_samp(y)), round(var_samp(y), 12), round(stddev_samp(y), 12)"

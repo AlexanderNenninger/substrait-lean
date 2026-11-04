@@ -10,7 +10,8 @@
     "empty_group_aggregates"
   ],
   "rows": [
-    {"group": "agg.isum", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]}
+    {"group": "agg.isum", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i64"]}
   ],
   "constructs": [
     "sum",

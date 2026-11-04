@@ -12,7 +12,8 @@
   ],
   "rows": [
     {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
-    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]}
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"]}
   ],
   "constructs": [
     "//",

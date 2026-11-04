@@ -6,26 +6,13 @@
   "verdict": "`DOUBLE`; exact integer sum, one division (in `long double` for `INTEGER` and `BIGINT`)",
   "area": "aggregates",
   "options": [
-    "avg_int_result"
+    "avg_int_result",
+    "empty_group_aggregates"
   ],
   "rows": [
-    {
-      "group": "agg.isum",
-      "option": "avg_int_result",
-      "types": [
-        "i8",
-        "i16",
-        "i64"
-      ]
-    },
-    {
-      "group": "agg.isum",
-      "option": "avg_int_result",
-      "types": [
-        "i32"
-      ],
-      "evidence": "engine_test"
-    }
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i64"]},
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i32"], "evidence": "engine_test"},
+    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i8", "i16", "i32", "i64"], "evidence": "source"}
   ],
   "constructs": [
     "avg",

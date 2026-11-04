@@ -11,21 +11,85 @@
     "rounding"
   ],
   "rows": [
-    {"group": "agg.var", "option": "stat_algo", "types": ["fp64"]},
-    {"group": "agg.var", "option": "stat_algo", "types": ["i64", "decimal"], "evidence": "source"},
-    {"group": "agg.var", "option": "stat_degenerate", "types": ["fp64"]},
-    {"group": "agg.var", "option": "stat_degenerate", "types": ["i64", "decimal"], "evidence": "source"},
-    {"group": "agg.var", "option": "distribution", "types": ["fp64"]},
-    {"group": "agg.var", "option": "distribution", "types": ["i64", "decimal"], "evidence": "source"},
-    {"group": "agg.var", "option": "rounding", "types": ["fp64"]},
-    {"group": "agg.var", "option": "rounding", "types": ["i64", "decimal"], "evidence": "source"}
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "decimal"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "decimal"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "i64",
+        "decimal"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "i64",
+        "decimal"
+      ],
+      "evidence": "source"
+    }
   ],
   "constructs": [
     "var",
     "std"
   ],
   "settings": {
-    "engine": "streaming"
+    "engine": "streaming",
+    "POLARS_IDEAL_MORSEL_SIZE": [
+      "100000 (default)",
+      "64"
+    ],
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": [
+      "33554432 (default)",
+      "1024"
+    ]
   },
   "description": [
     "On the streaming engine `var` and `std` run `VarState`. Ungrouped, each morsel's chunks go through the 128-value two-pass blocks and merge by Chan's formula into their pipeline's state, and the pipelines' states merge in turn. Block boundaries follow the morsels and the merge order follows scheduling, so the result can change in the last bits between runs: five runs over 300 000 values gave 4.440337823592621, …622 and …623 (in memory always 4.440337823592626).",
@@ -116,6 +180,18 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3). That the `nightly` feature reaches polars-utils through polars-python was not traced link by link."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (probe_polars --diff, small morsels)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-var-runs"
+        }
+      ],
+      "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
     }
   ],
   "supersedes": [

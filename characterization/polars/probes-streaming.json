@@ -990,9 +990,9 @@
    "construct": "join-nan-zero-null",
    "area": "relations",
    "code": "[df(x=[nan, 0.0, -0.0, None]).join(df(x=[nan, 0.0, None], y=[1, 2, 3]), on='x', nulls_equal=n).sort('y').rows() for n in (False, True)]",
-   "differ": 0,
+   "differ": 1,
    "in-memory": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]",
-   "streaming": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]"
+   "streaming": "[[(nan, 1), (-0.0, 2), (0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]"
   },
   {
    "construct": "int-float-compare",
@@ -1582,9 +1582,9 @@
    "construct": "s-group-mean-cancel",
    "area": "aggregates",
    "code": "df(g=[1] * 4, x=[1e16, 1.0, 1.0, -1e16]).group_by('g').agg(pl.col('x').mean()).item(0, 'x')",
-   "differ": 1,
+   "differ": 0,
    "in-memory": "0.5",
-   "streaming": "0.25"
+   "streaming": "0.5"
   },
   {
    "construct": "s-group-var",
@@ -1597,26 +1597,26 @@
   {
    "construct": "s-fsum-runs",
    "area": "aggregates",
-   "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).select(pl.col('x').sum()).item()) for _ in range(5)})",
+   "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)]).select(pl.col('x').sum()).item()) for _ in range(5)})",
    "differ": 1,
-   "in-memory": "['151234.90000035526']",
-   "streaming": "['151234.90000035526', '151234.9000003553']"
+   "in-memory": "['2440.700000000097']",
+   "streaming": "['2440.7000000000967', '2440.700000000097']"
   },
   {
    "construct": "s-group-fsum-runs",
    "area": "aggregates",
-   "code": "sorted({repr(df(g=[i % 3 for i in range(300_000)], x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).group_by('g').agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})",
+   "code": "sorted({repr(df(g=[i % 3 for i in range(5_000)], x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)]).group_by('g').agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})",
    "differ": 1,
-   "in-memory": "['[50424.80000011841, 50401.90000011841, 50408.20000011843]', '[50424.80000011842, 50401.900000118396, 50408.20000011843]', '[50424.80000011844, 50401.90000011841, 50408.20000011844]', '[50424.80000011844, 50401.900000118425, 50408.20000011844]']",
-   "streaming": "['[50424.80000011842, 50401.90000011839, 50408.20000011843]', '[50424.80000011842, 50401.900000118396, 50408.20000011843]', '[50424.80000011844, 50401.90000011841, 50408.20000011844]']"
+   "in-memory": "['[819.8000000000312, 811.3000000000312, 809.6000000000314]', '[819.8000000000314, 811.3000000000316, 809.6000000000315]', '[819.8000000000314, 811.3000000000318, 809.6000000000321]', '[819.8000000000324, 811.3000000000321, 809.6000000000329]', '[819.8000000000325, 811.3000000000322, 809.6000000000324]']",
+   "streaming": "['[819.8000000000319, 811.3000000000317, 809.600000000032]', '[819.8000000000325, 811.300000000032, 809.6000000000321]', '[819.8000000000325, 811.3000000000326, 809.6000000000325]', '[819.8000000000327, 811.3000000000321, 809.6000000000327]', '[819.8000000000327, 811.3000000000326, 809.6000000000327]']"
   },
   {
    "construct": "s-var-runs",
    "area": "aggregates",
-   "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).select(pl.col('x').var()).item()) for _ in range(5)})",
+   "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)]).select(pl.col('x').var()).item()) for _ in range(5)})",
    "differ": 1,
-   "in-memory": "['4.440337823592626']",
-   "streaming": "['4.440337823592621', '4.440337823592622', '4.440337823592623']"
+   "in-memory": "['4.441337607921585']",
+   "streaming": "['4.441337607921584']"
   },
   {
    "construct": "s-first-last-grouped",
@@ -1637,7 +1637,7 @@
   {
    "construct": "s-sort-ties-large",
    "area": "relations",
-   "code": "(lambda s: all(a <= b for a, b in zip(s, s[1:])))(df(k=[i % 3 for i in range(3_000_000)], i=range(3_000_000)).sort('k').filter(pl.col('k') == 1)['i'].to_list())",
+   "code": "(lambda s: all(a <= b for a, b in zip(s, s[1:])))(df(k=[i % 3 for i in range(3_000)], i=range(3_000)).sort('k').filter(pl.col('k') == 1)['i'].to_list())",
    "differ": 1,
    "in-memory": "True",
    "streaming": "False"
@@ -1647,8 +1647,8 @@
    "area": "relations",
    "code": "df(g=[(i * 7919) % 1000 for i in range(100_000)]).group_by('g').len()['g'].to_list()[:8]",
    "differ": 1,
-   "in-memory": "[950, 164, 158, 554, 149, 33, 691, 426]",
-   "streaming": "[0, 919, 838, 757, 676, 514, 352, 271]"
+   "in-memory": "[170, 39, 152, 402, 935, 810, 24, 542]",
+   "streaming": "[0, 595, 352, 190, 28, 947, 704, 623]"
   },
   {
    "construct": "s-when-masks-cast",

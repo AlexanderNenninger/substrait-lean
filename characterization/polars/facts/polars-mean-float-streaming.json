@@ -7,13 +7,15 @@
   "area": "aggregates",
   "options": [
     "sum_order",
-    "rounding"
+    "rounding",
+    "empty_group_aggregates"
   ],
   "rows": [
     {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
     {"group": "agg.fsum", "option": "sum_order", "types": ["fp32"], "evidence": "source"},
     {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]},
-    {"group": "agg.fsum", "option": "rounding", "types": ["fp32"], "evidence": "source"}
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp32"], "evidence": "source"},
+    {"group": "agg.fsum", "option": "empty_group_aggregates", "types": ["fp32", "fp64"], "evidence": "source"}
   ],
   "constructs": [
     "mean",

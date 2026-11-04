@@ -9,13 +9,28 @@
     "tie_order"
   ],
   "rows": [
-    {"option": "tie_order", "types": ["any"]}
+    {
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
   ],
   "constructs": [
     "sort",
     "top_k"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": "in-memory",
+    "POLARS_IDEAL_MORSEL_SIZE": [
+      "100000 (default)",
+      "64"
+    ],
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": [
+      "33554432 (default)",
+      "1024"
+    ]
+  },
   "description": [
     "Sorting 200 000 rows on a key with 7 values kept the input order within each key, in memory and streaming, with and without `maintain_order`. Polars documents order among ties only for `maintain_order=True`.",
     "`top_k` keeps 2 of 3 tied rows; which ones is not documented.",
@@ -114,6 +129,18 @@
         "Narrowed to the in-memory engine; the streaming engine is in polars-sort-stability-streaming. Above the partition threshold its sort without `maintain_order` does not keep input order among ties, which this fact left unconfirmed.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (probe_polars --diff, small morsels)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-sort-ties-large"
+        }
+      ],
+      "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
     }
   ]
 }

@@ -7429,6 +7429,13 @@
    "observed": "'nan', 'nan', 'DOUBLE'"
   },
   {
+   "construct": "sum-empty",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f, 1::TINYINT AS i WHERE false) t",
+   "observed": "NULL, NULL, NULL, NULL, NULL, NULL, NULL"
+  },
+  {
    "construct": "var-bigint-decimal",
    "area": "aggregates",
    "setup": [],

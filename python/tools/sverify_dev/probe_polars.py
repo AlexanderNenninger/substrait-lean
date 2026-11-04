@@ -40,7 +40,10 @@ import datetime as dt
 import itertools
 import json
 import math
+import os
 import struct
+import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -190,10 +193,20 @@ class Observation:
     code: str
     """A Python expression over `pl`, `math`, `dt`, `Decimal`, `inf`, `nan` and
     the helpers `df`, `bits`, `attempt`."""
+    env: tuple[tuple[str, str], ...] = ()
+    """Environment variables Polars reads at start-up (`POLARS_IDEAL_MORSEL_SIZE`,
+    `POLARS_SORT_PARTITION_THRESHOLD_BYTES`): with any, the observation runs in
+    a subprocess that sets them, so a small input reaches the paths large
+    inputs reach at the defaults."""
 
 
-def _o(construct: str, area: str, code: str) -> Observation:
-    return Observation(construct, area, code)
+def _o(construct: str, area: str, code: str, **env: str) -> Observation:
+    return Observation(construct, area, code, tuple(env.items()))
+
+
+#: Small morsels and sort partitions: several morsels, pipelines and sort
+#: partitions from a few thousand rows.
+SMALL = {"POLARS_IDEAL_MORSEL_SIZE": "64", "POLARS_SORT_PARTITION_THRESHOLD_BYTES": "1024"}
 
 
 def df(**cols: Any) -> pl.DataFrame:
@@ -767,7 +780,15 @@ def run_probe(p: Probe) -> Json:
 
 
 def observe(o: Observation) -> Json:
-    """`o`'s result, or the error it raises."""
+    """`o`'s result, or the error it raises; in a subprocess with `o.env` set
+    when it has any."""
+    if o.env:
+        run = subprocess.run(
+            [sys.executable, "-m", "sverify_dev.probe_polars", "--observe", o.construct,
+             "--engine", ENGINE],
+            env={**os.environ, **dict(o.env)}, capture_output=True, text=True, check=True,
+        )  # fmt: skip
+        return json.loads(run.stdout)
     env = {"pl": pl, "math": math, "dt": dt, "Decimal": Decimal, "df": df, "bits": bits,
            "attempt": attempt,
            "inf": math.inf, "nan": math.nan}  # fmt: skip
@@ -777,7 +798,10 @@ def observe(o: Observation) -> Json:
         if isinstance(e, KeyboardInterrupt):
             raise
         observed = f"error {type(e).__name__}: {str(e).splitlines()[0]}"
-    return {"construct": o.construct, "area": o.area, "code": o.code, "observed": observed}
+    found: Json = {"construct": o.construct, "area": o.area, "code": o.code, "observed": observed}
+    if o.env:
+        found["env"] = dict(o.env)
+    return found
 
 
 def probe_all(
@@ -840,15 +864,15 @@ STREAMING_OBSERVATIONS: list[Observation] = [
        "df(g=[1] * 4, x=[1e8 + 1, 1e8 + 2, 1e8 + 3, 1e8 + 4]).group_by('g')"
        ".agg(pl.col('x').var()).item(0, 'x')"),
     _o("s-fsum-runs", "aggregates",
-       "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)])"
-       ".select(pl.col('x').sum()).item()) for _ in range(5)})"),
+       "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)])"
+       ".select(pl.col('x').sum()).item()) for _ in range(5)})", **SMALL),
     _o("s-group-fsum-runs", "aggregates",
-       "sorted({repr(df(g=[i % 3 for i in range(300_000)],"
-       " x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).group_by('g')"
-       ".agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})"),
+       "sorted({repr(df(g=[i % 3 for i in range(5_000)],"
+       " x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)]).group_by('g')"
+       ".agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})", **SMALL),
     _o("s-var-runs", "aggregates",
-       "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)])"
-       ".select(pl.col('x').var()).item()) for _ in range(5)})"),
+       "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)])"
+       ".select(pl.col('x').var()).item()) for _ in range(5)})", **SMALL),
     _o("s-first-last-grouped", "aggregates",
        "df(g=[i % 7 for i in range(100_000)], i=range(100_000)).group_by('g')"
        ".agg(pl.col('i').first().alias('f'), pl.col('i').last().alias('l')).sort('g').rows()"),
@@ -857,8 +881,8 @@ STREAMING_OBSERVATIONS: list[Observation] = [
        ".group_by('g').agg(pl.col('i')).sort('g')['i'].to_list())"),
     _o("s-sort-ties-large", "relations",
        "(lambda s: all(a <= b for a, b in zip(s, s[1:])))("
-       "df(k=[i % 3 for i in range(3_000_000)], i=range(3_000_000)).sort('k')"
-       ".filter(pl.col('k') == 1)['i'].to_list())"),
+       "df(k=[i % 3 for i in range(3_000)], i=range(3_000)).sort('k')"
+       ".filter(pl.col('k') == 1)['i'].to_list())", **SMALL),
     _o("s-group-order", "relations",
        "df(g=[(i * 7919) % 1000 for i in range(100_000)]).group_by('g').len()['g'].to_list()[:8]"),
     _o("s-when-masks-cast", "execution",
@@ -918,7 +942,8 @@ STREAMING_OBSERVATIONS: list[Observation] = [
        ".collect(engine=e).rows(),"
        " a.join(b, on='x', how='anti', nulls_equal=True).unique(maintain_order=True)"
        ".collect(engine=e).rows()))"
-       "(pl.LazyFrame({'x': [1, 1, 2, None, None] * 1200}), pl.LazyFrame({'x': [1, None, 3] * 2000}))"
+       "(pl.LazyFrame({'x': [1, 1, 2, None, None] * 1200}),"
+       " pl.LazyFrame({'x': [1, None, 3] * 2000}))"
        " for e in ('in-memory', 'streaming')]"),
     _o("s-literal-types", "frontend",
        "[[str(t) for t in pl.LazyFrame().select(pl.lit(1), pl.lit(2**40).alias('b'),"
@@ -999,8 +1024,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         "--diff", action="store_true",
         help="compare streaming with in-memory, without Lean (writes probes-streaming.json)",
     )  # fmt: skip
+    parser.add_argument("--observe", metavar="CONSTRUCT", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     global ENGINE
+    if args.observe:
+        # The subprocess of an observation with `env`: Polars has read it.
+        ENGINE = args.engine
+        o = next(o for o in (*OBSERVATIONS, *STREAMING_OBSERVATIONS) if o.construct == args.observe)
+        print(json.dumps(observe(Observation(o.construct, o.area, o.code))
+                         | ({"env": dict(o.env)} if o.env else {})))  # fmt: skip
+        return
     if args.diff:
         found = engine_diff()
         if args.write:
