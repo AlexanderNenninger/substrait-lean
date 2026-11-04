@@ -505,6 +505,9 @@ _FRONTEND = tuple(
     for k in ("Binder", "Parser", "Catalog", "Not implemented", "Dependency", "Syntax")
 )
 
+#: DuckDB's 128-bit integer types, whose Arrow export can wrap (DD-5, #618).
+_HUGE = re.compile(r"\bU?HUGEINT\b", re.I)
+
 _PROBE = re.compile(r"^\s*(\(\s*)*(SELECT|WITH|VALUES|FROM|TABLE)\b", re.I)
 
 
@@ -581,6 +584,9 @@ class Replay:
             if name != ONE and name.lower() not in lower:
                 self.con.drop(name)  # dropped or renamed in DuckDB
                 self.synced.pop(name, None)
+        for ref in tables:
+            if ref != ONE and (name := lower.get(ref.lower())) is not None:
+                self.check_types(name)
         rows: dict[str, list[tuple]] = {}
         for ref in tables:
             name = lower.get(ref.lower())
@@ -601,6 +607,20 @@ class Replay:
             raise OverflowError(f"the query reads {total} rows, more than {cap}")
         rows[ONE] = [(0,)]
         return rows
+
+    def check_types(self, name: str) -> None:
+        """Refuse a table with a `HUGEINT` or `UHUGEINT` column (#618).
+        DuckDB exports both to Arrow as `decimal128(38, 0)` without a range
+        check (DD-5): a `UHUGEINT` of 2^127 or more arrives negative (the
+        maximum as -1), and values of 10^38 or more are invalid decimals. The
+        model has neither type, and a `DECIMAL(38, 0)` computes differently."""
+        rel = self.db.sql(f'SELECT * FROM "{name}" LIMIT 0')
+        for col, t in zip(rel.columns, rel.types, strict=True):
+            if _HUGE.search(str(t)):
+                raise ValueError(
+                    f"column {col} of {name} is {t}, which DuckDB's Arrow export "
+                    "reads as decimal128(38, 0) and can wrap (DD-5)"
+                )
 
     def condense(
         self, rec: Record, tables: list[str]
