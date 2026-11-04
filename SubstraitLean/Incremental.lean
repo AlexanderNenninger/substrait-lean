@@ -91,7 +91,11 @@ there before, and a fetch or a window on the other rows' positions, so none
 has a delta rule of this shape. A sort is just a bag in some order.
 `DISTINCT` and `COUNT` and `SUM` per group do have delta rules, over a state
 kept beside the view: a count per row or per group, and each measure's
-count and sum (`LinearAgg` in `SubstraitLean/IncrementalAgg.lean`). -/
+count and sum (`LinearAgg` in `SubstraitLean/IncrementalAgg.lean`); so do
+`MIN` and `MAX`, which recompute the groups a batch deletes from
+(`ExtremeAgg` in `SubstraitLean/IncrementalMinMax.lean`), and semi and anti
+joins, from a count of matches per left row (`SemiDelta` in
+`SubstraitLean/IncrementalSemi.lean`). -/
 def Rel.Incremental : Rel → Prop
   | .read _ | .values _ _ => True
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.Incremental

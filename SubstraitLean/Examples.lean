@@ -7,6 +7,8 @@ import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
 import SubstraitLean.TouchedFrames
 import SubstraitLean.IncrementalAgg
+import SubstraitLean.IncrementalMinMax
+import SubstraitLean.IncrementalSemi
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Rows
@@ -271,3 +273,9 @@ end Substrait.Examples
 #print axioms Substrait.LinearAgg.aggregate_maintained
 #print axioms Substrait.LinearAgg.distinct_state
 #print axioms Substrait.LinearAgg.distinct_maintained
+#print axioms Substrait.ExtremeAgg.done_merge
+#print axioms Substrait.ExtremeAgg.extreme_maintained
+#print axioms Substrait.ExtremeAgg.map_maintained
+#print axioms Substrait.ExtremeAgg.finish_iavg
+#print axioms Substrait.SemiDelta.semi_maintained
+#print axioms Substrait.SemiDelta.matchCount_by_key

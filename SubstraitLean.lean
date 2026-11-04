@@ -26,6 +26,8 @@ import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
 import SubstraitLean.TouchedFrames
 import SubstraitLean.IncrementalAgg
+import SubstraitLean.IncrementalMinMax
+import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
 import SubstraitLean.Lowering

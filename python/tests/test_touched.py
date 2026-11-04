@@ -115,7 +115,7 @@ def test_an_aggregate_over_a_join():
 
     def by_team(samples, hosts):
         j = samples.join(hosts, "host")
-        return j.group_by(["team", "minute"]).aggregate(peak=j.cpu.max(), n=j.count())
+        return j.group_by(["team", "minute"]).aggregate(peak=j.cpu.mean(), n=j.count())
 
     src = StaticSource(samples([("a", 1, 5), ("b", 1, 3)]), name="samples")
     teams = StaticSource(hosts, name="hosts")
@@ -184,7 +184,7 @@ def timed(rows) -> pa.Table:
 
 def per_bucket(samples):
     return samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
-        n=samples.count(), high=samples.cpu.max()
+        n=samples.count(), high=samples.cpu.mean()
     )
 
 
