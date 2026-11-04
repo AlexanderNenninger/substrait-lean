@@ -217,7 +217,7 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   SQL of each dialect, and the SQLGlot nodes and Ibis operations that read as
   it. A row whose `call`, `expr`, `lift` or `ibis` covers the function needs
   no case in the places below; `tests/test_functions.py` checks the rows
-  against `Write.lean`.
+  against `Functions.lean` (`substrait-check --functions`).
 - **SQL writer** (`python/src/sverify/sql/core/<area>.py`, `strings`,
   `temporal`, `nested`): the function's case in the area's `call` (`mkCall`),
   its SQL in the area's `expr`, and its result kind in the area's `UN_KINDS` or

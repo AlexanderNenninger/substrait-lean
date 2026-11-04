@@ -5,8 +5,9 @@ the SQL lift and the Ibis producer make of it (#544, wave 3).
 The rows follow `docs/core-semantics.md`: a function's options are its
 group's (`GROUPS`), each option is a row of `OPTIONS`, and each profile
 chooses among an option's behaviours (`CHOICES`). Lean's tables are the
-source (D1); `tests/test_functions.py` checks the names and anchors against
-`SubstraitLean/Write.lean`.
+source (D1, `SubstraitLean/Functions.lean`); `tests/test_functions.py`
+checks the names, anchors, groups and options against them
+(`substrait-check --functions`).
 
 Internal: not part of sverify's public API. It imports nothing of sverify's,
 so every layer can read it.
@@ -150,7 +151,7 @@ ResultKind = Literal["str", "int", "float", "bool"]
 @dataclass(frozen=True)
 class Fn:
     name: str
-    """Substrait's name, as `Write.lean` declares it."""
+    """Substrait's name, as `Functions.lean` declares it."""
     anchor: int
     area: Literal["core", "strings"]
     group: str
@@ -231,7 +232,7 @@ def _str(name: str, anchor: int, group: str, args: int, result: ResultKind, op: 
     return Fn(name, anchor, "strings", group, ("str",) * args, result, op or name, **kw)  # type: ignore[arg-type]
 
 
-#: The rows, in `Write.lean`'s order within each area.
+#: The rows, in `Functions.lean`'s order within each area.
 FUNCTIONS: tuple[Fn, ...] = (
     # Elementary functions of doubles (`FMath`, `SubstraitLean/Numeric.lean`).
     _fp("sqrt", 100, "fp.elem", "Sqrt", "Sqrt"),

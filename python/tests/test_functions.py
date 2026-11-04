@@ -1,6 +1,8 @@
 """The function table (`sverify._functions`, #544) against Lean's and itself."""
 
-import re
+import functools
+import json
+import subprocess
 from pathlib import Path
 
 import ibis.expr.operations as ops
@@ -8,32 +10,48 @@ import pytest
 import sqlglot.expressions as sge
 
 from sverify import _functions as fns
+from sverify.engine import checker_path
 from sverify.sql_lift import PROFILES
 
 ROOT = Path(__file__).resolve().parents[2]
-WRITE_LEAN = ROOT / "SubstraitLean" / "Write.lean"
-#: The table's areas, by the name of their list in `Write.lean`.
-LEAN_LISTS = {"core": "coreFns", "strings": "stringFns"}
 DIALECTS = {"", "duckdb", "spark", "snowflake"}
 
 
-def lean_list(name: str) -> dict[str, int]:
-    """A list of `Write.lean`'s (`coreFns`, …): anchors by name."""
-    text = WRITE_LEAN.read_text()
-    m = re.search(rf"def {name} : List \(Nat × String\) := \[(.*?)\)\]", text, re.S)
-    assert m, name
-    return {n: int(a) for a, n in re.findall(r'\((\d+), "([a-z0-9_]+)"\)', m.group(1) + ")")}
+@functools.cache
+def lean_rows() -> tuple[dict, ...]:
+    """Lean's function tables (`SubstraitLean/Functions.lean`), as
+    `substrait-check --functions` prints them: a row per constructor."""
+    out = subprocess.run(
+        [str(checker_path()), "--functions"], capture_output=True, text=True, check=True
+    )
+    return tuple(json.loads(out.stdout))
 
 
 @pytest.mark.parametrize("f", fns.FUNCTIONS, ids=lambda f: f.name)
 def test_rows_are_lean_functions(f: fns.Fn) -> None:
-    """Each row is a function of its area's list in `Write.lean`, at its anchor."""
-    assert lean_list(LEAN_LISTS[f.area]).get(f.name) == f.anchor
+    """Each row is Lean's: its area, anchor, group and the group's options,
+    for every type Lean models the function at."""
+    rows = [r for r in lean_rows() if r["name"] == f.name]
+    assert rows, f.name
+    for r in rows:
+        assert (r["area"], r["anchor"], r["group"]) == (f.area, f.anchor, f.group)
+        assert tuple(r["options"]) == f.options
 
 
 def test_strings_complete() -> None:
     """Every string function Lean writes has a row."""
-    assert {f.name for f in fns.area("strings")} == set(lean_list("stringFns"))
+    lean = {r["name"] for r in lean_rows() if r["area"] == "strings"}
+    assert {f.name for f in fns.area("strings")} == lean
+
+
+def test_groups_complete() -> None:
+    """Every function Lean models in the table's groups alone has a row
+    (`power` is also `int.arith`)."""
+    groups: dict[str, set[str]] = {}
+    for r in lean_rows():
+        groups.setdefault(r["name"], set()).add(r["group"])
+    lean = {name for name, gs in groups.items() if gs <= set(fns.GROUPS)}
+    assert {f.name for f in fns.FUNCTIONS} == lean
 
 
 def test_rows_unique() -> None:
