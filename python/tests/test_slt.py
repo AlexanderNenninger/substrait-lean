@@ -204,7 +204,7 @@ def test_replay(replayed):
     assert overflow.engine.startswith("error: Out of Range Error")
     # `verify` without inference reports the overflow the test expects, which
     # an inferred precondition would absorb (#619).
-    assert overflow.reason.startswith("verify: overflow"), overflow.reason
+    assert (overflow.reason or "").startswith("verify: overflow"), overflow.reason
     # Lean's division by zero is NULL; DuckDB 2.0 raises (and so does the
     # written plan, guarded); the verifier flags it.
     div = _result(replayed, "SELECT i // 0")
@@ -350,4 +350,4 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     )
     (r,), _ = slt.replay_file(path, "area/trig.test")
     assert (r.cls, r.lean, r.duckdb) == ("disagree", '[["NULL"]]', '[["nan"]]')
-    assert r.reason.startswith("verify: domain error: SIN"), r.reason
+    assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
