@@ -57,8 +57,10 @@ def _(mo):
     2. write the rule in Ibis and state its contract: what it assumes about
        the input and what the refund queue may rely on;
     3. have the checker prove the contract before any data runs;
-    4. run the checked plan on DuckDB, Polars and DataFusion, and write it
-       as Snowflake and Spark SQL;
+    4. run the checked plan on DuckDB, Polars and DataFusion, and see the
+       SQL a warehouse would run (the Snowflake and Spark dialects are a
+       preview: they run on an emulator and a local session, and work on
+       them waits on [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271));
     5. maintain the result from the change feed when new transactions arrive
        and old ones are reversed, next to the usual "process the new rows"
        job;
@@ -380,9 +382,11 @@ def _(mo):
     production. The node's plan is the one Lean checked. Sverify runs it on
     each engine through its own translation, which keeps Lean's semantics
     (NULL keys never match, integers don't wrap around, ties break one way)
-    or refuses the plan. DuckDB is the reference engine (Tier 1); CI tests
-    the others against the Lean model, and their known deviations are
-    documented (see the
+    or refuses the plan. DuckDB is the reference engine (Tier 1), and Polars
+    is characterized fact by fact with proved shims; CI tests the others
+    against the Lean model, and their known deviations are documented. With
+    `route="auto"`, `refresh` also says how the proof reaches DuckDB or
+    Polars ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles); see the
     [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)).
     A node refreshed with `engine=` has the same rows on each:
     """)
@@ -405,7 +409,9 @@ def _(ENGINES, duplicate_payments, dups, transactions):
 def _(mo):
     mo.md(r"""
     For a warehouse, sverify writes the plan as SQL. The SQL is long because
-    it spells out every choice an engine would otherwise make:
+    it spells out every choice an engine would otherwise make. The Snowflake
+    and Spark dialects are a preview, checked on an emulator and a local
+    session:
     """)
     return
 
