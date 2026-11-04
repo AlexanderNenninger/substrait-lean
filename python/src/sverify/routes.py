@@ -637,10 +637,11 @@ def reproducibility(
     an open choice in it (ties in an ORDER BY, a LIMIT without one) fails
     every `q_det`. Then, on each option the plan depends on, the engine's
     run-to-run variation (the `"rerun"` column of its choices, component
-    levels as in `q`; `{"floats": {"bound": "plan"}}` for a summation order
-    that varies between runs, bounded by the plan's `ε`) must refine
-    `required`. A row without the column is read as exact, on the evidence
-    of a test.
+    levels as in `q`, `{}` where it is exact; `{"floats": {"bound":
+    "plan"}}` for a summation order that varies between runs, bounded by the
+    plan's `ε`) must refine `required`. The evidence is the row's
+    `"rerun_evidence"`: "tested" unless it says "proved". A row without the
+    column is read as exact, on the evidence of a test.
 
     Returns:
         The problems (empty: reproduced), and the evidence.
@@ -669,7 +670,9 @@ def reproducibility(
         rest, bounded, unproved = _plan_bound(
             r["rerun"], required, report.epsilon, "between runs, and a rerun must reproduce"
         )
-        tested = tested or unproved
+        # The row's own evidence for its variation (`{}` where it is known
+        # exact); the class's evidence says nothing about reruns.
+        tested = tested or unproved or r.get("rerun_evidence") != "proved"
         varies = from_json(rest)
         missed = varies.coarser_than(required)
         if missed:

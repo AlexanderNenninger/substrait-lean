@@ -25,7 +25,9 @@ def con() -> sv.engine.Connection:
     return c
 
 
-def _tables(monkeypatch: pytest.MonkeyPatch, rerun: dict | None) -> None:
+def _tables(
+    monkeypatch: pytest.MonkeyPatch, rerun: dict | None, evidence: str | None = "proved"
+) -> None:
     """Polars's `sum_order` row with run-to-run variation `rerun`."""
     row = {
         "group": None,
@@ -37,6 +39,7 @@ def _tables(monkeypatch: pytest.MonkeyPatch, rerun: dict | None) -> None:
     }
     if rerun is not None:
         row["rerun"] = rerun
+        row["rerun_evidence"] = evidence
     tables = {"groups": {}, "choices": {"reference": [], "duckdb": [], "polars": [row]}}
     monkeypatch.setattr(routes, "_options_json", lambda: tables)
 
@@ -97,6 +100,18 @@ def test_a_missing_variation_reads_as_exact_on_a_test(monkeypatch, con) -> None:
     report = _float_sum(con)
     r = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert r.kind == "reference" and r.rerun_evidence == "tested"
+
+
+@pytest.mark.parametrize(
+    ("evidence", "expected"), [("proved", "proved"), ("tested", "tested"), (None, "tested")]
+)
+def test_an_exact_variation_with_its_evidence(monkeypatch, con, evidence, expected) -> None:
+    """`"rerun": {}` marks a row known exact; its evidence is the row's
+    `"rerun_evidence"`, "tested" where it says nothing."""
+    _tables(monkeypatch, {}, evidence)
+    report = _float_sum(con)
+    r = routes.choose(report, "polars", reproducible=sv.equivalent())
+    assert r.kind == "reference" and r.rerun_evidence == expected
 
 
 def test_an_open_choice_fails_every_requirement(con) -> None:
