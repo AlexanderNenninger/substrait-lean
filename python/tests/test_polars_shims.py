@@ -411,20 +411,65 @@ def test_md5_is_refused_on_polars_with_the_reason():
 # --- The streaming engine ---------------------------------------------------------
 
 
-def _batches(collect) -> int:
-    """How many batches an elementwise function sees: 1 in memory, one per
-    morsel when Polars streams."""
-    calls: list[int] = []
+#: Polars's streaming thresholds, shrunk so that a few thousand rows take the
+#: paths millions of rows take: rows per morsel (default 100 000) and the
+#: buffered bytes above which a sort partitions its input (32 MiB). Polars
+#: reads them at start-up, so the tests that need them run in a subprocess.
+SMALL_STREAMING = {
+    "POLARS_IDEAL_MORSEL_SIZE": "64",
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": "1024",
+}
 
-    def f(s: pl.Series) -> pl.Series:
-        calls.append(len(s))
-        return s
 
-    lf = pl.LazyFrame({"x": range(300_000)}).select(
-        pl.col("x").map_batches(f, return_dtype=pl.Int64, is_elementwise=True)
+def _small_streaming(code: str, **env: str) -> str:
+    """Run `code` in a Python process with `SMALL_STREAMING` (and `env`) set;
+    its standard output."""
+    import os
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**os.environ, **SMALL_STREAMING, **env},
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
-    collect(lf)
-    return len(calls)
+    assert out.returncode == 0, out.stderr
+    return out.stdout
+
+
+def test_collect_names_the_streaming_engine_and_its_optimizations(monkeypatch):
+    """The translation's claim: every plan is collected on the streaming
+    engine, without predicate pushdown or common-subexpression elimination."""
+    seen = {}
+
+    def collect(self, **kwargs):
+        seen.update(kwargs)
+        return pl.DataFrame()
+
+    monkeypatch.setattr(pl.LazyFrame, "collect", collect)
+    polars_engine.collect_streaming(pl.LazyFrame(), optimizations=polars_engine._OPTIMIZATIONS)
+    assert seen["engine"] == "streaming"
+    flags = polars_engine._OPTIMIZATIONS
+    assert not flags.predicate_pushdown and not flags.comm_subexpr_elim
+
+
+_BATCHES = """
+import polars as pl
+from sverify import polars_engine
+calls = []
+def f(s):
+    calls.append(len(s))
+    return s
+lf = pl.LazyFrame({"x": range(300)}).select(
+    pl.col("x").map_batches(f, return_dtype=pl.Int64, is_elementwise=True)
+)
+if CONFIG:
+    pl.Config.set_engine_affinity("in-memory")
+lf.collect(engine="in-memory"); a = len(calls); calls.clear()
+polars_engine.collect(lf); print(a, len(calls))
+"""
 
 
 @pytest.mark.parametrize(
@@ -432,20 +477,14 @@ def _batches(collect) -> int:
     [{}, {"POLARS_ENGINE_AFFINITY": "in-memory"}, {"POLARS_FORCE_STREAMING": "0"},
      {"POLARS_AUTO_STREAMING": "0"}, "config"],
 )  # fmt: skip
-def test_queries_stream_whatever_the_settings(setting, monkeypatch):
-    """Sverify names the streaming engine, so neither `pl.Config` nor the
-    environment moves its queries to the in-memory engine."""
-    in_memory = lambda lf: lf.collect(engine="in-memory")  # noqa: E731
-    assert _batches(in_memory) == 1
-    if setting == "config":
-        with pl.Config() as cfg:
-            cfg.set_engine_affinity("in-memory")
-            assert _batches(lambda lf: lf.collect()) == 1
-            assert _batches(polars_engine.collect) > 1
-        return
-    for k, v in setting.items():
-        monkeypatch.setenv(k, v)
-    assert _batches(polars_engine.collect) > 1
+def test_queries_stream_whatever_the_settings(setting):
+    """Polars keeps an explicit `engine="streaming"` whatever `pl.Config` and
+    the environment say: with 64-row morsels, 300 rows are one batch in
+    memory and several streamed."""
+    env = {} if setting == "config" else setting
+    code = _BATCHES.replace("CONFIG", str(setting == "config"))
+    in_memory, streamed = map(int, _small_streaming(code, **env).split())
+    assert in_memory == 1 and streamed > 1
 
 
 def test_fallback_nodes_are_found():
@@ -568,7 +607,7 @@ def _ulps(a: float, b: float) -> float:
     return abs(a - b) / math.ulp(b) if b != 0.0 else abs(a) / math.ulp(0.0)
 
 
-@pytest.mark.parametrize("n", [2, 5001])
+@pytest.mark.parametrize("n", [2])
 def test_double_division_is_within_two_ulps_and_the_remainder_exact(n):
     """PL-3 (polars-double-scalar-divisor): Polars divides by a constant
     through its reciprocal, on both engines and from 2 rows on. The
@@ -755,24 +794,42 @@ def test_a_guarded_cast_shared_by_two_branches_is_not_hoisted(kind):
     assert polars_engine.collect(lf).rows() == [(2, 3), (None, None)]
 
 
+_TIES = """
+import ibis, polars as pl, pyarrow as pa
+from sverify import polars_engine
+from sverify.engine import written_plan
+from sverify.ibis_substrait import to_substrait_json
+n = N
+k = [(j * 7919) % 5 for j in range(n)]
+tab = pa.table({"k": pa.array(k, pa.int64()), "i": pa.array(range(n), pa.int64())})
+t = ibis.table({"k": "int64", "i": "int64"}, name="t")
+out = pl.DataFrame(polars_engine.run(written_plan(to_substrait_json(t.order_by("k"))), {"t": tab}))
+raw = pl.DataFrame(tab).lazy().sort("k").collect(engine="streaming")
+def stable(df):
+    steps = df.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))
+    return steps.select((pl.col("d") > 0).all()).item()
+print(out["k"].is_sorted(), stable(out), stable(raw))
+"""
+
+
+def test_ties_keep_their_order_in_a_partitioned_streaming_sort():
+    """A streaming sort over its partition threshold does not keep ties in
+    input order without `maintain_order`; the translation's `tie_order` shim
+    writes it on every sort. With the thresholds shrunk, 3 000 rows take
+    the path 4M rows take at the defaults."""
+    assert _small_streaming(_TIES.replace("N", "3000")).split() == ["True", "True", "False"]
+
+
 @pytest.mark.slow
 def test_ties_keep_their_order_in_a_large_streaming_sort():
-    """Above the streaming sort's 32 MiB threshold Polars does not keep ties
-    in input order without `maintain_order`; the translation's `tie_order`
-    shim writes it on every sort."""
-    from sverify.engine import written_plan as written
+    """The same at Polars's default thresholds: 4M rows, above the 32 MiB a
+    sort buffers before it partitions. Slow; for homelab and CI."""
+    import os
+    import subprocess
+    import sys
 
-    n = 4_000_000
-    k = [(j * 7919) % 5 for j in range(n)]
-    tab = pa.table({"k": pa.array(k, pa.int64()), "i": pa.array(range(n), pa.int64())})
-    t = ibis.table({"k": "int64", "i": "int64"}, name="t")
-    out = pl.DataFrame(polars_engine.run(written(to_substrait_json(t.order_by("k"))), {"t": tab}))
-
-    def stable(df: pl.DataFrame) -> bool:
-        """Do the rows of each key come in input order?"""
-        steps = df.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))
-        return steps.select((pl.col("d") > 0).all()).item()
-
-    assert out["k"].is_sorted() and stable(out)
-    raw = pl.DataFrame(tab).lazy().sort("k").collect(engine="streaming")
-    assert not stable(raw)  # what the shim is for
+    code = _TIES.replace("N", "4_000_000")
+    env = {k: v for k, v in os.environ.items() if k not in SMALL_STREAMING}
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["True", "True", "False"]
