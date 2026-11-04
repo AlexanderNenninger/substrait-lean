@@ -19,7 +19,9 @@ preconditions and row caps give (`Measure.abs`, `floatBound`):
   and Stability of Numerical Algorithms*, §4.3). This is the part Lean does
   not prove; the engine facts record the algorithms (`polars-sum-float`);
 * so the engine's result is within twice the bound of one the reference
-  allows: `"abs"`, as a double.
+  allows: `"abs"`, as a double;
+* where the argument's values have one sign nothing cancels, and the bound
+  is also relative (`relEps`): `"rel"`.
 
 A column the bound does not carry over to (computed from a double measure
 by an expression) has `"abs": null`, as has a measure whose argument or row
@@ -57,8 +59,21 @@ def upJson (f : Float) : Json :=
   let m : Nat := (Float.ceil scaled).toUInt64.toNat + 1
   if k ≥ 0 then .num ⟨m, k.toNat⟩ else .num ⟨m * 10 ^ (-k).toNat, 0⟩
 
-/-- The bound for a double measure over rows described by `env`, at most `rows` of them. -/
-def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float := do
+/-- A relative bound where the values cannot cancel (all `≥ 0`, or all `≤ 0`):
+each order's result is within `γ = k·u/(1 − k·u)` of the exact one,
+relatively, with `u = 2⁻⁵³` and `k` the number of roundings (Higham, §4.2), so
+two results are within `2γ/(1 − γ)` of each other relative to either. Like
+the engines' orders, this step is not proved in Lean; it is rounded up. -/
+def relEps (k : Nat) : Float :=
+  let u : Float := Float.scaleB 1.0 (-53)
+  let ku := Float.ofNat k * u
+  let γ := ku / (1.0 - ku)
+  2.0 * γ / (1.0 - γ) * 1.000001
+
+/-- The bound for a double measure over rows described by `env`, at most
+`rows` of them: absolute, and relative where the values have one sign. -/
+def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
+    Option (Float × Option Float) := do
   let a := m.arg.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -68,10 +83,14 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Floa
   let bs := max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs
   guard (n ≤ 2 ^ 32 ∧ bs ≤ 2 ^ 1474)
   let t := if m.fn = .avg then FloatCode.avgTolScaled n bs else FloatCode.sumTolScaled n bs
-  return unscale (2 * t)
+  let oneSign := 0 ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ 0
+  let rel := if oneSign && n < 2 ^ 40 then some (relEps (if m.fn = .avg then n + 2 else n)) else none
+  return (unscale (2 * t), rel)
 
 /-- `"epsilon"` of a `--contract` request: per output column of the
-transformation that is a double `SUM` or `AVG`, `{"abs": …}`. -/
+transformation that is a double `SUM` or `AVG`, `{"abs": …, "rel"?: …}`.
+Each bound holds on its own (both at once), so either may be checked
+against a tolerance. -/
 def epsilon (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
@@ -99,7 +118,8 @@ def epsilon (input : Json) : Except String Json := do
     else (List.range srcs.length).map (s!"#{·}")
   let cols := (names.zip srcs).filterMap fun (name, src) => match src with
     | .bounded j => some (name, match doubles[j]?.bind (measureEps env · r.maxRows) with
-        | some e => Json.mkObj [("abs", upJson e)]
+        | some (e, r) => Json.mkObj ([("abs", upJson e)] ++
+            match r with | some r => [("rel", upJson r)] | none => [])
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
