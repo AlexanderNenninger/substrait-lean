@@ -5,6 +5,9 @@
   "title": "`mode` returns every most frequent value",
   "verdict": "a list of all modes, in no stated order",
   "area": "aggregates",
+  "options": [
+    "tie_pick"
+  ],
   "constructs": [
     "mode"
   ],

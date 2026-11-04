@@ -5,6 +5,9 @@
   "title": "Integer overflow of `+ - *` and negation",
   "verdict": "deviation: unbounded, and reported as a warning",
   "area": "integers",
+  "options": [
+    "overflow"
+  ],
   "constructs": [
     "+",
     "-",

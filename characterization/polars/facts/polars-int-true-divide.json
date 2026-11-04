@@ -5,6 +5,10 @@
   "title": "Integer `/`: a division of doubles",
   "verdict": "`Int64 / Int64` is `Float64`; `/ 0` is ±inf or NaN",
   "area": "integers",
+  "options": [
+    "implicit_casts",
+    "on_division_by_zero"
+  ],
   "constructs": [
     "/",
     "truediv"

@@ -5,6 +5,10 @@
   "title": "`BIGINT // BIGINT`",
   "verdict": "matches `on_division_by_zero: ERROR`",
   "area": "integers",
+  "options": [
+    "on_division_by_zero",
+    "overflow"
+  ],
   "constructs": [
     "//"
   ],

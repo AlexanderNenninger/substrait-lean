@@ -5,6 +5,9 @@
   "title": "`log10` and `log(base)` divide natural logarithms",
   "verdict": "`ln(x) / ln(base)`: last-bit differences from `log10`, `log2`",
   "area": "doubles",
+  "options": [
+    "rounding"
+  ],
   "constructs": [
     "log10",
     "log"

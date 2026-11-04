@@ -5,6 +5,10 @@
   "title": "`-0.0` equals `0.0` in comparisons, sorts, grouping and joins",
   "verdict": "one zero for equality and order; the first one seen is kept",
   "area": "doubles",
+  "options": [
+    "zero_sign",
+    "nan_zero_grouping"
+  ],
   "constructs": [
     "==",
     "sort",

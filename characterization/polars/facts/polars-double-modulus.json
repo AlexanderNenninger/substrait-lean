@@ -5,6 +5,10 @@
   "title": "Double `%`: `x - y·floor(x / y)`",
   "verdict": "floor remainder; NaN for `x % 0` and for finite `x % ±inf`",
   "area": "doubles",
+  "options": [
+    "division_type",
+    "nan_creation"
+  ],
   "constructs": [
     "%",
     "//"

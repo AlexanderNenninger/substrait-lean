@@ -5,6 +5,10 @@
   "title": "signbit reads the sign of -0.0 and of NaN",
   "verdict": "recorded: signbit is a black box Lean evaluates away from zero and NaN",
   "area": "doubles",
+  "options": [
+    "nan_kind",
+    "zero_sign"
+  ],
   "constructs": [
     "signbit"
   ],

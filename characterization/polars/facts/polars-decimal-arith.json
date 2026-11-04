@@ -5,6 +5,11 @@
   "title": "Decimals: 38 digits, the larger scale, half to even",
   "verdict": "`Decimal(38, max(s₁, s₂))`; rounds half to even; raises on overflow and on `/ 0`",
   "area": "decimals",
+  "options": [
+    "decimal_rescale",
+    "decimal_result_type",
+    "raise_set"
+  ],
   "constructs": [
     "+",
     "-",

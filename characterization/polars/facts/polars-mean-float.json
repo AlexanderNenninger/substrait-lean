@@ -5,6 +5,9 @@
   "title": "`mean` of floats: the sum by the count",
   "verdict": "sum / n",
   "area": "aggregates",
+  "options": [
+    "sum_order"
+  ],
   "constructs": [
     "mean",
     "avg"

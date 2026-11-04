@@ -5,6 +5,9 @@
   "title": "Casts of doubles and decimals to integers: rounding",
   "verdict": "decided: truncate; DuckDB shim",
   "area": "casts",
+  "options": [
+    "float_to_int"
+  ],
   "constructs": [
     "CAST",
     "cast"

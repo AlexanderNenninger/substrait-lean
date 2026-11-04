@@ -5,6 +5,9 @@
   "title": "`round(d)`: `op(x · 10ᵈ) / 10ᵈ`, no negative `d`",
   "verdict": "matches the reference on the edge cases; `d < 0` refused",
   "area": "doubles",
+  "options": [
+    "rounding"
+  ],
   "constructs": [
     "round"
   ],

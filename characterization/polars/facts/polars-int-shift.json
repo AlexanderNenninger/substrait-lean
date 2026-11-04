@@ -5,6 +5,9 @@
   "title": "No bit-shift expressions",
   "verdict": "no `<<` or `>>` on expressions",
   "area": "integers",
+  "options": [
+    "shift_range"
+  ],
   "constructs": [
     "shift_left",
     "shift_right"

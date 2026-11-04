@@ -5,6 +5,11 @@
   "title": "±inf in variance, correlation and Kahan sums",
   "verdict": "NaN, no error (since 2.0)",
   "area": "aggregates",
+  "options": [
+    "nonfinite_aggregates",
+    "nan_creation",
+    "stat_degenerate"
+  ],
   "constructs": [
     "var_samp",
     "stddev_samp",

@@ -5,6 +5,10 @@
   "title": "`CORR`: shared Welford state; NULL for one pair or zero variance",
   "verdict": "ck / sqrt(xMk · yMk); NULL as in the reference; no clamp",
   "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate"
+  ],
   "constructs": [
     "corr"
   ],

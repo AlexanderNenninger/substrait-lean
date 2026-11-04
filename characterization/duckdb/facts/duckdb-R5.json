@@ -5,6 +5,9 @@
   "title": "Double division by zero",
   "verdict": "fixed (#204): an error unless the plan asks for IEEE, LIMIT or NULL",
   "area": "doubles",
+  "options": [
+    "on_division_by_zero"
+  ],
   "constructs": [
     "/",
     "divide"

@@ -5,6 +5,9 @@
   "title": "`sort`: NULLs first, ascending and descending",
   "verdict": "`NULLS_FIRST` by default in both directions",
   "area": "relations",
+  "options": [
+    "null_order"
+  ],
   "constructs": [
     "sort",
     "top_k",

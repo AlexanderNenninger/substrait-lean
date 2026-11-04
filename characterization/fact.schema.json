@@ -17,7 +17,13 @@
     "title": {"description": "A short name for the finding.", "type": "string"},
     "verdict": {"description": "One line for the summary table.", "type": "string"},
     "area": {
-      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts", "io"]
+      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts", "nulls", "errors", "frontend", "io"]
+    },
+    "options": {
+      "description": "The checklist items the fact settles: ids of characterization/areas.json (the core's options and the extra items).",
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+      "uniqueItems": true
     },
     "layer": {
       "description": "semantics (default): what a plan computes. frontend: how the engine's SQL text becomes a plan. io: how the engine reaches data (extensions, catalogs, object stores, credentials), outside what a plan computes.",

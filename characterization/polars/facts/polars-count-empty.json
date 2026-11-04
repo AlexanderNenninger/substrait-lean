@@ -5,6 +5,9 @@
   "title": "`count` skips NULLs; aggregates of nothing",
   "verdict": "`count` skips NULLs, `len` counts rows; `min`, `first` of NULLs are NULL",
   "area": "aggregates",
+  "options": [
+    "empty_group_aggregates"
+  ],
   "constructs": [
     "count",
     "len",

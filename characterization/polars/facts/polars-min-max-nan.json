@@ -5,6 +5,9 @@
   "title": "`min`, `max` and `max_horizontal` skip NaN",
   "verdict": "NaN is ignored unless every value is NaN; `nan_max` propagates it",
   "area": "aggregates",
+  "options": [
+    "nan_order"
+  ],
   "constructs": [
     "min",
     "max",

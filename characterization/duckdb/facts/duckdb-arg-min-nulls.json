@@ -5,6 +5,10 @@
   "title": "`ARG_MIN`/`ARG_MAX`: rows with a NULL on either side are skipped",
   "verdict": "FIRST(x ORDER BY y) over the rows where neither is NULL; ties are the engine's",
   "area": "aggregates",
+  "options": [
+    "tie_pick",
+    "nan_order"
+  ],
   "constructs": [
     "arg_min",
     "arg_max",

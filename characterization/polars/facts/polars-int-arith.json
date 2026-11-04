@@ -5,6 +5,9 @@
   "title": "Integer `+ - *`, unary `-` and `**`: wrap at the column's width",
   "verdict": "matches `overflow: SILENT` at every width",
   "area": "integers",
+  "options": [
+    "overflow"
+  ],
   "constructs": [
     "+",
     "-",

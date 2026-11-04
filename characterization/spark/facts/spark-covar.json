@@ -5,6 +5,9 @@
   "title": "`COVAR_*`: Welford co-moment, Chan merge",
   "verdict": "Welford co-moment; Chan merge",
   "area": "aggregates",
+  "options": [
+    "stat_algo"
+  ],
   "constructs": [
     "covar_samp",
     "covar_pop"

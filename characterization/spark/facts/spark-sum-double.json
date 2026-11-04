@@ -5,6 +5,9 @@
   "title": "`SUM` of doubles: plain, order by partitioning",
   "verdict": "plain recursive summation; order depends on partitioning",
   "area": "aggregates",
+  "options": [
+    "sum_order"
+  ],
   "constructs": [
     "sum"
   ],

@@ -5,6 +5,10 @@
   "title": "unity_catalog: ATTACH ignores a named secret unless it names it",
   "verdict": "use an unnamed secret, or ATTACH ... (SECRET name)",
   "area": "io",
+  "options": [
+    "catalogs",
+    "object_stores"
+  ],
   "layer": "io",
   "constructs": [
     "CREATE SECRET (TYPE unity_catalog)",

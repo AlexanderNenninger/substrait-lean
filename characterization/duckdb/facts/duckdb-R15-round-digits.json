@@ -5,6 +5,9 @@
   "title": "`round(DOUBLE, d)` for `d` from -1000 to 400",
   "verdict": "the reference (DuckDB's formula since #335)",
   "area": "doubles",
+  "options": [
+    "rounding"
+  ],
   "constructs": [
     "round"
   ],

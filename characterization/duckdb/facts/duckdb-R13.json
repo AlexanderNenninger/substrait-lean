@@ -5,6 +5,9 @@
   "title": "`substring` with a negative start",
   "verdict": "fixed (#209): `WRAP_FROM_END`",
   "area": "strings",
+  "options": [
+    "negative_start"
+  ],
   "constructs": [
     "substring"
   ],

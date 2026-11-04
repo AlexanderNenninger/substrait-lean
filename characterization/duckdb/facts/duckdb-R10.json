@@ -5,6 +5,10 @@
   "title": "Casts between date and timestamp literals",
   "verdict": "fixed (#206)",
   "area": "temporal",
+  "options": [
+    "cast_parsing",
+    "timestamp_precision"
+  ],
   "constructs": [
     "CAST",
     "cast",

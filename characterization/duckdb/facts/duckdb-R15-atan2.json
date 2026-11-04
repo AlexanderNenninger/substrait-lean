@@ -5,6 +5,9 @@
   "title": "`atan2(0, 0)`",
   "verdict": "no option matches: 0, where the reference raises",
   "area": "doubles",
+  "options": [
+    "on_domain_error"
+  ],
   "constructs": [
     "atan2"
   ],

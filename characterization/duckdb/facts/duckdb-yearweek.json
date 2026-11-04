@@ -5,6 +5,9 @@
   "title": "yearweek subtracts the ISO week in the years up to 0, and raises in DuckDB's first year",
   "verdict": "decided: yearweek is a black box, NULL where DuckDB raises",
   "area": "temporal",
+  "options": [
+    "week_numbering"
+  ],
   "constructs": [
     "yearweek",
     "weekday"
