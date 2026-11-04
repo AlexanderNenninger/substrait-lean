@@ -746,6 +746,10 @@ tables. A table format plays four roles:
   preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
   position delete files and a data file of the new rows.
+  `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
+  properties={...})` creates its table at that location, partitioned and
+  with those properties, which a catalog without a default location, such
+  as Unity Catalog's, needs (#468).
 
 Schema changes. A batch whose data fits the old schema (added columns,
 widened types whose values still fit) is read in it, and the report names
