@@ -17,12 +17,7 @@
   "constructs": [
     "sum"
   ],
-  "settings": {
-    "engine": [
-      "streaming",
-      "in-memory"
-    ]
-  },
+  "settings": {"engine": "in-memory"},
   "description": [
     "A full aggregation sums pairwise: blocks of 128 in 16 SIMD stripes, combined pairwise, the remainder added in turn. Groups of indices use Kahan summation with a finiteness guard. Streaming merges partial sums plainly.",
     "The sum of no values (or only nulls) is 0 in the Series API.",
@@ -32,6 +27,7 @@
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
   "evidence": "probe",
+  "superseded_by": "polars-sum-float-streaming",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -134,6 +130,29 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-cancel"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-f32"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-fsum-runs"
+        }
+      ],
+      "notes": [
+        "Narrowed to the in-memory engine; the streaming engine, which sverify targets, is in polars-sum-float-streaming. The streaming probes show a grouped sum adding in turn (0.0 and 16777216 where memory gives 2.0 and 16777218) and an ungrouped sum that varies between runs.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

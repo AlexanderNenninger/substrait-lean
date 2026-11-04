@@ -41,6 +41,28 @@ def test_observation_reports_errors():
     assert probe_polars.observe(o)["observed"].startswith("error InvalidOperationError")
 
 
+def test_streaming_engine_collects_lazily_on_streaming(monkeypatch):
+    engines: list[object] = []
+    collect = pl.LazyFrame.collect
+
+    def spy(self, *args, **kwargs):
+        engines.append(kwargs.get("engine"))
+        return collect(self, *args, **kwargs)
+
+    monkeypatch.setattr(pl.LazyFrame, "collect", spy)
+    monkeypatch.setattr(probe_polars, "ENGINE", "streaming")
+    o = probe_polars.Observation(
+        "t", "integers",
+        "df(g=[1, 1, 2], x=[1, 2, 3]).filter(pl.col('x') > 1).group_by('g')"
+        ".agg(pl.col('x').sum()).sort('g').rows()",
+    )  # fmt: skip
+    assert probe_polars.observe(o)["observed"] == "[(1, 2), (2, 3)]"
+    assert engines == ["streaming"] * 3
+    p = next(p for p in probe_polars.PROBES if p.function == "add")
+    assert probe_polars.polars_outcome(p, (1, 2)) == ("ok", 3)
+    assert engines[-1] == "streaming"
+
+
 @pytest.mark.slow
 @pytest.mark.skipif(
     not probe_polars.OUT.is_file(), reason="characterization/ of the repository is not here"
@@ -64,3 +86,15 @@ def test_probes_json_is_current():
         ]
 
     assert verdicts(now) == verdicts(recorded["probes"])
+
+
+def test_engine_diff_compares_streaming_with_in_memory():
+    p = next(p for p in probe_polars.PROBES if p.function == "add")
+    o = probe_polars.Observation("t", "integers", "df(x=[1, 2]).select(pl.col('x').sum()).item()")
+    found = probe_polars.engine_diff([p], [o], log=lambda _: None)
+    assert found[0]["differ"] == 0 and found[0]["rows"] > 1
+    assert found[1] == {
+        "construct": "t", "area": "integers", "code": o.code, "differ": 0,
+        "in-memory": "3", "streaming": "3",
+    }  # fmt: skip
+    assert probe_polars.ENGINE == "in-memory"

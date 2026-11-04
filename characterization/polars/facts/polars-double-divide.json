@@ -12,9 +12,9 @@
   ],
   "rows": [
     {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
   ],
@@ -124,6 +124,25 @@
       "notes": [
         "Corrects the description: the IEEE claim now covers `/` between two columns, and a second paragraph gives the literal path's NaN and inf for a subnormal divisor, with links to polars-double-scalar-divisor and PL-3. The `nan_creation` rows hold column by column; the `Float32` entry stays at the docs.",
         "Read at tag py-2.1.0 (commit 7f902bd3)."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L198-L218",
+          "note": "`test_list_arithmetic_values`, `Float32`: 1 // 0 is inf, 1 % 0 NaN, 1 / 0 inf, 0 // 0 NaN, 0 % 0 NaN, 0 / 0 NaN"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L153-L172",
+          "note": "`test_list_arithmetic_values`, `Float32` (picked so nothing upcasts to `Float64`): 7 // 3 is 2, -5 % 3 is 1, 2 / 128 is 0.015625"
+        }
+      ],
+      "notes": [
+        "Pins the `Float32` results of a zero divisor: `x / 0` is inf and `0 / 0` NaN. The test runs each case on one-row operands and, through `BROADCAST_SERIES_COMBINATIONS`, with the left side broadcast to three rows against a one-row right side, which takes the reciprocal-divisor kernel (PL-3); `EXEC_OP_COMBINATIONS` runs it on `Series` (in memory) and as a lazy `select` with `collect()`. These inputs give the same results on the IEEE and the reciprocal path. Marked `slow`, which CI still runs. `±inf / ±inf` is not tested, so the `on_domain_error` row for `fp32` stays at the source.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
     }
   ],

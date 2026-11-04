@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "cmp", "option": "nan_order", "types": ["fp64"]},
-    {"group": "cmp", "option": "nan_order", "types": ["fp32"], "evidence": "source"},
+    {"group": "cmp", "option": "nan_order", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "agg.quant", "option": "nan_order", "types": ["fp64"]}
   ],
   "constructs": [
@@ -95,6 +95,25 @@
       "notes": [
         "Equality, order, sorting and hashing of floats are one generic implementation for `f32` and `f64` (and `pf16`), so `Float32` behaves as the `Float64` probes show.",
         "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_comparison.py#L313-L474",
+          "note": "`test_total_ordering_float_series` (slow): every pair of 0.0, -0.0, ±1.0, ±NaN, ±inf, NULL as `Float32` against `Float32` and `Float64` against `Float32`, column against column and against a broadcast first value or literal; `==`, `!=`, `<`, `<=`, `>`, `>=`, `eq_missing`, `ne_missing` must follow `reference_ordering_propagating`: NaN equals NaN (also -NaN), NaN is above every number including inf, 0.0 equals -0.0, NULL propagates. Eager `DataFrame.select`, in memory"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_sort.py#L280-L395",
+          "note": "`test_sort_direct_key_dtypes` with the `f32` key (517 rows with NaN, ±inf, -0.0, NULL), ascending and descending, `maintain_order=True`: the streaming sort must equal the in-memory sort exactly, with the in-memory and the partitioned (`POLARS_SORT_PARTITION_THRESHOLD_BYTES=1`, morsels of 7) sort modes"
+        }
+      ],
+      "notes": [
+        "Pins the NaN order of `Float32` comparisons: NaN is greater than +inf and every number, and equal to NaN. The streaming sort test pins that the streaming engine places NaN, the infinities and the zeros of a `Float32` key as the in-memory sort does; it compares the engines and states no order of its own.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
     }
   ]

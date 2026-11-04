@@ -102,6 +102,40 @@
         }
       ],
       "notes": "Polars 2.1.0, macOS arm64. Streaming splits a small frame into one-row morsels, where both sides have length 1 and the IEEE kernel runs; morsels of two rows or more take the literal path, as the in-memory engine does."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L198-L218",
+          "note": "`test_list_arithmetic_values`, `Float32`: 1 // 0 is inf, 1 % 0 NaN, 1 / 0 inf, 0 // 0 NaN, 0 % 0 NaN, 0 / 0 NaN"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L153-L172",
+          "note": "`test_list_arithmetic_values`, `Float32` (picked so nothing upcasts to `Float64`): 7 // 3 is 2, -5 % 3 is 1, 2 / 128 is 0.015625"
+        }
+      ],
+      "notes": [
+        "The broadcast cases of the test run `x / c`, `x // c` and `x % c` with a one-row `c` against three rows, the reciprocal path, in `Float32`: 1 / 0 is inf, 0 / 0 NaN, 7 // 3 is 2, -5 % 3 is 1. Each of these agrees with the IEEE quotient too, so the test neither confirms nor contradicts PL-3; no Polars test at py-2.1.0 asserts an inexact quotient of a broadcast divisor (searched `py-polars/tests/unit` for float divisions by literals and scalar aggregates). The rows stay at the source.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-scalar-divisor"
+        }
+      ],
+      "notes": [
+        "Streaming agrees with memory on 9 000 rows: `49.0 % 49.0` is 49.0, `49.0 // 49.0` 0.0, `0.0 / 1e-310` NaN, `1e-300 / 1e-310` inf. So PL-3 holds on the streaming engine when the morsels hold more than one row.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ]
 }

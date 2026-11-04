@@ -155,6 +155,29 @@
         "Integer `**` with an integer exponent is one generic function, `pow_to_uint_dtype`, instantiated for each width by `with_match_physical_integer_type!`. An exponent literal from 2 to 10 multiplies the column by itself with the `*` kernel, which wraps (`wrapping_mul`, the same macro for i8 to i64); any other exponent calls num-traits's `Pow<u32>`, the primitive `i8::pow` to `i64::pow`. The wheels build with the `dist-release` profile, which inherits `release` and leaves `overflow-checks` off, so the primitive `pow` wraps too. So `Int8`, `Int16` and `Int32` wrap as the `Int64` probe does, and the result keeps the base's type (`pow_dtype`).",
         "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L109-L118",
+          "note": "`test_list_arithmetic_values` (Int8): -5 - 127 is 124 and -5 * 127 is -123 (wrapped), on columns, broadcasts and lists, eager and lazy"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_neg.py#L49-L52",
+          "note": "`test_neg_overflow_wrapping`: `-(-128)` in `Int8` is -128 (eager `DataFrame.select`, in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L696-L761",
+          "note": "`test_power_series`: `Int8 ** UInt8`, `Int16 ** UInt8`, `Int32 ** UInt8` and `Int64 ** UInt8` keep the base's type (1, 4); `Int64 ** UInt64(2**33)` raises `conversion from u64 to u32 failed` (eager)"
+        }
+      ],
+      "notes": [
+        "The tests pin wrapping `+ - *` and negation at `Int8`. For `**` they pin that the result keeps the base's width at every signed width, but no input overflows, so the `int.pow` overflow rows for `i8` to `i32` stay at the source reading.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
     }
   ],
   "issues": [

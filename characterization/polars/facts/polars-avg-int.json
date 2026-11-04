@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "agg.isum", "option": "avg_int_result", "types": ["i64"]},
-    {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i32"], "evidence": "source"}
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i32"], "evidence": "engine_test"}
   ],
   "constructs": [
     "mean",
@@ -69,6 +69,29 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_group_by.py#L104-L199",
+          "note": "`test_group_by_mean_by_dtype`: grouped `mean` of 1, 2, 3 | 4 is `Float64` 2.0, 4.0 for `Int8`, `Int16`, `Int32` (and the unsigned widths); `Float32` stays `Float32`. Lazy `collect()`, schema and values checked"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_group_by.py#L907-L918",
+          "note": "`test_overflow_mean_partitioned_group_by_5194` (slow): grouped `mean` of 100 000 `Int32` values of 10⁷ is 10000000.0, past the `Int32` range of the sum (eager, in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_window_functions.py#L1369-L1386",
+          "note": "`test_window_avg_of_large_integers`: SQL `AVG` of `Int32` 2·10⁹ over three window frames matches DuckDB, on `engines=['in-memory', 'streaming']`"
+        }
+      ],
+      "notes": [
+        "Pins that the mean of `Int8` to `Int32` is a `Float64` with the exact quotient on these inputs, on both engines, and that the sum does not overflow the input width.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
     }
   ],
   "issues": [

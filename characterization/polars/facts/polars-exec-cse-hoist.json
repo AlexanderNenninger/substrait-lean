@@ -1,0 +1,44 @@
+{
+  "id": "polars-exec-cse-hoist",
+  "engine": "polars",
+  "engine_version": "2.1.0",
+  "title": "CSE hoists a cast shared by `when/then` branches onto every row",
+  "verdict": "deviation: a guarded strict cast raises when two branches share it (PL-6)",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "when/then/otherwise",
+    "cast(strict=True)",
+    "comm_subexpr_elim"
+  ],
+  "settings": {
+    "engine": ["in-memory", "streaming"],
+    "comm_subexpr_elim": [true, false]
+  },
+  "description": [
+    "A lazy query collects with common-subexpression elimination on. When two expressions share a subexpression, CSE computes it once in a `WITH_COLUMNS` below the projection, on every row. That includes a strict cast inside `when(c).then(...)`: the cast now runs on the rows `c` excludes and raises there, although `when/then` alone masks the branch (polars-exec-when-eager). Two columns `when(x == '1').then(x.cast(Int64) + 1)` and `when(x == '1').then(x.cast(Int64) + 2)` over `x = ['1', 'a']` raise `InvalidOperationError` on both engines; with `comm_subexpr_elim=False` they give `[(2, 3), (None, None)]`, and so does an eager `DataFrame.select`, which skips CSE.",
+    "So whether a query raises depends on the optimizer. PL-6 records it upstream."
+  ],
+  "reference": "The reference evaluates a `CASE` branch only on the rows that reach it, so a plan whose casts are guarded by their conditions is error-free; sverify's Polars route collects lazily with CSE on, so such a plan can raise (ST-12, #604).",
+  "status": "deviation",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (sverify_dev.probe_polars --diff)",
+      "evidence": [
+        {"file": "characterization/polars/probes-streaming.json", "probe": "s-when-cse-lazy"},
+        {"file": "characterization/polars/probes-streaming.json", "probe": "s-when-cse-cast"},
+        {"file": "characterization/polars/probes-streaming.json", "probe": "s-when-masks-cast"},
+        {"url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/cse/csee.rs#L74-L94", "note": "CSE visits ternary branches outside group-by contexts"}
+      ],
+      "notes": "s-when-cse-lazy: raises with CSE on, in-memory and streaming; [(2, 3), (None, None)] with it off. s-when-cse-cast: the eager in-memory run (no CSE) masks; the streaming run (lazy, CSE on) raises. A single when/then with a cast (s-when-masks-cast) masks on both engines."
+    }
+  ],
+  "issues": [
+    604
+  ]
+}
