@@ -30,14 +30,12 @@ from sverify.plan_json import (
     field_ref,
     literal,
     plan,
+    same_type,
 )
+from sverify.plan_json import decimal_dtype as _decimal
 
 # --------------------------------------------------------------------------
 # Expressions
-
-
-def same_type(a: Any, b: Any) -> bool:
-    return a.copy(nullable=True) == b.copy(nullable=True)
 
 
 #: Where each relation's columns start in the input of the expression being
@@ -172,10 +170,6 @@ def _decimal_args(*args: Any) -> bool:
         t.is_decimal() or t.is_integer() or t.is_null() or _float_const(a)
         for a, t in zip(args, ts, strict=True)
     )
-
-
-def _decimal(p: int, s: int) -> Any:
-    return dt.Decimal(precision=min(38, p), scale=s, nullable=True)
 
 
 def _common_exact(args: Iterable[Any], t: Any) -> Any:

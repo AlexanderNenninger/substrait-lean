@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import base64
-import json
 import math
 import re
 from collections.abc import Callable, Iterator, Sequence
@@ -14,7 +12,7 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
 
-from sverify import black_box
+from sverify import _plan_read, black_box
 from sverify.black_box import BlackBox
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -1524,9 +1522,7 @@ def _req(j: dict, k: str) -> Any:
     return v
 
 
-def _short(j: Any) -> str:
-    s = json.dumps(j, separators=(",", ":"))
-    return s if len(s) <= 80 else s[:80] + "…"
+_short = _plan_read.short
 
 
 def _arr(j: dict, k: str) -> list:
@@ -1539,13 +1535,7 @@ def _arr(j: dict, k: str) -> list:
 
 
 def _int(j: Any) -> int:
-    if isinstance(j, bool):
-        raise Unsupported(f"expected integer, got {j!r}")
-    if isinstance(j, int):
-        return j
-    if isinstance(j, str) and re.fullmatch(r"-?\d+", j):
-        return int(j)
-    raise Unsupported(f"expected integer, got {j!r}")
+    return _plan_read.integer(j, Unsupported)
 
 
 def _nat(j: Any) -> int:
@@ -1590,8 +1580,7 @@ def _nan_ruled_out(op: str, a: Expr, b: Expr) -> bool:
     return False
 
 
-def _base_name(name: str) -> str:
-    return name.split(":")[0]
+_base_name = _plan_read.base_name
 
 
 #: `Parse.arithmeticFns`.
@@ -1640,41 +1629,19 @@ def _declared_double(fns: dict[int, str], j: Any) -> bool:
 
 def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
     """`typeKind`, and the SQL kind of the same type."""
-    if not isinstance(ty, dict):
-        return "other", None
-    if any(k in ty for k in ("i8", "i16", "i32", "i64")):
-        return "int", "int"
-    if any(k in ty for k in ("fp32", "fp64")):
-        return "float", "float"
-    if "timestamp" in ty:
-        return "time", "time"
-    if "precisionTimestamp" in ty:
+    match _plan_read.type_kind(ty):
+        case ("int" | "float" | "date" | "str" | "bool") as k, _:
+            return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        pts = ty["precisionTimestamp"]
-        if isinstance(pts, dict) and pts.get("precision", 0) >= 6:
-            return "time", "time"
-        return "other", None
-    if "date" in ty:
-        return "date", "date"
-    if "time" in ty:
-        return "tod", "tod"
-    if "precisionTime" in ty:
-        pt = ty["precisionTime"]
-        if isinstance(pt, dict) and pt.get("precision", 0) >= 6:
-            return "tod", "tod"
-        return "other", None
-    if any(k in ty for k in ("string", "varchar", "fixedChar")):
-        return "str", "str"
-    if "bool" in ty:
-        return "bool", "bool"
-    # A scale of 0 is left out of the JSON (`typeKind`).
-    if isinstance(d := ty.get("decimal"), dict):
-        k = Dec(d.get("precision", 38), d.get("scale", 0))
-        return k, k
-    # A list (#94): its elements' kinds.
-    if isinstance(lt := ty.get("list"), dict):
-        lean, sql = _type_kinds(lt.get("type"))
-        return Lst(lean), Lst(sql)
+        case ("time" | "tod") as k, int() as p if p >= 6:
+            return k, k
+        case "decimal", (p, sc):
+            d = Dec(p, sc)
+            return d, d
+        case "list", elem:
+            # A list (#94): its elements' kinds.
+            lean, sql = _type_kinds(elem)
+            return Lst(lean), Lst(sql)
     return "other", None
 
 
@@ -1708,18 +1675,7 @@ class Const:
             case "dec":
                 return float(Fraction(self.value, 10**self.scale))
             case "str":
-                t = self.value.strip().lower()
-                if t in ("inf", "+inf", "infinity", "+infinity"):
-                    return math.inf
-                if t in ("-inf", "-infinity"):
-                    return -math.inf
-                if t == "nan":
-                    return math.nan
-                try:
-                    n = json.loads(t)
-                except ValueError:
-                    return None
-                return float(n) if isinstance(n, int | float) and not isinstance(n, bool) else None
+                return _plan_read.parse_double(self.value)
         return None
 
     def to_int(self) -> int | None:
@@ -1863,33 +1819,11 @@ def _cast_const_decimal(t: Dec, c: Const) -> Const:
 
 
 def _interval_micros(d: dict) -> int:
-    days = _int(_field(d, "days") or 0)
-    secs = _int(_field(d, "seconds") or 0)
-    sub = _int(_field(d, "subseconds") or 0)
-    p = _nat_d(d, "precision")
-    # Lean's `Int` division rounds toward negative infinity here (`Int.div` is `ediv`
-    # for a positive divisor), like Python's `//`.
-    sub_us = sub // 10 ** (p - 6) if p >= 6 else sub * 10 ** (6 - p)
-    return (days * 86400 + secs) * 1_000_000 + sub_us
-
-
-def _decode_decimal(s: str) -> int:
-    try:
-        raw = base64.b64decode(s, validate=False)
-    except ValueError as e:
-        raise Unsupported("malformed decimal literal") from e
-    return int.from_bytes(raw, "little", signed=True) if raw else 0
-
-
-_LITERAL_KEYS = (
-    "boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "null", "decimal",
-    "precisionTimestamp", "timestamp", "date", "precisionTime", "time", "intervalDayToSecond",
-    "intervalYearToMonth", "intervalCompound",
-)  # fmt: skip
+    return _plan_read.interval_micros(d, Unsupported)
 
 
 def _year_months(ym: dict) -> int:
-    return 12 * _int(_field(ym, "years") or 0) + _int(_field(ym, "months") or 0)
+    return _plan_read.year_months(ym, Unsupported)
 
 
 #: `Parse.decimalPassThrough`: functions the integer path computes on
@@ -1936,62 +1870,32 @@ def _interval_lit(j: Any) -> tuple[int, int] | None:
 
 
 def _const_literal(j: dict) -> Const:
-    key, v = _oneof("literal", j, _LITERAL_KEYS)
-    match key:
-        case "boolean":
-            if not isinstance(v, bool):
-                raise Unsupported("malformed boolean literal")
-            return Const("bool", v, kind="bool")
-        case "string":
-            if not isinstance(v, str):
-                raise Unsupported("malformed string literal")
-            return Const("str", v, kind="str")
+    kind, v = _plan_read.literal(j, Unsupported)
+    match kind:
+        case "bool" | "str":
+            return Const(kind, v, kind=kind)
         case "null":
             # Lean writes every NULL whose kind it does not know as an `i64`
             # one, so that type says nothing (an outer join's padding is one).
-            kind = _type_kinds(v)[1]
-            return Const("null", kind=None if kind == "int" else kind)
-        case "fp32" | "fp64":
-            if isinstance(v, bool):
-                raise Unsupported("malformed floating-point literal")
-            if isinstance(v, int | float):
-                return Const("flt", float(v), kind="float")
-            if isinstance(v, str):
-                f = Const("str", v).to_float()
-                if f is None:
-                    raise Unsupported(f"cannot parse double {v}")
-                return Const("flt", f, kind="float")
-            raise Unsupported("malformed floating-point literal")
+            k = _type_kinds(v)[1]
+            return Const("null", kind=None if k == "int" else k)
+        case "float":
+            return Const("flt", v, kind="float")
         case "decimal":
-            p, sc = _nat_d(v, "precision"), _nat_d(v, "scale")
-            return Const("dec", _decode_decimal(_req(v, "value")), sc, Dec(p, sc), p)
-        case "intervalDayToSecond":
-            return Const("int", _interval_micros(v), kind="interval")
-        case "intervalCompound" | "intervalYearToMonth":
-            months, micros = _interval_lit({"literal": {key: v}}) or (0, 0)
+            value, p, sc = v
+            return Const("dec", value, sc, Dec(p, sc), p)
+        case "interval":
+            months, micros = v
             if months != 0:
                 raise Unsupported(
                     "month and year intervals are only supported added to a date or timestamp"
                 )
             return Const("int", micros, kind="interval")
-        case "precisionTimestamp":
-            if _nat_d(v, "precision") != 6:
-                raise Unsupported("only microsecond timestamps are supported")
-            return Const("int", _int(_req(v, "value")), kind="time")
-        case "timestamp":
-            return Const("int", _int(v), kind="time")
-        case "date":
-            return Const("int", _int(v), kind="date")
-        case "precisionTime":
-            p, value = _nat_d(v, "precision"), _int(_req(v, "value"))
-            if p <= 6:
-                return Const("int", value * 10 ** (6 - p), kind="tod")
-            if value % 10 ** (p - 6):
-                raise Unsupported("times finer than microseconds are not supported")
-            return Const("int", value // 10 ** (p - 6), kind="tod")
-        case "time":
-            return Const("int", _int(v), kind="tod")
-    return Const("int", _int(v), kind="int")
+        case "time" | "date" | "tod":
+            return Const("int", v, kind=kind)
+        case "int":
+            return Const("int", v[1], kind="int")
+    raise Unsupported(f"unsupported literal: {_short(j)}")
 
 
 def _arrow_cast(c: Const, ty: str) -> Const | None:
@@ -2095,11 +1999,7 @@ class _Cols:
 
 class _Parser:
     def __init__(self, plan: dict):
-        self.fns: dict[int, str] = {}
-        for e in _arr(plan, "extensions"):
-            f = _field(e, "extensionFunction")
-            if f is not None:
-                self.fns.setdefault(_nat_d(f, "functionAnchor"), _req(f, "name"))
+        self.fns = _plan_read.function_names(plan, Unsupported)
 
     def name(self, anchor: int) -> str:
         if anchor not in self.fns:
@@ -3221,7 +3121,7 @@ def _map_fields(e: Expr, f: Callable[[int], int]) -> Expr:
             return replace(e, args=tuple(_map_fields(a, f) for a in args))
 
 
-US_PER_DAY = 86_400_000_000
+US_PER_DAY = _plan_read.US_PER_DAY
 
 
 def _reads_field(e: Expr) -> bool:

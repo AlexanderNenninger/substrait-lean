@@ -147,6 +147,16 @@ def literal(value: Any, dtype: Any) -> Json:
     raise Unsupported(f"literal of type {dtype} is not supported")
 
 
+def same_type(a: Any, b: Any) -> bool:
+    """Are the Ibis types `a` and `b` the same, nullability aside?"""
+    return a.copy(nullable=True) == b.copy(nullable=True)
+
+
+def decimal_dtype(p: int, s: int) -> Any:
+    """`DECIMAL(p, s)`, its precision capped at DuckDB's 38."""
+    return dt.Decimal(precision=min(p, 38), scale=s, nullable=True)
+
+
 def decimal_type_of(value: Any) -> Any:
     """The narrowest `DECIMAL(p, s)` that holds `value` exactly."""
     d = Decimal(value)

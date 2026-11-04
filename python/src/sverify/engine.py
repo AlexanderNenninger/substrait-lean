@@ -39,6 +39,7 @@ from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
 from sverify import _duckdb, black_box
+from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
@@ -612,10 +613,8 @@ def _datafusion_variances(plan: dict) -> None:
     """Substrait's `variance` and `std_dev` say sample or population in an
     option; DataFusion has a function for each (#54)."""
     exts = plan.get("extensions", [])
-    names = {
-        e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
-        for e in exts
-        if "extensionFunction" in e
+    names: dict[Any, str] = {
+        a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()
     }
     anchors: dict[str, int] = {}
 
@@ -656,10 +655,8 @@ def _check_datafusion_plan(plan: dict) -> None:
     beginning, the reference counts it from the end, `Text.substrWrap`) unless
     the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
     (`AggFn.iavg`), which DataFusion computes as a double."""
-    names = {
-        e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
-        for e in plan.get("extensions", [])
-        if "extensionFunction" in e
+    names: dict[Any, str] = {
+        a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()
     }
 
     def walk(node: Any) -> None:
