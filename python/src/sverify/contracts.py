@@ -705,6 +705,20 @@ Polars's, for Ibis transformations (#444)."""
 _PROFILE_REQUESTS = frozenset({"polars"})
 
 
+def _expr_semantics(transform: Transform) -> Semantics:
+    """The semantics an unstated `verify(semantics=...)` takes: an expression
+    whose SQL (`sverify.sql`) is all lifted with DuckDB's semantics has
+    them (#575: so its report assumes no ±∞ precondition and `Report.run`
+    writes no check of one); anything else, the reference."""
+    if isinstance(transform, str):
+        return "reference"
+    from sverify.ibis_substrait.relations import SQLModel
+
+    found = transform.op().find(SQLModel)
+    sems = {op.semantics or "reference" for op in found}
+    return "duckdb" if sems == {"duckdb"} else "reference"
+
+
 def _checked_semantics(semantics: str) -> Semantics:
     if semantics not in ("reference", "duckdb", "polars"):
         raise ValueError(f"semantics must be 'reference', 'duckdb' or 'polars', not {semantics!r}")
@@ -1107,6 +1121,7 @@ class Report:
         """
         if self.plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
+        kind: str | None = None
         if route is not None:
             from sverify import routes
 
@@ -1117,10 +1132,15 @@ class Report:
                 deterministic=deterministic,
             )
             self.routes[chosen.engine] = chosen
+            kind = chosen.kind
             if chosen.refused:
                 raise routes.RouteError(chosen)
             self.check_inputs(con)
-        return run_plan(con, written_plan(self.plan), engine)
+        # The check of an overflow to ±∞ is the reference's precondition
+        # (#575): it is written for a plan verified under the reference, and
+        # for one that reaches the engine through the reference's route.
+        finite = self.semantics == "reference" or kind == "reference"
+        return run_plan(con, written_plan(self.plan), engine, finite=finite)
 
     @property
     def proved(self) -> bool:
@@ -1854,7 +1874,7 @@ def verify(
     counterexamples: int = 200,
     params: Mapping[ir.Scalar, Any] | None = None,
     infer: bool = True,
-    semantics: Semantics = "reference",
+    semantics: Semantics | None = None,
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -1909,7 +1929,9 @@ def verify(
             (the default), sverify's reference semantics, where an
             operation that would create a NaN raises; or `"duckdb"`, what
             DuckDB computes, NaN and ±inf included. An `sv.sql` expression
-            inside an Ibis transformation keeps its own `semantics`.
+            inside an Ibis transformation keeps its own `semantics`. Unstated
+            (None), it is `"duckdb"` for a transformation whose SQL is all
+            `sv.sql(..., semantics="duckdb")`, else `"reference"`.
             `"polars"` checks an Ibis transformation under Polars's
             profile (#444); the checker refuses it until it has one.
 
@@ -1963,6 +1985,8 @@ def verify(
     inputs = list(tables or {})
     if not isinstance(transform, str):
         inputs += [t for t in leaf_tables(transform) if t not in inputs]
+    if semantics is None:
+        semantics = _expr_semantics(transform)
     return infer_bounds(
         transform,
         requires=requires_by_input(requires, inputs),
@@ -2382,6 +2406,9 @@ def _verify_once(
                 _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
             )
             for i in out["issues"]
+            # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
+            # semantics allows it, as DuckDB gives ±∞.
+            if semantics == "reference" or i["kind"] != INFINITE
         ],
         guard_free=out["guard_free"],
         unchecked=out.get("unchecked"),

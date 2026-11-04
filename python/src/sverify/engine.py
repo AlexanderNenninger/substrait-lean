@@ -702,18 +702,28 @@ def _check_datafusion_plan(plan: dict) -> None:
 
 @overload
 def run_plan(
-    con: Connection, plan_json: str, engine: Engine | Any = None, *, keep: Literal[False] = False
+    con: Connection,
+    plan_json: str,
+    engine: Engine | Any = None,
+    *,
+    keep: Literal[False] = False,
+    finite: bool = True,
 ) -> pa.Table: ...
 
 
 @overload
 def run_plan(
-    con: Connection, plan_json: str, engine: Engine | Any = None, *, keep: bool
+    con: Connection, plan_json: str, engine: Engine | Any = None, *, keep: bool, finite: bool = True
 ) -> pa.Table | Resident: ...
 
 
 def run_plan(
-    con: Connection, plan_json: str, engine: Engine | Any = None, *, keep: bool = False
+    con: Connection,
+    plan_json: str,
+    engine: Engine | Any = None,
+    *,
+    keep: bool = False,
+    finite: bool = True,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
@@ -734,6 +744,10 @@ def run_plan(
             Spark session. Default: the connection's engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
+        finite: On DuckDB and Polars, check that no operation on finite
+            doubles gives `±∞` (`Issue.infinite`, #575), the reference's
+            precondition. Default: True; `Report.run` passes False for a
+            plan verified with `semantics="duckdb"`, which allows `±∞`.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -793,13 +807,16 @@ def run_plan(
         # DuckDB reads `Scan` and `Resident` tables where they are.
         tables = {t: con.get(t) for t in read}
         if keep:
-            return duckdb_engine.run(plan_json, tables, keep=True)
-        return duckdb_engine.run(plan_json, tables)
+            return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
+        return duckdb_engine.run(plan_json, tables, finite=finite)
     tables = {t: con.arrow[t] for t in read}
     if engine == "polars":
         from sverify import polars_engine
 
-        return polars_engine.run(plan_json, tables)
+        guards = polars_engine.ALL_GUARDS - (
+            frozenset() if finite else {polars_engine.InfiniteResult.issue}
+        )
+        return polars_engine.run(plan_json, tables, guards=guards)
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 

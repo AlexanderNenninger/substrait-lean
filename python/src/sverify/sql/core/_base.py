@@ -85,6 +85,11 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `SubstraitLean/Guards.lean`). Integer `SUM` keeps its check."""
+    finite: bool = True
+    """Write the check that an operation on finite doubles does not give
+    `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
+    precondition. Off (`to_sql(..., finite=False)`) for a plan verified under
+    an engine's semantics that allows `±∞` (`verify(semantics="duckdb")`)."""
 
     def refused(self, fn: str) -> Unsupported:
         """The refusal of a function this dialect does not run. `to_sql`
@@ -4543,6 +4548,8 @@ class _Writer:
         are finite (`finite`, if the caller has not ruled them out:
         `Measure.makesInf`, #575)."""
         d = self.d
+        if not d.finite:
+            return value
         cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
         return d.case_when(cond, d.raise_("overflow to infinity", dep or value, "float"), value)
 
@@ -4553,6 +4560,8 @@ class _Writer:
         assumption that a double operation does not overflow. Kept without
         guards, as a `SUM`'s check is (`Rel.guardFree_sound`)."""
         d = self.d
+        if not d.finite:
+            return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         return d.case_when(
             f"({fin}{d.is_inf(sql)})", d.raise_("overflow to infinity", sql, "float"), sql
@@ -4659,6 +4668,7 @@ def to_sql(
     tie_free: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
+    finite: bool = True,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -4692,6 +4702,10 @@ def to_sql(
         unchecked: The expressions to write without checks, as a contract
             report's `unchecked` (`sverify.Report.unchecked`) for this plan.
             Default: None (all of them keep their checks).
+        finite: Write the check that finite doubles do not overflow to
+            `±∞` (`Dialect.finite`), the reference's precondition (#575).
+            Default: True; False for a plan verified with
+            `semantics="duckdb"`.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4727,6 +4741,8 @@ def to_sql(
     """
     if not guards:
         dialect = replace(dialect, guards=False)
+    if not finite:
+        dialect = replace(dialect, finite=False)
     _support.check(plan, dialect.name, Unsupported)
     p = parse_plan(plan)
     n = arity(p.root)
