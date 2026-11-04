@@ -85,7 +85,8 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             ("nulls_last",),
             "refuse",
             ("duckdb-F2",),
-            "where NULLs sort in a key without a placement (null_order)",
+            "where NULLs sort in a key without a placement (null_order), and in "
+            "FIRST/LAST(... ORDER BY) and list_sort",
         ),
         Setting(
             "default_order",
@@ -106,7 +107,9 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             (True,),
             "refuse",
             ("duckdb-R2", "duckdb-R3", "duckdb-R4", *_R15),
-            "what a division by zero gives (on_division_by_zero)",
+            "what a division by zero gives (on_division_by_zero): `//` and `%` give NULL "
+            "instead of raising; deprecated in DuckDB 2.0.0, still read and still in "
+            "effect there",
         ),
         Setting(
             "ieee_floating_point_ops",
