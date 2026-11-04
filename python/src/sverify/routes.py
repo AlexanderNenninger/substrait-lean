@@ -420,36 +420,77 @@ def _where(group: str | None, option: str) -> str:
     return f"{group}'s {option}" if group else option
 
 
+_KINDS = ("abs", "rel", "ulps")
+
+
+def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
+    """A column's `ε` as `{kind: (value, proved)}`. Each kind is a number or
+    `{"value", "proved"}`; `"proved"` beside them is a bool for all of them
+    or a mapping per kind. A bound is proved only where Lean marks it so: a
+    missing mark means it rests on a test."""
+    flag = eps.get("proved", False)
+    out: dict[str, tuple[float, bool]] = {}
+    for kind in _KINDS:
+        v = eps.get(kind)
+        if v is None:
+            continue
+        proved = bool(flag.get(kind, False)) if isinstance(flag, Mapping) else bool(flag)
+        if isinstance(v, Mapping):
+            proved = bool(v.get("proved", proved))
+            v = v.get("value")
+            if v is None:
+                continue
+        out[kind] = (float(v), proved)
+    return out
+
+
 def _plan_bound(
     q: Mapping[str, Any],
     observed: Observation,
-    epsilon: Mapping[str, Mapping[str, float]] | None,
-) -> tuple[dict[str, Any], list[str]]:
+    epsilon: Mapping[str, Mapping[str, Any]] | None,
+) -> tuple[dict[str, Any], list[str], bool]:
     """`q` without a plan-dependent float bound (`{"floats": {"bound":
-    "plan"}}`), and the problems with that bound: the per-plan `ε` of each
-    output column, as the contract's result gives it (`Report.epsilon`),
-    must be within the postcondition's tolerance (#568's propagation, B1)."""
+    "plan"}}`), the problems with that bound, and whether the bound that
+    meets the postcondition rests on an unproved bound.
+
+    The contract's result gives each double output column's `ε`
+    (`Report.epsilon`): bounds of several kinds, each of which holds on its
+    own. The postcondition's tolerance (`sv.within`) is met when one of
+    them is no larger than the stated bound of the same kind (#568's
+    propagation, B1)."""
     from sverify.observation import Within
 
     floats = q.get("floats")
     if not (isinstance(floats, Mapping) and floats.get("bound") == "plan"):
-        return dict(q), []
+        return dict(q), [], False
     rest = {k: v for k, v in q.items() if k != "floats"}
     if epsilon is None:
-        return rest, ["the checker gave no per-plan bound (ε) on the doubles"]
+        return rest, ["the checker gave no per-plan bound (ε) on the doubles"], False
     stated = observed.floats
     problems = []
+    unproved = False
     for col, eps in epsilon.items():
-        if not any(eps.get(k) for k in ("abs", "rel", "ulps")):
+        bounds = _bounds(eps)
+        if not any(v for v, _ in bounds.values()):
             continue
-        ulps = eps.get("ulps")
-        bound = Within(eps.get("abs"), eps.get("rel"), None if ulps is None else int(ulps))
-        if not isinstance(stated, Within) or not bound.refines(stated):
+        shown = ", ".join(
+            f"{k}={v:g}" + ("" if proved else " (not proved)") for k, (v, proved) in bounds.items()
+        )
+        met = [
+            proved
+            for k, (v, proved) in bounds.items()
+            if isinstance(stated, Within)
+            and getattr(stated, k) is not None
+            and v <= getattr(stated, k)
+        ]
+        if not met:
             want = "exact doubles" if not isinstance(stated, Within) else str(stated)
             problems.append(
-                f"{col} is within {bound} of the reference, and the postcondition asks {want}"
+                f"{col} is within {shown} of the reference, and the postcondition asks {want}"
             )
-    return rest, problems
+        elif not any(met):
+            unproved = True
+    return rest, problems, unproved
 
 
 def realization(
@@ -491,7 +532,10 @@ def realization(
         if cls == "refused":
             problems.append(f"{_where(g, o)} is refused on {engine}{facts}")
         elif cls in ("refines_up_to", "approx") and r.get("q") is not None:
-            rest, bounded = _plan_bound(r["q"], observed, epsilon)
+            rest, bounded, untested = _plan_bound(r["q"], observed, epsilon)
+            if untested:
+                # The bound that meets the tolerance is not proved in Lean.
+                r = {**r, "evidence": "tested"}
             q = from_json(rest)
             missed = q.coarser_than(observed)
             if (missed or bounded) and r.get("shim"):
