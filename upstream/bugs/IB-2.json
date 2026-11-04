@@ -1,0 +1,31 @@
+{
+  "id": "IB-2",
+  "project": "ibis",
+  "version": "12.0.0",
+  "status": "confirmed",
+  "status_note": "confirmed (ibis-framework 12.0.0, duckdb 2.0.0)",
+  "summary": "Ibis's DuckDB SQL for `TimeTruncate` is `DATE_TRUNC('HOUR', t)` of a TIME, which DuckDB has no overload for, so `t.time().truncate(\"h\")` fails to bind on DuckDB.",
+  "repro": "`ibis.to_sql(t.select(x=t.ts.time().truncate(\"h\")), dialect=\"duckdb\")` gives `DATE_TRUNC('HOUR', CAST(\"t0\".\"ts\" AS TIME))`; DuckDB 2.0.0 raises `Binder Error: No function matches the given name and argument types 'date_trunc(STRING_LITERAL, TIME)'`.",
+  "handling": "sverify's DuckDB SQL truncates a time of day on 1970-01-01 and casts back to TIME (`DuckDBDialect.time_trunc`). The coverage case \"time truncate\" is compared with Lean and the other engines rather than with Ibis's DuckDB SQL (`NO_DUCKDB_SQL` in `coverage_cases/temporal.py`).",
+  "found_by": "#507",
+  "issues": [
+    507
+  ],
+  "files": [
+    "python/src/sverify/sql/duckdb.py",
+    "python/tools/sverify_dev/coverage_cases/temporal.py"
+  ],
+  "facts": [
+    "duckdb-time-plus-interval"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "duckdb": "2.0.0"
+      },
+      "note": "confirmed while adding the coverage case (#507)"
+    }
+  ]
+}

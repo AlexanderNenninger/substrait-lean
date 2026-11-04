@@ -174,6 +174,11 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
     if name == "multiply" or not b.type.is_interval() or not b.constant:
         raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
     months, micros = b.value
+    if a.type.is_time() and not -(2**63) <= micros < 2**63:
+        raise Unsupported("an interval beyond 64-bit microseconds: DuckDB raises")
+    if a.type.is_time() and name == "subtract" and micros == -(2**63):
+        # DuckDB negates the interval, which overflows (`duckdb-time-plus-interval`).
+        raise Unsupported("TIME minus an interval of -2^63 microseconds: DuckDB raises")
     if name == "subtract":
         months, micros = -months, -micros
     ts = dt.timestamp(scale=6)
@@ -193,6 +198,10 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
                 "cast Lean lacks (#240)"
             )
         return E(_fn(name, [a.json, b.json], dt.date), dt.date, midnight=True)
+    if a.type.is_time():
+        # TIME ± INTERVAL wraps around midnight, and DuckDB drops the
+        # interval's months (`duckdb-time-plus-interval`).
+        return E(_fn("add", [a.json, interval_json(0, micros)], dt.time), dt.time)
     if not a.type.is_timestamp() or a.type.timezone is not None:
         raise Unsupported(f"{name} of {a.type} and an interval is not supported yet")
     return E(_fn(name, [a.json, b.json], ts), ts)

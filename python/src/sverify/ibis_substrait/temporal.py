@@ -251,6 +251,28 @@ def _bucket(x: Exprs, op: Any) -> Json:
     return call("date_bin", [interval_json(0, c[1]), x(op.arg), origin])
 
 
+def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
+    """`TimeAdd`, `TimeSub`: a time of day plus a constant interval, which
+    wraps around midnight (`duckdb-time-plus-interval`)."""
+
+    def rule(x: Exprs, op: Any) -> Json:
+        c = _const_interval(op.right)
+        if c is None:
+            raise Unsupported("a time of day plus an interval needs a constant interval")
+        if c[0]:
+            raise Unsupported("a time of day plus months or years is not supported")
+        return call(name, [x(op.left), interval_json(0, c[1])])
+
+    return rule
+
+
+def _time_truncate(x: Exprs, op: Any) -> Json:
+    unit = op.unit.name.lower()
+    if unit not in ("hour", "minute", "second", "millisecond", "microsecond"):
+        raise Unsupported(f"truncating a time of day to a {unit} is not supported")
+    return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
+
+
 def _between_time(x: Exprs, op: Any) -> Json:
     t = cast_json(x(op.arg), dt.time)
     lo, hi = x(op.lower_bound, dt.time), x(op.upper_bound, dt.time)
@@ -294,6 +316,9 @@ register(
         ops.Strftime: _strftime,
         ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
         ops.BetweenTime: _between_time,
+        ops.TimeAdd: _time_add("add"),
+        ops.TimeSub: _time_add("subtract"),
+        ops.TimeTruncate: _time_truncate,
         ops.TimestampBucket: _bucket,
         ops.ExtractWeekOfYear: _date_part("week"),
     }
