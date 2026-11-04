@@ -5,6 +5,10 @@
   "title": "Regexes are Rust's `regex` crate: no backreferences or lookaround, Unicode classes",
   "verdict": "`regex` crate syntax; `extract` is NULL without a match; `$1` in replacements",
   "area": "strings",
+  "options": [
+    "regex_dialect",
+    "case_sensitivity"
+  ],
   "constructs": [
     "str.contains",
     "str.extract",

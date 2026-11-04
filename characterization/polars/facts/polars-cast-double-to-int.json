@@ -5,6 +5,10 @@
   "title": "Double to integer: truncates; out of range raises or is NULL",
   "verdict": "`float_to_int: TRUNCATE`; `strict` raises, `strict=False` NULL; `wrap_numerical` saturates",
   "area": "casts",
+  "options": [
+    "float_to_int",
+    "cast_failure"
+  ],
   "constructs": [
     "cast"
   ],

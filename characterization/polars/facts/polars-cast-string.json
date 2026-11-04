@@ -5,6 +5,11 @@
   "title": "Casts from and to strings",
   "verdict": "strict parsing; shortest round-trip for doubles; no string → bool or date",
   "area": "casts",
+  "options": [
+    "cast_parsing",
+    "cast_formatting",
+    "cast_failure"
+  ],
   "constructs": [
     "cast"
   ],

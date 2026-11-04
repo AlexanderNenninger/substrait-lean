@@ -5,6 +5,9 @@
   "title": "`strftime` is chrono's format",
   "verdict": "chrono's specifiers: `%.f` milliseconds here, `%U` Sunday weeks",
   "area": "temporal",
+  "options": [
+    "cast_formatting"
+  ],
   "constructs": [
     "dt.strftime"
   ],

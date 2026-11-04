@@ -5,6 +5,9 @@
   "title": "`str.find`: a 0-based byte offset, NULL when absent",
   "verdict": "byte offset from 0; NULL where `strpos` is 0",
   "area": "strings",
+  "options": [
+    "negative_start"
+  ],
   "constructs": [
     "str.find"
   ],

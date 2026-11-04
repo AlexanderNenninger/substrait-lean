@@ -5,6 +5,9 @@
   "title": "Integer to double and double to float round to nearest",
   "verdict": "round to nearest even; overflow to ±inf",
   "area": "casts",
+  "options": [
+    "fp32"
+  ],
   "constructs": [
     "cast"
   ],

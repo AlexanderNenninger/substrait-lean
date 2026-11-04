@@ -5,6 +5,9 @@
   "title": "`offset_by('1mo')` clamps to the month's end",
   "verdict": "end-of-month clamping",
   "area": "temporal",
+  "options": [
+    "date_range"
+  ],
   "constructs": [
     "dt.offset_by"
   ],

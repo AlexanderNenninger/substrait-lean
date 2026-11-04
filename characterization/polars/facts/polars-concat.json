@@ -5,6 +5,9 @@
   "title": "`concat_str`: NULL in, NULL out; `ignore_nulls=True` skips them",
   "verdict": "`null_handling: ACCEPT_NULLS` by default; `IGNORE_NULLS` with the flag",
   "area": "strings",
+  "options": [
+    "null_handling"
+  ],
   "constructs": [
     "concat_str",
     "+"

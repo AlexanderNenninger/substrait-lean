@@ -5,6 +5,9 @@
   "title": "`to_uppercase`, `to_lowercase`: Rust's Unicode mappings",
   "verdict": "`char_set: UTF8`, Rust's `str::to_uppercase`",
   "area": "strings",
+  "options": [
+    "char_set"
+  ],
   "constructs": [
     "str.to_uppercase",
     "str.to_lowercase"

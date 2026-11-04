@@ -5,6 +5,9 @@
   "title": "`len_chars` counts code points; `len_bytes` bytes",
   "verdict": "`character_length` natively",
   "area": "strings",
+  "options": [
+    "char_set"
+  ],
   "constructs": [
     "str.len_chars",
     "str.len_bytes"

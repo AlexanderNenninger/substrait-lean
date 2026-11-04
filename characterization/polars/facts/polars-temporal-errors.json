@@ -5,6 +5,11 @@
   "title": "`TIME + duration` unsupported; DST gaps and invalid dates raise",
   "verdict": "raises where the reference refuses or computes",
   "area": "temporal",
+  "options": [
+    "time_interval_months",
+    "time_zones",
+    "cast_parsing"
+  ],
   "constructs": [
     "+",
     "dt.replace_time_zone",

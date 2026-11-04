@@ -5,6 +5,9 @@
   "title": "Timestamps are microseconds by default; nanoseconds reach 2262",
   "verdict": "`Datetime('us')`; `ns` casts fail past 2262-04-11",
   "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
   "constructs": [
     "Datetime",
     "cast"

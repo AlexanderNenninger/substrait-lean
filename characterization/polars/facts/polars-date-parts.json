@@ -5,6 +5,9 @@
   "title": "Date parts: ISO weeks, weekday 1–7, floor before 1970",
   "verdict": "ISO week and year; Monday is 1; parts and epoch floor",
   "area": "temporal",
+  "options": [
+    "week_numbering"
+  ],
   "constructs": [
     "dt.year",
     "dt.iso_year",

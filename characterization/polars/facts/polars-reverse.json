@@ -5,6 +5,9 @@
   "title": "`str.reverse` reverses grapheme clusters",
   "verdict": "graphemes, where the reference reverses code points",
   "area": "strings",
+  "options": [
+    "char_set"
+  ],
   "constructs": [
     "str.reverse"
   ],

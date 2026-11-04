@@ -5,6 +5,9 @@
   "title": "No `levenshtein`, digests, `repeat`, `ascii` or `LIKE` on expressions",
   "verdict": "missing from `pl.Expr.str`",
   "area": "strings",
+  "options": [
+    "digests"
+  ],
   "constructs": [
     "levenshtein",
     "md5",

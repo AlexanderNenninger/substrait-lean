@@ -5,6 +5,10 @@
   "title": "Dates past 9999 and before year 1; out-of-range days panic",
   "verdict": "no `date_range` limit; `Int32` days beyond chrono's range panic",
   "area": "temporal",
+  "options": [
+    "date_range",
+    "raise_set"
+  ],
   "constructs": [
     "+",
     "-",

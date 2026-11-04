@@ -5,6 +5,9 @@
   "title": "`starts_with`, `ends_with`, literal `replace_all`",
   "verdict": "native, case-sensitive",
   "area": "strings",
+  "options": [
+    "case_sensitivity"
+  ],
   "constructs": [
     "str.starts_with",
     "str.ends_with",

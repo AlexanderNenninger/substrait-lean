@@ -5,6 +5,9 @@
   "title": "Integer to a narrower integer or decimal: raises, NULL, or wraps",
   "verdict": "`strict` raises, `strict=False` NULL, `wrap_numerical` wraps",
   "area": "casts",
+  "options": [
+    "cast_failure"
+  ],
   "constructs": [
     "cast"
   ],
