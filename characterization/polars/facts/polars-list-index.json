@@ -1,0 +1,34 @@
+{
+  "id": "polars-list-index",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`list.get`: 0-based, negative from the end, out of range raises",
+  "verdict": "0-based; raises out of range unless `null_on_oob=True`",
+  "area": "nested",
+  "options": [
+    "list_indexing",
+    "raise_set"
+  ],
+  "constructs": [
+    "list.get",
+    "list.slice"
+  ],
+  "settings": {},
+  "description": "`list.get(i)` counts from 0, a negative index from the end (`-1` is the last element). An index out of range raises (`ComputeError: get index is out of bounds`) by default and is NULL with `null_on_oob=True`; a NULL list gives NULL.",
+  "reference": "`list_extract(l, i)` (reference-semantics.md, Nested) counts from 1, as DuckDB's does.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "list-get"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "polars-list-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Lists sort with NULL elements lowest; no `<` or `min` on lists",
+  "verdict": "`list_null_order: LEAST` in sorts; list comparisons refused",
+  "area": "nested",
+  "options": [
+    "list_null_order"
+  ],
+  "constructs": [
+    "sort",
+    "<",
+    "min"
+  ],
+  "settings": {},
+  "description": "`sort` orders lists lexicographically, a prefix first, and a NULL element below every value: `[] < [NULL] < [1] < [1, NULL] < [1, 2]` ascending, reversed descending, NULL lists first by default. `<` between lists and `min`, `max` of lists raise (`InvalidOperationError`).",
+  "reference": "`list_null_order`: NULL where a NULL element decides `<`, and `GREATEST` in `ORDER BY` (#207). DuckDB puts the NULL element above every value (duckdb-R11).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "list-sort"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "list-compare"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "list-min"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    207
+  ]
+}

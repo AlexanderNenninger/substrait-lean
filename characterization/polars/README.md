@@ -141,3 +141,18 @@ means Polars's own expression gives the reference result.
 | `cast` (numbers) | `cast_failure` | as stated | `strict=True` throws, `strict=False` returns NULL; `wrap_numerical` wraps integers, saturates doubles | [cast-int](facts/polars-cast-int.json), cast-double-to-int |
 | `cast` `i64` → `fp64`, `fp64` → `fp32` | | nearest | native | [cast-to-double](facts/polars-cast-to-double.json) |
 | `cast` from and to strings | | the reference's rules | strict parsing; shortest round-trip text; no text to bool or date | [cast-string](facts/polars-cast-string.json) |
+
+### Lists, set operations, frontend and I/O
+
+| Function (types) | Option | Reference | Polars | Fact |
+|---|---|---|---|---|
+| `ORDER BY` of lists, `<` of lists | `list_null_order` | NULL in `<`, `GREATEST` in sorts | `LEAST` in sorts; `<`, `min`, `max` of lists raise | [list-order](facts/polars-list-order.json) |
+| `list_extract` | indexing | 1-based | `list.get`: 0-based, negative from the end, raises out of range | [list-index](facts/polars-list-index.json) |
+| `=` on lists and structs | | structural, NULLs equal | native | [nested-equality](facts/polars-nested-equality.json) |
+| `UNNEST` | NULL and empty lists | no row | a NULL row each; native with `empty_as_null=False, keep_nulls=False` | [explode](facts/polars-explode.json) |
+| `UNION`, `INTERSECT`, `EXCEPT` | | NULLs equal | `concat`, `unique`, semi/anti joins with `nulls_equal=True` | [set-operations](facts/polars-set-operations.json) |
+| sort key | `clustered` | equal keys adjacent | a sort | [clustered](facts/polars-clustered.json) |
+| `substring` | `substring_range` | raise outside 32 bits | computes | [substring-range](facts/polars-substring-range.json) |
+| `fp32` arithmetic | | refused (#417) | native single precision; literals take `Float32` | [fp32](facts/polars-fp32.json) |
+| types | implicit casts, literals, names | explicit in the plan | wider type; literals adopt the column's; `Int32` literals | [implicit-casts](facts/polars-implicit-casts.json), [literal-types](facts/polars-literal-types.json), [type-names](facts/polars-type-names.json) |
+| I/O | formats, object stores, catalogs | outside the plan | Parquet, CSV, IPC, NDJSON, Delta, Iceberg; `storage_options`; `pl.Catalog` | [io](facts/polars-io.json) |

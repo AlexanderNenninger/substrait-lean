@@ -1,0 +1,33 @@
+{
+  "id": "polars-type-names",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Polars's names of the types",
+  "verdict": "`Int8` … `Int128`, `UInt*`, `Float32`, `Float64`, `String`, `Decimal(precision, scale)`, …",
+  "area": "frontend",
+  "options": [
+    "type_names"
+  ],
+  "layer": "frontend",
+  "constructs": [
+    "dtype"
+  ],
+  "settings": {},
+  "description": "Polars names its types `Int8`, `Int16`, `Int32`, `Int64`, `Int128`, `UInt8` … `UInt64`, `Float32`, `Float64`, `Boolean`, `String`, `Binary`, `Date`, `Time`, `Datetime(time_unit, time_zone)`, `Duration(time_unit)`, `Decimal(precision, scale)`, `List(T)`, `Array(T, shape)`, `Struct({...})`, `Null`, `Categorical`.",
+  "reference": "`typeof` folds to DuckDB's names whichever engine runs the plan (duckdb-typeof-names).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "type-names"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

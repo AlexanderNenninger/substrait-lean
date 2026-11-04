@@ -521,6 +521,79 @@ OBSERVATIONS: list[Observation] = [
        "df(x=['true']).select(pl.col('x').cast(pl.Boolean)).item()"),
     _o("cast-string-to-date", "casts",
        "df(x=['2024-01-01']).select(pl.col('x').cast(pl.Date)).item()"),
+    # Lists and structs.
+    _o("list-sort", "nested",
+       "[df(l=[[1, None], [1, 3], [1], [], None, [None], [1, 2]]).sort('l', descending=d)['l']"
+       ".to_list() for d in (False, True)]"),
+    _o("list-compare", "nested",
+       "df(a=[[1, None]], b=[[1, 3]]).select(pl.col('a') < pl.col('b')).item()"),
+    _o("list-min", "nested", "df(l=[[1], [2]]).select(pl.col('l').min()).item()"),
+    _o("list-equality", "nested",
+       "df(a=[[1, None], [None], []], b=[[1, None], [None], None]).select("
+       "(pl.col('a') == pl.col('b')).alias('eq'), pl.col('a').eq_missing(pl.col('b')).alias('eqm'))"
+       ".rows()"),
+    _o("list-get", "nested",
+       "(df(l=[[1, 2, 3], [], None]).select(pl.col('l').list.get(0, null_on_oob=True).alias('0'),"
+       " pl.col('l').list.get(-1, null_on_oob=True).alias('-1'),"
+       " pl.col('l').list.get(5, null_on_oob=True).alias('5')).rows(),"
+       " attempt(lambda: df(l=[[1, 2, 3]]).select(pl.col('l').list.get(5)).item()))"),
+    _o("struct-equality", "nested",
+       "df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, {'a': None, 'b': None}, None]).select("
+       "(pl.col('s') == pl.col('s').shift(1)).alias('eq')).to_series().to_list()"),
+    _o("struct-group-sort", "nested",
+       "(df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, None]).group_by('s', maintain_order=True)"
+       ".len().rows(), df(s=[{'a': 2, 'b': 1}, {'a': 1, 'b': None}, {'a': 1, 'b': 0},"
+       " {'a': None, 'b': 0}]).sort('s')['s'].to_list())"),
+    _o("explode", "nested",
+       "(df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l').rows(),"
+       " df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]])"
+       ".explode('l', empty_as_null=False, keep_nulls=False).rows())"),
+    # Set operations, written as Polars writes them.
+    _o("set-operations", "relations",
+       "{k: v.rows() for k, v in {"
+       "'union_all': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]),"
+       " 'union': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])])"
+       ".unique(maintain_order=True),"
+       " 'semi': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi'),"
+       " 'intersect': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi',"
+       " nulls_equal=True).unique(maintain_order=True),"
+       " 'anti': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti'),"
+       " 'except': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti',"
+       " nulls_equal=True).unique(maintain_order=True)}.items()}"),
+    _o("clustered", "relations",
+       "df(k=[2, 1, 2, 1], i=[0, 1, 2, 3]).sort('k', maintain_order=True).rows()"),
+    # Strings past 32 bits, fp32, frontend typing.
+    _o("substring-huge", "strings",
+       "df(s=['abc']).select(pl.col('s').str.slice(2**40, 2**40).alias('far'),"
+       " pl.col('s').str.slice(-2**40, 2**41).alias('wide')).rows()"),
+    _o("fp32-arith", "doubles",
+       "(df(a=([1.0, 3e38, 16777216.0], pl.Float32)).select(pl.col('a') + pl.col('a'),"
+       " (pl.col('a') + 1).alias('plus1')).rows(), [str(t) for t in df(a=([0.1], pl.Float32))"
+       ".select(pl.col('a') + 0.1, (pl.col('a') + 1).alias('i'), pl.col('a').sum().alias('s'),"
+       " pl.col('a').mean().alias('m')).dtypes])"),
+    _o("implicit-casts", "frontend",
+       "([str(t) for t in df(a=([1], pl.Int32), b=[1]).select(pl.col('a') + pl.col('b'),"
+       " (pl.col('a') + 1).alias('lit'), (pl.col('a') + 2**40).alias('big'),"
+       " (pl.col('a') + 1.5).alias('f'), (pl.col('a').cast(pl.UInt64) + pl.col('b')).alias('u'))"
+       ".dtypes], attempt(lambda: df(a=[1]).select(pl.col('a') + pl.lit('x')).item()))"),
+    _o("literal-types", "frontend",
+       "[str(t) for t in pl.select(pl.lit(1), pl.lit(2**40).alias('b'), pl.lit(2**63).alias('c'),"
+       " pl.lit(2**64).alias('d'), pl.lit(1.5).alias('e'), pl.lit('x').alias('f'),"
+       " pl.lit(None).alias('g'), pl.lit(True).alias('h'), pl.lit(Decimal('1.25')).alias('i'))"
+       ".dtypes]"),
+    _o("type-names", "frontend",
+       "[str(t) for t in [pl.Int8, pl.UInt64, pl.Int128, pl.Float32, pl.String, pl.Binary,"
+       " pl.Boolean, pl.Date, pl.Time, pl.Datetime('us'), pl.Duration('us'), pl.Decimal(10, 2),"
+       " pl.List(pl.Int64), pl.Array(pl.Int64, 2), pl.Struct({'a': pl.Int64}), pl.Null,"
+       " pl.Categorical]]"),
+    # I/O.
+    _o("io-functions", "io",
+       "([n for n in dir(pl) if n.startswith('scan_')],"
+       " [n for n in dir(pl.DataFrame) if n.startswith('write_')],"
+       " [n for n in dir(pl.LazyFrame) if n.startswith('sink_')],"
+       " hasattr(pl, 'Catalog'),"
+       " [p for p in ('storage_options', 'credential_provider')"
+       " if p in __import__('inspect').signature(pl.scan_parquet).parameters])"),
 ]  # fmt: skip
 
 
