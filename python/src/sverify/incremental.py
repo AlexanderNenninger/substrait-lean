@@ -64,7 +64,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _retention, _touched
+from sverify import _linear, _retention, _touched
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, store_for
@@ -129,7 +129,9 @@ class NotIncremental(Exception):
     Raised by `sverify.engines.delta_plans` for a plan with an operator
     without a delta rule (a left join, aggregate, window, `DISTINCT` or
     `LIMIT`). A node over such a plan is recomputed and diffed instead, so
-    refreshing it does not raise this. The message is the checker's reason.
+    refreshing it does not raise this. (A view that ends in `COUNT` and `SUM`
+    per group, or in `DISTINCT`, is maintained from a state per group,
+    `sverify._linear`.) The message is the checker's reason.
     """
 
 
@@ -887,6 +889,9 @@ class IncrementalView:
                 self.resumed = f"computed: {reason} (stored at {resume.where})"
         self._set_schema(result.schema)
         self.state: State = self._merge(self.store.weighted(result), keep=self.store.keep)
+        self.groups: pa.Table | None = self._groups_on({})
+        """With a state per group (`linear`): one row per group, the keys
+        `k0, …`, the number of input rows and each measure's count and sum."""
         """The view's rows, each once with its number of copies (a weighted
         table, `sverify._weighted`): an Arrow table, or one DuckDB holds."""
         if resume is not None and reason is None:
@@ -916,9 +921,20 @@ class IncrementalView:
         when it has no delta plans, if it can be."""
         self.touched_off: str | None = None
         """Why an aggregate without delta plans is recomputed and diffed."""
+        self.linear: _linear.Linear | None = None
+        """How the view is maintained from a state per group (`sverify._linear`):
+        `COUNT` and integer `SUM` per group, or `DISTINCT`."""
         try:
             self.deltas = delta_plans(json.dumps(plan))
         except NotIncremental as e:
+            try:
+                linear = _linear.plan(self.name, query)
+            except Exception as refused:  # noqa: BLE001 - a plan refused: the other strategies
+                linear = f"the state per group could not be planned ({first_line(refused)})"
+            if isinstance(linear, _linear.Linear):
+                self.deltas, self.linear = [], linear
+                self.plan = written_plan(json.dumps(plan))
+                return
             if standalone:
                 raise
             self.deltas, self.fallback = [], str(e)
@@ -931,7 +947,8 @@ class IncrementalView:
 
     @property
     def strategy(self) -> str:
-        """How a batch changes the view: "delta rules", "touched groups"
+        """How a batch changes the view: "delta rules" (also for `COUNT`,
+        `SUM` and `DISTINCT` kept from a state per group), "touched groups"
         (the groups or partitions the batch touches, recomputed), "touched
         frames" (window rows near the change, recomputed: tested, not
         proved) or "recompute and diff"."""
@@ -1015,6 +1032,7 @@ class IncrementalView:
         result = run_plan(self.con, self.plan, self.engine, keep=self.store.keep)
         self._set_schema(result.schema)
         self.state = self._merge(self.store.weighted(result), keep=self.store.keep)
+        self.groups = self._groups_on({})
         self._record(None)
         self._publish()
         self.table = self.con.table(self.name)
@@ -1179,6 +1197,68 @@ class IncrementalView:
             return arrow_of(change), arrow_of(new).num_rows, "frames"
         assert keys is not None
         return arrow_of(change), keys.num_rows, "groups"
+
+    def _groups_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table | None:
+        """The state per group (`groups`) computed from the inputs, at their
+        new contents where `new_tables` has them; None without `linear`."""
+        if self.linear is None:
+            return None
+        return run_plan_on(self.con, self.linear.init, self.engine, new_tables, self.tables)
+
+    def _linear_change(self, deltas: Mapping[str, pa.Table]) -> tuple[pa.Table, pa.Table | None]:
+        """The view's change from its state per group (`sverify._linear`), as
+        a weighted table, and the new state per group (None: unchanged). The
+        input's change comes from its delta plans; each changed row's
+        contribution is added to the old state of its group, and the view's
+        rows of those groups are finished from the new state
+        (`LinearAgg.aggregate_maintained`, `LinearAgg.distinct_maintained`).
+        The input is not read."""
+        spec, groups = self.linear, self.groups
+        assert spec is not None and groups is not None
+        con = self.con
+        parts = [r for r in self._run_deltas(spec.deltas, deltas) if r.num_rows]
+        if not parts:
+            return weighted(self.schema.empty_table(), 1), None
+        names = [*spec.input_names, _linear.WEIGHT_IN]
+        rows = pa.concat_tables([r.rename_columns(names) for r in parts])
+        tables = {s: f"{self.name}${s}" for s in ("in", "old", "contrib", "state")}
+        try:
+            put_table(con, tables["in"], rows)
+            contrib = run_plan(con, spec.contrib, self.engine)
+            contrib = contrib.rename_columns(groups.schema.names).cast(groups.schema)
+            # With retention, the final buckets stay as they are: a source's
+            # expiry deletes only their rows (`Retention.expiry_sound`).
+            contrib = self._kept_groups(contrib)
+            keys = contrib.select(spec.keys)
+            put_table(con, tables["old"], self.store.with_keys(groups, spec.keys, keys))
+            put_table(con, tables["contrib"], contrib)
+            new = run_plan(con, spec.merge, self.engine)
+            new = new.rename_columns(groups.schema.names).cast(groups.schema)
+            least = _call("min", new.column(_linear.COUNT)).as_py()
+            if least is not None and least < 0:
+                raise ValueError(f"changes delete rows that are not in the inputs of {self.name}")
+            put_table(con, tables["state"], new)
+            out = run_plan(con, spec.finish, self.engine)
+        finally:
+            for t in tables.values():
+                con.drop(t)
+        out = self._kept(out.rename_columns(self.schema.names).cast(self.schema))
+        old = arrow_of(self.store.with_keys(self.state, spec.columns, keys))
+        change = self._merge(weighted(out, 1), self.store.negated(self._kept(old)))
+        live = new.filter(_call("not_equal", new.column(_linear.COUNT), pa.scalar(0)))
+        kept = self.store.without_keys(groups, spec.keys, keys)
+        return arrow_of(change), pa.concat_tables([kept, live])
+
+    def _kept_groups(self, table: pa.Table) -> pa.Table:
+        """`_kept` for rows of the state per group (or contributions to it),
+        whose keys hold the view's bucket column."""
+        spec, lin = self.retention, self.linear
+        if spec is None or lin is None or not self._retires() or spec.column not in lin.columns:
+            return table
+        cutoff = spec.cutoff(self.pipeline.latest.get((spec.table, spec.ts)))
+        if cutoff is None:
+            return table
+        return _retention.after(table, lin.keys[lin.columns.index(spec.column)], cutoff)
 
     def _result_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
@@ -1474,6 +1554,10 @@ class Pipeline:
                 report.waiting = f"sink {behind[0]} writes them"
             elif cutoff is not None and (v.retired_through is None or cutoff > v.retired_through):
                 report.retired = v.store.retire(v, spec.column, cutoff)
+                lin = v.linear
+                if lin is not None and v.groups is not None and spec.column in lin.columns:
+                    key = lin.keys[lin.columns.index(spec.column)]
+                    v.groups = _retention.after(v.groups, key, cutoff)
                 v.retired_through = cutoff
                 v._publish()
             state = arrow_of(v.state)
@@ -1822,12 +1906,14 @@ class Pipeline:
         checked: list[Discharged] = []
         states: dict[str, State] = {}
         in_place: dict[str, pa.Table] = {}
+        before: dict[str, pa.Table] = {}
         # The tables whose new contents a recomputed view reads.
         rerun = set(stale)
         read_new: set[str] = set()
         touched: dict[str, int] = {}
         framed: dict[str, int] = {}
         diffed: list[str] = []
+        groups: dict[str, pa.Table] = {}
         for v in self._views:
             if v.recomputed or rerun & set(v.tables):
                 rerun.add(v.name)
@@ -1845,6 +1931,12 @@ class Pipeline:
                 stale.add(v.name)
                 diffed.append(v.name)
                 delta = v._diff(new_tables)
+                if (g := v._groups_on(new_tables)) is not None:
+                    groups[v.name] = g
+            elif v.linear is not None:
+                delta, g = v._linear_change(deltas)
+                if g is not None:
+                    groups[v.name] = g
             elif v.touched is not None:
                 delta, n, how = v._touched_change(deltas, new_tables)
                 if how == "diff":
@@ -1858,11 +1950,13 @@ class Pipeline:
             keyed = any(isinstance(c, Unique | MaxRows) for c in v.checked)
             if isinstance(v.state, Resident) and not audit and v.name not in read_new and not keyed:
                 # Only the state rows the change touches, merged with it.
-                merged = v._merge(matching(v.state, delta), delta)
+                old = matching(v.state, delta)
+                merged = v._merge(old, delta)
                 if v.store.has_negative(merged):
                     raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
                 checked += v._check_change(delta, None)
                 in_place[v.name] = arrow_of(merged)
+                before[v.name] = old
                 continue
             merged = v._merge(v.state, delta, keep=v.store.keep)
             if v.store.has_negative(merged):
@@ -1879,35 +1973,76 @@ class Pipeline:
             found,
             in_place,
             changed,
+            before=before,
             latest=latest,
             checked=checked,
             touched=touched,
             framed=framed,
             diffed=diffed,
+            groups=groups,
         )
 
     def _commit(self, pending: _Commit) -> None:
-        """Replace the tables, views and versions with their new state."""
+        """Replace the tables, views and versions with their new state, all
+        or nothing.
+
+        The Python side changes first, with the old values kept (references,
+        no copies); DuckDB's in-place update of the resident states runs
+        last, in its own transaction. An exception anywhere restores the
+        old values, and puts the state rows the change touched back
+        (`_Commit.before`), so a retry in the same process applies the
+        batch once (#515)."""
         views = self.views
-        if pending.in_place:
-            # One transaction: every view's state changes, or none does.
-            updates = []
-            for name, merged in pending.in_place.items():
-                state = views[name].state
-                assert isinstance(state, Resident)
-                updates.append((state, pending.deltas[name], merged))
-            DuckDBStore().apply(updates)
-            for name in pending.in_place:
-                views[name]._publish()
-        for t in pending.changes:
-            put_table(self.con, t, pending.new_tables[t])
-        self.versions.update(pending.versions)
-        self.latest.update(pending.latest)
-        for name, state in pending.states.items():
-            views[name].state = state
-            put_table(self.con, name, pending.new_tables[name])
-        for name, delta in pending.deltas.items():
-            views[name]._record(delta)
+        touched = [*pending.changes, *pending.in_place, *pending.states]
+        tables = {t: self.con.get(t) for t in touched}
+        versions, latest = dict(self.versions), dict(self.latest)
+        names = {*pending.in_place, *pending.states, *pending.deltas, *pending.groups}
+        saved = {
+            n: (views[n].state, views[n].serial, views[n]._log, views[n].groups) for n in names
+        }
+        try:
+            for t in pending.changes:
+                put_table(self.con, t, pending.new_tables[t])
+            self.versions.update(pending.versions)
+            self.latest.update(pending.latest)
+            for name, state in pending.states.items():
+                views[name].state = state
+                put_table(self.con, name, pending.new_tables[name])
+            for name, delta in pending.deltas.items():
+                views[name]._record(delta)
+            for name, g in pending.groups.items():
+                views[name].groups = g
+            if pending.in_place:
+                # The published rows are a DuckDB view of the state table,
+                # so they show the update once it commits.
+                for name in pending.in_place:
+                    views[name]._publish()
+                # One transaction: every view's state changes, or none does.
+                updates = []
+                for name, merged in pending.in_place.items():
+                    state = views[name].state
+                    assert isinstance(state, Resident)
+                    updates.append((state, pending.deltas[name], merged))
+                try:
+                    DuckDBStore().apply(updates)
+                except BaseException:
+                    # Committed or not, the rows the change touches go back
+                    # to the ones `_prepare` read.
+                    DuckDBStore().apply(
+                        [
+                            (s, d, pending.before[n])
+                            for n, (s, d, _) in zip(pending.in_place, updates, strict=True)
+                        ]
+                    )
+                    raise
+        except BaseException:
+            for t, table in tables.items():
+                put_table(self.con, t, table)
+            self.versions, self.latest = versions, latest
+            for n, (state, serial, log, groups) in saved.items():
+                v = views[n]
+                v.state, v.serial, v._log, v.groups = state, serial, log, groups
+            raise
 
 
 @dataclass
@@ -1925,6 +2060,9 @@ class _Commit:
     touches, merged with it."""
     deltas: dict[str, pa.Table] = field(default_factory=dict)
     """Each changed view's change, as a weighted table."""
+    before: dict[str, pa.Table] = field(default_factory=dict)
+    """For each view in `in_place`, the state rows the change touches, as
+    they are before the commit: what a failed commit puts back."""
     latest: dict[tuple[str, str], object] = field(default_factory=dict)
     """The largest time seen after the batch, per `arrives_within`."""
     checked: list[Discharged] = field(default_factory=list)
@@ -1935,6 +2073,8 @@ class _Commit:
     """The output rows each framed window view recomputed (tested only)."""
     diffed: list[str] = field(default_factory=list)
     """The views recomputed and diffed."""
+    groups: dict[str, pa.Table] = field(default_factory=dict)
+    """The new state per group of each view kept from one (`sverify._linear`)."""
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:

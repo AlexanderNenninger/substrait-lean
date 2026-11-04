@@ -26,6 +26,11 @@ running the plan *without* them gives the same result.
   wrap, the unchecked plan computes `Rel.eval`. `Rel.guardFree_sound`
   derives this from an empty `Rel.mayIssues` (up to `sumWraps`), which is
   what `substrait-check --contract` reports as `guard_free`.
+* `Rel.evalG_marks`: the same per expression. `Rel.marks` lists the
+  expressions without abstract issues, `Rel.evalG` runs only those
+  unchecked, and the result is `Rel.eval` whatever the other expressions
+  may run into; `substrait-check --contract` reports the list as
+  `unchecked`.
 
 `Rel.HasIssue` looks at the rows of `Rel.loose`, the plan with the filters an
 engine may reorder removed, which has all the plan's rows only when no left
@@ -468,7 +473,7 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
 /-- **Guard elimination from contracts**: when `Rel.mayIssues` reports
 nothing but integer `SUM`s, on every catalog that satisfies the
 preconditions and the size hypothesis (`Rel.Small`: windows read fewer than
-`2⁶²` rows), the plan runs correctly with unchecked functions. -/
+`2⁶²` rows, aggregates fewer than `2⁶³`), the plan runs correctly with unchecked functions. -/
 theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
@@ -479,5 +484,268 @@ theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   evalI_eq hI (u := false) hs fun p hp => by
     have := List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)
     simpa using this
+
+/-! ## Per-expression guards
+
+`Rel.guardFree_sound` drops every check of a plan or none. Here each
+expression decides for itself: `Rel.marks` lists, per node, the expressions
+whose abstract issues (`Expr.mayIssues`, on the same inputs `Rel.mayIssues`
+analyses) are none, and `Rel.evalG` runs exactly those with the engine's
+unchecked functions and the rest with Lean's. `Rel.evalG_marks`: the result is
+`Rel.eval`. So the SQL keeps the checks of the other expressions only. -/
+
+/-- Evaluate `e` unchecked (`u`) or with Lean's functions. -/
+def Expr.evalIf (I : Impl) (u : Bool) (row : Row) (e : Expr) : Value :=
+  if u then e.evalI I row else e.eval row
+
+/-- Which expressions of a plan run unchecked, as a tree parallel to the plan:
+a node's slots, then the marks of its inputs, in order. The slots of a
+filter, a join and a semi-join are `[0]` (the condition) or `[]`; of a
+projection, the indices of its expressions; of an aggregate, `[0]` when all
+its grouping expressions and measures' arguments, filters and sort keys
+(`Measure.exprs`) run unchecked. -/
+inductive Marks where
+  | mk (slots : List Nat) (inputs : List Marks)
+
+/-- Every check stays. -/
+def Marks.checked : Marks := .mk [] []
+
+def Marks.slots : Marks → List Nat
+  | .mk s _ => s
+
+def Marks.input (m : Marks) (i : Nat) : Marks :=
+  match m with
+  | .mk _ ks => ks.getD i .checked
+
+/-- `Rel.eval` with each expression unchecked where `Marks` says so. -/
+def Rel.evalG (I : Impl) (cat : Catalog) : Marks → Rel → Relation
+  | _, .read t => (cat t).rows
+  | _, .values _ rows => rows
+  | m, .filter r c =>
+      (r.evalG I cat (m.input 0)).filter fun row => (c.evalIf I (m.slots.contains 0) row).isTrue
+  | m, .project r es =>
+      (r.evalG I cat (m.input 0)).map fun row =>
+        row ++ es.mapIdx fun i e => e.evalIf I (m.slots.contains i) row
+  | m, .emit r mp => (r.evalG I cat (m.input 0)).map fun row => mp.map (row.getD · .null)
+  | m, .cross a b => crossRows (a.evalG I cat (m.input 0)) (b.evalG I cat (m.input 1))
+  | m, .join a b .inner on =>
+      (crossRows (a.evalG I cat (m.input 0)) (b.evalG I cat (m.input 1))).filter fun row =>
+        (on.evalIf I (m.slots.contains 0) row).isTrue
+  | m, .join a b .left on =>
+      (a.evalG I cat (m.input 0)).flatMap fun x =>
+        if m.slots.contains 0 then leftJoinRowI I on (b.arity cat) (b.evalG I cat (m.input 1)) x
+        else leftJoinRow on (b.arity cat) (b.evalG I cat (m.input 1)) x
+  | m, .fetch r off cnt =>
+      let rest := (r.evalG I cat (m.input 0)).drop off
+      match cnt with
+      | none => rest
+      | some n => rest.take n
+  | m, .unionAll a b => a.evalG I cat (m.input 0) ++ b.evalG I cat (m.input 1)
+  | m, .window r part sort fns => windowEval part sort fns (r.evalG I cat (m.input 0))
+  | m, .semi a b anti on =>
+      (a.evalG I cat (m.input 0)).filter fun x =>
+        (if m.slots.contains 0 then hasMatchI I on (b.evalG I cat (m.input 1)) x
+         else hasMatch on (b.evalG I cat (m.input 1)) x) != anti
+  | m, .orderBy r keys => (r.evalG I cat (m.input 0)).mergeSort (sortLe keys)
+  | m, .distinct r => dedup (r.evalG I cat (m.input 0))
+  | m, .unnest r c => (r.evalG I cat (m.input 0)).flatMap (unnestRow c)
+  | m, .aggregate r gs ms =>
+      if m.slots.contains 0 then aggregateEvalI I gs ms (r.evalG I cat (m.input 0))
+      else aggregateEval gs ms (r.evalG I cat (m.input 0))
+
+/-- The indices of the expressions `ok` accepts. -/
+def okSlots (es : List Expr) (ok : Expr → Bool) : List Nat :=
+  (List.range es.length).filter fun i => match es[i]? with
+    | some e => ok e
+    | none => false
+
+/-- The expressions without abstract issues, on the inputs `Rel.mayIssues`
+analyses them on. -/
+def Rel.marks (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
+    Bool → Rel → Marks
+  | _, .read _ | _, .values _ _ => .checked
+  | _, .filter r c =>
+    .mk (if (c.mayIssues (r.loose.aeval cat A F T true) (r.loose.facts cat F T)).isEmpty
+      then [0] else []) [r.marks cat A F T true]
+  | u, .project r es =>
+    let s := if u then r.loose else r
+    .mk (okSlots es fun e => (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty)
+      [r.marks cat A F T u]
+  | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r
+  | u, .unnest r _ | u, .window r _ _ _ => .mk [] [r.marks cat A F T u]
+  | u, .cross a b | u, .unionAll a b => .mk [] [a.marks cat A F T u, b.marks cat A F T u]
+  | _, .join a b _ on | _, .semi a b _ on =>
+    let ab := Rel.cross a.loose b.loose
+    .mk (if (on.mayIssues (ab.aeval cat A F T true) (ab.facts cat F T)).isEmpty then [0] else [])
+      [a.marks cat A F T true, b.marks cat A F T true]
+  | u, .aggregate r gs ms =>
+    let s := if u then r.loose else r
+    .mk (if (gs ++ ms.flatMap Measure.exprs).all
+        (fun e => (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty)
+      then [0] else []) [r.marks cat A F T u]
+
+theorem contains_zero_ite {c : Bool} (h : (if c = true then [0] else ([] : List Nat)).contains 0 = true) :
+    c = true := by
+  cases c <;> simp_all
+
+theorem ite_eq_right_of {α : Type} {c : Prop} [Decidable c] {a b : α} (h : c → a = b) :
+    (if c then a else b) = b := by
+  split
+  · exact h ‹_›
+  · rfl
+
+theorem Expr.evalIf_eq {I : Impl} {u : Bool} {row : Row} {e : Expr}
+    (h : u = true → e.evalI I row = e.eval row) : e.evalIf I u row = e.eval row := by
+  cases u with
+  | false => rfl
+  | true => exact h rfl
+
+theorem mapIdx_eq_map {α β : Type} {l : List α} {f : Nat → α → β} {g : α → β}
+    (h : ∀ i (hi : i < l.length), f i l[i] = g l[i]) : l.mapIdx f = l.map g := by
+  apply List.ext_getElem (by simp)
+  intro i h1 _
+  simp only [List.getElem_mapIdx, List.getElem_map]
+  exact h i (by simpa using h1)
+
+theorem okSlots_mem {es : List Expr} {ok : Expr → Bool} {i : Nat} (hi : i < es.length)
+    (h : i ∈ okSlots es ok) : ok es[i] = true := by
+  simp only [okSlots, List.mem_filter, List.getElem?_eq_getElem hi] at h
+  exact h.2
+
+section
+variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
+  (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+  (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+  {I : Impl} (hI : I.Faithful)
+
+include hcat hA hF hT hI in
+/-- An expression without abstract issues on `s` runs unchecked on `s`'s rows. -/
+theorem Expr.evalI_of_safe {s : Rel} (hwf : s.WF cat) (hsm : s.Small cat) {e : Expr}
+    (he : (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty = true) {row : Row}
+    (hrow : row ∈ s.eval cat) : e.evalI I row = e.eval row :=
+  Expr.evalI_eq hI (List.eq_nil_iff_forall_not_mem.mpr fun p hp => by
+    have := Expr.mayIssues_sound (Rel.aeval_sound hcat hA hF hT (sz := true) hwf (fun _ => hsm) row hrow)
+      (Rel.facts_sound hcat hF hT hwf row hrow) (KsHold.nil row) e p hp
+    simp [List.isEmpty_iff.mp he] at this)
+
+include hcat hA hF hT hI in
+/-- A join condition without abstract issues runs unchecked on the pairs of
+loose rows. -/
+theorem Expr.evalI_of_safe_cond {a b : Rel} (ha : a.WF cat) (hb : b.WF cat) (hsa : a.Small cat)
+    (hsb : b.Small cat) {on : Expr}
+    (he : (on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T true)
+      ((Rel.cross a.loose b.loose).facts cat F T)).isEmpty = true) {x y : Row}
+    (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) :
+    on.evalI I (x ++ y) = on.eval (x ++ y) :=
+  Expr.evalI_eq hI (List.eq_nil_iff_forall_not_mem.mpr fun _ hp => by
+    have := condIssue_sound hcat hA hF hT ha hb hsa hsb hx hy hp
+    simp [List.isEmpty_iff.mp he] at this)
+
+theorem Rel.loose_if_wf {u : Bool} {r : Rel} (h : r.WF cat) :
+    (if u then r.loose else r).WF cat := by
+  cases u
+  · exact h
+  · exact loose_wf h
+
+theorem Rel.loose_if_small {u : Bool} {r : Rel} (h : r.Small cat) :
+    (if u then r.loose else r).Small cat := by
+  cases u
+  · exact h
+  · exact Rel.Small.loose (r := r) h
+
+include hcat hA hF hT hI in
+/-- **Per-expression guard elimination**: on every catalog that satisfies the
+preconditions and the size hypothesis, the plan with the expressions
+`Rel.marks` lists unchecked gives `Rel.eval`. -/
+theorem Rel.evalG_marks :
+    ∀ {u : Bool} {r : Rel}, r.WF cat → r.Small cat → r.looseSub = true →
+      r.evalG I cat (r.marks cat A F T u) = r.eval cat
+  | _, .read _, _, _, _ | _, .values _ _, _, _, _ => rfl
+  | _, .filter r c, hwf, hsm, hs => by
+    have ih := evalG_marks (u := true) (r := r) hwf.1 hsm hs
+    simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, eval, ih]
+    refine List.filter_congr fun row hr => ?_
+    rw [Expr.evalIf_eq fun hc => Expr.evalI_of_safe hcat hA hF hT hI (loose_wf hwf.1)
+      (Rel.Small.loose (r := r) hsm) (contains_zero_ite hc) (mem_loose (r := r) hs row hr)]
+  | u, .project r es, hwf, hsm, hs => by
+    have ih := evalG_marks (u := u) (r := r) hwf.1 hsm hs
+    simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, eval, ih]
+    refine List.map_congr_left fun row hr => congrArg (row ++ ·) (mapIdx_eq_map fun i hi => ?_)
+    refine Expr.evalIf_eq fun hc => Expr.evalI_of_safe hcat hA hF hT hI (loose_if_wf hwf.1)
+      (loose_if_small hsm) ?_ (mem_loose_if (r := r) hs u hr)
+    exact okSlots_mem hi (by simpa using hc)
+  | u, .emit r _, hwf, hsm, hs => by
+    simp only [evalG, marks, Marks.input, List.getD_cons_zero, eval,
+      evalG_marks (u := u) (r := r) hwf.1 hsm hs]
+  | u, .fetch r _ cnt, hwf, hsm, hs => by
+    simp only [looseSub] at hs
+    have ih := evalG_marks (u := u) (r := r) hwf hsm hs
+    cases cnt <;> simp only [evalG, marks, Marks.input, List.getD_cons_zero, eval, ih]
+  | u, .window r _ _ _, hwf, hsm, hs => by
+    simp only [looseSub] at hs
+    simp only [evalG, marks, Marks.input, List.getD_cons_zero, eval,
+      evalG_marks (u := u) (r := r) hwf.1 hsm.2 hs]
+  | u, .orderBy r _, hwf, hsm, hs => by
+    simp only [evalG, marks, Marks.input, List.getD_cons_zero, eval,
+      evalG_marks (u := u) (r := r) hwf.1 hsm hs]
+  | u, .distinct r, hwf, hsm, hs => by
+    simp only [evalG, marks, Marks.input, List.getD_cons_zero, eval,
+      evalG_marks (u := u) (r := r) hwf hsm hs]
+  | _, .unnest _ _, _, _, hs => by simp [looseSub] at hs
+  | u, .cross a b, hwf, hsm, hs => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [evalG, marks, Marks.input, List.getD_cons_zero, List.getD_cons_succ, eval,
+      evalG_marks (u := u) (r := a) hwf.1 hsm.1 hs.1,
+      evalG_marks (u := u) (r := b) hwf.2 hsm.2 hs.2]
+  | u, .unionAll a b, hwf, hsm, hs => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [evalG, marks, Marks.input, List.getD_cons_zero, List.getD_cons_succ, eval,
+      evalG_marks (u := u) (r := a) hwf.1 hsm.1 hs.1,
+      evalG_marks (u := u) (r := b) hwf.2.1 hsm.2 hs.2]
+  | _, .join a b .inner on, hwf, hsm, hs => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, List.getD_cons_succ,
+      eval, evalG_marks (u := true) (r := a) hwf.1 hsm.1 hs.1,
+      evalG_marks (u := true) (r := b) hwf.2.1 hsm.2 hs.2]
+    refine List.filter_congr fun row hr => ?_
+    obtain ⟨x, hx, y, hy, rfl⟩ := mem_crossRows.mp hr
+    rw [Expr.evalIf_eq fun hc => Expr.evalI_of_safe_cond hcat hA hF hT hI hwf.1 hwf.2.1 hsm.1
+      hsm.2 (contains_zero_ite hc) (mem_loose hs.1 x hx) (mem_loose hs.2 y hy)]
+  | _, .join a b .left on, hwf, hsm, hs => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    have hbs := looseExact_sub hs.2
+    simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, List.getD_cons_succ,
+      eval, evalG_marks (u := true) (r := a) hwf.1 hsm.1 hs.1,
+      evalG_marks (u := true) (r := b) hwf.2.1 hsm.2 hbs]
+    refine flatMap_congr fun x hx => ?_
+    split
+    · rename_i hc
+      exact leftJoinRowI_eq fun y hy => Expr.evalI_of_safe_cond hcat hA hF hT hI hwf.1 hwf.2.1
+        hsm.1 hsm.2 hc (mem_loose hs.1 x hx)
+        ((looseExact_mem hs.2 y).mpr hy)
+    · rfl
+  | _, .semi a b _ on, hwf, hsm, hs => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, List.getD_cons_succ,
+      eval, evalG_marks (u := true) (r := a) hwf.1 hsm.1 hs.1,
+      evalG_marks (u := true) (r := b) hwf.2.1 hsm.2 hs.2]
+    refine List.filter_congr fun x hx => ?_
+    split
+    · rename_i hc
+      rw [hasMatchI_eq fun y hy => Expr.evalI_of_safe_cond hcat hA hF hT hI hwf.1 hwf.2.1
+        hsm.1 hsm.2 hc (mem_loose hs.1 x hx) (mem_loose hs.2 y hy)]
+      simp
+    · rfl
+  | u, .aggregate r gs ms, hwf, hsm, hs => by
+    simp only [looseSub] at hs
+    have ih := evalG_marks (u := u) (r := r) hwf.1 hsm.2 hs
+    simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, eval, ih]
+    refine ite_eq_right_of fun hc => ?_
+    have hall := contains_zero_ite hc
+    exact aggregateEvalI_eq fun row hr e he =>
+      Expr.evalI_of_safe hcat hA hF hT hI (loose_if_wf hwf.1) (loose_if_small hsm.2)
+        (List.all_eq_true.mp hall e he) (mem_loose_if (r := r) hs u hr)
+
+end
 
 end Substrait

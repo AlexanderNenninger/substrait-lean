@@ -84,7 +84,7 @@ Where the reference departs from Substrait, and why:
 |---|---|---|
 | One zero | `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`, and `GROUP BY`, `DISTINCT` and joins see one zero. | DuckDB, Spark and Snowflake have one zero ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89)); IEEE's two zeros, which DataFusion keeps apart, surprise `-0.0 >= 0`. |
 | One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Spark and Snowflake treat NaN this way (#89); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
-| The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), and every relation a window reads fewer than 2⁶² rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos` and `ROW_NUMBER`. |
+| The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM` ([#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)). |
 
 Engine quirks belong in profiles, never in the reference. Changing the
 reference is a breaking change and is treated as one (#185,
@@ -110,11 +110,16 @@ fires, `Rel.eval`'s value is not the answer.
   other error issues, and for integer `+ - *` and negation overflow at the
   declared width ([#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202)).
   Inferred bounds (#244) discharge most overflows.
-* **Integer `SUM` overflow is an inferred assumption, checked on the data.**
-  A group's integer sum may leave 64 bits, and the reference raises there.
+* **`SUM` overflow is an inferred assumption, checked on the data.**
+  A group's integer sum may leave 64 bits, and a decimal sum its precision
+  (`DECIMAL(min(38, p + 10), s)`, [#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316));
+  the reference raises there, and so does DuckDB past 38 digits.
   Where the plan bounds a group's rows (a `VALUES` list, a `FETCH` count, an
   aggregate without groups: `Rel.maxRows`) and the argument's range bounds
-  each value (`Measure.sumFits`), it is ruled out. Elsewhere `verify` assumes
+  each value (`Measure.sumFits`), it is ruled out. A group has fewer than
+  2⁶³ rows by the size hypothesis (`Rel.sumRows`, [#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)),
+  so an integer `SUM` of values in `[-1, 1]`, such as
+  `SUM(CASE WHEN … THEN 1 ELSE 0 END)`, always fits. Elsewhere `verify` assumes
   each sum fits, as it assumes inferred bounds (#244), and lists it in
   `Report.assumed`; the written SQL checks it on the data while the job runs
   and raises if a sum does not fit. The proof holds under that assumption
@@ -240,6 +245,7 @@ Design notes: [nested-values.md](nested-values.md).
 | Double to decimal | `round(x · 10ˢ)` computed in doubles, half away from zero (`-2.675` gives `-2.68`). NaN, `±∞` and a product that overflows raise. Monotone, so a double's bounds bound the decimal, and `verify` reports neither the failed cast nor the precision overflow where the casts of the bounds fit (`FloatCode.toDecimal?_between`). | ✓ (#27, [#223](https://github.com/AlexanderNenninger/substrait-lean/issues/223)) |
 | Decimal to double | The nearest double, halves to even: within `2⁻⁵³` of the decimal, relatively (`FloatCode.ofDecimal_rel`), and monotone. | ✓ |
 | Integer to double | The nearest double, halves to even: exact up to `2⁵³` in magnitude (`FloatCode.ofInt_exact`), within `2⁻⁵³` relatively beyond (`FloatCode.ofInt_rel`), and monotone (`ofInt_mono`). An integer up to `2⁵³` survives the round trip to a double and back (`FloatCode.toInt?_ofInt`). | ✓ |
+| `typeof` | Of a column, a string constant: DuckDB's name of the column's type (`BIGINT`, `DECIMAL(10,2)`, `VARCHAR[]`; [`duckdb-typeof-names`](../characterization/duckdb/facts/duckdb-typeof-names.json)), whichever engine runs the plan, so every engine gives the same string. The Ibis producer folds it before the plan is checked. Of an expression, or of a struct or map, it is refused: DuckDB infers that type its own way. | ✓ ([#508](https://github.com/AlexanderNenninger/substrait-lean/issues/508)) |
 | `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight; `timestamp` to `date` rounds down, before 1970 too. Comparing a date with a timestamp without a cast is refused. | ✓ (#206) |
 
 ## Aggregates
@@ -255,7 +261,7 @@ Design notes: [nested-values.md](nested-values.md).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`). Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by the proved error bound (`floatSum_mem`, `floatAvg_mem` in `Aggregate.lean`, proved in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `float_order="any"`; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
+| `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`). Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by the proved error bound (`floatSum_mem`, `floatAvg_mem` in `Aggregate.lean`, proved in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `float_order="any"`, which reports a proved bound on the difference (`floatSplit_sum`); engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
 | `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates) (#54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; for two-pass and for DuckDB's Welford and Chan, the result is within a proved bound that scales with the spread of the values ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
 | `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there, and so does the SQL lift with `semantics="duckdb"`, `duckdb-corr`). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)); Polars and DataFusion (whose grouped min/max of doubles is not IEEE) refuse them until #271 |
@@ -311,7 +317,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Operation | Result type | Notes | Status |
 |---|---|---|---|
 | `MIN`, `MAX` | the argument's type | | ✓ |
-| `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact. | ✓ |
+| `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact; raises past the precision, an inferred assumption like integer `SUM` overflow (#316). | ✓ |
 | `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
 | `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Over a window too. | ✓ (M2) |
 
@@ -319,7 +325,7 @@ The rules for decimals are in [Decimals](#decimals).
 
 | Topic | Reference | Status |
 |---|---|---|
-| Aggregates | NULLs are skipped. `COUNT` of no rows is 0; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
+| Aggregates | NULLs are skipped. `COUNT` of no rows is 0, a [black box](#black-boxes) its row's `empty`; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
 | `FIRST` / `LAST` (#55) | The first or last non-NULL value in the aggregate's own `ORDER BY`, NULL without one. Rows tied in the order go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. Without an `ORDER BY` every row ties (any row's value, as in Ibis's `distinct(on=)`), and an engine may take each measure's value from a different row. | ✓ on DuckDB; other engines refuse it until #271 |
 | `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Refused without an `ORDER BY` (the order would be the engine's), and determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. | ✓ on DuckDB; other engines refuse it until #271 |
 
@@ -327,7 +333,7 @@ The rules for decimals are in [Decimals](#decimals).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out (`upstream/LEDGER.md` DF-11) |
+| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out ([DF-11](../upstream/bugs/DF-11.json)) |
 
 ## Relations
 
@@ -339,6 +345,23 @@ The rules for decimals are in [Decimals](#decimals).
 | Ties | `Rel.eval` sorts stably and takes `fetch` rows in list order. Engines promise neither, so theorems about `fetch`, ties and windows hold for one choice. A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `tie_free=True` is justified by it. | ✓ |
 | Sort keys | Every key states where NULLs go. The parser reads only `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}` and **refuses** any other direction (unspecified, clustered), so there is no default to choose. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`; the model's `SortKey` has a default of NULLs last only for hand-built values) |
 
+## Black boxes
+
+DuckDB functions that are hard or pointless to model exactly are black boxes
+([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)): one
+row each in a table, `SubstraitLean/BlackBox.lean`, mirrored for the lift and
+the writers in `python/src/sverify/black_box.py`.
+
+| Topic | Reference | Status |
+|---|---|---|
+| The table | A row gives the function's name, its argument and result types, how it treats NULL (a scalar is strict or not; an aggregate skips NULLs and gives `empty` without values), whether a scalar may raise, and its laws: `nonNull`, `atLeast k`, `atMost k`. A double's bounds are on its code (`atLeast 0` is `≥ +0.0`). | ✓ |
+| Meaning | The function itself is an `opaque` constant (`rawScalar`, `rawAgg`). The model's value is that function where it keeps the row's laws, and the row's `sample` elsewhere, so each law is a theorem (`BlackBox.Scalar.call_ok`, `Aggregate.call_ok`), proved from the table by `decide`, with no axiom. That DuckDB computes the model's function, and so keeps the laws, is the trusted part, in `Impl.Faithful` and the profile's agreement with the engine ([Trusted assumptions](#trusted-assumptions)). | ✓ |
+| Contracts | The range analysis knows a black box's result only from its type and laws (`BlackBox.lawsAbs`): `entropy(x) >= 0` and `base64(encode(s)) IS NOT NULL` for a non-NULL `s` are proved. | ✓ |
+| Errors | A scalar that may raise reports a domain error (`Issue.domain`) on the arguments it raises on, which the function decides (`rawRaises`). Aggregates do not raise. | ✓ |
+| Plans | A call is the extension function of the row's name under the URN `extension:io.sverify:black_box`, anchors 700–799 (`SubstraitLean/Write.lean`). One or two arguments for a scalar, one for an aggregate, which is not decomposable (shards refuse it) and not over a window yet. | ✓ |
+| `base64` | `base64(encode(s))` (also `to_base64`): the UTF-8 bytes of a string in base64. Strict, and not NULL for a string. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
+| `entropy` | `entropy(x)` of any type: the Shannon entropy, in bits, of the counts of the distinct values; `0.0` without values. Not NULL and at least `+0.0`. Lean does not evaluate it, so `substrait-check` refuses to print rows of a plan with it. | ✓ on DuckDB; other engines refuse it until #271 |
+
 ## Trusted assumptions
 
 What a proof does not cover. A theorem about `Rel.eval` holds for the model;
@@ -346,8 +369,9 @@ these links connect it to a real run.
 
 | Assumption | Where | Status |
 |---|---|---|
-| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), and every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
+| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`), and every relation an aggregate reads fewer than 2⁶³ (`Rel.sumRows`, #437). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …) and by `SUM` overflow (a `SUM` of values in `[-1, 1]`). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
 | **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/` | On `main`: the Ibis producer, and the SQLGlot lift for DuckDB's SQL (#252, #264). DataFusion's SQL producer is no longer a frontend (#211) |
+| **Black boxes are DuckDB's functions.** Each black box ([Black boxes](#black-boxes)) means the function DuckDB computes under its name, and DuckDB's keeps its row's laws. | `SubstraitLean/BlackBox.lean` | Tested: DuckDB on the SQL against DuckDB on the plan Lean writes back, and the laws on random data (`python/tests/test_black_box.py`) |
 | **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
 | **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
 | **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64 for arithmetic. The conversions between integers, decimals and doubles are computed exactly instead (`SubstraitLean/Conversions.lean`), behind `opaque` constants with their proved properties, and `#guard`s compare them with the native ones. An integer or decimal that IEEE would round to `±∞` (from 2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the largest finite double (#257). | `SubstraitLean/Float.lean`, `SubstraitLean/Conversions.lean` | Stated. The error bounds of `SUM` and `AVG` are three axioms in `Aggregate.lean` (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign`), proved in [`float-bounds/`](float-bounds.md) from `NativeLink`, the stated link of `Float` to IEEE rounding ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |

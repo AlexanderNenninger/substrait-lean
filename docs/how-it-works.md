@@ -162,7 +162,7 @@ schema and the source's filter. DuckDB reads it as a view over
 passes through Python. Columns are cast to the types DuckDB gives the Arrow
 schema, a column no file has is NULL, and doubles are read as the model has
 them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
-(`upstream/LEDGER.md` DD-4). Looking a scan up in `con.arrow` reads it into
+([`upstream/bugs/DD-4.json`](../upstream/bugs/DD-4.json)). Looking a scan up in `con.arrow` reads it into
 Arrow, which is how the other engines get it. A refresh holds the table as the
 files of the new version, after DuckDB checks that the batch's deletes are in
 the old files. If those files were vacuumed, the views reading the table are
@@ -528,8 +528,9 @@ Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by gold
 round trips and the differential tests instead.
 
 The size hypothesis (trusted, stated in the theorems that use it): every
-string has fewer than 2³² characters (#336), and every relation a window reads fewer
-than 2⁶² rows. No machine's memory holds more, and it is what bounds lengths,
+string has fewer than 2³² characters (#336), every relation a window reads fewer
+than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³, as
+`COUNT(*)` is a 64-bit integer (#437). No machine's memory holds more, and it is what bounds lengths,
 positions and ranks: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`,
 `levenshtein` and `ascii` there (a cap the hypothesis never reaches), and
 `Rel.Small` is a hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound`
@@ -665,10 +666,11 @@ the JSON plumbing.
 
 [Safety.lean](../SubstraitLean/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
-`may fail: …` (a `VerificationError` from `@sv.transform`). An integer `SUM`
-that may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
-group (inferred; checked on the data while the job runs …)`, and is an error
-with `infer=False`.
+`may fail: …` (a `VerificationError` from `@sv.transform`). A `SUM` that
+may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
+group (inferred; checked on the data while the job runs …)` (or
+`fits DECIMAL(38, 2)` for a decimal `SUM`, #316), and is an error with
+`infer=False`.
 
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
@@ -679,7 +681,8 @@ with `infer=False`.
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
   allows.
-* An integer `SUM` leaving 64 bits is ruled out where the plan bounds a group's
+* An integer `SUM` leaving 64 bits, or a decimal `SUM` leaving its precision
+  (`Measure.sumOk`, #316), is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
   bounds each value (`Measure.sumFits`). Row caps on the inputs count too
   ([Rows.lean](../SubstraitLean/Rows.lean), #219): a capped read is a `FETCH`
@@ -780,7 +783,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`). `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. [`float-bounds/`](float-bounds.md) proves all six for IEEE rounding with Mathlib, kept out of the core build.
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`). The bound of a sharded `SUM` or `AVG` of doubles (`floatSplit_sum`, `floatSplit_avg`) rests on two more, `floatSum_twoPhase` and `floatAvg_twoPhase` in `Partition.lean`. `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. [`float-bounds/`](float-bounds.md) proves all eight for IEEE rounding with Mathlib, kept out of the core build.
 
 ## Modelling choices
 

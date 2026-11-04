@@ -144,6 +144,8 @@ def loweringCache : List LoweringHint := [
     template := "CASE WHEN 9223372036854775807 < #0 THEN 9223372036854775807 ELSE CASE WHEN #0 < -9223372036854775808 THEN -9223372036854775808 ELSE #0 END END", note := "" },
   { table := "duckdbOn", construct := "UnFn.isNum",
     template := "native", note := "" },
+  { table := "duckdbOn", construct := "UnFn.bbox",
+    template := "native", note := "" },
   { table := "duckdbOn", construct := "BinFn.add",
     template := "native", note := "" },
   { table := "duckdbOn", construct := "BinFn.sub",
@@ -227,6 +229,8 @@ def loweringCache : List LoweringHint := [
   { table := "duckdbOn", construct := "BinFn.greatest",
     template := "native", note := "" },
   { table := "duckdbOn", construct := "BinFn.least",
+    template := "native", note := "" },
+  { table := "duckdbOn", construct := "BinFn.bbox2",
     template := "native", note := "" }
 ]
 

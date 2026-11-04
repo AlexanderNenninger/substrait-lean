@@ -1,0 +1,23 @@
+{
+  "id": "SG-5",
+  "project": "sqlglot",
+  "version": "30.22.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 30.29.0; with `LEFT JOIN` it also writes `COALESCE(a.i, b.i)` for `b.i`",
+  "summary": "`qualify` expands `t.*` of the right table of a `JOIN … USING` without the `USING` columns; DuckDB keeps them in `t.*` (only `*` shows them once).",
+  "repro": "`SELECT a.*, b.* FROM a JOIN b USING (i)`: DuckDB gives 4 columns, the qualified tree 3.",
+  "handling": "The lift refuses `t.*` with `USING` (`_check_using_stars`).",
+  "found_by": "replay, `join/empty_joins.test`",
+  "files": [
+    "python/src/sverify/sql_lift/_base.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "sqlglot": "30.29.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

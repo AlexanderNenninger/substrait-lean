@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/upstream/bug.schema.json",
+  "title": "Upstream bug",
+  "description": "One bug or surprising behaviour that sverify found in a project it builds on (SQLGlot, an engine, Ibis, delta-rs, Substrait's tooling), with enough to file it upstream. Stored as upstream/bugs/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "project", "status", "status_note", "summary", "repro", "found_by", "checked"],
+  "properties": {
+    "id": {
+      "description": "Stable id: the project's prefix (SG sqlglot, DF datafusion, DD duckdb, DL deltalake, PL polars, SP spark, IB ibis, ST substrait), a dash, then the next free number. The file is named <id>.json.",
+      "type": "string",
+      "pattern": "^[A-Z]{2}-[0-9]+$"
+    },
+    "project": {
+      "description": "The upstream project.",
+      "enum": ["sqlglot", "datafusion", "duckdb", "deltalake", "polars", "spark", "ibis", "substrait"]
+    },
+    "version": {"description": "The version the bug was found on (a version or a range).", "type": "string"},
+    "status": {
+      "description": "unverified: seen, not yet reduced to a minimal repro or checked against the latest upstream release; confirmed: minimal repro on the stated version; filed: reported upstream (the link in upstream); fixed upstream: in the release fixed_in; not a bug: with the reason in status_note.",
+      "enum": ["unverified", "confirmed", "filed", "fixed upstream", "not a bug"]
+    },
+    "status_note": {"description": "The status in words: where it reproduces, what is filed or fixed where, or why it is not a bug.", "$ref": "#/$defs/prose"},
+    "fixed_in": {"description": "The first upstream release with the fix.", "type": "string"},
+    "upstream": {
+      "description": "Upstream issues, PRs and comments: the report, the fix, related discussion.",
+      "type": "array",
+      "items": {"type": "string", "pattern": "^https://"}
+    },
+    "summary": {"description": "What goes wrong.", "$ref": "#/$defs/prose"},
+    "repro": {"description": "A minimal reproduction (SQL or Python) with its observed output.", "$ref": "#/$defs/prose"},
+    "handling": {"description": "How sverify works around it today.", "$ref": "#/$defs/prose"},
+    "found_by": {"description": "How it was found: the replay, a fuzzer ledger, a probe, a PR or issue.", "type": "string", "minLength": 1},
+    "issues": {"description": "Issues of this repository.", "type": "array", "items": {"type": "integer"}},
+    "prs": {"description": "PRs of this repository.", "type": "array", "items": {"type": "integer"}},
+    "files": {"description": "Files of this repository that hold the workaround or a test of it, as paths from the repository root.", "type": "array", "items": {"type": "string"}},
+    "facts": {"description": "Engine facts (characterization/<engine>/facts/<id>.json) that record it.", "type": "array", "items": {"type": "string"}},
+    "checked": {
+      "description": "When the entry was last checked, and against which releases.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["checked_at", "against"],
+        "properties": {
+          "checked_at": {"description": "A date, or \"unknown\".", "type": "string", "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}|unknown)$"},
+          "against": {"description": "Package name to the exact version checked.", "type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}},
+          "note": {"type": "string"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "filed"}}}, "then": {"required": ["upstream"], "properties": {"upstream": {"minItems": 1}}}},
+    {"if": {"properties": {"status": {"const": "fixed upstream"}}}, "then": {"required": ["fixed_in"]}}
+  ],
+  "$defs": {
+    "prose": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      ]
+    }
+  }
+}

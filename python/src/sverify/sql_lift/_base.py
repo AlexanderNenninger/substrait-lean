@@ -278,7 +278,7 @@ def expand_table_shorthand(query: str) -> str:
     """`query` with DuckDB's `TABLE t` (`SELECT * FROM t`) written out where a
     query may stand: at the start, after `(`, or as an operand of `UNION`,
     `EXCEPT` or `INTERSECT`. SQLGlot does not parse the shorthand
-    (upstream/LEDGER.md, SG-6); DuckDB's tests use it to compare results."""
+    (upstream/bugs/SG-6.json); DuckDB's tests use it to compare results."""
     from sqlglot.tokens import TokenType
 
     try:
@@ -324,6 +324,8 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
         raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
+    for rewrite in PARSE_REWRITES:
+        tree = rewrite(tree)
     for f in tree.find_all(sge.Anonymous):
         if f.name.lower() not in _KNOWN:
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
@@ -934,6 +936,8 @@ class _Lift:
         elif _AGGREGATES.get(type(f)) in ("variance", "std_dev", *_PAIRED):
             # Lean's `parseWindow` refuses them too.
             raise Unsupported(f"{_shown(f)} over a window is not supported")
+        elif type(f) in AGG_RULES:
+            raise Unsupported(f"{_shown(f)} over a window is not supported yet")
         elif type(f) in _AGGREGATES:
             # Each measure over the window, with its type (DuckDB's AVG of a
             # DECIMAL is a DOUBLE).
@@ -1125,6 +1129,7 @@ class _Lift:
             where = self.condition(node.expression.this, scope, bound)
             node = node.this
         name = _AGGREGATES[type(node)]
+        agg_rule = AGG_RULES.get(type(node))
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
         if distinct:
@@ -1153,7 +1158,9 @@ class _Lift:
                 )
             args = [a]
             t = a.type
-            if name == "count":
+            if agg_rule is not None:
+                name, out = agg_rule(self, node, a)
+            elif name == "count":
                 out = dt.int64
             elif name in ("min", "max"):
                 out = t
@@ -1329,6 +1336,15 @@ Rule = Callable[..., E]
 #: The rule of each node type. Each area (`sql_lift/<area>.py`) registers its
 #: own; `sverify.sql_lift` imports them all.
 RULES: dict[type, Rule] = {}
+
+#: Rewrites of the parsed tree, before its functions are checked: the black
+#: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
+PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+#: The aggregates of nodes of their own (the black boxes', #325), each also in
+#: `_AGGREGATES`: the Substrait function and output type of a measure, from
+#: the node and its lifted argument.
+AGG_RULES: dict[type, Callable[[_Lift, sge.Expression, E], tuple[str, Any]]] = {}
 
 
 def register(rules: Mapping[type, Rule]) -> None:
@@ -1635,7 +1651,7 @@ def _check_numbers(query: str) -> None:
     """Refuse a number with an underscore that is not between two digits
     (`1__2`, `1._5`). DuckDB reads such an underscore as the start of an
     alias (`1__2` is 1 named `__2`); SQLGlot reads every underscore as a digit
-    separator (12), upstream/LEDGER.md SG-4."""
+    separator (12), upstream/bugs/SG-4.json."""
     for m in _NUMBER.finditer(_QUOTED.sub(" ", query)):
         if re.search(r"(?<!\d)_|_(?!\d)", m.group()):
             raise Unsupported(

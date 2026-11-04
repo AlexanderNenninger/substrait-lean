@@ -1,0 +1,26 @@
+{
+  "id": "DF-5",
+  "project": "datafusion",
+  "version": "51",
+  "status": "not a bug",
+  "status_note": "not a bug: DataFusion keeps quoted identifiers case-sensitive (`enable_ident_normalization`), so `\"hello\"` and `\"HELLO\"` share no column",
+  "summary": "`SELECT *` of a `NATURAL JOIN` keeps both copies of the join columns.",
+  "repro": "DuckDB `catalog/case_insensitive_using.test:123-138`",
+  "handling": "Frontend no longer used (#264)",
+  "found_by": "FACTS S6",
+  "prs": [
+    264
+  ],
+  "facts": [
+    "datafusion-S6"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

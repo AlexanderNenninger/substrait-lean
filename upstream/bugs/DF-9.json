@@ -1,0 +1,26 @@
+{
+  "id": "DF-9",
+  "project": "datafusion",
+  "version": "51",
+  "status": "filed",
+  "status_note": "filed [#11545](https://github.com/apache/datafusion/issues/11545), open; reproduces on 55.0.0",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/11545"
+  ],
+  "summary": "The Substrait producer registers no proper extension URNs (placeholder references).",
+  "repro": "any plan with a function",
+  "handling": "Not needed anymore",
+  "found_by": "#231 findings",
+  "issues": [
+    231
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-03",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "against the latest releases"
+    }
+  ]
+}

@@ -40,7 +40,8 @@ with Unicode's simple case folding (the `regex` crate's `(?i)`, so
 only, and evaluates regular expressions with RE2's meaning
 (`SubstraitLean/Regex.lean`) where it agrees with Rust's: elsewhere it
 panics, and `substrait-check` then refuses to print rows rather than print
-wrong ones.
+wrong ones. The table of black boxes, `SubstraitLean/BlackBox.lean` (#325),
+generalises these: a DuckDB function declared by one row.
 -/
 
 namespace Substrait.Text

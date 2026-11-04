@@ -153,25 +153,38 @@ class Store:
     def with_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> State:
         """The rows of `z` whose `columns` equal a row of `keys` (the same
         number of columns, in order), NULLs equal."""
-        state = arrow_of(z)
-        if not keys.num_rows or not state.num_rows:
-            return state.slice(0, 0)
-        # Each key column as dictionary indices over both tables, NULL its own
-        # value, so a hash join matches NULLs.
-        left, right = {}, {}
-        n = state.num_rows
-        for i, c in enumerate(columns):
-            both = pa.chunked_array(
-                [*state.column(c).chunks, *keys.column(i).cast(state.schema.field(c).type).chunks],
-                type=state.schema.field(c).type,
-            )
-            codes = both.dictionary_encode(null_encoding="encode").combine_chunks().indices
-            left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
-        marked = state.append_column("__row", pa.array(range(n), pa.int64()))
-        for k, v in left.items():
-            marked = marked.append_column(k, v)
-        hits = marked.join(pa.table(right), list(right), join_type="left semi")
-        return state.take(hits.column("__row"))
+        return by_keys(arrow_of(z), columns, keys)
+
+    def without_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> pa.Table:
+        """The rows of `z` whose `columns` equal no row of `keys`: the rows
+        `with_keys` leaves out."""
+        return by_keys(arrow_of(z), columns, keys, keep=False)
+
+
+def by_keys(
+    state: pa.Table, columns: Sequence[str], keys: pa.Table, *, keep: bool = True
+) -> pa.Table:
+    """The rows of `state` whose `columns` equal a row of `keys` (the same
+    number of columns, in order), NULLs equal; with `keep=False`, the other
+    rows."""
+    if not keys.num_rows or not state.num_rows:
+        return state.slice(0, 0) if keep else state
+    # Each key column as dictionary indices over both tables, NULL its own
+    # value, so a hash join matches NULLs.
+    left, right = {}, {}
+    n = state.num_rows
+    for i, c in enumerate(columns):
+        both = pa.chunked_array(
+            [*state.column(c).chunks, *keys.column(i).cast(state.schema.field(c).type).chunks],
+            type=state.schema.field(c).type,
+        )
+        codes = both.dictionary_encode(null_encoding="encode").combine_chunks().indices
+        left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
+    marked = state.append_column("__row", pa.array(range(n), pa.int64()))
+    for k, v in left.items():
+        marked = marked.append_column(k, v)
+    hits = marked.join(pa.table(right), list(right), join_type="left semi" if keep else "left anti")
+    return state.take(hits.column("__row"))
 
 
 class ArrowStore(Store):

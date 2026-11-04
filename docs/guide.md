@@ -279,9 +279,22 @@ except VerificationError as e:
 ```
 
 * Conditions are Ibis expressions (`_.amount >= 0`) or SQL snippets
-  (`"amount >= 0"`). SQL transformations are checked with
+  (`"amount >= 0"`), whichever language the transformation is in. SQL
+  transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
-  report.
+  report; an Ibis condition there reads the query's output, or in `requires`
+  its input table ([#438](https://github.com/AlexanderNenninger/substrait-lean/issues/438)).
+* `report.run(con)` runs the plan the report checked over the tables of an
+  `sv.connect()` connection, on its engine or the one you name
+  (`report.run(con, "polars")`). The result is the one the report is about,
+  `params` and `semantics` included
+  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)):
+
+  ```python
+  report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
+  if report.proved:
+      result = report.run(con)
+  ```
 * `requires` maps each input to its conditions. A transformation with one
   input also takes a plain list, `requires=[_.amount >= 0]`. A key that
   names no input raises a `ValueError` that lists the inputs (#408).
@@ -354,7 +367,8 @@ and proves `share` ([Inferred bounds](#inferred-bounds)).
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
-wraps around there; the reference raises). An integer `SUM` leaving 64 bits
+wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
+or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316)),
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
 `requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
@@ -594,8 +608,14 @@ string, date and list functions of
 [#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)) and
 refuses the rest, saying what.
 
-A node without delta rules (left join, aggregate, window, `DISTINCT`,
-`LIMIT`) is recomputed and diffed instead, and `status()` says so. An
+A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
+over an input with delta rules, is maintained from a count and a sum per
+group, which each batch's change adds to
+(`LinearAgg.aggregate_maintained` in
+[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
+A node without delta rules (left join, other aggregates, window, `LIMIT`) is
+recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
 touches: Sverify takes the group keys of the input rows the batch inserts or
 deletes, recomputes those groups from the new input (a semi-join on the
@@ -737,6 +757,15 @@ tables. A table format plays four roles:
   preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
   position delete files and a data file of the new rows.
+  `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
+  properties={...})` creates its table at that location, partitioned and
+  with those properties, which a catalog without a default location, such
+  as Unity Catalog's, needs (#468).
+  A streaming sink adds a snapshot and small files on every refresh.
+  `DeltaSink(uri, compact_every=..., vacuum_retention=...)` and
+  `IcebergSink(catalog, identifier, compact_every=..., snapshot_retention=...)`
+  compact the table after every so many writes and then remove what older
+  versions alone used; `maintain()` does it on demand (#465).
 
 Schema changes. A batch whose data fits the old schema (added columns,
 widened types whose values still fit) is read in it, and the report names
@@ -989,8 +1018,11 @@ proof that this equals the result on all the data. Filters, projections and
 joins with a broadcast table are concatenated; `COUNT`, integer `SUM`, `MIN`
 and `MAX` combine in two phases; with split keys (`keys={"orders":
 ["region"]}`, as a partition column guarantees), aggregates grouped by the
-key, co-partitioned joins and tie-free windows run per shard. Anything else
-raises `NotShardable` with the reason. When a report says `guard_free`,
+key, co-partitioned joins and tie-free windows run per shard. `SUM` and
+`AVG` of doubles split with `float_order="any"`, and `tolerance=True` returns
+a proved bound per row on how far each is from the one-pass sum
+([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg-stage-5)).
+Anything else raises `NotShardable` with the reason. When a report says `guard_free`,
 `to_sql(..., guards=False)` leaves out the per-row overflow checks. And
 `sv.verify(...).optimized` is the transformation rewritten with what the
 preconditions establish, with `rewrites` naming the changes (a `DISTINCT`
