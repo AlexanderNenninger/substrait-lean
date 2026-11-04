@@ -11,6 +11,7 @@ plans of the SQL here.
 import json
 from decimal import Decimal as D
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -146,7 +147,8 @@ def test_avg_over_a_window(con):
         ("SELECT a + b AS r FROM t", []),
         ("SELECT CAST(a AS DECIMAL(20,4)) AS r FROM t", []),
         (T.select(r=T.a.cast("int64")), []),
-        (G.group_by("k").aggregate(v=G.x.mean()), []),
+        # A group's sum may leave the 20 digits of its type (#316).
+        (G.group_by("k").aggregate(v=G.x.mean()), ["SUM overflow"]),
         # These may not. DuckDB types a product of two decimals of up to 18
         # digits as DECIMAL(18, s), and raises past 18 digits.
         ("SELECT a * b * a AS r FROM t", ["overflow"]),
@@ -177,9 +179,55 @@ def test_casts_keep_bounds():
 
 
 def test_decimal_sum_does_not_wrap():
-    """Engines add decimals in 128 bits, unlike `BIGINT`s."""
+    """Engines add decimals in 128 bits, unlike `BIGINT`s: a sum fits its
+    type's 20 digits unless a group is huge, which the job checks."""
     report = sv.verify("SELECT sum(a) AS s FROM t", tables=SCHEMAS)
     assert report.errors == [] and report.warnings == []
+    assert [i.kind for i in report.assumed] == ["SUM overflow"]
+    assert "fits DECIMAL(20, 2) in every group" in str(report)
+
+
+#: DuckDB's `test/sql/aggregate/aggregates/test_sum_decimal_overflow.test`
+#: (#316): each column's sum leaves 38 digits.
+OVERFLOW_ROWS = pa.table(
+    {
+        "i": pa.array([1, 2], pa.int64()),
+        "d": pa.array([D("9" * 38), D(1)], pa.decimal128(38, 0)),
+        "d4": pa.array([D("9" * 34 + ".9999"), D("0.0001")], pa.decimal128(38, 4)),
+    }
+)
+OVERFLOW_SCHEMAS = {"decimals": {"i": "int64", "d": "decimal(38,0)", "d4": "decimal(38,4)"}}
+
+
+@pytest.mark.parametrize(("col", "scale"), [("d", 0), ("d4", 4)])
+def test_a_decimal_sum_that_leaves_38_digits_is_reported(col, scale):
+    """DuckDB raises "Overflow in SUM of DECIMAL", while `Rel.eval` gives the
+    39-digit sum: `verify` reports the overflow, which `infer` assumes away
+    and the job checks on the data (#316)."""
+    con = duckdb.connect()
+    con.register("decimals", OVERFLOW_ROWS)
+    sql = f"SELECT sum({col}) AS s FROM decimals"
+    with pytest.raises(duckdb.Error, match="Overflow in SUM of DECIMAL"):
+        con.execute(sql).fetchall()
+    strict = sv.verify(sql, tables=OVERFLOW_SCHEMAS, infer=False)
+    assert [i.kind for i in strict.errors] == ["SUM overflow"]
+    assert not strict.proved
+    report = sv.verify(sql, tables=OVERFLOW_SCHEMAS, ensures=[_.s > 0])
+    assert report.proved and report.errors == []
+    assert [i.kind for i in report.assumed] == ["SUM overflow"]
+    assert f"fits DECIMAL(38, {scale}) in every group" in str(report)
+
+
+def test_a_bounded_decimal_sum_over_capped_rows_is_proved_to_fit():
+    """The row caps and the column's range bound the sum (`Measure.sumFits`)."""
+    t = ibis.table({"d": "decimal(20,0)"}, name="t")
+    q = t.aggregate(s=t.d.sum())
+    capped = sv.verify(
+        q, requires={"t": [_.d.between(-(10**18), 10**18), sv.max_rows(1000)]}, infer=False
+    )
+    assert capped.errors == [] and capped.assumed == [], str(capped)
+    uncapped = sv.verify(q, requires={"t": [_.d.between(-(10**18), 10**18)]}, infer=False)
+    assert [i.kind for i in uncapped.errors] == ["SUM overflow"]
 
 
 def test_decimal_plans_are_written_but_not_for_datafusion(con):
