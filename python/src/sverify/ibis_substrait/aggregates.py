@@ -199,7 +199,10 @@ def quantile(x: Exprs, op: Any) -> Json:
         raise Unsupported(f"{type(op).__name__.lower()} of {t} is not supported yet")
     agg: Json = {
         "functionReference": _anchor("quantile_cont" if cont else "quantile_disc"),
-        "arguments": [{"value": x(op.arg)}, {"value": decimal_literal(repr(float(q)), dt.Decimal())}],
+        "arguments": [
+            {"value": x(op.arg)},
+            {"value": decimal_literal(repr(float(q)), dt.Decimal())},
+        ],
         "invocation": "AGGREGATION_INVOCATION_ALL",
     }
     out: Json = {"measure": agg}

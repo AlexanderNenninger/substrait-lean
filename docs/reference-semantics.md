@@ -313,6 +313,22 @@ one, the generic properties hold. No profile names one yet. Engines differ
 from the reference where it raises: DuckDB and Polars give NaN for an
 infinite value and for `CORR` with a zero variance, Spark NULL for the latter.
 
+### Quantiles, mode and arg_min
+
+These need every value of a group ([#53](https://github.com/AlexanderNenninger/substrait-lean/issues/53)).
+NULLs are skipped, no values give NULL, and `DISTINCT` and `FILTER` apply
+as for the others. The fraction `q` of a quantile is a constant decimal in
+`[0, 1]`, exact (`0.1` is one tenth); the frontends write it as a DECIMAL
+literal, which DuckDB reads exactly. Approximate quantiles stay refused
+([#469](https://github.com/AlexanderNenninger/substrait-lean/issues/469)).
+
+| Topic | Reference | Status |
+|---|---|---|
+| `QUANTILE_DISC(x, q)` | Of the `n` values in `ORDER BY` order (doubles: `-∞ < … < +∞ < NaN`), the one at position `⌈n·q⌉`, counting from 1, and the first where `n·q ≤ 1` (`discIndex`). Any type `MIN` takes; the result has the argument's type and is one of its values, so contracts keep the argument's range. DuckDB's `QUANTILE` and the `MEDIAN` of a value that is not a number are `QUANTILE_DISC(x, 0.5)`. | ✓ on DuckDB (`duckdb-quantile-disc`); other engines refuse it until #271; refused over windows |
+| `QUANTILE_CONT(x, q)`, `MEDIAN(x)` | Of doubles, integers converted first; the result is a double. With `lo` and `hi` the values at 0-based positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`: `lo` where they coincide, else a double between `lo` and `hi` (`contAllowed`). Engines round the interpolation their own way; the model computes DuckDB's `lo·(1−d) + hi·d`, `d = frac((n−1)·q)`, kept between the two. Contracts know the result lies within the argument's range. `MEDIAN` is `QUANTILE_CONT(x, 0.5)`. DECIMAL, DATE and TIMESTAMP arguments are refused (DuckDB interpolates them in their own types). | ✓ on DuckDB, which may round past the neighbours and gives NaN between `-∞` and `+∞`; the written SQL clamps (`duckdb-quantile-cont-interpolation`); other engines refuse it until #271 |
+| `MODE(x ORDER BY …)` | The most frequent value; of the values that tie, the first in the aggregate's own `ORDER BY`, rows tied there in list order (`modeOf`). Refused without an `ORDER BY`, as DuckDB's ties then follow its scan. `MODE(x ORDER BY x)` takes the smallest of the most frequent values, and Ibis's `mode()` is written so; a report is `deterministic` when the order includes `x`'s column, or when the group's and the order's columns contain a key. | ✓ on DuckDB (`duckdb-mode-ties`); other engines refuse it until #271 |
+| `ARG_MIN(x, y)` / `ARG_MAX(x, y)` | `x` at the row with the smallest (largest) `y`, over the rows where neither is NULL: `FIRST(x ORDER BY y)` (`DESC`) with the filter `y IS NOT NULL`, which the parser makes it. `y` is a column. The result is one of `x`'s values. Ties are the engine's, as for `FIRST`: a report is `deterministic` only when the group's and `y`'s columns contain a key. | ✓ on DuckDB (`duckdb-arg-min-nulls`); other engines refuse it until #271 |
+
 ### Of decimals
 
 The rules for decimals are in [Decimals](#decimals).

@@ -931,7 +931,9 @@ def same_rows(got: list[tuple], expected: list[tuple]) -> bool:
             st.one_of(st.none(), st.integers(-3, 3)),
             # No -inf: between -inf and +inf the interpolation is NaN, which
             # the model and the written SQL keep at +inf (a test of its own).
-            st.one_of(st.none(), st.sampled_from([0.5, 1.0, 2.25, -3.0, 1e300, math.inf, math.nan])),
+            st.one_of(
+                st.none(), st.sampled_from([0.5, 1.0, 2.25, -3.0, 1e300, math.inf, math.nan])
+            ),
             st.one_of(st.none(), st.sampled_from(["a", "b", "c"])),
         ),
         max_size=9,

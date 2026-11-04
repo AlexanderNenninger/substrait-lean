@@ -1,0 +1,87 @@
+{
+  "id": "duckdb-quantile-cont-interpolation",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`QUANTILE_CONT`: `lo·(1−d) + hi·d` in doubles, NaN between -inf and +inf",
+  "verdict": "between the neighbours up to rounding; NaN between -inf and +inf; the written SQL clamps",
+  "area": "aggregates",
+  "constructs": [
+    "quantile_cont",
+    "median"
+  ],
+  "settings": {},
+  "description": [
+    "`QUANTILE_CONT(x, q)` of `n` values computes `RN = (n − 1)·q` in doubles, takes the values `lo` and `hi` at positions `⌊RN⌋` and `⌈RN⌉` in order, and gives `lo` where they are one position, else `lo·(1 − d) + hi·d` with `d = RN − ⌊RN⌋`. Integers are cast to DOUBLE first and the result is a DOUBLE; DECIMAL gives a DECIMAL and DATE a TIMESTAMP, each interpolated in its own type; FLOAT stays FLOAT. `MEDIAN` of a number is `QUANTILE_CONT(x, 0.5)`.",
+    "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction such as `0.1` may land just off a whole position; the result then differs from the exact one by rounding only."
+  ],
+  "reference": [
+    "`AggFn.quantile true num scale` (`contValue`, #53): for the exact `q = num / 10^scale`, the doubles at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` in order; the one value where they coincide, else DuckDB's `lo·(1 − d) + hi·d` kept between `lo` and `hi` (`interpolate`). The reference allows any double between the two neighbours (`contAllowed`, `AggFn.Allowed`), so contracts know the result lies within the argument's range. Integers are converted to doubles first; DECIMAL, DATE and TIMESTAMP arguments are refused.",
+    "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf (NaN, where the reference keeps +inf). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]`, which gives the model's +inf there."
+  ],
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session for #53 (exact quantiles, mode, arg_min), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp#L168-L220"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1475-L1478"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/interpolate.hpp#L18-L24"
+        }
+      ],
+      "notes": "Read at tag v2.0.0."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "session for #53 (exact quantiles, mode, arg_min), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT median(x), typeof(median(x)) FROM (VALUES (1), (2), (3), (4)) t(x)",
+          "observed": "2.5, DOUBLE"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 0.25), quantile_cont(x, 0.1) FROM (VALUES (1.0::DOUBLE), (2.0), (4.0), (8.0)) t(x)",
+          "observed": "1.75, 1.3"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 0.5) FROM (VALUES ('-inf'::DOUBLE), ('inf'::DOUBLE)) t(x)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 0.5), quantile_cont(x, 0.25) FROM (VALUES (-1.5e308::DOUBLE), (1.5e308::DOUBLE)) t(x)",
+          "observed": "0.0, -7.5e+307"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 0.5) FROM (VALUES (1.0::DOUBLE), ('nan'::DOUBLE)) t(x)",
+          "observed": "nan"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 0.5) FROM (VALUES (1::BIGINT), (9223372036854775807)) t(x)",
+          "observed": "4.611686018427388e+18"
+        },
+        {
+          "sql": "SELECT typeof(quantile_cont(x, 0.5)) FROM (VALUES (1.5::DECIMAL(10, 2))) t(x)",
+          "observed": "DECIMAL(10,2)"
+        },
+        {
+          "sql": "SELECT quantile_cont(x, 0.5), typeof(quantile_cont(x, 0.5)) FROM (VALUES (DATE '2020-01-01'), (DATE '2020-01-04')) t(x)",
+          "observed": "2020-01-02 12:00:00, TIMESTAMP"
+        },
+        {
+          "test": "python/tests/test_aggregate.py::test_quantile_cont_between_infinities_stays_between_them"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    53,
+    85
+  ]
+}

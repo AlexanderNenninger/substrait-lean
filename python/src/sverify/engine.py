@@ -680,7 +680,10 @@ def _check_datafusion_plan(plan: dict) -> None:
                 )
             if isinstance(m, dict) and names.get(m.get("functionReference")) == "string_agg":
                 raise sql.Unsupported("string_agg is not yet supported on DataFusion; see #271")
-            if isinstance(m, dict) and (n := names.get(m.get("functionReference"))) in sql.EXACT_HOLISTIC:
+            if (
+                isinstance(m, dict)
+                and (n := names.get(m.get("functionReference"))) in sql.EXACT_HOLISTIC
+            ):
                 raise sql.Unsupported(f"{n} is not yet supported on DataFusion; see #271")
             if isinstance(m, dict) and names.get(m.get("functionReference")) in (
                 "covar_samp",

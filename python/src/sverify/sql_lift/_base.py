@@ -1307,7 +1307,10 @@ class _Lift:
                 desc = bool(o.args.get("desc"))
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 sorts.append(
-                    {"expr": key, "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"}
+                    {
+                        "expr": key,
+                        "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}",
+                    }
                 )
         elif order is not None:
             raise Unsupported(f"{_shown(node)}: ORDER BY in {name} is not supported")

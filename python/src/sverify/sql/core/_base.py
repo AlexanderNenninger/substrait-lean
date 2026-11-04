@@ -3141,7 +3141,10 @@ class _Parser:
                     arg = Un("itof", arg)
             case (("median" | "quantile_cont"), _):
                 raise Unsupported(f"{name} of a value that is not a number is not supported")
-            case (("quantile_disc" | "mode"), (Dec() | "int" | "float" | "str" | "bool" | "time" | "date")):
+            case (
+                ("quantile_disc" | "mode"),
+                (Dec() | "int" | "float" | "str" | "bool" | "time" | "date"),
+            ):
                 fn = name
             case (("quantile_disc" | "mode"), _):
                 raise Unsupported(f"{name} of this type is not supported")
