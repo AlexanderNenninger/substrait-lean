@@ -651,6 +651,29 @@ def test_a_constraint_of_another_writer_is_kept(tmp_path):
     assert delta_rows(uri) == [("ada", "5")]
 
 
+@sv.transform(
+    requires={"t": [_.x.between(0, 10), _.hi >= _.lo, sv.unique("id")]},
+    ensures=[_.x.between(0, 10), _.hi >= _.lo],
+)
+def bounded(t):
+    return t.select("id", "x", "lo", "hi")
+
+
+def test_constraints_as_delta_stores_them_compare_equal(tmp_path):
+    """Delta reads `x BETWEEN 0 AND 10` back as `x >= 0 AND x <= 10` (#439)
+    and `hi >= lo` as `lo <= hi` (#487); the next write still accepts them."""
+    src = StaticSource(
+        pa.table({"id": [1, 2], "x": [3, 4], "lo": [0, 1], "hi": [2, 3]}), version=1, name="t"
+    )
+    uri = str(tmp_path / "out")
+    node = bounded(src).write(DeltaSink(uri))
+    assert node.refresh().writes[0].mode == "created"
+    assert sorted(constraints(uri).values()) == ["lo <= hi", "x >= 0 AND x <= 10"]
+    src.replace(pa.table({"id": [1, 2], "x": [3, 5], "lo": [0, 1], "hi": [2, 4]}), version=2)
+    assert node.refresh().writes[0].mode == "merge"
+    assert delta_rows(uri) == [(1, 3, 0, 2), (2, 5, 1, 4)]
+
+
 # -- Statistics: nullable columns, doubles, deletion vectors -------------------
 
 

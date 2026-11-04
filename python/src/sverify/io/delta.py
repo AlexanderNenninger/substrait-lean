@@ -543,7 +543,8 @@ def _is_in(column: pa.ChunkedArray, values: tuple[str, ...]) -> pa.ChunkedArray:
 def _same_sql(a: str | None, b: str) -> bool:
     """The same condition, up to parentheses and the spelling of numbers:
     Delta stores a constraint as it reads it (`(x IS NULL) OR (x > 0)` as
-    `x IS NULL OR x > 0`, `x >= 0.0` as `x >= 0`)."""
+    `x IS NULL OR x > 0`, `x >= 0.0` as `x >= 0`, `x BETWEEN 0 AND 10` as
+    `x >= 0 AND x <= 10`, `hi >= lo` as `lo <= hi`)."""
     if a is None:
         return False
 
@@ -555,8 +556,27 @@ def _same_sql(a: str | None, b: str) -> bool:
             return sg.exp.Literal.number(str(Decimal(n.this).normalize()))
         return n
 
+    def between(n: sg.exp.Expression) -> sg.exp.Expression:
+        if isinstance(n, sg.exp.Between):
+            x = n.this
+            return sg.exp.And(
+                this=sg.exp.GTE(this=x.copy(), expression=n.args["low"]),
+                expression=sg.exp.LTE(this=x.copy(), expression=n.args["high"]),
+            )
+        return n
+
+    def orient(n: sg.exp.Expression) -> sg.exp.Expression:
+        if isinstance(n, sg.exp.GT):
+            return sg.exp.LT(this=n.expression, expression=n.this)
+        if isinstance(n, sg.exp.GTE):
+            return sg.exp.LTE(this=n.expression, expression=n.this)
+        if isinstance(n, (sg.exp.EQ, sg.exp.NEQ)) and n.this.sql() > n.expression.sql():
+            return type(n)(this=n.expression, expression=n.this)
+        return n
+
     def tree(sql: str) -> sg.exp.Expression:
-        return sg.parse_one(sql, read="postgres").transform(unwrap).transform(number)
+        n = sg.parse_one(sql, read="postgres").transform(unwrap).transform(between)
+        return n.transform(number).transform(orient)
 
     return a == b or tree(a) == tree(b)
 
