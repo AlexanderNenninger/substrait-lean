@@ -243,13 +243,17 @@ rm -rf "$out"
 """
 cwd = "${POE_ROOT}/../notebooks"
 
+[tool.poe.tasks.docs_pages]
+help = "Write the site's generated pages (examples/, ledgers/) from docs/ and the ledgers' JSON"
+cmd = "python scripts/docs_pages.py"
+
 [tool.poe.tasks.docs]
 help = "Build the API reference site into great-docs/_site (needs Quarto and the docs group)"
-cmd = "great-docs build"
+sequence = ["docs_pages", { cmd = "great-docs build" }]
 
 [tool.poe.tasks.docs_preview]
 help = "Build the API reference site and serve it locally"
-cmd = "great-docs preview"
+sequence = ["docs_pages", { cmd = "great-docs preview" }]
 
 [tool.poe.tasks.qa]
 help = "Run everything: prove, build, lint, typecheck, golden, test-all, notebooks"

@@ -80,6 +80,9 @@ SQL string ─► SQLGlot lift ────────────────�
 
 * [docs/guide.md](docs/guide.md): what sverify does and how to use it,
   from contracts to Delta and Iceberg pipelines.
+* [docs/examples.md](docs/examples.md): eight short examples, each a step
+  up: contracts, SQL, inferred preconditions, routes, tolerances,
+  reproducible sinks, engine profiles and Substrait's own semantics.
 * [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental
   maintenance, the producers and engines, what is proved and what is trusted.
 * [docs/reference-semantics.md](docs/reference-semantics.md): what `Rel.eval`
@@ -243,7 +246,7 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe test-all` | Every Python test with the full Hypothesis counts, on every core, as `qa` and CI run them |
 | `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`). CI runs one job per backend, and three for `core`. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
-| `poe docs`, `poe docs_preview` | Builds the API reference site into `python/great-docs/_site` (or serves it locally). Needs [Quarto](https://quarto.org) and `uv sync --group docs`; not part of `qa` |
+| `poe docs`, `poe docs_preview` | Builds the API reference site into `python/great-docs/_site` (or serves it locally), with the examples and the ledgers, which `poe docs_pages` writes from `docs/examples.md` and the JSON first. Needs [Quarto](https://quarto.org) and `uv sync --group docs`; not part of `qa` |
 
 From the project root, use `uv run --project python poe -C python qa`. The Lean
 tasks need `lake` on your PATH.
