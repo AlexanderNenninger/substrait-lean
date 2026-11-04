@@ -927,7 +927,10 @@ class IncrementalView:
         try:
             self.deltas = delta_plans(json.dumps(plan))
         except NotIncremental as e:
-            linear = _linear.plan(self.name, query)
+            try:
+                linear = _linear.plan(self.name, query)
+            except Exception as refused:  # noqa: BLE001 - a plan refused: the other strategies
+                linear = f"the state per group could not be planned ({first_line(refused)})"
             if isinstance(linear, _linear.Linear):
                 self.deltas, self.linear = [], linear
                 self.plan = written_plan(json.dumps(plan))

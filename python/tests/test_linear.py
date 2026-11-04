@@ -236,3 +236,31 @@ def test_retention_drops_the_retired_groups_from_the_state(seed, expire):
         # The state per group holds the open buckets only, like the view.
         assert view(node).groups.num_rows == arrow_of(view(node).state).num_rows
     assert retired > 0
+
+
+def test_count_of_a_string_column():
+    src = StaticSource(samples([("a", 1, 5), (None, 1, 3)]), name="samples")
+    node = src.pipe(lambda samples: samples.group_by("minute").aggregate(n=samples.host.count()))
+    node.refresh()
+    assert view(node).strategy == "delta rules"
+    src.apply(
+        sv.Changes(inserts=samples([("b", 1, 1), (None, 2, 2)]), deletes=samples([("a", 1, 5)]))
+    )
+    node.refresh(audit=True)
+    assert rows(node) == recomputed(node, src) == [(1, 1), (2, 0)]
+
+
+def test_a_state_the_checker_refuses_falls_back(monkeypatch):
+    from sverify import _linear
+
+    def refuse(name, query):
+        raise ValueError("substrait-check rejects the plan")
+
+    monkeypatch.setattr(_linear, "plan", refuse)
+    src = StaticSource(samples([("a", 1, 5)]), name="samples")
+    node = src.pipe(per_minute)
+    node.refresh()
+    assert view(node).strategy == "touched groups"
+    src.apply(sv.Changes(inserts=samples([("a", 1, 9)])))
+    node.refresh(audit=True)
+    assert rows(node) == recomputed(node, src)

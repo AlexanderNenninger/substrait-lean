@@ -108,14 +108,14 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
 
         cols: dict[str, Any] = {k: own(g) for k, g in zip(keys, groups.values(), strict=True)}
         cols[COUNT] = weight
-        for i, (arg, where) in enumerate(measures):
+        for i, (arg, where, is_sum) in enumerate(measures):
             cond: Any = ibis.literal(True) if arg is None else own(arg).notnull()
             if where is not None:
                 passes: Any = own(where)
                 cond = cond & passes.fill_null(False)
             zero = ibis.literal(0, "int64")
             cols[f"__n{i}"] = ibis.ifelse(cond, weight, zero)
-            value = zero if arg is None else own(arg).cast("int64") * weight
+            value = own(arg).cast("int64") * weight if is_sum else zero
             cols[f"__s{i}"] = ibis.ifelse(cond, value, zero)
         return rows.select(**cols)
 
@@ -190,7 +190,7 @@ def _split(op: ops.Relation) -> tuple[Any, dict[str, ops.Value], list, dict[str,
                 p.find(ops.Reduction, filter=_own_tree) for p in parts
             ):
                 return f"{m} reads other rows"
-            measures.append((arg, where))
+            measures.append((arg, where, isinstance(v, ops.Sum)))
         return agg, dict(agg.groups), measures, names, "aggregate"
     found = _under(op, lambda o: isinstance(o, ops.Distinct))
     if found is None:
