@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): [`type_classes.md` L20-L21](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/site/docs/types/type_classes.md#L20-L21) gives `fp32`/`fp64` IEEE 754's range and precision, [`functions_comparison.yaml` L23-L27](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_comparison.yaml#L23-L27) defines `equal` as `x == y`, only `index_in` has `nan_equality` ([`functions_set.yaml` L8-L28](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_set.yaml#L8-L28)), and the sort's \"quality function\" ([`basics.md` L64-L71](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/site/docs/relations/basics.md#L64-L71)) is defined nowhere. No existing issue; the open draft [#1322](https://github.com/substrait-io/substrait/pull/1322) leaves NaN in RANGE frames implementation-defined.",
   "summary": "`fp32` and `fp64` have IEEE 754's range and precision (`type_classes.md`), and `equal` is `x == y`, but nothing says how NaN and `-0.0` compare, group, sort or deduplicate. `index_in` alone has an option for it (`nan_equality`). Sorting follows the type's \"quality function\", which is not defined for NaN or `-0.0`.",
   "repro": [
     "`GROUP BY x`, `DISTINCT`, a join on `x`, `ORDER BY x` and `equal(x, x)` with `x` in `{NaN, -0.0, 0.0}`.",
@@ -42,6 +42,17 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "the extension YAMLs and site/docs on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "type_classes.md, functions_comparison.yaml, functions_set.yaml, relations/basics.md on main; the gap is there"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/pull/1322"
   ]
 }

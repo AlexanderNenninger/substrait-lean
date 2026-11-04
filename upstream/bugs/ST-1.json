@@ -3,9 +3,9 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
-  "summary": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`) do not say what a shift count below 0 or at least the base's width gives, nor whether `shift_left` may shift bits out (or a negative base). They have no option for it.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0, = v0.108.0): [`functions_arithmetic.yaml` L982-L1046](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L982-L1046) define the shifts by description only, with no option and nothing on a count outside `[0, width)` or bits shifted out of `shift_left`. The test cases allow a negative base (`shift_left.test` L9-L12: `shift_left(-3::i64, 1::i32) = -6::i64`). No existing issue; options in general: [#254](https://github.com/substrait-io/substrait/issues/254).",
+  "summary": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`) do not say what a shift count below 0 or at least the base's width gives, nor whether `shift_left` may shift bits out. They have no option for it. A negative base is allowed by the test cases (`shift_left(-3::i64, 1::i32) = -6::i64`).",
   "repro": [
     "`shift_left(1::i64, 64)`, `shift_right(-5::i64, 64)`, `shift_left(-1::i64, 1)`, `shift_left(2^62::i64, 2)`: the YAML's descriptions define none of them.",
     "DuckDB 2.0: `1 << 64` raises, `-1 << 1` raises, `(2^62) << 2` raises (a bit shifted out), `-5 >> 64` is `0`."
@@ -34,6 +34,17 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "the extension YAMLs and site/docs on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_arithmetic.yaml shift_* and tests/cases/arithmetic/shift_*.test on main; the gap is there, except a negative base, which the test cases allow"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/pull/799"
   ]
 }

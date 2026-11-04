@@ -2,8 +2,8 @@
   "id": "DF-10",
   "project": "datafusion",
   "version": "51",
-  "status": "confirmed",
-  "status_note": "confirmed on 51.0.0 and 55.0.0: renaming the functions to `bitwise_shift_*` makes the plan run",
+  "status": "filed",
+  "status_note": "filed [#27059](https://github.com/apache/datafusion/issues/27059), open; consumer fix PR [#27072](https://github.com/apache/datafusion/pull/27072) open. Reproduces on 55.0.0 and main",
   "summary": "The Substrait consumer doesn't know Substrait's `shift_left`/`shift_right`.",
   "repro": "a plan calling them, run through `from_substrait_plan`",
   "handling": "DataFusion refuses those plans",
@@ -18,6 +18,19 @@
         "datafusion": "55.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "datafusion": "55.0.0",
+        "substrait": "0.37.1",
+        "datafusion core": "55.1.0"
+      },
+      "note": "reproduces on 51.0.0 and 55.0.0; main read at ee55effccc"
     }
+  ],
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/27059",
+    "https://github.com/apache/datafusion/pull/27072"
   ]
 }

@@ -3,10 +3,11 @@
   "project": "datafusion",
   "version": "51",
   "status": "filed",
-  "status_note": "filed [#22661](https://github.com/apache/datafusion/issues/22661); fixed on main by [#22664](https://github.com/apache/datafusion/pull/22664), not in 55.2.0",
+  "status_note": "filed [#22661](https://github.com/apache/datafusion/issues/22661); fixed on main by [#22664](https://github.com/apache/datafusion/pull/22664), on branch-56 for 56.0.0 (unreleased, [#24461](https://github.com/apache/datafusion/issues/24461)); reproduces on 55.0.0",
   "upstream": [
     "https://github.com/apache/datafusion/issues/22661",
-    "https://github.com/apache/datafusion/pull/22664"
+    "https://github.com/apache/datafusion/pull/22664",
+    "https://github.com/apache/datafusion/issues/24461"
   ],
   "summary": "The Substrait producer drops `DISTINCT` and `FILTER (WHERE …)` of a window aggregate: `COUNT(DISTINCT s) OVER (…)` counts every row.",
   "repro": "DuckDB `window/test_window_distinct.test:76`",
@@ -25,6 +26,15 @@
         "datafusion": "55.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "datafusion": "55.0.0",
+        "substrait": "0.37.1",
+        "datafusion core": "55.1.0"
+      },
+      "note": "reproduces on 51.0.0 and 55.0.0; fix on main and branch-56, no release yet"
     }
   ]
 }

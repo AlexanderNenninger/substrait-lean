@@ -565,9 +565,9 @@ def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
         return x.is_infinite() & y.is_infinite()
     if name == "modulus":
         return x.is_infinite() & ~y.is_nan()
-    # `power`: a negative base to a finite power that is not a whole number;
-    # `-inf` too, which the reference is tightened to refuse (Polars's
-    # `-inf ** 0.5` is `sqrt`'s NaN).
+    # `power`: a negative base, finite or `-inf` (`negInfPow`: IEEE's `+inf`
+    # or `0`, Polars's NaN for `** 0.5`), to a finite power that is not a
+    # whole number.
     return shims.fractional_power_of_negative(x, y)
 
 

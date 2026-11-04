@@ -3,7 +3,7 @@
   "project": "deltalake",
   "version": "1.6.6",
   "status": "filed",
-  "status_note": "`history()`: fixed on main by [#4797](https://github.com/delta-io/delta-rs/pull/4797), not released; `set_table_properties()`: filed [#4978](https://github.com/delta-io/delta-rs/issues/4978), fix [#5005](https://github.com/delta-io/delta-rs/pull/5005) open",
+  "status_note": "Reproduces on 1.6.6. `history()`: fixed on main by [#4797](https://github.com/delta-io/delta-rs/pull/4797) (merged 2026-10-06), not released (latest python-v1.6.6, 2026-09-24). `set_table_properties()`: [#4978](https://github.com/delta-io/delta-rs/issues/4978) open, fix [#5005](https://github.com/delta-io/delta-rs/pull/5005) open, review required.",
   "upstream": [
     "https://github.com/delta-io/delta-rs/pull/4797",
     "https://github.com/delta-io/delta-rs/issues/4978",
@@ -27,6 +27,15 @@
         "deltalake": "1.6.6"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "deltalake": "1.6.6",
+        "moto": "5.2.5",
+        "pyarrow": "26.0.1"
+      },
+      "note": "latest release; main read at dc415dc0a0, not built"
     }
   ]
 }

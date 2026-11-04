@@ -209,9 +209,10 @@ theorem DuckDBSQL.ref_fmul_null_r (x : Value) : Profile.reference.bin .fmul x .n
 
 theorem DuckDBSQL.ref_fpow_int (a b : Int) :
     Profile.reference.bin .fpow (.int a) (.int b) =
-      if nanCase .fpow a b then .error .domain else .ok (.int (FloatCode.lift₂ Float.pow a b)) := by
-  by_cases hn : nanCase .fpow a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+      if negInfPow a b || nanCase .fpow a b then .error .domain
+      else .ok (.int (FloatCode.lift₂ Float.pow a b)) := by
+  by_cases hi : negInfPow a b <;> by_cases hn : nanCase .fpow a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hi, hn, Issue.isError]
 theorem DuckDBSQL.ref_fpow_null_l (y : Value) : Profile.reference.bin .fpow .null y = .ok .null := by
   cases y <;> rfl
 theorem DuckDBSQL.ref_fpow_null_r (x : Value) : Profile.reference.bin .fpow x .null = .ok .null := by

@@ -3,8 +3,8 @@
   "project": "ibis",
   "version": "12.0.0",
   "status": "confirmed",
-  "status_note": "confirmed (ibis-framework 12.0.0, duckdb 2.0.0)",
-  "summary": "Ibis's DuckDB SQL for `argmin`/`argmax` is `FIRST(x ORDER BY key)`, which returns a NULL `x` at the extreme key and an `x` of a row whose key is NULL, where Ibis's other SQL backends write `min_by`/`max_by` (DuckDB's `arg_min`), which skip both.",
+  "status_note": "Reproduces on 12.0.0 and Ibis main (f73d329, 2026-11-02). A NULL `x` at the extreme key is Ibis's chosen meaning ([#10227](https://github.com/ibis-project/ibis/pull/10227), [#10193](https://github.com/ibis-project/ibis/issues/10193)); the difference left is a group whose keys are all NULL: DuckDB gives an `x` of a NULL-key row, Ibis's Postgres SQL filters `key IS NOT NULL` and gives NULL.",
+  "summary": "Ibis's DuckDB SQL for `argmin`/`argmax` is `FIRST(x ORDER BY key)`. A NULL `x` at the extreme key is intended (since ibis#10227). In a group whose keys are all NULL, it returns the `x` of a NULL-key row, where Ibis's Postgres SQL filters `key IS NOT NULL` and returns NULL.",
   "repro": "For `t = ibis.memtable({\"x\": [1, None], \"k\": [1, 2]})`, `t.x.argmax(t.k)` on the DuckDB backend gives NULL (`FIRST(\"x\" ORDER BY \"k\" DESC)`), while DuckDB's `max_by(x, k)` and `arg_max(x, k)` give 1. For `x = [5]` and `k = [NULL]`, `argmin` gives 5 and `arg_min` NULL.",
   "handling": "sverify's producer gives `argmin`/`argmax` DuckDB's `arg_min`/`arg_max` meaning, the rows where neither side is NULL (`aggregates.arg_min_max`, `duckdb-arg-min-nulls`). The coverage case \"argmin, argmax\" is compared with Lean and the other engines rather than with Ibis's DuckDB SQL (`NO_DUCKDB_SQL` in `coverage_cases/aggregation.py`), and the catalogue's `iot-downsample` differs from Ibis's DuckDB SQL on synthetic data with NULL readings.",
   "found_by": "#53",
@@ -26,6 +26,15 @@
         "duckdb": "2.0.0"
       },
       "note": "found by the catalogue probe of iot-downsample (#53)"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "ibis main": "main f73d329",
+        "duckdb": "2.0.0"
+      },
+      "note": "also duckdb 1.5.6"
     }
   ]
 }
