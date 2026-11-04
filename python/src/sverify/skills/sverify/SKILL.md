@@ -198,7 +198,7 @@ test_doubles_are_big()
   skill).
 * **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
   the rounding would depend on the split; `float_order="any"` splits them
-  anyway, unproved.
+  anyway, within a proved tolerance that `tolerance=True` reports per row.
 
 ## More
 
