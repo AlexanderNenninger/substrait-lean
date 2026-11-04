@@ -960,7 +960,7 @@ the option left open.
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
-D9 to D17 were decided after #568's classes and #577's translation policy.
+D9 to D18 were decided after #568's classes and #577's translation policy.
 
 ### D1. Where the tables live
 
@@ -1123,3 +1123,41 @@ While sverify is on 0.x, the reference changes where the design needs it. A
 change to the reference ships in a minor version bump, with a
 `changelog.d/` fragment that says what changed. Bumping the minor version
 costs little, and the fragment tells users which proofs may change.
+
+### D18. Observations ordered by refinement
+
+An observation `q'` refines `q` when `q'` observes everything `q` observes:
+`q` factors through `q'` (`q = f ∘ q'` for some `f`), or equivalently
+`ker q' ⊆ ker q`. Equality up to `q'` then implies equality up to `q`, so
+the finer guarantee refines the coarser one, as `Allowed_P' ⊆ Allowed_P`
+does for profiles. The identity is the finest observation, a constant the
+coarsest. Five consequences:
+
+1. The check. An engine function equal to the reference's up to `q_E`
+   meets a postcondition that asks for `q_post` ([D11](#d11-postconditions-name-the-equivalence))
+   exactly when `q_E` refines `q_post`. Otherwise a canonicalising shim
+   makes the function's `q` finer, or the call is refused.
+2. Components. `q` is a product of components (rows, floats, zeros and
+   NaNs, timestamps, strings, errors), each a short chain from exact to
+   coarse. Refinement is componentwise, so it is a partial order: rows as a
+   multiset and strings up to case folding are incomparable.
+3. Through a plan. Each operation keeps a component or coarsens it (a
+   `LIMIT` without `ORDER BY` coarsens the multiset of rows), and the plan's
+   output `q` must refine the postcondition's.
+4. Tolerances join the floats chain: a tolerance `ε' ≤ ε` refines `ε`, with
+   exact equality at the top.
+5. The finest `q` is computable. The valid observations of a function, those
+   with `q ∘ f_E = q ∘ f_reference`, are closed under meet (if two
+   observations each agree on both functions, the pair of them does), so
+   within the library of components there is one finest valid `q`. Sverify
+   finds it per component by trying candidates from fine to coarse: probes
+   give counterexamples that rule candidates out cheaply, and the finest
+   candidate left is confirmed by a Lean proof against the engine's
+   modelled behaviour (the search-and-prove machinery of the lowering
+   search, `SubstraitLean/LoweringSearch.lean`), or by fuzzing where the
+   engine is not modelled.
+
+This makes D11 and D12 one comparison: the route's `q`, carried through the
+plan, against the `q` the postcondition names. The finest valid `q` is the
+`q` column of the choices table ([D15](#d15-where-the-observations-live)).
+
