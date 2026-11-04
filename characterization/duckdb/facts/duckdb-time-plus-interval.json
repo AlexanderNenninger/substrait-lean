@@ -8,6 +8,9 @@
   "options": [
     "time_interval_months"
   ],
+  "rows": [
+    {"group": "time.arith", "option": "time_interval_months", "types": ["time"]}
+  ],
   "constructs": [
     "TIME + INTERVAL",
     "TIME - INTERVAL",
@@ -26,6 +29,7 @@
     "The SQL lift refuses `TIME - INTERVAL` with -2^63 microseconds, where DuckDB raises, and an interval beyond 64-bit microseconds. Plans from the Ibis producer reduce the interval modulo a day, so the written SQL never negates such an interval."
   ],
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

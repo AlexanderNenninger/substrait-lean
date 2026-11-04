@@ -8,6 +8,9 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.elem", "option": "rounding", "types": ["fp64"]}
+  ],
   "constructs": [
     "abs",
     "floor",
@@ -28,6 +31,7 @@
   "description": "Gives the reference's value on every probed row.",
   "reference": "The functions of `functions_arithmetic.yaml` and `functions_rounding.yaml`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

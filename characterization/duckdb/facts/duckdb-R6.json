@@ -9,6 +9,9 @@
     "overflow",
     "avg_int_result"
   ],
+  "rows": [
+    {"group": "agg.isum", "option": "overflow", "types": ["i64"]}
+  ],
   "constructs": [
     "sum",
     "avg"
@@ -25,6 +28,7 @@
   ],
   "status": "deviation",
   "ledger_entries": 5,
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

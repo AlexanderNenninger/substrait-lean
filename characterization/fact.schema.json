@@ -5,7 +5,7 @@
   "description": "One finding about what an engine does, with the checks that support it. Stored as characterization/<engine>/facts/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "engine", "engine_version", "title", "area", "description", "status", "provenance"],
+  "required": ["id", "engine", "engine_version", "title", "area", "description", "status", "evidence", "provenance"],
   "properties": {
     "id": {
       "description": "Stable id: the engine, a dash, then a number or slug (duckdb-R5, polars-var-algorithm). The file is named <id>.json.",
@@ -17,13 +17,31 @@
     "title": {"description": "A short name for the finding.", "type": "string"},
     "verdict": {"description": "One line for the summary table.", "type": "string"},
     "area": {
-      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts", "nulls", "errors", "frontend", "io"]
+      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts", "nulls", "errors", "execution", "frontend", "io"]
     },
     "options": {
       "description": "The checklist items the fact settles: ids of characterization/areas.json (the core's options and the extra items).",
       "type": "array",
       "items": {"type": "string", "pattern": "^[a-z0-9_]+$"},
       "uniqueItems": true
+    },
+    "rows": {
+      "description": "The rows of the engine choice tables the fact settles: a function group of SubstraitLean/Functions.lean (`groups`; omitted for an option no group takes, such as null_order), one of its options, and the types the fact's checks cover. `python -m sverify_dev.facts --coverage <engine>` lists the rows and their types.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["option", "types"],
+        "properties": {
+          "group": {"type": "string", "pattern": "^[a-z0-9.]+$"},
+          "option": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+        }
+      }
+    },
+    "evidence": {
+      "description": "The strongest check in the provenance, weakest first: docs (the engine's documentation), source (its source at the release tag), engine_test (the engine's own tests with an expected result, at the tag: DuckDB's sqllogictests, Polars's unit tests; read or replayed), probe (edge cases run on the engine: probes, replays, repros), fuzz (differential fuzzing against the reference), proof (a Lean lemma covers it). It must equal the strongest provenance method's level.",
+      "enum": ["docs", "source", "engine_test", "probe", "fuzz", "proof"]
     },
     "layer": {
       "description": "semantics (default): what a plan computes. frontend: how the engine's SQL text becomes a plan. io: how the engine reaches data (extensions, catalogs, object stores, credentials), outside what a plan computes.",
@@ -64,7 +82,7 @@
       "required": ["checked_at", "method", "checked_by"],
       "properties": {
         "checked_at": {"description": "A date, or \"unknown\".", "type": "string", "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}|unknown)$"},
-        "method": {"enum": ["probe", "source-reading", "docs", "replay", "fuzz", "manual-repro"]},
+        "method": {"description": "Its evidence level: docs → docs, source-reading → source, engine-test and replay → engine_test, probe and manual-repro → probe, fuzz → fuzz, proof → proof.", "enum": ["probe", "source-reading", "docs", "engine-test", "replay", "fuzz", "manual-repro", "proof"]},
         "checked_by": {"description": "The tool, session or commit that ran the check.", "type": "string"},
         "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
         "notes": {"$ref": "#/$defs/prose"}

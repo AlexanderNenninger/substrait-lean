@@ -10,6 +10,10 @@
     "division_type",
     "raise_set"
   ],
+  "rows": [
+    {"group": "int.mod", "option": "min_mod_neg_one", "types": ["i64"]},
+    {"group": "int.mod", "option": "division_type", "types": ["i64"]}
+  ],
   "constructs": [
     "%"
   ],
@@ -26,6 +30,7 @@
   "description": "`MIN % -1` raises `Overflow in division` (duckdb-R3); the SQL writes that case out.",
   "reference": "`modulus`: `MIN % -1` is 0.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

@@ -15,6 +15,7 @@
   "description": "`mode` returns all the values tied for most frequent, as several rows (a list per group); their order is not documented. `mode().first()` picks one.",
   "reference": "`MODE` returns one value, any of the tie (`tie_pick`). A writer takes one element of Polars's list.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

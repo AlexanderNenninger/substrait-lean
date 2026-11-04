@@ -9,6 +9,9 @@
     "date_range",
     "raise_set"
   ],
+  "rows": [
+    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp"]}
+  ],
   "constructs": [
     "DATE + INTEGER",
     "DATE + INTERVAL",
@@ -23,6 +26,7 @@
   ],
   "reference": "`date_range`: date arithmetic whose operand or result leaves 0001-01-01 … 9999-12-31 raises (#251), reported by `verify`. The written SQL checks the result against the reference's dates and raises \"outside the reference's dates\" (`sql/core/_base.py`), so DuckDB's wider range is never returned; with constant operands the check is made when the plan is written.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -25,6 +25,7 @@
   "description": "Gives the reference's value on every probed row.",
   "reference": "`md5`, `sha256`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

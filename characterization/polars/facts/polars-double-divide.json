@@ -9,6 +9,10 @@
     "on_division_by_zero",
     "nan_creation"
   ],
+  "rows": [
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]}
+  ],
   "constructs": [
     "/"
   ],
@@ -16,6 +20,7 @@
   "description": "`/` on doubles is IEEE 754: `x / 0` is ±inf, `0 / 0` is NaN, `±inf / ±inf` is NaN. No setting changes it. With the `IEEE` candidate, only the four `±inf / ±inf` rows differ, as for DuckDB (duckdb-R15-double-arith).",
   "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

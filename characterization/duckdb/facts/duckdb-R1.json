@@ -8,6 +8,9 @@
   "options": [
     "overflow"
   ],
+  "rows": [
+    {"group": "int.arith", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -29,6 +32,7 @@
   ],
   "status": "deviation",
   "ledger_entries": 80,
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-01",

@@ -8,6 +8,11 @@
   "options": [
     "zero_sign"
   ],
+  "rows": [
+    {"group": "fp.arith", "option": "zero_sign", "types": ["fp64"]},
+    {"group": "fp.neg", "option": "zero_sign", "types": ["fp64"]},
+    {"group": "fp.div", "option": "zero_sign", "types": ["fp64"]}
+  ],
   "constructs": [
     "/",
     "unary -",
@@ -18,6 +23,7 @@
   "description": "Arithmetic keeps the sign of zero: `1.0 / -0.0` is -inf, `-(0.0)` and `0.0 * -1` are -0.0, `sqrt(-0.0)` is -0.0. Comparison, grouping and sorting are in polars-zero-order.",
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

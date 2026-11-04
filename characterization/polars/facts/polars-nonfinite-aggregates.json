@@ -9,6 +9,9 @@
     "nonfinite_aggregates",
     "nan_creation"
   ],
+  "rows": [
+    {"group": "agg.fsum", "option": "nan_creation", "types": ["fp64"]}
+  ],
   "constructs": [
     "sum",
     "mean",
@@ -19,6 +22,7 @@
   "description": "A `sum` or `mean` over both infinities is NaN, and `std`, `var` over a group with an infinity are NaN.",
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`). ST-3 and ST-5 record that Substrait leaves both open.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

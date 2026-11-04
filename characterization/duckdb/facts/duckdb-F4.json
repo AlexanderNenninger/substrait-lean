@@ -18,6 +18,7 @@
   "description": "DuckDB has collations (`NOCASE`, `NOACCENT`), macros that shadow functions, and case-insensitive identifiers.",
   "reference": "The replay skips queries under a collation or macro, and follows the identifiers.",
   "status": "no-finding",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

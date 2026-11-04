@@ -8,6 +8,9 @@
   "options": [
     "nan_creation"
   ],
+  "rows": [
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -17,6 +20,7 @@
   "description": "Double arithmetic is IEEE 754: `inf - inf`, `inf + (-inf)` and `0 * inf` are NaN. Every other edge case agrees with the reference.",
   "reference": "`add`, `subtract`, `multiply` raise a domain issue for `inf - inf` and `0 · inf` (`nan_creation`: raise, #257).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

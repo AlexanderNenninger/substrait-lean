@@ -16,6 +16,7 @@
   "description": "`pl.lit(1)` is `Int32`, `2⁴⁰` is `Int64`, `2⁶³` is `UInt64`, `2⁶⁴` is `Int128`; `1.5` is `Float64`, `None` is `Null`, a `Decimal` is `Decimal(38, s)`.",
   "reference": "Substrait literals carry their type; the frontends (the SQL lift, the Ibis producer) choose it.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

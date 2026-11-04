@@ -9,6 +9,10 @@
     "stat_algo",
     "stat_degenerate"
   ],
+  "rows": [
+    {"group": "agg.var", "option": "stat_algo", "types": ["fp64"]},
+    {"group": "agg.var", "option": "stat_degenerate", "types": ["fp64"]}
+  ],
   "constructs": [
     "var",
     "std"
@@ -21,6 +25,7 @@
   ],
   "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

@@ -8,6 +8,9 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.log", "option": "rounding", "types": ["fp64"]}
+  ],
   "constructs": [
     "log10",
     "log"
@@ -16,6 +19,7 @@
   "description": "`log10()` is `log(10.0)`, and `log(base)` is Rust's `f64::log`, `ln(x) / ln(base)`: two roundings, so it can miss the correctly rounded result by an ulp. `log10(0.5)` is -0.30102999566398114 where `log10` gives -0.3010299956639812, and `log2(1e308)` is 1023.1538532253077 where `log2` gives 1023.1538532253076.",
   "reference": "`log10` and `log2` are the platform's `log10` and `log2`; only NULL, the sign and the domain are exact in the reference, the last bits are each engine's (#54).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

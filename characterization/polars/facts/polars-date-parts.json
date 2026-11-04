@@ -26,6 +26,7 @@
   ],
   "reference": "`date_part` and `date_trunc` (`Time.lean`): ISO weeks, Monday-based `isodow`, flooring before the epoch; their range is open in the reference.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -8,6 +8,9 @@
   "options": [
     "negative_start"
   ],
+  "rows": [
+    {"group": "str.sub", "option": "negative_start", "types": ["string"]}
+  ],
   "constructs": [
     "str.slice",
     "str.head",
@@ -20,6 +23,7 @@
   ],
   "reference": "`substring(s, start, length)`, 1-based, `negative_start: WRAP_FROM_END` (#209); offsets outside `[-2³², 2³²)` raise (#336).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

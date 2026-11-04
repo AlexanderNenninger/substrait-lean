@@ -9,6 +9,10 @@
     "on_division_by_zero",
     "nan_creation"
   ],
+  "rows": [
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]}
+  ],
   "constructs": [
     "%",
     "modulus",
@@ -31,6 +35,7 @@
   ],
   "status": "fixed",
   "ledger_entries": 30,
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-01",

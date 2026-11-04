@@ -9,6 +9,10 @@
     "nan_creation",
     "division_type"
   ],
+  "rows": [
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]}
+  ],
   "constructs": [
     "%"
   ],
@@ -25,6 +29,7 @@
   "description": "NaN for a zero divisor or an infinite dividend (duckdb-R4).",
   "reference": "`modulus` of doubles is `fmod` (duckdb-R4); a zero divisor and an infinite dividend raise.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

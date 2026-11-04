@@ -9,6 +9,9 @@
     "default_window_frame",
     "null_order"
   ],
+  "rows": [
+    {"option": "null_order", "types": ["any"]}
+  ],
   "constructs": [
     "OVER",
     "sum",
@@ -30,6 +33,7 @@
   ],
   "reference": "The reference's windows follow SQL's default frame, with NULLs placed by the key's direction and `NULLS_LAST` for `UNSPECIFIED` (D8); ties in a window's order are open (`tie_order`).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

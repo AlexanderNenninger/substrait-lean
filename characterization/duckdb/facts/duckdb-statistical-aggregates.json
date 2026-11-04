@@ -26,6 +26,7 @@
     "`product` and `mad` of doubles (integers converted) are black boxes (#326), not NULL over values; `mad` is at least `+0.0`. `mad` of a DECIMAL or a temporal type is refused. `histogram` (the model has no MAP) and `weighted_avg` (black-box aggregates take one argument) are refused, naming #326. `bit_count` is a black box of a BIGINT, in [0, 64], that Lean evaluates; narrower integers are refused, as their count depends on the width."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

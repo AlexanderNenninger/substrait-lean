@@ -20,6 +20,7 @@
     "The type of a column is fixed when the plan is checked, so the Ibis producer folds `typeof(column)` to DuckDB's name as a string constant (`duckdb_type_name`, `ibis_substrait/casts.py`). Lists of these types are folded; structs and maps are refused, and so is `typeof` of an expression, whose type is the engine's inference. The plan holds DuckDB's name whichever engine runs it, so every engine gives the same string (decided by the coordinating session for #508)."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

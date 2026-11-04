@@ -8,6 +8,10 @@
   "options": [
     "overflow"
   ],
+  "rows": [
+    {"group": "int.abs", "option": "overflow", "types": ["i64"]},
+    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]}
+  ],
   "constructs": [
     "abs",
     "/",
@@ -21,6 +25,7 @@
     "Lean: no finding. `verify` reports `overflow` as an error for both."
   ],
   "status": "no-finding",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-01",

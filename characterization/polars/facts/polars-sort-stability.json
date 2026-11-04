@@ -8,6 +8,9 @@
   "options": [
     "tie_order"
   ],
+  "rows": [
+    {"option": "tie_order", "types": ["any"]}
+  ],
   "constructs": [
     "sort",
     "top_k"
@@ -19,6 +22,7 @@
   ],
   "reference": "`tie_order`: any order of the ties, and any rows of a tie for a `fetch`. Every behaviour is allowed.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

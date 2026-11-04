@@ -10,6 +10,10 @@
     "nan_creation",
     "stat_degenerate"
   ],
+  "rows": [
+    {"group": "agg.var", "option": "stat_degenerate", "types": ["fp64"]},
+    {"group": "agg.stat", "option": "stat_degenerate", "types": ["fp64"]}
+  ],
   "constructs": [
     "var_samp",
     "stddev_samp",
@@ -26,6 +30,7 @@
   ],
   "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

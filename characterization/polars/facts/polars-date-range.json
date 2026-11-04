@@ -9,6 +9,9 @@
     "date_range",
     "raise_set"
   ],
+  "rows": [
+    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -22,6 +25,7 @@
   ],
   "reference": "`date_range`: date arithmetic raises outside 0001-01-01 … 9999-12-31 (#251).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

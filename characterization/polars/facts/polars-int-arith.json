@@ -8,6 +8,10 @@
   "options": [
     "overflow"
   ],
+  "rows": [
+    {"group": "int.arith", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.pow", "option": "overflow", "types": ["i64"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -22,6 +26,7 @@
   ],
   "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR` when the plan omits it (#202); `SILENT` when the plan asks. Polars gives `SILENT` natively; `ERROR` needs a guard, at each width.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

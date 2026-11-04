@@ -9,6 +9,10 @@
     "float_to_int",
     "cast_failure"
   ],
+  "rows": [
+    {"option": "float_to_int", "types": ["any"]},
+    {"option": "cast_failure", "types": ["any"]}
+  ],
   "constructs": [
     "cast"
   ],
@@ -19,6 +23,7 @@
   ],
   "reference": "`float_to_int: TRUNCATE` (#209); `cast_failure` as the cast states, `THROW_EXCEPTION` for `UNSPECIFIED`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

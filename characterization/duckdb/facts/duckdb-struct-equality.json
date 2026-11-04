@@ -27,6 +27,7 @@
     "DuckDB's SQL refuses struct columns and fields for now (docs/nested-values.md), so no written plan compares structs."
   ],
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

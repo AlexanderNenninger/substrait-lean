@@ -8,6 +8,9 @@
   "options": [
     "overflow"
   ],
+  "rows": [
+    {"group": "int.arith", "option": "overflow", "types": ["i64"]}
+  ],
   "constructs": [
     "+",
     "-",
@@ -27,6 +30,7 @@
   "description": "Raises on overflow at 64 bits, under every setting (duckdb-R1).",
   "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

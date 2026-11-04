@@ -8,6 +8,9 @@
   "options": [
     "avg_int_result"
   ],
+  "rows": [
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i64"]}
+  ],
   "constructs": [
     "mean",
     "median"
@@ -16,6 +19,7 @@
   "description": "`mean` of integers is a `Float64` (the values cast to doubles and summed, polars-sum-float), so it rounds above 2⁵³ (`mean(2⁶², 2⁶², 1)` is 3.0744573456182584e18). `median` of integers is a `Float64` too. Both are NULL for no values.",
   "reference": "`avg` of `i64` returns `i64` in Substrait; the reference follows the declared output type (`avg_int_result`, #209).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -22,6 +22,7 @@
   ],
   "reference": "Substrait's `ListElement` offset is 0-based, negative from the end, NULL out of range in either direction, without wrapping (`Value.listElement`, #94). DuckDB's SQL writes `l[i + 1]` for an offset `i ≥ 0` and `l[i]` for a negative one, which agree on every offset (docs/nested-values.md). `list_extract(l, i)` read from DuckDB SQL is `l[i]`, modelled exactly with a constant index (#327).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

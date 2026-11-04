@@ -15,6 +15,7 @@
   "description": "`AVG(DOUBLE)` keeps a sum and a count and returns `Divide(sum, count, LEGACY)`, NULL for a count of 0. The sum is spark-sum-double's.",
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-03",

@@ -24,6 +24,7 @@
   ],
   "reference": "`UNION ALL` is bag union and `UNION DISTINCT` its `distinct`; `INTERSECT` and `EXCEPT` are semi and anti joins with NULLs equal, then `DISTINCT`, and the `ALL` forms number equal rows, so `m` and `n` copies leave `min(m, n)` and `max(m − n, 0)` (#344). Grouping keys use `NAN_IS_NAN`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

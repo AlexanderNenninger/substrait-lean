@@ -8,6 +8,9 @@
   "options": [
     "nan_kind"
   ],
+  "rows": [
+    {"option": "nan_kind", "types": ["fp64"]}
+  ],
   "constructs": [
     "unary -",
     "abs",
@@ -17,6 +20,7 @@
   "description": "Negation flips a NaN's sign bit (`-nan` is `0xfff8000000000000`), `abs` clears it and `sqrt` keeps it. The sign of a NaN that arithmetic creates (`inf - inf`) is the platform's: positive on arm64, negative on x86.",
   "reference": "One NaN (`nan_kind: ONE_NAN`).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -9,6 +9,9 @@
     "quantile_interp",
     "nan_order"
   ],
+  "rows": [
+    {"group": "agg.order", "option": "nan_order", "types": ["fp64"]}
+  ],
   "constructs": [
     "quantile_disc",
     "quantile",
@@ -24,6 +27,7 @@
     "Negative fractions, DOUBLE fractions and lists of fractions are refused by the parser and the frontends."
   ],
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

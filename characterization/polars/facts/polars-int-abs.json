@@ -8,6 +8,9 @@
   "options": [
     "overflow"
   ],
+  "rows": [
+    {"group": "int.abs", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]}
+  ],
   "constructs": [
     "abs"
   ],
@@ -15,6 +18,7 @@
   "description": "`abs` is `wrapping_abs`: `abs(MIN)` is `MIN` at every width. Every other value is exact.",
   "reference": "`abs` with `overflow: ERROR`, the only value the model accepts for it (`SILENT` and `SATURATE` are refused), so `abs(MIN)` is an overflow issue.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

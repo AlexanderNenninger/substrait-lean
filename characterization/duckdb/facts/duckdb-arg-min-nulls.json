@@ -9,6 +9,9 @@
     "tie_pick",
     "nan_order"
   ],
+  "rows": [
+    {"group": "agg.pick", "option": "tie_pick", "types": ["any"]}
+  ],
   "constructs": [
     "arg_min",
     "arg_max",
@@ -23,6 +26,7 @@
     "The parser reads `arg_min(x, y)` as `FIRST(x ORDER BY y)` with the filter `y IS NOT NULL` (`AggFn.pick`, #53), and `arg_max` with `ORDER BY y DESC`; `FIRST` skips a NULL `x`. Ties are the engine's: `Rel.windowsTotal` reports the result as determined only when the group's and the order's columns contain a key."
   ],
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

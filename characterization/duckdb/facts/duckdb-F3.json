@@ -16,6 +16,7 @@
   "description": "DuckDB types an integer literal as the narrowest type that holds it (duckdb-R1).",
   "reference": "`100::TINYINT + 50` is an `i8` addition in DuckDB, and an `i64` one in DataFusion's plan.",
   "status": "no-finding",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

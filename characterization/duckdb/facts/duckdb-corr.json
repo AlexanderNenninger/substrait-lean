@@ -9,6 +9,10 @@
     "stat_algo",
     "stat_degenerate"
   ],
+  "rows": [
+    {"group": "agg.stat", "option": "stat_algo", "types": ["fp64"]},
+    {"group": "agg.stat", "option": "stat_degenerate", "types": ["fp64"]}
+  ],
   "constructs": [
     "corr"
   ],
@@ -23,6 +27,7 @@
     "The SQL lift (`semantics=\"duckdb\"`, the lift profile's `corr_degenerate=\"NAN\"`) writes DuckDB's `CORR` as the reference's with a count of pairs, NaN where it is NULL and the count is positive (#433). With `semantics=\"reference\"` it is the reference's."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

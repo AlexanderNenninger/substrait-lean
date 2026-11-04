@@ -24,6 +24,7 @@
   ],
   "reference": "I/O is outside what a plan computes; sverify's `io` modules read and write the formats.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

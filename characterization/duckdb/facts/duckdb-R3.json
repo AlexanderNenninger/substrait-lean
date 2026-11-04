@@ -9,6 +9,10 @@
     "division_type",
     "on_division_by_zero"
   ],
+  "rows": [
+    {"group": "int.mod", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.mod", "option": "division_type", "types": ["i64"]}
+  ],
   "constructs": [
     "%",
     "modulus"
@@ -25,6 +29,7 @@
     "Lean: no finding. `verify` reports `division by zero` as an error. The remainder truncates (`Int.tmod`)."
   ],
   "status": "open",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-01",

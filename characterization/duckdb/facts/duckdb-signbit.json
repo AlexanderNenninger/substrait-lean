@@ -9,6 +9,10 @@
     "nan_kind",
     "zero_sign"
   ],
+  "rows": [
+    {"group": "fp.neg", "option": "zero_sign", "types": ["fp64"]},
+    {"option": "nan_kind", "types": ["fp64"]}
+  ],
   "constructs": [
     "signbit"
   ],
@@ -20,6 +24,7 @@
     "The model's double codes have one zero and one NaN (`SubstraitLean/Float.lean`), so they do not determine `signbit` there. `signbit` is a black box (#328) whose only law is `nonNull`; Lean's evaluator gives `c < 0` for every other code and refuses to print rows at zero and NaN."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

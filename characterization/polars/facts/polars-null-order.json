@@ -8,6 +8,9 @@
   "options": [
     "null_order"
   ],
+  "rows": [
+    {"option": "null_order", "types": ["any"]}
+  ],
   "constructs": [
     "sort",
     "top_k",
@@ -17,6 +20,7 @@
   "description": "`sort` puts NULLs first by default, ascending and descending; `nulls_last=True` puts them last, per key when given a list. So Polars's default is the same NULL placement in both directions, where SQL's convention flips it with the direction.",
   "reference": "The key's direction states the NULL placement; `SORT_DIRECTION_UNSPECIFIED` is `NULLS_LAST` (D8). Polars is native for every stated direction with `nulls_last`; its default differs from DuckDB's `NULLS_LAST` (duckdb-F2).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
