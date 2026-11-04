@@ -1,0 +1,37 @@
+{
+  "id": "duckdb-typeof-names",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "typeof: DuckDB's names of the types",
+  "verdict": "decided: fold typeof of a column to DuckDB's name",
+  "area": "casts",
+  "constructs": [
+    "typeof"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB's `typeof` gives the type's SQL name in upper case: TINYINT, SMALLINT, INTEGER, BIGINT, HUGEINT, UTINYINT, USMALLINT, UINTEGER, UBIGINT, FLOAT, DOUBLE, DECIMAL(p,s), VARCHAR, BOOLEAN, DATE, TIME, TIMESTAMP, TIMESTAMP_S, TIMESTAMP_MS, TIMESTAMP_NS, TIMESTAMP WITH TIME ZONE, INTERVAL, BLOB, UUID; a list is its element's name and `[]` (`BIGINT[]`, `VARCHAR[][]`), a struct `STRUCT(a BIGINT, b VARCHAR)` with its field names quoted where they need it (`STRUCT(\"x y\" INTEGER)`), a map `MAP(VARCHAR, BIGINT)`. A DECIMAL without precision is DECIMAL(18,3).",
+    "An expression's type is DuckDB's own inference: `typeof(1)` is INTEGER, `typeof(1.5)` is DECIMAL(2,1), and an INTEGER plus an INTEGER is an INTEGER. `typeof(NULL)` is `\"NULL\"`, quotes included."
+  ],
+  "reference": [
+    "The type of a column is fixed when the plan is checked, so the Ibis producer folds `typeof(column)` to DuckDB's name as a string constant (`duckdb_type_name`, `ibis_substrait/casts.py`). Lists of these types are folded; structs and maps are refused, and so is `typeof` of an expression, whose type is the engine's inference. Other engines name types otherwise; they run the constant the plan holds."
+  ],
+  "status": "decided",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session for #508 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {"sql": "SELECT typeof(NULL::BIGINT), typeof(NULL::DECIMAL(18,3)), typeof(NULL::TIMESTAMPTZ)", "observed": "BIGINT, DECIMAL(18,3), TIMESTAMP WITH TIME ZONE"},
+        {"sql": "SELECT typeof(NULL::TIMESTAMP_MS), typeof(NULL::BIGINT[]), typeof(NULL::STRUCT(\"x y\" INTEGER))", "observed": "TIMESTAMP_MS, BIGINT[], STRUCT(\"x y\" INTEGER)"},
+        {"sql": "SELECT typeof(NULL::DECIMAL)", "observed": "DECIMAL(18,3)"},
+        {"sql": "SELECT typeof(1), typeof(1.5), typeof('a'), typeof(NULL), typeof(1::INTEGER + 1::INTEGER)", "observed": "INTEGER, DECIMAL(2,1), VARCHAR, \"NULL\", INTEGER"},
+        {"test": "python/tests/test_ibis_semantics.py::test_typeof_names_are_duckdbs"}
+      ]
+    }
+  ],
+  "issues": [
+    508
+  ]
+}
