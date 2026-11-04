@@ -83,7 +83,7 @@ except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
 from sverify._scan import Scan, ScanSnapshot, local_path
-from sverify._weighted import expanded, negated, positive
+from sverify._weighted import split
 from sverify.contracts import Fact
 from sverify.incremental import (
     Snapshot,
@@ -569,11 +569,12 @@ class IcebergSource(_TableSource):
                 )
             paths = {task.file.file_path for task in came}
             changed = [e for e in files if e["data_file"]["file_path"] in paths]
+            inserts, deletes = split(diff)
             return SourceBatch.from_changes(
                 since,
                 end,
-                inserts=expanded(positive(diff)),
-                deletes=expanded(positive(negated(diff))),
+                inserts=inserts,
+                deletes=deletes,
                 facts=self._facts(t, changed, f"file stats @v{end} (changed files)"),
                 snapshot_facts=snapshot_facts,
                 kind="snapshot diff",

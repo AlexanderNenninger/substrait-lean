@@ -148,6 +148,39 @@ def negative(z: pa.Table) -> pa.Table:
     return z.filter(_call("less", z.column(WEIGHT), 0))
 
 
+def split(z: pa.Table) -> tuple[pa.Table, pa.Table]:
+    """The bags of rows a weighted table inserts and deletes."""
+    return expanded(positive(z)), expanded(positive(negated(z)))
+
+
+class ChangeLog[T]:
+    """A table's changes by version, the last `keep` of them (all if None).
+    It holds every change after version `floor`."""
+
+    def __init__(self, keep: int | None = None, floor: int = 0) -> None:
+        self.keep = keep
+        self.floor = floor
+        self.entries: list[tuple[int, T]] = []
+
+    def add(self, version: int, change: T) -> None:
+        self.entries.append((version, change))
+        if self.keep is not None and len(self.entries) > self.keep:
+            self.floor = self.entries.pop(0)[0]
+
+    def reset(self, version: int) -> None:
+        """Forget every change: the log holds those after `version`."""
+        self.entries, self.floor = [], version
+
+    def since(self, version: int) -> list[T] | None:
+        """The changes after `version`, or None if they are not all held."""
+        if version < self.floor:
+            return None
+        return [c for v, c in self.entries if v > version]
+
+    def at(self, version: int) -> T | None:
+        return next((c for v, c in self.entries if v == version), None)
+
+
 def has_negative(z: pa.Table) -> bool:
     return _call("any", _call("less", z.column(WEIGHT), 0)).as_py() is True
 

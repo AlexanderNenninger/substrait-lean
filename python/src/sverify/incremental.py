@@ -70,6 +70,7 @@ from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._weighted import (
     WEIGHT,
+    ChangeLog,
     _call,
     concat,
     consolidated,
@@ -79,10 +80,10 @@ from sverify._weighted import (
     inserted_count,
     matching,
     missing,
-    negated,
     negative,
     positive,
     rows_of,
+    split,
     split_matching,
     weighted,
 )
@@ -592,8 +593,9 @@ class StaticSource(Pipeable):
 
     def __init__(self, table: pa.Table, version: int = 0, *, name: str = "table"):
         self.name = name
-        self._log: list[tuple[int, pa.Table]] = []
-        """Each `apply`'s version and change, as a weighted table."""
+        self._log: ChangeLog[pa.Table] = ChangeLog()
+        """Each `apply`'s change, as a weighted table, since the last
+        `replace`."""
         self.replace(table, version)
 
     def replace(self, table: pa.Table, version: int) -> None:
@@ -614,7 +616,7 @@ class StaticSource(Pipeable):
         if hasattr(self, "version") and version <= self.version:
             raise ValueError(f"a new table needs a version above {self.version}")
         self.table, self.version, self.digest = table, version, table_digest(table)
-        self._log, self._exact_since = [], version
+        self._log.reset(version)
 
     def apply(self, changes: Changes, version: int | None = None) -> None:
         """Insert and delete rows (an Arrow table, or tuples in schema
@@ -663,7 +665,7 @@ class StaticSource(Pipeable):
         change = change_table(changes, self.table.schema)
         table = _apply_change(self.table, change, self.name)
         self.table, self.version, self.digest = table, version, table_digest(table)
-        self._log.append((version, change))
+        self._log.add(version, change)
 
     def schema(self) -> pa.Schema:
         """The current table's schema."""
@@ -709,13 +711,13 @@ class StaticSource(Pipeable):
             raise ValueError(f"a static table only has version {self.version}")
         if since == self.version:
             return SourceBatch.unchanged(since)
-        if since >= self._exact_since:
-            change = consolidated(*[ch for v, ch in self._log if v > since])
+        if (applied := self._log.since(since)) is not None:
+            inserts, deletes = split(consolidated(*applied))
             return SourceBatch.from_changes(
                 since,
                 self.version,
-                inserts=expanded(positive(change)),
-                deletes=expanded(positive(negated(change))),
+                inserts=inserts,
+                deletes=deletes,
                 trusted=f"Δ as applied to {self.name} v{since}→v{self.version}",
                 schema=self.table.schema,
             )
