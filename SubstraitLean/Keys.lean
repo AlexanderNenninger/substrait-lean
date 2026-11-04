@@ -1067,6 +1067,21 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
       r.windowsTotal cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
         fns.all WinFn.orderFree || (List.range (r.arity cat)).all (· ∈ part))
 
+/-- Does every `FETCH` (a `LIMIT` or `OFFSET`) take rows whose choice the
+plan fixes? Only below an `ORDER BY` whose keys contain a key of its input:
+otherwise the rows that tie, or the input's order, decide which rows come
+first, and the engine picks them (D10, `Rel.detPlan`). -/
+def Rel.fetchesTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) : Rel → Bool
+  | .read _ | .values _ _ => true
+  | .fetch (.orderBy i keys) _ _ => i.fetchesTotal cat A F K &&
+      (i.keys cat A F K).any fun k => k.all fun c => keys.any (·.col == c)
+  | .fetch _ _ _ => false
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r | .unnest r _
+  | .window r _ _ _ | .aggregate r _ _ => r.fetchesTotal cat A F K
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
+      a.fetchesTotal cat A F K && b.fetchesTotal cat A F K
+
 /-- The check at one window: then the engine's tie-breaking is irrelevant. -/
 theorem Rel.window_deterministic {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}

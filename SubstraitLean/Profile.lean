@@ -498,8 +498,14 @@ catalog that satisfies the preconditions `A`, `F`, evaluating the plan with
 DuckDB's functions gives `Rel.eval`'s rows, under DuckDB's IEEE operations
 (the default), provided the plan's windows read fewer than `2⁶²` rows (the
 size hypothesis, `Rel.Small`). Trusted: that `Profile.duckdb` is DuckDB's
-(probed: `characterization/duckdb/probes.json`), and that the SQL printer is
-faithful, writing out `MIN % -1` and `<<` (`Profile.duckdbWritten`). -/
+(probed: `characterization/duckdb/probes.json`), that the SQL printer is
+faithful, writing out `MIN % -1` and `<<` (`Profile.duckdbWritten`), and that
+DuckDB's aggregates are Lean's (`AggFn.apply`): a profile gives only the
+scalar functions. For a double `SUM` or `AVG` that last part does not hold in
+general: DuckDB merges partial sums in finishing order and adds a constant
+vector as one `fl(k · x)` (#633), so on those the conclusion holds of the
+model, and what DuckDB gives is within #85's bound of it (`Profile.duckdb.table`'s
+`sum_order` row, `approx`). -/
 theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
     (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)

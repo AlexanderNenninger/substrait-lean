@@ -250,6 +250,34 @@ def test_rerun_variation():
                 assert r.get("rerun_evidence") in ("tested", "probe", "proved"), (engine, r)
 
 
+def test_depends_leave_out_what_reaches_no_output(tmp_path):
+    """A projected column nothing reads meets its error-side options (an
+    engine may still compute it and raise), not its value-side ones."""
+    t = ibis.table({"a": "float64", "b": "float64"}, name="t")
+    used = t.mutate(dead=t.a / t.b).select(c=t.a + t.b)
+    contract = {"transform": json.loads(to_substrait_json(used)), "ensures": []}
+    path = tmp_path / "contract.json"
+    path.write_text(json.dumps(contract))
+    out = subprocess.run(
+        [str(checker_path()), "--contract", str(path)], capture_output=True, text=True
+    )
+    depends = {(d["group"], d["option"]) for d in json.loads(out.stdout)["depends"]}
+    assert ("fp.arith", "rounding") in depends
+    assert ("fp.div", "rounding") not in depends
+
+
+def test_transfer_up_to_the_behaviour_order():
+    """`SEQUENTIAL ⊑ ANY`: a proof that holds for any order of a double SUM
+    holds where the engine adds them in one; Kahan's (`COMPENSATED`) is not
+    below `ANY` (#633)."""
+    depends = [{"group": "agg.fsum", "option": "sum_order", "behaviours": ["ANY"]}]
+    polars = transfer({"from": "reference", "to": "polars", "depends": depends})
+    [failure] = polars["failures"]
+    assert failure["option"] == "sum_order" and "COMPENSATED" in failure["to"]
+    duck = transfer({"from": "reference", "to": "duckdb", "depends": depends})
+    assert duck["ok"] is False  # SCALED_CONSTANT
+
+
 def test_epsilon_per_engine(monkeypatch):
     """`epsilon_by_engine`: the summation order's share, and each engine's own
     per-operation error, carried through the arithmetic. Polars divides by a
