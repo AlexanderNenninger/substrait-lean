@@ -1,0 +1,74 @@
+{
+  "id": "duckdb-float-sum-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`SUM` and `AVG` of floats depend on the order of the rows; IEEE special values",
+  "verdict": "order-dependent plain sum; `fsum`/`favg` Kahan; NaN from `+inf` and `-inf`",
+  "area": "aggregates",
+  "options": [
+    "sum_order",
+    "nan_creation"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "sum_order",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "nan_creation",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "sum",
+    "avg",
+    "fsum",
+    "favg"
+  ],
+  "settings": {},
+  "description": [
+    "\"The floating-point versions of\" `sum` \"are affected by ordering\"; so are `avg`, `fsum` and `favg`, the last two with Kahan summation. The order in which rows reach a whole-table or grouped aggregate is not guaranteed unless the aggregate states an `ORDER BY` (Order Preservation). Both `FLOAT` and `DOUBLE` are named: the docs do not say whether a `FLOAT` sum accumulates in `FLOAT` or `DOUBLE`, nor its result type (round 2, source).",
+    "`FLOAT` and `DOUBLE` follow IEEE 754 for infinities and NaN \"on machines with the required CPU/FPU support\", NaN's order and equality aside; so a sum meeting `+inf` and `-inf` is NaN. The docs state this for the types, not for `SUM` itself; duckdb-nonfinite-aggregates probes `fsum` of `[inf, 1]`."
+  ],
+  "reference": [
+    "`sum_order`: any order and grouping, within #85's bound (`FloatSums`); DuckDB's order-dependent sum is one of them.",
+    "`nan_creation`: the reference raises on a `SUM` of `+inf` and `-inf` (#257); an error-side option, so DuckDB's NaN is never reached on a plan verified not to raise."
+  ],
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "sum, avg, fsum, favg: affected by ordering (floating-point versions of sum)"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/order_preservation",
+          "note": "whole-table aggregation and GROUP BY do not guarantee input order"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric",
+          "note": "Floating-Point Types: IEEE 754 special values, with NaN's exception"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0). For fp64 duckdb-sum-double and duckdb-avg-double read the algorithm at the source."
+    }
+  ],
+  "issues": [
+    54,
+    85,
+    257
+  ]
+}

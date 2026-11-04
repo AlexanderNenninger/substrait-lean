@@ -1,0 +1,65 @@
+{
+  "id": "duckdb-exec-try",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`TRY_CAST` and `TRY(…)`: which errors become NULL",
+  "verdict": "`TRY` nulls invalid-input, out-of-range and conversion errors row by row; `TRY_CAST` nulls conversion failures, except casts of extension types",
+  "area": "execution",
+  "options": [
+    "try_variants"
+  ],
+  "constructs": [
+    "TRY_CAST",
+    "TRY"
+  ],
+  "settings": {},
+  "description": [
+    "`TRY_CAST` returns NULL where the cast fails, and the cast page says it never raises. The planner's `CastCanThrow` qualifies this at v2.0.0: a cast to or from an aliased type (one an extension implements, such as `JSON`) can raise even as `TRY_CAST`, for example JSON to a MAP whose key fails to cast.",
+    "`TRY(expr)` turns errors caused by a row into NULL for that row (docs: `TRY('abc'::INTEGER)`, `TRY(1 // 0)`). It cannot wrap a volatile function, an aggregate or a scalar subquery; that is refused at bind time. In the executor it runs the child on the whole vector; on an error of type `INVALID_INPUT`, `OUT_OF_RANGE` or `CONVERSION` it runs it again row by row and gives NULL for each row that raises; other error types propagate (`Exception::IsExecutionError`). So `TRY(error('x'))`, an invalid-input error, also gives NULL, and an internal or out-of-memory error still raises.",
+    "Leads: which exception type each raising function throws (division by zero, overflow, domain errors), and DuckDB's tests of TRY (on main: test/sql/error/test_try_in_clause.test, test/sql/subquery/scalar/test_try_subquery.test; paths at v2.0.0 to check)."
+  ],
+  "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB for a double to an integer and an integer to a narrower integer, and refuses `TRY_CAST` to a decimal, of a decimal to an integer and of strings (`docs/reference-semantics.md`, #58). Substrait has no `TRY` of a general expression.",
+  "status": "open",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/try.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/cast.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/typecasting.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_operator.cpp#L173-L221",
+          "note": "TRY: whole vector, then row by row on an execution error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/exception.cpp#L202-L211",
+          "note": "IsExecutionError: INVALID_INPUT, OUT_OF_RANGE, CONVERSION"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/generic/error.cpp#L15",
+          "note": "error() throws InvalidInputException"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_cast_expression.cpp#L337-L350",
+          "note": "a try_cast of an aliased type can throw"
+        }
+      ]
+    }
+  ]
+}

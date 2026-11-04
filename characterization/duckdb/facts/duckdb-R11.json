@@ -9,7 +9,21 @@
     "list_null_order"
   ],
   "rows": [
-    {"group": "list.order", "option": "list_null_order", "types": ["list"]}
+    {
+      "group": "list.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ],
+      "evidence": "docs"
+    }
   ],
   "constructs": [
     "<",
@@ -61,6 +75,22 @@
       "method": "source-reading",
       "checked_by": "commit 691a5c4 (#207)",
       "notes": "Lists are ordered lexicographically."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/list",
+          "note": "Comparison and Ordering: lexicographic; at lower nesting levels NULLs are greater than other values; [1, 2] < [1, NULL, 4] is true"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "min, max: the minimum and maximum value"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 confirm GREATEST for a NULL element. They define one LIST ordering for the comparison operators; that `min` and `max` of lists use it is read from that, not stated (agg.order row)."
     }
   ],
   "issues": [

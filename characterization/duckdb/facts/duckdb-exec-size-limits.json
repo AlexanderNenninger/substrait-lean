@@ -1,0 +1,51 @@
+{
+  "id": "duckdb-exec-size-limits",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Size limits: decimal width 38 documented; strings and lists not",
+  "verdict": "decimal width over 38 raises; string, blob and list limits undocumented",
+  "area": "execution",
+  "options": [
+    "size_limits"
+  ],
+  "constructs": [
+    "DECIMAL",
+    "VARCHAR",
+    "BLOB",
+    "LIST",
+    "max_expression_depth"
+  ],
+  "settings": {
+    "max_expression_depth": 1000
+  },
+  "description": [
+    "Decimals: a width must be 1 to 38; addition, subtraction and multiplication raise when the result needs a width over 38, and a declared value out of bounds is rejected by the binder (numeric types page).",
+    "Strings: the text page says a declared length `VARCHAR(n)` has no effect, and names no maximum. Lists, arrays, structs and maps: the list page names no maximum length or depth. The parser's `max_expression_depth` (default 1000) limits nesting of expressions; raising it risks a stack overflow (configuration page).",
+    "Leads: string_t's 32-bit length (src/include/duckdb/common/types/string_type.hpp) and the error past it, list_entry_t's 64-bit offsets (src/include/duckdb/common/types/list_entry.hpp), and tests such as test/sql/types/string/ and test/sql/types/nested/list/."
+  ],
+  "reference": "The reference caps decimals at 38 digits and raises past them (`docs/reference-semantics.md`, decimal arithmetic). It has no limit on string, blob or list lengths.",
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/text.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/list.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
+          "note": "max_expression_depth"
+        }
+      ]
+    }
+  ]
+}

@@ -7,12 +7,18 @@
   "area": "doubles",
   "options": [
     "nan_creation",
-    "on_division_by_zero"
+    "on_division_by_zero",
+    "on_domain_error"
   ],
   "rows": [
     {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]},
     {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]}
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "docs"}
   ],
   "constructs": [
     "+",
@@ -32,7 +38,8 @@
   },
   "description": [
     "Operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (duckdb-R5).",
-    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged."
+    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged.",
+    "`FLOAT` behaves the same by the docs (2.0, PostgreSQL Compatibility): `'Infinity'::FLOAT / 'Infinity'::FLOAT` and `'Infinity'::FLOAT - 'Infinity'::FLOAT` are NaN, and DuckDB follows IEEE 754 for division by zero and operations on infinities. `inf / inf` is the reference's domain error of `divide` (`on_domain_error`), which DuckDB answers with NaN."
   ],
   "reference": "`add` … `divide`: no operation creates a NaN (#257); a zero divisor raises unless the plan asks otherwise.",
   "status": "shimmed",
@@ -61,6 +68,22 @@
         }
       ],
       "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/postgresql_compatibility.html",
+          "note": "Floating-Point Arithmetic: DuckDB conforms to IEEE 754 for division by zero and operations involving infinity; table: 1.0 / 0.0 = Infinity, 0.0 / 0.0 = NaN, 'Infinity'::FLOAT / 'Infinity'::FLOAT = NaN, 'Infinity'::FLOAT - 'Infinity'::FLOAT = NaN"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
+          "note": "ieee_floating_point_ops (default true): use IEEE 754 behavior for supported floating point operations, returning NAN/INF instead of errors/NULL"
+        }
+      ],
+      "notes": "https://duckdb.org/docs/stable/ redirects to the 2.0 docs. The fp32 rows rest on these pages: their infinity examples are `FLOAT`, the zero divisors in the table are DECIMAL literals (so DOUBLE), and the IEEE statement covers both floating-point types. The fp64 `on_domain_error` row (`inf / inf`) rests on the probe above too."
     }
   ],
   "issues": [

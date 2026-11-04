@@ -1,0 +1,40 @@
+{
+  "id": "duckdb-exec-platform",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Platform dependence: IEEE where the hardware supports it",
+  "verdict": "docs: IEEE 754 to the extent of the CPU, OS and compiler; libm not documented",
+  "area": "execution",
+  "options": [
+    "platform"
+  ],
+  "constructs": [
+    "FLOAT",
+    "DOUBLE",
+    "sin",
+    "pow",
+    "exp",
+    "ln"
+  ],
+  "settings": {},
+  "description": [
+    "The numeric types page says FLOAT and DOUBLE follow IEEE 754 to the extent the processor, operating system and compiler support it, that values out of the double range may cause errors on some platforms but usually become zero or infinity, and that the special-value semantics hold on machines with the required CPU and FPU support.",
+    "The docs say nothing about which math library computes `sin`, `pow`, `exp` or `ln`, about NaN signs, or about SIMD paths. The scalar math functions call the C++ standard library (to check: src/function/scalar/math/numeric.cpp, src/core_functions/scalar/math/), so their last bits are the platform's libm: macOS arm64 for the probes, glibc on Linux x86_64 in CI.",
+    "Next rounds: run the double probes (characterization/duckdb/probes.json) on homelab (Linux x86_64) and diff them with the macOS arm64 ledger."
+  ],
+  "reference": "The reference treats `sin`, `exp`, `pow` and the other elementary functions as black boxes with stated laws (`docs/reference-semantics.md`), so a last-bit difference is allowed; NaN payloads and signs are not observable values for it (duckdb-R14 for -0.0).",
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html"
+        }
+      ]
+    }
+  ]
+}

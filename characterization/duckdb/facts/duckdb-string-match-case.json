@@ -1,0 +1,66 @@
+{
+  "id": "duckdb-string-match-case",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`LIKE`, `starts_with`, `strpos`, `replace`: case-sensitive",
+  "verdict": "`CASE_SENSITIVE` under the default `BINARY` collation",
+  "area": "strings",
+  "options": [
+    "case_sensitivity"
+  ],
+  "rows": [
+    {
+      "group": "str.match",
+      "option": "case_sensitivity",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "LIKE",
+    "like_escape",
+    "ILIKE",
+    "starts_with",
+    "prefix",
+    "ends_with",
+    "suffix",
+    "contains",
+    "strpos",
+    "instr",
+    "position",
+    "replace"
+  ],
+  "settings": {
+    "default_collation": "BINARY (the default)"
+  },
+  "description": [
+    "`LIKE` and `like_escape` match case-sensitively; `ILIKE` and `ilike_escape` case-insensitively, \"according to the active locale\". Strings compare by their binary UTF-8 contents under the default `BINARY` collation, so `'hello' = 'hElLO'` is FALSE; the `NOCASE` collation, per expression, per column or as `default_collation`, compares regardless of case.",
+    "`contains` and `suffix` (`ends_with`) state that collations are not supported. For `starts_with`, `instr` (`strpos`, `position`) and `replace` the docs say nothing about case or collations; their case sensitivity rests on the binary default. Whether `default_collation = NOCASE` reaches `LIKE` or these functions is for round 2 (source)."
+  ],
+  "reference": "`case_sensitivity`: the reference is `CASE_SENSITIVE` (docs/core-semantics.md); `ilike` is a function of its own (`str.opaque`). F4 records that the replay skips queries under a collation.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/pattern_matching",
+          "note": "LIKE; ILIKE is case-insensitive"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/text",
+          "note": "like_escape: case-sensitive matching; contains, suffix: collations not supported; starts_with, instr, replace"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/collations",
+          "note": "BINARY is the default; NOCASE; default_collation"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0)."
+    }
+  ]
+}
