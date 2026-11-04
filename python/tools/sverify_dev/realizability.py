@@ -61,10 +61,10 @@ def _fact_link(engine: str, ident: str) -> str:
     return f"[{ident}](../{path.relative_to(ROOT).as_posix()})"
 
 
-#: Evidence levels, weakest first (#444's facts pipeline): `docs` < `source` <
-#: `probe` < `fuzz`, then `proof` where a Lean lemma covers the row; `missing`
-#: where no fact does.
-LEVELS = ("missing", "docs", "source", "probe", "fuzz", "proof")
+#: Evidence levels, weakest first, as `characterization/fact.schema.json`'s
+#: `evidence` (#601): `docs` < `source` < `engine_test` < `probe` < `fuzz` <
+#: `proof`; `missing` where no fact covers the row.
+LEVELS = ("missing", "docs", "source", "engine_test", "probe", "fuzz", "proof")
 
 #: A fact's level from its checks' `provenance.method`, until each fact
 #: states its own `evidence` (which `fact_level` prefers once it does).
@@ -73,8 +73,10 @@ METHOD_LEVELS = {
     "source-reading": "source",
     "probe": "probe",
     "manual-repro": "probe",
-    "replay": "probe",
+    "engine-test": "engine_test",
+    "replay": "engine_test",
     "fuzz": "fuzz",
+    "proof": "proof",
 }
 
 #: Theorems that relate the tables, not what the engine does: a row resting
@@ -187,7 +189,8 @@ def render(t: dict[str, Any]) -> str:
         "Evidence is the Lean theorem a row rests on, or the facts and tests that record",
         "what the engine does. A row's level is `proof` where a Lean lemma about the",
         "engine covers it (its trusted model rests on the facts it cites), else the",
-        "strongest check among its facts (`docs` < `source` < `probe` < `fuzz`), and",
+        "strongest check among its facts (`docs` < `source` < `engine_test` < `probe` <",
+        "`fuzz`), and",
         "`missing` where no fact records the engine's behaviour; `Choice.le_sound` relates",
         "the tables only. The shim count per engine is D9's measure of few shims.",
         "",

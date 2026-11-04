@@ -151,4 +151,5 @@ def test_evidence_levels(table):
         )
         == "missing"
     )
-    assert realizability.fact_level("duckdb", "duckdb-R1") in realizability.LEVELS[1:5]
+    # A fact is never `missing`, and only a Lean lemma is `proof`.
+    assert realizability.fact_level("duckdb", "duckdb-R1") not in ("missing", "proof")
