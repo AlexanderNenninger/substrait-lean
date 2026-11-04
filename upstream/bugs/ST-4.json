@@ -25,7 +25,9 @@
     "duckdb-R14",
     "duckdb-signbit",
     "duckdb-arg-min-nulls",
-    "duckdb-quantile-disc"
+    "duckdb-quantile-disc",
+    "polars-zero-sign",
+    "polars-nan-sign"
   ],
   "checked": [
     {

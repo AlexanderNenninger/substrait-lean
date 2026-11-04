@@ -23,7 +23,8 @@
   ],
   "facts": [
     "duckdb-R15-shift-left",
-    "duckdb-R15-shift-right"
+    "duckdb-R15-shift-right",
+    "polars-int-shift"
   ],
   "checked": [
     {

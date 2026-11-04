@@ -1,0 +1,51 @@
+{
+  "id": "polars-log-base",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`log10` and `log(base)` divide natural logarithms",
+  "verdict": "`ln(x) / ln(base)`: last-bit differences from `log10`, `log2`",
+  "area": "doubles",
+  "constructs": [
+    "log10",
+    "log"
+  ],
+  "settings": {},
+  "description": "`log10()` is `log(10.0)`, and `log(base)` is Rust's `f64::log`, `ln(x) / ln(base)`: two roundings, so it can miss the correctly rounded result by an ulp. `log10(0.5)` is -0.30102999566398114 where `log10` gives -0.3010299956639812, and `log2(1e308)` is 1023.1538532253077 where `log2` gives 1023.1538532253076.",
+  "reference": "`log10` and `log2` are the platform's `log10` and `log2`; only NULL, the sign and the domain are exact in the reference, the last bits are each engine's (#54).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.log10()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.log(2)"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/log.rs#L49-L76"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L914-L935"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    54
+  ]
+}

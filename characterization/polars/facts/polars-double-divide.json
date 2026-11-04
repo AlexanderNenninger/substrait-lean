@@ -1,0 +1,33 @@
+{
+  "id": "polars-double-divide",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Double `/`: IEEE",
+  "verdict": "`on_division_by_zero: IEEE`, but `±inf / ±inf` is NaN",
+  "area": "doubles",
+  "constructs": [
+    "/"
+  ],
+  "settings": {},
+  "description": "`/` on doubles is IEEE 754: `x / 0` is ±inf, `0 / 0` is NaN, `±inf / ±inf` is NaN. No setting changes it. With the `IEEE` candidate, only the four `±inf / ±inf` rows differ, as for DuckDB (duckdb-R15-double-arith).",
+  "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 / Float64"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    204,
+    257
+  ]
+}

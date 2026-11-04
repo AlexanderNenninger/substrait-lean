@@ -52,6 +52,18 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "var-one-value"
+        }
+      ],
+      "notes": "`var` of one value is NULL (sample) and 0.0 (`ddof=0`); `std` of one value is NULL. Polars 2.1.0."
     }
   ],
   "issues": [

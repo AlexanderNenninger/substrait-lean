@@ -1,0 +1,35 @@
+{
+  "id": "polars-zero-sign",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`-0.0` in arithmetic: two zeros",
+  "verdict": "IEEE: `1 / -0.0` is -inf",
+  "area": "doubles",
+  "constructs": [
+    "/",
+    "unary -",
+    "*",
+    "sqrt"
+  ],
+  "settings": {},
+  "description": "Arithmetic keeps the sign of zero: `1.0 / -0.0` is -inf, `-(0.0)` and `0.0 * -1` are -0.0, `sqrt(-0.0)` is -0.0. Comparison, grouping and sorting are in polars-zero-order.",
+  "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "zero-sign-arith"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "polars-int-shift",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "No bit-shift expressions",
+  "verdict": "no `<<` or `>>` on expressions",
+  "area": "integers",
+  "constructs": [
+    "shift_left",
+    "shift_right"
+  ],
+  "settings": {},
+  "description": "Polars's Python expressions have no bit shift: `pl.Expr` has no `__lshift__` or `__rshift__`, and its `bitwise_*` methods are `and`, `or`, `xor` and bit counts. `shift` moves rows.",
+  "reference": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`), with the range open (ST-1). A plan with them is refused on Polars or written as a multiplication or floor division by a power of two.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int-shift"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

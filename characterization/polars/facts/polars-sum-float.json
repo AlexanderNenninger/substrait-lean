@@ -35,6 +35,18 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Unverified: the sum of no values through polars-sql."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "float-sum-empty"
+        }
+      ],
+      "notes": "The sum of no values and of NULLs only is 0.0; `mean` of no values is NULL. Polars 2.1.0."
     }
   ],
   "issues": [

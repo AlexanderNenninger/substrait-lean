@@ -26,7 +26,8 @@
     "spark-corr",
     "polars-corr",
     "duckdb-nonfinite-aggregates",
-    "duckdb-var-stddev"
+    "duckdb-var-stddev",
+    "polars-nonfinite-aggregates"
   ],
   "checked": [
     {

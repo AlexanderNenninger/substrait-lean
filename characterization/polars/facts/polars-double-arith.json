@@ -1,0 +1,42 @@
+{
+  "id": "polars-double-arith",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Double `+ - *`: IEEE, NaN for `inf - inf` and `0 * inf`",
+  "verdict": "IEEE: NaN where the reference raises",
+  "area": "doubles",
+  "constructs": [
+    "+",
+    "-",
+    "*"
+  ],
+  "settings": {},
+  "description": "Double arithmetic is IEEE 754: `inf - inf`, `inf + (-inf)` and `0 * inf` are NaN. Every other edge case agrees with the reference.",
+  "reference": "`add`, `subtract`, `multiply` raise a domain issue for `inf - inf` and `0 · inf` (`nan_creation`: raise, #257).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 + Float64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 - Float64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 * Float64"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    257
+  ]
+}

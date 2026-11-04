@@ -1,0 +1,74 @@
+{
+  "id": "polars-round-digits",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`round(d)`: `op(x · 10ᵈ) / 10ᵈ`, no negative `d`",
+  "verdict": "matches the reference on the edge cases; `d < 0` refused",
+  "area": "doubles",
+  "constructs": [
+    "round"
+  ],
+  "settings": {},
+  "description": [
+    "`round(d)` multiplies by `10ᵈ`, rounds (half to even unless `mode` says otherwise) and divides back; from `d = 300` it splits the multiplier into powers of 2 and 5, from `d = 326` it returns the input, and a non-finite intermediate returns the input. The two roundings make ties of the decimal text round either way: `round(2.675, 2)` is 2.68 though the double is below 2.675, and `round(0.285, 2)` is 0.28.",
+    "A negative `d` is refused by the Python API (`OverflowError`, `decimals` is a `u32`)."
+  ],
+  "reference": "`round` to `d` digits (#335), `TIE_AWAY_FROM_ZERO`, with negative digits. On the probe's edge cases at `d` = 1, 2, 16, 308, 309, 400 Polars and the reference agree.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(1)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(2)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(16)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(308)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(309)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(400)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "round-digits-ties"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "round-digits-negative"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L100-L136"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    335
+  ]
+}

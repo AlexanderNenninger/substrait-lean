@@ -1,0 +1,59 @@
+{
+  "id": "polars-round",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`round()`: half to even by default",
+  "verdict": "`rounding: TIE_TO_EVEN`; `TIE_AWAY_FROM_ZERO` with `mode='half_away_from_zero'`",
+  "area": "doubles",
+  "constructs": [
+    "round"
+  ],
+  "settings": {},
+  "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case.",
+  "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO` (#335), the only value the model accepts. So the writer needs `mode='half_away_from_zero'`, which matches on every row.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.round(mode='half_away_from_zero')"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "round-default-mode"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.floor()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.ceil()"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L141-L151"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    335
+  ]
+}
