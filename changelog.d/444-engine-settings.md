@@ -8,9 +8,10 @@ with the setting named (`sverify.errors.EngineSettingsError`): on DuckDB
 `default_null_order`, `default_order`, `integer_division`,
 `error_on_division_by_zero`, `ieee_floating_point_ops`,
 `default_collation`, `scalar_subquery_error_on_multiple_rows`,
-`enable_optimizer` and `disabled_optimizers`; on Polars the engine a query
-runs on (`pl.Config.set_engine_affinity`, `POLARS_FORCE_STREAMING`,
-`POLARS_AUTO_STREAMING`; the facts were probed in memory). DuckDB's
+`enable_optimizer` and `disabled_optimizers`; on Polars an engine
+affinity that forces another engine than streaming
+(`pl.Config.set_engine_affinity("in-memory")`), since sverify runs
+Polars's streaming engine (#605). DuckDB's
 `preserve_insertion_order` warns (`EngineSettingsWarning`). `TimeZone` and
 `Calendar` are not checked: the written SQL never reads them
 (duckdb-time-zones). DuckDB's settings are read on the cursor sverify

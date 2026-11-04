@@ -133,22 +133,23 @@ def test_the_calendar_is_not_checked_and_insertion_order_warns(con, duckdb_globa
         report.run(con, "duckdb", route="auto")
 
 
-@pytest.mark.parametrize(
-    ("var", "value", "named"),
-    [
-        ("POLARS_FORCE_STREAMING", "1", "force_streaming is True"),
-        ("POLARS_AUTO_STREAMING", "1", "auto_streaming is True"),
-        ("POLARS_ENGINE_AFFINITY", "gpu", "engine_affinity is 'gpu'"),
-    ],
-)
-def test_polars_streaming_variables(con, monkeypatch, var: str, value: str, named: str) -> None:
+@pytest.mark.parametrize("value", ["in-memory", "gpu"])
+def test_polars_refuses_an_engine_other_than_streaming(con, monkeypatch, value: str) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k"))
-    monkeypatch.setenv(var, value)
-    with pytest.raises(EngineSettingsError, match=named):
+    monkeypatch.setenv("POLARS_ENGINE_AFFINITY", value)
+    with pytest.raises(EngineSettingsError, match=f"engine_affinity is '{value}'"):
         report.run(con, "polars", route="auto")
-    monkeypatch.setenv(var, "0" if var != "POLARS_ENGINE_AFFINITY" else "in-memory")
+
+
+def test_polars_streaming_variables_are_not_refused(con, monkeypatch) -> None:
+    """Streaming is the engine sverify runs (#605)."""
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    monkeypatch.setenv("POLARS_FORCE_STREAMING", "1")
+    monkeypatch.setenv("POLARS_AUTO_STREAMING", "1")
     report.run(con, "polars", route="auto")
+    assert report.routes["polars"].kind == "reference"
 
 
 def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
@@ -162,11 +163,11 @@ def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
 def test_polars_engine_affinity(con, affinity) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1))
-    affinity("in-memory")
-    report.run(con, "polars", route="auto")
     affinity("streaming")
+    report.run(con, "polars", route="auto")
+    affinity("in-memory")
     with pytest.raises(
-        EngineSettingsError, match="engine_affinity is 'streaming'.*polars-sum-float"
+        EngineSettingsError, match="engine_affinity is 'in-memory'.*polars-sum-float"
     ):
         report.run(con, "polars", route="auto")
     # DuckDB does not read Polars's settings.

@@ -23,10 +23,11 @@ timestamps are refused (duckdb-time-zones). DuckDB's
 `dialect_compatibility_mode` and `regex_match_operator_semantics` wait on a
 check of DuckDB's source.
 
-Polars: the engine a lazy query runs on, from `pl.Config.set_engine_affinity`
-(`POLARS_ENGINE_AFFINITY`), `POLARS_FORCE_STREAMING` and
-`POLARS_AUTO_STREAMING`. The Polars engine pins `collect(engine="in-memory")`,
-so this check is defence in depth.
+Polars: sverify runs the streaming engine (`collect(engine="streaming")`,
+#605); the in-memory engine is legacy. The check refuses an engine affinity
+that forces another engine (`pl.Config.set_engine_affinity("in-memory")`,
+which writes `POLARS_ENGINE_AFFINITY`). With the engine pinned, it is
+defence in depth.
 """
 
 from __future__ import annotations
@@ -153,7 +154,7 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
     "polars": (
         Setting(
             "engine_affinity",
-            ("auto", "in-memory"),
+            ("auto", "streaming"),
             "refuse",
             (
                 "polars-sum-float",
@@ -161,21 +162,8 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
                 "polars-cov",
                 "polars-mean-float",
             ),
-            "the algorithms of float aggregates (sum_order, stat_algo), probed in memory",
-        ),
-        Setting(
-            "force_streaming",
-            (False,),
-            "refuse",
-            ("polars-sum-float", "polars-var-std", "polars-cov"),
-            "the engine a query runs on (POLARS_FORCE_STREAMING), probed in memory",
-        ),
-        Setting(
-            "auto_streaming",
-            (False,),
-            "refuse",
-            ("polars-sum-float", "polars-var-std", "polars-cov"),
-            "the engine a query runs on (POLARS_AUTO_STREAMING), probed in memory",
+            "the engine a query runs on, and with it the algorithms of float aggregates "
+            "(sum_order, stat_algo); sverify runs Polars's streaming engine (#605)",
         ),
     ),
 }
@@ -196,22 +184,16 @@ def _duckdb_reader() -> Callable[[str], Any]:
     return duckdb_engine.setting
 
 
-#: Polars's environment variables for its settings (`pl.Config` writes
-#: `POLARS_ENGINE_AFFINITY` too).
+#: Polars's environment variables for its settings (`pl.Config` writes them).
 _POLARS_ENV = {
     "engine_affinity": ("POLARS_ENGINE_AFFINITY", "auto"),
-    "force_streaming": ("POLARS_FORCE_STREAMING", "0"),
-    "auto_streaming": ("POLARS_AUTO_STREAMING", "0"),
 }
 
 
 def _polars_reader() -> Callable[[str], Any]:
     def read(name: str) -> Any:
         var, default = _POLARS_ENV[name]
-        value = os.environ.get(var, default)
-        if name == "engine_affinity":
-            return value
-        return value.strip().lower() not in ("", "0", "false", "no", "off")
+        return os.environ.get(var, default)
 
     return read
 
