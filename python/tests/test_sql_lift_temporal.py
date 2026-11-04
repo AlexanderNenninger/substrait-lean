@@ -182,6 +182,12 @@ def test_time_plus_interval_wraps_around_midnight(query):
         # DuckDB reads these, as values the model has no literal for.
         ("SELECT TIME '24:00:00' AS x", "out of range"),
         ("SELECT TIME '13:45:21+02' AS x", "HH:MM:SS"),
+        # DuckDB negates the interval of TIME - INTERVAL, which overflows here (#507).
+        (
+            "SELECT TIME '12:00:00' - INTERVAL '-4611686018427387904 microseconds"
+            " -4611686018427387904 microseconds' AS x",
+            "DuckDB raises",
+        ),
     ],
 )
 def test_time_constants_outside_the_model_are_refused(query, message):

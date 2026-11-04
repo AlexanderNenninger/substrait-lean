@@ -14,11 +14,13 @@
   "description": [
     "`TIME + INTERVAL` wraps around midnight in both directions: the result is the time plus the interval's microseconds, modulo a day. `TIME '23:30' + INTERVAL 1 HOUR = 00:30`, `TIME '00:30' - INTERVAL 1 HOUR = 23:30`, and a negative interval subtracts.",
     "The interval's days and months are dropped: `TIME '10:00' + INTERVAL 1 DAY` and `+ INTERVAL 1 MONTH` are `10:00`; `+ INTERVAL '1 day 2 hours'` is `12:00`. Its microseconds may exceed a day: `+ INTERVAL 25 HOUR` is `11:00`.",
-    "DuckDB has no `date_trunc` of a TIME (a binder error). sverify's SQL truncates it on 1970-01-01 and casts back: `CAST(date_trunc(u, DATE '1970-01-01' + t) AS TIME)` (`DuckDBDialect.time_trunc`)."
+    "DuckDB has no `date_trunc` of a TIME (a binder error). sverify's SQL truncates it on 1970-01-01 and casts back: `CAST(date_trunc(u, DATE '1970-01-01' + t) AS TIME)` (`DuckDBDialect.time_trunc`).",
+    "`TIME - INTERVAL` negates the interval first, and raises where its microseconds are -2^63: `TIME '12:00:00' - INTERVAL '-4611686018427387904 microseconds -4611686018427387904 microseconds'` is `Out of Range Error: Interval micros value out of range` (DuckDB's `types/test_interval_negation_overflow.test`). `TIME + ` the same interval wraps."
   ],
   "reference": [
     "A time of day plus a constant interval of days or less is `Time.timeOfDay` (the microseconds modulo a day, Euclidean) of the sum, as DuckDB computes. An interval with months is refused (`temporalArith`): DuckDB drops them, which the model does not follow.",
-    "Truncating a time of day to an hour, minute, second, millisecond or microsecond is `Time.trunc`, a floor of the microseconds, which stays within the day. Coarser units are refused."
+    "Truncating a time of day to an hour, minute, second, millisecond or microsecond is `Time.trunc`, a floor of the microseconds, which stays within the day. Coarser units are refused.",
+    "The SQL lift refuses `TIME - INTERVAL` with -2^63 microseconds, where DuckDB raises, and an interval beyond 64-bit microseconds. Plans from the Ibis producer reduce the interval modulo a day, so the written SQL never negates such an interval."
   ],
   "status": "no-finding",
   "provenance": [
@@ -27,19 +29,66 @@
       "method": "probe",
       "checked_by": "Claude session for #507 (duckdb 2.0.0, Python)",
       "evidence": [
-        {"sql": "SELECT TIME '23:30' + INTERVAL 1 HOUR", "observed": "00:30:00"},
-        {"sql": "SELECT TIME '00:30' - INTERVAL 1 HOUR", "observed": "23:30:00"},
-        {"sql": "SELECT TIME '00:30' + INTERVAL (-1) HOUR", "observed": "23:30:00"},
-        {"sql": "SELECT TIME '00:30' + INTERVAL '-90 minutes'", "observed": "23:00:00"},
-        {"sql": "SELECT TIME '10:00' + INTERVAL (-49) HOUR", "observed": "09:00:00"},
-        {"sql": "SELECT TIME '23:59:59.999999' + INTERVAL 1 MICROSECOND", "observed": "00:00:00"},
-        {"sql": "SELECT TIME '10:00' + INTERVAL 1 DAY", "observed": "10:00:00"},
-        {"sql": "SELECT TIME '10:00' + INTERVAL 1 MONTH", "observed": "10:00:00"},
-        {"sql": "SELECT TIME '10:00' + INTERVAL 25 HOUR", "observed": "11:00:00"},
-        {"sql": "SELECT TIME '10:00' + INTERVAL '1 day 2 hours'", "observed": "12:00:00"},
-        {"sql": "SELECT TIME '10:00' + INTERVAL 9223372036 SECOND", "observed": "09:47:16"},
-        {"sql": "SELECT date_trunc('hour', TIME '10:37:12.5')", "observed": "Binder Error: No function matches the given name and argument types 'date_trunc(STRING_LITERAL, TIME)'"},
-        {"sql": "SELECT CAST(date_trunc('hour', DATE '1970-01-01' + TIME '10:37:12.5') AS TIME)", "observed": "10:00:00"}
+        {
+          "sql": "SELECT TIME '23:30' + INTERVAL 1 HOUR",
+          "observed": "00:30:00"
+        },
+        {
+          "sql": "SELECT TIME '00:30' - INTERVAL 1 HOUR",
+          "observed": "23:30:00"
+        },
+        {
+          "sql": "SELECT TIME '00:30' + INTERVAL (-1) HOUR",
+          "observed": "23:30:00"
+        },
+        {
+          "sql": "SELECT TIME '00:30' + INTERVAL '-90 minutes'",
+          "observed": "23:00:00"
+        },
+        {
+          "sql": "SELECT TIME '10:00' + INTERVAL (-49) HOUR",
+          "observed": "09:00:00"
+        },
+        {
+          "sql": "SELECT TIME '23:59:59.999999' + INTERVAL 1 MICROSECOND",
+          "observed": "00:00:00"
+        },
+        {
+          "sql": "SELECT TIME '10:00' + INTERVAL 1 DAY",
+          "observed": "10:00:00"
+        },
+        {
+          "sql": "SELECT TIME '10:00' + INTERVAL 1 MONTH",
+          "observed": "10:00:00"
+        },
+        {
+          "sql": "SELECT TIME '10:00' + INTERVAL 25 HOUR",
+          "observed": "11:00:00"
+        },
+        {
+          "sql": "SELECT TIME '10:00' + INTERVAL '1 day 2 hours'",
+          "observed": "12:00:00"
+        },
+        {
+          "sql": "SELECT TIME '10:00' + INTERVAL 9223372036 SECOND",
+          "observed": "09:47:16"
+        },
+        {
+          "sql": "SELECT date_trunc('hour', TIME '10:37:12.5')",
+          "observed": "Binder Error: No function matches the given name and argument types 'date_trunc(STRING_LITERAL, TIME)'"
+        },
+        {
+          "sql": "SELECT CAST(date_trunc('hour', DATE '1970-01-01' + TIME '10:37:12.5') AS TIME)",
+          "observed": "10:00:00"
+        },
+        {
+          "sql": "SELECT TIME '12:00:00' - INTERVAL '-4611686018427387904 microseconds -4611686018427387904 microseconds'",
+          "observed": "Out of Range Error: Interval micros value out of range"
+        },
+        {
+          "sql": "SELECT TIME '12:00:00' + INTERVAL '-4611686018427387904 microseconds -4611686018427387904 microseconds'",
+          "observed": "07:59:05.224192"
+        }
       ]
     }
   ],
