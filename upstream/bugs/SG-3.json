@@ -2,12 +2,14 @@
   "id": "SG-3",
   "project": "sqlglot",
   "version": "30.27.0",
-  "status": "confirmed",
-  "status_note": "confirmed in part on 30.29.0 (`min(x, n)` becomes `LEAST`); held, since the mirror case [#8541](https://github.com/tobymao/sqlglot/issues/8541) was closed as out of scope",
+  "status": "filed",
+  "status_note": "top-n `min(x, n)` filed as [#8888](https://github.com/tobymao/sqlglot/issues/8888), fixed on main by [#8896](https://github.com/tobymao/sqlglot/pull/8896) (bdaf7d1, 2026-11-04; other dialects now warn), not released. Reproduces on 30.29.0. `strftime`, `POSITIONAL`/`ASOF` and `TRY` not rechecked: SQLGlot has no DataFusion dialect.",
   "upstream": [
-    "https://github.com/tobymao/sqlglot/issues/8541"
+    "https://github.com/tobymao/sqlglot/issues/8541",
+    "https://github.com/tobymao/sqlglot/issues/8888",
+    "https://github.com/tobymao/sqlglot/pull/8896"
   ],
-  "summary": "DuckDB → DataFusion transpiling rewrites some functions with another meaning: `strftime`, top-n `min(x, n)`, `POSITIONAL`/`ASOF` joins, `TRY`.",
+  "summary": "DuckDB → DataFusion transpiling rewrites some functions with another meaning: `strftime`, top-n `min(x, n)`, `POSITIONAL`/`ASOF` joins, `TRY`. Only the top-n `min`/`max` part is filed (#8888) and re-checked; the other cases were not re-checked on 2026-11-04.",
   "repro": "see `tools/sverify_dev/slt.py`'s refusal list",
   "handling": "Obsolete for sverify: the replay no longer transpiles (#264). File only if still present upstream.",
   "found_by": "sqllogictest replay (#201)",
@@ -25,6 +27,15 @@
         "sqlglot": "30.29.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "sqlglot": "30.29.0",
+        "sqlglot main": "main bdaf7d1",
+        "duckdb": "2.0.0"
+      },
+      "note": "top-n case on 30.27.0, 30.29.0 and main"
     }
   ]
 }

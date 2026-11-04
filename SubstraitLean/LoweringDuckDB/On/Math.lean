@@ -21,17 +21,19 @@ generated_entries
 
 open Substrait
 
-local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.duckdb, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue])
+local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.duckdb, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow])
 local macro "un_tac" : tactic =>
-  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
+  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
     [Substrait.Lowering.ref_fit, Substrait.Lowering.apply_fit_int, Substrait.Lowering.apply_fit_null, Substrait.Lowering.apply_fit_bool, Substrait.Lowering.apply_fit_str, Substrait.Lowering.apply_fit_list, Substrait.IntWidth.fit, Substrait.IntWidth.lo, Substrait.IntWidth.hi, Substrait.IntWidth.half, Substrait.IntWidth.modulus, Substrait.Lowering.tmod_add_tmod, Substrait.Profile.duckdb_imod_pos, Substrait.Lowering.shl_apply, Substrait.Lowering.shr_apply, Int.reduceToNat, Nat.reducePow, Substrait.Lowering.apply_ffloor_int, Substrait.Lowering.apply_ffloor_null, Substrait.Lowering.apply_ffloor_bool, Substrait.Lowering.apply_ffloor_str, Substrait.Lowering.apply_ffloor_list, Substrait.Lowering.pow2Chain_eval, List.mem_range] unary)
 local macro "bin_tac" : tactic =>
-  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
+  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
     [Substrait.Lowering.ref_fit, Substrait.Lowering.apply_fit_int, Substrait.Lowering.apply_fit_null, Substrait.Lowering.apply_fit_bool, Substrait.Lowering.apply_fit_str, Substrait.Lowering.apply_fit_list, Substrait.IntWidth.fit, Substrait.IntWidth.lo, Substrait.IntWidth.hi, Substrait.IntWidth.half, Substrait.IntWidth.modulus, Substrait.Lowering.tmod_add_tmod, Substrait.Profile.duckdb_imod_pos, Substrait.Lowering.shl_apply, Substrait.Lowering.shr_apply, Int.reduceToNat, Nat.reducePow, Substrait.Lowering.apply_ffloor_int, Substrait.Lowering.apply_ffloor_null, Substrait.Lowering.apply_ffloor_bool, Substrait.Lowering.apply_ffloor_str, Substrait.Lowering.apply_ffloor_list, Substrait.Lowering.pow2Chain_eval, List.mem_range])
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_sqrt_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.int 0)))
@@ -40,7 +42,8 @@ theorem Substrait.duckdbOn.fmath_sqrt_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.sqrt) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_sqrt : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.sqrt) :=
+abbrev Substrait.duckdbOn.fmath_sqrt : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.sqrt) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int 0)))
@@ -49,17 +52,21 @@ abbrev Substrait.duckdbOn.fmath_sqrt : Substrait.UnEntry (Substrait.Profile.duck
 
 theorem Substrait.duckdbOn.fmath_exp_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0)))
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.exp) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_exp : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.exp) :=
+abbrev Substrait.duckdbOn.fmath_exp : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.exp) :=
   ⟨Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_exp_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_ln_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.int 1)))
@@ -68,16 +75,19 @@ theorem Substrait.duckdbOn.fmath_ln_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.ln) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_ln : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.ln) :=
+abbrev Substrait.duckdbOn.fmath_ln : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.ln) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int 1)))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_ln_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_log10_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.int 1)))
@@ -87,16 +97,19 @@ theorem Substrait.duckdbOn.fmath_log10_agree : ∀ (x : Substrait.Value),
       x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_log10 : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.log10) :=
+abbrev Substrait.duckdbOn.fmath_log10 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.log10) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int 1)))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_log10_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_log2_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.int 1)))
@@ -105,16 +118,19 @@ theorem Substrait.duckdbOn.fmath_log2_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.log2) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_log2 : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.log2) :=
+abbrev Substrait.duckdbOn.fmath_log2 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.log2) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int 1)))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_log2_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_sin_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.or
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -131,7 +147,8 @@ theorem Substrait.duckdbOn.fmath_sin_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.sin) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_sin : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.sin) :=
+abbrev Substrait.duckdbOn.fmath_sin : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.sin) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -146,9 +163,11 @@ abbrev Substrait.duckdbOn.fmath_sin : Substrait.UnEntry (Substrait.Profile.duckd
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_sin_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_cos_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.or
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -165,7 +184,8 @@ theorem Substrait.duckdbOn.fmath_cos_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.cos) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_cos : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.cos) :=
+abbrev Substrait.duckdbOn.fmath_cos : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.cos) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -180,9 +200,11 @@ abbrev Substrait.duckdbOn.fmath_cos : Substrait.UnEntry (Substrait.Profile.duckd
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_cos_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_tan_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.or
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -199,7 +221,8 @@ theorem Substrait.duckdbOn.fmath_tan_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.tan) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_tan : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.tan) :=
+abbrev Substrait.duckdbOn.fmath_tan : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.tan) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -214,9 +237,11 @@ abbrev Substrait.duckdbOn.fmath_tan : Substrait.UnEntry (Substrait.Profile.duckd
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_tan_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_asin_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.or
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -233,7 +258,8 @@ theorem Substrait.duckdbOn.fmath_asin_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.asin) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_asin : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.asin) :=
+abbrev Substrait.duckdbOn.fmath_asin : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.asin) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -247,9 +273,11 @@ abbrev Substrait.duckdbOn.fmath_asin : Substrait.UnEntry (Substrait.Profile.duck
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_asin_agree⟩
 
+set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_acos_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.or
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -266,7 +294,8 @@ theorem Substrait.duckdbOn.fmath_acos_agree : ∀ (x : Substrait.Value),
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.acos) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_acos : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.acos) :=
+abbrev Substrait.duckdbOn.fmath_acos : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.acos) :=
   ⟨Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
@@ -282,11 +311,13 @@ abbrev Substrait.duckdbOn.fmath_acos : Substrait.UnEntry (Substrait.Profile.duck
 
 theorem Substrait.duckdbOn.fmath_atan_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
-    (Substrait.Expr.evalP (Substrait.Profile.duckdb { }) [x]
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
       (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0)))
     (Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.fmath Substrait.FMath.atan) x) := by
   un_tac
 
-abbrev Substrait.duckdbOn.fmath_atan : Substrait.UnEntry (Substrait.Profile.duckdb { }) (Substrait.UnFn.fmath Substrait.FMath.atan) :=
+abbrev Substrait.duckdbOn.fmath_atan : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  (Substrait.UnFn.fmath Substrait.FMath.atan) :=
   ⟨Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_atan_agree⟩
 

@@ -2,8 +2,8 @@
   "id": "SG-4",
   "project": "sqlglot",
   "version": "30.22.0",
-  "status": "confirmed",
-  "status_note": "confirmed on 30.29.0, also with the Rust tokenizer",
+  "status": "filed",
+  "status_note": "filed [#8889](https://github.com/tobymao/sqlglot/issues/8889); fixed on main by [#8892](https://github.com/tobymao/sqlglot/pull/8892) (bdaf7d1, 2026-11-04), not released. Reproduces on 30.29.0, also with the compiled tokenizer (`sqlglotc`).",
   "summary": "The tokenizer reads every underscore in a number as a digit separator. DuckDB reads only an underscore between two digits so; anywhere else it starts an alias.",
   "repro": "`SELECT 1__2` is 1 (named `__2`) in DuckDB, 12 in SQLGlot; `SELECT 1._5` is 1 (named `_5`), 1.5 in SQLGlot. `1_000` agrees.",
   "handling": "The lift refuses a number with an underscore not between two digits (`_check_numbers`).",
@@ -18,6 +18,20 @@
         "sqlglot": "30.29.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "sqlglot": "30.29.0",
+        "sqlglotc": "30.29.0",
+        "sqlglot main": "main bdaf7d1",
+        "duckdb": "2.0.0"
+      },
+      "note": "repro on 30.22.0, 30.29.0 (pure Python and sqlglotc) and main (pure Python)"
     }
+  ],
+  "upstream": [
+    "https://github.com/tobymao/sqlglot/issues/8889",
+    "https://github.com/tobymao/sqlglot/pull/8892"
   ]
 }

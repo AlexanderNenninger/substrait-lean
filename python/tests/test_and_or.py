@@ -73,3 +73,19 @@ def test_a_where_above_a_join_is_analysed_on_every_row_of_its_side():
     ]:
         report = sv.verify(sql, tables={"a": a, "b": b}, infer=False)
         assert [i.kind for i in report.errors] == ["division by zero"], sql
+
+
+def test_an_aggregate_filter_under_and_evaluates_both_operands():
+    """`SUM(…) FILTER (WHERE a AND b)`: the filter's `AND` evaluates both
+    operands too (DuckDB raises, probed for #609), so `x <> 0` does not guard
+    `10 // x`; the batch with `x = 0` is refused before the run."""
+    sql = "SELECT SUM(x) FILTER (WHERE x <> 0 AND 10 // x > 1) AS s FROM t"
+    off = sv.verify(sql, tables={"t": T}, requires=REQUIRES, infer=False)
+    [div] = [i for i in off.errors if i.kind == "division by zero"]
+    assert div.under_and_or
+    report = sv.verify(sql, tables={"t": T}, requires=REQUIRES)
+    assert report.proved and report.inferred
+    con = connect()
+    put_table(con, "t", pa.table({"x": [0, 2, 5]}))
+    with pytest.raises(PreconditionError, match="refused before the run"):
+        report.run(con, "duckdb")

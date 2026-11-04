@@ -640,7 +640,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 6,
+     "differ": 9,
      "examples": [
       {
        "row": "[-1.0, 0.5]",
@@ -2376,7 +2376,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 9,
+     "differ": 12,
      "examples": [
       {
        "row": "[0.0, -1.0]",
@@ -3976,7 +3976,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 6,
+     "differ": 9,
      "examples": [
       {
        "row": "[-1.0, 0.5]",
@@ -5712,7 +5712,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 9,
+     "differ": 12,
      "examples": [
       {
        "row": "[0.0, -1.0]",

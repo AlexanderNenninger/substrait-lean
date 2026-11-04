@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): [`basics.md` L58-L73](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/site/docs/relations/basics.md#L58-L73) requires a direction and lists none for `SORT_DIRECTION_UNSPECIFIED` ([`algebra.proto` L1842-L1857](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/proto/substrait/algebra.proto#L1842-L1857)). Existing issue: [#213](https://github.com/substrait-io/substrait/issues/213) asks exactly this (question 5, 2022; comments lean to \"reject the plan\"), unresolved; [#1069](https://github.com/substrait-io/substrait/issues/1069) covers `*_UNSPECIFIED` defaults but does not list `SortDirection`.",
   "summary": "A sort field's direction is required (`relations/basics.md`), and the directions it lists are the four of NULL placement, a custom function and clustered. `SORT_DIRECTION_UNSPECIFIED`, the enum's default value, is not described: an error, or a direction the consumer picks?",
   "repro": "A `SortRel` whose field has `direction: SORT_DIRECTION_UNSPECIFIED` over a column with NULLs.",
   "handling": [
@@ -31,6 +31,18 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "the extension YAMLs and site/docs on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "relations/basics.md orderedness and algebra.proto SortField on main; the gap is there"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/issues/213",
+    "https://github.com/substrait-io/substrait/issues/1069"
   ]
 }
