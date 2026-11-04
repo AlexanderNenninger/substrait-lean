@@ -1518,6 +1518,50 @@ def _base_name(name: str) -> str:
     return name.split(":")[0]
 
 
+#: `Parse.arithmeticFns`.
+_ARITHMETIC_FNS = (
+    "add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs",
+    "bitwise_not", "shift_left", "shift_right", *BITWISE, *DOUBLE_FNS,
+)  # fmt: skip
+
+
+def _declared_double(fns: dict[int, str], j: Any) -> bool:
+    """`Parse.doubleJ`: does the JSON expression `j` declare a double, though
+    its parsed expression may be a double's code, which `lean_expr_kind`
+    calls an integer (#205, #341)?"""
+    if not isinstance(j, dict):
+        return False
+    if isinstance(lit := j.get("literal"), dict):
+        if "null" in lit:
+            return _lean_type_kind(lit["null"]) == "float"
+        if any(k in lit for k in ("boolean", "varChar", "precisionTimestamp", "precisionTime")):
+            return False
+        return _lean_type_kind(lit) == "float"
+    if isinstance(c := j.get("cast"), dict):
+        return _lean_type_kind(c.get("type")) == "float"
+    if isinstance(f := j.get("scalarFunction"), dict):
+        out = _lean_type_kind(f.get("outputType"))
+        if out != "other":
+            return out == "float"
+        name = fns.get(f.get("functionReference", 0))
+        if name is None or _base_name(name) not in (
+            *_ARITHMETIC_FNS, "coalesce", "nullif", "greatest", "least", "nanvl", "round",
+            "floor", "ceil",
+        ):  # fmt: skip
+            return False
+        args = f.get("arguments")
+        return isinstance(args, list) and any(
+            isinstance(a, dict) and _declared_double(fns, a.get("value")) for a in args
+        )
+    if isinstance(i := j.get("ifThen"), dict):
+        ifs = i.get("ifs")
+        outs = [x.get("then") for x in ifs if isinstance(x, dict)] if isinstance(ifs, list) else []
+        if "else" in i:
+            outs.append(i["else"])
+        return any(_declared_double(fns, o) for o in outs)
+    return False
+
+
 def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
     """`typeKind`, and the SQL kind of the same type."""
     if not isinstance(ty, dict):
@@ -2875,8 +2919,12 @@ class _Parser:
             arg = self.expr(args[0], cols)
         elif len(args) == 2 and name in ("covar_samp", "covar_pop", "corr"):
             # Two doubles, integers converted (`Parse.parseMeasure`, #54).
-            x, y = (self.expr(a, cols) for a in args)
-            x, y = (Un("itof", e) if lean_expr_kind(e, cols.lean) == "int" else e for e in (x, y))
+            x, y = (
+                Un("itof", e)
+                if lean_expr_kind(e, cols.lean) == "int" and not _declared_double(self.fns, a)
+                else e
+                for e, a in ((self.expr(a, cols), a) for a in args)
+            )
             arg = Bin("pair", x, y)
         elif len(args) == 2 and name == "string_agg":
             # A constant separator (`Parse.parseMeasure`, #55).
@@ -2890,7 +2938,13 @@ class _Parser:
             raise Unsupported(f"{name} needs an argument")
         else:
             raise Unsupported(f"{name} takes one argument")
-        k = lean_expr_kind(arg, cols.lean)
+        # A double constant is its code, which `lean_expr_kind` calls an
+        # integer (#205): its declared kind says double (#341).
+        k = (
+            "float"
+            if any(_declared_double(self.fns, a) for a in args)
+            else lean_expr_kind(arg, cols.lean)
+        )
         # `AVG` of integers follows the declared output type (#209): a
         # double, or an integer (`AggFn.iavg`).
         decimal = isinstance(k, Dec)
