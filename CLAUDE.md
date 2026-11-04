@@ -237,6 +237,11 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   compute it exactly. Test it in `tests/test_black_box.py`: oracle C, the
   laws on random data, a contract they prove. A new law kind needs its case
   in `BlackBox.Law.holds` and `Law.bound` (`Contracts.lean`).
+- **Engine support** (`python/src/sverify/_support.py`): a function that not
+  every engine runs (a new one runs on DuckDB only, #271) gets a row in
+  `SUPPORT` with the engines that run it. `to_sql` and `run_plan` refuse it
+  on the others before they dispatch, with "see #271". Refusals that depend
+  on types or arguments stay in the engine.
 - **Reference semantics** (`docs/reference-semantics.md`): the area's section.
 
 ## Voice
