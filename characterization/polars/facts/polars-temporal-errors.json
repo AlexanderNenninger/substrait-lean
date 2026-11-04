@@ -1,0 +1,44 @@
+{
+  "id": "polars-temporal-errors",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`TIME + duration` unsupported; DST gaps and invalid dates raise",
+  "verdict": "raises where the reference refuses or computes",
+  "area": "temporal",
+  "options": [
+    "time_interval_months",
+    "time_zones",
+    "cast_parsing"
+  ],
+  "constructs": [
+    "+",
+    "dt.replace_time_zone",
+    "str.to_date"
+  ],
+  "settings": {},
+  "description": "`time + duration` is refused (`SchemaError`, no supertype). `replace_time_zone` raises on a local time in a DST gap (`non_existent='null'` gives NULL). `str.to_date` raises on an invalid date such as 2024-02-30 and, with `strict=False`, gives NULL; it accepts `2024-2-3` for `%Y-%m-%d`.",
+  "reference": "`TIME ± INTERVAL` is refused (`time_interval_months`); time zones are outside the model.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "time-plus-duration"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "tz-nonexistent"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "str-to-date"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

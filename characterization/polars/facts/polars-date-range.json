@@ -1,0 +1,61 @@
+{
+  "id": "polars-date-range",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Dates past 9999 and before year 1; out-of-range days panic",
+  "verdict": "no `date_range` limit; `Int32` days beyond chrono's range panic",
+  "area": "temporal",
+  "options": [
+    "date_range",
+    "raise_set"
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "dt.offset_by",
+    "cast"
+  ],
+  "settings": {},
+  "description": [
+    "Date arithmetic is not limited to 0001-01-01 … 9999-12-31: one day before 0001-01-01 is 0000-12-31 and one after 9999-12-31 is +10000-01-01; timestamps (microseconds) reach year 12736 and beyond.",
+    "A date is an `Int32` of days, wider than chrono's `NaiveDate` (about ±262 000 years). Casting such a day count to `Date` succeeds, `dt.year()` of it is NULL, and turning it into text or a Python value panics (`PanicException: out-of-range date`, PL-2)."
+  ],
+  "reference": "`date_range`: date arithmetic raises outside 0001-01-01 … 9999-12-31 (#251).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "date-range"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "date-physical-range"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "timestamp-range"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-arrow/src/temporal_conversions.rs#L43-L47"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    251
+  ]
+}

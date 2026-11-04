@@ -2866,6 +2866,586 @@
    }
   },
   {
+   "construct": "String.str.to_uppercase()",
+   "function": "upper",
+   "option": null,
+   "fixed": {},
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.to_lowercase()",
+   "function": "lower",
+   "option": null,
+   "fixed": {},
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.len_chars()",
+   "function": "character_length",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.reverse()",
+   "function": "reverse",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.strip_chars(' ')",
+   "function": "btrim",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "pl.concat_str(String, String)",
+   "function": "str_concat",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.starts_with('a')",
+   "function": "starts_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.starts_with('')",
+   "function": "starts_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.ends_with('a')",
+   "function": "ends_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.ends_with('')",
+   "function": "ends_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.find('a', literal=True)",
+   "function": "strpos",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok 0"
+      },
+      {
+       "row": "['a']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.find('b', literal=True)",
+   "function": "strpos",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok 0"
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok 0"
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok 1",
+       "lean": "ok 2"
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok 1",
+       "lean": "ok 2"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.find('', literal=True)",
+   "function": "strpos",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['a']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('a', 'xy', literal=True)",
+   "function": "replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(0, 2)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(1, 2)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(-2, 5)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(-10, 3)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(5, 1)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 8,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['aaa']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a\\nb']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 3,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['h\u00e9llo']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['\u00df']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('(a*)*', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 9,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('.$', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('(b)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 7,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['aaa']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['xay']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('a+', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('b*', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('$', '!')",
+   "function": "regexp_replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
    "construct": "int-sum-types",
    "area": "integers",
    "code": "{t: (str(df(x=([1], t)).select(pl.col('x').sum()).dtypes[0]), df(x=([2**(b-1)-1, 1], t)).select(pl.col('x').sum()).item()) for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
@@ -3194,6 +3774,252 @@
    "area": "windows",
    "code": "df(g=[1, 1, 2], x=[3, 1, 2]).select(pl.col('x').first().over('g').alias('first'), pl.col('x').shift(1).over('g').alias('lag'), pl.col('x').cum_sum().over('g').alias('cum')).rows()",
    "observed": "[(3, None, 3), (3, 3, 4), (2, None, 2)]"
+  },
+  {
+   "construct": "slice",
+   "area": "strings",
+   "code": "{f'{o},{n}': df(s=['hello', 'h\u00e9llo', '', None]).select(pl.col('s').str.slice(o, n)).to_series().to_list() for o, n in [(0, 2), (1, 2), (-2, None), (-2, 5), (-10, 3), (-10, 7), (10, 2), (2, None)]}",
+   "observed": "{'0,2': ['he', 'h\u00e9', '', None], '1,2': ['el', '\u00e9l', '', None], '-2,None': ['lo', 'lo', '', None], '-2,5': ['lo', 'lo', '', None], '-10,3': ['', '', '', None], '-10,7': ['he', 'h\u00e9', '', None], '10,2': ['', '', '', None], '2,None': ['llo', 'llo', '', None]}"
+  },
+  {
+   "construct": "slice-negative-length",
+   "area": "strings",
+   "code": "df(s=['hello']).select(pl.col('s').str.slice(0, -1)).item()",
+   "observed": "error InvalidOperationError: conversion from `i32` to `u64` failed in column 'literal' for 1 out of 1 values: [-1]"
+  },
+  {
+   "construct": "find-bytes",
+   "area": "strings",
+   "code": "df(s=['h\u00e9llo', 'hello', 'xyz', '']).select(pl.col('s').str.find('l', literal=True).alias('find'), pl.col('s').str.find('', literal=True).alias('empty')).rows()",
+   "observed": "[(3, 0), (2, 0), (None, 0), (None, 0)]"
+  },
+  {
+   "construct": "len-chars-bytes",
+   "area": "strings",
+   "code": "df(s=['h\u00e9llo', '\u00df', 'e\u0301', '']).select(pl.col('s').str.len_chars().alias('chars'), pl.col('s').str.len_bytes().alias('bytes')).rows()",
+   "observed": "[(5, 6), (1, 2), (2, 3), (0, 0)]"
+  },
+  {
+   "construct": "case-unicode",
+   "area": "strings",
+   "code": "df(s=['stra\u00dfe', '\u01c5ungla', '\u0130', '\u03a3\u0391\u03a3']).select(pl.col('s').str.to_uppercase().alias('up'), pl.col('s').str.to_lowercase().alias('low')).rows()",
+   "observed": "[('STRASSE', 'stra\u00dfe'), ('\u01c4UNGLA', '\u01c6ungla'), ('\u0130', 'i\u0307'), ('\u03a3\u0391\u03a3', '\u03c3\u03b1\u03c2')]"
+  },
+  {
+   "construct": "reverse-graphemes",
+   "area": "strings",
+   "code": "[ascii(v) for v in df(s=['e\u0301x', '\ud83c\udde9\ud83c\uddeaa', 'abc']).select(pl.col('s').str.reverse()).to_series().to_list()]",
+   "observed": "[\"'xe\\\\u0301'\", \"'a\\\\U0001f1e9\\\\U0001f1ea'\", \"'cba'\"]"
+  },
+  {
+   "construct": "strip-whitespace",
+   "area": "strings",
+   "code": "[ascii(v) for v in df(s=[' \\t a \\n', '\u00a0b\u2003', 'xxaxx']).select(pl.col('s').str.strip_chars()).to_series().to_list()]",
+   "observed": "[\"'a'\", \"'b'\", \"'xxaxx'\"]"
+  },
+  {
+   "construct": "concat-nulls",
+   "area": "strings",
+   "code": "df(a=['x', None], b=['y', 'z']).select(pl.concat_str('a', 'b').alias('concat'), pl.concat_str('a', 'b', ignore_nulls=True).alias('ignore'), (pl.col('a') + pl.col('b')).alias('plus')).rows()",
+   "observed": "[('xy', 'xy', 'xy'), (None, 'z', None)]"
+  },
+  {
+   "construct": "regex-syntax",
+   "area": "strings",
+   "code": "{p: attempt(lambda: df(s=['ab', '\u0663', '\u00e9']).select(pl.col('s').str.contains(p)).to_series().to_list()) for p in ['a(?=b)', r'(a)\\1', r'^\\d$', r'^\\w$', '(?i)AB', '^[[:alpha:]]+$']}",
+   "observed": "{'a(?=b)': 'error ComputeError: regex error: regex parse error:', '(a)\\\\1': 'error ComputeError: regex error: regex parse error:', '^\\\\d$': [False, True, False], '^\\\\w$': [False, True, True], '(?i)AB': [True, False, False], '^[[:alpha:]]+$': [True, False, False]}"
+  },
+  {
+   "construct": "regex-invalid",
+   "area": "strings",
+   "code": "df(s=['a']).select(pl.col('s').str.contains('(')).item()",
+   "observed": "error ComputeError: regex error: regex parse error:"
+  },
+  {
+   "construct": "regex-replace-refs",
+   "area": "strings",
+   "code": "df(s=['aab']).select(pl.col('s').str.replace_all('(a+)', '<$1>').alias('dollar'), pl.col('s').str.replace_all('(a+)', r'<\\1>').alias('backslash'), pl.col('s').str.replace_all('(a+)', '<${1}x>').alias('braces'), pl.col('s').str.replace('a', 'x').alias('first')).rows()",
+   "observed": "[('<aa>b', '<\\\\1>b', '<aax>b', 'xab')]"
+  },
+  {
+   "construct": "regex-extract-nomatch",
+   "area": "strings",
+   "code": "df(s=['xay', 'b', None]).select(pl.col('s').str.extract('(a)', 1).alias('g1'), pl.col('s').str.extract('(a)?b', 1).alias('unset')).rows()",
+   "observed": "[('a', None), (None, None), (None, None)]"
+  },
+  {
+   "construct": "string-functions-missing",
+   "area": "strings",
+   "code": "[n for n in ['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike'] if not hasattr(pl.Expr.str, n)]",
+   "observed": "['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike']"
+  },
+  {
+   "construct": "date-month-arith",
+   "area": "temporal",
+   "code": "df(x=[dt.date(2024, 1, 31), dt.date(2024, 2, 29), dt.date(2023, 3, 31)]).select(pl.col('x').dt.offset_by('1mo').alias('+1mo'), pl.col('x').dt.offset_by('-1mo').alias('-1mo'), pl.col('x').dt.offset_by('1y').alias('+1y')).rows()",
+   "observed": "[(datetime.date(2024, 2, 29), datetime.date(2023, 12, 31), datetime.date(2025, 1, 31)), (datetime.date(2024, 3, 29), datetime.date(2024, 1, 29), datetime.date(2025, 2, 28)), (datetime.date(2023, 4, 30), datetime.date(2023, 2, 28), datetime.date(2024, 3, 31))]"
+  },
+  {
+   "construct": "date-range",
+   "area": "temporal",
+   "code": "df(x=[dt.date(1, 1, 1), dt.date(9999, 12, 31)]).select((pl.col('x') + pl.duration(days=d)).cast(pl.String).alias(str(d)) for d in [-1, 1]).rows()",
+   "observed": "[('0000-12-31', '0001-01-02'), ('9999-12-30', '+10000-01-01')]"
+  },
+  {
+   "construct": "date-physical-range",
+   "area": "temporal",
+   "code": "df(x=([2**31 - 1], pl.Int32)).select(pl.col('x').cast(pl.Date).cast(pl.String)).item()",
+   "observed": "error PanicException: out-of-range date"
+  },
+  {
+   "construct": "timestamp-range",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(9999, 1, 1)]).select((pl.col('x') + pl.duration(days=10**6)).cast(pl.String)).item()",
+   "observed": "'+12736-11-28 00:00:00.000000'"
+  },
+  {
+   "construct": "timestamp-unit",
+   "area": "temporal",
+   "code": "(str(df(x=[dt.datetime(2024, 1, 1)]).dtypes[0]), attempt(lambda: df(x=[dt.datetime(2262, 4, 12)]).select(pl.col('x').cast(pl.Datetime('ns'))).item()))",
+   "observed": "(\"Datetime(time_unit='us', time_zone=None)\", \"error InvalidOperationError: conversion from `datetime[\u03bcs]` to `datetime[ns]` failed in column 'x' for 1 out of 1 values: [2262-04-12 00:00:00]\")"
+  },
+  {
+   "construct": "date-parts",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 12, 30, 1, 2, 3, 456789), dt.datetime(2021, 1, 3)]).select(pl.col('x').dt.year().alias('year'), pl.col('x').dt.iso_year().alias('iso_year'), pl.col('x').dt.week().alias('week'), pl.col('x').dt.weekday().alias('weekday'), pl.col('x').dt.ordinal_day().alias('doy'), pl.col('x').dt.quarter().alias('q'), pl.col('x').dt.millisecond().alias('ms'), pl.col('x').dt.microsecond().alias('us'), pl.col('x').dt.epoch('s').alias('epoch')).rows()",
+   "observed": "[(2024, 2025, 1, 1, 365, 4, 456, 456789, 1735520523), (2021, 2020, 53, 7, 3, 1, 0, 0, 1609632000)]"
+  },
+  {
+   "construct": "before-epoch",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(1969, 12, 31, 23, 59, 59, 500000)]).select(pl.col('x').dt.truncate('1s').alias('trunc'), pl.col('x').dt.epoch('s').alias('epoch'), pl.col('x').dt.second().alias('second'), pl.col('x').dt.microsecond().alias('us')).rows()",
+   "observed": "[(datetime.datetime(1969, 12, 31, 23, 59, 59), -1, 59, 500000)]"
+  },
+  {
+   "construct": "truncate-units",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 12, 31, 13, 7, 3), dt.datetime(2021, 1, 3)]).select(*(pl.col('x').dt.truncate(u).alias(u) for u in ['1w', '1mo', '1q', '1y', '15m'])).rows()",
+   "observed": "[(datetime.datetime(2024, 12, 30, 0, 0), datetime.datetime(2024, 12, 1, 0, 0), datetime.datetime(2024, 10, 1, 0, 0), datetime.datetime(2024, 1, 1, 0, 0), datetime.datetime(2024, 12, 31, 13, 0)), (datetime.datetime(2020, 12, 28, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 3, 0, 0))]"
+  },
+  {
+   "construct": "date-diff",
+   "area": "temporal",
+   "code": "df(a=[dt.date(2024, 3, 1)], b=[dt.date(2024, 1, 31)]).select((pl.col('a') - pl.col('b')).alias('diff'), (pl.col('a') - pl.col('b')).dt.total_days().alias('days')).rows()",
+   "observed": "[(datetime.timedelta(days=30), 30)]"
+  },
+  {
+   "construct": "strftime",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 1, 5, 3, 4, 5, 600000)]).select(pl.col('x').dt.strftime('%Y-%m-%d %H:%M:%S%.f %j %a %U %V')).item()",
+   "observed": "'2024-01-05 03:04:05.600 005 Fri 00 01'"
+  },
+  {
+   "construct": "time-plus-duration",
+   "area": "temporal",
+   "code": "df(x=[dt.time(23, 0)]).select(pl.col('x') + pl.duration(hours=2)).item()",
+   "observed": "error SchemaError: failed to determine supertype of time and duration[\u03bcs]"
+  },
+  {
+   "construct": "tz-nonexistent",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select(pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()",
+   "observed": "error ComputeError: datetime '2024-03-31 02:30:00' is non-existent in time zone 'Europe/Berlin'. You may be able to use `non_existent='null'` to return `null` in this case."
+  },
+  {
+   "construct": "str-to-date",
+   "area": "temporal",
+   "code": "(df(x=['2024-02-30', '2024-2-3', '2024-02-03']).select(pl.col('x').str.to_date('%Y-%m-%d', strict=False)).to_series().to_list(), df(x=['2024-02-30']).select(pl.col('x').str.to_date('%Y-%m-%d')).item())",
+   "observed": "error InvalidOperationError: conversion from `str` to `date` failed in column 'x' for 1 out of 1 values: [\"2024-02-30\"]"
+  },
+  {
+   "construct": "cast-double-to-int",
+   "area": "casts",
+   "code": "{str(t): df(x=[2.5, -2.5, 2.7, -2.7, 127.9, 128.0, 1e19, inf, nan, None]).select(pl.col('x').cast(t, strict=False)).to_series().to_list() for t in [pl.Int8, pl.Int64]}",
+   "observed": "{'Int8': [2, -2, 2, -2, 127, None, None, None, None, None], 'Int64': [2, -2, 2, -2, 127, 128, None, None, None, None]}"
+  },
+  {
+   "construct": "cast-double-to-int-strict",
+   "area": "casts",
+   "code": "df(x=[1e19]).select(pl.col('x').cast(pl.Int64)).item()",
+   "observed": "error InvalidOperationError: conversion from `f64` to `i64` failed in column 'x' for 1 out of 1 values: [1.0000e19]"
+  },
+  {
+   "construct": "cast-double-to-int-wrap",
+   "area": "casts",
+   "code": "df(x=[1e19, -1e19, inf, nan, 300.0, -129.0]).select(pl.col('x').cast(pl.Int8, wrap_numerical=True)).to_series().to_list()",
+   "observed": "[127, -128, 127, 0, 127, -128]"
+  },
+  {
+   "construct": "cast-int-narrow",
+   "area": "casts",
+   "code": "(df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, strict=False)).to_series().to_list(), df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, wrap_numerical=True)).to_series().to_list())",
+   "observed": "([None, None, 127], [44, 127, 127])"
+  },
+  {
+   "construct": "cast-int-narrow-strict",
+   "area": "casts",
+   "code": "df(x=[300]).select(pl.col('x').cast(pl.Int8)).item()",
+   "observed": "error InvalidOperationError: conversion from `i64` to `i8` failed in column 'x' for 1 out of 1 values: [300]"
+  },
+  {
+   "construct": "cast-int-to-double",
+   "area": "casts",
+   "code": "df(x=[2**53 + 1, 2**63 - 1]).select(pl.col('x').cast(pl.Float64)).to_series().to_list()",
+   "observed": "[9007199254740992.0, 9.223372036854776e+18]"
+  },
+  {
+   "construct": "cast-double-to-float",
+   "area": "casts",
+   "code": "df(x=[1e300, 1e-50, 0.1]).select(pl.col('x').cast(pl.Float32)).to_series().to_list()",
+   "observed": "[inf, 0.0, 0.10000000149011612]"
+  },
+  {
+   "construct": "cast-decimal-to-int",
+   "area": "casts",
+   "code": "df(x=['2.5', '-2.5', '2.7']).select(pl.col('x').cast(pl.Decimal(10, 1)).cast(pl.Int64)).to_series().to_list()",
+   "observed": "[2, -2, 2]"
+  },
+  {
+   "construct": "cast-int-to-decimal-overflow",
+   "area": "casts",
+   "code": "(df(x=[300, 1234]).select(pl.col('x').cast(pl.Decimal(5, 2), strict=False)).to_series().to_list(), df(x=[1234]).select(pl.col('x').cast(pl.Decimal(5, 2))).item())",
+   "observed": "error InvalidOperationError: conversion from `i64` to `decimal[5,2]` failed in column 'x' for 1 out of 1 values: [1234]"
+  },
+  {
+   "construct": "cast-string-to-int",
+   "area": "casts",
+   "code": "df(x=['1', ' 2', '3.0', '-0', '+5', '9223372036854775808', '1e2', '', '0x10']).select(pl.col('x').cast(pl.Int64, strict=False)).to_series().to_list()",
+   "observed": "[1, None, None, 0, 5, None, None, None, None]"
+  },
+  {
+   "construct": "cast-string-to-double",
+   "area": "casts",
+   "code": "df(x=['1.5', ' 2', 'nan', 'inf', '-Infinity', '1e400', '.5', '5.', '-0', 'abc']).select(pl.col('x').cast(pl.Float64, strict=False)).to_series().to_list()",
+   "observed": "[1.5, None, nan, inf, -inf, inf, 0.5, 5.0, -0.0, None]"
+  },
+  {
+   "construct": "cast-double-to-string",
+   "area": "casts",
+   "code": "df(x=[0.1, 1e21, 1e-7, 1e-5, 1.0, -0.0, inf, nan, 1e15, 1e16, 123456789012345680.0]).select(pl.col('x').cast(pl.String)).to_series().to_list()",
+   "observed": "['0.1', '1e+21', '1e-7', '0.00001', '1.0', '-0.0', 'inf', 'NaN', '1000000000000000.0', '1e+16', '1.2345678901234568e+17']"
+  },
+  {
+   "construct": "cast-bool",
+   "area": "casts",
+   "code": "(df(x=[0, 2, -1]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(), df(x=[0.0, -0.0, nan]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(), df(x=[True, False]).select(pl.col('x').cast(pl.String)).to_series().to_list())",
+   "observed": "([False, True, True], [False, False, True], ['true', 'false'])"
+  },
+  {
+   "construct": "cast-string-to-bool",
+   "area": "casts",
+   "code": "df(x=['true']).select(pl.col('x').cast(pl.Boolean)).item()",
+   "observed": "error InvalidOperationError: casting from Utf8View to Boolean not supported"
+  },
+  {
+   "construct": "cast-string-to-date",
+   "area": "casts",
+   "code": "df(x=['2024-01-01']).select(pl.col('x').cast(pl.Date)).item()",
+   "observed": "error InvalidOperationError: casting from string to date is not supported."
   }
  ]
 }

@@ -38,7 +38,7 @@ from typing import Any
 
 import polars as pl
 
-from sverify_dev.probe import Outcome, Probe, encode_double, lean_outcomes
+from sverify_dev.probe import STRINGS, Outcome, Probe, encode_double, lean_outcomes
 
 Json = dict[str, Any]
 
@@ -62,6 +62,8 @@ TYPES: dict[str, tuple[Any, list[Any]]] = {
     "int32": (pl.Int32, _ints(32)),
     "int64": (pl.Int64, _ints(64)),
     "float64": (pl.Float64, DOUBLES),
+    # DuckDB's probe strings, and two that are not ASCII.
+    "string": (pl.String, [*STRINGS[:-1], "héllo", "ß", None]),
 }
 
 WIDTHS = ("int8", "int16", "int32", "int64")
@@ -86,6 +88,8 @@ def _int_probes(w: str) -> list[Probe]:
 
 F = ("float64",)
 FF = ("float64", "float64")
+S = ("string",)
+SS = ("string", "string")
 
 PROBES: list[Probe] = [
     *itertools.chain.from_iterable(_int_probes(w) for w in WIDTHS),
@@ -121,6 +125,43 @@ PROBES: list[Probe] = [
     Probe("{0}.is_null()", "is_null", F, "boolean"),
     Probe("pl.max_horizontal({0}, {1})", "greatest", FF, "float64"),
     Probe("pl.min_horizontal({0}, {1})", "least", FF, "float64"),
+    # Strings. A constant argument is written into the construct and passed
+    # to Lean as `constants`.
+    Probe("{0}.str.to_uppercase()", "upper", S, "string"),
+    Probe("{0}.str.to_lowercase()", "lower", S, "string"),
+    Probe("{0}.str.len_chars()", "character_length", S, "int64"),
+    Probe("{0}.str.reverse()", "reverse", S, "string"),
+    Probe("{0}.str.strip_chars(' ')", "btrim", S, "string", constants=((" ", "string"),)),
+    Probe("pl.concat_str({0}, {1})", "str_concat", SS, "string"),
+    *(
+        Probe(f"{{0}}.str.{m}({c!r})", f, S, "boolean", constants=((c, "string"),))
+        for m, f in [("starts_with", "starts_with"), ("ends_with", "ends_with")]
+        for c in ("a", "")
+    ),
+    *(
+        Probe(f"{{0}}.str.find({c!r}, literal=True)", "strpos", S, "int64",
+              constants=((c, "string"),))
+        for c in ("a", "b", "")
+    ),
+    Probe("{0}.str.replace_all('a', 'xy', literal=True)", "replace", S, "string",
+          constants=(("a", "string"), ("xy", "string"))),
+    *(
+        Probe(f"{{0}}.str.slice({o}, {n})", "substring", S, "string",
+              constants=((o + 1 if o >= 0 else o, "int64"), (n, "int64")))
+        for o, n in [(0, 2), (1, 2), (-2, 5), (-10, 3), (5, 1)]
+    ),
+    # Regular expressions with a constant pattern (#50), as for DuckDB.
+    *(
+        Probe(f"{{0}}.str.extract({pat!r}, {g})", "regexp_extract", S, "string",
+              constants=((pat, "string"), (g, "int64")))
+        for pat, g in [("^(a+)(b)?", 2), ("(a|ab)(c|bcd)?", 0), ("(a*)*", 1),
+                       ("x(?:a)(y)", 1), (".$", 0), ("(b)", 1)]
+    ),
+    *(
+        Probe(f"{{0}}.str.replace_all({pat!r}, {r!r})", "regexp_replace", S, "string",
+              constants=((pat, "string"), (r, "string"), ("g", "string")))
+        for pat, r in [("a+", "-"), ("b*", "-"), ("$", "!")]
+    ),
 ]  # fmt: skip
 
 
@@ -132,8 +173,8 @@ class Observation:
     """Its name, which facts cite."""
     area: str
     code: str
-    """A Python expression over `pl`, `math`, `dt`, `Decimal`, `df`, `bits`, `inf`
-    and `nan`."""
+    """A Python expression over `pl`, `math`, `dt`, `Decimal`, `inf`, `nan` and
+    the helpers `df`, `bits`, `attempt`."""
 
 
 def _o(construct: str, area: str, code: str) -> Observation:
@@ -346,12 +387,154 @@ OBSERVATIONS: list[Observation] = [
        "df(g=[1, 1, 2], x=[3, 1, 2]).select(pl.col('x').first().over('g').alias('first'),"
        " pl.col('x').shift(1).over('g').alias('lag'),"
        " pl.col('x').cum_sum().over('g').alias('cum')).rows()"),
+    # Strings.
+    _o("slice", "strings",
+       "{f'{o},{n}': df(s=['hello', 'héllo', '', None]).select(pl.col('s').str.slice(o, n))"
+       ".to_series().to_list() for o, n in [(0, 2), (1, 2), (-2, None), (-2, 5), (-10, 3),"
+       " (-10, 7), (10, 2), (2, None)]}"),
+    _o("slice-negative-length", "strings",
+       "df(s=['hello']).select(pl.col('s').str.slice(0, -1)).item()"),
+    _o("find-bytes", "strings",
+       "df(s=['héllo', 'hello', 'xyz', '']).select(pl.col('s').str.find('l', literal=True)"
+       ".alias('find'), pl.col('s').str.find('', literal=True).alias('empty')).rows()"),
+    _o("len-chars-bytes", "strings",
+       "df(s=['héllo', 'ß', 'e\u0301', '']).select(pl.col('s').str.len_chars().alias('chars'),"
+       " pl.col('s').str.len_bytes().alias('bytes')).rows()"),
+    _o("case-unicode", "strings",
+       "df(s=['straße', 'ǅungla', 'İ', 'ΣΑΣ']).select(pl.col('s').str.to_uppercase().alias('up'),"
+       " pl.col('s').str.to_lowercase().alias('low')).rows()"),
+    _o("reverse-graphemes", "strings",
+       "[ascii(v) for v in df(s=['e\u0301x', '\U0001f1e9\U0001f1eaa', 'abc'])"
+       ".select(pl.col('s').str.reverse()).to_series().to_list()]"),
+    _o("strip-whitespace", "strings",
+       "[ascii(v) for v in df(s=[' \\t a \\n', '\u00a0b\u2003', 'xxaxx'])"
+       ".select(pl.col('s').str.strip_chars()).to_series().to_list()]"),
+    _o("concat-nulls", "strings",
+       "df(a=['x', None], b=['y', 'z']).select(pl.concat_str('a', 'b').alias('concat'),"
+       " pl.concat_str('a', 'b', ignore_nulls=True).alias('ignore'),"
+       " (pl.col('a') + pl.col('b')).alias('plus')).rows()"),
+    _o("regex-syntax", "strings",
+       "{p: attempt(lambda: df(s=['ab', '\u0663', '\u00e9']).select(pl.col('s').str.contains(p))"
+       ".to_series().to_list())"
+       " for p in ['a(?=b)', r'(a)\\1', r'^\\d$', r'^\\w$', '(?i)AB', '^[[:alpha:]]+$']}"),
+    _o("regex-invalid", "strings", "df(s=['a']).select(pl.col('s').str.contains('(')).item()"),
+    _o("regex-replace-refs", "strings",
+       "df(s=['aab']).select(pl.col('s').str.replace_all('(a+)', '<$1>').alias('dollar'),"
+       " pl.col('s').str.replace_all('(a+)', r'<\\1>').alias('backslash'),"
+       " pl.col('s').str.replace_all('(a+)', '<${1}x>').alias('braces'),"
+       " pl.col('s').str.replace('a', 'x').alias('first')).rows()"),
+    _o("regex-extract-nomatch", "strings",
+       "df(s=['xay', 'b', None]).select(pl.col('s').str.extract('(a)', 1).alias('g1'),"
+       " pl.col('s').str.extract('(a)?b', 1).alias('unset')).rows()"),
+    _o("string-functions-missing", "strings",
+       "[n for n in ['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike']"
+       " if not hasattr(pl.Expr.str, n)]"),
+    # Temporal.
+    _o("date-month-arith", "temporal",
+       "df(x=[dt.date(2024, 1, 31), dt.date(2024, 2, 29), dt.date(2023, 3, 31)]).select("
+       "pl.col('x').dt.offset_by('1mo').alias('+1mo'), pl.col('x').dt.offset_by('-1mo')"
+       ".alias('-1mo'), pl.col('x').dt.offset_by('1y').alias('+1y')).rows()"),
+    _o("date-range", "temporal",
+       "df(x=[dt.date(1, 1, 1), dt.date(9999, 12, 31)]).select("
+       "(pl.col('x') + pl.duration(days=d)).cast(pl.String).alias(str(d)) for d in [-1, 1])"
+       ".rows()"),
+    _o("date-physical-range", "temporal",
+       "df(x=([2**31 - 1], pl.Int32)).select(pl.col('x').cast(pl.Date).cast(pl.String)).item()"),
+    _o("timestamp-range", "temporal",
+       "df(x=[dt.datetime(9999, 1, 1)]).select((pl.col('x') + pl.duration(days=10**6))"
+       ".cast(pl.String)).item()"),
+    _o("timestamp-unit", "temporal",
+       "(str(df(x=[dt.datetime(2024, 1, 1)]).dtypes[0]),"
+       " attempt(lambda: df(x=[dt.datetime(2262, 4, 12)]).select(pl.col('x')"
+       ".cast(pl.Datetime('ns'))).item()))"),
+    _o("date-parts", "temporal",
+       "df(x=[dt.datetime(2024, 12, 30, 1, 2, 3, 456789), dt.datetime(2021, 1, 3)]).select("
+       "pl.col('x').dt.year().alias('year'), pl.col('x').dt.iso_year().alias('iso_year'),"
+       " pl.col('x').dt.week().alias('week'), pl.col('x').dt.weekday().alias('weekday'),"
+       " pl.col('x').dt.ordinal_day().alias('doy'), pl.col('x').dt.quarter().alias('q'),"
+       " pl.col('x').dt.millisecond().alias('ms'), pl.col('x').dt.microsecond().alias('us'),"
+       " pl.col('x').dt.epoch('s').alias('epoch')).rows()"),
+    _o("before-epoch", "temporal",
+       "df(x=[dt.datetime(1969, 12, 31, 23, 59, 59, 500000)]).select("
+       "pl.col('x').dt.truncate('1s').alias('trunc'), pl.col('x').dt.epoch('s').alias('epoch'),"
+       " pl.col('x').dt.second().alias('second'),"
+       " pl.col('x').dt.microsecond().alias('us')).rows()"),
+    _o("truncate-units", "temporal",
+       "df(x=[dt.datetime(2024, 12, 31, 13, 7, 3), dt.datetime(2021, 1, 3)]).select("
+       "*(pl.col('x').dt.truncate(u).alias(u) for u in ['1w', '1mo', '1q', '1y', '15m'])).rows()"),
+    _o("date-diff", "temporal",
+       "df(a=[dt.date(2024, 3, 1)], b=[dt.date(2024, 1, 31)]).select("
+       "(pl.col('a') - pl.col('b')).alias('diff'),"
+       " (pl.col('a') - pl.col('b')).dt.total_days().alias('days')).rows()"),
+    _o("strftime", "temporal",
+       "df(x=[dt.datetime(2024, 1, 5, 3, 4, 5, 600000)]).select("
+       "pl.col('x').dt.strftime('%Y-%m-%d %H:%M:%S%.f %j %a %U %V')).item()"),
+    _o("time-plus-duration", "temporal",
+       "df(x=[dt.time(23, 0)]).select(pl.col('x') + pl.duration(hours=2)).item()"),
+    _o("tz-nonexistent", "temporal",
+       "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select("
+       "pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()"),
+    _o("str-to-date", "temporal",
+       "(df(x=['2024-02-30', '2024-2-3', '2024-02-03']).select(pl.col('x')"
+       ".str.to_date('%Y-%m-%d', strict=False)).to_series().to_list(),"
+       " df(x=['2024-02-30']).select(pl.col('x').str.to_date('%Y-%m-%d')).item())"),
+    # Casts.
+    _o("cast-double-to-int", "casts",
+       "{str(t): df(x=[2.5, -2.5, 2.7, -2.7, 127.9, 128.0, 1e19, inf, nan, None])"
+       ".select(pl.col('x').cast(t, strict=False)).to_series().to_list()"
+       " for t in [pl.Int8, pl.Int64]}"),
+    _o("cast-double-to-int-strict", "casts",
+       "df(x=[1e19]).select(pl.col('x').cast(pl.Int64)).item()"),
+    _o("cast-double-to-int-wrap", "casts",
+       "df(x=[1e19, -1e19, inf, nan, 300.0, -129.0]).select(pl.col('x')"
+       ".cast(pl.Int8, wrap_numerical=True)).to_series().to_list()"),
+    _o("cast-int-narrow", "casts",
+       "(df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, strict=False))"
+       ".to_series().to_list(), df(x=[300, -129, 127]).select(pl.col('x')"
+       ".cast(pl.Int8, wrap_numerical=True)).to_series().to_list())"),
+    _o("cast-int-narrow-strict", "casts",
+       "df(x=[300]).select(pl.col('x').cast(pl.Int8)).item()"),
+    _o("cast-int-to-double", "casts",
+       "df(x=[2**53 + 1, 2**63 - 1]).select(pl.col('x').cast(pl.Float64)).to_series().to_list()"),
+    _o("cast-double-to-float", "casts",
+       "df(x=[1e300, 1e-50, 0.1]).select(pl.col('x').cast(pl.Float32)).to_series().to_list()"),
+    _o("cast-decimal-to-int", "casts",
+       "df(x=['2.5', '-2.5', '2.7']).select(pl.col('x').cast(pl.Decimal(10, 1))"
+       ".cast(pl.Int64)).to_series().to_list()"),
+    _o("cast-int-to-decimal-overflow", "casts",
+       "(df(x=[300, 1234]).select(pl.col('x').cast(pl.Decimal(5, 2), strict=False))"
+       ".to_series().to_list(), df(x=[1234]).select(pl.col('x').cast(pl.Decimal(5, 2))).item())"),
+    _o("cast-string-to-int", "casts",
+       "df(x=['1', ' 2', '3.0', '-0', '+5', '9223372036854775808', '1e2', '', '0x10'])"
+       ".select(pl.col('x').cast(pl.Int64, strict=False)).to_series().to_list()"),
+    _o("cast-string-to-double", "casts",
+       "df(x=['1.5', ' 2', 'nan', 'inf', '-Infinity', '1e400', '.5', '5.', '-0', 'abc'])"
+       ".select(pl.col('x').cast(pl.Float64, strict=False)).to_series().to_list()"),
+    _o("cast-double-to-string", "casts",
+       "df(x=[0.1, 1e21, 1e-7, 1e-5, 1.0, -0.0, inf, nan, 1e15, 1e16, 123456789012345680.0])"
+       ".select(pl.col('x').cast(pl.String)).to_series().to_list()"),
+    _o("cast-bool", "casts",
+       "(df(x=[0, 2, -1]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(),"
+       " df(x=[0.0, -0.0, nan]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(),"
+       " df(x=[True, False]).select(pl.col('x').cast(pl.String)).to_series().to_list())"),
+    _o("cast-string-to-bool", "casts",
+       "df(x=['true']).select(pl.col('x').cast(pl.Boolean)).item()"),
+    _o("cast-string-to-date", "casts",
+       "df(x=['2024-01-01']).select(pl.col('x').cast(pl.Date)).item()"),
 ]  # fmt: skip
 
 
 def bits(x: float) -> str:
     """A double's bits, in hex."""
     return hex(struct.unpack("<Q", struct.pack("<d", x))[0])
+
+
+def attempt(f: Callable[[], Any]) -> Any:
+    """`f()`, or the error it raises as text."""
+    try:
+        return f()
+    except Exception as e:
+        return f"error {type(e).__name__}: {str(e).splitlines()[0]}"
 
 
 def _col(i: int) -> str:
@@ -398,9 +581,21 @@ def construct(p: Probe) -> str:
     return p.construct.format(*(TYPES[t][0].__name__ for t in p.args))
 
 
+#: Functions Lean evaluates on ASCII only: outside it they are black boxes
+#: (`Text.upper`, Rust's `str::to_uppercase`), so the probe leaves those rows out.
+ASCII_ONLY = {"upper", "lower"}
+
+
+def _rows(p: Probe) -> list[tuple[Any, ...]]:
+    rows = list(itertools.product(*(TYPES[t][1] for t in p.args)))
+    if p.function in ASCII_ONLY:
+        rows = [r for r in rows if all(v is None or v.isascii() for v in r)]
+    return rows
+
+
 def run_probe(p: Probe) -> Json:
     """`p`'s matching candidates, and for each candidate the rows that differ."""
-    rows = list(itertools.product(*(TYPES[t][1] for t in p.args)))
+    rows = _rows(p)
     engine = [polars_outcome(p, r) for r in rows]
     tried: dict[str, Json] = {}
     for cand in p.candidates or (None,):
@@ -425,6 +620,7 @@ def run_probe(p: Probe) -> Json:
 def observe(o: Observation) -> Json:
     """`o`'s result, or the error it raises."""
     env = {"pl": pl, "math": math, "dt": dt, "Decimal": Decimal, "df": df, "bits": bits,
+           "attempt": attempt,
            "inf": math.inf, "nan": math.nan}  # fmt: skip
     try:
         observed = repr(eval(o.code, env))

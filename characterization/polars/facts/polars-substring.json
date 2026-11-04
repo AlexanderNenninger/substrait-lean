@@ -1,0 +1,65 @@
+{
+  "id": "polars-substring",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`str.slice`: 0-based, negative offsets from the end",
+  "verdict": "`substring` with `negative_start: WRAP_FROM_END`, offset - 1",
+  "area": "strings",
+  "options": [
+    "negative_start"
+  ],
+  "constructs": [
+    "str.slice",
+    "str.head",
+    "str.tail"
+  ],
+  "settings": {},
+  "description": [
+    "`str.slice(offset, length)` counts characters (code points) from 0; a negative offset counts from the end, and the part before the start is cut off (`slice(-10, 7)` of `hello` is `he`). An offset past the end gives `''`. A length of NULL takes the rest; a negative length is refused (`InvalidOperationError`, cast to `u64`).",
+    "With the offset shifted by one for positive starts, it matches Substrait's `substring` with `WRAP_FROM_END` on every probe row."
+  ],
+  "reference": "`substring(s, start, length)`, 1-based, `negative_start: WRAP_FROM_END` (#209); offsets outside `[-2³², 2³²)` raise (#336).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.slice(0, 2)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.slice(1, 2)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.slice(-2, 5)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.slice(-10, 3)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "String.str.slice(5, 1)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "slice"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "slice-negative-length"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    209,
+    336
+  ]
+}

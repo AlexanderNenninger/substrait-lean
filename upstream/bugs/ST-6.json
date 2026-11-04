@@ -23,7 +23,8 @@
   ],
   "facts": [
     "duckdb-R9",
-    "duckdb-R8"
+    "duckdb-R8",
+    "polars-cast-double-to-int"
   ],
   "checked": [
     {
