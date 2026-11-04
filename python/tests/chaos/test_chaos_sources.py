@@ -147,3 +147,48 @@ def test_a_source_recreated_with_lower_versions(tmp_path, scenario, restart):
         job = world.job()
     job.refresh()
     check(world, job)
+
+
+def recreate_iceberg(world: World, n: int, more: int = 0) -> None:
+    """Drop the Iceberg source and create it again under the same
+    identifier, with a new table UUID: sequence number 1 holds the rows of
+    `INITIAL` and `n` new orders, and each of `more` appends one more."""
+    cat = world.catalog()
+    cat.drop_table("db.orders")
+    rows = [*INITIAL, *[(500 + i, "dee", i) for i in range(n)]]
+    cat.create_table("db.orders", schema=orders_table([]).schema).append(orders_table(rows))
+    for i in range(more):
+        cat.load_table("db.orders").append(orders_table([(600 + i, "dee", i)]))
+
+
+@pytest.mark.parametrize("restart", [False, True], ids=["same", "restart"])
+@pytest.mark.parametrize(
+    "more",
+    [
+        pytest.param(0, id="lower"),
+        pytest.param(
+            6,
+            id="higher",
+            marks=pytest.mark.xfail(strict=True, reason="#533: IcebergSource has no table id"),
+        ),
+    ],
+)
+def test_an_iceberg_source_recreated(tmp_path, scenario, restart, more):
+    scenario["setup"] = {
+        "kind": "iceberg",
+        "recovery": "restart" if restart else "same",
+        "versions": "higher" if more else "lower",
+    }
+    # The sinks recorded orders@v5; the new table is at v1 (lower) or v7
+    # (higher, so that the old versions name snapshots of the new table).
+    world = World(tmp_path / "w", "iceberg").create()
+    job = world.job()
+    job.refresh()
+    for i in (1, 2, 3):
+        world.step(i)
+        job.refresh()
+    recreate_iceberg(world, 3, more)
+    if restart:
+        job = world.job()
+    job.refresh()
+    check(world, job)
