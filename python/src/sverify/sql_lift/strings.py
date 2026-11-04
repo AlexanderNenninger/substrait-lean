@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
+from sverify import _functions
 from sverify.plan_json import Json, Unsupported, chain, literal
 from sverify.sql_lift._base import Column, E, Sub, _fn, _Lift, _option, _shown, register
 
@@ -22,12 +22,17 @@ def _strings(lf: _Lift, es: list[E], what: str) -> list[Json]:
     return [lf.to(e, dt.string).json for e in es]
 
 
-def _string_fn(name: str, out: Any = dt.string) -> Callable[..., E]:
-    """A function of strings: `upper(s)`, `reverse(s)`, `starts_with(s, t)`, …"""
+_TYPES = {"str": dt.string, "int": dt.int64, "bool": dt.boolean}
+
+
+def _string_fn(f: _functions.Fn) -> Callable[..., E]:
+    """A function of strings of the function table: `upper(s)`, `s || t`,
+    `starts_with(s, t)`, …"""
+    out = _TYPES[f.result]
 
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         args = [node.this, *(a for a in [node.args.get("expression")] if a is not None)]
-        return E(_fn(name, _strings(lf, [sub(a) for a in args], name), out), out)
+        return E(_fn(f.name, _strings(lf, [sub(a) for a in args], f.what), out), out)
 
     return rule
 
@@ -116,12 +121,6 @@ def _like(name: str) -> Callable[..., E]:
     return rule
 
 
-def _dpipe(lf: _Lift, node: sge.DPipe, sub: Sub, scope: list[Column]) -> E:
-    # `a || b` is NULL if either is.
-    args = _strings(lf, [sub(node.this), sub(node.expression)], "||")
-    return E(_fn("str_concat", args, dt.string), dt.string)
-
-
 def _concat(lf: _Lift, node: sge.Concat, sub: Sub, scope: list[Column]) -> E:
     # `concat(…)` leaves out NULLs: '' for all of them.
     args = _strings(lf, [sub(a) for a in node.expressions], "concat")
@@ -170,19 +169,16 @@ _ANONYMOUS_STRINGS = {"prefix": _affix("starts_with"), "suffix": _affix("ends_wi
 
 register(
     {
+        # The function table's: `upper`, `lower`, `||`, `starts_with`, `ends_with`.
+        **{getattr(sge, n): _string_fn(f) for f in _functions.area("strings") for n in f.lift},
         sge.Length: _length,
-        sge.Upper: _string_fn("upper"),
-        sge.Lower: _string_fn("lower"),
         sge.Reverse: _reverse,
-        sge.StartsWith: _string_fn("starts_with", dt.boolean),
-        sge.EndsWith: _string_fn("ends_with", dt.boolean),
         sge.Trim: _trim,
         sge.Substring: _substring,
         sge.StrPosition: _strpos,
         sge.Contains: _contains,
         sge.Like: _like("like"),
         sge.ILike: _like("ilike"),
-        sge.DPipe: _dpipe,
         sge.Concat: _concat,
         sge.Replace: _replace,
         sge.Repeat: _repeat,

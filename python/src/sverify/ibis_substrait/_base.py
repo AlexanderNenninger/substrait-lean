@@ -19,6 +19,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
+from sverify import _functions
 from sverify.plan_json import (
     Json,
     Unsupported,
@@ -250,6 +251,29 @@ def _exact(op: Any) -> Any:
 
 def _unary(name: str) -> Callable[[Exprs, Any], Json]:
     return lambda x, op: call(name, [x(op.arg)])
+
+
+#: What the function table's arguments are cast to (`sverify._functions`).
+_CASTS = {"str": None, "int": dt.int64, "float": dt.float64}
+
+
+def table_rules(
+    area: str, by_group: Mapping[str, Callable[[str], Callable[[Exprs, Any], Json]]] | None = None
+) -> dict[Any, Callable[[Exprs, Any], Json]]:
+    """The rules of an area's rows of the function table, by Ibis operation:
+    the group's rule (`by_group`, of the function's name), or by default the
+    function of the operation's arguments, each cast to the row's kind."""
+
+    def plain(f: _functions.Fn) -> Callable[[Exprs, Any], Json]:
+        casts = [_CASTS[k] for k in f.args]
+        return lambda x, op: call(f.name, [x(a, t) for a, t in zip(op.args, casts, strict=True)])
+
+    by_group = by_group or {}
+    return {
+        getattr(ops, n): by_group[f.group](f.name) if f.group in by_group else plain(f)
+        for f in _functions.area(area)
+        for n in f.ibis
+    }
 
 
 def rel(op: Any) -> Json:

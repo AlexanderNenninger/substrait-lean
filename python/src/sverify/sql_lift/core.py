@@ -11,6 +11,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
+from sverify import _functions
 from sverify.plan_json import Json, Unsupported, if_then, literal
 from sverify.sql_lift._base import (
     DUCKDB,
@@ -334,32 +335,20 @@ def _doubles(lf: _Lift, es: list[E], what: str) -> list[Json]:
     return [lf.to(e, dt.float64).json for e in es]
 
 
-#: Elementary functions of doubles, by SQLGlot's node: the model's name.
+#: Elementary functions of doubles (the function table's), by SQLGlot's node,
+#: where this SQLGlot has the node.
 _ELEMENTARY: dict[type, str] = {
-    cls: name
-    for cls, name in (
-        (getattr(sge, n, None), name)
-        for n, name in (
-            ("Sqrt", "sqrt"),
-            ("Exp", "exp"),
-            ("Ln", "ln"),
-            ("Sin", "sin"),
-            ("Cos", "cos"),
-            ("Tan", "tan"),
-            ("Asin", "asin"),
-            ("Acos", "acos"),
-            ("Atan", "atan"),
-        )
-    )
+    cls: f.name
+    for f in _functions.area("core")
+    for cls in (getattr(sge, n, None) for n in f.lift)
     if cls is not None
 }
-_LOGS = ("ln", "log10", "log2", "logb")
 
 
 def _elementary_call(lf: _Lift, name: str, args: list[Json]) -> E:
-    opts = [_prefer("on_domain_error", lf.profile.domain_error)]
-    if name in _LOGS:
-        opts.append(_prefer("on_log_zero", lf.profile.log_zero))
+    """`name` of `args`, with the options of its group that DuckDB fixes."""
+    fixed = {"on_domain_error": lf.profile.domain_error, "on_log_zero": lf.profile.log_zero}
+    opts = [_prefer(o, fixed[o]) for o in _functions.BY_NAME[name].options if o in fixed]
     return E(_fn(name, args, dt.float64, opts), dt.float64)
 
 

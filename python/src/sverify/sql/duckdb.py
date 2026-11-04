@@ -92,20 +92,6 @@ class DuckDBDialect(Dialect):
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
         return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
 
-    def bitwise(self, op: str, a: str, b: str) -> str:
-        # `<<` is the lowering's (`lowered`): DuckDB raises where bits are
-        # shifted out.
-        match op:
-            case "bitwise_and":
-                return f"({a} & {b})"
-            case "bitwise_or":
-                return f"({a} | {b})"
-            case "bitwise_xor":
-                return f"xor({a}, {b})"
-            case "bitwise_shift_right":
-                return f"({a} >> {b})"
-        raise ValueError(f"{op} is the lowering's")
-
     def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
         # The generated, proved templates (`SubstraitLean/LoweringDuckDB.lean`).
         from sverify.sql import lowering
@@ -209,20 +195,11 @@ class DuckDBDialect(Dialect):
     def covar(self, fn: str, v: str) -> str:
         return f"{fn.upper()}({v}[1], {v}[2])"
 
-    def char_length(self, s: str) -> str:
-        return f"length({s})"
-
     def is_ascii(self, s: str) -> str:
         return f"(strlen({s}) = length({s}))"
 
-    def strpos(self, s: str, t: str) -> str:
-        return f"strpos({s}, {t})"
-
     def octet_length(self, s: str) -> str:
         return f"strlen({s})"
-
-    def ends_with(self, s: str, t: str) -> str:
-        return f"suffix({s}, {t})"
 
     def like_pattern(self, p: str) -> str:
         odd = f"regexp_matches({p}, {self.str_lit(r'(^|[^\\])(\\\\)*\\$')})"
@@ -260,9 +237,6 @@ class DuckDBDialect(Dialect):
     def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
         flags = ", 'g'" if every else ""
         return f"regexp_replace({s}, {self.str_lit(pattern)}, {self.str_lit(replacement)}{flags})"
-
-    def digest(self, fn: str, s: str) -> str:
-        return f"{fn}({s})"
 
     def black_box(self, row: BlackBox, args: list[str]) -> str:
         # DuckDB's own function: the black box is pinned to it (#325).
