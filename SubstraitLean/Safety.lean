@@ -92,13 +92,14 @@ inductive Issue where
   | raised
   /-- An operation on finite doubles whose result is `±∞` (#575): `+`, `-`,
   `*`, `/` and `power` that overflow (or `0 ^ -1`), `exp` past `709.78`, and a
-  `SUM`, `AVG` or statistical aggregate of finite values that overflows. The
-  reference raises: like a `SUM` that leaves its type, it is an inferred
-  precondition that the job checks on the data (`Report.assumed`), ruled out
-  where the bounds do it (`Measure.abs`). `Rel.eval` and `Profile.reference`
-  keep the IEEE value, `±∞`, which is what an engine without the check gives
-  (DuckDB, Polars), so it is not an error here (`Issue.isError`), and the lift
-  of DuckDB's SQL states DuckDB's result exactly. -/
+  `SUM`, `AVG` or statistical aggregate of finite values that overflows. An
+  error of the reference: it raises there. As for a `SUM` that leaves its
+  type, verification rules it out by an inferred precondition, proved from the
+  bounds where they do it (`Measure.abs`) and otherwise checked on the data
+  while the job runs (`Issue.assumed`, `Report.assumed`). `Rel.eval` and
+  `Profile.reference` keep the IEEE value, `±∞`, on the rows the precondition
+  excludes (`Issue.isError` is false for it), so the lift of DuckDB's SQL and
+  the lowering state DuckDB's result exactly. -/
   | infinite
   deriving Repr, DecidableEq
 
@@ -120,15 +121,19 @@ def WinFn.aggs (fns : List WinFn) : List Measure :=
     | .agg m _ _ => some m
     | _ => none
 
-/-- Errors are what a proof must rule out: every issue raises, but for an
-overflow to `±∞`, which keeps the IEEE value and is assumed (`Issue.assumed`). -/
+/-- Whether `Profile.reference` gives an error outcome for the issue (`raiseIf`).
+Every issue raises in the reference and a proof must rule each out. An
+overflow to `±∞` (#575) keeps its IEEE value in `Rel.eval` and
+`Profile.reference`: its precondition (`Issue.assumed`) rules it out, so no
+verified run reaches that value. -/
 def Issue.isError : Issue → Bool
   | .infinite => false
   | _ => true
 
-/-- The issues a report assumes do not happen, inferred like #244's bounds
-and checked on the data while the job runs (`Report.assumed`): a `SUM` that
-leaves its type, an overflow to `±∞`. -/
+/-- The errors ruled out by an inferred precondition, inferred like #244's
+bounds and checked on the data while the job runs where the bounds do not
+prove it (`Report.assumed`): a `SUM` that leaves its type, an overflow to
+`±∞`. -/
 def Issue.assumed : Issue → Bool
   | .sumWraps | .infinite => true
   | _ => false
