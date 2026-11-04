@@ -14,6 +14,9 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
 
+from sverify import black_box
+from sverify.black_box import BlackBox
+
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 
 
@@ -598,6 +601,17 @@ class Dialect:
         """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
         raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
 
+    # Black boxes (#325)
+
+    def black_box(self, row: BlackBox, args: list[str]) -> str:
+        """The scalar black box `row` of `args` (`sverify.black_box`)."""
+        raise Unsupported(black_box.refusal(row.name, self.name))
+
+    def black_box_agg(self, row: BlackBox, v: str) -> str:
+        """The aggregate black box `row` of the column `v`, NULLs skipped,
+        `row.empty` without values."""
+        raise Unsupported(black_box.refusal(row.name, self.name))
+
     # Lists (#94)
 
     def unnest_from(self, source: str, lst: str, alias: str) -> str:
@@ -898,10 +912,12 @@ class Field:
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
     "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
+    "black_box",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
     "idiv", "imod", "ipow", "fpow", "fatan2", "flogb", "bit", "pair", "greatest", "least",
+    "black_box",
 ]  # fmt: skip
 
 #: Strings (`strings.py`).
@@ -1168,8 +1184,10 @@ class Measure:
         "corr",
         "string_agg",
         "collect",
+        "black_box",
     ]
-    """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
+    """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27); `black_box`
+    is the aggregate black box `bbox` (#325)."""
     arg: Expr
     distinct: bool = False
     filter: Expr | None = None
@@ -1177,6 +1195,8 @@ class Measure:
     """The order `first`, `last` and `string_agg` take their values in (#55)."""
     sep: str = ""
     """The separator of `string_agg`."""
+    bbox: str = ""
+    """The name of a `black_box` aggregate (`sverify.black_box`)."""
 
 
 @dataclass(frozen=True)
@@ -1303,7 +1323,20 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         return "int"
     if m.fn == "collect":
         return Lst(kind(m.arg, cols))
+    if m.fn == "black_box":
+        return _BB_KINDS[black_box.AGGREGATES[m.bbox].result]
     return "float" if m.fn in ("fsum", "avg", *VAR_AGGS) else kind(m.arg, cols)
+
+
+#: The kind of each `black_box.Ty` (#325; `Parse.bbKind`).
+_BB_KINDS: dict[str, Any] = {"int": "int", "double": "float", "str": "str", "bool": "bool",
+                             "any": "other"}  # fmt: skip
+
+
+def _bb_kind(name: str) -> Any:
+    """The result kind of the scalar black box `name` (`Parse.bbScalarKind`)."""
+    row = black_box.SCALARS.get(name)
+    return _BB_KINDS[row.result] if row is not None else "other"
 
 
 def dsum_kind(a: Dec) -> Dec:
@@ -1378,6 +1411,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return k.elem if isinstance(k, Lst) else "other"
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
+        case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
+            return _bb_kind(n)
         case Un(op=op) if op in UN_KINDS:
             return UN_KINDS[op]
         case Un():
@@ -1413,6 +1448,9 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return k.elem if isinstance(k, Lst) else None
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
+        case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
+            k = _bb_kind(n)
+            return None if k == "other" else k
         case Un(op=op) if op in UN_KINDS:
             return UN_KINDS[op]
         case Un():
@@ -2982,6 +3020,7 @@ class _Parser:
             "corr",
             "string_agg",
             "collect",
+            "black_box",
         ]
         match name, k:
             case "count", _:
@@ -3027,9 +3066,13 @@ class _Parser:
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
                 raise Unsupported(f"{name} of this type is not supported")
+            # A black box (#325): NULLs skipped, its row's `empty` without values.
+            case _ if name in black_box.AGGREGATES:
+                fn = "black_box"
             case _:
                 raise Unsupported(f"unsupported aggregate function: {name}")
-        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep)
+        bbox = name if fn == "black_box" else ""
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep, bbox)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -3790,6 +3833,10 @@ class _Writer:
         match m.fn:
             case "count":
                 return f"COUNT({v})"
+            case "black_box":
+                row = black_box.AGGREGATES[m.bbox]
+                sql = d.black_box_agg(row, v)
+                return d.canon(sql) if row.result == "double" else sql
             case "dsum" | "davg":
                 if not isinstance(kind, Dec):
                     raise Unsupported(f"{m.fn} of a non-decimal")

@@ -259,6 +259,24 @@ def litKind : Value → Kind
   | .list [] => .list .other
   | .list (v :: _) => .list (litKind v)
 
+/-- A black box's type as a kind (#325). -/
+def bbKind : BlackBox.Ty → Kind
+  | .int => .int | .double => .float | .str => .str | .bool => .bool | .any => .other
+
+/-- Does a black box take an argument of kind `k` for one of type `t`? -/
+def bbAccepts (t : BlackBox.Ty) (k : Kind) : Bool :=
+  k == .other || match t with
+    | .any => true
+    | t => k == bbKind t
+
+/-- The result kind of the scalar black box `name`. -/
+def bbScalarKind (name : String) : Kind :=
+  ((BlackBox.scalar? name).map (bbKind ·.result)).getD .other
+
+/-- The result kind of the aggregate black box `name`. -/
+def bbAggKind (name : String) : Kind :=
+  ((BlackBox.aggregate? name).map (bbKind ·.result)).getD .other
+
 def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
   | .field i => cols.getD i .other
@@ -290,6 +308,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
     | _ => .other
   | .un .cardinality _ => .int
   | .un (.raise _) _ => .other
+  | .un (.bbox n) _ => bbScalarKind n
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
@@ -303,6 +322,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
   | .bin .pair _ _ => .other
+  | .bin (.bbox2 n) _ _ => bbScalarKind n
   -- One of the two values; a literal (`GREATEST(x, 0)`'s `0`) says less than
   -- the other one.
   | .bin .greatest a b | .bin .least a b =>
@@ -343,6 +363,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .min | .max | .pick _ => m.arg.kind cols
   | .concat _ => .str
   | .collect => .list (m.arg.kind cols)
+  | .bbox n => bbAggKind n
 
 def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
   | .rowNumber | .rank _ | .denseRank _ | .ntile _ => .int
@@ -1628,6 +1649,18 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         | k => throw s!"{name} of a value of kind {repr k}"
       let body ← parseExpr fns [elem] [] (← closeBody (← field lam "body"))
       return .hof hf l body
+    -- A black box (#325): its row's arguments, written as itself.
+    if let some bb := BlackBox.scalar? (baseName name) then
+      let parsed ← argJs.mapM (parseExpr fns cols bits)
+      if parsed.length != bb.args.length then
+        throw s!"{bb.name} takes {bb.args.length} argument(s)"
+      for (e, t) in parsed.zip bb.args do
+        if e.readsField && !bbAccepts t (e.kind cols) then
+          throw s!"{bb.name} of a value of kind {repr (e.kind cols)} is not supported"
+      match parsed with
+      | [a] => return .un (.bbox bb.name) a
+      | [a, b] => return .bin (.bbox2 bb.name) a b
+      | _ => throw s!"{bb.name}: black boxes of {parsed.length} arguments are not modelled yet"
     -- `array_length(regexp_match(s, p))`: NULL if `p` does not match.
     if baseName name == "array_length" then
       if let [j] := argJs then
@@ -2035,7 +2068,13 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "covar_samp", _ => pure (.cov true, arg)
     | "covar_pop", _ => pure (.cov false, arg)
     | "corr", _ => pure (.corr, arg)
-    | n, _ => throw s!"unsupported aggregate function: {n}"
+    -- A black box (#325): NULLs skipped, its row's `empty` without values.
+    | n, _ => match BlackBox.aggregate? n with
+      | some bb =>
+        if arg.readsField && !bbAccepts bb.arg k then
+          throw s!"{n} of a value of kind {repr k} is not supported"
+        else pure (.bbox bb.name, arg)
+      | none => throw s!"unsupported aggregate function: {n}"
   if fn == .collect then
     if distinct then throw "array_agg(DISTINCT …) is not supported"
     let skipsNull := match filter with
