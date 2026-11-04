@@ -14,6 +14,9 @@
 * `SqlError`: a SQL producer refused a query.
 * `CheckerVersionError`: the `substrait-check` binary is older or newer than
   this sverify.
+* `ConcurrentWriteError`: another process committed to a sink while this
+  refresh wrote it; the write was not committed, and the next refresh
+  recovers.
 """
 
 from sverify.contracts import (
@@ -24,11 +27,13 @@ from sverify.contracts import (
 )
 from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncremental, SchemaError
+from sverify.io._common import ConcurrentWriteError
 
 __all__ = [
     "AuditError",
     "CheckerVersionError",
     "CompositionError",
+    "ConcurrentWriteError",
     "NotIncremental",
     "PostconditionError",
     "PreconditionError",

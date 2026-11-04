@@ -131,7 +131,11 @@ differs) or it was computed from other tables (a source dropped and created
 again: a lower version, or another id in `contract.table_ids`): then it
 hands `write` the whole table with `replace`. `committed()` reads the last contract back from the
 sink, so that holds across restarts too; without it, sverify remembers for
-the life of the process.
+the life of the process. If two processes may refresh the same sink, make
+`write` fail for the second one to commit: raise
+`sverify.errors.ConcurrentWriteError` when the sink no longer holds what
+`committed()` returned. Its next refresh writes the whole table, or skips
+the state the other process committed.
 
 ```python
 import json

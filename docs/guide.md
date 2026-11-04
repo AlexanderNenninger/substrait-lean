@@ -752,7 +752,10 @@ tables. A table format plays four roles:
   `node.write(IcebergSink(catalog, identifier))` store a node in one commit
   per state, exactly once (keyed by the source versions). A Delta source
   dropped and created again at the same path has a new table id, which the
-  contract records: its sinks are rewritten from the new table.
+  contract records: its sinks are rewritten from the new table. When two
+  processes refresh the same `DeltaSink`, the second to commit an epoch
+  raises `ConcurrentWriteError` and writes nothing; its next refresh
+  recovers.
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg), and the commit records the plan hash, the
   source versions and the contract. A job that reads the table gets its
