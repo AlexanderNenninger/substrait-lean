@@ -1338,7 +1338,6 @@ def verify(
             `references` names an unknown column or table, or the checker
             fails on the request (for example on a plan outside the Lean
             model).
-        TypeError: An Ibis condition is given for a SQL transform.
 
     Examples:
         A SQL query (DuckDB's SQL), with its input schema:
@@ -1488,18 +1487,39 @@ def _verify_once(
     def plan(query: Transform) -> Any:
         return json.loads(plan_json(con, query, semantics))
 
-    def table_ref(name: str) -> Transform:
-        return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
+    def table_ref(name: str, cond: Condition) -> Transform:
+        if isinstance(transform, str) and isinstance(cond, str):
+            return f"SELECT * FROM {q(name)}"
+        return con.table(name)
+
+    def output(cond: Condition) -> Transform:
+        """The transformation as `cond` reads it: an Ibis condition on a SQL
+        transformation reads the lifted query as an Ibis relation over the
+        input tables, as in an `sv.sql` body (#438)."""
+        if not isinstance(transform, str) or isinstance(cond, str):
+            return transform
+        from sverify.ibis_substrait import SQLModel, sql_model_schema
+
+        names = tuple(schemas)
+        inputs: Any = tuple(con.table(n).op() for n in names)
+        return SQLModel(
+            transform,
+            inputs,
+            names,
+            sql_model_schema(transform, schemas, semantics),
+            "duckdb",
+            semantics,
+        ).to_expr()
 
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t), c, semantics)) for t, c in req_conds]
+    req_plans = [plan(condition_query(table_ref(t, c), c, semantics)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(transform, c, semantics))
+        p = plan(condition_query(output(c), c, semantics))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)

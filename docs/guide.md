@@ -279,9 +279,11 @@ except VerificationError as e:
 ```
 
 * Conditions are Ibis expressions (`_.amount >= 0`) or SQL snippets
-  (`"amount >= 0"`). SQL transformations are checked with
+  (`"amount >= 0"`), whichever language the transformation is in. SQL
+  transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
-  report.
+  report; an Ibis condition there reads the query's output, or in `requires`
+  its input table ([#438](https://github.com/AlexanderNenninger/substrait-lean/issues/438)).
 * `requires` maps each input to its conditions. A transformation with one
   input also takes a plain list, `requires=[_.amount >= 0]`. A key that
   names no input raises a `ValueError` that lists the inputs (#408).
