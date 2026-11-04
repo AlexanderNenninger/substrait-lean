@@ -658,6 +658,45 @@ is a choice that accepts every value the plan states.
 | `float_overflow` | all others | `ERROR`, `INFINITY` | `ERROR` | raise |
 <!-- substrait-diff:end -->
 
+### Substrait's test cases
+
+Substrait keeps test cases for its extension functions in
+`tests/cases/<area>/*.test` of `substrait-io/substrait`: a call, the options
+it states and the expected result, an error, or anything but an error.
+`python -m sverify_dev.substrait_cases` runs every case at v0.106.0, the
+extensions `Profile.substrait` reads, through `substrait-check`: scalar
+calls with `--outcomes` (`Expr.evalP`), aggregates and windows over a
+`VALUES` with `Rel.eval`. A case that leaves an option of its YAML open runs
+once per value the YAML lists, and each run states every option. The parser
+accepts a preference only where the reference's behaviour is that value,
+so an accepted run gives Substrait's outcome; the two profiles differ beyond
+that only at sverify's own options (the table above).
+
+A case agrees when every accepted run gives its result, is refused when
+sverify accepts none (a function, an option value or a type it does not
+model), and disagrees otherwise. A case that states an option or a value its
+YAML does not list disagrees before it runs. The ledger
+[`upstream/substrait-cases.json`](../upstream/substrait-cases.json) keeps the
+totals per area, the refusals' reasons with their counts, and each
+disagreement with its triage: `profile` (the two profiles differ at an
+option; counted as refused), `model` (a bug of sverify's, with its issue),
+`case` (a wrong test case) or `gap` (a spec gap), the last two with their
+`ST` entry. `tests/test_substrait_cases.py` fails on a disagreement the
+ledger does not triage and on a stale ledger.
+
+Of the 1,317 cases, 631 agree, 625 are refused and 61 disagree. Every
+disagreement is a test case at fault, and all are still on Substrait's
+`main`: wrong expected values for `variance`, `std_dev`, `multiply` and
+`shift_left` ([ST-13](../upstream/bugs/ST-13.json)), `logb`'s arguments in
+the order opposite to its YAML ([ST-14](../upstream/bugs/ST-14.json)), and
+options no YAML defines (`lookaround`, `spaces_only`, `full_unicode`) or
+values their option does not list ([ST-15](../upstream/bugs/ST-15.json)).
+The replay found four bugs of sverify's parser, fixed with it: `negate` of
+the least integer of its width folded past the width, a list literal
+argument stopped constant folding with an error, `variance` and `std_dev`
+did not read the `distribution` enum argument of their current signatures,
+and a date minus an interval typed as a coarse timestamp returned a date.
+
 ## Translations between profiles
 
 A plan means something only under a profile, so the unit sverify reasons
@@ -1003,8 +1042,8 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |  |
 | 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included (`Rel.duckdb_refines`, `Lowering.lowerRel_raises`). | [realizability.md](realizability.md) |
 | 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
-| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |  |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. |  |
+| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. | [Substrait's test cases](#substraits-test-cases): 631 agree, 625 refused, 61 disagree (test cases at fault: ST-13, ST-14, ST-15) |
+| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. || Done for DuckDB and Polars: `tests/test_profiles_e2e.py` runs rows A1 to H1 on both, and F2 runs a plan checked under DuckDB's profile on Polars by the transfer check. Four rows wait: A4 (#575, finite double products from inferred bounds), C2 (no frontend writes an `UNSPECIFIED` sort direction), D1 (conditions proved over every open pick) and F1 (a contract checked under Polars's own choices). |
 
 Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
 different tables. The Lean side of step 0 and 1a can merge into one PR if

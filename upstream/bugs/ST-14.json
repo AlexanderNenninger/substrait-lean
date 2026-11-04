@@ -1,0 +1,29 @@
+{
+  "id": "ST-14",
+  "project": "substrait",
+  "kind": "bug",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "confirmed",
+  "status_note": "Still on main (a4d8e00342d0): [logb.test L5-L10](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/tests/cases/logarithmic/logb.test#L5-L10) against [functions_logarithmic.yaml](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/extensions/functions_logarithmic.yaml#L152-L164). No existing issue found.",
+  "summary": "`logb`'s YAML defines `logb(x, b) => log_{b} (x)`: the value first, the base second. Four of its test cases read the base first: `logb(10::i64, 100000::i64) = 5.0`, `logb(2::fp64, 7::fp64) = 2.8073549220576041` (log₂ 7), `logb(7::fp64, 1.0::fp64) = 0` (log₇ 1) and `logb(2.34::fp64, inf::fp64) = inf`. By the YAML they are log₁₀₀₀₀₀ 10 = 0.2, log₇ 2 ≈ 0.356, log₁ 7 (a division by zero) and log_∞ 2.34 = 0. The cases further down the file (`logb(10::fp64, -inf::fp64)`, `logb(2.0::fp64, 0.0::fp64)`) also put the value second.",
+  "repro": "[logb.test L5-L10](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/logarithmic/logb.test#L5-L10); [functions_logarithmic.yaml L152-L164](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/extensions/functions_logarithmic.yaml#L152-L164) names the arguments `x` and `base`, in that order.",
+  "handling": "sverify reads `logb` as the YAML defines it. The four cases are triaged `case` in `upstream/substrait-cases.json`.",
+  "found_by": "sverify_dev.substrait_cases, the replay of Substrait's function test cases against Profile.substrait (#444 step 4)",
+  "issues": [
+    444
+  ],
+  "files": [
+    "python/tools/sverify_dev/substrait_cases.py",
+    "upstream/substrait-cases.json"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the cases are the same on main"
+    }
+  ]
+}
