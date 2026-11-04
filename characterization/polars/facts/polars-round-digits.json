@@ -8,16 +8,20 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
   "constructs": [
     "round"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "`round(d)` multiplies by `10ᵈ`, rounds (half to even unless `mode` says otherwise) and divides back; from `d = 300` it splits the multiplier into powers of 2 and 5, from `d = 326` it returns the input, and a non-finite intermediate returns the input. The two roundings make ties of the decimal text round either way: `round(2.675, 2)` is 2.68 though the double is below 2.675, and `round(0.285, 2)` is 0.28.",
     "A negative `d` is refused by the Python API (`OverflowError`, `decimals` is a `u32`)."
   ],
   "reference": "`round` to `d` digits (#335), `TIE_AWAY_FROM_ZERO`, with negative digits. On the probe's edge cases at `d` = 1, 2, 16, 308, 309, 400 Polars and the reference agree.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

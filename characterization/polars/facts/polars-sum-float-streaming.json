@@ -1,0 +1,85 @@
+{
+  "id": "polars-sum-float-streaming",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`sum` of floats on the streaming engine: in turn per group, scheduling-dependent",
+  "verdict": "grouped: plain left-to-right; ungrouped: pairwise per morsel, grouping varies between runs",
+  "area": "aggregates",
+  "options": [
+    "sum_order",
+    "empty_group_aggregates",
+    "rounding"
+  ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32", "fp64"]},
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp32", "fp64"]}
+  ],
+  "constructs": [
+    "sum"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "On the streaming engine a grouped float `sum` adds each value in turn to its group's sum (`NumSumReducer`, `reduce_one`, `+=`), in the input's width, and adds the pipelines' partial sums on merge. One `Float64` group of 1e16, 1, 1, -1e16 sums to 0.0 (in memory, Kahan: 2.0); one `Float32` group of 16777216, 1, 1 sums to 16777216 (in memory 16777218). Each step is one IEEE addition rounded to nearest, ties to even.",
+    "Ungrouped, each morsel is summed pairwise by the in-memory kernel and added to its pipeline's running sum; which morsels a pipeline gets depends on scheduling. So the same query can give different sums from run to run: five runs of a 300 000-value sum gave 151234.90000035526 and 151234.9000003553 (in memory always the first). A grouped sum over 300 000 rows also varied between runs, on both engines (polars-exec-row-order).",
+    "The sum of no values (or only nulls) is 0. The in-memory engine's algorithms are in polars-sum-float."
+  ],
+  "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-cancel"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-f32"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-fsum-runs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-runs"
+        }
+      ],
+      "notes": [
+        "s-group-fsum-cancel: 2.0 in memory, 0.0 streaming; s-group-fsum-f32: 16777218 in memory, 16777216 streaming; s-fsum-runs: streaming gave two values over five runs, in memory one; s-group-fsum-runs varied on both engines.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/sum.rs",
+          "note": "`NumSumReducer`: `reduce_one` adds a value to its group's sum; `combine` adds partial sums"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104",
+          "note": "ungrouped reduce: one state per pipeline, merged in turn"
+        }
+      ],
+      "notes": [
+        "Carried over from polars-sum-float's round-2 reading of the streaming paths, which the probes confirm."
+      ]
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ],
+  "supersedes": [
+    "polars-sum-float"
+  ]
+}

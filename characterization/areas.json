@@ -28,6 +28,7 @@
         {"id": "on_domain_error", "kind": "option", "question": "`sqrt`, logs, `asin`, `acos`, `atan2`, `power` outside their domain: NaN, NULL or a raise."},
         {"id": "on_log_zero", "kind": "option", "question": "A logarithm of zero: -inf, NaN or a raise."},
         {"id": "nan_creation", "kind": "option", "question": "`inf - inf`, `0 · inf`, `inf / inf`, `fmod(inf, y)`, a sum of both infinities: NaN or a raise."},
+        {"id": "float_overflow", "kind": "option", "question": "A finite double operation whose result overflows: `±∞`, or a raise (#575)."},
         {"id": "nan_equality", "kind": "option", "question": "Is NaN equal to NaN in `=`, grouping, `DISTINCT` and joins."},
         {"id": "nan_order", "kind": "option", "question": "Where NaN sorts, and how `MIN`, `MAX`, `<`, `greatest` treat it."},
         {"id": "nan_kind", "kind": "option", "question": "Does a NaN's sign (or payload) survive and show."},
@@ -42,6 +43,7 @@
         {"id": "case_sensitivity", "kind": "option", "question": "`like`, `contains`, `starts_with`, `strpos`, regexes: case-sensitive or not."},
         {"id": "substring_range", "kind": "option", "question": "`substring` offsets and lengths outside 32 bits."},
         {"id": "negative_start", "kind": "option", "question": "`substring` with a negative or zero start; its indexing (characters or bytes, 0- or 1-based)."},
+        {"id": "string_positions", "kind": "option", "question": "What `substring` and `strpos` positions count: characters or bytes, from 0 or 1; `strpos` without a match."},
         {"id": "regex_dialect", "kind": "extra", "question": "The regex engine and syntax, classes on non-ASCII text, a match that fails, replacement references."},
         {"id": "digests", "kind": "extra", "question": "`md5`, `sha256` and other digests: present, and on which bytes."}
       ]
@@ -70,7 +72,7 @@
       "items": [
         {"id": "null_handling", "kind": "option", "question": "`concat` and other functions given a NULL: NULL or skip."},
         {"id": "three_valued_logic", "kind": "extra", "question": "`and`, `or`, `not` with NULLs; `bool_and`, `bool_or` over NULLs."},
-        {"id": "null_join_keys", "kind": "extra", "question": "Do NULL keys match in joins, and how `IS NOT DISTINCT FROM` is spelled."}
+        {"id": "null_join_keys", "kind": "option", "question": "Do NULL keys match in joins, and how `IS NOT DISTINCT FROM` is spelled."}
       ]
     },
     {
@@ -91,7 +93,7 @@
         {"id": "stat_degenerate", "kind": "option", "question": "`CORR` of one pair or a constant side; a statistical aggregate of a single value."},
         {"id": "quantile_interp", "kind": "option", "question": "`QUANTILE_CONT`, `QUANTILE_DISC`, `MEDIAN`: the position and interpolation."},
         {"id": "tie_pick", "kind": "option", "question": "Which row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE` take among ties."},
-        {"id": "empty_group_aggregates", "kind": "extra", "question": "Aggregates of no rows or of NULLs only (`SUM`, `COUNT`, `MIN`, `AVG`)."},
+        {"id": "empty_group_aggregates", "kind": "option", "question": "Aggregates of no rows or of NULLs only (`SUM`, `COUNT`, `MIN`, `AVG`)."},
         {"id": "nonfinite_aggregates", "kind": "extra", "question": "Aggregates of ±inf and NaN inputs."}
       ]
     },
@@ -116,6 +118,18 @@
       "id": "errors",
       "items": [
         {"id": "raise_set", "kind": "extra", "question": "Where the engine raises beyond the reference (D2): extra raises, and raises that are planning errors or panics."}
+      ]
+    },
+    {
+      "id": "execution",
+      "items": [
+        {"id": "evaluation_order", "kind": "extra", "question": "Short-circuit in `CASE`, `AND`, `OR`, `COALESCE`: does the engine evaluate an expression on rows a filter or a branch removes, and raise there (division by zero, a failing cast)? This can break the reference's no-error guarantee."},
+        {"id": "settings", "kind": "extra", "question": "Which session settings change results: DuckDB's `default_null_order`, `integer_division`, `threads`, …; Polars's `Config` and environment variables."},
+        {"id": "parallel_nondeterminism", "kind": "extra", "question": "Results that change with the thread count or from run to run: the order of a double `SUM`, row order without `ORDER BY`, ties."},
+        {"id": "platform", "kind": "extra", "question": "Results that depend on the platform: libm (`sin`, `pow`, `exp`), NaN signs, SIMD paths; probes ran on macOS arm64, CI on Linux x86_64."},
+        {"id": "size_limits", "kind": "extra", "question": "Limits on string, blob and list lengths, decimal precision, nesting depth, and what happens past them."},
+        {"id": "streaming_fallback", "kind": "extra", "question": "Operations a streaming engine cannot run itself and hands to its in-memory engine (Polars's streaming engine, which sverify targets): which, and whether results differ."},
+        {"id": "try_variants", "kind": "extra", "question": "`TRY_CAST`, `TRY(…)` and other non-raising forms: which errors become NULL and which still raise."}
       ]
     },
     {

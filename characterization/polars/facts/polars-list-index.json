@@ -13,10 +13,11 @@
     "list.get",
     "list.slice"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`list.get(i)` counts from 0, a negative index from the end (`-1` is the last element). An index out of range raises (`ComputeError: get index is out of bounds`) by default and is NULL with `null_on_oob=True`; a NULL list gives NULL.",
   "reference": "`list_extract(l, i)` (reference-semantics.md, Nested) counts from 1, as DuckDB's does.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

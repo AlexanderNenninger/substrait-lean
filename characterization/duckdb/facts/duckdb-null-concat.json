@@ -8,6 +8,9 @@
   "options": [
     "null_handling"
   ],
+  "rows": [
+    {"group": "str.concat", "option": "null_handling", "types": ["string"]}
+  ],
   "constructs": [
     "||",
     "concat",
@@ -26,6 +29,7 @@
     "The SQL lift reads DuckDB's `concat(…)` as `str_concat` of `coalesce(a, '')` for each argument, and `greatest`, `least` with their NULLs left out (`sql_lift/strings.py`, `sql_lift/core.py`)."
   ],
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -12,10 +12,11 @@
     "shift_left",
     "shift_right"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "Polars's Python expressions have no bit shift: `pl.Expr` has no `__lshift__` or `__rshift__`, and its `bitwise_*` methods are `and`, `or`, `xor` and bit counts. `shift` moves rows.",
   "reference": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`), with the range open (ST-1). A plan with them is refused on Polars or written as a multiplication or floor division by a power of two.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -28,6 +29,25 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (integers)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/version/2/reference/expressions/operators.html",
+          "note": "Expression operators (API reference, version 2): bitwise `&`, `|`, `^`, `~` and no shift."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L382-L500",
+          "note": "`Expr`'s operator dunders at tag py-2.1.0: `__and__`, `__invert__`, `__or__`, `__xor__`, no `__lshift__` or `__rshift__`."
+        }
+      ],
+      "notes": "The API reference's expression operators list `&`, `|`, `^` and `~` as the bitwise operators, with no shift; the `bitwise_*` methods are `and`, `or`, `xor` and bit counts, and `Expr.shift` moves rows. The same holds for every integer type, so the shift rows are settled: Polars has no shift to characterize."
     }
+  ],
+  "rows": [
+    {"group": "int.shift", "option": "shift_range", "types": ["i8", "i16", "i32", "i64"], "evidence": "docs"}
   ]
 }

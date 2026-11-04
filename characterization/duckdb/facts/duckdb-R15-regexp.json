@@ -25,6 +25,7 @@
   "description": "With and without `'g'`, DuckDB gives the reference's value on every probed row.",
   "reference": "`regexp_extract`, `regexp_replace`: RE2's meaning (#50).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

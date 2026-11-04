@@ -27,6 +27,7 @@
     "Each is a black box (#327), strict, that may raise. Laws: the similarity at least `-1.0` (NaN is above every number in the model's codes, so `<= 1` is not a law), the cosine distance at least `+0.0`, the distance not NULL and at least `+0.0`, the inner products and the cross product not NULL. The model has no fixed-size ARRAY, so a list stands for one and the `array_*` names lift to the `list_*` functions; the cross product is written as a `DOUBLE[]`."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

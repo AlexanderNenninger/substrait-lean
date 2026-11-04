@@ -8,14 +8,27 @@
   "options": [
     "avg_int_result"
   ],
+  "rows": [
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i64"]},
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i32"], "evidence": "engine_test"}
+  ],
   "constructs": [
     "mean",
     "median"
   ],
-  "settings": {},
-  "description": "`mean` of integers is a `Float64` (the values cast to doubles and summed, polars-sum-float), so it rounds above 2⁵³ (`mean(2⁶², 2⁶², 1)` is 3.0744573456182584e18). `median` of integers is a `Float64` too. Both are NULL for no values.",
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "`mean` of integers is a `Float64` (the values cast to doubles and summed, polars-sum-float), so it rounds above 2⁵³ (`mean(2⁶², 2⁶², 1)` is 3.0744573456182584e18). `median` of integers is a `Float64` too. Both are NULL for no values.",
+    "Every integer width takes one generic path (`with_match_physical_numeric_polars_type`, `T: PolarsIntegerType`): each value becomes an `f64`, exactly for 8 to 32 bits, and the sum is an `f64`: pairwise ungrouped, Kahan per group in memory, value by value per group when streaming. A sum below 2⁵³ is exact in any order, so for `Int8` to `Int32` the mean is the exact quotient rounded once on either engine. Above 2⁵³ (`Int64`) the engines can round the sum differently."
+  ],
   "reference": "`avg` of `i64` returns `i64` in Substrait; the reference follows the declared output type (`avg_int_result`, #209).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -28,6 +41,57 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L240-L246",
+          "note": "`mean` of any numeric `ChunkedArray`: `_sum_as_f64` / count"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L292-L314",
+          "note": "`sum_arr_as_f64` converts each integer to `f64` (`as_`) and sums pairwise"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L1234-L1309",
+          "note": "in-memory grouped mean of integers: `KahanSum` of `to_f64` values, `Float64` result"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L9-L52",
+          "note": "streaming: one `NumMeanReducer` per physical numeric type, `Float64` output for integers"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L98-L113",
+          "note": "`reduce_one` adds `b.as_()` to an `f64`; `reduce_ca` adds `_sum_as_f64`"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_group_by.py#L104-L199",
+          "note": "`test_group_by_mean_by_dtype`: grouped `mean` of 1, 2, 3 | 4 is `Float64` 2.0, 4.0 for `Int8`, `Int16`, `Int32` (and the unsigned widths); `Float32` stays `Float32`. Lazy `collect()`, schema and values checked"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_group_by.py#L907-L918",
+          "note": "`test_overflow_mean_partitioned_group_by_5194` (slow): grouped `mean` of 100 000 `Int32` values of 10⁷ is 10000000.0, past the `Int32` range of the sum (eager, in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_window_functions.py#L1369-L1386",
+          "note": "`test_window_avg_of_large_integers`: SQL `AVG` of `Int32` 2·10⁹ over three window frames matches DuckDB, on `engines=['in-memory', 'streaming']`"
+        }
+      ],
+      "notes": [
+        "Pins that the mean of `Int8` to `Int32` is a `Float64` with the exact quotient on these inputs, on both engines, and that the sum does not overflow the input width.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
     }
   ],
   "issues": [

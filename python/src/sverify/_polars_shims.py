@@ -94,8 +94,6 @@ GUARDS: tuple[Guard, ...] = (
     Guard("domain error", "sum_makes_nan", "NaN from +inf and -inf",
           "polars-nonfinite-aggregates"),
     Guard("overflow to infinity", "makes_infinite", "±inf (IEEE)", "polars-double-arith"),
-    Guard("domain error", "fractional_power_of_negative",
-          "x ** 0.5 is sqrt(x): NaN for -inf, where IEEE pow gives +inf", "polars-double-arith"),
 )  # fmt: skip
 
 
@@ -160,7 +158,8 @@ def fractional_power_of_negative(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     """A negative base, `-inf` included, to a finite power that is not a
     whole number: the reference's domain error for `power`. Polars computes
     `x ** 0.5` as `sqrt(x)`, NaN for `-inf` (IEEE's `pow` gives `+inf`), so
-    the guard covers that input too."""
+    the guard covers that input too. (Not a row of `GUARDS` until the
+    reference's `nanCase` covers `-inf` and `Polars.<name>` is proved.)"""
     return (x < 0.0) & y.is_finite() & (y.floor() != y)
 
 

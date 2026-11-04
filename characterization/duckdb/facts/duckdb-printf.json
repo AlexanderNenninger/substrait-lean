@@ -23,6 +23,7 @@
     "`printf` and `format` of a format and one value are black boxes (#328): strict, may raise (a domain error in `verify`), and a string where they do not. The value is an integer, string or boolean (`BlackBox.Ty.atom`): a double's code and a date are integers in the model, which the function could not tell apart. More values are refused."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

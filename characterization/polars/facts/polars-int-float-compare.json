@@ -12,10 +12,11 @@
     "==",
     "<"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "Comparing an `Int64` with a `Float64` casts the integer to `Float64` first: `2⁵³ + 1 == 2.0⁵³` is true.",
   "reference": "Substrait's comparisons take two arguments of one type; a plan casts first, and the cast's rounding applies.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

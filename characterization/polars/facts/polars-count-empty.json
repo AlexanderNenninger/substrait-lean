@@ -15,10 +15,11 @@
     "first",
     "mode"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`count` counts the non-NULL values and `len` (`pl.len()`) the rows. Over NULLs only, `min`, `max` and `first` are NULL, `count` is 0 and `mode` is `[NULL]`. `sum` gives 0 there (polars-sum-int, polars-sum-float).",
   "reference": "`count(x)` skips NULLs and `count(*)` counts rows; other aggregates of no values are NULL.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

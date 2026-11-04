@@ -1,0 +1,126 @@
+{
+  "id": "duckdb-exec-size-limits",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Size limits: decimal width 38; strings and blobs 4 GiB - 1; vectors 128 GB",
+  "verdict": "decimal width over 38, a string or blob over 2^32 - 1 bytes and a vector over 128 GB raise OutOfRange",
+  "area": "execution",
+  "options": [
+    "size_limits"
+  ],
+  "constructs": [
+    "DECIMAL",
+    "VARCHAR",
+    "BLOB",
+    "LIST",
+    "max_expression_depth"
+  ],
+  "settings": {
+    "max_expression_depth": 1000
+  },
+  "description": [
+    "Decimals: a width must be 1 to 38; addition, subtraction and multiplication raise when the result needs a width over 38, and a declared value out of bounds is rejected by the binder (numeric types page).",
+    "Strings: the text page says a declared length `VARCHAR(n)` has no effect, and names no maximum. Lists, arrays, structs and maps: the list page names no maximum length or depth. The parser's `max_expression_depth` (default 1000) limits nesting of expressions; raising it risks a stack overflow (configuration page).",
+    "Source at v2.0.0: a string or blob (`string_t`) has a 32-bit length, `MAX_STRING_SIZE` = 2^32 - 1 bytes. Every string built in a vector's heap (`StringVector::EmptyString`, `AddBlob`) goes through `StringHeap::CreateEmptyStringInHeap`, which raises an `OutOfRangeException` past it (\"Cannot create a string of size …\"), so `repeat`, `concat` and the like raise rather than wrap. Lists and maps (`list_entry_t`) have 64-bit offsets and lengths; their child vector grows through the standard vector buffer, which raises an `OutOfRangeException` past 128 GB (`MAX_VECTOR_SIZE` = 2^37 bytes) for one vector. An out-of-range error is an execution error, so `TRY` turns it into NULL (duckdb-exec-try)."
+  ],
+  "reference": "The reference caps decimals at 38 digits and raises past them (`docs/reference-semantics.md`, decimal arithmetic). It has no limit on string, blob or list lengths.",
+  "status": "open",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/text.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/list.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
+          "note": "max_expression_depth"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/types/string_type.hpp#L31",
+          "note": "MAX_STRING_SIZE = uint32 max"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/types/string_heap.hpp#L59-L75",
+          "note": "heap strings past MAX_STRING_SIZE raise OutOfRangeException"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector/string_vector.cpp#L227-L231",
+          "note": "StringVector::EmptyString goes through the heap"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/types.hpp#L52-L64",
+          "note": "list_entry_t: uint64 offset and length"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/constants.hpp#L120-L121",
+          "note": "MAX_VECTOR_SIZE = 128 GB"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector/flat_vector.cpp#L127-L137",
+          "note": "resizing a vector past MAX_VECTOR_SIZE raises OutOfRangeException"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector/list_vector.cpp#L46-L48",
+          "note": "a list's child reserves through the child vector"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_pad.test#L110-L134",
+          "note": "LPAD/RPAD to 1100000000 four-byte characters, or 2147483647 characters → Out of Range Error: maximum supported string size"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_translate_large.test_slow#L5-L8",
+          "note": "TRANSLATE(repeat('a', 1100000000), 'a', '😀') → Out of Range Error: maximum supported string size"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_string_agg_overflow.test_slow#L5-L14",
+          "note": "length(string_agg) of 30 strings of 10^8 bytes → 3000000000, below 2^32"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/repeat_list.test#L70-L79",
+          "note": "repeat([1], 99999999999999999) → maximum allowed vector size; a length product that wraps uint64 → Out of Range Error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/list_resize.test#L297-L305",
+          "note": "LIST_RESIZE to 9999999999999999999 or 4000999999999999999 → maximum allowed vector size"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_substring.test#L249-L292",
+          "note": "substring offsets outside [-2^32, 2^32) and lengths of 2^32 or more → Out of Range Error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/decimal/test_decimal.test#L152-L156",
+          "note": "'0.1'::DECIMAL(40) → Binder Error: width must be between 1 and 38"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum_decimal_overflow.test#L1-L54",
+          "note": "the sum of a DECIMAL is a DECIMAL(38) and raises Overflow in SUM of DECIMAL past it"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin the string limit (results past 2^32 - 1 bytes raise, a 3·10^9-byte string is fine), the vector limit for lists, substring's 32-bit offsets and the 38-digit decimal width."
+    }
+  ]
+}

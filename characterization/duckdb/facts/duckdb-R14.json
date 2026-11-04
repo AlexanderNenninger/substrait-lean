@@ -9,6 +9,9 @@
     "zero_sign",
     "nan_zero_grouping"
   ],
+  "rows": [
+    {"group": "fp.div", "option": "zero_sign", "types": ["fp64"]}
+  ],
   "constructs": [
     "ORDER BY",
     "/",
@@ -16,7 +19,7 @@
   ],
   "settings": {},
   "description": [
-    "DuckDB sorts `-0.0` before `0.0`, and `1.0 / -0.0 = -inf` natively.",
+    "DuckDB keeps `-0.0` through `ORDER BY` and sorts it as a peer of `0.0`: both zeros get the same sort key, so the next key or the input order decides. `1.0 / -0.0 = -inf` natively. (Corrected 2026-11-04: this said `-0.0` sorts before `0.0`; the cited test sorts by `v, id`, so `id` broke the tie.)",
     "Shim: sverify's SQL normalizes `-0.0` to `0.0` on every read and after every operation that can make it (`Dialect.canon`)."
   ],
   "reference": [
@@ -25,6 +28,7 @@
   ],
   "status": "decided",
   "ledger_entries": 2,
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",
@@ -46,6 +50,26 @@
       "method": "source-reading",
       "checked_by": "commit 5b168e0 (#209)",
       "notes": "Decided: one zero."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles, aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/radix.hpp#L49-L160",
+          "note": "EncodeFloat/EncodeDouble give -0.0 and 0.0 the same key"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/sort/sort.cpp#L79-L86",
+          "note": "FLOAT/DOUBLE columns carried separately to keep their sign"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/order/order_by_negative_zero.test#L28",
+          "note": "orders by v, id with -0.0 at id 1: the tie is broken by id"
+        }
+      ],
+      "notes": "Contradicts the earlier reading that -0.0 sorts first; the description is corrected. A probe of ORDER BY v alone, with -0.0 after 0.0 in the input, is on the probe round's list."
     }
   ],
   "issues": [

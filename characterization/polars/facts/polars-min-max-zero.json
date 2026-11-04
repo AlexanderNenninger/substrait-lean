@@ -1,0 +1,87 @@
+{
+  "id": "polars-min-max-zero",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`min` and `max` of ±0: the sign is the platform's",
+  "verdict": "`f64::min`/`simd_min` pick the zero; -0.0 for `min` on arm64",
+  "area": "aggregates",
+  "options": [
+    "zero_sign"
+  ],
+  "rows": [
+    {"group": "agg.order", "option": "zero_sign", "types": ["fp32", "fp64"]}
+  ],
+  "constructs": [
+    "min",
+    "max"
+  ],
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "`min` and `max` of doubles combine values with Rust's `f32::min`/`f64::min` (`max`) and the SIMD kernel's `simd_min`/`simd_max`, which give either zero when the operands are 0.0 and -0.0. On macOS arm64 `min` over {0.0, -0.0} is -0.0 and `max` is 0.0 in either input order, for `Float32` and `Float64`, grouped or not, on both engines. Another target can give the other zero.",
+    "With the column's sorted flag set, `min` returns the first non-null value and `max` the last, so it returns the zero the sort put first, and the sort holds the two zeros equal (polars-zero-order)."
+  ],
+  "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere, so `MIN` and `MAX` over zeros are `0.0`.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/min_max.rs#L87-L133",
+          "note": "floats: `min_ignore_nan` is `f32::min`/`f64::min`, `max_ignore_nan` `max`; one macro for `f32` and `f64`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/min_max/simd.rs#L239-L256",
+          "note": "SIMD kernel: `simd_min`/`simd_max` from a NaN start, then `reduce_min`/`reduce_max`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/min_max/simd.rs#L373-L374",
+          "note": "the kernel for `f32` (16 lanes) and `f64` (8 lanes)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L139-L192",
+          "note": "`ChunkAgg::min`/`max`: the sorted flag's first or last value, else the kernel per chunk merged by `min_ignore_nan`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/min_max.rs#L17-L99",
+          "note": "streaming: `Min`/`Max` for `Float32` and `Float64` unless `propagate_nans` (`nan_min`, `nan_max`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/min_max.rs#L217-L270",
+          "note": "streaming `Min`/`Max`: `reduce_ca` is `ChunkAgg::min`/`max`, `combine` is `MinMax::min_ignore_nan`/`max_ignore_nan`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L494-L540",
+          "note": "in-memory grouped `min`: `min_ignore_nan` per group"
+        },
+        {
+          "url": "https://doc.rust-lang.org/std/primitive.f64.html#method.min",
+          "note": "`f64::min` returns the other operand for a NaN; for operands that compare equal, such as 0.0 and -0.0, it may return either"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "note": "Float32 and Float64 columns [0.0, -0.0] and [-0.0, 0.0] in one group: the sign of min is -1 and of max +1, in select and group_by, in memory and streaming"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}

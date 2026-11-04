@@ -12,6 +12,18 @@ and with a tenth of the Hypothesis examples (the `dev` profile,
 (`homelab_qa.sh` runs `qa`). CI runs every test with the full counts, `core`
 in three shards.
 
+On pull requests CI runs what the change can affect; pushes to main, merge
+queue entries and retargets run everything. One job builds `substrait-check`
+and the others download it. The generated proofs are checked only when a
+Lean input changes. Engine jobs, oracle A and the notebooks skip changes in
+areas they cannot read (the table in the `changes` job). A pull request that
+changes only facts, probes, `upstream/` or `python/tests/lift_backlog.json`
+(and docs) runs `static` and a `ledger` job: the checkers and the tests that
+read those files. A pull request into a branch other than main (a stack)
+runs `static` only and its `qa` fails; retargeting it to main starts the full
+run (`.github/workflows/retarget.yml`). The header of
+`.github/workflows/ci.yml` has the details.
+
 ### Check capacity before expensive tasks
 
 Several agents often work at once, and together they have crashed the
@@ -314,6 +326,16 @@ research goes there, whoever does it.
   repro with its `observed` output, a test id, or a file of the repository
   (a ledger, or a construct of `probes.json`). Write "unknown" for what you
   can't recover; never guess a date or version.
+- `evidence` is the strongest check in `provenance`: `docs` < `source` <
+  `engine_test` (the engine's own tests with an expected result, at the
+  release tag: DuckDB's sqllogictests, Polars's unit tests; method
+  `engine-test`, or `replay` through `sverify_dev.slt`) < `probe` (probes,
+  repros) < `fuzz` < `proof`. Research goes in that
+  order, the cheaper kinds first.
+- `rows` names the rows of the engine choice tables the fact settles: a
+  function group of `Functions.lean`, one of its options, and only the types
+  its checks covered. `python -m sverify_dev.facts --coverage <engine>` lists
+  each row's facts, or `missing`, then the checklist's areas as a rollup.
 - A new check of an old fact adds to its `provenance`. A fact that no longer
   holds (a new engine version) gets a new document with `supersedes`, and the
   old one `superseded_by`.

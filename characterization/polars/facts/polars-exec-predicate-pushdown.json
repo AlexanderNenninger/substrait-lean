@@ -1,0 +1,153 @@
+{
+  "id": "polars-exec-predicate-pushdown",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Strict casts raise on the rows left after predicate pushdown",
+  "verdict": "which rows a raising expression sees depends on the optimizer; sverify turns predicate pushdown off",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "filter",
+    "cast",
+    "with_columns"
+  ],
+  "settings": {
+    "engine": ["in-memory", "streaming"],
+    "predicate_pushdown": false
+  },
+  "description": [
+    "The `cast` docstring says `strict` raises if the cast is invalid on the rows after predicates are pushed down. So the rows a strict cast sees are those the optimized plan reaches, which the optimizer decides: predicate pushdown applies filters as early as possible, at the scan (lazy optimizations guide). Neither page says whether a pushed filter can move above or below a raising expression, or whether the conditions of one `filter` are evaluated in order.",
+    "sverify collects every translated plan with `predicate_pushdown=False` (`sverify.polars_engine.collect`), because pushdown would move its guards and filters below the filters before them, onto rows the plan never evaluates there. The other optimizations (simplify expressions, common subexpressions, slice pushdown) stay on.",
+    "Round 2 (source): with pushdown on, Polars classifies each conjunct (`ExprPushdownGroup`): strict casts of a non-literal, `list.get`/`arr.get` with `null_on_oob=False`, `list.gather`, `replace_strict`, decimal and truncating arithmetic and strict `strptime` are fallible; non-elementwise expressions are barriers. A `filter(a & b)` is split into one filter per infallible conjunct below one filter of the fallible ones, so the fallible ones see fewer rows. A fallible predicate is not pushed past a filter, a join or any node that removes rows (`ir_removes_rows`); it may pass a projection that keeps every row. A fallible projection (`with_columns(x.cast(t))`) does not stop other predicates from moving below it, so the cast then raises on fewer rows; `POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS=1` keeps them above. The optimizer is shared by both engines; the streaming engine applies the optimized plan's filters per morsel. Gap: the list is closed, so raising functions outside it count as pushable, for example `str.to_integer(strict=True)` (a `FunctionOptions::elementwise()` string function). Such a predicate can move below a filter onto rows the plan removes there. sverify's `predicate_pushdown=False` avoids all of this; a probe of `filter(s != 'x').filter(s.str.to_integer() == 1)` with pushdown on goes to the next round."
+  ],
+  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.cast.html"
+        },
+        {
+          "url": "https://docs.pola.rs/user-guide/lazy/optimizations/"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L2254",
+          "note": "strict: on rows after predicates are pushed down"
+        },
+        {
+          "file": "python/src/sverify/polars_engine.py",
+          "note": "collect: predicate_pushdown=False"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/properties/general.rs#L264-L345",
+          "note": "ExprPushdownGroup: Pushable, Fallible, Barrier; blocks_pushdown"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/mod.rs#L294-L355",
+          "note": "is_fallible_top_level: the closed list of fallible expressions"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/conversion/dsl_to_ir/mod.rs#L349-L382",
+          "note": "filter: pushable conjuncts first, fallible ones in a filter above"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/conversion/convert_utils.rs#L27-L82",
+          "note": "SplitPredicates"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/predicate_pushdown/utils.rs#L357-L635",
+          "note": "pushdown_eligibility: fallible predicates kept local above nodes that remove rows"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/predicate_pushdown/utils.rs#L638-L668",
+          "note": "ir_removes_rows: joins and filters remove rows"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/mod.rs#L93-L95",
+          "note": "POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/strings.rs#L263",
+          "note": "str.to_integer is plain elementwise, not in the fallible list"
+        },
+        {
+          "file": "python/src/sverify/polars_engine.py",
+          "note": "collect: predicate_pushdown=False, other optimizations (CSE) on"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_predicates.py#L1091-L1217",
+          "note": "`test_predicate_pushdown_split_pushable`: `filter(a == 1, a.cast(Int8) == 1)` on 1, 999 places the strict cast's filter above the pushed `a == 1`, so it returns the row 1; with `POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS=1` it raises `conversion from i64 to i8 failed`. Not pushed past a join"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_predicates.py#L1007-L1076",
+          "note": "`test_predicate_pushdown_fallible_exprs_22284`: a fallible filter stays above the filter before it; a filter after `with_columns(str.to_datetime(strict=True))` moves below the projection, so the cast skips the bad row; with MAINTAIN_ERRORS it raises"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_predicates.py#L1722-L1737",
+          "note": "`test_filter_contradiction_fallible_error_handling`: `filter((cast_a > 0) & (cast_a <= 0))` with `cast_a = a.cast(Int8, strict=True)` on a = 1000 returns an empty frame (the contradiction is dropped and the cast never runs); with MAINTAIN_ERRORS it raises `InvalidOperationError`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/mod.rs#L298-L311",
+          "note": "`FilterConstraintRule` and `SimplifyBooleanRule` run under `simplify_expr`, with `maintain_errors` from `POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS`, not under `predicate_pushdown`"
+        }
+      ],
+      "notes": [
+        "The tests confirm the round-2 reading: conjuncts are split, fallible ones stay above row-removing nodes, and a fallible projection does not stop other filters from moving below it. All of them use a lazy `collect()` without `engine`, so CI runs them on the streaming engine and again in memory.",
+        "Lead: the contradiction test shows a strict cast that would raise is dropped by `FilterConstraintRule`, which runs under `simplify_expr`, not under `predicate_pushdown`. sverify turns only `predicate_pushdown` off and keeps `simplify_expression` on, so a translated plan whose filter is a contradiction over a raising expression returns no rows where the reference raises. `POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS=1` (or `simplify_expression=False`) keeps the error. `SimplifyBooleanRule` takes the same flag. To probe next round.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 4 (execution)",
+      "evidence": [
+        {
+          "sql": "c = pl.col('a').cast(pl.Int8, strict=True); pl.LazyFrame({'a': [1000]}).filter((c > 0) & (c <= 0)).collect(engine=e, optimizations=o) for e in ('in-memory', 'streaming')",
+          "observed": "default flags: [] on both engines; predicate_pushdown=False: [] on both; predicate_pushdown=False, simplify_expression=False: InvalidOperationError (conversion from i64 to i8 failed) on both; with POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS=1 and predicate_pushdown=False: InvalidOperationError"
+        },
+        {
+          "sql": "controls with predicate_pushdown=False, streaming: filter(c > 0); filter(pl.lit(False) & (c > 0))",
+          "observed": "both raise InvalidOperationError"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/optimizer/mod.rs#L298-L311",
+          "note": "`FilterConstraintRule` runs under `simplify_expr`"
+        }
+      ],
+      "notes": [
+        "Confirms the round-3 lead on both engines: `FilterConstraintRule` turns a contradiction such as `(c > 0) & (c <= 0)` into `false` and drops the filter, so a strict cast inside it that would raise never runs. It runs under `simplify_expression`, so sverify's `predicate_pushdown=False` does not stop it; `simplify_expression=False` or `POLARS_PUSHDOWN_OPT_MAINTAIN_ERRORS=1` keeps the error. A literal `false` conjunct does not drop the cast (the second control raises).",
+        "Informational: here the engine raises less than the reference, returning no rows where the reference raises. A verified plan already shows its expressions cannot raise on the rows they see, so dropping a raising branch cannot change its result; only a plan the checker leaves unverified could notice the difference.",
+        "Polars 2.1.0 (Python), macOS arm64."
+      ]
+    }
+  ]
+}

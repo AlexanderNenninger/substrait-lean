@@ -8,18 +8,22 @@
   "options": [
     "negative_start"
   ],
+  "rows": [
+    {"group": "str.sub", "option": "negative_start", "types": ["string"]}
+  ],
   "constructs": [
     "str.slice",
     "str.head",
     "str.tail"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "`str.slice(offset, length)` counts characters (code points) from 0; a negative offset counts from the end, and the part before the start is cut off (`slice(-10, 7)` of `hello` is `he`). An offset past the end gives `''`. A length of NULL takes the rest; a negative length is refused (`InvalidOperationError`, cast to `u64`).",
     "With the offset shifted by one for positive starts, it matches Substrait's `substring` with `WRAP_FROM_END` on every probe row."
   ],
   "reference": "`substring(s, start, length)`, 1-based, `negative_start: WRAP_FROM_END` (#209); offsets outside `[-2³², 2³²)` raise (#336).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -9,10 +9,11 @@
     "sort",
     "<"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "Strings compare and sort by their UTF-8 bytes, which is code point order: `''` < `B` < `Z` < `a` < `b` < `é`. Booleans sort `False` before `True`. NULLs first by default (polars-null-order).",
   "reference": "Strings in code point order (Lean's `String` order); booleans `false < true`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

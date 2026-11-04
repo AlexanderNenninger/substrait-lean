@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
+  # `retarget.yml` starts a run when a pull request is retargeted to main.
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: The pull request whose merge with main to test (empty for the branch itself)
+        required: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -12,61 +19,202 @@ concurrency:
 permissions:
   contents: read
 
-# `poe qa`, split into jobs that run side by side. Every job that installs
-# sverify builds substrait-check (the editable install's build hook runs lake),
-# from the shared lake cache when the Lean sources have not changed.
+# `poe qa`, split into jobs that run side by side. A push to main, a merge
+# queue entry and a run `retarget.yml` starts run everything; the rules below
+# apply to pull requests, and `changes` decides them.
 #
-# A pull request that changes only docs (`docs/`, `.claude/`, Markdown at the
-# root other than README.md, which tests run, and docs/guide.md and
-# docs/how-it-works.md, which tests run too) skips everything but `static`,
-# and float-bounds runs only when its own package changes. A push to main
-# always runs everything.
+# `checker` builds substrait-check once per run (cached by a hash of the Lean
+# sources, the lakefile and the toolchain) and every job that runs sverify
+# downloads it (`.github/actions/checker`), so their editable installs link it
+# without running lake.
+#
+# `lean` checks every proof, the generated entries' included
+# (`-Kcheck_generated=true`), when a `.lean` file, the lakefile, the manifest
+# or the toolchain changes (the generators and `Profile.duckdb` are `.lean`
+# files). Otherwise no proof can change, and `golden` runs the golden tests on
+# the shared checker.
+#
+# A pull request that changes only docs (`docs/`, `.claude/`, `changelog.d/`,
+# Markdown at the root other than README.md, which tests run, and
+# docs/guide.md and docs/how-it-works.md, which tests run too) skips
+# everything but `static`, and float-bounds runs only when its own package
+# changes.
+#
+# A pull request that changes only the ledgers (the facts of
+# `characterization/<engine>/facts/`, `characterization/*.json`, the probes'
+# `probes.json`, Markdown, `upstream/`, `python/tests/lift_backlog.json`,
+# plus docs) runs `static` and `ledger`: the checkers of those records and the
+# tests that read them. The replay ledgers `characterization/duckdb/<area>.json`
+# and `characterization/oracle-a/` feed oracle A, so they run everything.
+#
+# The other pull requests run `test (core)` and `test (duckdb)` always, and
+# skip a job when every file they change is one the job cannot read: the
+# table of areas in `changes` lists, for each job, the areas it skips. A file
+# outside every area (shared translation code, the lift, the SQL writer, Lean,
+# the dependencies, CI) runs every job.
+#
+# A pull request into a branch other than main (a stacked one) runs `static`
+# only, and `qa` fails, saying so: a green `qa` would stay on the commit after
+# the retarget to main, while the full run that replaces it is still going.
+# When the pull request is retargeted to main, `retarget.yml` starts this
+# workflow on it (`workflow_dispatch`), which runs everything on its merge
+# with main.
 jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.diff.outputs.code }}
       floats: ${{ steps.diff.outputs.floats }}
+      ledger: ${{ steps.diff.outputs.ledger }}
+      backlog: ${{ steps.diff.outputs.backlog }}
+      upstack: ${{ steps.diff.outputs.upstack }}
+      proofs: ${{ steps.diff.outputs.proofs }}
+      oracle: ${{ steps.diff.outputs.oracle }}
+      notebooks: ${{ steps.diff.outputs.notebooks }}
+      matrix: ${{ steps.diff.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
+          out() { echo "$1" >> "$GITHUB_OUTPUT"; }
+          docs='^(docs/|\.claude/|changelog\.d/|[^/]+\.md$)'
+          ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|python/tests/lift_backlog\.json$)'
+
+          # The areas: files that only one job, or no job but `test (core)`
+          # and `test (duckdb)`, can read.
+          src=python/src/sverify
+          tests=python/tests
+          spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark)\.py$"
+          snowflake="$src/sql/snowflake\.py$|$tests/test_sql_snowflake\.py$"
+          polars="$src/(polars_engine|_polars_shims)\.py$|$tests/test_(polars|polars_shims|probe_polars)\.py$|python/tools/sverify_dev/probe_polars\.py$"
+          datafusion="$tests/test_datafusion_quirks\.py$"
+          io="$src/io/|$tests/test_io_"
+          pytests="$tests/"
+          tools=python/tools/
+          nbs='notebooks/'
+          # Each job and the areas it skips. Oracle A runs `sverify_dev.oracle`
+          # on the lift and DuckDB (with Polars's evaluator, `slt`), no pytest;
+          # the notebooks run sverify, neither tests nor `sverify_dev`.
+          skip_spark="$polars|$snowflake|$datafusion|$io|$nbs"
+          skip_polars="$spark|$datafusion|$nbs"
+          skip_datafusion="$spark|$snowflake|$nbs"
+          skip_oracle="$spark|$snowflake|$datafusion|$io|$pytests|$nbs"
+          skip_notebooks="$pytests|$tools"
+
+          out ledger=false
+          out backlog=false
+          out upstack=false
+          all() {
+            out code=true
+            out floats=true
+            out proofs=true
+            out oracle=true
+            out notebooks=true
+            out 'matrix={"backends":["duckdb","spark","datafusion","polars snowflake"],"include":[{"backends":"core","shard":"1/3"},{"backends":"core","shard":"2/3"},{"backends":"core","shard":"3/3"}]}'
+          }
           if [ "$EVENT" != pull_request ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "floats=true" >> "$GITHUB_OUTPUT"
+            all
+            exit 0
+          fi
+          if [ "$BASE_REF" != main ]; then
+            echo "Base is $BASE_REF: static only until the pull request targets main."
+            out code=false
+            out floats=false
+            out upstack=true
             exit 0
           fi
           files=$(git diff --name-only "$BASE"...HEAD)
           printf '%s\n' "$files"
           # Here-strings, not pipes: under `pipefail` an early exit of `grep -q`
           # could fail the pipe.
-          if grep -qvE '^(docs/|\.claude/|[^/]+\.md$)' <<< "$files" \
-             || grep -qxE 'README\.md|docs/(guide|how-it-works)\.md' <<< "$files"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+          if ! grep -qvE "$docs|$ledger" <<< "$files" \
+             && ! grep -qxE 'README\.md|docs/(guide|how-it-works)\.md' <<< "$files"; then
+            out code=false
+            if grep -qE "$ledger" <<< "$files"; then
+              out ledger=true
+            fi
+            if grep -qx 'python/tests/lift_backlog\.json' <<< "$files"; then
+              out backlog=true
+            fi
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
+            out code=true
           fi
+          # Whether a job reads any changed file: one outside the docs, the
+          # ledgers and the areas it skips.
+          reads() { grep -qvE "$docs|$ledger|^($1)" <<< "$files"; }
+          flag() { if reads "$1"; then echo true; else echo false; fi; }
+          if grep -qE '\.lean$|^(lakefile\.lean|lake-manifest\.json|lean-toolchain)$' <<< "$files"; then
+            out proofs=true
+          else
+            out proofs=false
+          fi
+          out "oracle=$(flag "$skip_oracle")"
+          out "notebooks=$(flag "$skip_notebooks")"
+          backends='"duckdb"'
+          [ "$(flag "$skip_spark")" = true ] && backends="$backends,\"spark\""
+          [ "$(flag "$skip_datafusion")" = true ] && backends="$backends,\"datafusion\""
+          [ "$(flag "$skip_polars")" = true ] && backends="$backends,\"polars snowflake\""
+          matrix="{\"backends\":[$backends],\"include\":[{\"backends\":\"core\",\"shard\":\"1/3\"},{\"backends\":\"core\",\"shard\":\"2/3\"},{\"backends\":\"core\",\"shard\":\"3/3\"}]}"
+          echo "matrix: $matrix"
+          out "matrix=$matrix"
           if grep -qE '^(float-bounds/|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
              <<< "$files"; then
-            echo "floats=true" >> "$GITHUB_OUTPUT"
+            out floats=true
           else
-            echo "floats=false" >> "$GITHUB_OUTPUT"
+            out floats=false
           fi
 
-  lean:
+  # substrait-check, once per run, for every job that runs sverify. Its lake
+  # build skips the generated proofs (`lean` checks them), so it restores the
+  # lake cache without saving it: the cache keeps the checked build.
+  checker:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ledger == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: checker-bin
+          key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', '**/*.lean') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-lean
+        with:
+          save: "false"
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          lake build substrait-check
+          mkdir -p checker-bin
+          cp .lake/build/bin/substrait-check checker-bin/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: substrait-check
+          path: checker-bin/substrait-check
+          retention-days: 3
+          if-no-files-found: error
+
+  # Every proof, the generated entries' included, when a Lean input changed.
+  lean:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
@@ -79,6 +227,19 @@ jobs:
       - run: uv run --locked --project python poe -C python build
       - run: uv run --locked --project python poe -C python golden
 
+  # The golden tests on the shared checker, when no Lean input changed.
+  golden:
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - run: tests/run.sh
+
   # Lint and typecheck need no Lean: they skip installing sverify itself (poe's
   # default executor would `uv run`, which installs it).
   static:
@@ -87,6 +248,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
@@ -96,30 +258,24 @@ jobs:
       - run: uv run --no-sync --project python poe -e simple -C python typecheck
 
   # The backends of `tests/conftest.py`; the quick ones share a job, so they
-  # pay for the setup once.
+  # pay for the setup once. `changes` leaves out the engines a pull request
+  # cannot affect.
   test:
-    needs: changes
+    needs: [changes, checker]
     if: needs.changes.outputs.code == 'true'
     name: test (${{ matrix.backends }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     strategy:
       fail-fast: false
-      matrix:
-        # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
-        # so that no job runs much longer than the others.
-        backends: [duckdb, spark, datafusion, polars snowflake]
-        include:
-          - backends: core
-            shard: 1/3
-          - backends: core
-            shard: 2/3
-          - backends: core
-            shard: 3/3
+      # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
+      # so that no job runs much longer than the others.
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-lean
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
@@ -141,8 +297,8 @@ jobs:
   # the benchmarks and on every sqllogictest file the ledgers decided a query
   # of; a query that no longer agrees, or newly disagrees, fails the job.
   oracle-a:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.oracle == 'true'
     name: oracle-a (${{ matrix.shard }})
     strategy:
       fail-fast: false
@@ -155,7 +311,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-lean
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
@@ -171,19 +328,67 @@ jobs:
           SVERIFY_SLT_PROGRESS: "1"
 
   notebooks:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.notebooks == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-lean
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
       - run: uv run --locked --project python poe -C python notebooks
+
+  # The ledger class (see the header): the checkers of the facts and upstream
+  # bugs, and the tests that read those files.
+  ledger:
+    needs: [changes, checker]
+    if: needs.changes.outputs.ledger == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - working-directory: python
+        run: |
+          uv run --locked python -m sverify_dev.facts
+          uv run --locked python -m sverify_dev.bugs
+      # test_functions checks the facts Lean's tables cite; test_probe and
+      # test_probe_polars the probes' `probes.json`; test_polars_shims the
+      # facts its shims cite and `areas.json`.
+      - working-directory: python
+        run: >-
+          uv run --locked pytest -n auto --dist worksteal
+          tests/test_facts.py tests/test_bugs.py tests/test_functions.py
+          tests/test_probe.py tests/test_probe_polars.py tests/test_polars_shims.py
+      # A change to the lift's backlog changes how its tests report
+      # (tests/conftest.py): run every test it lists before or after.
+      - if: needs.changes.outputs.backlog == 'true'
+        working-directory: python
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          uv run --locked python - <<'EOF'
+          import json, os, subprocess, sys
+          def ids(text):
+              return {e["test"] for e in json.loads(text)["tests"]}
+          path = "tests/lift_backlog.json"
+          base = subprocess.run(["git", "show", f"{os.environ['BASE']}:python/{path}"],
+                                capture_output=True, text=True, check=True).stdout
+          tests = sorted(ids(base) | ids(open(path).read()))
+          print("\n".join(tests), flush=True)
+          sys.exit(subprocess.run([sys.executable, "-m", "pytest", "-n", "auto", *tests]).returncode)
+          EOF
 
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.
@@ -195,6 +400,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
         with:
           cache: "false"
@@ -203,11 +409,16 @@ jobs:
 
   # The check the `main` ruleset requires: green only if every job above
   # passed or was skipped by `changes`. A job skipped for any other reason
-  # follows a failed `changes`, which this catches.
+  # follows a failed `changes` or `checker`, which this catches. A pull request
+  # into another branch fails it (see the header).
   qa:
-    needs: [changes, lean, static, test, notebooks, float-bounds, oracle-a]
+    needs: [changes, checker, lean, golden, static, test, notebooks, float-bounds, oracle-a, ledger]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - if: needs.changes.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: exit 1
+      - if: needs.changes.outputs.upstack == 'true'
+        run: |
+          echo "::error::The base is not main: only static ran. The full matrix runs when the pull request is retargeted to main."
+          exit 1

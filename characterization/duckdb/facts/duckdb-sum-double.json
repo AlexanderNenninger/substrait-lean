@@ -8,6 +8,9 @@
   "options": [
     "sum_order"
   ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]}
+  ],
   "constructs": [
     "sum"
   ],
@@ -15,6 +18,7 @@
   "description": "`SUM(DOUBLE)` adds each value to the state in turn (`state.value += input`), and partial states merge by plain addition. The order of the values depends on the parallel plan.",
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-03",

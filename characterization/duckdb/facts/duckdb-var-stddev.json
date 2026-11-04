@@ -8,6 +8,15 @@
   "options": [
     "stat_algo"
   ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
   "constructs": [
     "var_samp",
     "var_pop",
@@ -23,6 +32,7 @@
   ],
   "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -37,6 +47,22 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3). The 1.5.6 behaviour is from the report, not rechecked here."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/test_stddev_export_state.test#L5-L44",
+          "note": "STDDEV_POP, VAR_SAMP, STDDEV_SAMP, VAR_POP, SEM of 42, 43, 42, 1000 export the state {count: 4, mean: 281.75, dsquared: 687844.75}: Welford's running mean and sum of squared deviations"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_stddev.test#L147-L182",
+          "note": "DOUBLE 1e301, -1e301: stddev, var_samp, var_pop → inf; with an infinity (1.0/0.0, 2.0) → nan"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The exported state is Welford's (count, mean, M2), the algorithm round 2 read. The inputs are `INTEGER` cast exactly to `DOUBLE`, and the overflow and infinity cases are `DOUBLE`."
     }
   ],
   "issues": [

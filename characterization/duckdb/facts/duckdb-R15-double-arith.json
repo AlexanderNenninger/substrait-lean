@@ -7,7 +7,18 @@
   "area": "doubles",
   "options": [
     "nan_creation",
-    "on_division_by_zero"
+    "on_division_by_zero",
+    "on_domain_error"
+  ],
+  "rows": [
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "+",
@@ -27,10 +38,12 @@
   },
   "description": [
     "Operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (duckdb-R5).",
-    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged."
+    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged.",
+    "`FLOAT` behaves the same by the docs (2.0, PostgreSQL Compatibility): `'Infinity'::FLOAT / 'Infinity'::FLOAT` and `'Infinity'::FLOAT - 'Infinity'::FLOAT` are NaN, and DuckDB follows IEEE 754 for division by zero and operations on infinities. `inf / inf` is the reference's domain error of `divide` (`on_domain_error`), which DuckDB answers with NaN."
   ],
   "reference": "`add` … `divide`: no operation creates a NaN (#257); a zero divisor raises unless the plan asks otherwise.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",
@@ -55,6 +68,74 @@
         }
       ],
       "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/postgresql_compatibility.html",
+          "note": "Floating-Point Arithmetic: DuckDB conforms to IEEE 754 for division by zero and operations involving infinity; table: 1.0 / 0.0 = Infinity, 0.0 / 0.0 = NaN, 'Infinity'::FLOAT / 'Infinity'::FLOAT = NaN, 'Infinity'::FLOAT - 'Infinity'::FLOAT = NaN"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
+          "note": "ieee_floating_point_ops (default true): use IEEE 754 behavior for supported floating point operations, returning NAN/INF instead of errors/NULL"
+        }
+      ],
+      "notes": "https://duckdb.org/docs/stable/ redirects to the 2.0 docs. The fp32 rows rest on these pages: their infinity examples are `FLOAT`, the zero divisors in the table are DECIMAL literals (so DOUBLE), and the IEEE statement covers both floating-point types. The fp64 `on_domain_error` row (`inf / inf`) rests on the probe above too."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1317-L1330",
+          "note": "BindBinaryFloatingPoint: with ieee_floating_point_ops the bare operation, else a zero check that raises or gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1380-L1393",
+          "note": "FLOAT and DOUBLE / bind the same"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L17-L27",
+          "note": "float and double + are the C++ operator, so inf - inf and 0 * inf are NaN at either width"
+        }
+      ],
+      "notes": "FLOAT takes the same code path as DOUBLE at its own width, which raises the fp32 rows from docs to source."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_arithmetic.test#L70-L137",
+          "note": "for FLOAT and DOUBLE: `'inf' - 'inf'` → nan; `inf + inf`, `inf * inf` → inf; `inf * -inf` → -inf; `1 / inf` → 0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L5-L21",
+          "note": "for FLOAT and DOUBLE, `val / 0`: 1 → inf, -1 → -inf, 0 → nan, nan → nan, inf → inf"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L33-L59",
+          "note": "with ieee_floating_point_ops = false `val / 0` raises `Division by zero`, and with error_on_division_by_zero = false too it gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_division_by_zero.test#L81-L85",
+          "note": "`-7.5::FLOAT / 0` → -inf, `7.5::DOUBLE / 0` → inf"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594",
+          "note": "CompareValues: numeric results are cast to the column type and compared with Value::ValuesAreEqual"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L1384-L1393",
+          "note": "ApproxEqual: NaN equals NaN, non-finite values compare exactly, finite ones within 1 %"
+        }
+      ],
+      "notes": "These settle `fp.arith` `nan_creation` and `fp.div` `on_division_by_zero` at fp32. No test divides an infinity by an infinity or multiplies 0 by an infinity, at either width, so `fp.div` `nan_creation` and `on_domain_error` at fp32 stay at the source reading. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly."
     }
   ],
   "issues": [

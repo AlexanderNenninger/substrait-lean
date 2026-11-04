@@ -9,16 +9,21 @@
     "float_to_int",
     "cast_failure"
   ],
+  "rows": [
+    {"option": "float_to_int", "types": ["any"]},
+    {"option": "cast_failure", "types": ["any"]}
+  ],
   "constructs": [
     "cast"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "A cast from `Float64` to an integer truncates toward zero (2.7 is 2, -2.7 is -2). A value out of the target's range, ±inf or NaN raises with `strict=True` (the default, `InvalidOperationError`) and is NULL with `strict=False`.",
     "`wrap_numerical=True` saturates for doubles (1e19 is 127 in `Int8`, -1e19 is -128, NaN is 0, Rust's `as`), where it wraps for integers (polars-cast-int)."
   ],
   "reference": "`float_to_int: TRUNCATE` (#209); `cast_failure` as the cast states, `THROW_EXCEPTION` for `UNSPECIFIED`.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

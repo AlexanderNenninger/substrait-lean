@@ -14,13 +14,14 @@
     "unique",
     "join"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "Polars has no set-operation node: `pl.concat` is `UNION ALL`, and `unique` after it is `UNION`. `INTERSECT` and `EXCEPT` are a semi and an anti join on every column with `nulls_equal=True`, then `unique`: without `nulls_equal` NULL rows never match (a semi join drops them, an anti join keeps them).",
     "`INTERSECT ALL` and `EXCEPT ALL` have no direct form; the reference's numbering of equal rows (a `cum_count` over every column) would write them."
   ],
   "reference": "`UNION ALL` is bag union and `UNION DISTINCT` its `distinct`; `INTERSECT` and `EXCEPT` are semi and anti joins with NULLs equal, then `DISTINCT`, and the `ALL` forms number equal rows (#344).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

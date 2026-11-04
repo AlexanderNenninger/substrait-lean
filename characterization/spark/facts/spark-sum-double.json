@@ -15,6 +15,7 @@
   "description": "`SUM(DOUBLE)` adds with a plain `Add` and no overflow check; partial sums merge plainly. The order of the additions depends on the partitioning.",
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-03",

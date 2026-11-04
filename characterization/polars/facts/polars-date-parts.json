@@ -19,13 +19,14 @@
     "dt.second",
     "dt.truncate"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "`week` is the ISO week and `iso_year` its year (2024-12-30 is week 1 of 2025; 2021-01-03 is week 53 of 2020); `weekday` runs from Monday 1 to Sunday 7; `millisecond` and `microsecond` are the fraction of the second in those units.",
     "Before 1970 parts floor: 1969-12-31 23:59:59.5 has `second` 59, `microsecond` 500000, `epoch('s')` -1, and `truncate('1s')` goes down to 23:59:59. `truncate('1w')` goes to Monday, `'1mo'`, `'1q'`, `'1y'` to the first day."
   ],
   "reference": "`date_part` and `date_trunc` (`Time.lean`): ISO weeks, Monday-based `isodow`, flooring before the epoch; their range is open in the reference.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

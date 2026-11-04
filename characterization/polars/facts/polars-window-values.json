@@ -9,16 +9,20 @@
     "default_window_frame",
     "tie_order"
   ],
+  "rows": [
+    {"group": "win.value", "option": "tie_order", "types": ["any"]}
+  ],
   "constructs": [
     "over",
     "shift",
     "first",
     "cum_sum"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "An expression `.over(g)` runs per partition in input order: `first().over('g')` is the partition's first row, `shift(1).over('g')` the previous row (NULL at the start), `cum_sum().over('g')` the running sum. A window order is a sort before (or `order_by=` in `over`).",
   "reference": "`lag`, `lead`, `first_value` and windowed aggregates over the window's order and frame; ties in any order (`tie_order`).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

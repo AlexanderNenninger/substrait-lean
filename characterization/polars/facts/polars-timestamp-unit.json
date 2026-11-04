@@ -12,10 +12,11 @@
     "Datetime",
     "cast"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "A Python `datetime` becomes `Datetime('us')`. `Datetime('ns')` holds 1677-09-21 … 2262-04-11; a cast to it outside that range raises (`InvalidOperationError`) unless `strict=False`.",
   "reference": "`precision_timestamp` at 0, 3, 6, 9 (#323); the reference's timestamps are microseconds.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

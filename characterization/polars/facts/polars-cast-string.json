@@ -10,10 +10,13 @@
     "cast_formatting",
     "cast_failure"
   ],
+  "rows": [
+    {"option": "cast_failure", "types": ["any"]}
+  ],
   "constructs": [
     "cast"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "Text to an integer accepts an optional sign and digits only (` 2`, `3.0`, `1e2`, `0x10` fail); text to a double accepts `nan`, `inf`, `-Infinity`, `.5`, `5.` and rounds `1e400` to inf. Failures raise with `strict=True` and are NULL with `strict=False`.",
     "A double becomes its shortest round-trip text, with an exponent at 1e16 (`1e+16`) and at 1e-7 (`1e-7`), without one at 1e15 and 1e-5, `-0.0`, `inf` and `NaN`. Booleans become `true` and `false`; integers and doubles become booleans by `!= 0` (NaN is true).",
@@ -21,6 +24,7 @@
   ],
   "reference": "Casts to and from strings follow the reference's `cast` rules; `cast_failure` as stated.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

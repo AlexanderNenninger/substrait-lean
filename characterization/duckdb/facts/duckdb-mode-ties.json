@@ -9,6 +9,9 @@
     "tie_pick",
     "tie_order"
   ],
+  "rows": [
+    {"group": "agg.pick", "option": "tie_pick", "types": ["any"]}
+  ],
   "constructs": [
     "mode"
   ],
@@ -20,6 +23,7 @@
     "`AggFn.mode` (`modeOf`, #53): the most frequent value, and of the values that tie, the first in the measure's sort order (rows that tie on it in list order). The parser refuses `MODE` without an order; Ibis's `mode()` becomes `MODE(x ORDER BY x)`. `Rel.windowsTotal` reports a mode as the engine's choice unless the sort includes its argument's column or the group's and the order's columns contain a key."
   ],
   "status": "decided",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

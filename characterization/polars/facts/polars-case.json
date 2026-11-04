@@ -8,14 +8,18 @@
   "options": [
     "char_set"
   ],
+  "rows": [
+    {"group": "str.case", "option": "char_set", "types": ["string"]}
+  ],
   "constructs": [
     "str.to_uppercase",
     "str.to_lowercase"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "Case mapping is Rust's `str::to_uppercase` and `to_lowercase`: full Unicode mappings, which can change the length (`ß` is `SS`, `İ` lowercases to `i̇`), with a final sigma (`ΣΑΣ` lowercases to `σας`). On ASCII they agree with the reference on every probe row.",
   "reference": "`upper`, `lower` with `char_set: UTF8`, a black box defined as Rust's `str::to_uppercase` (`Text.upper`); Lean evaluates them on ASCII only.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

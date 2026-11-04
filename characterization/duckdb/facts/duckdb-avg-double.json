@@ -8,6 +8,9 @@
   "options": [
     "sum_order"
   ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]}
+  ],
   "constructs": [
     "avg"
   ],
@@ -15,6 +18,7 @@
   "description": "`AVG(DOUBLE)` is the plain sequential sum (duckdb-sum-double) divided by the count; `favg` uses the Kahan sum (duckdb-kahan-sum).",
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-03",

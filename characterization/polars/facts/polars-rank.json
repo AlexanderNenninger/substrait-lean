@@ -7,15 +7,31 @@
   "area": "windows",
   "options": [
     "default_window_frame",
-    "ntile_spread"
+    "ntile_spread",
+    "tie_order"
+  ],
+  "rows": [
+    {"group": "win.rank", "option": "tie_order", "types": ["any"]},
+    {"group": "win.ntile", "option": "ntile_spread", "types": ["any"]},
+    {"group": "win.ntile", "option": "tie_order", "types": ["any"], "evidence": "docs"}
   ],
   "constructs": [
     "rank"
   ],
-  "settings": {},
-  "description": "`rank()` gives tied rows their average rank as a double; the methods `min`, `max`, `dense` and `ordinal` give integers. A NULL's rank is NULL (SQL ranks NULLs with the other rows), and `descending=True` reverses the order with NaN first. There is no `ntile`, `percent_rank` or `cume_dist` expression.",
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "`rank()` gives tied rows their average rank as a double; the methods `min`, `max`, `dense` and `ordinal` give integers. A NULL's rank is NULL (SQL ranks NULLs with the other rows), and `descending=True` reverses the order with NaN first. There is no `ntile`, `percent_rank` or `cume_dist` expression.",
+    "`rank` sorts with a stable `arg_sort` (NULLs last, then dropped), so `ordinal` numbers tied rows in input order; `min`, `max`, `dense` and `average` give a run of equal values one rank. NULL rows keep a NULL rank (the input's validity).",
+    "The expression API has no `ntile`, `percent_rank` or `cume_dist`; polars-sql (`pl.sql`, `SQLContext`) has `NTILE`, `PERCENT_RANK` and `CUME_DIST`, built from expressions. Its `NTILE(k)` over `n` rows gives the first `n % k` buckets one row more, the SQL standard's spread. The order of tied rows within it follows `over`'s `order_by` sort, unchecked here."
+  ],
   "reference": "`rank`, `dense_rank`, `row_number` over the window's order, NULLs placed by the key's direction; `percent_rank`, `cume_dist`, `ntile` as SQL.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -32,6 +48,80 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (windows)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.rank.html",
+          "note": "'ordinal': every value gets a distinct rank, in the order the values occur in the Series; 'random': ties ranked independently of that order (seeded by `seed`); Notes: only non-null values are ranked and nulls are kept"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/window.html",
+          "note": "the window functions listed are `over` and `rolling`"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/genindex.html",
+          "note": "the API index has no `ntile`, `percent_rank` or `cume_dist`"
+        }
+      ],
+      "notes": [
+        "`rank('ordinal')`, Polars's `ROW_NUMBER`, breaks ties by input order, so `over` with a pre-sorted frame keeps a stable sort's order of ties. `rank('min')` and `rank('dense')` give tied rows one rank. There is no NTILE, so `ntile_spread` and its tie order have no Polars counterpart: a plan with `ntile` is refused.",
+        "The docs at `stable` are those of Polars 2.1.0: their [source] links point at tag py-2.1.0."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (windows)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/rank.rs#L29-L155",
+          "note": "`rank`: `arg_sort` with `nulls_last`, `Ordinal` in sorted order, the other methods per run of equal values; the input's validity kept"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/sort/arg_sort.rs#L53-L110",
+          "note": "descending: a stable reverse"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/sort/arg_sort.rs#L270-L285",
+          "note": "`sort_by`/`par_sort_by`: stable sorts"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-sql/src/functions.rs#L910-L930",
+          "note": "polars-sql's `PERCENT_RANK`, `CUME_DIST`, `NTILE`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-sql/src/functions.rs#L2098-L2127",
+          "note": "`NTILE`: `q = n / k`, the first `n % k` buckets of `q + 1` rows"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-sql/src/functions.rs#L3127-L3130",
+          "note": "`window_row_index`: `int_range(0, len)` within the window"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Confirms the docs-level `win.rank` row and, through polars-sql, `ntile_spread`; the tie order of `NTILE` stays at the docs level."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (windows)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_rank_functions.py#L219-L235",
+          "note": "`test_ntile`: SQL `NTILE(k)` for k = 1, 2, 3, 5, 9 over `ORDER BY id` and `PARTITION BY g ORDER BY x DESC, id` matches DuckDB, on `engines=['in-memory', 'streaming']`, dtypes checked"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_rank_functions.py#L163-L198",
+          "note": "`test_rank_funcs_nulls_and_ties`: `RANK`, `DENSE_RANK`, `PERCENT_RANK`, `CUME_DIST` with tied and NULL keys under eight orderings, with and without partitions, match DuckDB on both engines"
+        }
+      ],
+      "notes": [
+        "Pins the bucket spread of polars-sql's `NTILE` against DuckDB on both engines. Both orderings of `test_ntile` are total (ties broken by `id`), so the order of tied rows within `NTILE` stays unpinned and the `win.ntile` `tie_order` row stays at the docs. The ranking functions match DuckDB on ties and NULLs.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
     }
   ]
 }

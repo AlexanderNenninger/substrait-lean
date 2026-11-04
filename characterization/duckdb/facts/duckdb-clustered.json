@@ -8,6 +8,9 @@
   "options": [
     "clustered"
   ],
+  "rows": [
+    {"option": "clustered", "types": ["any"]}
+  ],
   "constructs": [
     "ORDER BY"
   ],
@@ -15,6 +18,7 @@
   "description": "DuckDB's SQL has no direction that only brings equal keys together (`ORDER BY 1 CLUSTERED` is a syntax error). A sort on the keys clusters them, at the cost of a sort.",
   "reference": "`SORT_DIRECTION_CLUSTERED` allows any order with equal keys adjacent (docs/core-semantics.md, `clustered`); a sorted order is one of them, so an `ORDER BY` on the keys refines it.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

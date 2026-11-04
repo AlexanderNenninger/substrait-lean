@@ -9,6 +9,11 @@
     "on_division_by_zero",
     "nan_creation"
   ],
+  "rows": [
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"}
+  ],
   "constructs": [
     "%",
     "modulus",
@@ -31,6 +36,7 @@
   ],
   "status": "fixed",
   "ledger_entries": 30,
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-01",
@@ -97,6 +103,50 @@
         }
       ],
       "notes": "NaN for a zero divisor or an infinite dividend (duckdb-R15-double-modulus)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1317-L1330",
+          "note": "BindBinaryFloatingPoint: NaN from std::fmod with ieee_floating_point_ops, else BinaryZeroCheckWrapper raises or gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1204-L1222",
+          "note": "BinaryZeroCheckWrapper: a zero divisor raises `Division by zero` or sets NULL by error_on_division_by_zero"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469",
+          "note": "FLOAT % binds as DOUBLE % does"
+        }
+      ],
+      "notes": "FLOAT `%` by zero is NaN under `ieee_floating_point_ops` (the default), as DOUBLE's is."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L23-L31",
+          "note": "for FLOAT and DOUBLE, `val % 0` → nan for 1, -1, 0, nan and inf"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L42-L45",
+          "note": "with ieee_floating_point_ops = false `val % 0` raises `Division by zero`"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L61-L69",
+          "note": "and with error_on_division_by_zero = false too it gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_division_by_zero.test#L87-L90",
+          "note": "`isnan(7.5::DOUBLE % 0)` → true"
+        }
+      ],
+      "notes": "The test loops over FLOAT and DOUBLE, so it settles `on_division_by_zero` of `%` at fp32."
     }
   ],
   "issues": [

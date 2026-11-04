@@ -278,7 +278,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [settings](settings.json) | 6 | 1 | 0 |  | 712 | 85 | 7 | lift 712 |
 | [show_select](show_select.json) | 1 | 0 | 0 |  | 20 | 0 | 1 | lift 19, tables 1 |
 | [sql_export](sql_export.json) | 124 | 1 | 2 | engine 2 | 737 | 1172 | 8 | lift 730, tables 5 |
-| [storage](storage.json) | 2663 | 14 | 37 | both 6, lean 31 | 1070 | 892 | 170 | lift 829, tables 134 |
+| [storage](storage.json) | 3001 | 44 | 5 | both 5 | 1152 | 504 | 170 | lift 902, tables 138 |
 | [storage_version](storage_version.json) | 0 | 0 | 0 |  | 5 | 0 | 0 | tables 5 |
 | [subquery](subquery.json) | 125 | 0 | 0 |  | 384 | 389 | 2 | lift 379, checker 5 |
 | [table_function](table_function.json) | 0 | 0 | 0 |  | 228 | 107 | 7 | lift 228 |
@@ -300,7 +300,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [types/geo](types__geo.json) | 0 | 0 | 0 |  | 192 | 209 | 7 | lift 187, tables 5 |
 | [types/hugeint](types__hugeint.json) | 1 | 0 | 0 |  | 175 | 85 | 0 | lift 175 |
 | [types/interval](types__interval.json) | 42 | 0 | 1 | both 1 | 223 | 74 | 0 | lift 215, checker 8 |
-| [types/list](types__list.json) | 158 | 0 | 4 | lean 4 | 347 | 41 | 0 | lift 248, checker 99 |
+| [types/list](types__list.json) | 156 | 0 | 4 | lean 4 | 349 | 41 | 0 | lift 246, checker 99 |
 | [types/map](types__map.json) | 0 | 0 | 0 |  | 37 | 4 | 0 | lift 37 |
 | [types/nested](types__nested.json) | 38 | 1 | 3 | both 1, lean 2 | 654 | 176 | 5 | lift 619, checker 35 |
 | [types/null](types__null.json) | 6 | 1 | 0 |  | 2 | 21 | 0 | lift 2 |

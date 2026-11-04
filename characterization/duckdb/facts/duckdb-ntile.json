@@ -9,6 +9,9 @@
     "ntile_spread",
     "raise_set"
   ],
+  "rows": [
+    {"group": "win.ntile", "option": "ntile_spread", "types": ["any"]}
+  ],
   "constructs": [
     "ntile"
   ],
@@ -19,6 +22,7 @@
   ],
   "reference": "The SQL standard's buckets (`ntileOf`, reference-semantics.md, Windows): native on DuckDB. DataFusion spreads the larger buckets out (DF-11).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

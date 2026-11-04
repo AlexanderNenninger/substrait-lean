@@ -15,10 +15,11 @@
     "all",
     "any"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`&`, `|` and `~` follow three-valued logic (`False & NULL` is False, `True | NULL` is True, `True & NULL` is NULL). `all()` and `any()` skip NULLs (`all(True, NULL)` is True); with `ignore_nulls=False` they are Kleene's (`all(True, NULL)` is NULL).",
   "reference": "`and`, `or`, `not` are Kleene's; `bool_and` and `bool_or` skip NULLs as aggregates do.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

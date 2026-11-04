@@ -8,14 +8,27 @@
   "options": [
     "rounding"
   ],
+  "rows": [
+    {"group": "fp.log", "option": "rounding", "types": ["fp64"]},
+    {"group": "fp.log", "option": "rounding", "types": ["fp32"]}
+  ],
   "constructs": [
     "log10",
     "log"
   ],
-  "settings": {},
-  "description": "`log10()` is `log(10.0)`, and `log(base)` is Rust's `f64::log`, `ln(x) / ln(base)`: two roundings, so it can miss the correctly rounded result by an ulp. `log10(0.5)` is -0.30102999566398114 where `log10` gives -0.3010299956639812, and `log2(1e308)` is 1023.1538532253077 where `log2` gives 1023.1538532253076.",
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`log10()` is `log(10.0)`, and `log(base)` is Rust's `f64::log`, `ln(x) / ln(base)`: two roundings, so it can miss the correctly rounded result by an ulp. `log10(0.5)` is -0.30102999566398114 where `log10` gives -0.3010299956639812, and `log2(1e308)` is 1023.1538532253077 where `log2` gives 1023.1538532253076.",
+    "On `Float32` the same division runs in single precision, and the default base `math.e` becomes the float nearest e, whose `ln` rounds to 0.99999994. So the natural `log()` of a `Float32` misses by an ulp: `log(0.5)` is -0.69314724 where the correctly rounded value is -0.6931472, and `log10(0.5)` is -0.30102998 where it is -0.30103001. Recorded as PL-4."
+  ],
   "reference": "`log10` and `log2` are the platform's `log10` and `log2`; only NULL, the sign and the domain are exact in the reference, the last bits are each engine's (#54).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -46,6 +59,40 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/log.rs#L49-L77",
+          "note": "Equal float types: `x.log(base)` in that type; a float input casts the base to its type."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L12229-L12256",
+          "note": "`Expr.log(base=math.e)`."
+        },
+        {
+          "url": "https://doc.rust-lang.org/1.90.0/std/primitive.f32.html#method.log",
+          "note": "`f32::log` may not be correctly rounded; it is `ln(self) / ln(base)`."
+        }
+      ],
+      "notes": [
+        "`log` keeps a `Float32` input in `Float32` (`log_dtype`) and computes `f32::log`, two single-precision roundings. The base literal is cast to `Float32`.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "note": "pl.DataFrame({'x': [0.5, 2.0, 49.0]}, schema={'x': pl.Float32}).select(pl.col('x').log(), pl.col('x').log10()): log gave -0.6931472420692444, 0.6931472420692444, 3.8918204307556152, log10 gave -0.3010299801826477, ... (Polars 2.1.0, macOS arm64)."
+        }
+      ],
+      "notes": "The correctly rounded `Float32` values of `ln(0.5)` and `log10(0.5)` are -0.693147182464599609375 and -0.30103000998497009277."
     }
   ],
   "issues": [

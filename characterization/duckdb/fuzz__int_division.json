@@ -6,6 +6,8 @@
   "disagree_sides": {"lean": 6},
   "skipped_files": {},
   "checked": 13714,
+  "settings": {"default_null_order": "NULLS_LAST", "default_order": "ASCENDING", "error_on_division_by_zero": true, "ieee_floating_point_ops": true, "integer_division": true},
+  "settings_note": "sverify.duckdb_fuzz at 7dbf2f7e ran SET integer_division = true on its connection, so `/` was `//` for every type: the `d / d` finding is DuckDB's `//` (#619). Later ledgers record the settings the run read.",
   "results": [
     {"file": "fuzz:int_division", "line": 0, "sql": "SELECT COUNT(b) AS c0 FROM t AS q WHERE (i = (i * i))", "tables": {"t": [["9223372036854775807", "NULL", "NULL", "NULL", "NULL", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in multiplication of INT64 (9223372036854775807 * 9223372036854775807)!", "lean": "[[\"0\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 * $0)"},
     {"file": "fuzz:int_division", "line": 1, "sql": "SELECT DISTINCT (k + k) AS c0, TRUE AS c1 FROM u AS q", "tables": {"u": [["9223372036854775807", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in addition of INT64 (9223372036854775807 + 9223372036854775807)!", "lean": "[[\"18446744073709551614\", \"True\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 + $0)"},

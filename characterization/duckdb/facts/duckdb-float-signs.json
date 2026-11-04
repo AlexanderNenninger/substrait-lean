@@ -1,0 +1,178 @@
+{
+  "id": "duckdb-float-signs",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Signs of zero and NaN through FLOAT and DOUBLE operations",
+  "verdict": "IEEE in arithmetic; one zero in comparisons, hashing and sort keys; FLOAT `least`/`greatest` canonicalise",
+  "area": "doubles",
+  "options": [
+    "zero_sign",
+    "nan_kind"
+  ],
+  "rows": [
+    {"group": "fp.neg", "option": "zero_sign", "types": ["fp32"]},
+    {"group": "fp.div", "option": "zero_sign", "types": ["fp32", "fp64"]},
+    {"group": "cmp", "option": "zero_sign", "types": ["fp32", "fp64"]},
+    {"option": "nan_kind", "types": ["fp32", "fp64"]},
+    {"group": "fp.arith", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"},
+    {"group": "fp.neg", "option": "zero_sign", "types": ["fp64"], "evidence": "source"},
+    {"group": "fp.mod", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"}
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "=",
+    "<",
+    "least",
+    "greatest",
+    "GROUP BY",
+    "ORDER BY",
+    "signbit"
+  ],
+  "settings": {
+    "ieee_floating_point_ops": true
+  },
+  "description": [
+    "Arithmetic is IEEE on both widths, so it keeps and makes `-0.0`. `+`, `-`, `*` and `/` on FLOAT and DOUBLE are the C++ operators on `float` and `double` (no promotion of `float`), unary `-` is `-x` (it flips the sign of `0.0` and of a NaN), and `%` is `std::fmod`, whose zero takes the dividend's sign (`-4.0 % 2.0 = -0.0`). The optimizer's arithmetic simplification rewrites only integer `x + 0`, `x * 1`, …, and for doubles only `x / 1`, which keeps the sign; so it does not change a zero's sign.",
+    "Comparisons see one zero. `=`, `<`, `>` and `>=` on floats are C++ `==`, `<`, `>` after the NaN cases, so `-0.0 = 0.0` is true and neither is below the other. Hashing (GROUP BY, joins, DISTINCT) maps `-0.0` to `+0.0` and every NaN to the quiet NaN, and the sort key encodes both zeros alike, so ORDER BY treats them as peers, and the next key or the input order decides. ORDER BY carries FLOAT and DOUBLE columns in the payload, since the key loses the sign.",
+    "`least` and `greatest` on DOUBLE keep the first argument among equals (`least(-0.0, 0.0)` is `-0.0`, `least(0.0, -0.0)` is `0.0`). On FLOAT there is no direct instantiation: they compare sort keys and decode the winner from its key, so a zero comes out as `+0.0` and a NaN as the positive quiet NaN. Builds with `DUCKDB_SMALLER_BINARY` route DOUBLE the same way.",
+    "A NaN's sign survives arithmetic, negation and the FLOAT-to-DOUBLE cast (a plain conversion), and `signbit` has a FLOAT overload that reads it (`std::signbit`). Hashing and the FLOAT `least`/`greatest` drop it.",
+    "DuckDB's own test notes that a checkpoint loses the sign of zero in storage (DuckDB issue 25580), unrelated to ORDER BY."
+  ],
+  "reference": "`zero_sign: ONE_ZERO` and `nan_kind: ONE_NAN` (#89, docs/core-semantics.md); Substrait is IEEE. sverify's SQL canonicalises `-0.0` on every read and after each operation that can make it (`Dialect.canon`, duckdb-R14), so DuckDB's IEEE zeros never reach a result. Lean refuses FLOAT arithmetic (duckdb-R12).",
+  "status": "shimmed",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L17-L27",
+          "note": "AddOperator<float>, <double>: left + right"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/subtract.cpp#L15-L25",
+          "note": "SubtractOperator<float>, <double>: left - right"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/multiply.cpp#L17-L27",
+          "note": "MultiplyOperator<float>, <double>: left * right"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1144-L1154",
+          "note": "DivideOperator<float>, <double>: left / right"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1432-L1442",
+          "note": "ModuloOperator<float>, <double>: std::fmod"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/negate.hpp#L18-L35",
+          "note": "NegateOperator: -input; floats always negatable"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/arithmetic_simplification.cpp#L38-L48",
+          "note": "only x / 1 is simplified for FLOAT/DOUBLE; +, -, * only for integral results"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/vector_operations/comparison_operators.cpp#L24-L115",
+          "note": "EqualsFloat, GreaterThanFloat, GreaterThanEqualsFloat, ComparatorFloat: NaN cases, then C++ comparisons"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types/hash.cpp#L33-L58",
+          "note": "FloatingPointEqualityTransform: -0.0 to 0.0, NaN to quiet_NaN, before hashing"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/radix.hpp#L49-L160",
+          "note": "EncodeFloat/EncodeDouble: x == 0 gives one key; every NaN the top key; DecodeFloat/DecodeDouble give +0.0 and quiet_NaN"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/sort/sort.cpp#L79-L86",
+          "note": "the sort key is not injective around zero, so FLOAT/DOUBLE columns go through the payload"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/generic/least.cpp#L81-L110",
+          "note": "SortKeyLeastGreatest: decodes the result from its sort key"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/generic/least.cpp#L113-L168",
+          "note": "a later argument replaces the result only when strictly less (greater)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/generic/least.cpp#L267-L296",
+          "note": "direct instantiations for integers, DOUBLE and VARCHAR; FLOAT falls back to sort keys"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_cast.hpp#L174-L178",
+          "note": "FLOAT to DOUBLE: double(input)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1727-L1744",
+          "note": "signbit: FLOAT and DOUBLE overloads, std::signbit"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/order/order_by_negative_zero.test#L5-L32",
+          "note": "require noforcestorage: checkpointing loses the sign of zero (issue 25580); ORDER BY keeps signbit"
+        }
+      ],
+      "notes": "The float and double specialisations are written out per type, so the reading covers fp32 and fp64 separately."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_sign_bit.test#L8-L38",
+          "note": "in the FLOAT iteration `-0.0::float` is `-(0.0::FLOAT)`; stored, its signbit is true: negating a FLOAT zero gives -0.0 (fp32). In the DOUBLE iteration the same value cast to DOUBLE keeps the sign; `signbit(abs(x))` of -0.0 is false"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/expression/test_float_identity.test#L8-L47",
+          "note": "for FLOAT and DOUBLE under both ieee_floating_point_ops settings, `signbit(x / 1) = signbit(x)` for x in {'-0.0', 0}: `/ 1` keeps -0.0. The optimizer drops `/ 1` (the EXPLAIN plans match), so this pins the SQL result"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/order/order_by_negative_zero.test#L8-L32",
+          "note": "DOUBLE and FLOAT -0.0 keep their signbit through ORDER BY v, id; `1.0 / v` → -inf for v = -0.0, inf for 0.0 (fp64)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/rewrite_nan_null.test#L21-L75",
+          "note": "`(-x) = 0` true, `(-x) > 0` and `(-x) < 0` false for x = 0.0 (VARCHAR results, fp64); `(-f) >= 0` over x::FLOAT counts both zeros (6, fp32)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/storage/compression/rle/rle_signed_zero.test#L10-L20",
+          "note": "`WHERE x = 0` returns -0.0 and 0.0 (signbit false, true) from a DOUBLE column"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/optimizer/joins/join_on_floats.test#L5-L39",
+          "note": "FLOAT '-0.0' joins '0.0' and '-NaN' joins 'NaN'; `b::text` prints `-0.0` and `-nan`: the column and the cast to VARCHAR keep both signs, equality ignores them (fp32)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/optimizer/joins/join_on_doubles.test#L5-L39",
+          "note": "the same for DOUBLE (fp64)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/test_fd_derived_groups.test#L33-L45",
+          "note": "GROUP BY x, signbit(x) of 0e0 and -0e0 keeps two groups for DOUBLE and FLOAT; the comment states the zeros are equal keys"
+        },
+        {
+          "file": "characterization/duckdb/types__float.json",
+          "note": "replay of nan_functions.test line 93: sin, cos and tan of 'inf'::DOUBLE come back as -nan on the replay's platform, where the test expects nan: libm's NaN sign passes through"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594",
+          "note": "CompareValues: numeric results are cast to the column type and compared with Value::ValuesAreEqual"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L1384-L1393",
+          "note": "ApproxEqual: NaN equals NaN, non-finite values compare exactly, finite ones within 1 %"
+        }
+      ],
+      "notes": "The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly. So only `signbit`, a `::text` cast, a comparison's boolean or an infinity pins a sign. No test runs `least` or `greatest` on FLOAT zeros or NaNs: their decoding to `+0.0` and the positive NaN rests on the source reading. No test makes a zero by `+`, `-`, `*` or `%`, or negates a DOUBLE zero and reads its sign, so those rows stay at the source reading. No test sorts -0.0 and 0.0 without a tiebreak key."
+    }
+  ]
+}

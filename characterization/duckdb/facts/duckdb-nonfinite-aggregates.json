@@ -10,6 +10,22 @@
     "nan_creation",
     "stat_degenerate"
   ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
   "constructs": [
     "var_samp",
     "stddev_samp",
@@ -26,6 +42,7 @@
   ],
   "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -59,6 +76,30 @@
           "observed": "NULL, 0.0, nan"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_stddev.test#L147-L182",
+          "note": "var_samp, var_pop, stddev of 1e301, -1e301 → inf; of (1.0/0.0, 2.0) or (-1.0/0.0, 2.0) → nan; the test calls both IEEE-754 compliant"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L15-L18",
+          "note": "corr(1, 1) → NAN"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L52-L60",
+          "note": "corr(a, b) and corr(b, a) of (1e301, 0), (-1e301, 0) → nan"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_covar.test#L40-L47",
+          "note": "COVAR_SAMP of one pair → NULL"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. Confirms the probes: ±inf makes the variance NaN, a variance past `DBL_MAX` is `inf`, and `corr` of one pair or a constant side is NaN."
     }
   ],
   "issues": [

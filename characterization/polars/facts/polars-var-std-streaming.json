@@ -1,0 +1,83 @@
+{
+  "id": "polars-var-std-streaming",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`var`/`std` on the streaming engine: ungrouped result varies between runs",
+  "verdict": "Chan merge of per-morsel blocks (ungrouped, run-dependent); Welford per value (grouped)",
+  "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate",
+    "rounding"
+  ],
+  "rows": [
+    {"group": "agg.var", "option": "stat_algo", "types": ["fp64"]},
+    {"group": "agg.var", "option": "stat_algo", "types": ["i64", "decimal"], "evidence": "source"},
+    {"group": "agg.var", "option": "stat_degenerate", "types": ["fp64"]},
+    {"group": "agg.var", "option": "stat_degenerate", "types": ["i64", "decimal"], "evidence": "source"},
+    {"group": "agg.var", "option": "distribution", "types": ["fp64"]},
+    {"group": "agg.var", "option": "distribution", "types": ["i64", "decimal"], "evidence": "source"},
+    {"group": "agg.var", "option": "rounding", "types": ["fp64"]},
+    {"group": "agg.var", "option": "rounding", "types": ["i64", "decimal"], "evidence": "source"}
+  ],
+  "constructs": [
+    "var",
+    "std"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "On the streaming engine `var` and `std` run `VarState`. Ungrouped, each morsel's chunks go through the 128-value two-pass blocks and merge by Chan's formula into their pipeline's state, and the pipelines' states merge in turn. Block boundaries follow the morsels and the merge order follows scheduling, so the result can change in the last bits between runs: five runs over 300 000 values gave 4.440337823592621, …622 and …623 (in memory always 4.440337823592626).",
+    "Grouped, each value goes through `insert_one` (Welford) and pipelines merge by Chan's formula; on four values near 1e8 it agrees with the in-memory engine (1.6666666666666667).",
+    "Integers and decimals become doubles first (`as f64`, `dec128_to_f64`); the result is `Float64` (`Float32` for `Float32` input). `ddof` is the divisor's offset: SAMPLE is `ddof=1`, POPULATION `ddof=0`; a weight at most `ddof` is NULL, and `VarState::finalize` clamps a negative variance to 0. The in-memory engine's algorithms are in polars-var-std."
+  ],
+  "reference": "Substrait's `variance` and `std_dev` with `distribution`; the reference states the generic properties (non-negative, NULL for a weight at most `ddof`) and leaves the algorithm to the engine profile.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-var-runs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-var"
+        }
+      ],
+      "notes": [
+        "s-var-runs: streaming gave three values over five runs, in memory one; s-group-var: both engines 1.6666666666666667.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs",
+          "note": "`VarState`: blocks, `insert_one`, Chan's `combine`, `finalize` clamp"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/var_std.rs",
+          "note": "`VarStdReducer`, `needs_cast` for integers and decimals"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104"
+        }
+      ],
+      "notes": [
+        "Carried over from polars-var-std's round-2 reading of the streaming paths (`VarStdReducer` with `needs_cast` for integers and decimals). The `i64` and `decimal` rows rest on it: the streaming probes ran `Float64`. Polars's `test_agg_invalid_same_engines_behavior` (round 3) checks the engines agree on one-value input, `Decimal` included."
+      ]
+    }
+  ],
+  "supersedes": [
+    "polars-var-std"
+  ]
+}

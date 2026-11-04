@@ -1,0 +1,29 @@
+{
+  "id": "PL-5",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Polars 2.1.0 (Python, macOS arm64) with `engine=\"streaming\"`, the default of a lazy `collect()`; the in-memory engine gives a result. Not checked against main. No matching issue found on pola-rs/polars (2026-11-04).",
+  "summary": "`pl.cov` and `pl.corr` of `Decimal` columns raise `InvalidOperationError` on the streaming engine and succeed on the in-memory engine. The streaming reductions (`new_cov_reduction`, `new_pearson_corr_reduction`) require a primitive numeric type, which a decimal is not, while the in-memory path casts decimals to `Float64`. The planner types the result as `Float64` for any numeric input, so the plan resolves and the query fails only at execution.",
+  "repro": "import polars as pl\nfrom decimal import Decimal as D\nlf = pl.LazyFrame(\n    {\"a\": [D(\"1.10\"), D(\"2.20\"), D(\"3.35\")], \"b\": [D(\"1.00\"), D(\"2.00\"), D(\"4.00\")]},\n    schema={\"a\": pl.Decimal(10, 2), \"b\": pl.Decimal(10, 2)},\n)\nlf.select(pl.cov(\"a\", \"b\")).collect(engine=\"in-memory\").item()  # 1.6916666666666667\nlf.select(pl.corr(\"a\", \"b\")).collect(engine=\"in-memory\").item()  # 0.9843241382880894\nlf.select(pl.cov(\"a\", \"b\")).collect(engine=\"streaming\")\n# InvalidOperationError: `cov` operation not supported for dtype `decimal[10,2]`\nlf.select(pl.corr(\"a\", \"b\")).collect(engine=\"streaming\")\n# InvalidOperationError: `corr` operation not supported for dtype `decimal[10,2]`",
+  "handling": "sverify doesn't work around it yet. The workaround is to cast both inputs to `Float64` before `cov` or `corr`, which is what the in-memory engine does and gives the same result.",
+  "found_by": "the Polars characterization round 2 (source reading of crates/polars-expr/src/reduce/cov.rs, then a manual repro)",
+  "files": [
+    "characterization/polars/facts/polars-cov.json",
+    "characterization/polars/facts/polars-corr.json"
+  ],
+  "facts": [
+    "polars-cov",
+    "polars-corr"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "crates/polars-expr/src/reduce/cov.rs at py-2.1.0 (L23-L30, L171-L178: `is_primitive_numeric` checks); crates/polars-expr/src/dispatch/misc.rs L967-L1040 (in memory: other types cast to Float64). Duplicate search: `gh search issues --repo pola-rs/polars` for \"cov decimal\", \"corr decimal\", \"cov decimal streaming\", \"cov streaming\", \"corr streaming\", \"pearson_corr decimal\", \"cov operation not supported for dtype decimal\" and \"operation not supported for dtype decimal\" found no matching issue (the last returned other closed Decimal issues: #26721 product, #24715 sign, #29435 floor division)."
+    }
+  ]
+}

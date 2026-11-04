@@ -20,6 +20,7 @@
   ],
   "reference": "The plan should be the query's.",
   "status": "open",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-01",

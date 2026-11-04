@@ -9,6 +9,23 @@
     "quantile_interp",
     "nan_order"
   ],
+  "rows": [
+    {
+      "group": "agg.order",
+      "option": "nan_order",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "nan_order",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "engine_test"
+    }
+  ],
   "constructs": [
     "quantile_disc",
     "quantile",
@@ -24,6 +41,7 @@
     "Negative fractions, DOUBLE fractions and lists of fractions are refused by the parser and the frontends."
   ],
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -69,6 +87,18 @@
           "test": "python/tests/test_aggregate.py::test_quantiles_mode_and_arg_min_agree_with_duckdb"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_quantile_disc.test#L278-L298",
+          "note": "FLOAT and DOUBLE, ten times each: NaN, 1 … 99, NaN; quantile_disc(num, 0.9) → 91.0, so both NaNs sort above 99"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. For n = 101 values and q = 0.9 the position is ⌈90.9⌉ = 91, which is 91.0 only when the two NaNs sort last. This settles `nan_order` for `FLOAT` as well."
     }
   ],
   "issues": [

@@ -6,6 +6,8 @@
   "disagree_sides": {"lean": 3},
   "skipped_files": {},
   "checked": 14530,
+  "settings": {"default_null_order": "NULLS_LAST", "default_order": "ASCENDING", "error_on_division_by_zero": true, "ieee_floating_point_ops": true, "integer_division": true},
+  "settings_note": "sverify.duckdb_fuzz at 7dbf2f7e ran SET integer_division = true on its connection, so `/` was `//` for every type: the `d / d` finding is DuckDB's `//` (#619). Later ledgers record the settings the run read.",
   "results": [
     {"file": "fuzz:float_arith", "line": 0, "sql": "SELECT DISTINCT (d / d) AS c0, b AS c1, b AS c2 FROM t AS q", "tables": {"t": [["NULL", "NULL", "0.0", "NULL", "NULL", "NULL"]]}, "duckdb": "error: Invalid Input Error: Division by zero in expression (d // d). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.", "lean": "[[\"nan\", \"NULL\", \"NULL\"]]", "cls": "disagree", "side": "lean"},
     {"file": "fuzz:float_arith", "line": 1, "sql": "SELECT DISTINCT (k * k) AS c0, TRUE AS c1 FROM u AS q ORDER BY c0, c1", "tables": {"u": [["9007199254740993", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in multiplication of INT64 (9007199254740993 * 9007199254740993)!", "lean": "[[\"81129638414606699710187514626049\", \"True\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 * $0)"},

@@ -1,0 +1,67 @@
+{
+  "id": "duckdb-minmax-zero-sign",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`MIN` and `MAX` of floats: `-0.0` and `0.0` tie, and the last one read wins",
+  "verdict": "the zeros compare equal; the sign of the result depends on the order of the rows",
+  "area": "aggregates",
+  "options": [
+    "zero_sign"
+  ],
+  "rows": [
+    {
+      "group": "agg.order",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "min",
+    "max"
+  ],
+  "settings": {},
+  "description": [
+    "`min` and `max` of `FLOAT` and `DOUBLE` are the `float` and `double` instantiations of one template (`NumericMinMaxBase`). Each update is `Min::Operation(state, input)`, which for floats is `MinFloatingPoint`: a NaN is skipped, otherwise `right > left ? left : right`. When the state and the input compare equal, as `-0.0` and `0.0` do, the input replaces the state. `MaxFloatingPoint` is `left > right ? left : right` (a NaN wins), with the same rule for ties. Merging two partial states applies the same operation, the other state as the input.",
+    "So `MIN` over `0.0` and `-0.0` returns the zero read last, which depends on the order rows reach the aggregate and on how the parallel states merge. The sign is kept. A sort also treats the zeros as equal: `Radix::EncodeDouble` and `EncodeFloat` give both zeros the same key.",
+    "The group's `quantile_disc` and `median` were not read for this row."
+  ],
+  "reference": "`zero_sign`: one zero (`ONE_ZERO`, #89). sverify's SQL makes `-0.0` into `0.0` on every read and after every operation that can make it (`Dialect.canon`, duckdb-R14), so `MIN` and `MAX` only meet `0.0`.",
+  "status": "shimmed",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/distributive/minmax.cpp#L36-L66",
+          "note": "GetUnaryAggregate: FLOAT and DOUBLE instantiate the same template"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/distributive/minmax.cpp#L94-L152",
+          "note": "NumericMinMaxBase: Execute and Combine call REDUCE_OP::Operation(state, input)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/aggregate_operators.hpp#L19-L74",
+          "note": "Min, Max; MinFloatingPoint, MaxFloatingPoint"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/radix.hpp#L49-L56",
+          "note": "EncodeFloat: both zeros one key"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/radix.hpp#L103-L110",
+          "note": "EncodeDouble: both zeros one key"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}

@@ -19,7 +19,18 @@ Two kinds of probe:
 `python -m sverify_dev.probe_polars --write` writes
 `characterization/polars/probes.json`; the facts in
 `characterization/polars/facts/` cite its constructs, and
-`tests/test_probe_polars.py` checks it is current.
+`tests/test_probe_polars.py` checks it is current. Those run on the
+in-memory engine: eager `DataFrame` methods always do.
+
+`--diff` compares the streaming engine, which sverify targets (#605), with
+the in-memory one, without Lean: each probe one row at a time and on a
+column of `TILE` rows (several morsels, no length-1 column: PL-3), and each
+observation; `--diff --write` writes `probes-streaming.json`, the evidence of
+the facts' streaming checks. `--engine streaming` runs the probes against
+Lean on the streaming engine: a probe's frame is collected lazily with
+`engine="streaming"`, and an observation's `df(...)` is a `StreamingFrame`,
+whose `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and
+`group_by(...).agg` go through `LazyFrame.collect(engine="streaming")`.
 """
 
 from __future__ import annotations
@@ -34,7 +45,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 
@@ -43,6 +54,10 @@ from sverify_dev.probe import STRINGS, Outcome, Probe, encode_double, lean_outco
 Json = dict[str, Any]
 
 OUT = Path(__file__).resolve().parents[3] / "characterization" / "polars" / "probes.json"
+#: Where `--engine streaming --write` writes.
+OUT_STREAMING = OUT.with_name("probes-streaming.json")
+#: The engine probes and observations run on: `in-memory` or `streaming`.
+ENGINE = "in-memory"
 
 
 def _ints(bits: int) -> list[int | None]:
@@ -183,11 +198,69 @@ def _o(construct: str, area: str, code: str) -> Observation:
 
 def df(**cols: Any) -> pl.DataFrame:
     """A frame of the given columns (`df(x=[...])`), each a list or a
-    `(list, dtype)` pair."""
-    return pl.DataFrame(
+    `(list, dtype)` pair; a `StreamingFrame` when `ENGINE` is `streaming`."""
+    frame = pl.DataFrame(
         {k: v[0] if isinstance(v, tuple) else v for k, v in cols.items()},
         schema_overrides={k: v[1] for k, v in cols.items() if isinstance(v, tuple)},
     )
+    return StreamingFrame.of(frame) if ENGINE == "streaming" else frame
+
+
+class StreamingFrame(pl.DataFrame):
+    """A `DataFrame` whose relational methods run on the streaming engine:
+    each is the `LazyFrame` method collected with `engine="streaming"`, and
+    gives a `StreamingFrame` again, so chains stay on streaming. Other
+    methods (`item`, `to_series`, Series operations) run eagerly on the
+    collected result."""
+
+    @staticmethod
+    def of(frame: pl.DataFrame) -> StreamingFrame:
+        out = StreamingFrame.__new__(StreamingFrame)
+        out._df = frame._df
+        return out
+
+    def _run(self, name: str, *args: Any, **kwargs: Any) -> StreamingFrame:
+        lazy = getattr(self.lazy(), name)(*args, **kwargs)
+        return StreamingFrame.of(lazy.collect(engine="streaming"))
+
+    def select(self, *args: Any, **kwargs: Any) -> StreamingFrame:  # type: ignore[override]
+        return self._run("select", *args, **kwargs)
+
+    def with_columns(self, *args: Any, **kwargs: Any) -> StreamingFrame:  # type: ignore[override]
+        return self._run("with_columns", *args, **kwargs)
+
+    def filter(self, *args: Any, **kwargs: Any) -> StreamingFrame:  # type: ignore[override]
+        return self._run("filter", *args, **kwargs)
+
+    def sort(self, *args: Any, **kwargs: Any) -> StreamingFrame:  # type: ignore[override]
+        return self._run("sort", *args, **kwargs)
+
+    def unique(self, *args: Any, **kwargs: Any) -> StreamingFrame:  # type: ignore[override]
+        return self._run("unique", *args, **kwargs)
+
+    def join(self, other: pl.DataFrame, *args: Any, **kwargs: Any) -> StreamingFrame:  # type: ignore[override]
+        lazy = self.lazy().join(other.lazy(), *args, **kwargs)
+        return StreamingFrame.of(lazy.collect(engine="streaming"))
+
+    def group_by(self, *by: Any, **kwargs: Any) -> _StreamingGroupBy:  # type: ignore[override]
+        return _StreamingGroupBy(self, by, kwargs)
+
+
+@dataclass(frozen=True)
+class _StreamingGroupBy:
+    frame: StreamingFrame
+    by: tuple[Any, ...]
+    kwargs: dict[str, Any]
+
+    def agg(self, *aggs: Any, **named: Any) -> StreamingFrame:
+        lazy = self.frame.lazy().group_by(*self.by, **self.kwargs).agg(*aggs, **named)
+        return StreamingFrame.of(lazy.collect(engine="streaming"))
+
+    def __getattr__(self, name: str) -> Callable[..., StreamingFrame]:
+        """`len`, `first`, `sum`, …: the lazy group-by's method, collected
+        on streaming."""
+        method = getattr(self.frame.lazy().group_by(*self.by, **self.kwargs), name)
+        return lambda *a, **k: StreamingFrame.of(method(*a, **k).collect(engine="streaming"))
 
 
 OBSERVATIONS: list[Observation] = [
@@ -626,7 +699,10 @@ def polars_outcome(p: Probe, row: Sequence[Any]) -> Outcome:
         schema={f"a{i}": TYPES[t][0] for i, t in enumerate(p.args)},
     )
     try:
-        v = frame.select(_expr(p).alias("r")).item()
+        if ENGINE == "streaming":
+            v = frame.lazy().select(_expr(p).alias("r")).collect(engine="streaming").item()
+        else:
+            v = frame.select(_expr(p).alias("r")).item()
     except BaseException as e:  # a Rust panic is a `PanicException`, a BaseException
         if isinstance(e, KeyboardInterrupt):
             raise
@@ -721,12 +797,179 @@ def probe_all(
     return found
 
 
+def _column_outcomes(
+    p: Probe, rows: Sequence[Sequence[Any]], engine: Literal["in-memory", "streaming"]
+) -> list[Outcome]:
+    """`p` on all `rows` at once, each repeated so the frame has at least
+    `TILE` rows (several morsels on streaming, and no length-1 column): one
+    outcome per row, or the one error for all."""
+    reps = -(-TILE // max(len(rows), 1))
+    frame = pl.DataFrame(
+        {f"a{i}": [r[i] for r in rows] * reps for i in range(len(p.args))},
+        schema={f"a{i}": TYPES[t][0] for i, t in enumerate(p.args)},
+    )
+    try:
+        out = frame.lazy().select(_expr(p).alias("r")).collect(engine=engine)["r"]
+        values = out.to_list()[: len(rows)]
+    except BaseException as e:
+        if isinstance(e, KeyboardInterrupt):
+            raise
+        return [("error", f"{type(e).__name__}: {str(e).splitlines()[0]}")] * len(rows)
+    return [("ok", encode_double(v)) if isinstance(v, float) else ("ok", v) for v in values]
+
+
+#: The rows of a column-wide evaluation in `engine_diff`.
+TILE = 6000
+
+
+#: Observations for `engine_diff` alone: where the streaming engine's source
+#: reads differently from the in-memory one's (facts polars-sum-float,
+#: -var-std, -first-last, -sort-stability, -exec-when-eager,
+#: -double-scalar-divisor, PL-3, PL-5). Big enough for several morsels.
+STREAMING_OBSERVATIONS: list[Observation] = [
+    _o("s-group-fsum-cancel", "aggregates",
+       "df(g=[1] * 4, x=[1e16, 1.0, 1.0, -1e16]).group_by('g')"
+       ".agg(pl.col('x').sum()).item(0, 'x')"),
+    _o("s-group-fsum-f32", "aggregates",
+       "df(g=[1] * 3, x=([16777216.0, 1.0, 1.0], pl.Float32)).group_by('g')"
+       ".agg(pl.col('x').sum()).item(0, 'x')"),
+    _o("s-group-mean-cancel", "aggregates",
+       "df(g=[1] * 4, x=[1e16, 1.0, 1.0, -1e16]).group_by('g')"
+       ".agg(pl.col('x').mean()).item(0, 'x')"),
+    _o("s-group-var", "aggregates",
+       "df(g=[1] * 4, x=[1e8 + 1, 1e8 + 2, 1e8 + 3, 1e8 + 4]).group_by('g')"
+       ".agg(pl.col('x').var()).item(0, 'x')"),
+    _o("s-fsum-runs", "aggregates",
+       "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)])"
+       ".select(pl.col('x').sum()).item()) for _ in range(5)})"),
+    _o("s-group-fsum-runs", "aggregates",
+       "sorted({repr(df(g=[i % 3 for i in range(300_000)],"
+       " x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).group_by('g')"
+       ".agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})"),
+    _o("s-var-runs", "aggregates",
+       "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)])"
+       ".select(pl.col('x').var()).item()) for _ in range(5)})"),
+    _o("s-first-last-grouped", "aggregates",
+       "df(g=[i % 7 for i in range(100_000)], i=range(100_000)).group_by('g')"
+       ".agg(pl.col('i').first().alias('f'), pl.col('i').last().alias('l')).sort('g').rows()"),
+    _o("s-implode-order", "aggregates",
+       "all(x == sorted(x) for x in df(g=[i % 7 for i in range(100_000)], i=range(100_000))"
+       ".group_by('g').agg(pl.col('i')).sort('g')['i'].to_list())"),
+    _o("s-sort-ties-large", "relations",
+       "(lambda s: all(a <= b for a, b in zip(s, s[1:])))("
+       "df(k=[i % 3 for i in range(3_000_000)], i=range(3_000_000)).sort('k')"
+       ".filter(pl.col('k') == 1)['i'].to_list())"),
+    _o("s-group-order", "relations",
+       "df(g=[(i * 7919) % 1000 for i in range(100_000)]).group_by('g').len()['g'].to_list()[:8]"),
+    _o("s-when-masks-cast", "execution",
+       "df(x=['1', 'a'] * 3000).select(pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64))"
+       ".otherwise(None)).to_series()[:2].to_list()"),
+    _o("s-when-cse-cast", "execution",
+       "df(x=['1', 'a'] * 3000).select("
+       "pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 1).alias('a'),"
+       " pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 2).alias('b'))"
+       ".rows()[:2]"),
+    # Lazy, so common-subexpression elimination runs (eager `select` skips it).
+    _o("s-when-cse-lazy", "execution",
+       "[attempt(lambda: pl.DataFrame({'x': ['1', 'a']}).lazy().select("
+       "pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 1).alias('a'),"
+       " pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 2).alias('b'))"
+       ".collect(engine=e, optimizations=pl.QueryOptFlags(comm_subexpr_elim=c)).rows())"
+       " for e in ('in-memory', 'streaming') for c in (True, False)]"),
+    _o("s-and-eager-cast", "execution",
+       "df(x=['a', '2'] * 3000).select((pl.col('x') != 'a') & (pl.col('x').cast(pl.Int64) > 1))"
+       ".to_series()[:2].to_list()"),
+    _o("s-coalesce-eager-cast", "execution",
+       "df(x=['a', '2'] * 3000, y=[1, None] * 3000).select("
+       "pl.coalesce(pl.col('y'), pl.col('x').cast(pl.Int64))).to_series()[:2].to_list()"),
+    _o("s-filter-then-cast", "execution",
+       "df(x=['a', '2'] * 3000).filter(pl.col('x') != 'a')"
+       ".select(pl.col('x').cast(pl.Int64)).to_series()[:2].to_list()"),
+    _o("s-scalar-divisor", "doubles",
+       "df(x=[49.0, 0.0, 1e-300] * 3000).select((pl.col('x') % 49.0).alias('m'),"
+       " (pl.col('x') // 49.0).alias('f'), (pl.col('x') / 1e-310).alias('d')).rows()[:3]"),
+    _o("s-cov-decimal", "aggregates",
+       "df(x=([Decimal('1.00'), Decimal('2.50'), Decimal('4.00')], pl.Decimal(10, 2)),"
+       " y=([Decimal('1.00'), Decimal('2.00'), Decimal('4.50')], pl.Decimal(10, 2)))"
+       ".select(pl.cov('x', 'y'), pl.corr('x', 'y').alias('c')).rows()"),
+    _o("s-quantile-median", "aggregates",
+       "df(g=[i % 3 for i in range(30_000)], x=[float(i % 101) for i in range(30_000)])"
+       ".group_by('g').agg(pl.col('x').median().alias('m'),"
+       " pl.col('x').quantile(0.3, 'linear').alias('q')).sort('g').rows()"),
+]  # fmt: skip
+
+
+def engine_diff(
+    probes: Sequence[Probe] = PROBES,
+    observations: Sequence[Observation] = (*OBSERVATIONS, *STREAMING_OBSERVATIONS),
+    log: Callable[[str], None] = print,
+) -> list[Json]:
+    """Where the streaming engine differs from the in-memory one, without
+    Lean: each probe one row at a time and column-wide (`TILE` rows), and
+    each observation. One entry per probe or observation, with the rows or
+    the values that differ (`differ` 0 where none does)."""
+    global ENGINE
+    found = []
+    for p in probes:
+        rows = _rows(p)
+        ENGINE = "in-memory"
+        mem = [polars_outcome(p, r) for r in rows]
+        ENGINE = "streaming"
+        stream = [polars_outcome(p, r) for r in rows]
+        col_mem = _column_outcomes(p, rows, "in-memory")
+        col_stream = _column_outcomes(p, rows, "streaming")
+        diff = [
+            {"row": str(list(r)), "how": how, "in-memory": _show(a, p), "streaming": _show(b, p)}
+            for how, xs, ys in (("row", mem, stream), ("column", col_mem, col_stream))
+            for r, a, b in zip(rows, xs, ys, strict=True)
+            if not _same(a, b)
+        ]
+        # A column-wide value that differs from the same engine's one-row value.
+        diff += [
+            {"row": str(list(r)), "how": f"column vs row, {eng}", "row-wise": _show(a, p),
+             "column-wise": _show(b, p)}
+            for eng, xs, ys in (("in-memory", mem, col_mem), ("streaming", stream, col_stream))
+            for r, a, b in zip(rows, xs, ys, strict=True)
+            if b[0] == "ok" and not _same(a, b)
+        ]  # fmt: skip
+        log(f"{construct(p)}: {len(diff)} differ")
+        found.append({"construct": construct(p), "function": p.function, "rows": len(rows),
+                      "differ": len(diff), "examples": diff[:6]})  # fmt: skip
+    for o in observations:
+        ENGINE = "in-memory"
+        a = observe(o)["observed"]
+        ENGINE = "streaming"
+        b = observe(o)["observed"]
+        log(f"{o.construct}: {'same' if a == b else 'DIFFERS'}")
+        found.append({"construct": o.construct, "area": o.area, "code": o.code,
+                      "differ": int(a != b), "in-memory": a, "streaming": b})  # fmt: skip
+    ENGINE = "in-memory"
+    return found
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--write", action="store_true", help="write probes.json")
+    parser.add_argument(
+        "--engine", choices=("in-memory", "streaming"), default="in-memory",
+        help="the engine to run the probes on",
+    )  # fmt: skip
+    parser.add_argument(
+        "--diff", action="store_true",
+        help="compare streaming with in-memory, without Lean (writes probes-streaming.json)",
+    )  # fmt: skip
     args = parser.parse_args(argv)
+    global ENGINE
+    if args.diff:
+        found = engine_diff()
+        if args.write:
+            doc = {"polars": pl.__version__, "engine": "streaming vs in-memory", "probes": found}
+            OUT_STREAMING.write_text(json.dumps(doc, indent=1) + "\n")
+            print(f"-> {OUT_STREAMING}")
+        return
+    ENGINE = args.engine
     found = probe_all()
-    if args.write:
+    if args.write and ENGINE == "in-memory":
         OUT.write_text(json.dumps({"polars": pl.__version__, "probes": found}, indent=1) + "\n")
         print(f"-> {OUT}")
 

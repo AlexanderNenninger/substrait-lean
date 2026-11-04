@@ -8,17 +8,23 @@
   "options": [
     "tie_order"
   ],
+  "rows": [
+    {"option": "tie_order", "types": ["any"]}
+  ],
   "constructs": [
     "sort",
     "top_k"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "Sorting 200 000 rows on a key with 7 values kept the input order within each key, in memory and streaming, with and without `maintain_order`. Polars documents order among ties only for `maintain_order=True`.",
-    "`top_k` keeps 2 of 3 tied rows; which ones is not documented."
+    "`top_k` keeps 2 of 3 tied rows; which ones is not documented.",
+    "The streaming sort buffers its input. Up to `POLARS_SORT_PARTITION_THRESHOLD_BYTES` (32 MiB, at most half the out-of-core memory budget) it concatenates the morsels in sequence order and sorts them with the in-memory sort. Above it, it splits the rows into key-range buckets: with `maintain_order` each task reads a contiguous run of frames, which keeps input order within a bucket; without it the frames are dealt to the tasks in turn, and the source does not keep input order among ties. The 200 000-row probe stayed below the threshold. With the threshold lowered to 100 000 bytes, a sort of 200 000 rows on 7 keys still kept input order among ties, with and without `maintain_order`, so the unordered path is unconfirmed."
   ],
   "reference": "`tie_order`: any order of the ties, and any rows of a tie for a `fetch`. Every behaviour is allowed.",
   "status": "no-finding",
+  "evidence": "probe",
+  "superseded_by": "polars-sort-stability-streaming",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -39,6 +45,75 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (relations)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/mod.rs#L121-L165",
+          "note": "below the partition threshold: linearized morsels, in-memory sort"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/mod.rs#L200-L215",
+          "note": "above it: contiguous frame runs per task with `maintain_order`, round-robin without"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/mod.rs#L493-L535",
+          "note": "`partition_frames`: with `maintain_order` a whole frame is stored after the bucket's builder"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/tuning.rs#L5-L64",
+          "note": "`DEFAULT_PARTITION_THRESHOLD_BYTES` 32 MiB, `POLARS_SORT_PARTITION_THRESHOLD_BYTES`, capped at half the budget"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (relations)",
+      "evidence": [
+        {
+          "note": "200 000 rows, k = i % 7: lf.sort('k', maintain_order=...) kept i increasing within each k, for maintain_order False and True, streaming and in memory, with the default threshold and with POLARS_SORT_PARTITION_THRESHOLD_BYTES=100000 (POLARS_MAX_THREADS=4)"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python), macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (relations)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_sort.py#L462-L468",
+          "note": "`test_sort_stability_with_duplicate_keys`: `sort('k', maintain_order=True)` over 517 rows with keys `i % 5` returns `idx` in (key, input index) order on the streaming engine, equal to the in-memory sort, in the in-memory, partitioned (morsels of 7, 1-byte partition threshold) and spilled sort modes"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_sort.py#L280-L395",
+          "note": "`test_sort_direct_key_dtypes` with the `f32` key (517 rows with NaN, ±inf, -0.0, NULL), ascending and descending, `maintain_order=True`: the streaming sort must equal the in-memory sort exactly, with the in-memory and the partitioned (`POLARS_SORT_PARTITION_THRESHOLD_BYTES=1`, morsels of 7) sort modes"
+        }
+      ],
+      "notes": [
+        "Pins a stable streaming sort with `maintain_order=True`, also when the sort partitions and spills. Without `maintain_order` the streaming tests compare only the key columns (`assert_sort_matches_in_memory`, exact=False), so no test pins the order of ties there.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-sort-ties-large"
+        }
+      ],
+      "notes": [
+        "Narrowed to the in-memory engine; the streaming engine is in polars-sort-stability-streaming. Above the partition threshold its sort without `maintain_order` does not keep input order among ties, which this fact left unconfirmed.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ]
 }

@@ -9,6 +9,11 @@
     "on_domain_error",
     "on_log_zero"
   ],
+  "rows": [
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.log", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.log", "option": "on_log_zero", "types": ["fp64"]}
+  ],
   "constructs": [
     "power",
     "sqrt",
@@ -37,6 +42,7 @@
   ],
   "reference": "Outside the domain, the reference raises.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-02",

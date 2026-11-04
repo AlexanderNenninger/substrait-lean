@@ -1,0 +1,174 @@
+{
+  "id": "duckdb-sort-ties",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Ties of a sort and the input order of aggregates are not guaranteed",
+  "verdict": "`tie_order`: any order (`ORDER BY` may not be stable)",
+  "area": "relations",
+  "options": [
+    "tie_order"
+  ],
+  "rows": [
+    {
+      "option": "tie_order",
+      "types": [
+        "any"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "agg.seq",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    },
+    {
+      "group": "win.rank",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "win.ntile",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "win.value",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ],
+      "evidence": "source"
+    }
+  ],
+  "constructs": [
+    "ORDER BY",
+    "list",
+    "array_agg",
+    "string_agg",
+    "row_number",
+    "rank",
+    "ntile",
+    "lag",
+    "lead",
+    "first_value",
+    "last_value",
+    "nth_value"
+  ],
+  "settings": {},
+  "description": [
+    "\"ORDER BY may not use a stable algorithm\": rows that tie on every key come out in any order. `JOIN`, `UNION`, `GROUP BY` and whole-table aggregation do not preserve the order of rows either; `FROM` a single table, `WHERE`, `SELECT`, `LIMIT`, `OFFSET`, `UNION ALL` and a window with an empty `OVER` do (Order Preservation).",
+    "`list` (`array_agg`) and `string_agg` are order-sensitive and \"can have non-deterministic results without ordering\"; an `ORDER BY` in the call sorts the values first, and the docs give that sort no stability either, so ties on its keys take any order.",
+    "For windows (`row_number`, `ntile`, `lag`, …) the docs only say that without an `ORDER BY` the results \"are not well-defined\"; the order of peers is for round 2.",
+    "Round 2 (source): every sort, `ORDER BY`, a window's partition and order, and an aggregate's `ORDER BY`, goes through the same `Sort`. Each thread sorts its rows' keys with vergesort, which falls back to ska_sort, an in-place radix sort; neither is stable, and the key holds only the sort columns. The threads' sorted runs are then merged (K-way Merge Path). Rows that tie on every key come out in an order that depends on the sort and on how rows were split between threads.",
+    "Windows: `row_number` is the row's position in its sorted partition, and `ntile` is computed from that position, so both depend on the order of peers. `rank`, `dense_rank`, `percent_rank` and `cume_dist` step at the start of each peer group and give every peer the same value, so they do not. `lag`, `lead`, `first_value`, `last_value` and `nth_value` read rows by their position in the frame, so a peer's value depends on the order of the peers."
+  ],
+  "reference": "`tie_order`: any order of the ties (docs/core-semantics.md); the reference fixes nothing, and a plan that needs one order is refused or made `tie_free`. DuckDB's is one of them.",
+  "status": "no-finding",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/dialect/order_preservation",
+          "note": "ORDER BY (specifically, ORDER BY may not use a stable algorithm); aggregation input order not guaranteed"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "ORDER BY Clause in Aggregate Functions: list, string_agg are order-sensitive"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/window_functions",
+          "note": "Partition and Ordering: without ORDER BY not well-defined"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/sort/sorted_run.cpp#L233-L262",
+          "note": "TemplatedSort: vergesort with a ska_sort fallback"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/sort/sorted_run_merger.cpp#L104-L104",
+          "note": "K-way Merge Path over the sorted runs"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/sort/hashed_sort.cpp#L686-L686",
+          "note": "a window's partitions sorted by Sort"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/operator/aggregate/physical_window.cpp#L370-L383",
+          "note": "PhysicalWindow: SortStrategy over partitions and orders"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/sorted_aggregate_function.cpp#L131-L147",
+          "note": "an aggregate's ORDER BY: the same Sort"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rownumber_function.cpp#L203-L207",
+          "note": "row_number: row_idx - partition_begin + 1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rownumber_function.cpp#L255-L316",
+          "note": "ntile: from the row's position"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rank_function.cpp#L94-L105",
+          "note": "rank, dense_rank: step at peer_begin"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_value_function.cpp#L661-L700",
+          "note": "lead and lag: by row position in the frame"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). The third-party sorts (vergesort, ska_sort) are known unstable algorithms; their sources were not read line by line."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/list_export_state.test#L5-L8",
+          "note": "'list order is only deterministic single-threaded': the test sets threads=1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/first_last_export_state.test#L5-L8",
+          "note": "first/last only deterministic single-threaded: threads=1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/ordered_aggregate_export_state.test#L5-L11",
+          "note": "list(x ORDER BY y) is deterministic at any thread count because every case orders on distinct keys, 'so there are no ties'"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_window_constant_allocator.test#L5-L26",
+          "note": "STRING_AGG(…) OVER (): 'the output is unstable under multi-threading', so the test is statement ok"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/parallelism/intraquery/test_parallel_nested_aggregates.test#L23-L25",
+          "note": "first([a]) … GROUP BY at threads=4: 'non-deterministic so we can't check the result'"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_rank_orderby.test#L76-L102",
+          "note": "rank and percent_rank give peers of their own ORDER BY the same value even when the window orders them by a further key: ids 1 and 2 of k = 1 → 1, 0.0"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin no order of ties; they avoid them (distinct keys, `rowsort`, `threads=1`) and say so. `agg.seq`: `list`, `string_agg` and `first` without an ordering of their own change with the thread count, which the tests document and work around. `win.rank`: `rank` and `percent_rank` do not depend on the order of peers (test_rank_orderby.test); no test pins `row_number` on ties, so the row stays at the source reading. No test pins ties of a sort, of `ntile` or of `lag`/`lead`/`first_value`."
+    }
+  ]
+}

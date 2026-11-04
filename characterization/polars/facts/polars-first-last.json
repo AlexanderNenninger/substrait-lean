@@ -9,6 +9,10 @@
     "tie_pick",
     "tie_order"
   ],
+  "rows": [
+    {"group": "agg.pick", "option": "tie_pick", "types": ["any"]},
+    {"group": "agg.seq", "option": "tie_order", "types": ["any"]}
+  ],
   "constructs": [
     "first",
     "last",
@@ -16,13 +20,20 @@
     "str.join",
     "group_by"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
   "description": [
     "`first` and `last` take the first and last row of the group in input order, also when it is NULL; `ignore_nulls=True` skips NULLs. Over 200 000 rows in 10 groups, in memory and streaming, `first` was the least row index, `last` the greatest, and the list a group collects (`pl.col(x)` in `agg`, `implode`) kept input order.",
-    "`str.join` concatenates in that order and skips NULLs."
+    "`str.join` concatenates in that order and skips NULLs.",
+    "Streaming, `first` and `last` are reductions keyed by the morsel's sequence number: `first` keeps the value of the lowest sequence number (the first row of a morsel, or the earliest row of a group in it), `last` the highest (a later row of the same morsel replaces it), and pipelines merge by the same rule. So they follow input order as far as morsel numbers do. `implode` with `maintain_order` (the list `agg(pl.col(x))` builds) has no streaming lowering: a group_by with it falls back to the in-memory engine, and ungrouped it runs in the in-memory fallback. `implode(maintain_order=False)` streams and keeps no order."
   ],
   "reference": "`tie_pick`: any row of the group (each measure may take its own); `tie_order`: any order for `string_agg` and `array_agg`. Polars's choice is allowed, and deterministic where DuckDB's depends on parallelism (duckdb-mode-ties).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -43,6 +54,80 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/first_last.rs#L56-L102",
+          "note": "`First::should_replace` keeps the lowest sequence id, `Last` the highest (`new >= old`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/first_last.rs#L160-L195",
+          "note": "`combine`, `reduce_one`, `reduce_ca` by sequence id; `reduce_ca` takes the morsel's first or last value"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L63-L78",
+          "note": "each morsel's `seq` is passed to `update_group`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/convert.rs#L104-L119",
+          "note": "streaming implode: only `maintain_order: false` (unordered); `Implode { .. }` otherwise `todo!()`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L632-L640",
+          "note": "grouped: `Implode { maintain_order: false }` lowers"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L709-L713",
+          "note": "grouped: `Implode { maintain_order: true }` does not (the group_by falls back)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2276-L2280",
+          "note": "ungrouped `Implode`: in-memory fallback"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_group_by.py#L786-L808",
+          "note": "`test_streaming_group_by_first_last_stored`, `engine='streaming'` with morsels of 32, hot tables of 4 and stored partitions: over `k = i % 50`, `v = i if i >= 50 else NULL`, `first` is NULL, `last` 950 + k, `first(ignore_nulls=True)` 50 + k, `last(ignore_nulls=True)` 950 + k"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_group_by.py#L43-L125",
+          "note": "`test_streaming_group_by_types`, streaming: `first` and `last` of strings, booleans and dates follow input order within the group"
+        }
+      ],
+      "notes": [
+        "Pins on the streaming engine that `first` and `last` take the group's first and last row in input order, NULL included, across morsels and partitions.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-first-last-grouped"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-implode-order"
+        }
+      ],
+      "notes": [
+        "Streaming agrees with memory: over 100 000 rows in 7 groups, `first` and `last` are the group's least and greatest row index, and the list `agg(pl.col('i'))` builds is in input order.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ]
 }

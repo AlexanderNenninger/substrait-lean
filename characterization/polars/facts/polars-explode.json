@@ -11,10 +11,11 @@
   "constructs": [
     "explode"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`explode` gives one row per element, and one row with a NULL for an empty list and for a NULL list. With `empty_as_null=False` and `keep_nulls=False` both give no row, which is SQL's `UNNEST`.",
   "reference": "`UNNEST`: one row per element, none for an empty list or NULL.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

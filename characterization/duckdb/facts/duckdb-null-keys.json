@@ -22,6 +22,7 @@
   ],
   "reference": "Grouping and `DISTINCT` put NULLs together; an equi-join's `=` does not match NULL, and keys compared with `IS NOT DISTINCT FROM` do (reference-semantics.md, NULL).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

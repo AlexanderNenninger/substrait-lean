@@ -1,0 +1,97 @@
+{
+  "id": "polars-exec-row-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Row order: groups, joins and `unique` keep no order unless asked",
+  "verdict": "order only with `maintain_order`; a join's default order may change between runs",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "group_by",
+    "join",
+    "unique",
+    "sum"
+  ],
+  "settings": {
+    "engine": ["in-memory", "streaming"],
+    "POLARS_MAX_THREADS": "the host's core count"
+  },
+  "description": [
+    "`group_by` keeps the order of the groups consistent with the input only with `maintain_order=True` (which also blocks the streaming engine); rows within a group always keep their order. A join's `maintain_order` defaults to `\"none\"`: the ordering might differ across Polars versions or between runs, and the docs say not to rely on an observed order.",
+    "Float sums depend on the summation tree: pairwise, Kahan when grouped, plain across chunks (polars-sum-float), so chunking and the thread count can change their last bits. The docs do not say so; `sum` only documents that small integers are cast to Int64.",
+    "Round 2 (source), streaming engine: a grouped `sum` is a `NumSumReducer` whose `combine` adds the partial sums; within a morsel a float column is summed pairwise (`ChunkAgg::sum`), per group row by row. The reducer is marked `ORDER_INDEPENDENT`, which the trait documents as \"changing the result by at most floating-point rounding\" when the values of a group are split into several states. The group-by sink builds pre-aggregates per pipeline and combines them partition by partition in the order they were produced, so the morsel distribution over threads decides the order of the float additions. Probes at POLARS_MAX_THREADS 1 and N go to the next round."
+  ],
+  "reference": "The reference compares results as bags, so row order outside a sort is free; `sum_order` is open and allowed within the plan's bound (polars-sum-float).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.group_by.html"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.join.html"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.sum.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L250-L256",
+          "note": "ORDER_INDEPENDENT: at most floating-point rounding"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/sum.rs#L70-L112",
+          "note": "NumSumReducer: combine adds, floats summed pairwise per morsel"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/group_by/table.rs#L97-L114",
+          "note": "pre-aggregates combined into the partition's table"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/group_by/mod.rs#L281-L313",
+          "note": "partitions built from the pre-aggregates in order"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-order"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-runs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-fsum-runs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-var-runs"
+        }
+      ],
+      "notes": [
+        "s-group-order: the first group keys of `group_by('g').len()` over 100 000 rows were [274, 396, 39, …] in memory and [0, 919, 838, …] streaming, and neither is the input order; both engines give an arbitrary order. s-group-fsum-runs: five runs of a grouped sum over 300 000 rows gave several results on both engines. s-fsum-runs and s-var-runs: the ungrouped streaming sum and variance vary between runs (polars-sum-float-streaming, polars-var-std-streaming); in memory they did not.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    }
+  ]
+}

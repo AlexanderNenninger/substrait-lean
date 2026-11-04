@@ -1,0 +1,83 @@
+{
+  "id": "polars-int-pow-exponent",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `**`: a negative exponent fails the query",
+  "verdict": "raises `InvalidOperationError` for a negative exponent",
+  "area": "integers",
+  "options": [
+    "on_domain_error"
+  ],
+  "rows": [
+    {"group": "int.pow", "option": "on_domain_error", "types": ["i64"]},
+    {"group": "int.pow", "option": "on_domain_error", "types": ["i8", "i16", "i32"], "evidence": "source"}
+  ],
+  "constructs": [
+    "**",
+    "pow"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "With an integer base and an integer exponent, `**` first casts the whole exponent column to `UInt32` with `strict_cast`. A negative exponent anywhere in it, or one above 2³² − 1, fails the query with `InvalidOperationError` and a hint to cast to float first. The cast does not depend on the base's width. Every other input gives a value (`0 ** 0` is 1); overflow wraps (polars-int-arith).",
+    "A float exponent turns the base into the exponent's float type, and the result is that type."
+  ],
+  "reference": "`power` on integers: a negative exponent raises (`negExponent` in `Safety.lean`), and `on_domain_error` never applies (`int.pow` in docs/core-semantics.md). An exponent above 64 with `|base| > 1` is an overflow, which raises; with `|base| ≤ 1` the reference computes it, where Polars raises from 2³² on.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int-pow-negative"
+        }
+      ],
+      "notes": "`Int64` base, `** -1`: `InvalidOperationError: conversion from i32 to u32 failed`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L108-L150",
+          "note": "An integer exponent is `strict_cast` to `UInt32`, with the hint in the error."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/pow.rs#L72-L106"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L909-L918",
+          "note": "`pow_dtype`: an integer base keeps its type unless the exponent is a float."
+        }
+      ],
+      "notes": [
+        "The exponent's cast runs before the base's type is looked at (`with_match_physical_integer_type!` dispatches the base, for every width), so the `Int64` probe holds for `Int8`, `Int16` and `Int32`.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L696-L761",
+          "note": "`test_power_series`: `Int64 ** UInt64` with 2**33 raises `InvalidOperationError` `conversion from u64 to u32 failed`; an exponent that fits succeeds; `a ** lit(None)` raises (null exponent dtype). Eager `Series`"
+        }
+      ],
+      "notes": [
+        "The test pins the strict cast of the exponent to `UInt32` for an `Int64` base only, and has no negative exponent. The `i8` to `i32` rows stay at the source reading.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    }
+  ]
+}

@@ -22,6 +22,7 @@
   ],
   "reference": "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-03",

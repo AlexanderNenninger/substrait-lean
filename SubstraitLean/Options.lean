@@ -57,8 +57,11 @@ def options : List OptionSpec := [
     core := ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"] },
   -- Doubles
   { id := "rounding", substrait := some "rounding",
-    core := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD"],
-    yaml := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD"] },
+    core := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD",
+      "RECIPROCAL"],
+    yaml := roundings ++ ["AWAY_FROM_ZERO", "TIE_DOWN", "TIE_UP", "TIE_TOWARDS_ZERO", "TIE_TO_ODD"],
+    -- A quotient as the dividend times the divisor's reciprocal, rounded twice.
+    extra := [("RECIPROCAL", "polars-scalar-divisor")] },
   { id := "on_domain_error", substrait := some "on_domain_error", core := ["NAN", "NULL", "ERROR"],
     yaml := ["NAN", "NULL", "ERROR"], extra := [("NAN", "duckdb-R15-math-domain")] },
   { id := "on_log_zero", substrait := some "on_log_zero", core := ["NAN", "ERROR", "MINUS_INFINITY"],
@@ -93,13 +96,15 @@ def options : List OptionSpec := [
   { id := "list_null_order", substrait := none, core := ["NULL", "GREATEST", "LEAST"],
     extra := [("GREATEST", "duckdb-R11")] },
   -- Aggregates, windows and relations
-  { id := "sum_order", substrait := none, core := ["ANY", "SEQUENTIAL"],
-    extra := [("SEQUENTIAL", "duckdb-sum-double")] },
+  { id := "sum_order", substrait := none, core := ["ANY", "SEQUENTIAL", "PAIRWISE", "KAHAN"],
+    extra := [("SEQUENTIAL", "duckdb-sum-double"), ("PAIRWISE", "polars-sum-float"),
+      ("KAHAN", "polars-sum-float")] },
   { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN"],
     extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
   { id := "stat_degenerate", substrait := none, core := ["NULL", "NAN", "ERROR"],
     extra := [("NAN", "duckdb-corr")] },
-  { id := "avg_int_result", substrait := none, core := ["DECLARED_TYPE"] },
+  { id := "avg_int_result", substrait := none, core := ["DECLARED_TYPE", "FP64", "EXACT_TRUNCATE"],
+    extra := [("FP64", "polars-avg-int"), ("EXACT_TRUNCATE", "duckdb-R6")] },
   { id := "quantile_interp", substrait := none, core := ["BETWEEN", "LINEAR"],
     extra := [("LINEAR", "duckdb-quantile-cont-interpolation")] },
   { id := "tie_pick", substrait := none, core := ["ANY_ROW", "FIRST_READ"],
@@ -118,7 +123,22 @@ def options : List OptionSpec := [
   -- Which variance `variance` and `std_dev` compute (#54): a function's
   -- parameter more than a behaviour, and every profile reads it.
   { id := "distribution", substrait := some "distribution", core := ["SAMPLE", "POPULATION"],
-    yaml := ["SAMPLE", "POPULATION"] }]
+    yaml := ["SAMPLE", "POPULATION"] },
+  -- `SUM` of no values (or NULLs only): NULL (the YAML's `sum`), or 0 (`sum0`).
+  { id := "empty_group_aggregates", substrait := none, core := ["NULL", "ZERO"],
+    extra := [("ZERO", "polars-sum-int")] },
+  -- A finite double operation whose result overflows to `±∞` (#575): the
+  -- reference assumes it does not (a precondition, proved or checked on the
+  -- data); IEEE gives `±∞`.
+  { id := "float_overflow", substrait := none, core := ["ERROR", "INFINITY"],
+    extra := [("INFINITY", "polars-double-arith")] },
+  -- NULL keys in a join's equality: no match (SQL's `=`), or a match.
+  { id := "null_join_keys", substrait := none, core := ["NO_MATCH", "MATCH"] },
+  -- What a string position counts: characters from 1 (the YAML's), characters
+  -- from 0, or bytes from 0.
+  { id := "string_positions", substrait := none,
+    core := ["ONE_BASED_CHARS", "ZERO_BASED_CHARS", "ZERO_BASED_BYTES"],
+    extra := [("ZERO_BASED_CHARS", "polars-substring"), ("ZERO_BASED_BYTES", "polars-strpos")] }]
 
 def OptionSpec.find? (id : String) : Option OptionSpec := options.find? (·.id == id)
 
@@ -312,6 +332,9 @@ structure ProfileTable where
   /-- The engine version (or range) the facts were probed at (D14); `""` for
   the reference and the core. -/
   version : String := ""
+  /-- Functions the engine has no expression for, by Substrait name, with the
+  facts that say so: a plan that calls one is refused there. -/
+  missing : List (String × List String) := []
 
 /-- The choice at `option` for a function of `group`. -/
 def ProfileTable.choice? (t : ProfileTable) (group option : String) : Option Choice :=
@@ -471,7 +494,11 @@ def Profile.reference.table : ProfileTable where
     (none, "float_to_int", .oneOf ["TRUNCATE"]),
     (none, "cast_failure", .asked ["THROW_EXCEPTION", "RETURN_NULL"] ["THROW_EXCEPTION"]),
     -- The sample's unless the plan asks for the population's (#54).
-    (none, "distribution", .asked ["SAMPLE", "POPULATION"] ["SAMPLE"])]
+    (none, "distribution", .asked ["SAMPLE", "POPULATION"] ["SAMPLE"]),
+    (none, "empty_group_aggregates", .oneOf ["NULL"]),
+    (none, "float_overflow", .oneOf ["ERROR"]),
+    (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    (none, "string_positions", .oneOf ["ONE_BASED_CHARS"])]
 
 /-! ## Checks -/
 

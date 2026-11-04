@@ -17,13 +17,14 @@
     "write_*",
     "Catalog"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "Polars scans Parquet, CSV, IPC, NDJSON, lines, Delta, Iceberg, Lance and PyArrow datasets lazily (`scan_*`), sinks Parquet, CSV, IPC, NDJSON, Delta and Iceberg from a lazy query (`sink_*`), and writes those and Avro, Excel, JSON and databases from a frame (`write_*`).",
     "Object stores (S3, GCS, Azure, HTTP) are reached through `storage_options` or a `credential_provider` on the scans. `pl.Catalog` is a client for Unity Catalog."
   ],
   "reference": "I/O is outside what a plan computes; sverify's `io` modules read and write the formats.",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

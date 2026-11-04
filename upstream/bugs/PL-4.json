@@ -1,0 +1,41 @@
+{
+  "id": "PL-4",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Polars 2.1.0 (Python, macOS arm64). `Expr.log` and `LogSeries::log` are unchanged on main (35a2cb73, 2026-11-04), read in the source; not run there. No matching issue found; pola-rs/polars#23741 (closed) is the related ulp discussion for division.",
+  "upstream": [
+    "https://github.com/pola-rs/polars/issues/23741"
+  ],
+  "summary": "`Expr.log()` on `Float32` computes `f32::log(x, base)` with the default base `math.e` cast to `Float32`, that is `ln(x) / ln(2.7182817)`, and `ln(2.7182817)` is 0.99999994 in single precision. So the natural logarithm of a `Float32` misses the correctly rounded value by an ulp for many inputs (`log(0.5)` is -0.69314724, numpy's `log` gives -0.6931472). `log10()` is `log(10.0)`, two roundings, also an ulp off (`log10(0.5)`). `Float64` is not affected for the natural log, since `ln(math.e)` rounds to 1.0.",
+  "repro": "import polars as pl\ns = pl.Series(\"x\", [0.5, 2.0, 10.0], dtype=pl.Float32)\ns.log().to_list()    # [-0.6931472420692444, 0.6931472420692444, 2.3025853633880615]\ns.log10().to_list()  # [-0.3010299801826477, 0.3010299801826477, 1.0]\n# numpy float32: log [-0.6931471824645996, 0.6931471824645996, 2.3025851249694824], log10 [-0.3010300099849701, 0.3010300099849701, 1.0]",
+  "handling": "sverify does not work around it. `fp32` arithmetic is refused in every profile until #417's stage 3; a Polars profile that takes `fp32` must widen `fp.log` rounding or shim the natural log.",
+  "found_by": "characterizing Polars against the formalization (characterization/polars/facts, round 2 source reading of `LogSeries::log`, then a manual repro)",
+  "issues": [
+    417
+  ],
+  "files": [
+    "characterization/polars/facts/polars-log-base.json"
+  ],
+  "facts": [
+    "polars-log-base"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0",
+        "numpy": "2.5.4"
+      },
+      "note": "repro on macOS arm64; crates/polars-ops/src/series/ops/log.rs at py-2.1.0"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "main 35a2cb73fdf81d89b2117bec152c3530eb3e4146"
+      },
+      "note": "source only: log.rs and Expr.log unchanged. Duplicate search (float32 log, log precision, natural log float32, log ulp, log base e) found nothing matching."
+    }
+  ]
+}

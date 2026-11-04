@@ -8,15 +8,20 @@
   "options": [
     "list_null_order"
   ],
+  "rows": [
+    {"group": "list.order", "option": "list_null_order", "types": ["list"]},
+    {"group": "agg.order", "option": "list_null_order", "types": ["list"]}
+  ],
   "constructs": [
     "sort",
     "<",
     "min"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`sort` orders lists lexicographically, a prefix first, and a NULL element below every value: `[] < [NULL] < [1] < [1, NULL] < [1, 2]` ascending, reversed descending, NULL lists first by default. `<` between lists and `min`, `max` of lists raise (`InvalidOperationError`).",
   "reference": "`list_null_order`: NULL where a NULL element decides `<`, and `GREATEST` in `ORDER BY` (#207). DuckDB puts the NULL element above every value (duckdb-R11).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -37,6 +42,25 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (nested)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.list.sort.html",
+          "note": "`list.sort(descending=False, nulls_last=False)` sorts the elements inside each list; it says nothing about how lists compare"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.sort.html",
+          "note": "`sort(descending, nulls_last)`; no word on list keys"
+        }
+      ],
+      "notes": [
+        "The docs are silent on the order of lists and on `min`/`max` of lists; the rows rest on the 2026-11-04 probes (list-sort, list-compare, list-min).",
+        "The docs at `stable` are those of Polars 2.1.0: their [source] links point at tag py-2.1.0."
+      ]
     }
   ],
   "issues": [

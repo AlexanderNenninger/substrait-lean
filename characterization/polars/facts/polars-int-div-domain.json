@@ -1,0 +1,79 @@
+{
+  "id": "polars-int-div-domain",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `//` has no domain error",
+  "verdict": "every input is in the domain; zero divisors and `MIN // -1` are other options",
+  "area": "integers",
+  "options": [
+    "on_domain_error"
+  ],
+  "rows": [
+    {"group": "int.div", "option": "on_domain_error", "types": ["i8"]},
+    {"group": "int.div", "option": "on_domain_error", "types": ["i16", "i32", "i64"], "evidence": "source"}
+  ],
+  "constructs": [
+    "//",
+    "floordiv"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "Integer floor division gives a quotient for every pair of operands but two kinds: a zero divisor is NULL (`on_division_by_zero`) and `MIN // -1` wraps to `MIN` (`overflow`), both in polars-int-divide. No input raises or gives a value of its own. The kernels are one macro for `Int8` to `Int64`. `/` on integers divides doubles (polars-int-true-divide).",
+  "reference": "`divide` on integers: `on_domain_error` never applies (`int.div` in docs/core-semantics.md, `Choice.any`).",
+  "status": "no-finding",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L35-L45",
+          "note": "Column by column: a zero divisor is masked to NULL, the rest is `wrapping_floor_div_mod`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L103-L140",
+          "note": "A literal divisor: 0 gives NULL, -1 negates (wrapping), others divide the absolute values."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L39-L68"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L230-L234"
+        }
+      ],
+      "notes": [
+        "One macro instantiates the integer kernels for i8 to i64, so the reading covers every width. Each path handles a zero divisor and `MIN // -1` and returns a quotient for every other input.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L86-L109",
+          "note": "Rust `test_signed_wrapping_div_mod`: for every `i8` pair, `wrapping_floor_div_mod` equals the floor quotient and remainder of the doubles, wrapped to `i8` (`(x as i32) as i8`), and (0, 0) for a zero divisor. So `-128 // -1` is -128, `-128 % -1` is 0, and no pair panics."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/expr/test_literal.py#L142-L188",
+          "note": "`test_floordiv_mod`: `lit(1, Int8) // lit(0, Int8)` and `%` are NULL, as for the default `Int32` literals; 10 // 3 is 3. Eager `pl.select`, in memory"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L247-L259",
+          "note": "`test_truncdiv_int` (Int8, lazy `collect()`): `truncdiv` gives -128 for -128 / -1 and NULL for 5 / 0; its comment says `floordiv` does the same"
+        }
+      ],
+      "notes": [
+        "The Rust test shows the floor-division kernel gives a value for every `Int8` pair (the zero divisor's (0, 0) is masked to NULL by the caller), so no `Int8` input raises. `test_floordiv_mod` pins NULL for a zero divisor at `Int8` and `Int32`. `i16` and `i64` rest on the source reading of the shared macro.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    }
+  ]
+}

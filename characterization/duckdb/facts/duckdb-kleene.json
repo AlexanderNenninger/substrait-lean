@@ -24,6 +24,7 @@
   ],
   "reference": "`and`, `or`, `not` and comparisons are Kleene's; aggregates skip NULLs and are NULL over no values (reference-semantics.md, NULL and Aggregates).",
   "status": "no-finding",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

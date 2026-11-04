@@ -15,10 +15,19 @@
     "dt.replace_time_zone",
     "str.to_date"
   ],
-  "settings": {},
-  "description": "`time + duration` is refused (`SchemaError`, no supertype). `replace_time_zone` raises on a local time in a DST gap (`non_existent='null'` gives NULL). `str.to_date` raises on an invalid date such as 2024-02-30 and, with `strict=False`, gives NULL; it accepts `2024-2-3` for `%Y-%m-%d`.",
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "`time + duration` is refused (`SchemaError`, no supertype). `replace_time_zone` raises on a local time in a DST gap (`non_existent='null'` gives NULL). `str.to_date` raises on an invalid date such as 2024-02-30 and, with `strict=False`, gives NULL; it accepts `2024-2-3` for `%Y-%m-%d`.",
+    "Months only exist in `dt.offset_by` (`pl.duration` has none), and `offset_by` accepts `Date` and `Datetime`: on a `Time` column it raises `InvalidOperationError` (`expected Date or Datetime, got time`). `Time ± Duration` finds no supertype, so `TIME ± INTERVAL` with or without months is refused when the plan is resolved."
+  ],
   "reference": "`TIME ± INTERVAL` is refused (`time_interval_months`); time zones are outside the model.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -39,6 +48,44 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (temporal)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/schema.rs#L694-L715",
+          "note": "`+` of `Time` and `Duration` asks for their supertype"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/schema.rs#L627-L635",
+          "note": "`-` the same"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/utils/supertype.rs#L360-L407",
+          "note": "the supertypes of `Time` and of `Duration`: none for the pair"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-time/src/offset_by.rs#L58-L63",
+          "note": "`offset_by`: `Date` or `Datetime`, else `InvalidOperation`"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (temporal)",
+      "evidence": [
+        {
+          "note": "Time column [23:00]: pl.col('t') + pl.duration(hours=2) raises SchemaError (failed to determine supertype of time and duration[μs]); pl.col('t').dt.offset_by('1mo') raises InvalidOperationError (expected Date or Datetime, got time)"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
     }
+  ],
+  "rows": [
+    {"group": "time.arith", "option": "time_interval_months", "types": ["time"]}
   ]
 }

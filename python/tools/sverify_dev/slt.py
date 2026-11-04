@@ -505,6 +505,9 @@ _FRONTEND = tuple(
     for k in ("Binder", "Parser", "Catalog", "Not implemented", "Dependency", "Syntax")
 )
 
+#: DuckDB's 128-bit integer types, whose Arrow export can wrap (DD-5, #618).
+_HUGE = re.compile(r"\bU?HUGEINT\b", re.I)
+
 _PROBE = re.compile(r"^\s*(\(\s*)*(SELECT|WITH|VALUES|FROM|TABLE)\b", re.I)
 
 
@@ -581,6 +584,9 @@ class Replay:
             if name != ONE and name.lower() not in lower:
                 self.con.drop(name)  # dropped or renamed in DuckDB
                 self.synced.pop(name, None)
+        for ref in tables:
+            if ref != ONE and (name := lower.get(ref.lower())) is not None:
+                self.check_types(name)
         rows: dict[str, list[tuple]] = {}
         for ref in tables:
             name = lower.get(ref.lower())
@@ -591,6 +597,7 @@ class Replay:
                 if cap is not None and table.num_rows > cap:
                     n = table.num_rows
                     raise OverflowError(f"table {name} has {n} rows, more than {cap}")
+                _check_midnight(name, table)
                 for alias in {name, name.lower()}:
                     self.con.put(alias, table)
                 self.synced[name] = self.version
@@ -601,6 +608,33 @@ class Replay:
             raise OverflowError(f"the query reads {total} rows, more than {cap}")
         rows[ONE] = [(0,)]
         return rows
+
+    def check_types(self, name: str) -> None:
+        """Refuse a table whose `HUGEINT` or `UHUGEINT` values Arrow cannot
+        hold (#618). DuckDB exports both as `decimal128(38, 0)` without a
+        range check (DD-5): a value of 10^38 or more is an invalid decimal,
+        and a `UHUGEINT` of 2^127 or more arrives negative (the maximum as
+        -1). Smaller values export exactly. A 128-bit integer inside a list
+        or struct is refused whatever its value."""
+        rel = self.db.sql(f'SELECT * FROM "{name}" LIMIT 0')
+        limit = 10**38
+        for col, t in zip(rel.columns, rel.types, strict=True):
+            kind = str(t).upper()
+            if not _HUGE.search(kind):
+                continue
+            q = '"' + col.replace('"', '""') + '"'
+            if kind == "HUGEINT":
+                out = f"{q} >= {limit} OR {q} <= -{limit}"
+            elif kind == "UHUGEINT":
+                out = f"{q} >= {limit}"
+            else:
+                out = "true"
+            found = self.db.sql(f'SELECT count(*) FROM "{name}" WHERE {out}').fetchall()[0][0]
+            if found:
+                raise ValueError(
+                    f"column {col} of {name} is {t} with values DuckDB's Arrow export "
+                    "(decimal128(38, 0)) cannot hold (DD-5)"
+                )
 
     def condense(
         self, rec: Record, tables: list[str]
@@ -783,7 +817,6 @@ class Replay:
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import lean_values
 
-        expect_error = rec.expect == "error"
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
             res.cls, res.reason = "refused", f"checker: {_clip((err or out).strip()[-200:], 200)}"
@@ -816,8 +849,11 @@ class Replay:
                 res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
                 return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
-        if expect_error and not lean_ok and (found := issues()):
+        if not lean_ok and (found := issues()):
             # Not an agreement (`Rel.eval` gives rows), but the verifier warns.
+            # A row that raises is NULL in `Rel.eval`, and the error is
+            # `verify`'s: `sin('inf'::DOUBLE)` raises in the reference where
+            # DuckDB gives NaN (`duckdb-R15-math-domain`, #617).
             res.reason = "verify: " + _clip("; ".join(found), 200)
 
         # DuckDB on the plan Lean writes.
@@ -854,15 +890,33 @@ class Replay:
         return res
 
 
+def _check_midnight(name: str, table: pa.Table) -> None:
+    """Refuse a table with a time of `24:00:00`, which DuckDB's `TIME` holds
+    and Python's `datetime.time`, through which the rows are inlined for
+    Lean, does not: it became `00:00:00` (#619)."""
+    import pyarrow.compute as pc
+
+    for col, f in zip(table.columns, table.schema, strict=True):
+        if pa.types.is_time64(f.type) and f.type.unit == "us":
+            top = pc.call_function("max", [col.cast(pa.int64())]).as_py()
+            if top is not None and top >= 86_400_000_000:
+                raise ValueError(
+                    f"column {f.name} of {name} holds 24:00:00, which the rows inlined "
+                    "for Lean (Python times) cannot"
+                )
+
+
 def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     """The runtime errors and wrap-arounds `verify` cannot rule out, the
-    `SUM`s it assumes fit among them (#316). The SQL text goes to `verify` as
+    `SUM`s that may overflow among them (#316). The SQL text goes to `verify` as
     it is: `sverify.sql` refuses a query that reads no table, which hid
     `SELECT 7 // 0`'s division by zero (#333)."""
     from sverify.contracts import verify
 
     try:
-        report = verify(sql, tables=schemas)
+        # Without inference: an inferred precondition would absorb the
+        # overflow the test expects (#619).
+        report = verify(sql, tables=schemas, infer=False)
     except Exception:  # noqa: BLE001
         return []
     return [str(i) for i in report.issues + report.assumed]

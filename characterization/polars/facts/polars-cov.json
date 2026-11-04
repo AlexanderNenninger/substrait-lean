@@ -2,21 +2,32 @@
   "id": "polars-cov",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "`cov`: two-pass blocks with Chan merge; Welford when streaming",
-  "verdict": "two-pass per block + Chan (in memory); Welford (streaming); no clamp",
+  "title": "`cov`: two-pass blocks with Chan merge; Welford when grouped on streaming",
+  "verdict": "two-pass per block + Chan (in memory; streaming ungrouped); Welford (streaming grouped); no clamp; Decimal raises on streaming (PL-5)",
   "area": "aggregates",
   "options": [
     "stat_algo"
   ],
+  "rows": [
+    {"group": "agg.stat", "option": "stat_algo", "types": ["i64", "fp64", "decimal"]}
+  ],
   "constructs": [
     "cov"
   ],
-  "settings": {},
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
   "description": [
-    "`CovState` follows `var` (polars-var-std): two-pass per block of 128 merged by Chan's combine in memory, Welford's update in the streaming reducer. A weight at most `ddof` is null. `CovState` does not clamp."
+    "`CovState` follows `var` (polars-var-std): two-pass per block of 128 merged by Chan's combine in memory, Welford's update in the streaming reducer. A weight at most `ddof` is null. `CovState` does not clamp.",
+    "Integers become doubles (`as f64`), so values above 2⁵³ round; decimals are cast to `Float64` in memory. The streaming engine checks for a primitive numeric type before it builds the reduction, and a decimal is not one: `cov` of a `Decimal` column raises `InvalidOperationError` on the default lazy engine and succeeds in memory.",
+    "Streaming, ungrouped, merges `moment::cov` per chunk, the block algorithm of the in-memory path; the per-value Welford update is the grouped streaming path. In memory a column of length 1 is taken as a broadcast constant, so the covariance of one pair is 0.0 with `ddof=0` and null with `ddof=1` without reaching `CovState`."
   ],
   "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -31,6 +42,134 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/cov.rs#L7-L43",
+          "note": "in memory: a length-1 side is a broadcast constant (cov 0.0 or null, corr NaN); else `CovState`/`PearsonState` per chunk pair, merged by `combine`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/misc.rs#L967-L1040",
+          "note": "in memory: `Int32`, `Int64`, `UInt32`, `UInt64` (and `UInt64` for cov) read `as f64`; other types, decimals among them, cast to `Float64`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L403-L408",
+          "note": "result type: the inputs' float supertype, else `Float64`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs#L136-L281",
+          "note": "`CovState`, `PearsonState`: two-pass blocks, Welford's `insert_one`, Chan's `combine`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs#L646-L690",
+          "note": "`cov`, `pearson_corr`: pairs with both values valid, `as_()` `f64`, blocks of 128"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs#L18-L38",
+          "note": "streaming `new_cov_reduction`: `polars_ensure!(dtype.is_primitive_numeric())`, which a decimal is not"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs#L65-L125",
+          "note": "streaming: `update_group` casts to `Float64` and merges `moment::cov` per chunk (ungrouped); `update_groups_while_evicting` uses `insert_one` per row (grouped)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs#L167-L180",
+          "note": "streaming `new_pearson_corr_reduction`: the same primitive-numeric check"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs#L297-L310",
+          "note": "streaming corr finish: null at weight 0, else `PearsonState::finalize`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/datatypes/dtype.rs#L648-L650",
+          "note": "`is_primitive_numeric`: float or integer"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2334-L2347",
+          "note": "ungrouped `cov`/`corr` lower to a streaming reduction"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_group_by.rs#L516-L523",
+          "note": "grouped `cov`/`corr` lower to a streaming reduction"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104",
+          "note": "ungrouped streaming reduce: each pipeline folds its morsels into a local state (`update_group`), the local states merge in pipeline order (`combine_subset`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L396-L455",
+          "note": "`VecGroupedReduction`: `update_group` calls `reduce_ca` on a morsel; `update_groups_subset` calls `reduce_one` per row"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L457-L528",
+          "note": "`update_groups_while_evicting` (per row `reduce_one`) and `combine_subset` (`combine`)"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "note": "Decimal(10, 2) columns a = [1.10, 2.20, 3.35], b = [1.00, 2.00, 4.00]: pl.cov('a', 'b') is 1.6916666666666667 and pl.corr('a', 'b') 0.9843241382880894 in memory; streaming raises InvalidOperationError: `cov` (`corr`) operation not supported for dtype `decimal[10,2]`"
+        },
+        {
+          "note": "Int64 a = [5], b = [7]: pl.cov null on both engines; a = [5, 5, 5], b = [1, 2, 3]: 0.0 on both"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs#L65-L125",
+          "note": "`update_group` (ungrouped) merges `moment::cov` per chunk; `update_groups_while_evicting` (grouped) uses `insert_one`"
+        }
+      ],
+      "notes": "Retitled from \"`cov`: two-pass blocks with Chan merge; Welford when streaming\" and the verdict from \"two-pass per block + Chan (in memory); Welford (streaming); no clamp\": the streaming engine uses Welford's update only when grouped; ungrouped it runs the block algorithm of the in-memory path. The verdict also names PL-5 (streaming `cov` of `Decimal` raises)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L108-L123",
+          "note": "`test_cov_one_row`, `engine` in-memory and streaming: grouped `cov(ddof=1)` of one pair is NULL and `cov(ddof=0)` 0.0; of (2, 3), (3, 2) -0.5 and -0.25; ungrouped `head(1)` `cov(ddof=1)` is NULL"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L74-L96",
+          "note": "`test_cov_corr_mixed_float_schema`, both engines: `cov` and `corr` of `Float32` with `Float64` are `Float64`, grouped and not"
+        }
+      ],
+      "notes": [
+        "Confirms the null for a weight at most `ddof` on both engines. No test at py-2.1.0 runs `cov` or `corr` of a `Decimal` column on the streaming engine, so PL-5 has no test either way.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-cov-decimal"
+        }
+      ],
+      "notes": [
+        "Confirms PL-5 on the streaming engine: `cov` of two `Decimal(10, 2)` columns raises `InvalidOperationError` (`cov` operation not supported for dtype `decimal[10,2]`), where memory gives 2.625 (and `corr` 0.9707253433941508).",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

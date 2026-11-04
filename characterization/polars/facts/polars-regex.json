@@ -15,7 +15,7 @@
     "str.replace",
     "str.replace_all"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "Patterns are the Rust `regex` crate's: no lookaround and no backreferences (both raise `ComputeError` when the query runs), `\\d` and `\\w` are Unicode (`\\d` matches `٣`), POSIX classes are ASCII. An invalid pattern raises.",
     "`str.extract(p, g)` is NULL where the pattern does not match or the group did not take part; DuckDB's `regexp_extract` gives `''` there. `replace_all` replaces every match, including empty ones (`b*` in `aaa` gives `-a-a-a-`), and its replacement names groups as `$1` or `${1}`; `\\1` is literal. `replace` replaces the first match.",
@@ -23,6 +23,7 @@
   ],
   "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround either; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`).",
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",

@@ -8,6 +8,9 @@
   "options": [
     "substring_range"
   ],
+  "rows": [
+    {"group": "str.sub", "option": "substring_range", "types": ["string"]}
+  ],
   "constructs": [
     "substring"
   ],
@@ -20,6 +23,7 @@
     "Now: the same range is an error in the reference (`Text.substrInRange`, `Issue.domain`), reported by `verify` unless the offset's bounds rule it out. The size hypothesis for strings is 2³² characters (`Text.sizeCap`). DuckDB raises itself; the written plan guards the offset its wrap-around arithmetic shifts."
   ],
   "status": "fixed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",

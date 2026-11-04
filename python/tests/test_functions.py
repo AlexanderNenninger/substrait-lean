@@ -93,6 +93,36 @@ def test_tools_and_observations() -> None:
     assert all(r["row"]["class"] == "refines" and r["row"]["shim"] is None for r in ref)
 
 
+def test_checklist_options_are_lean() -> None:
+    """The checklist's option items (`characterization/areas.json`) are Lean's
+    options, but `fp32` (an item before #417 gives it options) and
+    `distribution` (a function's parameter every profile reads)."""
+    areas = json.loads((ROOT / "characterization" / "areas.json").read_text())["areas"]
+    items = {i["id"] for a in areas for i in a["items"] if i["kind"] == "option"}
+    lean = {o["id"] for o in lean_options()["options"]}
+    assert items - {"fp32"} == lean - {"distribution"}
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_engine_tables(engine: str) -> None:
+    """An engine's table (#444 step 3a) chooses at every option, names the
+    version its facts were probed at, cites facts that exist, and its shim
+    counts are its rows with a shim."""
+    tables = lean_options()
+    options = {o["id"] for o in tables["options"]}
+    assert {r["option"] for r in tables["choices"][engine]} == options
+    version = tables["versions"][engine]
+    rows = tables["observations"][engine]
+    for r in rows:
+        for fact in (r["row"]["evidence"] or {}).get("tested", []):
+            doc = ROOT / "characterization" / engine / "facts" / f"{fact}.json"
+            assert doc.exists(), fact
+            assert json.loads(doc.read_text())["engine_version"].removeprefix("py-") == version
+    for t in tables["tools"]:
+        shims = sum(1 for r in rows if r["option"] == t["option"] and r["row"]["shim"])
+        assert t["shims"][engine] == shims, t["option"]
+
+
 def test_lean_facts_exist() -> None:
     """Every fact Lean's options table cites is a document of `characterization/`."""
     facts = {fact for o in lean_options()["options"] for _, fact in o["extra"]}
@@ -136,7 +166,8 @@ def test_groups_and_options() -> None:
     for o in fns.OPTIONS.values():
         assert {b for b, _ in o.extra} <= set(o.core), o.id
         for _, fact in o.extra:
-            assert (ROOT / "characterization" / "duckdb" / "facts" / f"{fact}.json").exists()
+            engine = fact.split("-")[0]
+            assert (ROOT / "characterization" / engine / "facts" / f"{fact}.json").exists()
 
 
 @pytest.mark.parametrize("profile", sorted(fns.CHOICES))

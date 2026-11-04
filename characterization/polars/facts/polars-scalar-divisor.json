@@ -1,0 +1,52 @@
+{
+  "id": "polars-scalar-divisor",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Double `/`, `//`, `%` by a scalar: a multiplication by the reciprocal",
+  "verdict": "`divide` of doubles by a scalar rounds twice (2u, `approx`) and overflows below the smallest normal divisor; `//` and `%` give wrong results",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "nan_creation"
+  ],
+  "constructs": [
+    "/",
+    "//",
+    "%"
+  ],
+  "settings": {},
+  "description": "With a length-1 divisor (a literal) against a column of two or more rows, Polars's in-memory engine computes `x / c` as `x * (1 / c)`: `49.0 / 49.0` is `0.9999999999999999`, and `0.0 / 1e-310` is NaN (`1 / 1e-310` is `inf`, and `0 * inf` NaN). `//` and `%` divide the same way. A column divisor of the same length divides as IEEE does. Here the streaming engine gave the IEEE quotient on four rows; the characterization pipeline's PL-3 reports it under streaming too.",
+  "reference": "`divide` of doubles rounds the exact quotient once (`TIE_TO_EVEN`), and `0.0 / c` is `0.0` for a finite nonzero `c`. Decided on #444: Polars's `/` is `approx` with 2u per division, under the precondition that a divisor is 0 or not subnormal; `//` and `%` floor the quotient (`49.0 % 49.0` is `49.0`), so their translation broadcasts the divisor to a column (`column_divisor`).",
+  "status": "decided",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session frosty-bassi-b2cf7d (#444 step 3a, PR #590)",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [49.0, 0.0, 7.0, -0.0]}).select(pl.col('x') / pl.lit(49.0))",
+          "observed": "[0.9999999999999999, 0.0, 0.14285714285714285, -0.0]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0, 0.0, 7.0, -0.0]}).select(pl.col('x') / pl.lit(1e-310))",
+          "observed": "[inf, nan, inf, nan]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0, 0.0, 7.0, -0.0]}).lazy().select(pl.col('x') / pl.lit(49.0)).collect(engine='streaming')",
+          "observed": "[1.0, 0.0, 0.14285714285714285, -0.0]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [1e-300, 49.0, 0.0]}).select(pl.col('x') / pl.lit(1e-310))",
+          "observed": "[inf, inf, nan]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [1e-300, 49.0, 0.0]}).select(pl.col('x') % pl.lit(49.0))",
+          "observed": "[1e-300, 49.0, 0.0]"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) on macOS arm64."
+    }
+  ]
+}

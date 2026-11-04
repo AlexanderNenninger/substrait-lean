@@ -1036,11 +1036,13 @@ def optionAccepts (base : String) (float : Bool) (opt : String) : Option (Option
 
 `optionAccepts` as it was before the table (#444 step 1a), and a check that
 the lookup agrees with it on every name the function tables or the parser
-know, on integers and on doubles, for every option Substrait's YAMLs name. Two
+know, on integers and on doubles, for every option Substrait's YAMLs name. Three
 differences: `variance` and `std_dev` of integers now accept `rounding`
 (`TIE_TO_EVEN`), as `avg` of integers does, since both convert to doubles;
-and `avg` of integers would accept `overflow` (`ERROR`) as `sum` does, which
-no plan reaches: `parseMeasure` reads `avg`'s options as of doubles. -/
+`avg` of integers would accept `overflow` (`ERROR`) as `sum` does, which
+no plan reaches: `parseMeasure` reads `avg`'s options as of doubles; and
+`divide` of integers accepts `division_type: TRUNCATE`, how it rounds the
+quotient (`characterization/areas.json`). -/
 
 private def optionAcceptsBefore (base : String) (float : Bool) : String → Option (Option (List String))
   -- Integer overflow raises at the declared width (#202). `+`, `-`, `×` and
@@ -1111,7 +1113,8 @@ private def optionNames : List String :=
 #guard optionNames.all fun base => [false, true].all fun float => yamlOptions.all fun o =>
   optionAccepts base float o == optionAcceptsBefore base float o ||
     (["variance", "std_dev"].contains base && !float && o == "rounding") ||
-    (base == "avg" && !float && o == "overflow")
+    (base == "avg" && !float && o == "overflow") ||
+    (base == "divide" && !float && o == "division_type")
 
 -- Each group `optionGroup` gives a name with a row is one of that name's rows'.
 #guard optionNames.all fun base => [false, true].all fun float =>
@@ -1886,6 +1889,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if ["add", "subtract", "multiply", "negate", "divide"].contains (baseName name) && w < 64 &&
           call.kind cols == .int then
         return .un (.wrap w) call
+      -- `ABS(MIN)` neither (#616): its branch that negates, as the writer
+      -- writes it and reads it back.
+      if baseName name == "abs" && w < 64 && call.kind cols == .int then
+        if let .ifThen c t e := call then return .ifThen c (.un (.wrap w) t) e
       return call
   | ("ifThen", t) =>
     -- A `CASE` without `ELSE` is `ELSE NULL`.

@@ -24,6 +24,7 @@
     "delta-rs 1.6.6 reads the same tables with keys vended the same way (both through `uc://` and with the keys passed in `storage_options`), so the keys allow reading the table; which request Delta Kernel makes outside them is not isolated."
   ],
   "status": "open",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
