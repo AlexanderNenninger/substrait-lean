@@ -17,7 +17,21 @@
   [core-semantics.md](docs/core-semantics.md)). The route goes into
   `Report.routes`; `route="native"` and the others take that route or refuse.
   `deterministic=True` refuses a plan whose result is not determined up to
-  row order (D10). Without `route`, `run` behaves as before.
+  row order (D10). Each route carries the plan's class on the engine
+  (`Route.cls`: refines, refines up to an observation, approx, shim or
+  refused), and an engine that agrees with the reference only up to an
+  observation the postcondition does not state is refused, or shimmed. A
+  function the engine does not run refuses the plan with the reason. Before
+  it runs, a routed run checks the preconditions, the inferred bounds and
+  the assumed `SUM`s on the data (`Report.check_inputs`) and refuses a
+  batch that breaks one, naming it (`PreconditionError`). Without `route`,
+  `run` behaves as before.
+- `semantics="polars"` checks an Ibis transformation under Polars's
+  profile, once the checker has one.
+- `sv.equivalent(elements="multiset")` ignores the order of a list's
+  elements. A postcondition the checker does not prove, and that reads the
+  value of `first` or `last` without an order or a list's element order,
+  says it depends on that open choice.
 - Engine profiles record the versions their facts were probed at (DuckDB
   2.0.0, Polars 2.1.0). A routed run on another version warns
   (`EngineVersionWarning`), and one on another major version is refused
