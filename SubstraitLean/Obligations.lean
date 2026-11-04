@@ -378,7 +378,9 @@ theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) {
 /-- **`(duckdb, T r) ⊑ (reference, r)`**, for `T = Lowering.duckdb.lowerRel`
 (`docs/core-semantics.md`, "Soundness"): unless the translated plan raises,
 DuckDB's result is one the reference allows (`Rel.duckdb_shim_allowed`), and
-it raises only where the reference may (`Rel.lowerRel_raises`). -/
+it raises only where the reference may (`Rel.lowerRel_raises`). Its trusted
+base is `Rel.duckdb_sound`'s, aggregates included: DuckDB's double `SUM` and
+`AVG` are taken to be Lean's, which holds only within #85's bound (#633). -/
 theorem Rel.duckdb_refines {cat : Catalog} (r : Rel) :
     (¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat →
       r.AllowedP Profile.reference.table cat

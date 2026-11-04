@@ -239,8 +239,8 @@ def aggregates : List Aggregate := [
   { name := "mad", arg := .double, result := .double, laws := [.nonNull, .atLeast 0],
     sample := .int 0 },
   -- `kurtosis(x)` (of a sample, NULL for fewer than 4 values),
-  -- `kurtosis_pop(x)` and `skewness(x)` (NULL for fewer than 3 values or
-  -- equal ones). They raise where a moment is out of range: on an infinity
+  -- `kurtosis_pop(x)` (NULL for fewer than 2 values) and `skewness(x)` (for
+  -- fewer than 3), both NULL also for equal ones. They raise where a moment is out of range: on an infinity
   -- or NaN, or a value whose fourth (third, for `skewness`) power
   -- overflows, from about `1e77` (`duckdb-moments`).
   { name := "kurtosis", arg := .double, result := .double, raises := .sometimes,

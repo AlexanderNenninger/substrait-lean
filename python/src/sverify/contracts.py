@@ -225,7 +225,7 @@ class Unique(TableCondition):
             "a key"
             if ok
             else "not shown to be a key"
-            if out["deterministic"]
+            if out.get("windows_total", out["deterministic"])
             else "undetermined: rows may tie in an ORDER BY"
         )
         return CheckedCondition(self.label, ok, value, cex)
@@ -959,7 +959,12 @@ class Report:
     """False when rows may tie in the ORDER BY of a window or of an ordered
     aggregate (`first`, `last`, `group_concat`; without an `order_by` every
     row ties): the engine then picks an order, and nothing is proved about
-    the result."""
+    the result; or when a `LIMIT` takes rows that tie in its `ORDER BY`, or
+    has none, so a rerun may give other rows (D10)."""
+    windows_total: bool = True
+    """False only for the window and ordered-aggregate ties of
+    `deterministic`: a `LIMIT` over ties keeps every proof, and the written
+    SQL breaks its ties by input order."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, Lean could not rule out; when
     empty, the transformation provably runs without them."""
@@ -2154,7 +2159,7 @@ def infer_bounds(
     conditions = {t: list(cs) for t, cs in requires.items()}
     _merge(conditions, report.inferred)
     report.conditions = conditions
-    opened = {} if report.deterministic or isinstance(transform, str) else _open_columns(transform)
+    opened = {} if report.windows_total or isinstance(transform, str) else _open_columns(transform)
     if observed is None and not opened:
         return report
     return _observed(report, observed or Observation(), ensures, opened)
@@ -2510,6 +2515,7 @@ def _verify_once(
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
         deterministic=out["deterministic"],
+        windows_total=out.get("windows_total", out["deterministic"]),
         issues=[
             Issue(
                 i["kind"],

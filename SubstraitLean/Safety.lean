@@ -1732,7 +1732,7 @@ theorem Rel.noIssue_of_assumedHold {cat : Catalog} (hcat : cat.WF) {A : String â
 
 DuckDB folds a `CASE`'s constant conditions when it plans a query, with the
 evaluator that raises: `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END`
-raises on any data, an empty table included (DD-5). The reference counts every
+raises on any data, an empty table included (DD-7). The reference counts every
 constant subexpression that raises as raising for the whole plan, whatever
 the data and whichever branch a row takes (D21: strict, and constants that
 raise are rare). No precondition rules one out. -/
