@@ -844,6 +844,33 @@ So 15 of Polars's differences cost a verified plan nothing, 7 cost a
 written argument, and the 23 run-time shims left each implement a value the
 reference chose.
 
+For the prototype slice, `SubstraitLean/PolarsShims.lean` proves them, each
+shim of `python/src/sverify/_polars_shims.py` once, as `Polars.<name>`,
+against a model of Polars's own functions taken from its facts (the trusted
+part, as `Profile.duckdb` is for DuckDB):
+
+- the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
+  `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
+  reference's truncated mean (which its clamp leaves), `round_half_away`
+  `roundMag`, `one_zero` `canon` on the codes of #444 step 1b, `strpos_chars`
+  and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
+  key order `sortLe`, and `tie_order` `List.mergeSort` (any stable sort of a
+  total preorder is it);
+- the guards, each flagging exactly the rows or groups where the reference's
+  issue is (`int_overflows`, `div_overflows`, `zero_divisor`, A3's
+  `sum_leaves_i64`, B1's `sum_makes_nan`, A4's `makes_infinite` and
+  `agg_makes_infinite`), so a guard refuses exactly the batches the
+  precondition rules out. On Polars a double `SUM` is summed in Polars's own
+  order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
+  overflows, which differ from the sequential sum's only at the edge;
+- the error side: `Polars.written_faithful` (Polars, with the value shims,
+  agrees with the reference wherever the reference reports no issue) and
+  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
+  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
+
+The Polars rows of `--options` name these theorems as their evidence. The
+`clustered` row stays tested, and so do the rows outside the slice.
+
 ## The steps of #444
 
 Each step is a PR or a short stack, and each ends in a theorem.

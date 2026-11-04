@@ -159,8 +159,8 @@ inductive Cls
 
 /-- What a row rests on. -/
 inductive Evidence
-  /-- A Lean theorem, by name. -/
-  | proved (thm : String)
+  /-- A Lean theorem, by name, with the facts its trusted model rests on. -/
+  | proved (thm : String) (facts : List String := [])
   /-- A test, a probe or an engine fact, by id. -/
   | tested (ids : List String)
   | none
@@ -327,7 +327,7 @@ def ObsRow.json (r : ObsRow) : Json :=
       | .refused => "refused")),
     ("q", r.q.json), ("shim", toJson r.shim),
     ("evidence", match r.evidence with
-      | .proved t => Json.mkObj [("proved", toJson t)]
+      | .proved t ids => Json.mkObj [("proved", toJson t), ("facts", toJson ids)]
       | .tested ids => Json.mkObj [("tested", toJson ids)]
       | .none => Json.null)]
 

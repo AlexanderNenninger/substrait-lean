@@ -58,6 +58,11 @@ def ObsRow.upTo (q : Obs) (ids : List String) : ObsRow :=
 def ObsRow.approxWithin (b : String) (ids : List String) : ObsRow :=
   { cls := .approx, q := { floats := .within b }, evidence := .ofIds ids }
 
+/-- The row, proved by the theorem `thm` (`SubstraitLean/PolarsShims.lean`),
+whose trusted model rests on the row's facts. -/
+def ObsRow.proved (r : ObsRow) (thm : String) : ObsRow :=
+  { r with evidence := .proved thm (match r.evidence with | .tested ids => ids | _ => []) }
+
 /-! ## DuckDB -/
 
 /-- DuckDB 2.0.0 under the settings `s`. -/
@@ -170,41 +175,42 @@ def Profile.polars.table : ProfileTable where
     (·, ["polars-string-functions-missing"]))
 
 def Profile.polars.obs : ObsTable := [
-  (none, "overflow", .native ["polars-int-arith", "polars-int-divide"]),
-  (some "agg.isum", "overflow", .native ["polars-sum-int"]),
-  (none, "on_division_by_zero", .native ["polars-int-divide", "polars-int-modulus"]),
-  (some "fp.div", "on_division_by_zero", .native ["polars-double-divide"]),
-  (none, "on_domain_error", .native ["polars-double-divide"]),
-  (none, "division_type", .shimmed "int_mod_trunc" ["polars-int-modulus"]),
-  (some "int.div", "division_type", .shimmed "int_div_trunc" ["polars-int-divide"]),
-  (some "int.mod", "division_type", .shimmed "int_mod_trunc" ["polars-int-modulus"]),
-  (none, "min_mod_neg_one", .native ["polars-int-modulus"]),
+  (none, "overflow", (ObsRow.native ["polars-int-arith", "polars-int-divide"]).proved "Rel.polars_sound"),
+  (some "agg.isum", "overflow", (ObsRow.native ["polars-sum-int"]).proved "Polars.sum_leaves_i64"),
+  (none, "on_division_by_zero", (ObsRow.native ["polars-int-divide", "polars-int-modulus"]).proved "Rel.polars_sound"),
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["polars-double-divide"]).proved "Rel.polars_sound"),
+  (none, "on_domain_error", (ObsRow.native ["polars-double-divide"]).proved "Rel.polars_sound"),
+  (none, "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
+  (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Polars.int_div_trunc"),
+  (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
+  (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
   (none, "rounding", .native []),
-  (none, "nan_creation", .native ["polars-double-arith"]),
+  (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
-  (none, "zero_sign", { ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
-    with shim := some "one_zero" }),
+  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
+    with shim := some "one_zero" }).proved "Polars.one_zero"),
   (none, "nan_kind", .upTo { zeros := .canon } ["polars-nan-sign"]),
   (none, "nan_order", .native ["polars-nan-order"]),
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound.
   (none, "sum_order", .approxWithin "plan" ["polars-sum-float", "polars-mean-float"]),
-  (none, "avg_int_result", .shimmed "avg_int_declared" ["polars-avg-int"]),
-  (none, "empty_group_aggregates", .shimmed "sum_empty_null" ["polars-sum-int"]),
+  (none, "avg_int_result", (ObsRow.shimmed "avg_int_declared" ["polars-avg-int"]).proved "Polars.avg_int_declared"),
+  (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),
   -- Every stated placement is native, by `nulls_last`; where a key leaves it
   -- open, Polars's default (first) is not the reference's (last), which the
-  -- choices say (`transferB`).
-  (none, "null_order", .native ["polars-null-order"]),
+  -- choices say (`transferB`). `Polars.null_order`: with `nulls_last` written
+  -- per key, Polars orders as `sortLe`.
+  (none, "null_order", (ObsRow.native ["polars-null-order"]).proved "Polars.null_order"),
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
-  (none, "tie_order", .native ["polars-sort-stability", "polars-first-last"]),
+  (none, "tie_order", (ObsRow.native ["polars-sort-stability", "polars-first-last"]).proved "Polars.tie_order"),
   (none, "tie_pick", .native ["polars-first-last"]),
-  (some "fp.round", "rounding", .shimmed "round_half_away" ["polars-round"]),
-  (none, "float_overflow", .native ["polars-double-arith"]),
+  (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
+  (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Polars.makes_infinite"),
   (none, "negative_start", .native ["polars-substring"]),
   (none, "case_sensitivity", .native ["polars-match-functions"]),
-  (some "str.sub", "string_positions", .shimmed "substring_wrap" ["polars-substring"]),
-  (some "str.match", "string_positions", .shimmed "strpos_chars" ["polars-strpos"]),
+  (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
+  (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
   (none, "null_join_keys", .native ["polars-null-keys"])]
 
 /-! ## The engines -/
@@ -295,7 +301,7 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
          ("shim", toJson r.shim)] ++
         [("q", r.q.sparseJson)] ++
         (match r.evidence with
-          | .proved thm => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ([] : List String))]
+          | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
           | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
           | .none => [("facts", toJson ([] : List String))])
     let toolFields : List (String × Json) := if !reference then [] else

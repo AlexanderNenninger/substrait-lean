@@ -405,3 +405,13 @@ def test_md5_is_refused_on_polars_with_the_reason():
     plan = written_plan(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
     with pytest.raises(polars_engine.Unsupported, match="see #271"):
         run_plan(con, plan, "polars")
+
+
+def test_every_shim_and_guard_is_a_lean_theorem():
+    """#444: each shim and guard is proved once, as `Polars.<name>` in
+    `SubstraitLean/PolarsShims.lean`; the Polars rows of the option table
+    name those theorems (a `run_cmd` there checks the rows' names)."""
+    lean = (ROOT / "SubstraitLean" / "PolarsShims.lean").read_text()
+    names = [s.name for s in shims.SHIMS] + [g.flag for g in shims.GUARDS]
+    missing = [n for n in names if f"theorem {n} " not in lean]
+    assert missing == []

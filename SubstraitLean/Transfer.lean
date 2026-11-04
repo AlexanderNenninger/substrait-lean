@@ -509,7 +509,7 @@ def ObsTable.factsAt (obs : ObsTable) (group : Option String) (option : String) 
     | none => (obs.find? fun (x : Option String × String × ObsRow) =>
         x.1.isNone && x.2.1 == option).map fun (x : Option String × String × ObsRow) => x.2.2
   match row with
-  | some { evidence := .tested ids, .. } => ids
+  | some { evidence := .tested ids, .. } | some { evidence := .proved _ ids, .. } => ids
   | _ => []
 
 open Lean (Json toJson) in
