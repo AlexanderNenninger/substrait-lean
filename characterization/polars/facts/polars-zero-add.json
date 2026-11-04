@@ -16,6 +16,7 @@
   "description": "`-0.0 + 0.0` is `-0.0` and `0.0 - 0.0` (as `0.0 - x`) is `-0.0`, where IEEE 754 gives `+0.0` for both under round-to-nearest; `-0.0 - 0.0` is `-0.0`, as IEEE gives. The sign of a zero result of `+` and `-` is therefore Polars's own (polars-zero-sign).",
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere, so the translation canonicalises (`one_zero`) where a result's zeros are observed.",
   "status": "shimmed",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
