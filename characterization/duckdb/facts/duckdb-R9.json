@@ -2,7 +2,7 @@
   "id": "duckdb-R9",
   "engine": "duckdb",
   "engine_version": "2.0.0",
-  "title": "Casts of doubles and decimals to integers: rounding",
+  "title": "Casts of doubles and decimals to integers: half to even and half away from zero",
   "verdict": "decided: truncate; DuckDB shim",
   "area": "casts",
   "options": [
@@ -17,7 +17,7 @@
   ],
   "settings": {},
   "description": [
-    "DuckDB rounds half away from zero natively: `CAST(0.55 AS INTEGER) = 1`, `CAST(-0.55 AS BIGINT) = -1`, and `avg(d)::INTEGER` rounds too.",
+    "DuckDB rounds casts of `FLOAT` and `DOUBLE` to integers half to even (`CAST(1.5::DOUBLE AS INTEGER) = 2`, `CAST(0.5::DOUBLE AS INTEGER) = 0`, `CAST(126.5::DOUBLE AS TINYINT) = 126`; `float_integer_cast.test`), and casts of `DECIMAL` half away from zero (`CAST(0.55 AS INTEGER) = 1`, `CAST(-0.55 AS BIGINT) = -1`, `CAST(2.5 AS INTEGER) = 3`). `avg(d)::INTEGER` rounds too, half to even, since `avg` is a `DOUBLE`. (Corrected 2026-11-04: this said half away from zero for doubles as well; the earlier examples were `DECIMAL` literals.)",
     "Shim: sverify's SQL writes `CAST(trunc(x) AS BIGINT)` (`DuckDBDialect.float_to_int`)."
   ],
   "reference": [
@@ -56,6 +56,46 @@
       "method": "source-reading",
       "checked_by": "commit 5b168e0 (#209)",
       "notes": "Decided: the reference truncates toward zero."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (casts)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/float_integer_cast.test#L5-L43",
+          "note": "FLOAT and DOUBLE to TINYINT … HUGEINT: 0.5 → 0, 1.5 → 2, -0.5 → 0, -1.5 → -2, 0.55 → 1, -0.55 → -1: ties to even"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/float_integer_cast.test#L45-L115",
+          "note": "the range check applies to the rounded value: 127.5 → out of range for TINYINT (rounds to 128), 126.5 → 126, -128.5 → -128; TRY_CAST gives NULL where CAST raises"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/float_integer_cast.test#L117-L138",
+          "note": "DOUBLE to INTEGER: 2147483647.5 → out of range, 2147483647.4 → 2147483647"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/decimal_integer_cast.test#L5-L17",
+          "note": "DECIMAL 0.55 → 1 and -0.55 → -1 for TINYINT … HUGEINT (no tie)"
+        }
+      ],
+      "notes": "Casts of FLOAT and DOUBLE round half to even; the description's half away from zero holds for DECIMAL only (its examples are DECIMAL literals and not ties). The lift's DuckDB profile has both (`sql_lift/_base.py`: float_to_int TIE_TO_EVEN, decimal_to_int TIE_AWAY_FROM_ZERO). The shim truncates first, so it is unaffected."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 3 (casts)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/operator/cast_operators.cpp#L2974-L2988",
+          "note": "TryCastDecimalToNumeric: adds half of 10^scale with the input's sign, then divides: half away from zero"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/operator/cast_operators.cpp#L2990-L3000",
+          "note": "TryCastHugeDecimalToNumeric: the same for DECIMAL(38)"
+        }
+      ],
+      "notes": "No test casts a DECIMAL tie to an integer; the source reading covers it."
     }
   ],
   "issues": [

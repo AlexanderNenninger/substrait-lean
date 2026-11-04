@@ -10,10 +10,17 @@
       "group": "agg.var",
       "option": "distribution",
       "types": [
-        "i64",
-        "fp64",
-        "decimal"
+        "fp64"
       ]
+    },
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "i64",
+        "decimal"
+      ],
+      "evidence": "source"
     }
   ],
   "constructs": [
@@ -32,7 +39,7 @@
   ],
   "reference": "Substrait's `variance` and `std_dev` take `distribution` (`SAMPLE`, `POPULATION`); sverify reads an omitted one as `SAMPLE` (`SubstraitLean/Options.lean`, `Parse.lean`), and the lift writes `VAR_SAMP`/`VAR_POP` (`sql_lift/_base.py`, `_distribution`). DuckDB's defaults agree.",
   "status": "no-finding",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -65,6 +72,30 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_stddev.test#L5-L121",
+          "note": "val INTEGER 42, 43, 42, 1000: stddev_samp 478.8, stddev_pop 414.7, var_samp and variance 229281.6, var_pop 171961.2; per group var_samp 0.5 and 458882, var_pop 0.25 and 229441"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_stddev.test#L11-L19",
+          "note": "stddev_samp(1), var_samp(1) → NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_stddev.test#L128-L145",
+          "note": "stddev(val) → 478.8 (= stddev_samp); stddev(0) over ten rows → 0; stddev_pop(42) OVER () → 0.0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/aggregates/var_stddev.test#L5-L80",
+          "note": "list_var_samp, list_var_pop, list_stddev_*, list_aggr(…, 'variance'): the same values over INTEGER[]"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin the sample (n - 1) and population (n) divisors, `variance` = `var_samp` and `stddev` = `stddev_samp`. Their inputs are `INTEGER`, which binds the single `DOUBLE` overload through an exact cast, so they run the `DOUBLE` aggregate on exact doubles: they settle `fp64`. No test runs a `BIGINT` or `DECIMAL` argument; those stay at the source reading (one overload, so the same distribution)."
     }
   ]
 }

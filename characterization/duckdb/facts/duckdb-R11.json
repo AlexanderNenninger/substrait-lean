@@ -21,8 +21,7 @@
       "option": "list_null_order",
       "types": [
         "list"
-      ],
-      "evidence": "source"
+      ]
     }
   ],
   "constructs": [
@@ -119,6 +118,22 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3). `min` and `max` of a list compare sort keys: ascending with child NULLs last for `min`, descending with child NULLs first for `max`, so a NULL element is greater than every value in both, and a proper prefix sorts first. This is the list order of the comparison operators, `GREATEST`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/nested/list/list_aggregates.test#L21-L37",
+          "note": "min(i), max(i) over [1], [1, 2], [1, NULL], [NULL, 2], [NULL, NULL], [NULL], NULL → [1], [NULL, NULL]: a NULL element sorts above every value, a proper prefix first"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/parallelism/intraquery/test_parallel_nested_aggregates.test#L27-L37",
+          "note": "min/max of lists at threads=4: [-99998, 1, 99998] and [0, 1, 0], …"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `MIN` and `MAX` of lists use the same order as the sort: NULL elements greatest."
     }
   ],
   "issues": [

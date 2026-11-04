@@ -25,7 +25,7 @@
   ],
   "reference": "The reference caps decimals at 38 digits and raises past them (`docs/reference-semantics.md`, decimal arithmetic). It has no limit on string, blob or list lengths.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -81,6 +81,46 @@
           "note": "a list's child reserves through the child vector"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_pad.test#L110-L134",
+          "note": "LPAD/RPAD to 1100000000 four-byte characters, or 2147483647 characters → Out of Range Error: maximum supported string size"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_translate_large.test_slow#L5-L8",
+          "note": "TRANSLATE(repeat('a', 1100000000), 'a', '😀') → Out of Range Error: maximum supported string size"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_string_agg_overflow.test_slow#L5-L14",
+          "note": "length(string_agg) of 30 strings of 10^8 bytes → 3000000000, below 2^32"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/repeat_list.test#L70-L79",
+          "note": "repeat([1], 99999999999999999) → maximum allowed vector size; a length product that wraps uint64 → Out of Range Error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/list_resize.test#L297-L305",
+          "note": "LIST_RESIZE to 9999999999999999999 or 4000999999999999999 → maximum allowed vector size"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_substring.test#L249-L292",
+          "note": "substring offsets outside [-2^32, 2^32) and lengths of 2^32 or more → Out of Range Error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/decimal/test_decimal.test#L152-L156",
+          "note": "'0.1'::DECIMAL(40) → Binder Error: width must be between 1 and 38"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum_decimal_overflow.test#L1-L54",
+          "note": "the sum of a DECIMAL is a DECIMAL(38) and raises Overflow in SUM of DECIMAL past it"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin the string limit (results past 2^32 - 1 bytes raise, a 3·10^9-byte string is fine), the vector limit for lists, substring's 32-bit offsets and the 38-digit decimal width."
     }
   ]
 }

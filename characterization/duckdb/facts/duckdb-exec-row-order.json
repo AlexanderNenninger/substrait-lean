@@ -29,7 +29,7 @@
   ],
   "reference": "The reference compares results as bags (`List.Perm`), so row order outside `ORDER BY` is free. `sum_order` is an open option every route allows within the plan's bound; `first`/`any_value` without ordering and `tie_order` allow every order.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -82,6 +82,42 @@
           "note": "ungrouped: each thread's state combined under a lock"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/parallelism/intraquery/test_parallel_nested_aggregates.test#L5-L25",
+          "note": "threads=4, verify_parallelism: first([a]) … GROUP BY b % 2 is 'non-deterministic so we can't check the result'"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/list_export_state.test#L5-L8",
+          "note": "list order deterministic only single-threaded: threads=1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/first_last_export_state.test#L5-L8",
+          "note": "first/last deterministic only single-threaded"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/approx_top_k_export_state.test#L5-L9",
+          "note": "approx_top_k forced single-threaded so results are deterministic"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_window_constant_allocator.test#L5-L26",
+          "note": "STRING_AGG OVER (): output unstable under multi-threading"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_streaming_window.test#L653-L667",
+          "note": "the ROLLUP output order is not deterministic, so the test orders it"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_sum.test#L5-L25",
+          "note": "a plain double sum depends on the order of the inputs"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests document that `first`, `list`, `string_agg` and `approx_top_k` without an ordering, and the order of grouped output, change with the thread count; they pin single-threaded runs or sort the output. No test pins the last bits of a double `SUM` across thread counts."
     }
   ]
 }

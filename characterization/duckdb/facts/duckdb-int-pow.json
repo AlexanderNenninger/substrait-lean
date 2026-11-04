@@ -10,8 +10,10 @@
     "on_domain_error"
   ],
   "rows": [
-    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
-    {"group": "int.pow", "option": "on_domain_error", "types": ["i8", "i16", "i32", "i64"]}
+    {"group": "int.pow", "option": "overflow", "types": ["i64"]},
+    {"group": "int.pow", "option": "on_domain_error", "types": ["i32"]},
+    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "source"},
+    {"group": "int.pow", "option": "on_domain_error", "types": ["i8", "i16", "i64"], "evidence": "source"}
   ],
   "constructs": [
     "power",
@@ -32,7 +34,7 @@
   ],
   "reference": "`power` on integers keeps the integer type; a result outside the width raises (`overflow: ERROR`), and `on_domain_error` never applies (docs/core-semantics.md). Lean's `BinFn.ipow` raises on a negative exponent. The SQL lift reads DuckDB's `**` as the double `power` (`sql_lift/core.py`, `_pow`), as DuckDB computes it.",
   "status": "shimmed",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -65,6 +67,34 @@
         }
       ],
       "notes": "The signature is generic in nothing: no per-width instantiation exists, so the reading covers i8 to i64 alike."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_pow.test#L5-L19",
+          "note": "powerme(a DOUBLE, b INTEGER) holds b = 3: `pow(b, -2)` → 0.111111, an INTEGER base to a negative exponent gives a fraction and raises nothing (i32)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/power_zonemap_pruning.test#L20-L42",
+          "note": "`power(x, 2)` and `power(x, 3)` of an INTEGER column have DOUBLE statistics (0.0 … 9.0, -27.0 … 8.0): the result is a double"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/power_zonemap_pruning.test#L72-L88",
+          "note": "with ieee_floating_point_ops = false, `power(x, -2)` of INTEGER 0 raises `zero raised to a negative power is undefined`"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_pow.test#L36-L60",
+          "note": "`power(0.0::float8, -2.0::float8)` and `0.0::float8 ^ -1.0::float8` → inf; with ieee_floating_point_ops = false both raise"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/bignum/test_bignum_hugeint.test#L15-L31",
+          "note": "`(10 * power(10, i))::HUGEINT` for BIGINT i in 0 … 37 runs without error and every value up to 10³⁸ round-trips through BIGNUM: a power past 2⁶³ is a double, no overflow error (i64)"
+        }
+      ],
+      "notes": "These pin the kind of result (a fraction, a double past 2⁶³, an error only for 0 to a negative power with IEEE off), not its last digits. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly. No test raises a TINYINT or SMALLINT base, so i8 and i16 stay at the source reading."
     }
   ]
 }

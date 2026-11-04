@@ -10,8 +10,22 @@
     "raise_set"
   ],
   "rows": [
-    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp"]},
-    {"group": "time.arith", "option": "date_range", "types": ["timestamp_tz"], "evidence": "source"}
+    {
+      "group": "time.arith",
+      "option": "date_range",
+      "types": [
+        "date",
+        "timestamp"
+      ]
+    },
+    {
+      "group": "time.arith",
+      "option": "date_range",
+      "types": [
+        "timestamp_tz"
+      ],
+      "evidence": "engine_test"
+    }
   ],
   "constructs": [
     "DATE + INTEGER",
@@ -71,11 +85,48 @@
       "method": "source-reading",
       "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
       "evidence": [
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-dateadd.cpp#L63-L127", "note": "ICUCalendarAdd for TIMESTAMPTZ + INTERVAL: no check against year 9999"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-datefunc.cpp#L140-L169", "note": "TryGetTime, GetTime: raise only past the int64 microsecond range"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-datefunc.cpp#L20-L35", "note": "the calendar: the Calendar setting (gregorian) in the TimeZone setting"}
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-dateadd.cpp#L63-L127",
+          "note": "ICUCalendarAdd for TIMESTAMPTZ + INTERVAL: no check against year 9999"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-datefunc.cpp#L140-L169",
+          "note": "TryGetTime, GetTime: raise only past the int64 microsecond range"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-datefunc.cpp#L20-L35",
+          "note": "the calendar: the Calendar setting (gregorian) in the TimeZone setting"
+        }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3). Whether the written plan's date guard covers `TIMESTAMPTZ` was not checked here."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/timestamp/test_icu_dateadd.test#L5-L12",
+          "note": "require icu; Calendar = 'gregorian', TimeZone = 'America/Los_Angeles'"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/timestamp/test_icu_dateadd.test#L96-L116",
+          "note": "'epoch'::timestamptz + '9223372036854775000 microseconds' → 294247-01-09 20:00:54.775-08; one microsecond below the smallest instant → Conversion Error: ICU date overflows timestamp range"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/timestamp/test_icu_dateadd.test#L181-L200",
+          "note": "±infinity + 1 microsecond → ±infinity"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/timestamp/test_icu_dateadd.test#L301-L345",
+          "note": "from 290309-12-22 (BC) 00:00:00Z: + 1 year → 290308-12-21 (BC) 16:07:02-07:52, + 32 days, + 1 hour, …; - 1 year, - 1 month, - 15 months → ICU date overflows timestamp range"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/timestamp/test_icu_dateadd.test#L346-L417",
+          "note": "the other negative intervals from the minimum raise ICU date overflows timestamp range or Date out of range in timestamp conversion"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `TIMESTAMPTZ + INTERVAL` computes far outside 0001-01-01 … 9999-12-31 (years BC around 290309) and raises only past the 64-bit microsecond range; infinities pass through. This confirms round 2's reading for `timestamp_tz`. The tests need the ICU extension and run in America/Los_Angeles."
     }
   ],
   "issues": [
