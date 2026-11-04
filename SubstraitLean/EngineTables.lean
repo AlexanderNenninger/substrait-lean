@@ -170,6 +170,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "on_division_by_zero", .native ["polars-int-divide", "polars-int-modulus"]),
   (some "fp.div", "on_division_by_zero", .native ["polars-double-divide"]),
   (none, "on_domain_error", .native ["polars-double-divide"]),
+  (none, "division_type", .shimmed "int_mod_trunc" ["polars-int-modulus"]),
   (some "int.div", "division_type", .shimmed "int_div_trunc" ["polars-int-divide"]),
   (some "int.mod", "division_type", .shimmed "int_mod_trunc" ["polars-int-modulus"]),
   (none, "min_mod_neg_one", .native ["polars-int-modulus"]),
@@ -282,7 +283,7 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
           | .refines => "refines" | .refinesUpTo => "refines_up_to" | .approx => "approx"
           | .refused => "refused")),
          ("shim", toJson r.shim)] ++
-        (if r.q == Obs.exact then [] else [("q", r.q.sparseJson)]) ++
+        [("q", r.q.sparseJson)] ++
         (match r.evidence with
           | .proved thm => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ([] : List String))]
           | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
@@ -295,6 +296,8 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
           | .raise => "raise" | .choose => "choose" | .leaveOpen => "open"))] ++
         (if tr.precondition == "" then [] else [("precondition", toJson tr.precondition)]) ++
         (match tr.q with | some q => [("q", q.sparseJson)] | none => [])
+    -- At an option the reference leaves open, `q` is what a contract keeps.
+    let obsFields := if toolFields.any (·.1 == "q") then obsFields.filter (·.1 != "q") else obsFields
     Json.mkObj (base ++ obsFields ++ toolFields)).toArray
 
 open Lean (Json toJson) in
