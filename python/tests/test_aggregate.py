@@ -319,12 +319,36 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
     assert report.proved
     assert [str(i) for i in report.assumed] == ["SUM overflow: $2"]
-    assert "assumes: SUM of $2 fits 64 bits in every group" in str(report)
+    assert "assumes: SUM of amount fits 64 bits in every group" in str(report)
     # Without inference it is an error like any other.
     strict = sv.verify(orders.aggregate(total=orders.amount.sum()), infer=False)
     assert [str(i) for i in strict.errors] == ["SUM overflow: $2"]
     assert not strict.proved and not strict.assumed
     assert "checks it while it runs" in str(strict)
+
+
+def test_an_assumed_sum_names_its_column():
+    # The assumed line names the column the SUM adds up, as its hint does
+    # (#480): here the base column behind a projection over a join.
+    customers = ibis.table({"customer_id": "!int64", "city": "!string"}, name="customers")
+    sales = ibis.table({"customer_id": "!int64", "amount_cents": "!int64"}, name="sales")
+    joined = sales.left_join(customers, sales.customer_id == customers.customer_id)
+    g = (
+        joined.select(city=customers.city, amount_cents=sales.amount_cents)
+        .group_by("city")
+        .aggregate(revenue_cents=_.amount_cents.sum())
+    )
+    report = sv.verify(g, requires={"sales": [_.amount_cents >= 0]})
+    assumed = "SUM of `amount_cents` fits 64 bits in every group"
+    assert any(h.startswith("SUM of `amount_cents`: bound it") for h in report.hints)
+    assert "assumes: SUM of amount_cents fits 64 bits in every group" in str(report)
+    assert assumed in report._repr_markdown_()
+    assert "$" not in str(report) + report._repr_markdown_()
+    # A SUM of an expression keeps Lean's notation.
+    t = ibis.table({"k": "!int64", "b": "int64"}, name="t")
+    report = sv.verify(t.group_by("k").aggregate(s=(t.b * 2).sum()))
+    assert [(i.expr, i.column) for i in report.assumed] == [("($1 * 2)", None)]
+    assert "assumes: SUM of ($1 * 2) fits" in str(report)
 
 
 def test_a_bounded_sum_over_bounded_rows_is_proved_outright():

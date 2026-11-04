@@ -458,3 +458,93 @@ def test_rows_another_writer_changed_are_not_resumed_from(catalog, monkeypatch):
         )
     )
     assert IcebergSource(catalog, "db.big").stored() is None
+
+
+@sv.transform(
+    requires={"orders": [_.id.notnull(), sv.unique("id")]},
+    ensures=[sv.unique("id")],
+)
+def by_day(orders):
+    return orders.select(orders.id, orders.customer, orders.amount, orders.ts)
+
+
+def dated(rows):
+    """Orders `(id, customer, amount, day)`, at noon of that day of 2024-01."""
+    return pa.Table.from_pylist(
+        [
+            dict(zip(SCHEMA_ORDERS.names, (i, c, a, datetime(2024, 1, d, 12)), strict=True))
+            for i, c, a, d in rows
+        ],
+        schema=SCHEMA_ORDERS,
+    )
+
+
+def files_by_partition(t) -> dict:
+    """Each partition's data files, with the delete files they read."""
+    out: dict = {}
+    for task in t.scan().plan_files():
+        files = out.setdefault(task.file.partition, set())
+        files.add((task.file.file_path, frozenset(d.file_path for d in task.delete_files)))
+    return out
+
+
+@pytest.mark.parametrize("spec", ["identity", "day"])
+def test_partitioned_sink_writes_only_the_change(catalog, spec):
+    """#466: a sink table partitioned by `customer` (identity) or by `day(ts)`
+    takes each change as one snapshot of position deletes and new rows, in
+    the partitions the change touches. The table equals a full recompute at
+    every step, and the other partitions keep their data files."""
+    from pyiceberg.transforms import DayTransform
+    from pyiceberg.typedef import Record
+
+    # Customer a orders on day 1, b on day 2, c on day 3.
+    catalog.create_table("db.orders", schema=SCHEMA_ORDERS).append(
+        dated([(i, "abc"[i % 3], i, 1 + i % 3) for i in range(1, 13)])
+    )
+    src = IcebergSource(catalog, "db.orders")
+    sink = catalog.create_table("db.out", schema=SCHEMA_ORDERS)
+    with sink.update_spec() as update:
+        if spec == "identity":
+            update.add_identity("customer")
+        else:
+            update.add_field("ts", DayTransform(), "ts_day")
+    view = by_day(src).write(IcebergSink(catalog, "db.out"))
+
+    def partition(customer: str, day: int) -> Record:
+        if spec == "identity":
+            return Record(customer)
+        return Record((datetime(2024, 1, day) - datetime(1970, 1, 1)).days)
+
+    def step(mode, touched):
+        before = files_by_partition(catalog.load_table("db.out"))
+        snapshots = len(catalog.load_table("db.out").snapshots())
+        assert view.refresh().writes[0].mode == mode
+        out = catalog.load_table("db.out")
+        table = out.scan().to_arrow().select(SCHEMA_ORDERS.names)
+        got = sorted(tuple(r.values()) for r in table.to_pylist())
+        assert got == rows(view) == recomputed(by_day(src), src)
+        assert len(out.snapshots()) == snapshots + 1
+        after = files_by_partition(out)
+        changed = {p for p in before.keys() | after.keys() if before.get(p) != after.get(p)}
+        assert changed == {partition(*t) for t in touched}
+        # Each delete file is in the partition of the data file it applies to.
+        for task in out.scan().plan_files():
+            assert all(d.partition == task.file.partition for d in task.delete_files)
+        return out
+
+    # The first write replaces what the table held: one data file per partition.
+    assert view.refresh().writes[0].mode == "overwrite"
+    assert len(files_by_partition(catalog.load_table("db.out"))) == 3
+    # A new order of a on day 2.
+    src.table().append(dated([(20, "a", 7, 2)]))
+    out = step("append", [("a", 2)])
+    assert written_entries(out) == {0: [1]}
+    # Delete an order of c (day 3), update one of a (day 1).
+    src.table().delete("id IN (2, 3)")
+    src.table().append(dated([(3, "a", 99, 1)]))
+    out = step("row-level", [("a", 1), ("c", 3)])
+    assert written_entries(out) == {0: [1], 1: [1, 1]}
+    # Every order of one partition goes.
+    src.table().delete("customer = 'b'" if spec == "identity" else "id IN (1, 4, 7, 10, 20)")
+    step("row-level", [("b", 2)])
+    assert view.refresh().writes[0].mode == "skipped"

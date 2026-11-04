@@ -330,3 +330,34 @@ def test_greatest_and_least_of_many_values_check_fast():
     result = check(query, TABLES)
     assert result.ok, f"{result.stage}: {result.detail}"
     assert time.monotonic() - start < 30
+
+
+def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
+    # DuckDB's `signed_cast_repro.test` (#317): the left conjunct overflows on
+    # every row, the right one is never TRUE. `Rel.eval` gives NULL, its value
+    # if nothing went wrong, and `verify` reports that the plan may raise; the
+    # written plan raises, as DuckDB 2.0 does.
+    import duckdb
+    import pyarrow as pa
+
+    from sverify.engine import connect, run_plan, substrait_json, written_plan
+
+    query = (
+        "SELECT 43 - MAX(ALL - 87 + col1) FROM tab2"
+        " WHERE col1 * col1 * - CAST(- col2 AS SIGNED) * + - col0 * + - 77 * - col0 IS NOT NULL"
+        " AND NOT + col0 BETWEEN 35 * - col2 AND NULL"
+    )
+    columns = {"col0": [64, 75, 46], "col1": [77, 67, 51], "col2": [40, 58, 23]}
+    tab2 = pa.table({k: pa.array(v, pa.int32()) for k, v in columns.items()})
+    schema = ibis.Schema.from_pyarrow(tab2.schema)
+    for semantics in ("duckdb", "reference"):
+        report = sv.verify(query, tables={"tab2": schema}, semantics=semantics, counterexamples=0)
+        assert any("overflow" in str(i) for i in report.issues), report
+    con = connect()
+    con.arrow["tab2"] = tab2
+    with pytest.raises(Exception, match="out of range"):
+        run_plan(con, written_plan(substrait_json(con, query)))
+    db = duckdb.connect()
+    db.register("tab2", tab2)
+    with pytest.raises(duckdb.OutOfRangeException):
+        db.sql(query).fetchall()
