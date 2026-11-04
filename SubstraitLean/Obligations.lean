@@ -396,7 +396,8 @@ open Lean Elab Command in
 run_cmd do
   let env ← getEnv
   let known (thm : String) : Bool :=
-    env.contains (`Substrait ++ thm.toName) || env.contains thm.toName
+    env.contains (`Substrait ++ thm.toName) || env.contains thm.toName ||
+      floatBoundsTheorems.contains thm
   for (t, obs) in engineTables do
     unless known (translationTheorem t.name) do
       throwError "{t.name}: no translation theorem {translationTheorem t.name}"

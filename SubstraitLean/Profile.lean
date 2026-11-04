@@ -505,7 +505,7 @@ scalar functions. For a double `SUM` or `AVG` that last part does not hold in
 general: DuckDB merges partial sums in finishing order and adds a constant
 vector as one `fl(k · x)` (#633), so on those the conclusion holds of the
 model, and what DuckDB gives is within #85's bound of it (`Profile.duckdb.table`'s
-`sum_order` row, `approx`). -/
+`sum_order` row, `approx`, proved in `float-bounds` as `StdModel.epsilon_sum`). -/
 theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
     (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
