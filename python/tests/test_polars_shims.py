@@ -14,6 +14,7 @@ from pathlib import Path
 
 import ibis
 import polars as pl
+import pyarrow as pa
 import pytest
 
 from sverify import _polars_shims as shims
@@ -410,20 +411,65 @@ def test_md5_is_refused_on_polars_with_the_reason():
 # --- The streaming engine ---------------------------------------------------------
 
 
-def _batches(collect) -> int:
-    """How many batches an elementwise function sees: 1 in memory, one per
-    morsel when Polars streams."""
-    calls: list[int] = []
+#: Polars's streaming thresholds, shrunk so that a few thousand rows take the
+#: paths millions of rows take: rows per morsel (default 100 000) and the
+#: buffered bytes above which a sort partitions its input (32 MiB). Polars
+#: reads them at start-up, so the tests that need them run in a subprocess.
+SMALL_STREAMING = {
+    "POLARS_IDEAL_MORSEL_SIZE": "64",
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": "1024",
+}
 
-    def f(s: pl.Series) -> pl.Series:
-        calls.append(len(s))
-        return s
 
-    lf = pl.LazyFrame({"x": range(300_000)}).select(
-        pl.col("x").map_batches(f, return_dtype=pl.Int64, is_elementwise=True)
+def _small_streaming(code: str, **env: str) -> str:
+    """Run `code` in a Python process with `SMALL_STREAMING` (and `env`) set;
+    its standard output."""
+    import os
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**os.environ, **SMALL_STREAMING, **env},
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
-    collect(lf)
-    return len(calls)
+    assert out.returncode == 0, out.stderr
+    return out.stdout
+
+
+def test_collect_names_the_streaming_engine_and_its_optimizations(monkeypatch):
+    """The translation's claim: every plan is collected on the streaming
+    engine, without predicate pushdown or common-subexpression elimination."""
+    seen = {}
+
+    def collect(self, **kwargs):
+        seen.update(kwargs)
+        return pl.DataFrame()
+
+    monkeypatch.setattr(pl.LazyFrame, "collect", collect)
+    polars_engine.collect_streaming(pl.LazyFrame(), optimizations=polars_engine._OPTIMIZATIONS)
+    assert seen["engine"] == "streaming"
+    flags = polars_engine._OPTIMIZATIONS
+    assert not flags.predicate_pushdown and not flags.comm_subexpr_elim
+
+
+_BATCHES = """
+import polars as pl
+from sverify import polars_engine
+calls = []
+def f(s):
+    calls.append(len(s))
+    return s
+lf = pl.LazyFrame({"x": range(300)}).select(
+    pl.col("x").map_batches(f, return_dtype=pl.Int64, is_elementwise=True)
+)
+if CONFIG:
+    pl.Config.set_engine_affinity("in-memory")
+lf.collect(engine="in-memory"); a = len(calls); calls.clear()
+polars_engine.collect(lf); print(a, len(calls))
+"""
 
 
 @pytest.mark.parametrize(
@@ -431,28 +477,26 @@ def _batches(collect) -> int:
     [{}, {"POLARS_ENGINE_AFFINITY": "in-memory"}, {"POLARS_FORCE_STREAMING": "0"},
      {"POLARS_AUTO_STREAMING": "0"}, "config"],
 )  # fmt: skip
-def test_queries_stream_whatever_the_settings(setting, monkeypatch):
-    """Sverify names the streaming engine, so neither `pl.Config` nor the
-    environment moves its queries to the in-memory engine."""
-    in_memory = lambda lf: lf.collect(engine="in-memory")  # noqa: E731
-    assert _batches(in_memory) == 1
-    if setting == "config":
-        with pl.Config() as cfg:
-            cfg.set_engine_affinity("in-memory")
-            assert _batches(lambda lf: lf.collect()) == 1
-            assert _batches(polars_engine.collect) > 1
-        return
-    for k, v in setting.items():
-        monkeypatch.setenv(k, v)
-    assert _batches(polars_engine.collect) > 1
+def test_queries_stream_whatever_the_settings(setting):
+    """Polars keeps an explicit `engine="streaming"` whatever `pl.Config` and
+    the environment say: with 64-row morsels, 300 rows are one batch in
+    memory and several streamed."""
+    env = {} if setting == "config" else setting
+    code = _BATCHES.replace("CONFIG", str(setting == "config"))
+    in_memory, streamed = map(int, _small_streaming(code, **env).split())
+    assert in_memory == 1 and streamed > 1
 
 
-def test_streaming_fallbacks_are_found():
-    """`streaming_fallbacks` reads the physical plan: a list per group runs on
+def test_fallback_nodes_are_found():
+    """`fallback_nodes` reads the physical plan: a list per group runs on
     the in-memory engine, a sum per group streams."""
     lf = pl.LazyFrame({"g": [1, 2, 1], "x": [1.0, 2.0, 3.0]}).group_by("g", maintain_order=True)
-    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").sum())) == []
-    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").implode())) == ["in-memory-map"]
+    assert polars_engine.fallback_nodes(lf.agg(pl.col("x").sum())) == []
+    (node,) = polars_engine.fallback_nodes(lf.agg(pl.col("x").implode()))
+    assert node.startswith("in-memory-map: AGGREGATE")
+    assert polars_engine.disallowed_fallbacks(lf.agg(pl.col("x").implode())) == []
+    q = lf.agg(pl.col("x").median())
+    assert polars_engine.disallowed_fallbacks(q) == polars_engine.fallback_nodes(q) != []
 
 
 # --- CASE: Polars computes every branch -----------------------------------------
@@ -472,7 +516,11 @@ CASE_ROWS = [(10, 0, 0.0, "ab"), (MIN, -1, -1.0, None), (7, -2, math.nan, "日�
      "CASE WHEN x > 0 THEN sqrt(x) END",
      "CASE WHEN b > 0 THEN pow(a, b) END",
      "CASE WHEN a < 100 THEN repeat(s, a) END",
-     "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END"],
+     "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END",
+     # Polars's CSE may hoist a repeated subexpression out of its branch
+     # (`csee.rs`); the translator's casts are masked inside the expression.
+     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(x AS BIGINT) + CAST(x AS BIGINT)"
+     " WHEN x = x AND x < 1e17 THEN CAST(x AS BIGINT) END"],
 )  # fmt: skip
 def test_an_untaken_branch_neither_raises_nor_leaks(case):
     """Polars evaluates both sides of `when/then/otherwise` on every row. The
@@ -495,3 +543,303 @@ def test_every_shim_and_guard_is_a_lean_theorem():
     names = [s.name for s in shims.SHIMS] + [g.flag for g in shims.GUARDS]
     missing = [n for n in names if f"theorem {n} " not in lean]
     assert missing == []
+
+
+# --- Native in place of numpy ------------------------------------------------------
+
+POWERS = [(a, b) for a in (-3, -2, -1, 0, 1, 2, 3, 7, 2**31, -(2**31), MIN, MAX)
+          for b in (0, 1, 2, 3, 31, 32, 62, 63, 64, 65, 127, 128, 200, MAX)]  # fmt: skip
+
+
+def _pow(a: int, b: int) -> int | None:
+    """`BinFn.ipow`, NULL where it leaves 64 bits."""
+    if abs(a) <= 1:
+        return a**b if a != -1 else (1 if b % 2 == 0 else -1)
+    if b > 64:
+        return None
+    p = a**b
+    return p if MIN <= p <= MAX else None
+
+
+def test_integer_powers_are_native_and_exact():
+    df = pl.DataFrame({"a": [a for a, _ in POWERS], "b": [b for _, b in POWERS]})
+    got = df.select(polars_engine._ipow(pl.col("a"), pl.col("b")).alias("p"))["p"].to_list()
+    assert got == [_pow(a, b) for a, b in POWERS]
+
+
+def test_integer_powers_match_lean():
+    from _pipelines import integer_powers
+
+    rows = [(0, a, b) for a in (-3, -1, 0, 2, 3) for b in (0, 1, 2, 31, 39)]
+    rows += [(1, a, b) for a in (-1, 0, 1) for b in (63, 64, 65, 200)]
+    con = connect()
+    create_table(con, "r", INTS, rows)
+    sql = "SELECT pow(a, b) AS p FROM r"
+    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    plan = json.loads(written_plan(json.dumps(plan)))
+    lean = lean_rows(json.dumps(inline_tables(plan, {"r": rows})))
+    assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+
+
+#: Days from 0001-01-01 to 9999-12-31 at month ends and leap days.
+DAYS = sorted({polars_engine.DAY_MIN, polars_engine.DAY_MAX, -1, 0, 59, 60, 11016, 11017, 18321,
+               -719162 + 30, 2932896 - 30, *range(10950, 11400, 7)})  # fmt: skip
+
+
+@pytest.mark.parametrize("months", [-13, -1, 1, 3, 12, 25])
+def test_month_arithmetic_is_native_and_the_calendars(months):
+    """`Time.addMonths` and `truncDay` as Polars integer expressions, against
+    the same integer formulas in Python and Polars's own calendar."""
+    df = pl.DataFrame({"d": DAYS + [None]})
+    d = pl.col("d")
+    out = df.select(
+        a=polars_engine.add_months_days(months, d),
+        m=polars_engine.trunc_days("month", d),
+        q=polars_engine.trunc_days("quarter", d),
+        y=polars_engine.trunc_days("year", d),
+    )
+    dates = df.select(d.cast(pl.Date))["d"]
+    want_m = dates.dt.truncate("1mo").cast(pl.Int64).to_list()
+    want_q = dates.dt.truncate("1q").cast(pl.Int64).to_list()
+    want_y = dates.dt.truncate("1y").cast(pl.Int64).to_list()
+    assert out["m"].to_list() == want_m
+    assert out["q"].to_list() == want_q
+    assert out["y"].to_list() == want_y
+    shifted = df.select(d.cast(pl.Date).dt.offset_by(f"{months}mo").cast(pl.Int64))["d"]
+    inside = [polars_engine.DAY_MIN <= x <= polars_engine.DAY_MAX if x is not None else True
+              for x in shifted.to_list()]  # fmt: skip
+    for got, want, ok in zip(out["a"].to_list(), shifted.to_list(), inside, strict=True):
+        if ok:
+            assert got == want
+
+
+def _ulps(a: float, b: float) -> float:
+    return abs(a - b) / math.ulp(b) if b != 0.0 else abs(a) / math.ulp(0.0)
+
+
+@pytest.mark.parametrize("n", [2])
+def test_double_division_is_within_two_ulps_and_the_remainder_exact(n):
+    """PL-3 (polars-double-scalar-divisor): Polars divides by a constant
+    through its reciprocal, on both engines and from 2 rows on. The
+    reference's `/` is `approx` there, 2 ulps per division, for a divisor
+    that is not subnormal; `%` stays C's `fmod`, exact, and `ROUND`'s
+    division by `10^d` exact."""
+    xs = [49.0, 0.0, 1e-300, 7.0, -3.3, 1e308, 5e-324]
+    lf = pl.LazyFrame({"x": xs * n})
+    out = polars_engine.collect(
+        lf.select(
+            q=polars_engine.fdiv(pl.col("x"), pl.lit(49.0)),
+            m=polars_engine.fmod(pl.col("x"), pl.lit(49.0)),
+            r=polars_engine.exact_div(pl.col("x"), pl.lit(49.0)),
+        )
+    )
+    for x, (q, m, r) in zip(xs, out.rows()[: len(xs)], strict=True):
+        assert _ulps(q, x / 49.0) <= 2
+        assert m == math.fmod(x, 49.0)
+        assert r == x / 49.0
+    rows = [(0, 49.0), (1, 0.0), (2, 1e-300)] * n
+    sql = "SELECT g, x / 49.0 AS q, x % 49.0 AS m, ROUND(x / 7.0, 2) AS r FROM r"
+    lean, polars = lean_and_polars(FLOATS, rows[:6], sql, doubles=True)
+    for (g, q, m, r), (h, q2, m2, r2) in zip(polars, lean, strict=True):
+        assert g == h and math.isclose(q, q2, abs_tol=1e-6) and math.isclose(m, m2, abs_tol=1e-6)
+        assert math.isclose(r, r2, abs_tol=1e-6)
+
+
+def test_a_subnormal_divisor_is_refused():
+    con = connect()
+    create_table(con, "r", FLOATS, [(0, 1.0), (1, 2.0)])
+    plan = written_plan(substrait_json(con, "SELECT x / 1e-310 AS q FROM r", "reference"))
+    with pytest.raises(polars_engine.SubnormalDivisor):
+        run_plan(con, plan, "polars")
+    # Without the check, the reciprocal overflows: 1 / 1e-310 is inf.
+    out = polars_engine.run(plan, {"r": con.arrow["r"]}, guards=set())
+    assert math.isinf(out["q"].to_pylist()[0])
+
+
+def test_a_difference_of_zeros_is_the_one_zero():
+    """polars-zero-sign: with more than one row, the in-memory engine
+    computes `0.0 - x` as `-x`; the sum and difference go through `canon`."""
+    rows = [(0, 0.0), (1, 0.0), (2, 0.0)]
+    con = connect()
+    create_table(con, "r", FLOATS, rows)
+    plan = written_plan(
+        substrait_json(con, "SELECT 0.0 - x AS a, x + 0.0 AS b FROM r", "reference")
+    )
+    out = polars_engine.run(plan, {"r": con.arrow["r"]})
+    assert all(math.copysign(1.0, v) == 1.0 for c in ("a", "b") for v in out[c].to_pylist())
+    assert pl.LazyFrame({"x": [0.0] * 3}).select(pl.lit(0.0) - pl.col("x")).collect(
+        engine="in-memory"
+    ).row(0) == (-0.0,)
+
+
+@pytest.mark.parametrize(
+    "measure",
+    ["COUNT(a)", "MIN(a)", "MAX(a)", "MIN(s)", "MAX(s)"],
+)
+def test_native_measures_match_lean(measure):
+    schema = ibis.schema({"g": "int64", "a": "int64", "s": "string"})
+    rows = [(1, None, None), (2, 5, "b"), (2, -3, "a"), (3, 7, "z"), (4, 1, "é"), (4, 1, "e"),
+            (5, MIN, "日"), (5, MAX, "本")]  # fmt: skip
+    lean, polars = lean_and_polars(schema, rows, f"SELECT g, {measure} AS m FROM r GROUP BY g")
+    assert lean == polars
+
+
+@pytest.mark.parametrize(
+    "measure", ["VAR_SAMP(x)", "VAR_POP(x)", "STDDEV_SAMP(x)", "STDDEV_POP(x)"]
+)
+def test_native_variances_match_lean(measure):
+    rows = [(1, None), (2, 1.0), (2, 3.0), (3, 2.0), (4, -0.0), (4, -0.0), (5, 0.5), (5, 1.5),
+            (5, -2.5)]  # fmt: skip
+    sql = f"SELECT g, {measure} AS m FROM r GROUP BY g"
+    lean, polars = lean_and_polars(FLOATS, rows, sql, doubles=True)
+    assert [g for g, _ in lean] == [g for g, _ in polars]
+    for (_, want), (_, got) in zip(lean, polars, strict=True):
+        assert (want is None and got is None) or math.isclose(want, got, abs_tol=1e-6)
+    assert all(math.copysign(1.0, m) == 1.0 for _, m in polars if m == 0.0)
+
+
+def test_variance_of_an_infinity_is_guarded():
+    con = connect()
+    create_table(con, "r", FLOATS, [(1, math.inf), (1, 1.0)])
+    plan = written_plan(
+        substrait_json(con, "SELECT g, VAR_POP(x) AS v FROM r GROUP BY g", "reference")
+    )
+    with pytest.raises(polars_engine.DomainError, match="infinity"):
+        polars_engine.run(plan, {"r": con.arrow["r"]})
+
+
+def test_array_agg_of_nothing_is_null():
+    schema = ibis.schema({"g": "int64", "a": "int64"})
+    rows = [(1, None), (2, 5), (2, -3)]
+    t = ibis.table(schema, name="r")
+    plan = written_plan(to_substrait_json(t.group_by("g").agg(l=t.a.collect()).order_by("g")))
+    con = connect()
+    create_table(con, "r", schema, rows)
+    lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
+    polars = rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    assert lean == polars
+    assert polars[0][1] is None
+
+
+def test_greatest_and_least_of_doubles_put_nan_above_all():
+    rows = [(0, math.nan), (1, 1.0), (2, None)]
+    sql = "SELECT g, GREATEST(x, 2.0) AS a, LEAST(x, 2.0) AS b, LEAST(x, x) AS c FROM r"
+    lean, polars = lean_and_polars(FLOATS, rows, sql, doubles=True)
+    assert repr(lean) == repr(polars)
+
+
+@pytest.mark.parametrize("op", ["bit_and", "bit_or", "bit_xor"])
+def test_native_bit_aggregates_match_lean(op):
+    schema = ibis.schema({"g": "int64", "a": "int64"})
+    rows = [(1, None), (2, 5), (2, -3), (3, 7), (4, MIN), (4, MAX), (4, 6)]
+    t = ibis.table(schema, name="r")
+    expr = t.group_by("g").agg(m=getattr(t.a, op)()).order_by("g")
+    plan = written_plan(to_substrait_json(expr))
+    con = connect()
+    create_table(con, "r", schema, rows)
+    lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
+    assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+
+
+def test_a_fractional_power_of_minus_infinity_is_refused():
+    """Polars computes `x ** 0.5` as `sqrt(x)`: NaN for `-inf`, where IEEE's
+    `pow` gives `+inf`. The reference refuses a negative base, `-inf`
+    included, to a fractional power, so the guard does, on the streaming
+    engine; `(-0.0) ** 0.5` is `-0.0` in Polars and the one zero here."""
+    lf = pl.LazyFrame({"x": [-math.inf, -0.0, 4.0]})
+    assert math.isnan(lf.select(pl.col("x").pow(0.5)).collect(engine="streaming").item(0, 0))
+    con = connect()
+    create_table(con, "r", FLOATS, [(0, -math.inf), (1, 4.0)])
+    plan = written_plan(substrait_json(con, "SELECT power(x, 0.5) AS p FROM r", "reference"))
+    with pytest.raises(polars_engine.DomainError, match="NaN"):
+        run_plan(con, plan, "polars")
+    create_table(con, "r", FLOATS, [(1, -0.0), (2, 4.0)])
+    out = run_plan(con, plan, "polars")["p"].to_pylist()
+    assert out == [0.0, 2.0] and math.copysign(1.0, out[0]) == 1.0
+
+
+# --- Streaming in a routed run ---------------------------------------------------
+
+
+def test_a_routed_run_records_fallbacks_and_can_require_streaming():
+    import sverify as sv
+    from sverify.errors import RouteError
+
+    t = ibis.table({"k": "int64", "i": "int64"}, name="t")
+    con = sv.connect()
+    con.put("t", pa.table({"k": [1, 1, 2], "i": [3, 4, 5]}))
+    summed = sv.verify(t.group_by("k").aggregate(total=t.i.sum()))
+    out = summed.run(con, "polars", route="auto", streaming="require")
+    assert sorted(out.to_pylist(), key=lambda r: r["k"]) == [
+        {"k": 1, "total": 7},
+        {"k": 2, "total": 5},
+    ]
+    assert summed.routes["polars"].fallbacks == ()
+    listed = sv.verify(t.group_by("k").aggregate(l=t.i.collect()))
+    listed.run(con, "polars", route="auto")
+    (node,) = listed.routes["polars"].fallbacks
+    assert "implode" in node
+    with pytest.raises(RouteError, match="in-memory engine"):
+        listed.run(con, "polars", route="auto", streaming="require")
+    with pytest.raises(RouteError, match="in-memory engine"):
+        listed.run(con, "polars", streaming="require")
+
+
+@pytest.mark.parametrize("kind", ["in-memory", "streaming"])
+def test_a_guarded_cast_shared_by_two_branches_is_not_hoisted(kind):
+    """PL-6 (polars-exec-cse-hoist): common-subexpression elimination moves a
+    cast two `when/then` branches share onto every row, where it raises.
+    sverify's plans run without it (`_OPTIMIZATIONS`)."""
+    x = pl.col("x")
+    lf = pl.LazyFrame({"x": ["1", "a"]}).select(
+        pl.when(x == "1").then(x.cast(pl.Int64) + 1).alias("a"),
+        pl.when(x == "1").then(x.cast(pl.Int64) + 2).alias("b"),
+    )
+    with pytest.raises(pl.exceptions.InvalidOperationError):
+        lf.collect(engine=kind)
+    assert lf.collect(engine=kind, optimizations=polars_engine._OPTIMIZATIONS).rows() == [
+        (2, 3),
+        (None, None),
+    ]
+    assert polars_engine.collect(lf).rows() == [(2, 3), (None, None)]
+
+
+_TIES = """
+import ibis, polars as pl, pyarrow as pa
+from sverify import polars_engine
+from sverify.engine import written_plan
+from sverify.ibis_substrait import to_substrait_json
+n = N
+k = [(j * 7919) % 5 for j in range(n)]
+tab = pa.table({"k": pa.array(k, pa.int64()), "i": pa.array(range(n), pa.int64())})
+t = ibis.table({"k": "int64", "i": "int64"}, name="t")
+out = pl.DataFrame(polars_engine.run(written_plan(to_substrait_json(t.order_by("k"))), {"t": tab}))
+raw = pl.DataFrame(tab).lazy().sort("k").collect(engine="streaming")
+def stable(df):
+    steps = df.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))
+    return steps.select((pl.col("d") > 0).all()).item()
+print(out["k"].is_sorted(), stable(out), stable(raw))
+"""
+
+
+def test_ties_keep_their_order_in_a_partitioned_streaming_sort():
+    """A streaming sort over its partition threshold does not keep ties in
+    input order without `maintain_order`; the translation's `tie_order` shim
+    writes it on every sort. With the thresholds shrunk, 3 000 rows take
+    the path 4M rows take at the defaults."""
+    assert _small_streaming(_TIES.replace("N", "3000")).split() == ["True", "True", "False"]
+
+
+@pytest.mark.slow
+def test_ties_keep_their_order_in_a_large_streaming_sort():
+    """The same at Polars's default thresholds: 4M rows, above the 32 MiB a
+    sort buffers before it partitions. Slow; for homelab and CI."""
+    import os
+    import subprocess
+    import sys
+
+    code = _TIES.replace("N", "4_000_000")
+    env = {k: v for k, v in os.environ.items() if k not in SMALL_STREAMING}
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["True", "True", "False"]

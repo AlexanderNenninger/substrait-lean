@@ -185,3 +185,33 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         test._hypothesis_internal_use_settings = settings(  # noqa: SLF001
             given, max_examples=max(min(given.max_examples, 3), round(given.max_examples * SCALE))
         )
+
+
+@pytest.fixture(autouse=True)
+def _polars_plans_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every plan the tests run on Polars runs on the streaming engine with no
+    node on the in-memory engine but those `ALLOWED_FALLBACKS` lists, each
+    an operation Polars 2.1.0 cannot stream (#444). A new fallback fails the
+    test that meets it."""
+    try:
+        from sverify import polars_engine
+    except ImportError:
+        return
+    collect = polars_engine.collect
+
+    def checked(lf):
+        try:
+            found = polars_engine.disallowed_fallbacks(lf)
+        except Exception:  # noqa: BLE001 - the plan's own error comes from `collect`
+            found = []
+        # A plan with an expression too long for Polars's plan formatter
+        # cannot be inspected; `streaming="require"` refuses those.
+        found = [n for n in found if n != polars_engine.UNINSPECTABLE]
+        if found:
+            raise AssertionError(
+                "the streaming plan runs these nodes on the in-memory engine, which "
+                "polars_engine.ALLOWED_FALLBACKS does not allow:\n" + "\n".join(found)
+            )
+        return collect(lf)
+
+    monkeypatch.setattr(polars_engine, "collect", checked)
