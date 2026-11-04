@@ -74,8 +74,9 @@ REPLAY_DIR = REPO / "characterization" / "duckdb"
 ONE = "__sverify_one"
 
 #: Rows past which a query's tables, together, are not inlined into a plan
-#: for Lean: `Rel.eval` joins and groups in quadratic time (#357), and data
-#: this size covers the semantics as well as more would.
+#: for Lean: data this size covers the semantics as well as more would, and
+#: hundreds of thousands of rows make plans of tens of megabytes of JSON,
+#: which take longer to parse than to evaluate (#357).
 MAX_ROWS = 1000
 #: Iterations past which a file's loops are not expanded.
 MAX_ITERATIONS = 2000
@@ -734,7 +735,7 @@ class Replay:
         try:
             rows = self.sync(tables)
         except OverflowError:
-            # Too much data for `Rel.eval` (#357): the query on the tables'
+            # Too much data to inline (#357): the query on the tables'
             # first rows, against DuckDB's result on those.
             rows, outcome = self.condense(rec, tables)
             res.reason = f"condensed to {MAX_ROWS} rows"

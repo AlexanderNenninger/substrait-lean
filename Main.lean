@@ -4,6 +4,10 @@ import SubstraitLean
 `substrait-check plan.json`: parse a Substrait JSON plan, check it is
 well-formed, and evaluate it.
 
+`substrait-check --eval-spec plan.json`: the same, evaluated with `Rel.eval`
+(the specification) in place of `Rel.evalFast` (`SubstraitLean/EvalFast.lean`),
+which is faster and proved equal; for tests.
+
 `substrait-check --delta plan.json`: print the Substrait JSON plans an engine
 runs to maintain `plan.json` incrementally, one per line. They read the old
 tables `t` and change tables `t$delta` (the same columns plus a trailing
@@ -120,7 +124,9 @@ def outcomes (plan : Plan) : IO UInt32 := do
     IO.println (Lean.Json.arr outs.toArray).compress
   return 0
 
-def check (plan : Plan) : IO UInt32 := do
+/-- `spec`: evaluate with `Rel.eval`, the specification, in place of
+`Rel.evalFast` (equal by `Rel.evalFast_eq`; `--eval-spec`, for tests). -/
+def check (plan : Plan) (spec : Bool := false) : IO UInt32 := do
   let cat := plan.catalog
   IO.println plan.root.render
   let tables := (plan.tables.filter (!isInternalKey ·.1) |>.map fun (t, n, _) => s!"{t}({n})").eraseDups
@@ -142,7 +148,7 @@ def check (plan : Plan) : IO UInt32 := do
   let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
   let (panics, rows) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
     -- `lazyPure`: evaluated here, not hoisted out of the isolated streams.
-    IO.lazyPure fun _ => (plan.root.eval cat).map fun row =>
+    IO.lazyPure fun _ => (if spec then plan.root.eval cat else plan.root.evalFast cat).map fun row =>
       let cells := row.zipIdx.map fun (v, i) => renderCell (kinds.getD i .other) v
       s!"({", ".intercalate cells})"
   if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
@@ -198,7 +204,8 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
       | .error e => IO.eprintln e; return 5
       | .ok out => IO.println out.compress; return 0
   let mode ← match flag with
-    | "" => pure check
+    | "" => pure (check · false)
+    | "--eval-spec" => pure (check · true)
     | "--delta" => pure delta
     | "--write" => pure (write false)
     | "--write-datafusion" => pure (write true)
@@ -301,11 +308,12 @@ def main (args : List String) : IO UInt32 := do
     return 0
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes"].contains flag then
+    if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
+        "--eval-spec"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes"
     return 1

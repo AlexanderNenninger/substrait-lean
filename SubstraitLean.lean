@@ -10,6 +10,7 @@ import SubstraitLean.Order
 import SubstraitLean.Window
 import SubstraitLean.Aggregate
 import SubstraitLean.Rel
+import SubstraitLean.EvalFast
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
 import SubstraitLean.Weighted
