@@ -13,7 +13,8 @@
       "option": "tie_order",
       "types": [
         "any"
-      ]
+      ],
+      "evidence": "source"
     },
     {
       "group": "agg.seq",
@@ -27,21 +28,24 @@
       "option": "tie_order",
       "types": [
         "any"
-      ]
+      ],
+      "evidence": "source"
     },
     {
       "group": "win.ntile",
       "option": "tie_order",
       "types": [
         "any"
-      ]
+      ],
+      "evidence": "source"
     },
     {
       "group": "win.value",
       "option": "tie_order",
       "types": [
         "any"
-      ]
+      ],
+      "evidence": "source"
     }
   ],
   "constructs": [
@@ -68,7 +72,7 @@
   ],
   "reference": "`tie_order`: any order of the ties (docs/core-semantics.md); the reference fixes nothing, and a plan that needs one order is refused or made `tie_free`. DuckDB's is one of them.",
   "status": "no-finding",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -133,6 +137,38 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3). The third-party sorts (vergesort, ska_sort) are known unstable algorithms; their sources were not read line by line."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/list_export_state.test#L5-L8",
+          "note": "'list order is only deterministic single-threaded': the test sets threads=1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/first_last_export_state.test#L5-L8",
+          "note": "first/last only deterministic single-threaded: threads=1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/ordered_aggregate_export_state.test#L5-L11",
+          "note": "list(x ORDER BY y) is deterministic at any thread count because every case orders on distinct keys, 'so there are no ties'"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_window_constant_allocator.test#L5-L26",
+          "note": "STRING_AGG(…) OVER (): 'the output is unstable under multi-threading', so the test is statement ok"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/parallelism/intraquery/test_parallel_nested_aggregates.test#L23-L25",
+          "note": "first([a]) … GROUP BY at threads=4: 'non-deterministic so we can't check the result'"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_rank_orderby.test#L76-L102",
+          "note": "rank and percent_rank give peers of their own ORDER BY the same value even when the window orders them by a further key: ids 1 and 2 of k = 1 → 1, 0.0"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin no order of ties; they avoid them (distinct keys, `rowsort`, `threads=1`) and say so. `agg.seq`: `list`, `string_agg` and `first` without an ordering of their own change with the thread count, which the tests document and work around. `win.rank`: `rank` and `percent_rank` do not depend on the order of peers (test_rank_orderby.test); no test pins `row_number` on ties, so the row stays at the source reading. No test pins ties of a sort, of `ntile` or of `lag`/`lead`/`first_value`."
     }
   ]
 }

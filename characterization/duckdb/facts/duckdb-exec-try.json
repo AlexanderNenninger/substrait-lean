@@ -20,7 +20,7 @@
   ],
   "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB for a double to an integer and an integer to a narrower integer, and refuses `TRY_CAST` to a decimal, of a decimal to an integer and of strings (`docs/reference-semantics.md`, #58). Substrait has no `TRY` of a general expression.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -87,6 +87,46 @@
           "note": "TRY over CASE and COALESCE, row by row"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/test_try_cast.test#L5-L14",
+          "note": "TRY_CAST('hello' AS INTEGER) → NULL; CAST raises"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/decimal/decimal_try_cast.test#L46-L70",
+          "note": "TRY_CAST(1000 AS DECIMAL(3,0)), of '100', of 100::DOUBLE, of 100::DECIMAL(3,0) to DECIMAL(2,0) → NULL; the CASTs raise"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/optimizer/test_try_cast_decimal.test#L11-L34",
+          "note": "TRY_CAST(890608529 AS DECIMAL(10,2)) > 0 → NULL, true AND … → NULL, true OR … → true; CAST → Conversion Error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/cast/float_integer_cast.test#L107-L113",
+          "note": "try_cast(127.6 AS TINYINT), of -128.6 → NULL; of -128.5 → -128"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/error/test_try_expression.test_slow#L7-L67",
+          "note": "TRY('abc'::INTEGER), TRY(~CAST('abc' AS INTEGER)), TRY(… IS NULL), TRY(ln(0)) → NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/error/test_try_expression.test_slow#L106-L146",
+          "note": "TRY of a volatile function, a scalar subquery, an aggregate or a window function is a bind error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/error/test_try_expression.test_slow#L187-L196",
+          "note": "list_transform([4, 0, 2], x -> TRY(10 // x)) → [2, NULL, 5]; TRY of a DECIMAL comparison that overflows → NULL per element"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/error/test_try_nested_conditional.test#L5-L101",
+          "note": "TRY(COALESCE(1 // x, 999)), TRY(CASE …), TRY nested in CASE: NULL exactly on the rows that raise"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin `TRY_CAST` to NULL for string, integer, double and decimal targets, `TRY` to NULL for conversion, division by zero, `ln(0)` and decimal overflow, row by row, and the bind-time refusals. No test pins an error `TRY` or `TRY_CAST` lets through (out of memory, string size, an extension type's cast)."
     }
   ]
 }

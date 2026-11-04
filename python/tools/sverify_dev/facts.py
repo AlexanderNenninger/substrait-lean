@@ -211,6 +211,16 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTI
                 f"{where}: evidence is {f['evidence']!r}; its provenance's strongest is "
                 f"{evidence_of(f)!r}"
             )
+        named = [
+            (r.get("group", NO_GROUP), r["option"], t)
+            for r in f.get("rows", [])
+            for t in r["types"]
+        ]
+        problems += [
+            f"{where}: rows name {g} × {o} × {t} twice"
+            for g, o, t in sorted(set(named))
+            if named.count((g, o, t)) > 1
+        ]
         for row in f.get("rows", []):
             group = row.get("group", NO_GROUP)
             name = f"{group} × {row['option']}"

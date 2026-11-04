@@ -28,7 +28,7 @@
   ],
   "reference": "`divide` on integers: `on_domain_error` never applies (docs/core-semantics.md, `int.div`).",
   "status": "no-finding",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -53,6 +53,22 @@
         }
       ],
       "notes": "One template for every width, so the reading covers i8 to i64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_division_by_zero.test#L11-L56",
+          "note": "for TINYINT … BIGINT: `7 // 2` → 3; `// 0` raises `Division by zero`, constant or from a column; TRY gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_division_overflow.test#L5-L39",
+          "note": "`MIN // -1` raises `Overflow in division` at each width, `(MIN + 1) // -1` gives the maximum"
+        }
+      ],
+      "notes": "The tests run `//` at every signed width on both failure paths of BinaryNumericDivideWrapper and expect no other error. A test cannot show that no input fails; with the source reading it pins that the two failures are the only ones."
     }
   ]
 }

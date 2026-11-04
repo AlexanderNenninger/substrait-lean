@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "cmp", "option": "nan_order", "types": ["fp32", "fp64"]},
-    {"group": "agg.order", "option": "nan_order", "types": ["fp32"], "evidence": "docs"},
+    {"group": "agg.order", "option": "nan_order", "types": ["fp32"]},
     {"group": "agg.quant", "option": "nan_order", "types": ["fp64"], "evidence": "docs"}
   ],
   "constructs": [
@@ -31,7 +31,7 @@
   ],
   "reference": "`nan_order: GREATEST`, NaN above `+inf`, for sorting, `MIN`, `MAX`, `<`, `greatest` and `least` (docs/core-semantics.md). Substrait's comparisons are IEEE (`NaN < x` false); ST-4 records the gap.",
   "status": "no-finding",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -76,6 +76,30 @@
         }
       ],
       "notes": "Confirms `cmp` for fp32 and fp64; the aggregate rows stay at docs."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_test.test#L5-L115",
+          "note": "for FLOAT and DOUBLE: `nan = nan` true; `f > 0` returns 1 and nan; `f > 'nan'` nothing; `f >= 'nan'` nan; `f < 'nan'` 1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_ordering.test#L8-L86",
+          "note": "ORDER BY puts nan after inf ascending and first descending, also in top-n; `f > 0` counts the NaNs"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/rewrite_nan_null.test#L35-L75",
+          "note": "`(-x) > 0` and `>= 0` true, `< 0` false for NaN and -NaN (VARCHAR results); `(-f) >= 0` over x::FLOAT counts both NaNs"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_minmax_order.test#L5-L39",
+          "note": "MIN and MAX of FLOAT and DOUBLE: MAX is nan and MIN skips it, in any arrival order and grouped (agg.order, fp32)"
+        }
+      ],
+      "notes": "The comparisons and the sort put NaN above +inf at both widths. `quantile_cont` has no NaN test, so the `agg.quant` row stays at the docs."
     }
   ],
   "issues": [

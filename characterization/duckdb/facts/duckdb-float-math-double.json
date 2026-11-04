@@ -11,12 +11,12 @@
     "on_log_zero"
   ],
   "rows": [
-    {"group": "fp.elem", "option": "rounding", "types": ["fp32"]},
+    {"group": "fp.elem", "option": "rounding", "types": ["fp32"], "evidence": "source"},
     {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"]},
-    {"group": "fp.log", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "fp.log", "option": "rounding", "types": ["fp32", "fp64"], "evidence": "source"},
     {"group": "fp.log", "option": "on_domain_error", "types": ["fp32"]},
     {"group": "fp.log", "option": "on_log_zero", "types": ["fp32"]},
-    {"group": "fp.round", "option": "rounding", "types": ["fp32"]}
+    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "sqrt",
@@ -49,7 +49,7 @@
   ],
   "reference": "The elementary functions and logarithms of `fp32` would round to binary32 (`rounding: TIE_TO_EVEN`); `on_domain_error` and `on_log_zero` are `ERROR`. Lean refuses arithmetic on FLOAT values (duckdb-R12), so a plan casts them to DOUBLE first, which is what DuckDB does itself. For `fp64` the reference is Lean's native `Float`, also a libm call.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -89,6 +89,30 @@
           "note": "FLOAT to DOUBLE: result = double(input)"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L74-L124",
+          "note": "for FLOAT and DOUBLE with ieee_floating_point_ops = false: sqrt(-1), ln(-1), asin(2), acos(2), atanh(2), sin, cos, tan and cot of inf, cot(0), gamma(0) and lgamma(0) raise"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L126-L157",
+          "note": "with it on: sqrt, ln, log10 and log2 of -1 → nan; ln, log10 and log2 of 0 → -inf; asin(2), acos(2), atanh(2) → nan; sin, cos, tan, cot of inf → nan"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594",
+          "note": "CompareValues: numeric results are cast to the column type and compared with Value::ValuesAreEqual"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L1384-L1393",
+          "note": "ApproxEqual: NaN equals NaN, non-finite values compare exactly, finite ones within 1 %"
+        }
+      ],
+      "notes": "The arguments are FLOAT in the first iteration (`-1::FLOAT`, `'inf'::FLOAT`), so these settle `on_domain_error` of `fp.elem` and `fp.log` and `on_log_zero` at fp32. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly. No test pins a last digit, so the `rounding` rows stay at the source reading."
     }
   ]
 }

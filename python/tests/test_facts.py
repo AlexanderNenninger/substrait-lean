@@ -42,6 +42,7 @@ def test_validate_finds_problems(tmp_path):
             {"group": "int.arith", "option": "zero_sign", "types": ["i64"]},
             {"group": "int.mod", "option": "division_type", "types": ["i64"]},
             {"group": "int.mod", "option": "overflow", "types": ["i8"], "evidence": "fuzz"},
+            {"group": "int.mod", "option": "division_type", "types": ["i64"]},
         ],
         "provenance": [
             {
@@ -68,6 +69,7 @@ def test_validate_finds_problems(tmp_path):
     assert "int.arith × zero_sign is not a row of the choice tables" in problems
     assert "rows name 'division_type', which options lack" in problems
     assert "int.mod × overflow's evidence 'fuzz' is stronger than the fact's" in problems
+    assert "rows name int.mod × division_type × i64 twice" in problems
 
 
 def test_checklist_items_are_unique_and_cover_the_core_options():

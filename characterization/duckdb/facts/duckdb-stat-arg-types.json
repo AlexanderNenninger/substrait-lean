@@ -12,13 +12,37 @@
   ],
   "rows": [
     {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "i64"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "decimal"
+      ],
+      "evidence": "source"
+    },
+    {
       "group": "agg.var",
       "option": "rounding",
       "types": [
         "i64",
         "fp64",
         "decimal"
-      ]
+      ],
+      "evidence": "source"
     },
     {
       "group": "agg.var",
@@ -26,7 +50,8 @@
       "types": [
         "i64",
         "decimal"
-      ]
+      ],
+      "evidence": "source"
     },
     {
       "group": "agg.var",
@@ -34,23 +59,8 @@
       "types": [
         "i64",
         "decimal"
-      ]
-    },
-    {
-      "group": "agg.stat",
-      "option": "stat_algo",
-      "types": [
-        "i64",
-        "decimal"
-      ]
-    },
-    {
-      "group": "agg.stat",
-      "option": "stat_degenerate",
-      "types": [
-        "i64",
-        "decimal"
-      ]
+      ],
+      "evidence": "source"
     }
   ],
   "constructs": [
@@ -77,7 +87,7 @@
     "`stat_degenerate`: NULL for `corr`'s degenerate cases and raise for ±inf (docs/core-semantics.md). DuckDB's NaN for `corr` is handled as for doubles (duckdb-corr); ±inf cannot arise from these types."
   ],
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -122,6 +132,38 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L24-L50",
+          "note": "v, v2 DECIMAL(10,2): corr(v, v2) → 0.9988445981 grouped and whole-table, 0.998845 as a window; a group without a non-NULL pair → NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_basic_window.test#L16-L16",
+          "note": "empsalary(depname varchar, empno bigint, salary int, …)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_basic_window.test#L162-L174",
+          "note": "COVAR_POP(salary, empno) OVER (PARTITION BY depname ORDER BY salary, empno): a BIGINT argument; 0, 240, 150, 477.777778, 606.25, …"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_covar.test#L49-L64",
+          "note": "COVAR_POP(nextval('seqx'), nextval('seqy')) (BIGINT, one pair) → 0.000000"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_covar.test#L31-L47",
+          "note": "COVAR_POP(3, 3) → 0, COVAR_SAMP(3, 3) → NULL (INTEGER, one pair)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L15-L18",
+          "note": "corr(1, 1) (INTEGER, one pair) → NAN"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `agg.stat`: the tests run `corr` of `DECIMAL(10,2)` and `covar_pop` with a `BIGINT` argument through the `DOUBLE` overload, with results that match the doubles' algorithm; `covar_pop` of one `BIGINT` pair is 0. No test runs `corr` of one `DECIMAL` pair or a constant `DECIMAL` side. `agg.var`: no test passes a `BIGINT` or `DECIMAL` to `var_*` or `stddev_*` (test_stddev.test uses `INTEGER`), and no test pins the rounding mode; those rows stay at the source reading."
     }
   ],
   "issues": [

@@ -15,9 +15,9 @@
     {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
     {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
@@ -104,6 +104,38 @@
         }
       ],
       "notes": "FLOAT takes the same code path as DOUBLE at its own width, which raises the fp32 rows from docs to source."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_arithmetic.test#L70-L137",
+          "note": "for FLOAT and DOUBLE: `'inf' - 'inf'` → nan; `inf + inf`, `inf * inf` → inf; `inf * -inf` → -inf; `1 / inf` → 0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L5-L21",
+          "note": "for FLOAT and DOUBLE, `val / 0`: 1 → inf, -1 → -inf, 0 → nan, nan → nan, inf → inf"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L33-L59",
+          "note": "with ieee_floating_point_ops = false `val / 0` raises `Division by zero`, and with error_on_division_by_zero = false too it gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_division_by_zero.test#L81-L85",
+          "note": "`-7.5::FLOAT / 0` → -inf, `7.5::DOUBLE / 0` → inf"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594",
+          "note": "CompareValues: numeric results are cast to the column type and compared with Value::ValuesAreEqual"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L1384-L1393",
+          "note": "ApproxEqual: NaN equals NaN, non-finite values compare exactly, finite ones within 1 %"
+        }
+      ],
+      "notes": "These settle `fp.arith` `nan_creation` and `fp.div` `on_division_by_zero` at fp32. No test divides an infinity by an infinity or multiplies 0 by an infinity, at either width, so `fp.div` `nan_creation` and `on_domain_error` at fp32 stay at the source reading. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly."
     }
   ],
   "issues": [
