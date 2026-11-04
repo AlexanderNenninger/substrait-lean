@@ -99,7 +99,8 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
-  (none, "sum_order", .approxWithin "#85" ["duckdb-sum-double", "duckdb-avg-double"]),
+  -- One value at a time: one of the orders the reference allows (`FloatSums`).
+  (none, "sum_order", .native ["duckdb-sum-double", "duckdb-avg-double"]),
   (none, "avg_int_result", .shimmed "the HUGEINT sum // the count" ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
@@ -149,6 +150,8 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_kind", .upTo { zeros := .canon } ["polars-nan-sign"]),
   (none, "nan_order", .native ["polars-nan-order"]),
   (none, "nan_equality", .native ["polars-nan-equality"]),
+  -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
+  -- (groups) is not, so within #85's bound.
   (none, "sum_order", .approxWithin "#85" ["polars-sum-float", "polars-mean-float"]),
   (none, "avg_int_result", .shimmed "the exact sum divided by the count" ["polars-avg-int"]),
   (none, "empty_group_aggregates", .shimmed "NULL for no values" ["polars-sum-int"]),
