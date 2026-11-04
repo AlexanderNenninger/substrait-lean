@@ -14,7 +14,7 @@
     "Binary",
     "List"
   ],
-  "settings": {},
+  "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
     "`Decimal` is a 128-bit type with at most 38 digits of precision (also the default when the precision is not given) and a non-negative scale. The page does not say what an overflow does.",
     "Source at py-2.1.0: strings and binaries are binary views whose `length` is a `u32`. The builder asserts `bytes.len() <= u32::MAX` (`push_value_into_buffer`), so a longer value panics (a `PanicException` in Python) where it would be an error elsewhere. Lists are `ListArray<i64>`, with 64-bit offsets checked on push (`Offsets::try_push` returns an `overflow` error). Row indices are `IdxSize`, a `u32` in the default `polars-runtime-32` that `pip install polars` brings; `polars[rt64]` switches to `u64` (`bigidx`). Past 2^32 - 1 rows the default runtime reports \"Polars' maximum length reached. Consider installing 'polars[rt64]'.\", as an error at most sites and a panic at some (`expect(LENGTH_LIMIT_MSG)`).",

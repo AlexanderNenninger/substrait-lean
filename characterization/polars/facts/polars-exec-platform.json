@@ -15,7 +15,7 @@
     "log",
     "sqrt"
   ],
-  "settings": {},
+  "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
     "The Polars docs say nothing about platform-dependent results.",
     "Source at py-2.1.0: the trigonometric, hyperbolic, `exp`, `log` and `pow` kernels call `num_traits::Float` methods (`v.sin()`, `v.exp()`, `v.log(base)`, `Pow::pow`), which for `f64` are Rust's standard methods and lower to the platform's libm. The `libm` crate is a dependency of polars-ops but only for `scalbn` in `round`, which is exact. So the last bits of the elementary functions may differ between macOS arm64 (probes) and Linux x86_64 (CI).",

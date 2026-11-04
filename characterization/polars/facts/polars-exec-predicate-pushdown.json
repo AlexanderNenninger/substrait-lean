@@ -14,6 +14,7 @@
     "with_columns"
   ],
   "settings": {
+    "engine": ["in-memory", "streaming"],
     "predicate_pushdown": false
   },
   "description": [

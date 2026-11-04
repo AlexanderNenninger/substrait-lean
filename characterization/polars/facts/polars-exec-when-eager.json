@@ -17,7 +17,7 @@
     "coalesce",
     "cast"
   ],
-  "settings": {},
+  "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
     "The `when` docstring warns that Polars computes all expressions passed to `when-then-otherwise` in parallel and filters afterwards, so each expression must be valid on its own. The code at py-2.1.0 does better for most branches.",
     "Masking (in memory and streaming): when a `then` or `otherwise` operand is elementwise and is not a bare column or literal, the planner records its input columns, and `TernaryExpr` evaluates it on a frame where those columns are NULL on the rows the condition does not send to it; a branch no row takes is skipped unless needed for broadcasting. The streaming engine keeps an elementwise expression whole in a select node, so the same code runs there. So `pl.when(c).then(x.cast(t))` does not raise on rows `c` excludes; Polars's tests check this on both engines, also for multi-chunk structs (#29799).",

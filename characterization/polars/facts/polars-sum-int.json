@@ -16,7 +16,7 @@
     "sum",
     "product"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "`sum` of `Int8`, `Int16`, `UInt8` and `UInt16` returns `Int64`; `Int32` and `Int64` keep their type and wrap, ungrouped and grouped (`Int32` 2³¹-1 + 1 is -2³¹).",
     "The sum of no values, or of NULLs only, is 0, also per group: Substrait's `sum0`. `product` of no values is 1."

@@ -12,7 +12,7 @@
     "shift_left",
     "shift_right"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "Polars's Python expressions have no bit shift: `pl.Expr` has no `__lshift__` or `__rshift__`, and its `bitwise_*` methods are `and`, `or`, `xor` and bit counts. `shift` moves rows.",
   "reference": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`), with the range open (ST-1). A plan with them is refused on Polars or written as a multiplication or floor division by a power of two.",
   "status": "open",

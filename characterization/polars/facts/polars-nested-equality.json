@@ -13,7 +13,7 @@
     "group_by",
     "sort"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "`==` on lists and on structs treats a NULL element or field as equal to NULL: `[1, NULL] == [1, NULL]` and `{a: 1, b: NULL} == {a: 1, b: NULL}` are true; a NULL list or struct gives NULL (`eq_missing` makes it equal). Grouping puts equal structs together.",
     "Structs sort field by field, a NULL field first."

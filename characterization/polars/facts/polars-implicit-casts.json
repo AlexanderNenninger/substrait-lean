@@ -14,7 +14,7 @@
     "==",
     "lit"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "Arithmetic on two columns promotes to the wider type (`Int32 + Int64` is `Int64`, `UInt64 + Int64` is `Int128`). A Python literal takes the column's type where it fits (`Int32 + 1` is `Int32`, and wraps there, polars-int-arith) and widens it where it does not (`Int32 + 2⁴⁰` is `Int64`, `Int32 + 1.5` is `Float64`). Numbers and strings do not mix (`InvalidOperationError`).",
   "reference": "A Substrait call takes the types its plan declares; casts are explicit.",
   "status": "open",

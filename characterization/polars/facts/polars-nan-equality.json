@@ -20,7 +20,7 @@
     "unique",
     "join"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`NaN == NaN` is true and `NaN != NaN` false; `is_in([nan])` finds NaN; `group_by`, `unique`, `n_unique` put every NaN in one group, and a join matches NaN keys. NULL compares as NULL (`eq_missing` makes NULL equal NULL).",
   "reference": "`NAN_IS_NAN` (#89, an override of IEEE equality) for `=`, grouping, `DISTINCT` and joins.",
   "status": "no-finding",

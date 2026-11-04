@@ -12,7 +12,7 @@
     "str.len_chars",
     "str.len_bytes"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`len_chars` counts code points (`e` with a combining accent is 2), as `character_length` does; `len_bytes` counts UTF-8 bytes. Both return `UInt32`.",
   "reference": "`character_length` counts code points.",
   "status": "no-finding",

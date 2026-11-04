@@ -17,7 +17,7 @@
     "<",
     "min"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`sort` orders lists lexicographically, a prefix first, and a NULL element below every value: `[] < [NULL] < [1] < [1, NULL] < [1, 2]` ascending, reversed descending, NULL lists first by default. `<` between lists and `min`, `max` of lists raise (`InvalidOperationError`).",
   "reference": "`list_null_order`: NULL where a NULL element decides `<`, and `GREATEST` in `ORDER BY` (#207). DuckDB puts the NULL element above every value (duckdb-R11).",
   "status": "open",

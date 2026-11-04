@@ -13,6 +13,7 @@
     "Config.set_engine_affinity"
   ],
   "settings": {
+    "engine": ["in-memory", "streaming"],
     "POLARS_ENGINE_AFFINITY": "auto",
     "POLARS_FORCE_STREAMING": "unset",
     "POLARS_AUTO_STREAMING": "unset",

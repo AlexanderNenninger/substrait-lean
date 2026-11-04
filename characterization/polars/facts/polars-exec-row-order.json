@@ -15,6 +15,7 @@
     "sum"
   ],
   "settings": {
+    "engine": ["in-memory", "streaming"],
     "POLARS_MAX_THREADS": "the host's core count"
   },
   "description": [

@@ -15,7 +15,7 @@
     "arg_min",
     "arg_max"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`arg_max` over 1, 3, 3, 1 is 1 and `arg_min` is 0: the first of the tied rows. NaN is skipped (polars-min-max-nan).",
   "reference": "`tie_pick`: any row of the tie.",
   "status": "no-finding",

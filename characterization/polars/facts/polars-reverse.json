@@ -11,7 +11,7 @@
   "constructs": [
     "str.reverse"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`str.reverse` reverses extended grapheme clusters (`unicode_reverse`): a letter keeps its combining accent (`e\\u0301x` becomes `xe\\u0301`) and a flag's two regional indicators stay together. It agrees with the reference on ASCII and on precomposed text.",
   "reference": "`reverse` reverses the code points (`String.toList.reverse`), so a combining accent moves to the other side of its letter.",
   "status": "open",

@@ -16,7 +16,7 @@
     "str.head",
     "str.tail"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": [
     "`str.slice(offset, length)` counts characters (code points) from 0; a negative offset counts from the end, and the part before the start is cut off (`slice(-10, 7)` of `hello` is `he`). An offset past the end gives `''`. A length of NULL takes the rest; a negative length is refused (`InvalidOperationError`, cast to `u64`).",
     "With the offset shifted by one for positive starts, it matches Substrait's `substring` with `WRAP_FROM_END` on every probe row."

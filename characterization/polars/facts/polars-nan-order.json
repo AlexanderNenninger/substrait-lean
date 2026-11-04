@@ -21,7 +21,7 @@
     "median",
     "quantile"
   ],
-  "settings": {},
+  "settings": {"engine": "in-memory"},
   "description": "`NaN > x` is true for every number x, `inf < NaN` is true, and `sort` puts NaN after +inf ascending and first (after the NULLs) descending. `rank`, `median` and `quantile` use the same order, so `median(1, 2, NaN)` is 2.",
   "reference": "`GREATEST`: NaN above +inf in sorts and in `<`.",
   "status": "no-finding",
