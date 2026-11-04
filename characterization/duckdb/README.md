@@ -22,9 +22,12 @@ the reference model"):
 
 - `Rel.eval` means Substrait's semantics: each function's extension
   YAML, including its options.
-- Where Substrait leaves a choice open, the reference takes the least
-  surprising one that every backend can emulate.
-- DuckDB's profile is a diff against that reference.
+- Where Substrait leaves a choice open, the reference raises if engines
+  disagree on an edge case, and otherwise takes the least surprising value
+  every backend can emulate
+  ([Terminology](../../docs/core-semantics.md#terminology)).
+- DuckDB's profile refines the loose core; its diff against the reference
+  is its row of the realizability table.
 
 Substrait here is the spec at `v0.108.0`: `extensions/functions_arithmetic.yaml`,
 `functions_comparison.yaml` and `functions_string.yaml`.

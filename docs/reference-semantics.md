@@ -1,8 +1,11 @@
 # Reference semantics
 
 What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
-**reference semantics**: `verify` proves things about it, and every engine's
-behaviour is stated as a difference from it. This page collects the choices
+**reference semantics**, the strict profile plans are verified under:
+`verify` proves things about it, and every engine's row of the realizability
+table is its difference from it. The loose core it refines, the engine
+profiles and what a proof under the reference guarantees are in
+[core-semantics.md](core-semantics.md#terminology). This page collects the choices
 the project owner decided, mostly in comments on epic
 [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185), and
 says for each row whether it holds on `main` or which issue or pull request
@@ -50,16 +53,14 @@ of every allowed result. `Report.deterministic` is false where rows may tie in
 the order of a window or of `FIRST`, `LAST` or `STRING_AGG`
 (`Rel.windowsTotal`); it does not yet flag the other choices.
 
-The reference is not a model of any engine, DuckDB included. Each engine is
+The reference is not a model of any engine, DuckDB included. It is stricter
+than every engine in most options: where engines disagree on an edge case it
+raises, so a verified plan never reaches that case. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which
 behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
-Lean (`SubstraitLean/Profile.lean`: `Profile.reference`,
-`Expr.evalP_reference`; `SubstraitLean/Lowering.lean`: `Lowering.lower_correct`,
-`Rel.duckdb_shim_sound`), and so return allowed results
-(`Rel.duckdb_shim_allowed`, `Rel.guardFree_allowed`).
-That each engine matches its profile is tested, not proved. How profiles and
-shims work is in [engine-profiles.md](engine-profiles.md).
+Lean, and that each engine matches its profile is tested; both are in
+[engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice).
 
 For now the reference is demonstrated on DuckDB only. New functions run on
 DuckDB, and the other engines refuse them until their lowerings land

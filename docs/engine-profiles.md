@@ -4,7 +4,10 @@ How a proof relates to the engines that run a plan. The design work lives in
 epic [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)
 (which supersedes the first design for #23), and the evidence for each engine
 in [`characterization/`](../characterization/). This note sums up what was
-decided there; where the two differ, #185 wins.
+decided there and what Lean proves today; where the two differ, #185 wins.
+The layers (the loose core, the reference profile, engine profiles), the
+classes of an engine's functions and which plans run on an engine are in
+[core-semantics.md](core-semantics.md#terminology).
 
 ## The reference model
 
@@ -15,7 +18,8 @@ rewrites are refinements) and every row of its behaviour, with its status on
 `main`, are in [reference-semantics.md](reference-semantics.md).
 
 An engine runs a plan **correctly** when, on every input, it gives
-`Rel.eval`'s rows or fails.
+`Rel.eval`'s rows or fails. For a plan verified to never raise, it gives
+`Rel.eval`'s rows ([Errors](core-semantics.md#errors)).
 
 **The size hypothesis.** Integers have their declared widths, and so do
 lengths, positions and ranks. The reference assumes, as every engine's memory
@@ -31,14 +35,21 @@ the range analysis proves that `ROW_NUMBER() - 1`, Ibis's `find`
 bound from the hypothesis for arithmetic the plan does on its own values
 (`amount * 2`); that needs a precondition, which sverify infers (#244).
 
-## An engine profile is a diff
+## An engine profile and its diff
 
-An engine's characterization records only where it differs from the
+An engine's profile refines the loose core, and its row of the realizability
+table is its diff against the reference
+([core-semantics.md](core-semantics.md#the-realizability-table)). The
+characterization records only where the engine differs from the
 reference: which options it implements natively and which need a shim, its
 settings (such as DuckDB's `error_on_division_by_zero`), the widths of its
 accumulators, and its frontend quirks. Translating a plan for the engine
 means applying that diff: writing each function in a form the engine
 evaluates to the reference result, or refusing it where no shim exists.
+Where the reference raises (overflow, NaN creation, a domain error), a plan
+verified to never raise needs no shim, only the guard of a precondition
+checked on the data ([What strictness buys](core-semantics.md#what-strictness-buys)).
+`Rel.duckdb_sound` below proves this for DuckDB.
 
 DuckDB is the first engine characterized this way:
 [`characterization/duckdb/facts/`](../characterization/duckdb/facts/)
@@ -53,7 +64,7 @@ From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
 
 | Tier | Engines | Meaning |
 |---|---|---|
-| **1** | DuckDB | Characterized as a diff against the reference. Every reference behaviour is native, shimmed or refused, the shims are proved, and CI replays the engine's own tests plus fuzzing. In progress: until #185's profile work lands, DuckDB is Tier 1 in intent. |
+| **1** | DuckDB | Characterized as a diff against the reference. Every reference behaviour is native, shimmed or refused (the error side needs no shim for a verified plan), the shims are proved, and CI replays the engine's own tests plus fuzzing. In progress: until #185's profile work lands, DuckDB is Tier 1 in intent. |
 | **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved. Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: sverify writes the SQL and checks it on an emulator (fakesnow), never on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
