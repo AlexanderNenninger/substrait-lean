@@ -783,7 +783,6 @@ class Replay:
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import lean_values
 
-        expect_error = rec.expect == "error"
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
             res.cls, res.reason = "refused", f"checker: {_clip((err or out).strip()[-200:], 200)}"
@@ -816,8 +815,11 @@ class Replay:
                 res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
                 return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
-        if expect_error and not lean_ok and (found := issues()):
+        if not lean_ok and (found := issues()):
             # Not an agreement (`Rel.eval` gives rows), but the verifier warns.
+            # A row that raises is NULL in `Rel.eval`, and the error is
+            # `verify`'s: `sin('inf'::DOUBLE)` raises in the reference where
+            # DuckDB gives NaN (`duckdb-R15-math-domain`, #617).
             res.reason = "verify: " + _clip("; ".join(found), 200)
 
         # DuckDB on the plan Lean writes.
@@ -856,13 +858,15 @@ class Replay:
 
 def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     """The runtime errors and wrap-arounds `verify` cannot rule out, the
-    `SUM`s it assumes fit among them (#316). The SQL text goes to `verify` as
+    `SUM`s that may overflow among them (#316). The SQL text goes to `verify` as
     it is: `sverify.sql` refuses a query that reads no table, which hid
     `SELECT 7 // 0`'s division by zero (#333)."""
     from sverify.contracts import verify
 
     try:
-        report = verify(sql, tables=schemas)
+        # Without inference: an inferred precondition would absorb the
+        # overflow the test expects (#619).
+        report = verify(sql, tables=schemas, infer=False)
     except Exception:  # noqa: BLE001
         return []
     return [str(i) for i in report.issues + report.assumed]
