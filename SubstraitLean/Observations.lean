@@ -29,6 +29,14 @@ namespace Substrait
 inductive RowsObs | sequence | multiset
   deriving Repr, DecidableEq
 
+/-- A list's elements: as a sequence, or as a multiset. -/
+inductive ElemsObs | sequence | multiset
+  deriving Repr, DecidableEq
+
+/-- Decimals: with their scale, or by value (`1.50` is `1.5`). -/
+inductive DecObs | exact | value
+  deriving Repr, DecidableEq
+
 /-- Doubles: exactly, or within a named error bound (#85's, an ulp count). -/
 inductive FloatObs | exact | within (bound : String)
   deriving Repr, DecidableEq
@@ -59,11 +67,13 @@ inductive ErrorObs | exact | kind | raises
 /-- An observation: one level per component. -/
 structure Obs where
   rows : RowsObs := .sequence
+  elements : ElemsObs := .sequence
   floats : FloatObs := .exact
   zeros : ZeroNaNObs := .exact
   times : TimeObs := .exact
   strings : StringObs := .exact
   errors : ErrorObs := .exact
+  decimals : DecObs := .exact
   deriving Repr, DecidableEq
 
 /-- The identity: everything observed. -/
@@ -95,31 +105,42 @@ def ErrorObs.rank : ErrorObs → Nat
 
 /-- **`q'` refines `q`**: it observes everything `q` does (D18), so equality
 up to `q'` implies equality up to `q`. -/
+def ElemsObs.le : ElemsObs → ElemsObs → Bool
+  | .sequence, _ | .multiset, .multiset => true
+  | .multiset, .sequence => false
+
+def DecObs.le : DecObs → DecObs → Bool
+  | .exact, _ | .value, .value => true
+  | .value, .exact => false
+
 def Obs.le (q' q : Obs) : Bool :=
-  q'.rows.le q.rows && q'.floats.le q.floats && q'.zeros.le q.zeros && q'.times.le q.times &&
+  q'.rows.le q.rows && q'.elements.le q.elements && q'.decimals.le q.decimals &&
+    q'.floats.le q.floats && q'.zeros.le q.zeros && q'.times.le q.times &&
     q'.strings.rank ≤ q.strings.rank && q'.errors.rank ≤ q.errors.rank
 
 theorem Obs.le_refl (q : Obs) : q.le q = true := by
-  obtain ⟨r, f, z, t, s, e⟩ := q
-  cases r <;> cases f <;> cases z <;> cases t <;>
-    simp [Obs.le, RowsObs.le, FloatObs.le, ZeroNaNObs.le, TimeObs.le]
+  obtain ⟨r, l, f, z, t, s, e, d⟩ := q
+  cases r <;> cases l <;> cases f <;> cases z <;> cases t <;> cases d <;>
+    simp [Obs.le, RowsObs.le, ElemsObs.le, DecObs.le, FloatObs.le, ZeroNaNObs.le, TimeObs.le]
 
 theorem Obs.le_trans {a b c : Obs} (hab : a.le b = true) (hbc : b.le c = true) : a.le c = true := by
-  obtain ⟨r₁, f₁, z₁, t₁, s₁, e₁⟩ := a
-  obtain ⟨r₂, f₂, z₂, t₂, s₂, e₂⟩ := b
-  obtain ⟨r₃, f₃, z₃, t₃, s₃, e₃⟩ := c
+  obtain ⟨r₁, l₁, f₁, z₁, t₁, s₁, e₁, d₁⟩ := a
+  obtain ⟨r₂, l₂, f₂, z₂, t₂, s₂, e₂, d₂⟩ := b
+  obtain ⟨r₃, l₃, f₃, z₃, t₃, s₃, e₃, d₃⟩ := c
   simp only [Obs.le, Bool.and_eq_true, decide_eq_true_eq] at hab hbc ⊢
-  refine ⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, by omega⟩, by omega⟩
+  refine ⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, by omega⟩, by omega⟩
   · cases r₁ <;> cases r₂ <;> cases r₃ <;> simp_all [RowsObs.le]
+  · cases l₁ <;> cases l₂ <;> cases l₃ <;> simp_all [ElemsObs.le]
+  · cases d₁ <;> cases d₂ <;> cases d₃ <;> simp_all [DecObs.le]
   · cases f₁ <;> cases f₂ <;> cases f₃ <;> simp_all [FloatObs.le]
   · cases z₁ <;> cases z₂ <;> cases z₃ <;> simp_all [ZeroNaNObs.le]
   · cases t₁ <;> cases t₂ <;> cases t₃ <;> simp_all [TimeObs.le] <;> omega
 
 theorem Obs.exact_le (q : Obs) : Obs.exact.le q = true := by
-  obtain ⟨r, f, z, t, s, e⟩ := q
-  cases r <;> cases f <;> cases z <;> cases t <;>
-    simp [Obs.le, Obs.exact, RowsObs.le, FloatObs.le, ZeroNaNObs.le, TimeObs.le, StringObs.rank,
-      ErrorObs.rank]
+  obtain ⟨r, l, f, z, t, s, e, d⟩ := q
+  cases r <;> cases l <;> cases f <;> cases z <;> cases t <;> cases d <;>
+    simp [Obs.le, Obs.exact, RowsObs.le, ElemsObs.le, DecObs.le, FloatObs.le, ZeroNaNObs.le,
+      TimeObs.le, StringObs.rank, ErrorObs.rank]
 
 /-! ## Classes -/
 
@@ -138,8 +159,8 @@ inductive Cls
 
 /-- What a row rests on. -/
 inductive Evidence
-  /-- A Lean theorem, by name. -/
-  | proved (thm : String)
+  /-- A Lean theorem, by name, with the facts its trusted model rests on. -/
+  | proved (thm : String) (facts : List String := [])
   /-- A test, a probe or an engine fact, by id. -/
   | tested (ids : List String)
   | none
@@ -195,6 +216,9 @@ structure ToolRow where
   tool : Tool
   /-- The precondition a raise creates (`""` for the other tools). -/
   precondition : String := ""
+  /-- For an option left open, the coarsest observation a contract can hold
+  under every choice: what it must not tell apart. -/
+  q : Option Obs := none
   deriving Repr, DecidableEq
 
 /-- The reference's tool per option (`docs/core-semantics.md`, "What
@@ -228,27 +252,35 @@ def Profile.reference.tools : List ToolRow := [
   { option := "time_interval_months", tool := .raise,
     precondition := "no interval with months is added to a TIME (the parser refuses it)" },
   { option := "list_null_order", tool := .choose },
-  { option := "sum_order", tool := .leaveOpen },
-  { option := "stat_algo", tool := .leaveOpen },
+  { option := "sum_order", tool := .leaveOpen, q := some { floats := .within "plan" } },
+  { option := "stat_algo", tool := .leaveOpen, q := some { floats := .within "plan" } },
   { option := "stat_degenerate", tool := .choose },
   { option := "avg_int_result", tool := .choose },
-  { option := "quantile_interp", tool := .leaveOpen },
-  { option := "tie_pick", tool := .leaveOpen },
-  { option := "tie_order", tool := .leaveOpen },
+  { option := "quantile_interp", tool := .leaveOpen, q := some { floats := .within "plan" } },
+  -- The element multiset: which row of a tie, which order of a list's elements.
+  { option := "tie_pick", tool := .leaveOpen, q := some { rows := .multiset } },
+  { option := "tie_order", tool := .leaveOpen, q := some { rows := .multiset, elements := .multiset } },
   { option := "null_order", tool := .choose },
-  { option := "clustered", tool := .leaveOpen },
+  { option := "clustered", tool := .leaveOpen, q := some { rows := .multiset } },
   { option := "ntile_spread", tool := .choose },
   { option := "float_to_int", tool := .choose },
   { option := "cast_failure", tool := .raise,
     precondition := "every value a cast with UNSPECIFIED failure behaviour converts" },
   { option := "distribution", tool := .choose },
-  { option := "empty_group_aggregates", tool := .choose }]
+  { option := "empty_group_aggregates", tool := .choose },
+  { option := "float_overflow", tool := .raise,
+    precondition := "no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575)" },
+  { option := "null_join_keys", tool := .choose },
+  { option := "string_positions", tool := .choose }]
 
 /-! ## Checks -/
 
 /-- One tool per option, in the catalogue's order; a raise names its precondition. -/
 example : Profile.reference.tools.map (·.option) = options.map (·.id) := by decide +kernel
 example : Profile.reference.tools.all fun r => (r.tool == .raise) == (r.precondition != "") := by
+  decide +kernel
+/-- An open option names its observation; the others none. -/
+example : Profile.reference.tools.all fun r => (r.tool == .leaveOpen) == r.q.isSome := by
   decide +kernel
 /-- The options the reference leaves open are those whose choice allows any
 order, value or row, a value of the core that sverify names for that. -/
@@ -265,14 +297,27 @@ open Lean (Json toJson) in
 def Obs.json (q : Obs) : Json :=
   Json.mkObj [
     ("rows", toJson (match q.rows with | .sequence => "sequence" | .multiset => "multiset")),
-    ("floats", match q.floats with | .exact => toJson "exact" | .within b => Json.mkObj [("within", toJson b)]),
+    ("elements", toJson (match q.elements with | .sequence => "sequence" | .multiset => "multiset")),
+    -- A named bound (#85's): the plan's own, which `verify`'s float bounds compute.
+    ("floats", match q.floats with | .exact => toJson "exact" | .within b => Json.mkObj [("bound", toJson b)]),
     ("zeros", toJson (match q.zeros with | .exact => "exact" | .canon => "canon")),
-    ("times", match q.times with
-      | .exact => toJson "exact"
-      | .truncated u => Json.mkObj [("truncated", toJson (match u with
-          | .ns => "ns" | .us => "us" | .ms => "ms" | .s => "s"))]),
+    ("timestamps", toJson (match q.times with
+      | .exact => "exact"
+      | .truncated u => match u with | .ns => "ns" | .us => "us" | .ms => "ms" | .s => "s")),
     ("strings", toJson (match q.strings with | .exact => "exact" | .nfc => "nfc" | .casefold => "casefold")),
+    ("decimals", toJson (match q.decimals with | .exact => "exact" | .value => "value")),
     ("errors", toJson (match q.errors with | .exact => "exact" | .kind => "kind" | .raises => "raises"))]
+
+open Lean (Json toJson) in
+/-- An observation as the Python side reads it (D18): only the components
+that are not exact. -/
+def Obs.sparseJson (q : Obs) : Json :=
+  let full := q.json
+  let keep := [("rows", q.rows != .sequence), ("elements", q.elements != .sequence),
+    ("floats", q.floats != .exact), ("zeros", q.zeros != .exact),
+    ("timestamps", q.times != .exact), ("strings", q.strings != .exact),
+    ("decimals", q.decimals != .exact), ("errors", q.errors != .exact)]
+  Json.mkObj (keep.filterMap fun (k, b) => if b then (full.getObjVal? k).toOption.map (k, ·) else none)
 
 open Lean (Json toJson) in
 def ObsRow.json (r : ObsRow) : Json :=
@@ -282,7 +327,7 @@ def ObsRow.json (r : ObsRow) : Json :=
       | .refused => "refused")),
     ("q", r.q.json), ("shim", toJson r.shim),
     ("evidence", match r.evidence with
-      | .proved t => Json.mkObj [("proved", toJson t)]
+      | .proved t ids => Json.mkObj [("proved", toJson t), ("facts", toJson ids)]
       | .tested ids => Json.mkObj [("tested", toJson ids)]
       | .none => Json.null)]
 

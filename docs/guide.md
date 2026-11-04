@@ -1104,14 +1104,18 @@ t = readings.table("t")
 means = sv.verify(
     t.group_by("k").aggregate(mean_x=t.x.mean()).order_by("k"),
     requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
-    ensures=[sv.equivalent(rows="sequence", floats=sv.within(rel=1e-12)), sv.unique("k")],
+    ensures=[sv.equivalent(rows="sequence", floats=sv.within(abs=1e-3)), sv.unique("k")],
 )
 duckdb_result = means.run(readings, "duckdb", route="auto")
 polars_result = means.run(readings, "polars", route="auto")
 means.observation.equal(duckdb_result, polars_result)  # True
 ```
 
-Rows are a multiset and values exact by default. `sv.equivalent` also takes
+Polars sums doubles in its own order, so its mean is within the plan's
+bound of the reference's: here about `2.2e-4`, from the bounds on `x` and the
+row cap (#85; `--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
+values may cancel, so only an absolute bound holds, and the tolerance is
+absolute. Rows are a multiset and values exact by default. `sv.equivalent` also takes
 `elements="multiset"`, `zeros="canon"`, `timestamps="ms"`, `strings="nfc"`,
 `decimals="value"` and `errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as

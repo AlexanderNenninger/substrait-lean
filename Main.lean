@@ -198,7 +198,15 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
     | .ok j => match ContractCheck.check j with
       | .error e => IO.eprintln s!"error: {e}"; return 1
       | .ok report =>
-        IO.println report.json.compress
+        -- The profile it was checked under (the reference: checking under an
+        -- engine's profile is not built yet, so a request for one gets the
+        -- reference's report, which says so), and the options the
+        -- transformation meets (#444).
+        let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
+        -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
+        let eps := (Epsilon.epsilon j).toOption.getD (Lean.Json.mkObj [])
+        IO.println (report.json |>.setObjVal! "profile" "reference"
+          |>.setObjVal! "depends" depends |>.setObjVal! "epsilon" eps).compress
         return if report.allProved then 0 else 4
   if flag == "--shard" then
     match Lean.Json.parse input with
@@ -213,6 +221,10 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
     | "--write" => pure (write false)
     | "--write-datafusion" => pure (write true)
     | "--outcomes" => pure outcomes
+    | "--dependencies" => pure fun plan => do
+        -- The options the plan meets and the transfer check (#444).
+        IO.println plan.root.dependenciesJson.compress
+        return 0
     | _ => IO.eprintln s!"unknown mode {flag}"; return 1
   match parsePlan input with
   | .ok plan => mode plan
@@ -310,6 +322,12 @@ def main (args : List String) : IO UInt32 := do
     -- The function tables (#544, #269), for the Python mirror's agreement test.
     IO.println Functions.tableJson.compress
     return 0
+  | ["--transfer"] => do
+    -- The option-wise transfer check on a dependency report, from stdin (#444).
+    let input ← (← IO.getStdin).readToEnd
+    match Lean.Json.parse input >>= transferJson with
+    | .ok out => IO.println out.compress; return 0
+    | .error e => IO.eprintln s!"error: {e}"; return 1
   | ["--options"] => do
     -- The options, the groups' options, the profiles' choices and
     -- observations, and the reference's tools (#444).
@@ -323,11 +341,11 @@ def main (args : List String) : IO UInt32 := do
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
-        "--eval-spec"].contains flag then
+        "--eval-spec", "--dependencies"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --transfer"
     return 1
