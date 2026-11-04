@@ -189,7 +189,7 @@ pytest -n auto --dist worksteal -m chaos tests/chaos; status=$?
 python -m sverify_dev.chaos summarize "$SVERIFY_CHAOS_LEDGER"
 exit $status
 """
-env = { SVERIFY_PROFILE.default = "ci" }
+env = { SVERIFY_PROFILE.default = "ci", SVERIFY_CHAOS_EXAMPLES.default = "2000" }
 
 [tool.poe.tasks.test-core]
 help = "Python tests of Lean and DataFusion as the reference (see tests/conftest.py)"

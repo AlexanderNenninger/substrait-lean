@@ -3,7 +3,7 @@
 
 A check that fails raises `Violation`, which names the outcome and the
 invariant; any other exception after the fault means the job is `stuck`.
-`record` turns a test's report into the ledger's record.
+`record` turns a failed test's report into the ledger's record.
 """
 
 from __future__ import annotations
@@ -78,17 +78,12 @@ def record(item: Any, report: Any, call: Any, scenario: dict[str, Any]) -> dict[
         "where": None,
         "error": None,
     }
-    if report.skipped:
-        out["outcome"] = "not-reached"
-    elif report.passed:
-        out["outcome"] = "recovered"
+    exc = call.excinfo.value if call.excinfo is not None else None
+    if exc is None:
+        out["outcome"] = "stuck"
     else:
-        exc = call.excinfo.value if call.excinfo is not None else None
-        if exc is None:
-            out["outcome"] = "stuck"
-        else:
-            out["outcome"], out["invariant"], out["where"] = classify(exc)
-            text = "".join(traceback.format_exception(exc))
-            out["error"] = "\n".join(text.splitlines()[-25:])
+        out["outcome"], out["invariant"], out["where"] = classify(exc)
+        text = "".join(traceback.format_exception(exc))
+        out["error"] = "\n".join(text.splitlines()[-25:])
     out["known"] = chaos.known_issue(out, chaos.load_known())
     return out

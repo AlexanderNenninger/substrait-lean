@@ -4,12 +4,13 @@ scenario, and a Markdown summary of the failures, grouped by signature.
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API.
 
-Each chaos test appends a record to the ledger as soon as it finishes
+Each chaos test that fails appends a record to the ledger as soon as it
+finishes (a scenario that recovers writes nothing)
 (`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<date>-<branch>-<sha>.jsonl`,
 outside the run's checkout so that it survives `homelab_qa.sh`'s cleanup or
 an OOM kill). A record holds the run id, commit, time, test, fault point,
-setup, outcome (`recovered`, `wrong-result`, `double-applied`, `lost-change`,
-`stuck`, `unclear-error`, or `not-reached`), the invariant that failed,
+setup, outcome (`wrong-result`, `double-applied`, `lost-change`, `stuck` or
+`unclear-error`), the invariant that failed,
 where it raised, and the head of the traceback. A failure's signature is
 its outcome, where it raised and the test family; `known.json` beside the
 tests maps the filed ones to their issues.
@@ -38,15 +39,7 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[3]
 KNOWN = REPO / "python" / "tests" / "chaos" / "known.json"
-OUTCOMES = (
-    "recovered",
-    "wrong-result",
-    "double-applied",
-    "lost-change",
-    "stuck",
-    "unclear-error",
-    "not-reached",
-)
+OUTCOMES = ("wrong-result", "double-applied", "lost-change", "stuck", "unclear-error")
 FAILED = {"wrong-result", "double-applied", "lost-change", "stuck", "unclear-error"}
 
 
@@ -141,7 +134,7 @@ def summarize(paths: list[Path], known: list[dict[str, Any]] | None = None) -> s
     known = load_known() if known is None else known
     records = read(paths)
     runs = sorted({r.get("run", "?") for r in records})
-    lines = [f"## Chaos summary: {len(records)} scenario(s), {len(runs)} run(s)", ""]
+    lines = [f"## Chaos summary: {len(records)} failed scenario(s), {len(runs)} run(s)", ""]
     lines += ["| run | commit | " + " | ".join(OUTCOMES) + " |"]
     lines += ["|---|---|" + "---|" * len(OUTCOMES)]
     for run in runs:
@@ -158,7 +151,7 @@ def summarize(paths: list[Path], known: list[dict[str, Any]] | None = None) -> s
             groups[signature(r)].append(r)
     lines += ["", "## Failures by signature", ""]
     if not groups:
-        lines.append("None: every scenario reached recovered.")
+        lines.append("None: every scenario recovered.")
     else:
         lines += ["| status | signature | scenarios | by run | invariant | repro |"]
         lines += ["|---|---|---|---|---|---|"]

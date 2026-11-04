@@ -101,10 +101,10 @@ It spawns many processes, so run it on homelab:
 ssh homelab 'bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
 ```
 
-Each scenario appends a line to a JSONL ledger as it finishes
+Each scenario that fails appends a line to a JSONL ledger as it finishes
 (`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<run>.jsonl`,
-which outlives the run's directory; `tail -f` it). The task prints the
-summary at the end: failures grouped by signature, with counts and a
+which outlives the run's directory; `tail -f` it). The task prints how
+many scenarios ran and recovered, then the summary: failures grouped by signature, with counts and a
 repro. `python -m sverify_dev.chaos summarize <ledger>...` summarises
 partial or several ledgers (`--follow 60` repeats). Signatures with an
 issue go in `tests/chaos/known.json`; their tests report as expected

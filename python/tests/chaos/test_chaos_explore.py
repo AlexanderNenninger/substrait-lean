@@ -8,11 +8,13 @@ fault must bring every sink up to date, in this process and in a restarted
 one (`_world.check`).
 
 Faults that hit a bug already filed are left out (`known`), so that a run
-finds new ones; each filed bug has its own `xfail` test.
+finds new ones. `SVERIFY_CHAOS_EXAMPLES` sets the budget (default 200;
+`poe test-chaos` runs 2000).
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -44,7 +46,7 @@ rounds = st.lists(st.tuples(st.integers(0, 2), fault), min_size=1, max_size=4)
 
 
 @settings(
-    max_examples=200,
+    max_examples=int(os.environ.get("SVERIFY_CHAOS_EXAMPLES", "200")),
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )

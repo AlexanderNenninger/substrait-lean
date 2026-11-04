@@ -7,7 +7,7 @@ an object store that goes away and comes back, sources that change or
 vanish mid-refresh, and two processes racing on one sink. After each, the
 same process or a fresh one refreshes, and every sink must equal a full
 recompute of its inputs, with its epoch the sum of the versions it records.
-Each scenario streams a record to a JSONL ledger, and
+Each failed scenario streams a record to a JSONL ledger, and
 `python -m sverify_dev.chaos summarize` groups the failures by signature.
 `poe test-chaos` runs it; `qa` and CI leave it out. It found
 [#515](https://github.com/AlexanderNenninger/substrait-lean/issues/515),
