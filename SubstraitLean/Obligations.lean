@@ -96,6 +96,7 @@ def shimCosts : List (String × String × ShimCost) := [
   ("polars", "one_zero", .expression),
   ("polars", "strpos_chars", .expression),
   ("polars", "substring_wrap", .expression),
+  ("polars", "column_divisor", .expression),
   ("polars", "sort on the keys", .sort)]
 
 def shimCost? (engine name : String) : Option ShimCost :=
@@ -145,11 +146,14 @@ def obsAt (obs : ObsTable) : Option String → String → Option ObsRow
 named apart: `(option, engine's, reference's, why)`. The reference's `ANY`
 sum order allows every order of the additions, a sequential one among them;
 `ANY_ROW` allows the first row read; `DECLARED_TYPE` for an integer `AVG`
-(declared `i64`) is the exact mean truncated. -/
+(declared `i64`) is the exact mean truncated; `GENERIC` allows Welford with
+Chan's merge, and `BETWEEN` a linear interpolation. -/
 def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("sum_order", "SEQUENTIAL", "ANY", "FloatSums: a sequential sum is one order of the additions"),
   ("tie_pick", "FIRST_READ", "ANY_ROW", "the first row read is a row of the tie"),
-  ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)")]
+  ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
+  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)"),
+  ("quantile_interp", "LINEAR", "BETWEEN", "a linear interpolation lies between the neighbouring values (duckdb-quantile-cont-interpolation, polars-quantile)")]
 
 /-- Each behaviour of `a` is one of `b`'s, or refines one of them. -/
 private def sub (o : String) (a b : List Behaviour) : Bool :=
@@ -426,6 +430,7 @@ def Obligation.json (engine : String) (r : Obligation) : Json :=
     (match r.evidence with
       | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
       | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
+      | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
       | .none => [("evidence", Json.null), ("facts", toJson ([] : List String))])
 
 open Lean (Json toJson) in

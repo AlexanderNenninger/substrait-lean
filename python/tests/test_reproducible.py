@@ -176,10 +176,14 @@ def _has_rerun() -> bool:
     strict=True,
 )
 def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
+    """Polars's float sum is approx within the plan's bound (#612's rows), so
+    the postcondition states a tolerance (`q_post`) and the rerun's `q_det`
+    decides the route."""
     t = con.table("t")
     report = sv.verify(
         t.group_by("k").aggregate(total=t.x.sum()),
         requires={"t": [_.x.between(0, 1e6), sv.max_rows(1_000_000)]},
+        ensures=[sv.equivalent(floats=sv.within(abs=1e3, rel=1e-6))],
     )
     assert report.epsilon, "the plan's bound on the sum"
     loose = sv.equivalent(floats=sv.within(abs=1.0, rel=1e-6))
