@@ -152,8 +152,15 @@ def test_options_rows_for_python():
     ref = {(r["group"], r["option"]): r for r in tables["choices"]["reference"]}
     assert ref[(None, "overflow")]["tool"] == "raise" and ref[(None, "overflow")]["precondition"]
     assert ref[(None, "tie_order")]["tool"] == "open"
-    assert ref[(None, "tie_order")]["q"] == {"rows": "multiset"}
-    assert "q" not in ref[(None, "rounding")]
+    assert ref[(None, "tie_order")]["q"] == {"rows": "multiset", "elements": "multiset"}
+    assert ref[(None, "rounding")]["q"] == {}
+    # Every engine row of the slice says how it relates to the reference.
+    for engine in ("duckdb", "polars"):
+        for r in tables["choices"][engine]:
+            if r["choice"]["kind"] != "loose":
+                assert {"class", "q", "shim", "facts"} <= set(r), (engine, r)
+    zero = {(r["group"], r["option"]): r for r in tables["choices"]["polars"]}[(None, "zero_sign")]
+    assert (zero["class"], zero["q"]) == ("refines_up_to", {"zeros": "canon"})
 
 
 def test_contract_reports_its_dependencies(tmp_path):
