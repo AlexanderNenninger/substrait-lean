@@ -2640,8 +2640,13 @@ def collect_streaming(lf: pl.LazyFrame, **kwargs: Any) -> pl.DataFrame:
 #: `InMemoryMap`, `InMemoryJoin`, `ColumnarFunction`, `Recursive`).
 _FALLBACK_COLOUR = '"0.0 0.3 1.0"'
 _NODE = re.compile(r'^\d+ \[label="(.*)",style=filled,fillcolor=(".*")\];$')
-#: The optimizations sverify runs a plan with (`collect`).
-_OPTIMIZATIONS = pl.QueryOptFlags(predicate_pushdown=False)
+#: The optimizations sverify runs a plan with (`collect`). Predicate pushdown
+#: would move `guard`s below the filters before them, onto rows the plan never
+#: evaluates there. Common-subexpression elimination hoists an expression two
+#: `when/then` branches share into a column computed on every row, so a
+#: guarded cast or division would run on the rows its `CASE` excludes and
+#: raise (PL-6, polars-exec-cse-hoist).
+_OPTIMIZATIONS = pl.QueryOptFlags(predicate_pushdown=False, comm_subexpr_elim=False)
 
 
 @dataclass(frozen=True)
@@ -2710,10 +2715,9 @@ def disallowed_fallbacks(lf: pl.LazyFrame) -> list[str]:
 
 
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:
-    """Run a translated plan on the streaming engine (`collect_streaming`).
-    Predicate pushdown would move `guard`s (and filters) below the filters
-    that come before them, onto rows the plan never evaluates there, so it
-    is off."""
+    """Run a translated plan on the streaming engine (`collect_streaming`),
+    without predicate pushdown and common-subexpression elimination
+    (`_OPTIMIZATIONS`)."""
     return collect_streaming(lf, optimizations=_OPTIMIZATIONS)
 
 

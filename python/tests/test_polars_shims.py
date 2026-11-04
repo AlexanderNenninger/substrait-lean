@@ -733,3 +733,41 @@ def test_a_routed_run_records_fallbacks_and_can_require_streaming():
         listed.run(con, "polars", route="auto", streaming="require")
     with pytest.raises(RouteError, match="in-memory engine"):
         listed.run(con, "polars", streaming="require")
+
+
+@pytest.mark.parametrize("kind", ["in-memory", "streaming"])
+def test_a_guarded_cast_shared_by_two_branches_is_not_hoisted(kind):
+    """PL-6 (polars-exec-cse-hoist): common-subexpression elimination moves a
+    cast two `when/then` branches share onto every row, where it raises.
+    sverify's plans run without it (`_OPTIMIZATIONS`)."""
+    x = pl.col("x")
+    lf = pl.LazyFrame({"x": ["1", "a"]}).select(
+        pl.when(x == "1").then(x.cast(pl.Int64) + 1).alias("a"),
+        pl.when(x == "1").then(x.cast(pl.Int64) + 2).alias("b"),
+    )
+    with pytest.raises(pl.exceptions.InvalidOperationError):
+        lf.collect(engine=kind)
+    assert lf.collect(engine=kind, optimizations=polars_engine._OPTIMIZATIONS).rows() == [
+        (2, 3),
+        (None, None),
+    ]
+    assert polars_engine.collect(lf).rows() == [(2, 3), (None, None)]
+
+
+@pytest.mark.slow
+def test_ties_keep_their_order_in_a_large_streaming_sort():
+    """Above the streaming sort's 32 MiB threshold Polars does not keep ties
+    in input order without `maintain_order`; the translation's `tie_order`
+    shim writes it on every sort."""
+    from sverify.engine import written_plan as written
+
+    n = 4_000_000
+    k = [(j * 7919) % 5 for j in range(n)]
+    tab = pa.table({"k": pa.array(k, pa.int64()), "i": pa.array(range(n), pa.int64())})
+    t = ibis.table({"k": "int64", "i": "int64"}, name="t")
+    out = pl.from_arrow(polars_engine.run(written(to_substrait_json(t.order_by("k"))), {"t": tab}))
+    steps = out.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))["d"]
+    assert out["k"].is_sorted() and steps.min() > 0
+    raw = pl.from_arrow(tab).lazy().sort("k").collect(engine="streaming")
+    raw_steps = raw.group_by("k").agg(pl.col("i").diff().drop_nulls().min().alias("d"))["d"]
+    assert raw_steps.min() < 0  # what the shim is for
