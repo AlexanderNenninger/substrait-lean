@@ -165,6 +165,8 @@ inductive Evidence
   | proved (thm : String)
   /-- A test, a probe or an engine fact, by id. -/
   | tested (ids : List String)
+  /-- An engine fact whose evidence is a probe of the engine run for it, by id. -/
+  | probed (ids : List String)
   | none
   deriving Repr, DecidableEq
 
@@ -348,6 +350,7 @@ def ObsRow.json (r : ObsRow) : Json :=
     ("evidence", match r.evidence with
       | .proved t => Json.mkObj [("proved", toJson t)]
       | .tested ids => Json.mkObj [("tested", toJson ids)]
+      | .probed ids => Json.mkObj [("probe", toJson ids)]
       | .none => Json.null)]
 
 open Lean (Json toJson) in

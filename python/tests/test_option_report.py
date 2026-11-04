@@ -227,6 +227,8 @@ def test_rerun_variation():
     assert polars[(None, "sum_order")]["rerun_evidence"] == "tested"
     assert polars[(None, "tie_order")]["rerun"] == {"rows": "ties permuted"}
     assert duck[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
+    assert duck[(None, "sum_order")]["rerun_evidence"] == "probe"
+    assert duck[(None, "tie_order")]["rerun"] == {"rows": "ties permuted", "elements": "multiset"}
     # Known exact: written as {}, with its own evidence.
     for row in (
         polars[(None, "tie_pick")],
@@ -242,4 +244,4 @@ def test_rerun_variation():
     for engine in ("duckdb", "polars"):
         for r in choices[engine]:
             if "rerun" in r:
-                assert r.get("rerun_evidence") in ("tested", "proved"), (engine, r)
+                assert r.get("rerun_evidence") in ("tested", "probe", "proved"), (engine, r)

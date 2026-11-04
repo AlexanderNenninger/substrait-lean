@@ -117,17 +117,24 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
   -- One value at a time: one of the orders the reference allows (`FloatSums`);
-  -- which order depends on the parallel plan, so runs vary.
+  -- which order depends on the parallel plan, so at two threads or more runs
+  -- vary (3 to 4 values in 5 runs). `fsum` (Kahan) does not vary.
   (none, "sum_order", { ObsRow.native ["duckdb-sum-double", "duckdb-avg-double"] with
-    rerun := some { floats := .within "plan" } }),
+    rerun := some { floats := .within "plan" },
+    rerunEvidence := .probed ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }),
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
   (none, "clustered", .shimmed "ORDER BY the keys" []),
   -- Ties come in the order threads read the rows.
-  (none, "tie_order", { ObsRow.native ["duckdb-mode-ties"] with rerun := some { rows := .tiesPermuted } }),
+  -- `ORDER BY`, `row_number`, `ntile`, `lag` and `list` without a total order:
+  -- ties, and a list's elements, come in a different order run to run.
+  (none, "tie_order", { ObsRow.native ["duckdb-sort-ties", "duckdb-mode-ties"] with
+    rerun := some { rows := .tiesPermuted, elements := .multiset },
+    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }),
   (none, "tie_pick", { ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
-    rerun := some { rows := .tiesPermuted } }),
+    rerun := some { rows := .tiesPermuted },
+    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }),
   (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
   (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
   (none, "negative_start", .native ["duckdb-R13"]),
@@ -264,7 +271,7 @@ def withReruns (obs : ObsTable) : ObsTable :=
   obs.map fun (g, o, r) =>
     let ev := match r.evidence with | .tested ids => Evidence.tested ids | e => e
     match r.rerun with
-    | some _ => (g, o, { r with rerunEvidence := ev })
+    | some _ => (g, o, if r.rerunEvidence == .none then { r with rerunEvidence := ev } else r)
     | none =>
       -- A sum's sign of zero is the row's own; a group key's or `min`'s zero is
       -- the one seen first, or the platform's: not settled here.
@@ -365,6 +372,7 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
             match r.rerunEvidence with
             | .proved thm => [("rerun_evidence", toJson "proved"), ("rerun_theorem", toJson thm)]
             | .tested ids => [("rerun_evidence", toJson "tested"), ("rerun_facts", toJson ids)]
+            | .probed ids => [("rerun_evidence", toJson "probe"), ("rerun_facts", toJson ids)]
             | .none => []) ++
         (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
         (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
@@ -372,6 +380,7 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
         (match r.evidence with
           | .proved thm => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ([] : List String))]
           | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
+          | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
           | .none => [("facts", toJson ([] : List String))])
     let toolFields : List (String × Json) := if !reference then [] else
       match Profile.reference.tools.find? (·.option == o) with
