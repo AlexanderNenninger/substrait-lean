@@ -726,3 +726,21 @@ def test_constant_date_arithmetic_has_no_guard():
     ]:
         sql = plan_sql(json.loads(written_plan(to_substrait_json(expr))), DUCKDB)
         assert ("outside the reference" in sql) == guarded, sql
+
+
+def test_times_in_nanoseconds_are_refused():
+    """DuckDB's `TIME_NS` is `time64[ns]` in Arrow; Ibis's time has no unit,
+    so the plan read it as microseconds and the engine kept the nanoseconds,
+    dropping a `::TIME` cast (#627)."""
+    from sverify.engine import connect
+    from sverify.plan_json import Unsupported
+
+    rel = duckdb.sql("SELECT '13:00:00.12345678'::TIME_NS AS tns")
+    assert rel is not None
+    ns = rel.to_arrow_table()
+    nested = pa.table({"l": pa.array([[1]], pa.list_(pa.time64("ns")))})
+    con = connect()
+    for table in (ns, nested):
+        with pytest.raises(Unsupported, match="nanoseconds"):
+            con.put("times", table)
+    con.put("times", pa.table({"t": pa.array([1], pa.time64("us"))}))
