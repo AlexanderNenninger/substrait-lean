@@ -1050,7 +1050,7 @@ class Report:
                     raise PreconditionError(
                         f"{n} row(s) of {t} violate {label(c)}: refused before the run"
                     )
-        if self.assumed and self.plan is not None:
+        if any(_sum(i) for i in self.assumed) and self.plan is not None:
             # The proved DuckDB translation checks each SUM as it adds up; it
             # runs first, so a batch whose SUM leaves its type is refused
             # before the plan runs on any engine.
@@ -1071,6 +1071,7 @@ class Report:
         *,
         route: RouteKind | Literal["auto"] | None = None,
         deterministic: bool = False,
+        check_inputs: bool = True,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1096,6 +1097,13 @@ class Report:
                 `"transfer"` or `"recheck"` takes that one or refuses.
             deterministic: With `route`, refuse a plan whose result is not
                 determined up to row order (D10).
+            check_inputs: Check the preconditions (`requires`, the inferred
+                bounds among them) and the assumed `SUM`s on the tables of
+                `con` before the run, and refuse a batch that breaks one
+                (`check_inputs`, #444 goal 1, #604). Default True. False
+                skips the check, for a caller that has made it already: the
+                report's guarantee then holds only on data that meets them,
+                and a batch that does not may raise on the engine.
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1107,6 +1115,8 @@ class Report:
             sverify.routes.RouteError: No route takes the plan to `engine`.
             sverify.routes.EngineVersionError: The engine's major version is
                 not the one its profile's facts were probed at.
+            sverify.errors.PreconditionError: With `check_inputs`, a
+                precondition does not hold on the data: nothing ran.
 
         Examples:
             Verify a query, then run what was verified:
@@ -1139,6 +1149,7 @@ class Report:
             kind = chosen.kind
             if chosen.refused:
                 raise routes.RouteError(chosen)
+        if check_inputs:
             self.check_inputs(con)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and

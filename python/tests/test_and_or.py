@@ -10,6 +10,7 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import connect, put_table
+from sverify.errors import PreconditionError
 
 T = ibis.table({"x": "int64"}, name="t")
 REQUIRES = {"t": [_.x.notnull(), _.x.between(-10, 10)]}
@@ -32,6 +33,23 @@ def test_the_inferred_precondition_names_the_and():
     assert report.proved
     assert report.inferred
     assert any("inside an AND or OR" in h for h in report.hints)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_the_issues_batch_is_refused_before_the_run(engine):
+    """#604's plan, proved under the inferred `x != 0`: `Report.run` checks
+    the preconditions on the data first, so the batch with `x = 0` is refused
+    with the precondition named, and nothing runs on the engine."""
+    report = sv.verify(GUARDED_BY_AND, tables={"t": T}, requires=REQUIRES)
+    con = connect()
+    put_table(con, "t", pa.table({"x": [0, 2, 5]}))
+    with pytest.raises(PreconditionError, match=r"1 row\(s\) of t violate .*x != 0.*refused"):
+        report.run(con, engine)
+    # Opting out gives up the guarantee: the engine raises.
+    with pytest.raises(Exception, match="(?i)divi"):
+        report.run(con, engine, check_inputs=False)
+    put_table(con, "t", pa.table({"x": [2, 5]}))
+    assert report.run(con, engine).column("x").to_pylist() == [2, 5]
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
