@@ -22,7 +22,9 @@ on those columns, in any keyed table, are on the same shard
 columns with no two equal rows in the whole table (checked by the caller,
 like a contract's `unique`); a window splits when they show it has no ties
 (`Rel.keyedWindows`, sound by `Rel.keyedWindows_sound` for rows of the
-declared types).
+declared types). An integer `AVG` splits into a `SUM` and a `COUNT` when the
+declared types make its argument an integer (`IntArgs.ofTypes`, sound by
+`IntArgs.ofTypes_sound` for the same rows).
 
 Output: `{"mode": "linear" | "two_phase", "proved": <bool>, "partial": <plan>,
 "combine": <plan>}`. Run `partial` on every shard, put the concatenated
@@ -50,39 +52,41 @@ def schemaOf (ks : List Kind) : Json :=
                        ("nullability", "NULLABILITY_REQUIRED")])]
 
 /-- Why `r` cannot be split (for the message only). -/
-def why (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys) (cat : Catalog) :
-    Rel → String
+def why (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys) (cat : Catalog)
+    (I : IntArgs) : Rel → String
   | .read _ => "the plan reads no sharded table, so every shard would compute all of it"
   | .values _ _ => "a literal table (VALUES) would be repeated on every shard"
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => why S K T cat r
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => why S K T cat I r
   | .fetch _ _ _ => "FETCH (LIMIT/OFFSET) depends on the rows of all shards"
   | .unnest _ _ => "UNNEST is not split into shards yet"
   | .window r _ _ _ =>
-    if !r.linear S K T cat then why S K T cat r
+    if !r.linear S K T cat then why S K T cat I r
     else "a window looks at rows of other shards; it splits when its PARTITION BY contains the split key (keys) and its PARTITION BY and ORDER BY columns are unique (unique), so that ties cannot fall differently"
   | .distinct r =>
-    if !r.linear S K T cat then why S K T cat r
+    if !r.linear S K T cat then why S K T cat I r
     else "DISTINCT compares rows of different shards; it splits when its columns include the split key (keys)"
   | .aggregate r _ ms =>
     if !r.linear S K T cat then
-      if (r.tables.any S) then why S K T cat r else "the aggregate reads no sharded table"
-    else match ms.find? (!·.twoPhase (r.keyCols S K T cat)) with
+      if (r.tables.any S) then why S K T cat I r else "the aggregate reads no sharded table"
+    else match ms.find? (!·.algebraic I r (r.keyCols S K T cat)) with
       | some m =>
         if m.distinct then
           "an aggregate over DISTINCT values: a value in two shards counts once in the whole and twice in the parts, unless its argument is the split key"
+        else if m.fn = .iavg then
+          "an integer AVG splits into SUM and COUNT only when its argument is an integer, by the plan's column types"
         else "SUM or AVG of doubles: floating-point addition is not associative, so the rounding depends on how the rows are split (float_order=\"any\" splits them anyway, unproved)"
       | none => "only one aggregate can be split in two phases, at the top of the plan; one below other operators needs the split key in its GROUP BY"
   | .unionAll a b =>
     if !a.tables.any S || !b.tables.any S then
       "a UNION ALL branch reads no sharded table and would be repeated on every shard"
-    else if a.linear S K T cat then why S K T cat b else why S K T cat a
+    else if a.linear S K T cat then why S K T cat I b else why S K T cat I a
   | .cross a b | .join a b _ _ =>
     if a.tables.any S && b.tables.any S then
       "a join of two sharded tables needs both split on keys its condition equates (co-partitioning: keys, and ON a.k = b.k)"
-    else if a.tables.any S then why S K T cat a else why S K T cat b
+    else if a.tables.any S then why S K T cat I a else why S K T cat I b
   | .semi a b _ _ =>
     if b.tables.any S then "the right side of a semi or anti join reads a sharded table"
-    else why S K T cat a
+    else why S K T cat I a
 
 def check (input : Json) : Except String Json := do
   let plan ← parsePlan ((input.getObjVal? "plan").toOption.getD .null).compress
@@ -101,6 +105,7 @@ def check (input : Json) : Except String Json := do
     | some (_, schema) => ContractCheck.schemaEnv schema
     | none => []
   let T := Rel.keyedWindows cat A (fun _ => []) U
+  let I := IntArgs.ofTypes cat A
   -- `Rel.shardSplit_sound` is stated for well-formed plans' semantics; the
   -- combining plan must read only `__partials`.
   if !plan.root.checkWF cat then throw "the plan is not well-formed"
@@ -109,8 +114,8 @@ def check (input : Json) : Except String Json := do
     if let some kt := K t then
       if kt.isEmpty || kt.any (· ≥ (cat t).arity) then
         throw s!"the split key of {t} must name columns of it"
-  match plan.root.shardSplit S K T cat partials floats with
-  | none => throw (why S K T cat plan.root)
+  match plan.root.shardSplit S K T cat I partials floats with
+  | none => throw (why S K T cat I plan.root)
   | some (p, q) =>
     let schemas := planSchemas plan
     let pk := (relKinds schemas cat p).map WKind.toKind
@@ -119,7 +124,7 @@ def check (input : Json) : Except String Json := do
     let linear := plan.root.linear S K T cat
     return Json.mkObj [
       ("mode", toJson (if linear then "linear" else "two_phase")),
-      ("proved", toJson (plan.root.shardSplit S K T cat partials false).isSome),
+      ("proved", toJson (plan.root.shardSplit S K T cat I partials false).isSome),
       ("partial", writePlan schemas cat p (if linear then plan.names else colNames pk.length)),
       ("combine", writePlan schemas' cat' q plan.names)]
 

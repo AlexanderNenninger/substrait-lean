@@ -22,6 +22,11 @@ in `SubstraitLean/Partition.lean`):
   shard aggregates by the grouping keys, then the partial rows are grouped
   again and combined (`COUNT` by `SUM`). Filters, projections and sorts above
   the aggregate run after combining.
+* An integer `AVG` (Substrait's `avg` of `i64` with an `i64` result) is
+  algebraic: each shard computes its `SUM` and `COUNT`, the combining
+  plan adds them up and divides, truncating toward zero
+  (`Rel.eval_algebraic`). It needs the argument to be an integer by the
+  plan's column types.
 
 **Split keys** (`keys={"orders": ["region"]}`) say that rows with equal values
 on those columns are always on the same shard, as a Delta or Iceberg

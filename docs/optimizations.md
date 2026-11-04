@@ -170,6 +170,26 @@ guarantees. The question is when
   NULL partial (`SUM`, `MIN`, `MAX`) or `0` (`COUNT`), and both are neutral.
   A global aggregate over zero shards would give NULL instead of `COUNT = 0`,
   so at least one shard is required.
+* `Rel.eval_algebraic` (#245). An algebraic aggregate is a final expression
+  over a tuple of distributive partials: each shard computes the partials,
+  the combining phase combines each of them as above, and the final
+  expression gives the result (`aggregateEval_algFinish`). The instance is
+  the integer `AVG` (`AggFn.iavg`, Substrait's `avg` of `i64` with an `i64`
+  result): a `SUM` and a `COUNT` per shard (`Measure.part`,
+  `Measure.part₂`), and `SUM / COUNT` truncated toward zero, NULL without
+  values (`algFinal`, `Measure.final_eval`). The mean of the shards' means
+  would be wrong, since shards differ in size and each mean truncates.
+  The model's `iavg` clamps the mean between the smallest and largest
+  value, which changes nothing only when every value is an integer
+  (`clampInts_mean`), so the split needs the argument to be one. `--shard`
+  reads that from the plan's column types by abstract evaluation
+  (`IntArgs.ofTypes`, sound for rows of those types by
+  `IntArgs.ofTypes_sound`). `AVG(DISTINCT x)` splits when `x` is the whole
+  split key, like `COUNT(DISTINCT x)`. `AVG` with a double result stays
+  refused (see the float sums below). `VAR_*`, `STDDEV_*`, `COVAR_*` and
+  `CORR` are doubles in the model, also of integers, so the same caveat
+  holds for them; their exact partials (`n`, `Σx`, `Σx²`, …) wait for the
+  error bounds of #85.
 * `Rel.eval_twoPhase`, `Rel.shardSplit_sound`. `Rel.shardSplit` turns a plan
   into the plan each shard runs and the plan that combines their
   concatenated results. Filters, projections and sorts above the aggregate
