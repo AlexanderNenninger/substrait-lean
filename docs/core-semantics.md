@@ -1224,3 +1224,14 @@ other side is empty: `Rel.HasIssue` then has no pairs, while DuckDB still
 evaluates the pushed filter on the side's rows. `Rel.mayIssues` reports
 the error anyway, since it describes each side's columns by that side's own
 bounds; `Rel.HasIssue` does not model the case yet.
+
+DuckDB 2.0.0 also evaluates a `CASE`'s constant `WHEN` conditions when it
+plans the query, with the evaluator that raises:
+`SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t` raises on
+an empty `t`, and on a `t` whose rows all take the first branch (probed;
+a constant `THEN` or `ELSE` that raises, `ELSE 1 // 0`, and a constant
+`WHERE 1 // 0 = 1` on an empty table do not). A constant subexpression of a
+condition that raises therefore raises whatever the data. The reference's
+`CASE` evaluates a condition only on the rows that reach it, so a plan with
+such a constant could be proved and raise on DuckDB; the model change is
+[#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609).
