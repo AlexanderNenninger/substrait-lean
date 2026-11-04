@@ -445,7 +445,12 @@ over Z-sets (`Rel.incremental_sound` in
 Epic #248 extends the delta rules to the operators that are not linear. Its
 first stage covers `COUNT` and integer `SUM` per group, and `DISTINCT`
 ([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
-[`sverify._linear`](../python/src/sverify/_linear.py)).
+[`sverify._linear`](../python/src/sverify/_linear.py)). The second covers
+exact `SUM` and `AVG`, `MIN` and `MAX` per group
+([`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)),
+and semi and anti joins
+([`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean),
+[`sverify._semi`](../python/src/sverify/_semi.py)).
 
 `COUNT` and `SUM` per group are linear over Z-sets: each is a sum of a
 row's value times its weight. So a view that ends in such an aggregate keeps
@@ -489,11 +494,64 @@ maintained, like a view with delta rules. The tests
 with a full recompute over random change streams on DuckDB, Polars and
 DataFusion.
 
+`AVG` of exact types is a `SUM`, a `COUNT` and a division (#245). A
+`DECIMAL` `AVG` is, in the model, an aggregate of the `SUM` and the `COUNT`
+with a projection that divides them at four more decimal places
+(`Parse.decimalAvgs`), so the state of `SUM` maintains it, and the view
+divides the group's sum by its count when it finishes the row, with the
+same `sverify_decimal_div` a full recompute runs. A projection of a
+maintained aggregate that keeps its keys is maintained
+(`ExtremeAgg.map_maintained`). A `DECIMAL` `SUM` keeps its sum at the type
+of the full `SUM`, ten more digits, so it raises where a full recompute
+does. An integer `AVG` with an integer result (`AggFn.iavg`) finishes from
+the same state as `SUM / COUNT` truncated (`ExtremeAgg.finish_iavg`). Ibis
+types `mean()` of integers as a double, which, like a double `SUM`, is
+left to touched-group recompute (#85).
+
+`MIN` and `MAX` are linear under inserts: the `MIN` of a group's old values
+and the inserted ones is the `MIN` of the two (`minMax_combine`). A
+deleted extreme leaves no trace of the next one in the state, though. So
+the state keeps each `MIN` or `MAX` measure's extreme beside the counts and
+sums, and a batch merges the groups it only inserts into, and recomputes
+from the new input the groups it deletes from, a semi-join on their keys
+as touched-group recompute does. Lean proves the result is the aggregate of
+the new input, for any mix of `COUNT`, `SUM`, `MIN` and `MAX`
+(`ExtremeAgg.extreme_maintained`). A time-series rollup whose batches only
+insert never reads its input.
+
+A semi join keeps the left rows with a match on the right, and an anti join
+those without. Whether a left row has a match is whether the weight of the
+right rows that match it is positive, and that weight is linear in the
+right side. So a view that ends in a semi or anti join on equal keys keeps a
+count of the right rows per key (rows with a NULL key match nothing), and a
+batch changes the view by
+
+* the left side's change, kept where the new counts keep it;
+* the old left rows of the keys whose count leaves 0, which a semi join
+  emits and an anti join retracts;
+* the old left rows of the keys whose count returns to 0, the other way
+  round.
+
+Lean proves that the old view plus this change has the weights of the new
+view, for any join condition (`SemiDelta.semi_maintained`), and that the
+count of an equi-join only depends on the left row's key
+(`SemiDelta.matchCount_by_key`). The right side is never read, and the left
+side only for the keys whose count crosses 0. The filters and projections
+above the join pass the weights through. A condition other than equal keys,
+or a key that is a double, is recomputed and diffed. The tests
+([`test_semi.py`](../python/tests/test_semi.py)) compare every refresh with
+a full recompute over random change streams on both sides, on DuckDB,
+Polars and DataFusion.
+
+A failed commit leaves the state of every view as it was, the counts per
+key and the extremes included (#515): the commit swaps them in with the
+rest, and puts them back on any error
+([`test_io_delta.py`](../python/tests/test_io_delta.py)).
+
 Later stages of #248, each with its own delta rule:
 
-* `MIN` and `MAX`, which need the group's values when the extreme is
-  deleted;
-* `AVG`, from the `COUNT` and `SUM` partials of sharded evaluation (#245);
-* semi and anti joins, a count of matches per left row;
+* global aggregates (no `GROUP BY`), one output row even on an empty input;
+* double `SUM` and `AVG` with deletes, whose error grows with every change
+  (#85);
 * left joins, which retract their NULL-padded rows when a match arrives;
 * windows.

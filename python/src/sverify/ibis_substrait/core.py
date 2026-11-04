@@ -13,6 +13,7 @@ from typing import Any
 
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
+import ibis.expr.rules as rlz
 
 from sverify.ibis_substrait._base import (
     Exprs,
@@ -34,6 +35,7 @@ from sverify.plan_json import (
     ieee_divide,
     if_then,
     literal,
+    type_json,
 )
 
 _NONDETERMINISTIC = "each run gives another value, so no contract can be proved about it"
@@ -246,6 +248,30 @@ def _bitwise(name: str) -> Callable[[Exprs, Any], Json]:
     return rule
 
 
+class DecimalDiv(ops.Value):
+    """`left / right`, a decimal by an integer, at the scale of the decimal
+    type `to`, rounded half away from zero (`sverify_decimal_div`). Ibis has
+    no such operation: `sverify._linear` finishes a decimal `AVG` with it
+    from the group's sum and count, as the model computes the `AVG`
+    (`Parse.decimalAvgs`)."""
+
+    left: ops.Value
+    right: ops.Value
+    to: dt.DataType
+
+    shape = rlz.shape_like("left")
+
+    @property
+    def dtype(self) -> Any:
+        return self.to
+
+
+def _decimal_div(x: Exprs, op: Any) -> Json:
+    j = call("sverify_decimal_div", [x(op.left), x(op.right)])
+    j["scalarFunction"]["outputType"] = type_json(op.to)
+    return j
+
+
 def _xor(x: Exprs, op: Any) -> Json:
     # Ibis's DataFusion SQL: `(a AND NOT b) OR (NOT a AND b)`.
     a, b = x(op.left), x(op.right)
@@ -329,6 +355,7 @@ register(
         # `~x` is `x XOR -1`, as Ibis's DataFusion SQL writes it.
         ops.BitwiseNot: lambda x, op: call("bitwise_xor", [x(op.arg), literal(-1, op.dtype)]),
         ops.Xor: _xor,
+        DecimalDiv: _decimal_div,
     }
 )
 

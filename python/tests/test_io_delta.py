@@ -145,12 +145,39 @@ def large(paid):
     return paid.filter(paid.amount > 6)
 
 
+@sv.transform(requires=_BOUNDED)
+def extremes(orders):
+    return orders.group_by("customer").aggregate(
+        lo=orders.amount.min(), hi=orders.amount.max(), n=orders.count()
+    )
+
+
+def _with_big(orders, *, anti: bool):
+    big = orders.filter(orders.amount > 6)
+    on = orders.customer == big.customer
+    return orders.anti_join(big, on) if anti else orders.semi_join(big, on)
+
+
+@sv.transform(requires=_BOUNDED)
+def with_big(orders):
+    return _with_big(orders, anti=False)
+
+
+@sv.transform(requires=_BOUNDED)
+def without_big(orders):
+    return _with_big(orders, anti=True)
+
+
 #: The views of #515: kept in DuckDB and updated in place, from a state per
-#: group (COUNT, SUM, DISTINCT: #248), and a view over a view.
+#: group (COUNT, SUM, DISTINCT, MIN, MAX: #248) or a count per key (semi and
+#: anti joins), and a view over a view.
 _RETRIED = {
     "filter": lambda src: paid_nonzero(src),
     "count_sum": lambda src: per_customer(src),
     "distinct": lambda src: customers(src),
+    "min_max": lambda src: extremes(src),
+    "semi": lambda src: with_big(src),
+    "anti": lambda src: without_big(src),
     "two_stages": lambda src: large(paid_nonzero(src)),
 }
 
@@ -163,6 +190,7 @@ def test_a_refresh_that_fails_in_the_commit_is_retried_once(tmp_path, monkeypatc
     src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     node = _RETRIED[view](src).write(DeltaSink(str(tmp_path / "out")))
     node.refresh()
+    assert node._stage.view.strategy == "delta rules"
     write_deltalake(src.uri, orders_table([(3, "ada", 9)]), mode="append")
     DeltaTable(src.uri).delete("id = 2")
     with monkeypatch.context() as m:

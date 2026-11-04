@@ -1,37 +1,49 @@
-"""Delta rules for `COUNT`, `SUM` and `DISTINCT` (#248, stage 1).
+"""Delta rules for `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` and `DISTINCT`
+(#248, stages 1 and 2).
 
 Internal: not part of sverify's public API.
 
-`COUNT` and integer `SUM` per group are linear over Z-sets, so a view that
+`COUNT` and exact `SUM` per group are linear over Z-sets, so a view that
 ends in such an aggregate keeps a state beside its rows, one row per group:
 the group's keys `k0, k1, …`, its number of input rows (`__count`), and for
 each measure the number of values it adds up (`__n0`, …: rows that pass its
 `FILTER`, with a non-NULL argument) and their sum (`__s0`, …). `DISTINCT` is
-the same with every column a key and no measures: a count per row.
+the same with every column a key and no measures: a count per row. A
+`DECIMAL` `AVG` keeps the sum and the count of its values, and divides them
+when it finishes, as the model computes it (`Parse.decimalAvgs`). A `MIN`
+or `MAX` keeps the extreme of its values in `__s`.
 
 A batch updates the state at the cost of the change, without reading the
 view's input:
 
 1. the input's change, from the input's delta plans (`deltas`);
 2. each changed row's contribution to its group, its weight times its
-   values (`contrib`);
+   values, or for `MIN` and `MAX` the value itself (`contrib`);
 3. the touched groups' old state plus the contributions, added up per group
-   (`merge`): the new state of those groups;
-4. the view's rows of the touched groups that still have rows, from the new
+   (`merge`; `MIN` and `MAX` take the extreme): the new state of those
+   groups;
+4. with a `MIN` or `MAX`, the groups the change deletes from are recomputed
+   on the new input instead (`regroup`): a deleted extreme leaves no trace
+   of the next one in the state;
+5. the view's rows of the touched groups that still have rows, from the new
    state (`finish`). These replace the view's rows of the same keys.
 
 Lean proves that the state of the old input plus the state of the change
 finishes to the aggregate (or `DISTINCT`) of the new input, groups appearing
 and disappearing included (`LinearAgg.aggregate_maintained` and
-`LinearAgg.distinct_maintained` in `SubstraitLean/IncrementalAgg.lean`).
+`LinearAgg.distinct_maintained` in `SubstraitLean/IncrementalAgg.lean`), and
+with `MIN` and `MAX`, that merging the groups a batch only inserts into and
+recomputing the others gives the aggregate too
+(`ExtremeAgg.extreme_maintained` in `SubstraitLean/IncrementalMinMax.lean`).
+A projection that finishes an `AVG` keeps that (`ExtremeAgg.map_maintained`).
 This module is trusted glue: it recognises the shape on the Ibis expression
 and builds the plans, which Lean checks as it checks any plan.
 
 The maintained sum is the exact sum of the group's values, and `merge` adds
 it up with the engine's `SUM`, which raises when a group's sum leaves 64
-bits: the same check a full recompute makes on the data
-(`Report.assumed`). `contrib` multiplies each value by its row's weight,
-which raises if that product leaves 64 bits.
+bits (38 digits for decimals): the same check a full recompute makes on the
+data (`Report.assumed`). `contrib` multiplies each value by its row's
+weight, which raises if that product leaves 64 bits.
 """
 
 from __future__ import annotations
@@ -40,6 +52,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import ibis
+import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
@@ -74,12 +87,17 @@ class Linear:
     (contributions), added up per group."""
     finish: str
     """The view's rows of the groups in `<view>$state` with rows."""
+    regroup: str | None = None
+    """With a `MIN` or `MAX`: the state of the groups in `<view>$keys`, from
+    the whole (new) input. A batch that deletes from a group recomputes its
+    state with it; the others merge."""
 
 
 def plan(name: str, query: ir.Table | str) -> Linear | str:
     """How to maintain the view `name` of `query` from a group state, or why
     it cannot be."""
     from sverify.engine import plan_json, written_plan
+    from sverify.ibis_substrait.core import DecimalDiv
     from sverify.incremental import NotIncremental, delta_plans
 
     if isinstance(query, str):
@@ -100,45 +118,80 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         return written_plan(plan_json(None, expr))  # type: ignore[arg-type]
 
     keys = [f"k{i}" for i in range(len(groups))]
-    sums = [COUNT] + [c for i in range(len(measures)) for c in (f"__n{i}", f"__s{i}")]
 
-    def contributions(rows: ir.Table, weight: Any) -> ir.Table:
+    def contributions(rows: ir.Table, weight: Any = None) -> ir.Table:
+        """Each row's contribution, times its `weight` (None: 1)."""
+
         def own(v: ops.Value) -> ir.Value:
             return v.replace({node.parent: rows.op()}).to_expr()  # type: ignore[attr-defined]
 
         cols: dict[str, Any] = {k: own(g) for k, g in zip(keys, groups.values(), strict=True)}
-        cols[COUNT] = weight
-        for i, (arg, where, is_sum) in enumerate(measures):
-            cond: Any = ibis.literal(True) if arg is None else own(arg).notnull()
-            if where is not None:
-                passes: Any = own(where)
+        one = ibis.literal(1, "int64")
+        cols[COUNT] = one if weight is None else weight
+        for i, m in enumerate(measures):
+            cond: Any = ibis.literal(True) if m.arg is None else own(m.arg).notnull()
+            if m.where is not None:
+                passes: Any = own(m.where)
                 cond = cond & passes.fill_null(False)
             zero = ibis.literal(0, "int64")
-            cols[f"__n{i}"] = ibis.ifelse(cond, weight, zero)
-            value = own(arg).cast("int64") * weight if is_sum else zero
-            cols[f"__s{i}"] = ibis.ifelse(cond, value, zero)
+            cols[f"__n{i}"] = ibis.ifelse(cond, cols[COUNT], zero)
+            if m.kind == "count" or m.arg is None:
+                value = zero
+            elif m.kind in ("min", "max"):
+                # The extreme of the values; a delete recomputes the group.
+                value = ibis.ifelse(cond, own(m.arg), ibis.null(m.state))
+            else:
+                v = own(m.arg).cast(m.state)
+                v = v if weight is None else v * weight
+                value = ibis.ifelse(cond, v, ibis.literal(0, m.state))
+            cols[f"__s{i}"] = value
         return rows.select(**cols)
 
     def added(rows: ir.Table) -> ir.Table:
-        return rows.group_by(keys).aggregate(**{c: rows[c].sum() for c in sums})
+        sums: dict[str, Any] = {COUNT: rows[COUNT].sum()}
+        for i, m in enumerate(measures):
+            s = rows[f"__s{i}"]
+            sums[f"__n{i}"] = rows[f"__n{i}"].sum()
+            sums[f"__s{i}"] = (
+                s.min() if m.kind == "min" else s.max() if m.kind == "max" else s.sum()
+            )
+        return rows.group_by(keys).aggregate(**sums)
 
-    one = ibis.literal(1, "int64")
-    init = write(added(contributions(parent, one)))
+    init = added(contributions(parent))
     changed = ibis.table({**parent.schema(), WEIGHT_IN: "int64"}, name=f"{name}$in")
     contrib = contributions(changed, changed[WEIGHT_IN])
     old = ibis.table(contrib.schema(), name=f"{name}$old")
     new = ibis.table(contrib.schema(), name=f"{name}$contrib")
     merge = write(added(old.union(new, distinct=False)))
+    regroup = None
+    if any(m.kind in ("min", "max") for m in measures):
+        # The groups a batch deletes from, recomputed on the new input.
+        touched = ibis.table({k: contrib.schema()[k] for k in keys}, name=f"{name}$keys")
+        whole = contributions(parent)
+        # NULL equals NULL. (`identical_to` next to decimal arithmetic does
+        # not write back yet.)
+        on = [(whole[k] == touched[k]) | (whole[k].isnull() & touched[k].isnull()) for k in keys]
+        regroup = write(added(whole.semi_join(touched, on)))
     state = ibis.table(contrib.schema(), name=f"{name}$state")
     live = state.filter(state[COUNT] > 0)
     schema = node.schema  # type: ignore[attr-defined]
     out: dict[str, Any] = {}
     for k, g in zip(keys, groups, strict=True):
         out[g] = live[k]
-    for i, ((m, fn), _) in enumerate(zip(_metrics(node), measures, strict=True)):
-        n = live[f"__n{i}"]
-        out[m] = n if fn == "count" else ibis.ifelse(n == 0, ibis.null("int64"), live[f"__s{i}"])
-    rel = live.select(**{c: out[c].cast(schema[c]) for c in schema.names})
+    for i, m in enumerate(measures):
+        n, s = live[f"__n{i}"], live[f"__s{i}"]
+        if m.kind == "count":
+            out[m.name] = n
+        elif m.kind in ("min", "max"):
+            out[m.name] = s
+        elif m.kind == "avg":
+            mean = DecimalDiv(s.op(), n.op(), m.to).to_expr()  # type: ignore[abstract]
+            out[m.name] = ibis.ifelse(n == 0, ibis.null(m.to), mean)
+        else:
+            out[m.name] = ibis.ifelse(n == 0, ibis.null(m.state), s)
+    # A decimal AVG keeps its exact type (Ibis's is the argument's).
+    avgs = {m.name for m in measures if m.kind == "avg"}
+    rel = live.select(**{c: out[c] if c in avgs else out[c].cast(schema[c]) for c in schema.names})
     hole = ibis.table(schema, name=f"{name}$hole").op()
     view = query.op().replace({node: hole}).replace({hole: rel.op()}).to_expr()  # type: ignore[attr-defined]
     return Linear(
@@ -147,25 +200,68 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         columns=[names[g] for g in groups],
         deltas=deltas,
         input_names=list(parent.columns),
-        init=init,
+        init=write(init),
         contrib=write(contrib),
         merge=merge,
         finish=write(view),
+        regroup=regroup,
     )
 
 
-def _metrics(node: Any) -> list[tuple[str, str]]:
-    """Each measure's column and whether it is a "count" or a "sum"."""
-    if isinstance(node, ops.Distinct):
-        return []
-    return [(m, "sum" if isinstance(v, ops.Sum) else "count") for m, v in node.metrics.items()]
+@dataclass(frozen=True)
+class _Measure:
+    name: str
+    kind: str
+    """"count", "sum", "avg", "min" or "max"."""
+    arg: ops.Value | None
+    """None for `COUNT(*)`."""
+    where: ops.Value | None
+    state: Any = None
+    """The type of the state's `__s` column: the sum's (64-bit integers, or
+    for decimals ten more digits at the argument's scale, as `SUM` has), or
+    the argument's for `MIN` and `MAX`; None for `COUNT`."""
+    to: Any = None
+    """A decimal `AVG`'s type: four more digits and decimal places."""
 
 
-def _split(op: ops.Relation) -> tuple[Any, dict[str, ops.Value], list, dict[str, str], str] | str:
+def _measure(name: str, v: ops.Value) -> _Measure | str:
+    """The measure `v` as the state keeps it, or why it cannot."""
+    from sverify.ibis_substrait._base import exact
+
+    match v:
+        case ops.CountStar(where=where):
+            return _Measure(name, "count", None, where)
+        case ops.Count(arg=arg, where=where):
+            return _Measure(name, "count", arg, where)
+        case ops.Sum(arg=arg, where=where) | ops.Mean(arg=arg, where=where):
+            t = exact(arg)
+            mean = isinstance(v, ops.Mean)
+            if t.is_integer() and not mean:
+                return _Measure(name, "sum", arg, where, dt.int64)
+            if t.is_decimal():
+                # The type of the decimal's SUM: ten more digits.
+                state = dt.Decimal(min(38, t.precision + 10), t.scale)
+                if not mean:
+                    return _Measure(name, "sum", arg, where, state)
+                to = dt.Decimal(min(38, t.precision + 4), t.scale + 4)
+                return _Measure(name, "avg", arg, where, state, to)
+            what = "AVG" if mean else "SUM"
+            return (
+                f"{name} is a {what} of {t}: only integer SUMs and DECIMAL SUMs and AVGs are kept"
+            )
+        case ops.Min(arg=arg, where=where) | ops.Max(arg=arg, where=where):
+            kind = "min" if isinstance(v, ops.Min) else "max"
+            return _Measure(name, kind, arg, where, arg.dtype)
+    return f"{name} is not COUNT, SUM, AVG, MIN or MAX"
+
+
+def _split(
+    op: ops.Relation,
+) -> tuple[Any, dict[str, ops.Value], list[_Measure], dict[str, str], str] | str:
     """The aggregate or `DISTINCT` a view ends in (under filters,
-    projections and sorts of its rows), its keys by name, each measure's
-    argument (None for `COUNT(*)`) and filter, the view's column for each of
-    its columns, and what it is; or why the view has none with delta rules."""
+    projections and sorts of its rows), its keys by name, its measures, the
+    view's column for each of its columns, and what it is; or why the view
+    has none with delta rules."""
     found = _aggregate(op)
     if found is not None:
         agg, names = found
@@ -176,21 +272,15 @@ def _split(op: ops.Relation) -> tuple[Any, dict[str, ops.Value], list, dict[str,
             return "a grouping key reads other rows"
         measures = []
         for m, v in agg.metrics.items():
-            match v:
-                case ops.CountStar(where=where):
-                    arg = None
-                case ops.Count(arg=arg, where=where):
-                    pass
-                case ops.Sum(arg=arg, where=where) if arg.dtype.is_integer():
-                    pass
-                case _:
-                    return f"{m} is not COUNT or an integer SUM"
-            parts = [p for p in (arg, where) if p is not None]
+            got = _measure(m, v)
+            if isinstance(got, str):
+                return got
+            parts = [p for p in (got.arg, got.where) if p is not None]
             if not _row_local(parts, parent) or any(
                 p.find(ops.Reduction, filter=_own_tree) for p in parts
             ):
                 return f"{m} reads other rows"
-            measures.append((arg, where, isinstance(v, ops.Sum)))
+            measures.append(got)
         return agg, dict(agg.groups), measures, names, "aggregate"
     found = _under(op, lambda o: isinstance(o, ops.Distinct))
     if found is None:

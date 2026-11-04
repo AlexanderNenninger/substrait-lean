@@ -183,7 +183,7 @@ def test_an_aggregate_over_a_join():
 def test_other_measures_keep_touched_groups():
     src = StaticSource(samples([("a", 1, 5)]), name="samples")
     node = src.pipe(
-        lambda samples: samples.group_by("host").aggregate(top=samples.cpu.max(), n=samples.count())
+        lambda samples: samples.group_by("host").aggregate(m=samples.cpu.mean(), n=samples.count())
     )
     node.refresh()
     assert view(node).strategy == "touched groups"
@@ -207,13 +207,15 @@ def test_a_maintained_sum_that_leaves_64_bits_raises_and_changes_nothing():
 
 @pytest.mark.parametrize("seed", range(2))
 @pytest.mark.parametrize("expire", [False, True])
-def test_retention_drops_the_retired_groups_from_the_state(seed, expire):
+@pytest.mark.parametrize("measure", ["sum", "max"])
+def test_retention_drops_the_retired_groups_from_the_state(seed, expire, measure):
     import test_retention as tr
 
     @sv.transform(requires={"samples": [sv.arrives_within("ts", seconds=7200), *tr.BOUNDS]})
     def hourly(samples):
+        cpu = samples.cpu.sum() if measure == "sum" else samples.cpu.max()
         return samples.group_by(["host", samples.ts.truncate("h").name("bucket")]).aggregate(
-            n=samples.count(), cpu=samples.cpu.sum()
+            n=samples.count(), cpu=cpu
         )
 
     first, stream = tr.random_stream(seed, expire=expire)
@@ -264,3 +266,185 @@ def test_a_state_the_checker_refuses_falls_back(monkeypatch):
     src.apply(sv.Changes(inserts=samples([("a", 1, 9)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src)
+
+
+# -- MIN, MAX and exact AVG (#248, stage 2) --------------------------------------
+
+
+def extremes(samples):
+    return samples.group_by(["host", "minute"]).aggregate(
+        n=samples.count(),
+        low=samples.cpu.min(),
+        high=samples.cpu.max(),
+        hot=samples.cpu.max(where=samples.cpu < 10),
+        total=samples.cpu.sum(),
+    )
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("seed", range(3))
+def test_min_and_max_match_a_full_recompute(seed, engine):
+    first, batches = random_batches(seed)
+    src = StaticSource(samples(first), name="samples")
+    node = src.pipe(extremes)
+    node.refresh(engine=engine)
+    assert view(node).strategy == "delta rules"
+    assert view(node).linear.regroup is not None
+    for ins, dels in batches:
+        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        out = node.refresh(engine=engine)["extremes"]
+        assert out.report is not None
+        assert not out.report.touched and not out.report.diffed
+        assert rows(node) == recomputed(node, src)
+
+
+def test_inserts_merge_and_deletes_recompute_only_their_groups(monkeypatch):
+    from sverify import incremental
+
+    src = StaticSource(samples([("a", 1, 5), ("a", 1, 9), ("b", 1, 3)]), name="samples")
+    node = src.pipe(extremes)
+    node.refresh()
+    regroup = view(node).linear.regroup
+    keys = []
+    real = incremental.run_plan_on
+
+    def spy(con, plan, *a):
+        if plan == regroup:
+            keys.append(sorted(con.get(f"{view(node).name}$keys").to_pylist(), key=str))
+        return real(con, plan, *a)
+
+    monkeypatch.setattr(incremental, "run_plan_on", spy)
+    # Only inserts: every group merges, the input is not read.
+    src.apply(sv.Changes(inserts=samples([("a", 1, 11), ("b", 1, 1), ("c", 2, None)])))
+    node.refresh(audit=True)
+    assert keys == []
+    assert rows(node) == [
+        ("a", 1, 3, 5, 11, 9, 25),
+        ("b", 1, 2, 1, 3, 3, 4),
+        ("c", 2, 1, None, None, None, None),
+    ]
+    # Deleting a's MAX: only a's group is recomputed.
+    src.apply(sv.Changes(deletes=samples([("a", 1, 11)]), inserts=samples([("b", 1, 0)])))
+    node.refresh(audit=True)
+    assert keys == [[{"k0": "a", "k1": 1}]]
+    assert rows(node) == recomputed(node, src)
+    assert rows(node)[0] == ("a", 1, 2, 5, 9, 9, 14)
+    # Deleting a group's last rows removes it from the state and the view.
+    src.apply(sv.Changes(deletes=samples([("c", 2, None)])))
+    node.refresh(audit=True)
+    assert [r[0] for r in rows(node)] == ["a", "b"]
+    assert view(node).groups.num_rows == 2
+
+
+def test_a_filter_over_min_and_max():
+    def spread(samples):
+        t = extremes(samples)
+        return t.filter(t.high > t.low).select("host", "minute", "high")
+
+    src = StaticSource(samples([("a", 1, 5), ("a", 1, 7), ("b", 1, 3)]), name="samples")
+    node = src.pipe(spread)
+    node.refresh()
+    assert view(node).strategy == "delta rules"
+    for batch in [
+        sv.Changes(inserts=samples([("b", 1, 9)])),
+        sv.Changes(deletes=samples([("a", 1, 7)])),
+        sv.Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
+        sv.Changes(deletes=samples([("b", 1, 9), ("c", 4, 2)])),
+    ]:
+        src.apply(batch)
+        node.refresh(audit=True)
+        assert rows(node) == recomputed(node, src)
+
+
+def test_min_and_max_of_strings_and_dates():
+    import datetime as d
+
+    schema = pa.schema([("k", pa.int64()), ("s", pa.string()), ("day", pa.date32())])
+
+    def table(rows):
+        return pa.table(
+            {n: [r[i] for r in rows] for i, n in enumerate(schema.names)}, schema=schema
+        )
+
+    def bounds(t):
+        return t.group_by("k").aggregate(first=t.s.min(), last=t.s.max(), since=t.day.min())
+
+    day = d.date(2026, 1, 1)
+    src = StaticSource(table([(1, "b", day), (1, "c", None)]), name="t")
+    node = src.pipe(bounds)
+    node.refresh()
+    assert view(node).strategy == "delta rules"
+    for batch in [
+        sv.Changes(inserts=table([(1, "a", day - d.timedelta(1)), (2, None, None)])),
+        sv.Changes(deletes=table([(1, "a", day - d.timedelta(1))])),
+        sv.Changes(deletes=table([(1, "c", None)]), inserts=table([(2, "z", day)])),
+    ]:
+        src.apply(batch)
+        node.refresh(audit=True)
+        assert rows(node) == recomputed(node, src)
+
+
+DEC = pa.schema([("host", pa.string()), ("amount", pa.decimal128(10, 2))])
+
+
+def amounts(rows) -> pa.Table:
+    return pa.table(
+        {n: [r[i] for r in rows] for i, n in enumerate(DEC.names)},
+        schema=DEC,
+    )
+
+
+def decimal_means(t):
+    return t.group_by("host").aggregate(
+        mean=t.amount.mean(),
+        total=t.amount.sum(),
+        top=t.amount.max(),
+        small=t.amount.mean(where=t.amount < 0),
+    )
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_decimal_avg_and_sum_match_a_full_recompute(seed):
+    from decimal import Decimal
+
+    rng = random.Random(seed)
+
+    def row():
+        value = rng.choice([None, Decimal(rng.randrange(-10_000, 10_000)) / 100])
+        return (rng.choice(["a", "b", None]), value)
+
+    live = [row() for _ in range(10)]
+    src = StaticSource(amounts(live), name="amounts")
+    node = src.pipe(decimal_means)
+    node.refresh()
+    assert view(node).strategy == "delta rules"
+    for _ in range(30):
+        ins = [row() for _ in range(rng.randrange(4))]
+        dels = rng.sample(live, min(len(live), rng.randrange(4)))
+        for d in dels:
+            live.remove(d)
+        live += ins
+        src.apply(sv.Changes(inserts=amounts(ins), deletes=amounts(dels)))
+        node.refresh()
+        assert rows(node) == recomputed(node, src)
+
+
+def test_a_decimal_avg_keeps_its_exact_type_and_rounds_half_away_from_zero():
+    from decimal import Decimal as D
+
+    src = StaticSource(amounts([("a", D("-36.20")), ("a", D("-36.19"))]), name="amounts")
+    node = src.pipe(lambda t: t.group_by("host").aggregate(mean=t.amount.mean()))
+    node.refresh()
+    assert view(node).strategy == "delta rules"
+    assert rows(node) == [("a", D("-36.195000"))]
+    src.apply(sv.Changes(inserts=amounts([("a", D("1.00")), ("b", None)])))
+    node.refresh(audit=True)
+    # -71.39 / 3 = -23.79666…: six decimal places, the last rounded.
+    assert rows(node) == recomputed(node, src) == [("a", D("-23.796667")), ("b", None)]
+
+
+def test_an_integer_avg_is_left_to_touched_groups():
+    src = StaticSource(samples([("a", 1, 5)]), name="samples")
+    node = src.pipe(lambda t: t.group_by("host").aggregate(m=t.cpu.mean()))
+    node.refresh()
+    assert view(node).strategy == "touched groups"

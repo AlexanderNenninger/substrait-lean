@@ -58,10 +58,11 @@ In order of day-to-day value:
 
 What it doesn't do (yet). Rolling means, `MIN` over a sliding frame,
 correlated scalar subqueries and parameters (`ibis.param`) are not in the
-model. Incremental maintenance covers filters, projections, inner and cross
-joins and `UNION ALL`; an aggregate recomputes only the groups a batch
-touches, and a window only the partitions it touches. Other views (left
-joins, `DISTINCT`) are recomputed and diffed instead, and `node.status()`
+model. Incremental maintenance covers filters, projections, inner, cross,
+semi and anti joins, `UNION ALL`, `DISTINCT`, and `COUNT`, exact `SUM` and
+`AVG`, `MIN` and `MAX` per group; another aggregate recomputes only the
+groups a batch touches, and a window only the partitions it touches. Other
+views (left joins) are recomputed and diffed instead, and `node.status()`
 says so. [The Ibis coverage table](../README.md#ibis-coverage) has the full
 list.
 
@@ -614,6 +615,15 @@ group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
 [`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
+`DECIMAL` `SUM` and `AVG` keep the same state, and `MIN` and `MAX` keep each
+group's extreme: a batch that only inserts into a group merges, and the
+groups it deletes from are recomputed from the new input
+(`ExtremeAgg.extreme_maintained` in
+[`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)).
+A node that ends in a semi or anti join on equal keys keeps a count of
+matches per key and reads the left input only for the keys whose count
+leaves or returns to 0 (`SemiDelta.semi_maintained` in
+[`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean)).
 A node without delta rules (left join, other aggregates, window, `LIMIT`) is
 recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch

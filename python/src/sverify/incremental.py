@@ -64,10 +64,10 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _linear, _retention, _touched
+from sverify import _linear, _retention, _semi, _touched
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
-from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, store_for
+from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._weighted import (
     WEIGHT,
     _call,
@@ -923,7 +923,11 @@ class IncrementalView:
         """Why an aggregate without delta plans is recomputed and diffed."""
         self.linear: _linear.Linear | None = None
         """How the view is maintained from a state per group (`sverify._linear`):
-        `COUNT` and integer `SUM` per group, or `DISTINCT`."""
+        `COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group, or
+        `DISTINCT`."""
+        self.semi: _semi.Semi | None = None
+        """How a view that ends in a semi or anti join is maintained from a
+        count per key (`sverify._semi`)."""
         try:
             self.deltas = delta_plans(json.dumps(plan))
         except NotIncremental as e:
@@ -933,6 +937,14 @@ class IncrementalView:
                 linear = f"the state per group could not be planned ({first_line(refused)})"
             if isinstance(linear, _linear.Linear):
                 self.deltas, self.linear = [], linear
+                self.plan = written_plan(json.dumps(plan))
+                return
+            try:
+                semi = _semi.plan(self.name, query)
+            except Exception as refused:  # noqa: BLE001 - a plan refused: the other strategies
+                semi = f"the count per key could not be planned ({first_line(refused)})"
+            if isinstance(semi, _semi.Semi):
+                self.deltas, self.semi = [], semi
                 self.plan = written_plan(json.dumps(plan))
                 return
             if standalone:
@@ -1199,20 +1211,26 @@ class IncrementalView:
         return arrow_of(change), keys.num_rows, "groups"
 
     def _groups_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table | None:
-        """The state per group (`groups`) computed from the inputs, at their
-        new contents where `new_tables` has them; None without `linear`."""
-        if self.linear is None:
+        """The state per group (`groups`, or the count per key of `semi`)
+        computed from the inputs, at their new contents where `new_tables`
+        has them; None without either."""
+        spec = self.linear or self.semi
+        if spec is None:
             return None
-        return run_plan_on(self.con, self.linear.init, self.engine, new_tables, self.tables)
+        return run_plan_on(self.con, spec.init, self.engine, new_tables, self.tables)
 
-    def _linear_change(self, deltas: Mapping[str, pa.Table]) -> tuple[pa.Table, pa.Table | None]:
+    def _linear_change(
+        self, deltas: Mapping[str, pa.Table], new_tables: Mapping[str, pa.Table | Native]
+    ) -> tuple[pa.Table, pa.Table | None]:
         """The view's change from its state per group (`sverify._linear`), as
         a weighted table, and the new state per group (None: unchanged). The
         input's change comes from its delta plans; each changed row's
         contribution is added to the old state of its group, and the view's
         rows of those groups are finished from the new state
         (`LinearAgg.aggregate_maintained`, `LinearAgg.distinct_maintained`).
-        The input is not read."""
+        The input is not read, except with a `MIN` or `MAX`: the groups the
+        change deletes from are recomputed on the new input
+        (`ExtremeAgg.extreme_maintained`)."""
         spec, groups = self.linear, self.groups
         assert spec is not None and groups is not None
         con = self.con
@@ -1221,7 +1239,7 @@ class IncrementalView:
             return weighted(self.schema.empty_table(), 1), None
         names = [*spec.input_names, _linear.WEIGHT_IN]
         rows = pa.concat_tables([r.rename_columns(names) for r in parts])
-        tables = {s: f"{self.name}${s}" for s in ("in", "old", "contrib", "state")}
+        tables = {s: f"{self.name}${s}" for s in ("in", "old", "contrib", "state", "keys")}
         try:
             put_table(con, tables["in"], rows)
             contrib = run_plan(con, spec.contrib, self.engine)
@@ -1237,6 +1255,16 @@ class IncrementalView:
             least = _call("min", new.column(_linear.COUNT)).as_py()
             if least is not None and least < 0:
                 raise ValueError(f"changes delete rows that are not in the inputs of {self.name}")
+            if spec.regroup is not None:
+                # A MIN or MAX: the groups the change deletes from, recomputed.
+                weight = contrib.column(_linear.COUNT)
+                gone = contrib.filter(_call("less", weight, pa.scalar(0))).select(spec.keys)
+                if gone.num_rows:
+                    put_table(con, tables["keys"], gone)
+                    again = run_plan_on(con, spec.regroup, self.engine, new_tables, self.tables)
+                    again = again.rename_columns(groups.schema.names).cast(groups.schema)
+                    kept = by_keys(new, spec.keys, gone, keep=False)
+                    new = pa.concat_tables([kept, self._kept_groups(again)])
             put_table(con, tables["state"], new)
             out = run_plan(con, spec.finish, self.engine)
         finally:
@@ -1248,6 +1276,74 @@ class IncrementalView:
         live = new.filter(_call("not_equal", new.column(_linear.COUNT), pa.scalar(0)))
         kept = self.store.without_keys(groups, spec.keys, keys)
         return arrow_of(change), pa.concat_tables([kept, live])
+
+    def _semi_change(self, deltas: Mapping[str, pa.Table]) -> tuple[pa.Table, pa.Table | None]:
+        """The view's change from its count per key (`sverify._semi`), as a
+        weighted table, and the new counts (None: unchanged). The right
+        input's change updates the counts; the left input's change is kept
+        where the new counts keep it, and the old left rows whose key's
+        count leaves or returns to 0 are emitted or retracted
+        (`SemiDelta.semi_maintained`). The left input is read for those
+        keys only; the right input is not read."""
+        spec, counts = self.semi, self.groups
+        assert spec is not None and counts is not None
+        con = self.con
+        empty = weighted(self.schema.empty_table(), 1)
+        lefts = [r for r in self._run_deltas(spec.left_deltas, deltas) if r.num_rows]
+        rights = [r for r in self._run_deltas(spec.right_deltas, deltas) if r.num_rows]
+        if not lefts and not rights:
+            return empty, None
+        tables = {
+            s: f"{self.name}${s}" for s in ("rin", "old", "contrib", "state", "lin", "flip", "rows")
+        }
+        w = _linear.WEIGHT_IN
+        new_counts = counts
+        parts: list[pa.Table] = []
+        try:
+            flip = None
+            if rights:
+                names = [*spec.right_names, w]
+                put_table(
+                    con, tables["rin"], pa.concat_tables([r.rename_columns(names) for r in rights])
+                )
+                contrib = run_plan(con, spec.contrib, self.engine)
+                contrib = contrib.rename_columns(counts.schema.names).cast(counts.schema)
+                keys = contrib.select(spec.keys)
+                before = by_keys(counts, spec.keys, keys)
+                put_table(con, tables["old"], before)
+                put_table(con, tables["contrib"], contrib)
+                after = run_plan(con, spec.merge, self.engine)
+                after = after.rename_columns(counts.schema.names).cast(counts.schema)
+                least = _call("min", after.column(_semi.COUNT)).as_py()
+                if least is not None and least < 0:
+                    raise ValueError(
+                        f"changes delete rows that are not in the inputs of {self.name}"
+                    )
+                flip = _flips(before, after, spec.keys, spec.anti)
+                live = after.filter(_call("greater", after.column(_semi.COUNT), pa.scalar(0)))
+                new_counts = pa.concat_tables([by_keys(counts, spec.keys, keys, keep=False), live])
+            if lefts:
+                names = [*spec.left_names, w]
+                put_table(
+                    con, tables["lin"], pa.concat_tables([r.rename_columns(names) for r in lefts])
+                )
+                put_table(con, tables["state"], new_counts)
+                parts.append(run_plan(con, spec.kept, self.engine))
+            if flip is not None and flip.num_rows:
+                # The old left rows of the keys whose count left or returned to 0.
+                put_table(con, tables["flip"], flip)
+                parts.append(run_plan(con, spec.flipped, self.engine))
+            parts = [p for p in parts if p.num_rows]
+            if not parts:
+                return empty, new_counts
+            schema = parts[0].schema
+            put_table(con, tables["rows"], pa.concat_tables([p.cast(schema) for p in parts]))
+            out = run_plan(con, spec.finish, self.engine)
+        finally:
+            for t in tables.values():
+                con.drop(t)
+        change = self._kept(self._weighted(out))
+        return arrow_of(self._merge(empty, change)), new_counts
 
     def _kept_groups(self, table: pa.Table) -> pa.Table:
         """`_kept` for rows of the state per group (or contributions to it),
@@ -1294,6 +1390,26 @@ class IncrementalView:
 
 
 _FRAME = ("__lo", "__hi", "__olo", "__ohi")
+
+
+def _flips(before: pa.Table, after: pa.Table, keys: list[str], anti: bool) -> pa.Table:
+    """The keys whose count leaves 0 (weight 1: a semi join emits their
+    left rows) or returns to 0 (weight -1), from the counts `before` and
+    `after` a change of the keys it touches; the weights negated for an
+    anti join."""
+    positive = _call("greater", before.column(_semi.COUNT), pa.scalar(0))
+    was = before.filter(positive).select(keys)
+    now = after.filter(_call("greater", after.column(_semi.COUNT), pa.scalar(0))).select(keys)
+    up = by_keys(now, keys, was, keep=False)
+    down = by_keys(was, keys, now, keep=False)
+    sign = -1 if anti else 1
+    w = _linear.WEIGHT_IN
+    return pa.concat_tables(
+        [
+            up.append_column(w, pa.array([sign] * up.num_rows, pa.int64())),
+            down.append_column(w, pa.array([-sign] * down.num_rows, pa.int64())),
+        ]
+    )
 
 
 def run_plan_on(
@@ -1918,7 +2034,7 @@ class Pipeline:
             if v.recomputed or rerun & set(v.tables):
                 rerun.add(v.name)
                 read_new.update(v.tables)
-            elif v.touched is not None:
+            elif v.touched is not None or (v.linear is not None and v.linear.regroup):
                 # It recomputes the touched groups on the new inputs.
                 read_new.update(v.tables)
         # Views read the *old* tables (and their inputs' changes), so nothing
@@ -1934,7 +2050,11 @@ class Pipeline:
                 if (g := v._groups_on(new_tables)) is not None:
                     groups[v.name] = g
             elif v.linear is not None:
-                delta, g = v._linear_change(deltas)
+                delta, g = v._linear_change(deltas, new_tables)
+                if g is not None:
+                    groups[v.name] = g
+            elif v.semi is not None:
+                delta, g = v._semi_change(deltas)
                 if g is not None:
                     groups[v.name] = g
             elif v.touched is not None:
