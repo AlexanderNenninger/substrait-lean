@@ -78,7 +78,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import ibis
 import ibis.expr.operations as ops
@@ -99,6 +99,9 @@ from sverify.engine import (
     run_plan,
     written_plan,
 )
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 def q(name: str) -> str:
@@ -599,6 +602,50 @@ class Report:
     computes (#411)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
+    plan: str | None = field(default=None, repr=False, compare=False)
+    """The plan the report is about, as Substrait protobuf JSON: the
+    transformation as `verify` compiled it and Lean checked it, with the
+    `params` bound and the SQL lifted with `semantics`. `run` runs it (#461)."""
+
+    def run(self, con: Connection, engine: Engine | Any = None) -> pa.Table:
+        """Run the plan this report checked (`plan`) over the tables of
+        `con`, so the result is the one the report is about (#461).
+
+        The plan reads the tables by the names it was verified with, and
+        runs on `engine` as `sverify.engines.run` runs a plan, with the
+        meaning `Rel.eval` gives it.
+
+        Args:
+            con: The connection whose tables the plan reads (`sv.connect()`).
+            engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
+                Spark session. Default: the connection's engine.
+
+        Returns:
+            The result as an Arrow table, with the transformation's output
+            names.
+
+        Raises:
+            ValueError: The report has no plan (it was not made by
+                `verify`), or `engine` is unknown.
+
+        Examples:
+            Verify a query, then run what was verified:
+
+            ```python
+            con = sv.connect()
+            con.put("t", pa.table({"host": ["a", "a", "b"], "cpu": [1, 5, 7]}))
+            report = sv.verify(
+                "SELECT host, max(cpu) AS m FROM t WHERE cpu > 3 GROUP BY host",
+                tables={"t": con.table("t")},
+                ensures=[sv.unique("host")],
+            )
+            if report.proved:
+                result = report.run(con)
+            ```
+        """
+        if self.plan is None:
+            raise ValueError("this report has no plan to run: it was not made by sv.verify")
+        return run_plan(con, written_plan(self.plan), engine)
 
     @property
     def proved(self) -> bool:
@@ -1635,6 +1682,7 @@ def _verify_once(
         params=bound,
         bounds=_int_bounds(out["facts"], dtypes),
         rows=out.get("rows"),
+        plan=json.dumps(transform_plan),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)

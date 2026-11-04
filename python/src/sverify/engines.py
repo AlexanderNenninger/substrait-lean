@@ -19,6 +19,7 @@ Running plans:
   `run_sharded` runs a plan shard by shard and combines the results;
   `run_spark` runs a plan on a Spark session configured with `SPARK_CONF`
   (`pip install 'sverify[spark]'`).
+* `sv.Report.run` runs the plan a `sv.verify` report checked.
 * `create_table` and `table_rows` put rows into a connection and read them back.
 
 Plans:
