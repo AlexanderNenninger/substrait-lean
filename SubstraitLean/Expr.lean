@@ -282,13 +282,15 @@ inductive Expr where
   | hof (f : HoFn) (l body : Expr)
   deriving Repr, DecidableEq
 
+/-- Is `i` in `[lo, hi]`? Every range check of a type's values is one of
+these; `Bound.within` is its abstraction. -/
+def between (lo hi i : Int) : Bool := decide (lo ≤ i) && decide (i ≤ hi)
+
 /-- Does `i` fit in a signed integer of `bits` bits? -/
-def fitsBits (bits : Nat) (i : Int) : Bool :=
-  decide (-(2 ^ (bits - 1) : Int) ≤ i) && decide (i < 2 ^ (bits - 1))
+def fitsBits (bits : Nat) : Int → Bool := between (-2 ^ (bits - 1)) (2 ^ (bits - 1) - 1)
 
 /-- Does `i` fit in `p` decimal digits (`|i| < 10ᵖ`)? -/
-def fitsDigits (p : Nat) (i : Int) : Bool :=
-  decide (-(10 ^ p : Int) < i) && decide (i < 10 ^ p)
+def fitsDigits (p : Nat) : Int → Bool := between (1 - 10 ^ p) (10 ^ p - 1)
 
 /-- `i / 10ᵏ`, rounded half away from zero: a decimal brought to a scale `k`
 digits smaller (#27). -/
