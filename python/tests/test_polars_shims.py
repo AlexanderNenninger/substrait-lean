@@ -10,7 +10,6 @@ evaluates it, oracle style.
 
 import json
 import math
-import os
 from pathlib import Path
 
 import ibis
@@ -408,7 +407,7 @@ def test_md5_is_refused_on_polars_with_the_reason():
         run_plan(con, plan, "polars")
 
 
-# --- The in-memory engine --------------------------------------------------------
+# --- The streaming engine ---------------------------------------------------------
 
 
 def _batches(collect) -> int:
@@ -429,25 +428,31 @@ def _batches(collect) -> int:
 
 @pytest.mark.parametrize(
     "setting",
-    [{}, {"POLARS_ENGINE_AFFINITY": "streaming"}, {"POLARS_FORCE_STREAMING": "1"},
-     {"POLARS_AUTO_STREAMING": "1"}, "config"],
+    [{}, {"POLARS_ENGINE_AFFINITY": "in-memory"}, {"POLARS_FORCE_STREAMING": "0"},
+     {"POLARS_AUTO_STREAMING": "0"}, "config"],
 )  # fmt: skip
-def test_queries_run_in_memory_whatever_the_settings(setting, monkeypatch):
-    """Polars 2.1.0's `collect()` streams by default, and streaming adds
-    doubles with other algorithms than the facts were probed with."""
+def test_queries_stream_whatever_the_settings(setting, monkeypatch):
+    """Sverify names the streaming engine, so neither `pl.Config` nor the
+    environment moves its queries to the in-memory engine."""
+    in_memory = lambda lf: lf.collect(engine="in-memory")  # noqa: E731
+    assert _batches(in_memory) == 1
     if setting == "config":
         with pl.Config() as cfg:
-            cfg.set_engine_affinity("streaming")
-            assert _batches(lambda lf: lf.collect()) > 1
-            assert _batches(polars_engine.collect) == 1
+            cfg.set_engine_affinity("in-memory")
+            assert _batches(lambda lf: lf.collect()) == 1
+            assert _batches(polars_engine.collect) > 1
         return
     for k, v in setting.items():
         monkeypatch.setenv(k, v)
-    assert _batches(lambda lf: lf.collect()) > 1
-    assert _batches(polars_engine.collect) == 1
-    # The variables are back once the query ends.
-    for k, v in setting.items():
-        assert os.environ[k] == v
+    assert _batches(polars_engine.collect) > 1
+
+
+def test_streaming_fallbacks_are_found():
+    """`streaming_fallbacks` reads the physical plan: a list per group runs on
+    the in-memory engine, a sum per group streams."""
+    lf = pl.LazyFrame({"g": [1, 2, 1], "x": [1.0, 2.0, 3.0]}).group_by("g", maintain_order=True)
+    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").sum())) == []
+    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").implode())) == ["in-memory-map"]
 
 
 # --- CASE: Polars computes every branch -----------------------------------------
