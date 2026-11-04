@@ -362,7 +362,8 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
     | _ => .int
   | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
   | .iavg | .bit _ => .int
-  | .min | .max | .pick _ => m.arg.kind cols
+  | .min | .max | .pick _ | .quantile false _ _ | .mode => m.arg.kind cols
+  | .quantile true _ _ => .float
   | .concat _ => .str
   | .collect => .list (m.arg.kind cols)
   | .bbox n => bbAggKind n
@@ -1987,11 +1988,16 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  -- Only `ARRAY_AGG`, `FIRST`, `LAST` and `STRING_AGG` depend on the order of
-  -- their rows.
+  -- Only `ARRAY_AGG`, `FIRST`, `LAST`, `STRING_AGG` and `MODE` depend on the
+  -- order of their rows.
   let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
-  if !sort.isEmpty && !["array_agg", "first", "last", "string_agg"].contains name then
+  if !sort.isEmpty && !["array_agg", "first", "last", "string_agg", "mode"].contains name then
     throw s!"ordered aggregates are not supported: {name}"
+  -- `MODE` breaks ties by first occurrence (#53), so it needs an order:
+  -- `mode(x ORDER BY x)` takes the smallest of the most frequent values.
+  if sort.isEmpty && name == "mode" then
+    throw ("mode without ORDER BY breaks ties in the engine's order, which is not supported; " ++
+      "give it an order (mode(x ORDER BY x) takes the smallest of the most frequent values)")
   -- Without an order, `FIRST` is any row's value: the model takes them in list
   -- order, and `Rel.windowsTotal` reports the result as the engine's choice
   -- unless the group's columns contain a key (Ibis's `distinct(on=)`, #55).
@@ -2017,7 +2023,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | [a, b] =>
       if ["covar_samp", "covar_pop", "corr"].contains name then
         pure (.bin .pair (← double a) (← double b))
-      else if name == "string_agg" then parseExpr fns cols bits a
+      else if ["string_agg", "quantile_cont", "quantile_disc", "arg_min", "arg_max"].contains name
+      then parseExpr fns cols bits a
       else throw s!"{name} takes one argument"
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
@@ -2030,8 +2037,41 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
       | _ => throw "string_agg needs a constant separator"
     | "string_agg", _ => throw "string_agg takes a value and a separator"
     | _, _ => pure ""
+  -- A quantile's fraction (#53): a constant decimal `num / 10 ^ scale` in
+  -- `[0, 1]`, which DuckDB reads exactly. `MEDIAN` is the `0.5` quantile.
+  let frac : Nat × Nat ← match name, args with
+    | "median", _ => pure (5, 1)
+    | "quantile_cont", [_, q] | "quantile_disc", [_, q] => match ← constOf? fns q with
+      | some (.dec n _ s) =>
+        if 0 ≤ n ∧ n ≤ 10 ^ s then pure (n.toNat, s)
+        else throw s!"{name} needs a fraction between 0 and 1"
+      | some (.int n) =>
+        if n == 0 || n == 1 then pure (n.toNat, 0)
+        else throw s!"{name} needs a fraction between 0 and 1"
+      | _ => throw s!"{name} needs a constant decimal fraction"
+    | "quantile_cont", _ | "quantile_disc", _ => throw s!"{name} takes a value and a fraction"
+    | _, _ => pure (0, 0)
+  -- `ARG_MIN(x, y)` and `ARG_MAX(x, y)` (#53): `x` at the row with the
+  -- smallest (largest) `y`, over the rows where neither is NULL, which is
+  -- `FIRST(x ORDER BY y)` (`DESC`) filtered by `y IS NOT NULL`. Ties make it
+  -- the engine's, as for `FIRST` (`Rel.windowsTotal`).
+  let argBy : Option Nat ← match name, args with
+    | "arg_min", [_, b] | "arg_max", [_, b] => match ← parseExpr fns cols bits b with
+      | .field c => pure (some c)
+      | _ => throw s!"{name} orders by a column only"
+    | "arg_min", _ | "arg_max", _ => throw s!"{name} takes a value and a column to order by"
+    | _, _ => pure none
+  if argBy.isSome && distinct then throw s!"{name}(DISTINCT …) is not supported"
+  let (sort, filter) : List SortKey × Option Expr := match argBy with
+    | some c =>
+      let notNull := Expr.un .not (.un .isNull (.field c))
+      ([{ col := c, desc := name == "arg_max" }],
+        some (match filter with | some f => .bin .and f notNull | none => notNull))
+    | none => (sort, filter)
   -- A double constant is its code, which `Expr.kind` calls an integer (#205).
-  let k := if args.any (doubleJ fns) then .float else arg.kind cols
+  let valueArgs := if ["string_agg", "quantile_cont", "quantile_disc", "arg_min", "arg_max"].contains name
+    then args.take 1 else args
+  let k : Kind := if valueArgs.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` of a `DECIMAL(p, s)` (#27) is its `SUM` here, divided by a `COUNT`
   -- in `decimalAvgs`: a decimal, or a double if the plan says so (as DuckDB
@@ -2071,6 +2111,17 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "first", _ | "last", _ => pure (.pick (name == "last"), arg)
     | "string_agg", .str => pure (.concat sep, arg)
     | "string_agg", _ => throw "string_agg of a value that is not a string is not supported"
+    -- Of doubles, or of integers converted to doubles, as DuckDB interpolates
+    -- them (#53).
+    | "median", .int | "quantile_cont", .int => pure (.quantile true frac.1 frac.2, .un .itof arg)
+    | "median", .float | "quantile_cont", .float => pure (.quantile true frac.1 frac.2, arg)
+    | "median", _ | "quantile_cont", _ =>
+      throw s!"{name} of a value that is not a number is not supported"
+    | "quantile_disc", _ =>
+      if minMax k then pure (.quantile false frac.1 frac.2, arg)
+      else throw "quantile_disc of this type is not supported"
+    | "mode", _ => if minMax k then pure (.mode, arg) else throw "mode of this type is not supported"
+    | "arg_min", _ | "arg_max", _ => pure (.pick false, arg)
     -- 64-bit integers only (#53): a narrower one would need its own width.
     | "bit_and", .int | "bit_or", .int | "bit_xor", .int =>
       if argBits bits (args.headD .null) arg != 64 then

@@ -50,6 +50,8 @@ def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   | .avg => if vs = [] then v = .null else
       ∃ c, FloatSums vs c ∧ v = .int (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
   | .var _ _ | .cov _ | .corr => StatProps f vs v
+  -- A double between the two neighbours (#53).
+  | .quantile true num scale => if vs = [] then v = .null else contAllowed num scale (sortVals vs) v
   | _ => v = f.apply vs
 
 theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.apply vs) := by
@@ -61,6 +63,12 @@ theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.appl
       simp only [Allowed, reduceCtorEq, ite_false]
       exact ⟨_, .seq (.refl _), rfl⟩
   case var | cov | corr => simp only [Allowed]; exact StatProps.apply _ vs
+  case quantile cont num scale =>
+    cases cont
+    · rfl
+    · cases vs with
+      | nil => rfl
+      | cons v vs => simp only [Allowed, reduceCtorEq, ite_false]; exact contValue_allowed _ _ _
   all_goals rfl
 
 /-- An aggregate that combines in two phases is a function of its values. -/

@@ -157,3 +157,8 @@ quirks = []
 description = "CORR of fewer than two pairs, or of a side whose values are all equal, has no value."
 engines = "The SQL standard and the reference model give NULL; DuckDB's own CORR gives NaN (docs/reference-semantics.md). sverify's written plans give NULL on DuckDB."
 quirks = []
+
+[null_at_extreme]
+description = "ARG_MIN / ARG_MAX where the value at the smallest or largest key is NULL, or the key is."
+engines = "DuckDB's arg_min and arg_max (and min_by, max_by) skip rows where either side is NULL; Ibis's DuckDB SQL writes argmin as FIRST(x ORDER BY key), which keeps a NULL x (upstream/bugs/IB-3.json). sverify gives argmin DuckDB's arg_min meaning."
+quirks = []

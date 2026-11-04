@@ -759,6 +759,19 @@ class Dialect:
         list, in the order `order`; NULL without values."""
         raise Unsupported(f"array_agg is not yet supported on {self.name}; see #271")
 
+    def quantile(self, cont: bool, v: str, q: str) -> str:
+        """`AggFn.quantile` (#53) of the column `v` for the decimal literal `q`:
+        the value at position `⌈n·q⌉` (`quantile_disc`), or the linear
+        interpolation of the doubles at `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`
+        (`quantile_cont`); NULLs skipped, NULL without values."""
+        name = "quantile_cont" if cont else "quantile_disc"
+        raise Unsupported(f"{name} is not yet supported on {self.name}; see #271")
+
+    def mode(self, v: str, order: Sequence[str]) -> str:
+        """`AggFn.mode` (#53): the most frequent value of the column `v`, of the
+        values that tie the first in the order `order`; NULL without values."""
+        raise Unsupported(f"mode is not yet supported on {self.name}; see #271")
+
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
         raise Unsupported(
@@ -1196,6 +1209,9 @@ class Measure:
         "string_agg",
         "collect",
         "black_box",
+        "quantile_cont",
+        "quantile_disc",
+        "mode",
     ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27); `black_box`
     is the aggregate black box `bbox` (#325)."""
@@ -1208,6 +1224,8 @@ class Measure:
     """The separator of `string_agg`."""
     bbox: str = ""
     """The name of a `black_box` aggregate (`sverify.black_box`)."""
+    q: tuple[int, int] = (0, 0)
+    """A quantile's fraction `num / 10 ** scale`, as `(num, scale)` (#53)."""
 
 
 @dataclass(frozen=True)
@@ -1308,7 +1326,7 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
             return dsum_kind(a) if isinstance(a, Dec) else "int"
         if m.fn in ("count", "iavg", *BIT_AGGS):
             return "int"
-        if m.fn in ("fsum", "avg", *VAR_AGGS):
+        if m.fn in ("fsum", "avg", "quantile_cont", *VAR_AGGS):
             return "float"
         return (
             cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else unknown
@@ -1321,6 +1339,9 @@ BIT_AGGS = ("bit_and", "bit_or", "bit_xor")
 #: `AggFn.var`'s functions: variance and standard deviation, of a sample or a
 #: population (#54).
 VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop", "covar_samp", "covar_pop", "corr")
+#: The exact quantiles, the mode and `arg_min`/`arg_max` by their plan names
+#: (#53): DuckDB runs them, other engines refuse them for now (#271).
+EXACT_HOLISTIC = ("median", "quantile_cont", "quantile_disc", "mode", "arg_min", "arg_max")
 
 
 def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
@@ -1336,7 +1357,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         return Lst(kind(m.arg, cols))
     if m.fn == "black_box":
         return _BB_KINDS[black_box.AGGREGATES[m.bbox].result]
-    return "float" if m.fn in ("fsum", "avg", *VAR_AGGS) else kind(m.arg, cols)
+    return "float" if m.fn in ("fsum", "avg", "quantile_cont", *VAR_AGGS) else kind(m.arg, cols)
 
 
 #: The kind of each `black_box.Ty` (#325; `Parse.bbKind`).
@@ -2968,10 +2989,10 @@ class _Parser:
         double; `COUNT(*)` may come with no argument."""
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
-        if _arr(m, "sorts") and name not in ("first", "last", "string_agg", "array_agg"):
+        if _arr(m, "sorts") and name not in ("first", "last", "string_agg", "array_agg", "mode"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
-        if name == "string_agg" and not sort:
+        if name in ("string_agg", "mode") and not sort:
             raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
@@ -2998,17 +3019,48 @@ class _Parser:
             if not (isinstance(s, Lit) and isinstance(s.value, str)):
                 raise Unsupported("string_agg needs a constant separator")
             sep = s.value
+        elif len(args) == 2 and name in ("quantile_cont", "quantile_disc", "arg_min", "arg_max"):
+            arg = self.expr(args[0], cols)
         elif not args and name == "count":
             arg = Lit(1, "int")
         elif not args:
             raise Unsupported(f"{name} needs an argument")
         else:
             raise Unsupported(f"{name} takes one argument")
+        # A quantile's fraction (`Parse.parseMeasure`, #53): a constant decimal
+        # in [0, 1]; `median` is the 0.5 quantile.
+        q = (0, 0)
+        if name == "median":
+            q = (5, 1)
+        elif name in ("quantile_cont", "quantile_disc"):
+            c = self.const(args[1]) if len(args) == 2 else None
+            if c is not None and c.tag == "dec":
+                q = (c.value, c.scale)
+            elif c is not None and c.tag == "int" and c.value in (0, 1):
+                q = (c.value, 0)
+            else:
+                raise Unsupported(f"{name} needs a constant decimal fraction")
+            if not 0 <= q[0] <= 10 ** q[1]:
+                raise Unsupported(f"{name} needs a fraction between 0 and 1")
+        # `arg_min(x, y)` is `first(x ORDER BY y)` over the rows where `y` is
+        # not NULL (#53).
+        if name in ("arg_min", "arg_max"):
+            if len(args) != 2:
+                raise Unsupported(f"{name} takes a value and a column to order by")
+            by = self.expr(args[1], cols)
+            if not isinstance(by, Field):
+                raise Unsupported(f"{name} orders by a column only")
+            if inv == "AGGREGATION_INVOCATION_DISTINCT":
+                raise Unsupported(f"{name}(DISTINCT …) is not supported")
+            sort = (SortKey(by.index, name == "arg_max", False),)
+            keep = Un("not", Un("is_null", by))
+            cond = keep if cond is None else Bin("and", cond, keep)
         # A double constant is its code, which `lean_expr_kind` calls an
         # integer (#205): its declared kind says double (#341).
+        value_args = args[:1] if len(args) == 2 and name != "count" else args
         k = (
             "float"
-            if any(_declared_double(self.fns, a) for a in args)
+            if any(_declared_double(self.fns, a) for a in value_args)
             else lean_expr_kind(arg, cols.lean)
         )
         # `AVG` of integers follows the declared output type (#209): a
@@ -3048,6 +3100,9 @@ class _Parser:
             "string_agg",
             "collect",
             "black_box",
+            "quantile_cont",
+            "quantile_disc",
+            "mode",
         ]
         match name, k:
             case "count", _:
@@ -3078,6 +3133,23 @@ class _Parser:
                 fn = name
             case "string_agg", "str":
                 fn = name
+            # Exact quantiles and the mode (#53): `quantile_cont` of doubles, or
+            # of integers converted to doubles.
+            case (("median" | "quantile_cont"), ("int" | "float")):
+                fn = "quantile_cont"
+                if k == "int":
+                    arg = Un("itof", arg)
+            case (("median" | "quantile_cont"), _):
+                raise Unsupported(f"{name} of a value that is not a number is not supported")
+            case (
+                ("quantile_disc" | "mode"),
+                (Dec() | "int" | "float" | "str" | "bool" | "time" | "date"),
+            ):
+                fn = name
+            case (("quantile_disc" | "mode"), _):
+                raise Unsupported(f"{name} of this type is not supported")
+            case (("arg_min" | "arg_max"), _):
+                fn = "first"
             # NULLs are skipped (`Measure.inputs`), in the measure's order (#94).
             case "array_agg", _:
                 fn = "collect"
@@ -3099,7 +3171,7 @@ class _Parser:
             case _:
                 raise Unsupported(f"unsupported aggregate function: {name}")
         bbox = name if fn == "black_box" else ""
-        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep, bbox)
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep, bbox, q)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -3804,7 +3876,7 @@ class _Writer:
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
         # Without sort keys too: the ordinal is Lean's list order.
-        picks = any(orders) or any(ms.fn in ("first", "last", "collect") for ms in measures)
+        picks = any(orders) or any(ms.fn in ("first", "last", "collect", "mode") for ms in measures)
         if picks and any(ms.distinct for ms in measures):
             raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
         needs = needs or picks
@@ -3836,7 +3908,7 @@ class _Writer:
         out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
-            if ms.fn in ("first", "last", "string_agg", "collect"):
+            if ms.fn in ("first", "last", "string_agg", "collect", "mode"):
                 # Ties go in Lean's list order: the ordinal breaks them.
                 order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
                          for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
@@ -3844,6 +3916,8 @@ class _Writer:
                     sql = d.string_agg(v, d.str_lit(ms.sep), order)
                 elif ms.fn == "collect":
                     sql = d.collect(v, order)
+                elif ms.fn == "mode":
+                    sql = d.mode(v, order)
                 else:
                     sql = d.pick(ms.fn, v, order)
             else:
@@ -3876,6 +3950,12 @@ class _Writer:
                 return d.int_avg(v, "")
             case "bit_and" | "bit_or" | "bit_xor":
                 return d.bit_agg(m.fn, v, "")
+            case "quantile_cont" | "quantile_disc":
+                num, scale = m.q
+                digits = str(num).rjust(scale + 1, "0")
+                q = f"{digits[: len(digits) - scale]}.{digits[len(digits) - scale :] or '0'}"
+                sql = d.quantile(m.fn == "quantile_cont", v, q)
+                return d.canon(sql) if m.fn == "quantile_cont" else sql
             case "covar_samp" | "covar_pop" | "corr":
                 x, y = f"{v}[1]", f"{v}[2]"
                 n = f"COUNT({v})"
