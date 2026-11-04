@@ -77,6 +77,9 @@ def AggFn.name : AggFn → String
   | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
   | .corr => "CORR"
   | .concat sep => s!"STRING_AGG_{sep.quote}"
+  | .quantile cont num scale =>
+    s!"QUANTILE_{if cont then "CONT" else "DISC"}_{num}E-{scale}"
+  | .mode => "MODE"
   | .bbox n => n.toUpper
 
 def Measure.render (m : Measure) : String :=

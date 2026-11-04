@@ -769,8 +769,8 @@ class RefreshReport:
     many groups the batch touched, which were recomputed."""
     framed: dict[str, int] = field(default_factory=dict)
     """For each window view maintained by touched frames (`sverify._touched`):
-    how many output rows near the change were recomputed. This strategy is
-    tested, not proved."""
+    how many output rows near the change were recomputed
+    (`TouchedFrames.framed_batch`)."""
     diffed: list[str] = field(default_factory=list)
     """The views the batch recomputed in full and diffed."""
 
@@ -794,8 +794,7 @@ class RefreshReport:
             lines.append(f"view {v}: " + ", ".join(f"{t}@v{n}" for t, n in vs.items()))
         lines += [f"view {v}: {n} touched group(s) recomputed" for v, n in self.touched.items()]
         lines += [
-            f"view {v}: {n} row(s) in touched frames recomputed (tested, not proved)"
-            for v, n in self.framed.items()
+            f"view {v}: {n} row(s) in touched frames recomputed" for v, n in self.framed.items()
         ]
         lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
         if self.audited:
@@ -962,8 +961,8 @@ class IncrementalView:
         """How a batch changes the view: "delta rules" (also for `COUNT`,
         `SUM` and `DISTINCT` kept from a state per group), "touched groups"
         (the groups or partitions the batch touches, recomputed), "touched
-        frames" (window rows near the change, recomputed: tested, not
-        proved) or "recompute and diff"."""
+        frames" (window rows near the change, recomputed) or "recompute and
+        diff"."""
         if self.fallback is None:
             return "delta rules"
         if self.touched is None:
@@ -1143,8 +1142,8 @@ class IncrementalView:
         its group keys pick the groups, and the view over the new input rows
         of those keys replaces the state's rows of the same keys
         (`TouchedGroups.touched_sound`). Framed windows replace the rows of
-        the touched partitions near the changed times (`_touched.Framed`:
-        tested, not proved)."""
+        the touched partitions near the changed times (`_touched.Framed`,
+        `TouchedFrames.framed_batch`)."""
         spec = self.touched
         assert spec is not None
         con = self.con

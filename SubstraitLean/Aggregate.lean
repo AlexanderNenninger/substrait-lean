@@ -115,6 +115,21 @@ inductive AggFn where
   /-- An aggregate black box (`SubstraitLean/BlackBox.lean`, #325): the
   table's row `name`, its `empty` value without values. -/
   | bbox (name : String)
+  /-- `QUANTILE_DISC(x, q)` (`cont := false`) and `QUANTILE_CONT(x, q)` of the
+  values (#53), for the exact decimal `q = num / 10 ^ scale` in `[0, 1]`
+  (the parser refuses others); `MEDIAN` is `QUANTILE_CONT(x, 0.5)`. NULLs
+  skipped, NULL without values. Of the `n` values in order (`sortVals`), the
+  discrete one is the one at position `⌈n·q⌉` (counting from 1, at least the
+  first), and the continuous one, of doubles, interpolates linearly between
+  the neighbours at `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` (`contValue`). Engines round
+  the interpolation their own way, so the reference allows any double
+  between the two neighbours (`contAllowed`). -/
+  | quantile (cont : Bool) (num scale : Nat)
+  /-- `MODE(x ORDER BY …)` (#53): the most frequent value, and of the values
+  that tie, the first in the measure's `sort` order (as DuckDB breaks ties,
+  by first occurrence). NULLs skipped, NULL without values. Ties in the sort
+  order make it depend on the engine, as for `pick`. -/
+  | mode
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -275,6 +290,59 @@ axiom floatSum_sign {cs : List Int} (hne : cs ≠ []) :
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
 
+/-- The values in the order of `ORDER BY` (`Value.le`). -/
+def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.le b
+
+/-- The 0-based position of `QUANTILE_DISC`'s value among `n` values in order,
+for `q = num / 10 ^ scale`: `⌈n·q⌉ − 1`, and the first for `n·q ≤ 1`. -/
+def discIndex (n num scale : Nat) : Nat := (n * num + 10 ^ scale - 1) / 10 ^ scale - 1
+
+/-- The code at position `i` of `s`, if it is an integer or a double. -/
+def intAt (s : List Value) (i : Nat) : Option Int :=
+  match s[i]? with
+  | some (.int c) => some c
+  | _ => none
+
+/-- `QUANTILE_CONT`'s neighbours among the doubles `s` in order, for
+`q = num / 10 ^ scale`: the codes at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`
+(the same one where `(n−1)·q` is a whole number), and the weight of the
+upper one, `frac((n−1)·q)`, as a double. None if either is not a double. -/
+def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × Int) :=
+  let d := 10 ^ scale
+  let p := (s.length - 1) * num
+  (intAt s (p / d)).bind fun l =>
+    if p % d == 0 then some (l, l, 0) else
+    (intAt s (p / d + 1)).map fun h =>
+      (l, h, FloatCode.lift₂ (· / ·) (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
+
+/-- `r` kept between `l` and `h`. -/
+def clampTo (l h r : Int) : Int := min (max r l) h
+
+/-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
+kept between `l` and `h`: rounding may leave them by an ulp, and `−∞`
+with `+∞` gives NaN (`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
+def interpolate (l h w : Int) : Int :=
+  clampTo l h (FloatCode.lift₂ (· + ·)
+    (FloatCode.lift₂ (· * ·) l (FloatCode.lift₂ (· - ·) (FloatCode.ofInt 1) w))
+    (FloatCode.lift₂ (· * ·) h w))
+
+/-- `QUANTILE_CONT` of the doubles `s` in order. -/
+def contValue (num scale : Nat) (s : List Value) : Value :=
+  match contNeighbours num scale s with
+  | some (l, h, w) => if l == h then .int l else .int (interpolate l h w)
+  | none => .null
+
+/-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
+neighbours, else a double between them. -/
+def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
+  match contNeighbours num scale s with
+  | some (l, h, _) => ∃ c, v = .int c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
+  | none => v = .null
+
+/-- The most frequent of `vs`, the first of those that tie. -/
+def modeOf (v : Value) (vs : List Value) : Value :=
+  pickFold (fun a b => (v :: vs).count a < (v :: vs).count b) v (dedup (v :: vs))
+
 def AggFn.apply : AggFn → List Value → Value
   | .count, vs => .int vs.length
   | .bbox n, vs => BlackBox.callAgg n vs
@@ -292,6 +360,10 @@ def AggFn.apply : AggFn → List Value → Value
   | .collect, vs => .list vs
   | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
   | .concat sep, vs => .str (sep.intercalate (vs.map fun | .str s => s | _ => ""))
+  | .quantile false num scale, vs =>
+    (sortVals vs).getD (discIndex vs.length num scale) .null
+  | .quantile true num scale, vs => contValue num scale (sortVals vs)
+  | .mode, v :: vs => modeOf v vs
 
 /-- `collect` takes the rows in its sort order (a stable sort, so without
 one in list order: one of the orders an engine may choose). -/
@@ -300,11 +372,12 @@ def Measure.eval (rows : Relation) (m : Measure) : Value :=
   | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | .pick last => (AggFn.pick last).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | .concat sep => (AggFn.concat sep).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
+  | .mode => AggFn.mode.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | f => f.apply (m.inputs rows)
 
 /-- Does the aggregate take its rows in the measure's `sort` order? -/
 def AggFn.sorts : AggFn → Bool
-  | .collect | .pick _ | .concat _ => true
+  | .collect | .pick _ | .concat _ | .mode => true
   | _ => false
 
 theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation) :
@@ -367,6 +440,94 @@ theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List V
     f.apply vs = .null ∨ f.apply vs ∈ vs := by
   rcases hf with rfl | rfl <;> cases vs <;>
     first | (simp [apply]; done) | (simp only [apply]; exact .inr (pickFold_mem _ _ _))
+
+theorem intAt_mem {s : List Value} {i : Nat} {c : Int} (h : intAt s i = some c) :
+    .int c ∈ s := by
+  unfold intAt at h
+  split at h
+  · rename_i c' heq; cases h; exact List.mem_of_getElem? heq
+  · cases h
+
+theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
+    (hn : contNeighbours num scale s = some (l, h, w)) : .int l ∈ s ∧ .int h ∈ s := by
+  unfold contNeighbours at hn
+  cases h1 : intAt s ((s.length - 1) * num / 10 ^ scale) with
+  | none => simp [h1] at hn
+  | some l' =>
+    simp only [h1, Option.bind_some] at hn
+    split at hn
+    · cases hn; exact ⟨intAt_mem h1, intAt_mem h1⟩
+    · cases h2 : intAt s ((s.length - 1) * num / 10 ^ scale + 1) with
+      | none => simp [h2] at hn
+      | some h' =>
+        simp only [h2, Option.map_some, Option.some.injEq, Prod.mk.injEq] at hn
+        obtain ⟨rfl, rfl, -⟩ := hn
+        exact ⟨intAt_mem h1, intAt_mem h2⟩
+
+theorem interpolate_between (l h w : Int) :
+    interpolate l h w = h ∨ (l ≤ interpolate l h w ∧ interpolate l h w ≤ h) := by
+  unfold interpolate clampTo; omega
+
+theorem contValue_allowed (num scale : Nat) (s : List Value) :
+    contAllowed num scale s (contValue num scale s) := by
+  unfold contAllowed contValue
+  cases contNeighbours num scale s with
+  | none => rfl
+  | some t =>
+    obtain ⟨l, h, w⟩ := t
+    dsimp only
+    split
+    · exact ⟨l, rfl, .inl rfl⟩
+    · exact ⟨_, rfl, (interpolate_between l h w).elim (fun e => .inr (.inl e)) (.inr ∘ .inr)⟩
+
+/-- `QUANTILE_CONT` gives NULL or a double between two of the values. -/
+theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
+    (AggFn.quantile true num scale).apply vs = .null ∨ ∃ c l h,
+      (AggFn.quantile true num scale).apply vs = .int c ∧ .int l ∈ vs ∧ .int h ∈ vs ∧
+        (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h)) := by
+  cases vs with
+  | nil => exact .inl rfl
+  | cons v vs =>
+    have hp := List.mergeSort_perm (v :: vs) (fun a b => a.le b)
+    have ha := contValue_allowed num scale (sortVals (v :: vs))
+    show contValue num scale (sortVals (v :: vs)) = .null ∨ ∃ c l h,
+      contValue num scale (sortVals (v :: vs)) = .int c ∧ _
+    unfold contAllowed at ha
+    cases hn : contNeighbours num scale (sortVals (v :: vs)) with
+    | none => rw [hn] at ha; exact .inl ha
+    | some t =>
+      obtain ⟨l, h, w⟩ := t
+      rw [hn] at ha
+      obtain ⟨c, hc, hb⟩ := ha
+      obtain ⟨hl, hh⟩ := contNeighbours_mem hn
+      exact .inr ⟨c, l, h, hc, hp.mem_iff.mp hl, hp.mem_iff.mp hh, hb⟩
+
+/-- `QUANTILE_DISC` gives one of the values (or NULL). -/
+theorem AggFn.apply_disc (num scale : Nat) (vs : List Value) :
+    (AggFn.quantile false num scale).apply vs = .null ∨
+      (AggFn.quantile false num scale).apply vs ∈ vs := by
+  cases vs with
+  | nil => exact .inl rfl
+  | cons v vs =>
+    show (sortVals (v :: vs)).getD _ .null = .null ∨ (sortVals (v :: vs)).getD _ .null ∈ v :: vs
+    rw [List.getD_eq_getElem?_getD]
+    cases h : (sortVals (v :: vs))[discIndex (v :: vs).length num scale]? with
+    | none => exact .inl rfl
+    | some w =>
+      exact .inr ((List.mergeSort_perm (v :: vs) (fun a b => a.le b)).mem_iff.mp
+        (List.mem_of_getElem? h))
+
+/-- `MODE` gives one of the values (or NULL). -/
+theorem AggFn.apply_mode (vs : List Value) : AggFn.mode.apply vs = .null ∨ AggFn.mode.apply vs ∈ vs := by
+  cases vs with
+  | nil => exact .inl rfl
+  | cons v vs =>
+    refine .inr ?_
+    show modeOf v vs ∈ v :: vs
+    have hm : modeOf v vs ∈ v :: dedup (v :: vs) := pickFold_mem _ _ _
+    rcases List.mem_cons.mp hm with h | h
+    · rw [h]; exact List.mem_cons_self ..
+    · exact mem_dedup.mp h
 
 theorem foldl_min_le : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, xs.foldl min x ≤ y
   | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _

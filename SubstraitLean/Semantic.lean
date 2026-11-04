@@ -783,6 +783,7 @@ theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
   · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hin grp fun _ h => h]
 
 theorem aggregateEval_map {gs : List Expr} {ms : List Measure} {A : Relation} {g : Row → Row}

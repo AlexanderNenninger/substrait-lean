@@ -75,7 +75,7 @@ def con():
 
 #: Pitfalls under which DuckDB running the query's own SQL gives another answer
 #: than the plan.
-NATIVE_DIFFERS = {"duration_vs_interval", "degenerate_statistic"}
+NATIVE_DIFFERS = {"duration_vs_interval", "degenerate_statistic", "null_at_extreme"}
 
 
 @pytest.mark.slow

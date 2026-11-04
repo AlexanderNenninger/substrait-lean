@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-printf",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "printf and format: strict, raise on a format that does not fit",
+  "verdict": "recorded: printf and format are black boxes that may raise",
+  "area": "strings",
+  "constructs": [
+    "printf",
+    "format"
+  ],
+  "settings": {},
+  "description": [
+    "`printf(fmt, …)` (C's format strings) and `format(fmt, …)` (`{}` fields) are NULL when any argument is NULL, the format included.",
+    "Both raise an Invalid Input Error when a field does not fit its value (`printf('%d', 'x')`, `format('{:d}', 'x')`) or has no value (`printf('%d')`, `format('{} {}', 1)`). A format without fields ignores its values: `printf('abc', 1)` is `abc`.",
+    "`printf` formats a signed integer as a BIGINT whatever its width: `printf('%x', -1::TINYINT)` is `ffffffffffffffff`, while `format('{:x}', -1)` is `-1`. A boolean is `true`/`false` under `%s` and `1` under `%d`."
+  ],
+  "reference": [
+    "`printf` and `format` of a format and one value are black boxes (#328): strict, may raise (a domain error in `verify`), and a string where they do not. The value is an integer, string or boolean (`BlackBox.Ty.atom`): a double's code and a date are integers in the model, which the function could not tell apart. More values are refused."
+  ],
+  "status": "decided",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session for #328 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {"sql": "SELECT printf('%d', NULL), printf(NULL, 1), printf('%s', NULL), format('{}-{}', 1, NULL), format(NULL, 1)", "observed": "NULL, NULL, NULL, NULL, NULL"},
+        {"sql": "SELECT printf('%d', 'x')", "observed": "Invalid Input Error: Invalid type specifier \"d\" for formatting a value of type string"},
+        {"sql": "SELECT format('{} {}', 1)", "observed": "Invalid Input Error: Argument index \"1\" out of range"},
+        {"sql": "SELECT printf('abc', 1), format('abc', 1)", "observed": "abc, abc"},
+        {"sql": "SELECT printf('%x', -1::INTEGER), printf('%x', -1::TINYINT), printf('%x', 255::UTINYINT), format('{:x}', -1::INTEGER)", "observed": "ffffffffffffffff, ffffffffffffffff, ff, -1"},
+        {"sql": "SELECT printf('%s', true), printf('%d', true), format('{}', true)", "observed": "true, 1, true"},
+        {"test": "python/tests/test_black_box.py::test_printf_keeps_its_laws_on_random_data"}
+      ]
+    }
+  ],
+  "issues": [
+    328
+  ]
+}

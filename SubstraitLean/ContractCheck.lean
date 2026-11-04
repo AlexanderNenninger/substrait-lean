@@ -311,8 +311,8 @@ def check (input : Json) : Except String Report := do
   let implied : List (String × List (List (Nat × Bound))) :=
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
-  let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST or " ++
-    "STRING_AGG, and the engine orders them"
+  let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST, " ++
+    "STRING_AGG, MODE, ARG_MIN or ARG_MAX, and the engine orders them"
   let mut results : List (String × Bool × String) := []
   let mut suggestions : List Infer.Bounds := []
   for q in ensures do

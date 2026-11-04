@@ -313,6 +313,22 @@ one, the generic properties hold. No profile names one yet. Engines differ
 from the reference where it raises: DuckDB and Polars give NaN for an
 infinite value and for `CORR` with a zero variance, Spark NULL for the latter.
 
+### Quantiles, mode and arg_min
+
+These need every value of a group ([#53](https://github.com/AlexanderNenninger/substrait-lean/issues/53)).
+NULLs are skipped, no values give NULL, and `DISTINCT` and `FILTER` apply
+as for the others. The fraction `q` of a quantile is a constant decimal in
+`[0, 1]`, exact (`0.1` is one tenth); the frontends write it as a DECIMAL
+literal, which DuckDB reads exactly. Approximate quantiles stay refused
+([#469](https://github.com/AlexanderNenninger/substrait-lean/issues/469)).
+
+| Topic | Reference | Status |
+|---|---|---|
+| `QUANTILE_DISC(x, q)` | Of the `n` values in `ORDER BY` order (doubles: `-∞ < … < +∞ < NaN`), the one at position `⌈n·q⌉`, counting from 1, and the first where `n·q ≤ 1` (`discIndex`). Any type `MIN` takes; the result has the argument's type and is one of its values, so contracts keep the argument's range. DuckDB's `QUANTILE` and the `MEDIAN` of a value that is not a number are `QUANTILE_DISC(x, 0.5)`. | ✓ on DuckDB (`duckdb-quantile-disc`); other engines refuse it until #271; refused over windows |
+| `QUANTILE_CONT(x, q)`, `MEDIAN(x)` | Of doubles, integers converted first; the result is a double. With `lo` and `hi` the values at 0-based positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`: `lo` where they coincide, else a double between `lo` and `hi` (`contAllowed`). Engines round the interpolation their own way; the model computes DuckDB's `lo·(1−d) + hi·d`, `d = frac((n−1)·q)`, kept between the two. Contracts know the result lies within the argument's range. `MEDIAN` is `QUANTILE_CONT(x, 0.5)`. DECIMAL, DATE and TIMESTAMP arguments are refused (DuckDB interpolates them in their own types). | ✓ on DuckDB, which may round past the neighbours and gives NaN between `-∞` and `+∞`; the written SQL clamps (`duckdb-quantile-cont-interpolation`); other engines refuse it until #271 |
+| `MODE(x ORDER BY …)` | The most frequent value; of the values that tie, the first in the aggregate's own `ORDER BY`, rows tied there in list order (`modeOf`). Refused without an `ORDER BY`, as DuckDB's ties then follow its scan. `MODE(x ORDER BY x)` takes the smallest of the most frequent values, and Ibis's `mode()` is written so; a report is `deterministic` when the order includes `x`'s column, or when the group's and the order's columns contain a key. | ✓ on DuckDB (`duckdb-mode-ties`); other engines refuse it until #271 |
+| `ARG_MIN(x, y)` / `ARG_MAX(x, y)` | `x` at the row with the smallest (largest) `y`, over the rows where neither is NULL: `FIRST(x ORDER BY y)` (`DESC`) with the filter `y IS NOT NULL`, which the parser makes it. `y` is a column. The result is one of `x`'s values. Ties are the engine's, as for `FIRST`: a report is `deterministic` only when the group's and `y`'s columns contain a key. | ✓ on DuckDB (`duckdb-arg-min-nulls`); other engines refuse it until #271 |
+
 ### Of decimals
 
 The rules for decimals are in [Decimals](#decimals).
@@ -357,12 +373,18 @@ the writers in `python/src/sverify/black_box.py`.
 
 | Topic | Reference | Status |
 |---|---|---|
-| The table | A row gives the function's name, its argument and result types, how it treats NULL (a scalar is strict or not; an aggregate skips NULLs and gives `empty` without values), whether a scalar may raise, and its laws: `nonNull`, `atLeast k`, `atMost k`. A double's bounds are on its code (`atLeast 0` is `≥ +0.0`). | ✓ |
+| The table | A row gives the function's name, its argument and result types (an integer, a double, a string, a boolean, a date, an `atom`, which is an integer, string or boolean, or any value), how it treats NULL (a scalar is strict or not; an aggregate skips NULLs and gives `empty` without values), whether a scalar may raise, and its laws: `nonNull`, `atLeast k`, `atMost k`. A double's bounds are on its code (`atLeast 0` is `≥ +0.0`). | ✓ |
 | Meaning | The function itself is an `opaque` constant (`rawScalar`, `rawAgg`). The model's value is that function where it keeps the row's laws, and the row's `sample` elsewhere, so each law is a theorem (`BlackBox.Scalar.call_ok`, `Aggregate.call_ok`), proved from the table by `decide`, with no axiom. That DuckDB computes the model's function, and so keeps the laws, is the trusted part, in `Impl.Faithful` and the profile's agreement with the engine ([Trusted assumptions](#trusted-assumptions)). | ✓ |
-| Contracts | The range analysis knows a black box's result only from its type and laws (`BlackBox.lawsAbs`): `entropy(x) >= 0` and `base64(encode(s)) IS NOT NULL` for a non-NULL `s` are proved. | ✓ |
+| Contracts | The range analysis knows a black box's result only from its type and laws (`BlackBox.lawsAbs`): `entropy(x) >= 0`, `base64(encode(s)) IS NOT NULL` for a non-NULL `s`, `strlen(s) >= 0` and `yearweek(d) <= 588158053` are proved. | ✓ |
 | Errors | A scalar that may raise reports a domain error (`Issue.domain`) on the arguments it raises on, which the function decides (`rawRaises`). Aggregates do not raise. | ✓ |
 | Plans | A call is the extension function of the row's name under the URN `extension:io.sverify:black_box`, anchors 700–799 (`SubstraitLean/Write.lean`). One or two arguments for a scalar, one for an aggregate, which is not decomposable (shards refuse it) and not over a window yet. | ✓ |
 | `base64` | `base64(encode(s))` (also `to_base64`): the UTF-8 bytes of a string in base64. Strict, and not NULL for a string. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
+| `printf`, `format` | `printf(fmt, x)` (C's format strings) and `format(fmt, x)` (`{}` fields) of one integer, string or boolean ([#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328)). Strict; raise where a field does not fit the value or has none, which `verify` reports as a domain error; a string where they do not. A double or a date is refused: the model's value of either is an integer, which the function could not tell apart from one (`duckdb-printf`). More values are refused. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
+| `octet_length`, `strlen` | `octet_length(encode(s))` and `strlen(s)`: the number of UTF-8 bytes of a string (#328). Strict, not NULL for a string, and at least 0. Lean evaluates them. | ✓ on DuckDB; other engines refuse them until #271 |
+| `signbit` | `signbit(x)` of a double: its sign bit (#328), TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The model's codes have one zero and one NaN, so Lean evaluates it everywhere else and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it until #271 |
+| `yearweek` | `yearweek(d)` of a date: its ISO year times 100 plus its ISO week, the week subtracted in the years up to 0 (#328, `duckdb-yearweek`). Strict, between -587764053 and 588158053, and NULL for an infinite date and before 5877641-01-04 BC, where DuckDB raises (as `date_part` is NULL outside chrono's dates). Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
+| `weekday` | `weekday(d)` is `dayofweek(d)`, `date_part('dow', d)`: modelled exactly, Sunday 0 (#328). | ✓ |
+| `age` | `age(a, b)` is an INTERVAL of months, days and microseconds, which the model lacks; `age(ts)` reads the clock. Refused (#328). | Refused |
 | `entropy` | `entropy(x)` of any type: the Shannon entropy, in bits, of the counts of the distinct values; `0.0` without values. Not NULL and at least `+0.0`. Lean does not evaluate it, so `substrait-check` refuses to print rows of a plan with it. | ✓ on DuckDB; other engines refuse it until #271 |
 
 ## Trusted assumptions
