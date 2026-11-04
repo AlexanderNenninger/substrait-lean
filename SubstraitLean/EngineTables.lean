@@ -119,15 +119,15 @@ def Profile.duckdb.obs : ObsTable := [
   -- One value at a time: one of the orders the reference allows (`FloatSums`);
   -- which order depends on the parallel plan, so runs vary.
   (none, "sum_order", { ObsRow.native ["duckdb-sum-double", "duckdb-avg-double"] with
-    rerun := { floats := .within "plan" } }),
+    rerun := some { floats := .within "plan" } }),
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
   (none, "clustered", .shimmed "ORDER BY the keys" []),
   -- Ties come in the order threads read the rows.
-  (none, "tie_order", { ObsRow.native ["duckdb-mode-ties"] with rerun := { rows := .tiesPermuted } }),
+  (none, "tie_order", { ObsRow.native ["duckdb-mode-ties"] with rerun := some { rows := .tiesPermuted } }),
   (none, "tie_pick", { ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
-    rerun := { rows := .tiesPermuted } }),
+    rerun := some { rows := .tiesPermuted } }),
   (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
   (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
   (none, "negative_start", .native ["duckdb-R13"]),
@@ -136,7 +136,7 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "null_join_keys", .native []),
   -- Welford with Chan's merge meets the generic properties the reference allows.
   (none, "stat_algo", { ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
-    rerun := { floats := .within "plan" } }),
+    rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
@@ -211,9 +211,9 @@ def Profile.polars.obs : ObsTable := [
   -- (groups) is not, so within #85's bound.
   -- Run to run the order varies (morsels, pipelines), within the plan's bound.
   (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
-    rerun := { floats := .within "plan" } }),
+    rerun := some { floats := .within "plan" } }),
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
-    rerun := { floats := .within "plan" } }),
+    rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
   -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
   (some "agg.order", "zero_sign", { ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
@@ -227,8 +227,9 @@ def Profile.polars.obs : ObsTable := [
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
   -- A streaming sort of a large input does not keep ties in input order.
   (none, "tie_order", { ObsRow.native ["polars-sort-stability", "polars-first-last"] with
-    rerun := { rows := .tiesPermuted } }),
-  (none, "tie_pick", .native ["polars-first-last"]),
+    rerun := some { rows := .tiesPermuted } }),
+  -- `first` and `last` follow input order on streaming, run after run.
+  (none, "tie_pick", { ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }),
   (some "fp.round", "rounding", .shimmed "round_half_away" ["polars-round"]),
   (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
     precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
@@ -247,9 +248,33 @@ def Profile.polars.obs : ObsTable := [
 
 /-! ## The engines -/
 
+/-- The options whose functions an engine computes row by row, or exactly
+whatever the order (integer sums, a placement a key fixes, a sorted
+quantile): every run gives the same result, as each row's facts were probed
+to give, where `rerun` is not set already. The others stay unknown. -/
+def rerunExact : List String :=
+  ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
+   "rounding", "nan_creation", "float_overflow", "negative_start", "case_sensitivity",
+   "string_positions", "avg_int_result", "empty_group_aggregates", "null_order",
+   "null_join_keys", "quantile_interp"]
+
+/-- Each row with what reruns give: exact where `rerunExact` says so, with the
+row's facts as evidence; a variation keeps its own. -/
+def withReruns (obs : ObsTable) : ObsTable :=
+  obs.map fun (g, o, r) =>
+    let ev := match r.evidence with | .tested ids => Evidence.tested ids | e => e
+    match r.rerun with
+    | some _ => (g, o, { r with rerunEvidence := ev })
+    | none =>
+      -- A sum's sign of zero is the row's own; a group key's or `min`'s zero is
+      -- the one seen first, or the platform's: not settled here.
+      if rerunExact.contains o || (o == "zero_sign" && g == some "fp.arith") then (g, o, { r with rerun := some Obs.exact, rerunEvidence := ev })
+      else (g, o, r)
+
 /-- The engine profiles, under DuckDB's default settings. -/
 def engineTables : List (ProfileTable × ObsTable) :=
-  [(Profile.duckdb.table {}, Profile.duckdb.obs), (Profile.polars.table, Profile.polars.obs)]
+  [(Profile.duckdb.table {}, withReruns Profile.duckdb.obs),
+   (Profile.polars.table, withReruns Profile.polars.obs)]
 
 /-- **Every DuckDB setting refines the core.** -/
 theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
@@ -332,8 +357,14 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
           | .approx, _ => "approx" | .refused, _ => "refused")),
          ("shim", toJson r.shim)] ++
         [("q", r.q.sparseJson)] ++
-        (if r.rerun == Obs.exact then [] else
-          [("rerun", r.rerun.sparseJson), ("deterministic", toJson false)]) ++
+        (match r.rerun with
+          | none => []
+          | some q =>
+            [("rerun", q.sparseJson), ("deterministic", toJson (q == Obs.exact))] ++
+            match r.rerunEvidence with
+            | .proved thm => [("rerun_evidence", toJson "proved"), ("rerun_theorem", toJson thm)]
+            | .tested ids => [("rerun_evidence", toJson "tested"), ("rerun_facts", toJson ids)]
+            | .none => []) ++
         (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
         (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
         (if r.note == "" then [] else [("note", toJson r.note)]) ++

@@ -177,9 +177,12 @@ structure ObsRow where
   shim : Option String := none
   evidence : Evidence := .none
   /-- What may differ between two runs of the engine on the same input (D20):
-the identity where every run gives the same result. D10's determinism and
-the Python side's `rerun ⊑ q` check read it. -/
-  rerun : Obs := Obs.exact
+`some Obs.exact` where every run gives the same result, `none` where that is
+not known. D10's determinism and the Python side's `rerun ⊑ q` check read it. -/
+  rerun : Option Obs := none
+  /-- What `rerun` rests on, apart from the class's evidence: a row can be
+  proved to refine the reference and still vary run to run. -/
+  rerunEvidence : Evidence := .none
   /-- Where the engine executes the row's functions, if not its default
   (Polars: streaming; `"in-memory"` where streaming falls back). -/
   engine : Option String := none

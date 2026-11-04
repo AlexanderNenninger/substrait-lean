@@ -223,7 +223,18 @@ def test_rerun_variation():
     polars = {(r["group"], r["option"]): r for r in choices["polars"]}
     duck = {(r["group"], r["option"]): r for r in choices["duckdb"]}
     assert polars[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
+    assert polars[(None, "sum_order")]["deterministic"] is False
+    assert polars[(None, "sum_order")]["rerun_evidence"] == "tested"
     assert polars[(None, "tie_order")]["rerun"] == {"rows": "ties permuted"}
     assert duck[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
-    assert "rerun" not in polars[(None, "tie_pick")]  # input order on streaming
-    assert "rerun" not in duck[(None, "overflow")]
+    # Known exact: written as {}, with its own evidence.
+    for row in (
+        polars[(None, "tie_pick")],
+        duck[(None, "overflow")],
+        polars[("fp.arith", "zero_sign")],
+    ):
+        assert row["rerun"] == {} and row["deterministic"] is True, row
+        assert row["rerun_evidence"] == "tested" and row["rerun_facts"], row
+    # Not known: no rerun at all.
+    assert "rerun" not in polars[("agg.order", "zero_sign")]
+    assert "rerun" not in duck[(None, "zero_sign")]
