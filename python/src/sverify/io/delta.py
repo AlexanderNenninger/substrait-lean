@@ -984,25 +984,24 @@ class DeltaSink(_TableSink[DeltaTable]):
             inserted, deleted = _engine.counts(delta)
             if not inserted and not deleted:
                 return 0, 0
-            gone = None
+            gone: dict[str, list[int]] = {}
             if deleted:
                 snap = DeltaSource(self.uri, storage_options=self.storage_options)._native()
-                if snap is None:
+                found = _engine.deletes_by_file(None if snap is None else snap.scan, delta)
+                if found is None:
                     return None
-                gone = _engine.positions(snap.scan, delta)
-                if gone is None:
-                    return None
+                gone = found
             if missing:
                 dt.alter.add_constraint(missing)
                 dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
-            if gone is not None:
+            if gone:
                 logged = _local_files(root, file_stats(dt)) or {}
                 by_local = {v: k for k, v in logged.items()}
-                for file in pc.call_function("unique", [gone.column("file")]).to_pylist():
-                    at = gone.filter(pc.call_function("equal", [gone.column("file"), file]))
+                for file, at in gone.items():
                     name = f"part-{uuid.uuid4()}-sverify.parquet"
                     path = os.path.join(root, name)
-                    kept = _engine.rewrite(file, at.select(["pos"]), path)
+                    pos = pa.table({"pos": pa.array(at, pa.int64())})
+                    kept = _engine.rewrite(file, pos, path)
                     copied += kept
                     if kept:
                         actions.append(_add_action(name, path, schema))
