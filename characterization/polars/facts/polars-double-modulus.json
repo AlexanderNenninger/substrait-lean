@@ -1,0 +1,52 @@
+{
+  "id": "polars-double-modulus",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Double `%`: `x - y·floor(x / y)`",
+  "verdict": "floor remainder; NaN for `x % 0` and for finite `x % ±inf`",
+  "area": "doubles",
+  "constructs": [
+    "%",
+    "//"
+  ],
+  "settings": {},
+  "description": [
+    "`%` on doubles computes `x - y * floor(x / y)`: the remainder has the divisor's sign (`5.5 % -2` is -0.5), `x % 0` is NaN, and a finite `x % ±inf` is NaN too (`x / inf` is 0, and `inf * 0` is NaN), where C's `fmod` and Python's `%` give `x`. The formula also loses the exactness of `fmod` for large quotients.",
+    "`//` on doubles is `floor(x / y)`."
+  ],
+  "reference": "`modulus` on doubles (sverify's `sverify_fmod`): the truncated remainder (`fmod`), with a zero divisor an error as on integers, and `fmod(x, ±inf) = x`. 60 of the 144 rows differ.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 % Float64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "double-modulus-sign"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "double-floordiv"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L33-L43"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}

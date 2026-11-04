@@ -1,0 +1,84 @@
+{
+  "id": "polars-math-domain",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Elementary functions: NaN outside the domain, -inf for `log(0)`",
+  "verdict": "`on_domain_error: NAN`; `on_log_zero: MINUS_INFINITY`",
+  "area": "doubles",
+  "constructs": [
+    "sqrt",
+    "log",
+    "log10",
+    "sin",
+    "cos",
+    "tan",
+    "arcsin",
+    "arccos",
+    "**"
+  ],
+  "settings": {},
+  "description": "`sqrt`, the logarithms, `arcsin`, `arccos` and `**` give NaN outside their domain (`sqrt(-1)`, `log(-1)`, `arcsin(2.5)`, `(-1) ** 0.5`), `log(0)` is -inf, and `sin`, `cos`, `tan` of ±inf are NaN. Inside the domain they are Rust's `f64` functions (the platform's libm).",
+  "reference": "`on_domain_error: ERROR` and `on_log_zero: ERROR` (#215); `sin(±inf)` is a domain issue.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.sqrt()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.log()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.log10()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.log(2)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.sin()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.cos()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.tan()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.arcsin()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.arccos()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 ** Float64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.exp()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64.arctan()"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    215
+  ]
+}

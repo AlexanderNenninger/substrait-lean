@@ -1,0 +1,41 @@
+{
+  "id": "polars-int-true-divide",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `/`: a division of doubles",
+  "verdict": "`Int64 / Int64` is `Float64`; `/ 0` is ±inf or NaN",
+  "area": "integers",
+  "constructs": [
+    "/",
+    "truediv"
+  ],
+  "settings": {},
+  "description": "`/` on integers casts both operands to `Float64` and divides: `7 / 2` is 3.5, `x / 0` is ±inf, `0 / 0` is NaN. Integers above 2⁵³ round on the way.",
+  "reference": "Substrait's `divide` on integers returns the integer type and truncates. A plan that divides integers to a double casts first, and the double division's options apply (polars-double-divide).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int-true-divide"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L214-L226"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "id": "polars-int-arith",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `+ - *`, unary `-` and `**`: wrap at the column's width",
+  "verdict": "matches `overflow: SILENT` at every width",
+  "area": "integers",
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "unary -",
+    "**"
+  ],
+  "settings": {},
+  "description": [
+    "Integer arithmetic wraps at the operands' width (two's complement, Rust's `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `wrapping_neg`): `Int8` 127 + 1 is -128, `-MIN` is `MIN`. No setting makes it raise or saturate. Polars keeps the width of the operands; a literal takes the column's type.",
+    "`**` on integers wraps too (`2 ** 63` is `-2⁶³` in `Int64`); a negative integer exponent raises (`InvalidOperationError`, the exponent is cast to `u32`)."
+  ],
+  "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR` when the plan omits it (#202); `SILENT` when the plan asks. Polars gives `SILENT` natively; `ERROR` needs a guard, at each width.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8 + Int8"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8 - Int8"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8 * Int8"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16 + Int16"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16 - Int16"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16 * Int16"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32 + Int32"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32 - Int32"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32 * Int32"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64 + Int64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64 - Int64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64 * Int64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "-Int8"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "-Int16"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "-Int32"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "-Int64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int-pow"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int-pow-negative"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L15-L32"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    202
+  ]
+}

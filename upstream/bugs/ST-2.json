@@ -22,7 +22,8 @@
     "docs/core-semantics.md"
   ],
   "facts": [
-    "duckdb-R15-atan2"
+    "duckdb-R15-atan2",
+    "polars-atan2"
   ],
   "checked": [
     {

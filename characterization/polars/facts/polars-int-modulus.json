@@ -1,0 +1,69 @@
+{
+  "id": "polars-int-modulus",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `%`: the floor remainder, NULL for a zero divisor",
+  "verdict": "`division_type: FLOOR`; `x % 0` is NULL; `MIN % -1` is 0",
+  "area": "integers",
+  "constructs": [
+    "%",
+    "mod"
+  ],
+  "settings": {},
+  "description": "`%` on integers is the remainder of floor division, with the sign of the divisor (`-1 % 2` is 1, `1 % -7` is -6). A zero divisor gives NULL, and `MIN % -1` is 0.",
+  "reference": "`modulus` with `division_type: TRUNCATE` (the remainder has the dividend's sign); `FLOOR` is refused by the model. `on_division_by_zero: ERROR` when omitted. So the reference matches Polars only where the operands have the same sign or the remainder is 0.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8 % Int8"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16 % Int16"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32 % Int32"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64 % Int64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8.mod(Int8)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16.mod(Int16)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32.mod(Int32)"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64.mod(Int64)"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L59-L70"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}

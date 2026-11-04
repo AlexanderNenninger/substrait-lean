@@ -1,0 +1,33 @@
+{
+  "id": "polars-avg-int",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`mean` and `median` of integers: `Float64`",
+  "verdict": "a double: the `Float64` sum over the count",
+  "area": "aggregates",
+  "constructs": [
+    "mean",
+    "median"
+  ],
+  "settings": {},
+  "description": "`mean` of integers is a `Float64` (the values cast to doubles and summed, polars-sum-float), so it rounds above 2⁵³ (`mean(2⁶², 2⁶², 1)` is 3.0744573456182584e18). `median` of integers is a `Float64` too. Both are NULL for no values.",
+  "reference": "`avg` of `i64` returns `i64` in Substrait; the reference follows the declared output type (`avg_int_result`, #209).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int-mean"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    209
+  ]
+}

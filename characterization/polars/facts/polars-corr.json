@@ -36,6 +36,18 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Unverified: what the SQL layer (polars-sql) returns for no pairs; only the Rust paths were read."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "corr-degenerate"
+        }
+      ],
+      "notes": "In a `select` (in memory): a constant side, one pair and no pairs are all NaN. Polars 2.1.0."
     }
   ],
   "issues": [

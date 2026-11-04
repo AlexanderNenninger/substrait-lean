@@ -1,0 +1,52 @@
+{
+  "id": "polars-int-abs",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`abs` of an integer: `abs(MIN)` is `MIN`",
+  "verdict": "wraps at `MIN`; the model's `abs` takes `overflow: ERROR` only",
+  "area": "integers",
+  "constructs": [
+    "abs"
+  ],
+  "settings": {},
+  "description": "`abs` is `wrapping_abs`: `abs(MIN)` is `MIN` at every width. Every other value is exact.",
+  "reference": "`abs` with `overflow: ERROR`, the only value the model accepts for it (`SILENT` and `SATURATE` are refused), so `abs(MIN)` is an overflow issue.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8.abs()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16.abs()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32.abs()"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64.abs()"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L15-L17"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}

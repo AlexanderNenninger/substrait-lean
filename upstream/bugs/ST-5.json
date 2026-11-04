@@ -23,7 +23,9 @@
   ],
   "facts": [
     "duckdb-R15-double-arith",
-    "duckdb-nonfinite-aggregates"
+    "duckdb-nonfinite-aggregates",
+    "polars-double-arith",
+    "polars-nonfinite-aggregates"
   ],
   "checked": [
     {

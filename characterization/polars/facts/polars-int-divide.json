@@ -1,0 +1,56 @@
+{
+  "id": "polars-int-divide",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `//`: floor division, NULL for a zero divisor",
+  "verdict": "floors; `x // 0` is NULL; `MIN // -1` wraps",
+  "area": "integers",
+  "constructs": [
+    "//",
+    "floordiv"
+  ],
+  "settings": {},
+  "description": [
+    "`//` on integers is floor division (`wrapping_floor_div_mod`): `-7 // 2` is -4, `1 // -2` is -1. A zero divisor gives NULL (the result's validity masks it), and `MIN // -1` wraps to `MIN`.",
+    "The Python API has no truncating integer division; the Rust kernel has one (`prim_wrapping_trunc_div`). `/` on integers is a division of doubles (polars-int-true-divide)."
+  ],
+  "reference": "`divide` on integers truncates toward zero, with `on_division_by_zero: ERROR` when the plan omits it (`NULL` when asked) and `overflow: ERROR` at `MIN / -1`. Polars differs on every quotient of operands of opposite signs that is not exact (26 of the 121 rows of the `NULL` candidate).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int8 // Int8"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int16 // Int16"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int32 // Int32"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Int64 // Int64"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L34-L57"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}
