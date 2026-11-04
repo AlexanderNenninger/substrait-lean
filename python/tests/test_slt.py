@@ -330,10 +330,10 @@ def test_large_queries_are_condensed(tmp_path):
     assert r.lean == f'[["{slt.MAX_ROWS // 2}"]]'
 
 
-def test_tables_of_128_bit_integers_are_refused(tmp_path):
+def test_tables_of_128_bit_integers_out_of_arrow_range_are_refused(tmp_path):
     """DuckDB exports `UHUGEINT` to Arrow as `decimal128(38, 0)`, its maximum
     as -1 (DD-5): the harness refuses such tables rather than mirror them
-    (#618)."""
+    (#618). Values Arrow holds mirror as they are."""
     path = tmp_path / "huge.test"
     path.write_text(
         textwrap.dedent(
@@ -353,9 +353,17 @@ def test_tables_of_128_bit_integers_are_refused(tmp_path):
             SELECT l[1] FROM h
             ----
             1
+
+            statement ok
+            CREATE TABLE k AS SELECT 5::HUGEINT AS k UNION ALL SELECT NULL
+
+            query I
+            SELECT k FROM k WHERE k IS NOT NULL
+            ----
+            5
             """
         )
     )
     results, _ = slt.replay_file(path, "area/huge.test")
-    assert [r.cls for r in results] == ["refused", "refused"]
-    assert all("DD-5" in (r.reason or "") for r in results)
+    assert [r.cls for r in results] == ["refused", "refused", "agree"]
+    assert all("DD-5" in (r.reason or "") for r in results[:2])
