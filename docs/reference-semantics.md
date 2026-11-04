@@ -417,3 +417,4 @@ these links connect it to a real run.
 | Overflow and `SUM` | [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202), "Decided (2026-11-01)" |
 | Engine tiers | [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211) |
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
+| The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |
