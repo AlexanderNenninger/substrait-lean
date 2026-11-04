@@ -493,6 +493,18 @@ def _plan_bound(
     return rest, problems, unproved
 
 
+def _gives_as_stated(choice: Mapping[str, Any] | None, dep: Mapping[str, Any]) -> bool:
+    """Does an engine whose choice is `choice` give the behaviours the plan
+    states at `dep` as stated? Only where every read there states one
+    (`"stated"`), and the choice delivers the first preference it supports."""
+    bs = dep.get("behaviours") or []
+    if not dep.get("stated") or not bs or not choice:
+        return False
+    return choice.get("kind") in ("asked", "oneOf") and all(
+        b in (choice.get("behaviours") or []) for b in bs
+    )
+
+
 def realization(
     engine: str,
     depends: Sequence[Mapping[str, Any]],
@@ -528,6 +540,10 @@ def realization(
         if r is None or r.get("class") is None:
             continue
         cls: Class = r["class"]
+        if r.get("shim") and _gives_as_stated(r.get("choice"), d):
+            # The plan states the behaviour, and the engine gives it as
+            # stated: the shim is for the reference's default (#444, 3b).
+            cls = "refines"
         facts = f" ({', '.join(r['facts'])})" if r.get("facts") else ""
         if cls == "refused":
             problems.append(f"{_where(g, o)} is refused on {engine}{facts}")

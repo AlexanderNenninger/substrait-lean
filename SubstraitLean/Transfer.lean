@@ -556,9 +556,12 @@ and option it meets, with the reference's behaviours there. -/
 def readsJson (reads : List Read) : Json :=
   let keys := (reads.map fun (g, o, _) => (g, o)).eraseDups
   Json.arr <| (keys.map fun (g, o) =>
-    let bs := (reads.filter fun (g', o', _) => g' == g && o' == o).flatMap fun (_, _, ps) =>
-      Profile.reference.table.allows g o ps
-    Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups)]).toArray
+    let here := reads.filter fun (g', o', _) => g' == g && o' == o
+    let bs := here.flatMap fun (_, _, ps) => Profile.reference.table.allows g o ps
+    -- Whether every read states its preference (a key's `NULLS FIRST`): an
+    -- engine that gives a stated preference as stated needs no shim there.
+    Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups),
+      ("stated", toJson (here.all fun (_, _, ps) => !ps.isEmpty))]).toArray
 
 /-- The dependency report of a contract's transformation, from `Rel.reads`. -/
 def Rel.dependsJson (r : Rel) : Lean.Json := readsJson r.reads

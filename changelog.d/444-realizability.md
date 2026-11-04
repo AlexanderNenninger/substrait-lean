@@ -9,6 +9,6 @@ from `substrait-check --realizability` (`SubstraitLean/Obligations.lean`)
 by `python -m sverify_dev.realizability --write`, and
 `tests/test_realizability.py` checks it is current. `Rel.duckdb_refines`
 states DuckDB's translation as a refinement of the reference, raise sets
-included (`Lowering.lowerRel_raises`). `substrait-check --dependencies` now
-lists the Polars `null_order` shim only for a key that leaves its NULL
-placement unspecified.
+included (`Lowering.lowerRel_raises`). `substrait-check --dependencies` and the
+route's class list the Polars `null_order` shim only where a key leaves its
+NULL placement unspecified.
