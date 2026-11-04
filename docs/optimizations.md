@@ -363,18 +363,68 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
 ## 4. Partition and file pruning (#81)
 
 `sverify.io` reads Delta and Iceberg with per-file statistics, and
-`TableFormat.lean` already proves that statistics bound a file's rows
-(`stats_table`, `stats_bounds`). Two things would be proved:
+`TableFormat.lean` proves that statistics bound a file's rows
+(`stats_table`, `stats_bounds`). A source with a condition,
+`DeltaSource(uri, where=...)` or `IcebergSource(catalog, name, where=...)`,
+reads the rows on which it is TRUE and skips the data files whose statistics
+rule it out. `SubstraitLean/Pruning.lean` proves the criterion:
 
-* **Pruning soundness.** If `aeval` of a filter on a file's statistics is
-  certainly not TRUE, the file contributes no rows. Then reading only the
-  surviving files is `Rel.eval_sharded` with the pruned shards empty.
-  Engines prune too. What we add is a proof against the exact statistics
-  semantics: NULL counts, NaN in float min/max, and truncated string bounds
-  (Delta truncates long strings in statistics, so they are only prefixes).
-* **Pruning from implied predicates.** A contract on an upstream view can
-  imply a predicate on a base column (for example `ts >= start` after a join
-  on a key). We can push it to the scan, and engines do not derive it.
+* Shard the source by data file. A skipped file's shard holds no row on
+  which the condition is TRUE, so dropping it leaves a sharding of the same
+  tables (`Sharding.prune`), and every plan linear in the source gives the
+  same rows from the files read (`Rel.eval_pruned`, from
+  `Rel.eval_sharded`). `prune_sound` gives the rows in order.
+* A file is skipped when the abstract value of the condition on the file's
+  statistics cannot be TRUE (`stats_prune`, from `Expr.abs_sound`).
+  `sverify.io` asks the contract checker, which proves "the condition is
+  not TRUE" from the same facts (`contract_sound`) and also follows
+  conjunctions and disjunctions through `refine`.
+* NULL counts: a column is NULL-free only where the NULL count is 0, and
+  a file whose NULL count equals its row count holds only NULLs
+  (`ColStats.aval`). With deletion vectors or delete files the statistics
+  describe a superset of the rows, which keeps them correct.
+* NaN (#36): writers leave NaN out of a double column's minimum and
+  maximum. NaN is the greatest code, so the minimum still bounds the
+  column, and the maximum only where the file counts no NaN
+  (`DoubleStats.colStats_correct`). Delta and pyiceberg count no NaN, so
+  their double maxima are not used, and a file with maximum `1.0` and a
+  NaN row is read for `x > 100`
+  ([test](../python/tests/test_io_pruning.py)).
+* Truncated strings: Delta and Iceberg may keep a prefix of a string bound
+  (pyiceberg keeps 16 characters and increments the last one of a maximum).
+  Every value is at least the minimum, and every value cut to the maximum's
+  length is at most the maximum, whichever convention the writer follows
+  (`StrStats.Correct`). `StrStats.mayTrue` decides `=`, `<`, `<=`, `>`,
+  `>=`, `IN`, `AND` and `OR` of string columns and literals from that
+  (`strPrune_sound`); `str_may_true` in `sverify.io` mirrors it, and a
+  Hypothesis test checks it on truncated bounds.
+
+Engines prune too. For `amount * 2 > 100`, pyarrow's statistics pushdown
+keeps every file, and Sverify skips those with `amount <= 50` (`test_where_skips_files_the_reader_would_scan` in
+`test_io_delta.py`, `test_iceberg_where_skips_files_the_reader_would_scan`
+in `test_io_pruning.py`). An Iceberg refresh skips appended files the same
+way.
+
+A view can also imply a predicate on a base table that the query does not
+state, and engines do not derive one. With `o.ts >= c.since` in a join of
+orders and customers, and `since >= DATE '2026-01-01'` among the
+customers' preconditions, only orders from 2026 on can reach the result.
+`Rel.need` (`SubstraitLean/Implied.lean`) finds such predicates. It pushes
+a demand down the plan through filters, emits, projections, unions and
+inner joins. At a join, it refines the join condition and the demand on
+the other input's abstract values (`Rel.aeval`), carrying bounds across
+comparisons of two columns (`geTransfer`). Under an aggregate, a window, a
+left join or a `FETCH` it gives up. `Rel.need_eval` proves that the view
+gives the same result on any table that agrees with the original on the
+rows passing the predicate (`SameOn`). So a node's Delta or Iceberg source
+reads only those rows, adds the predicate to its `where`, and skips the
+files whose statistics rule it out
+(`test_a_predicate_the_view_implies_prunes_files` in
+`test_io_pruning.py`). The predicate rests on the preconditions, which
+every refresh establishes, and on facts that hold at every version (Delta
+CHECK constraints and a source's own condition). File statistics change
+between versions, so they are left out. A table whose preconditions fail
+on rows the predicate drops raises in fewer cases; the result is the same.
 
 ## 5. View matching and shared subplans (#82, later)
 

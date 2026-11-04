@@ -9,6 +9,7 @@ import SubstraitLean.Semantic
 import SubstraitLean.Write
 import SubstraitLean.Infer
 import SubstraitLean.Rows
+import SubstraitLean.Implied
 
 /-!
 # Checking a contract
@@ -193,6 +194,10 @@ structure Report where
   inferred : List (String × Nat × Bound) := []
   /-- The values `bounds` rule out per base-table column (a divisor's 0). -/
   inferredNes : List (String × Nat × Int) := []
+  /-- Predicates the transformation implies on its base tables (#81): for
+  each table, abstract rows (as column bounds) one of which every row that
+  reaches the output lies in (`Rel.need`, `Rel.need_eval`). -/
+  implied : List (String × List (List (Nat × Bound))) := []
 
 /-- The node's name in `sverify.sql`'s model. -/
 def _root_.Substrait.Rel.nodeName : Rel → String
@@ -234,6 +239,9 @@ def Report.json (r : Report) : Json :=
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
     ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe).toArray),
+    ("implied", Json.arr (r.implied.map fun (t, Es) =>
+      Json.mkObj [("table", Lean.toJson t), ("any", Json.arr (Es.map fun E =>
+        Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
     ("guard_free", Lean.toJson r.guardFree),
     ("unchecked", r.unchecked),
     ("optimized", r.optimized),
@@ -252,6 +260,18 @@ def foreignKeys (j : Json) : ForeignKeys := fun t =>
     | some [c, s, p] => do
       pure ((← c.getNat?.toOption), (← s.getStr?.toOption), (← p.getNat?.toOption))
     | _ => none
+
+/-- The predicates `r` implies on each base table it reads (`Rel.need` from
+the root), as column bounds, one list per abstract row; tables where an
+abstract row bounds no column are left out (their predicate is TRUE). -/
+def impliedOf (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (r : Rel) :
+    List (String × List (List (Nat × Bound))) :=
+  r.tables.eraseDups.filterMap fun t =>
+    match Rel.need cat A F t (.lit (.bool true)) r with
+    | some Es =>
+      let bs := Es.map envBounds
+      if bs.isEmpty || bs.any (·.isEmpty) then none else some (t, bs)
+    | none => none
 
 def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
 
@@ -288,6 +308,8 @@ def check (input : Json) : Except String Report := do
   let inputKeys : String → List (List Nat) := fun t =>
     natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
   let T := Rel.keyedWindows cat A F inputKeys
+  let implied : List (String × List (List (Nat × Bound))) :=
+    ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST or " ++
     "STRING_AGG, and the engine orders them"
@@ -359,6 +381,7 @@ def check (input : Json) : Except String Report := do
         (Write.writePlan (Write.planSchemas p) cat q p.names, log)
     | none => (.null, [])
   return {
+    implied
     optimized
     rewrites
     ensures := results

@@ -43,6 +43,8 @@ import SubstraitLean.Keys
 import SubstraitLean.Semantic
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
+import SubstraitLean.Pruning
+import SubstraitLean.Implied
 import SubstraitLean.Completeness
 import SubstraitLean.ContractCheck
 import SubstraitLean.ShardCheck

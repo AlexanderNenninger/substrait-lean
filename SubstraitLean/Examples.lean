@@ -12,6 +12,8 @@ import SubstraitLean.Rows
 import SubstraitLean.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
+import SubstraitLean.Pruning
+import SubstraitLean.Implied
 import SubstraitLean.Partition
 import SubstraitLean.Allowed
 import SubstraitLean.Guards
@@ -220,6 +222,13 @@ end Substrait.Examples
 #print axioms Substrait.stats_fact
 #print axioms Substrait.stats_all_null
 #print axioms Substrait.prune_sound
+#print axioms Substrait.Rel.eval_pruned
+#print axioms Substrait.stats_prune
+#print axioms Substrait.DoubleStats.colStats_correct
+#print axioms Substrait.strPrune_sound
+#print axioms Substrait.strStats_prune
+#print axioms Substrait.Rel.need_sound
+#print axioms Substrait.Rel.need_eval
 #print axioms Substrait.Rel.eval_sharded
 #print axioms Substrait.Rel.keyRows
 #print axioms Substrait.Sharding.coDisjoint

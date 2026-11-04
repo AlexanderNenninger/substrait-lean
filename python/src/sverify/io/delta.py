@@ -21,6 +21,7 @@ Feed.
 
 from __future__ import annotations
 
+import copy
 import math
 import os
 import time
@@ -330,6 +331,9 @@ class DeltaSource(Pipeable):
     ):
         self.uri, self.storage_options, self.where = str(uri), storage_options, where
         self.name = name or _basename(self.uri)
+        self.implied: str | None = None
+        """The predicate a node's view implies on this table, if the source
+        reads only the rows that pass it (`_restricted`)."""
         self.skipped: list[str] = []
         """The files the last snapshot did not read."""
         self._kept: dict[tuple[str, str], bool] = {}
@@ -357,6 +361,18 @@ class DeltaSource(Pipeable):
         except Exception:  # noqa: BLE001 - no such table or version
             return None
         return str(dt.metadata().id)  # a UUID; the stubs say int
+
+    def _restricted(self, implied: str) -> DeltaSource:
+        """A copy that reads only the rows that also pass `implied`, a
+        predicate a node's view implies on this table (#81): the view gives
+        the same result on them (`Rel.need_eval` in
+        `SubstraitLean/Implied.lean`), and files whose statistics rule it
+        out are skipped."""
+        out = copy.copy(self)
+        out.where = implied if self.where is None else f"({self.where}) AND ({implied})"
+        out.implied = implied
+        out.skipped, out._kept = [], {}
+        return out
 
     def _facts(
         self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
