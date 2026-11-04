@@ -750,6 +750,11 @@ tables. A table format plays four roles:
   properties={...})` creates its table at that location, partitioned and
   with those properties, which a catalog without a default location, such
   as Unity Catalog's, needs (#468).
+  A streaming sink adds a snapshot and small files on every refresh.
+  `DeltaSink(uri, compact_every=..., vacuum_retention=...)` and
+  `IcebergSink(catalog, identifier, compact_every=..., snapshot_retention=...)`
+  compact the table after every so many writes and then remove what older
+  versions alone used; `maintain()` does it on demand (#465).
 
 Schema changes. A batch whose data fits the old schema (added columns,
 widened types whose values still fit) is read in it, and the report names

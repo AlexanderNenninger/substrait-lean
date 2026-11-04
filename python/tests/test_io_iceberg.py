@@ -2,7 +2,7 @@
 change sources, sources of preconditions and sinks."""
 
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pyarrow as pa
 import pytest
@@ -637,3 +637,121 @@ def test_unknown_transforms_and_the_sinks_own_properties_are_refused(catalog):
         IcebergSink(catalog, "db.out", partition_by=[("ts", "dya")])
     with pytest.raises(ValueError, match="sverify.contract"):
         IcebergSink(catalog, "db.out", properties={"sverify.contract": "{}"})
+
+
+@sv.transform(ensures=[sv.unique("customer")])
+def totals(orders):
+    return orders.group_by(orders.customer).agg(n=orders.id.count(), total=orders.amount.sum())
+
+
+@sv.transform(ensures=[])
+def busy(t):
+    return t.filter(t.n > 2)
+
+
+def live_files(t) -> tuple[int, int]:
+    """The current snapshot's data files and delete files."""
+    tasks = list(t.scan().plan_files())
+    return len(tasks), len({d.file_path for task in tasks for d in task.delete_files})
+
+
+def files_on_disk(root) -> int:
+    return sum(1 for p in root.rglob("*") if p.is_file())
+
+
+@pytest.mark.parametrize("partition_by", [None, [("customer", "identity")]])
+def test_maintenance_keeps_a_streaming_sink_bounded(catalog, tmp_path, partition_by):
+    """#465: an aggregate refreshed after every append adds a snapshot, a
+    data file and a delete file per refresh. With `compact_every` and
+    `snapshot_retention`, its table stays bounded (snapshots, live files and
+    files on disk) and equals a full recompute, and so does a node reading
+    it."""
+
+    catalog.create_table("db.orders", schema=SCHEMA_ORDERS).append(
+        dated([(1, "a", 1, 1), (2, "b", 2, 2)])
+    )
+    src = IcebergSource(catalog, "db.orders")
+    where = tmp_path / "sink"
+    sink = IcebergSink(
+        catalog,
+        "db.totals",
+        location=f"file://{where}",
+        partition_by=partition_by,
+        properties={
+            "write.metadata.delete-after-commit.enabled": "true",
+            "write.metadata.previous-versions-max": "3",
+        },
+        compact_every=4,
+        snapshot_retention=timedelta(0),
+        min_snapshots=2,
+    )
+    agg = totals(src).write(sink)
+    down = busy(agg)
+    sizes = []
+    for i in range(3, 40):
+        src.table().append(dated([(i, "ab"[i % 2], i, 1 + i % 3)]))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            down.refresh()
+        t = catalog.load_table("db.totals")
+        table = t.scan().to_arrow().select(["customer", "n", "total"])
+        assert sorted(tuple(r.values()) for r in table.to_pylist()) == rows(agg)
+        assert rows(agg) == recomputed(totals(src), src)
+        assert rows(down) == recomputed(busy(agg), IcebergSource(catalog, "db.totals"))
+        sizes.append((len(t.snapshots()), *live_files(t), files_on_disk(where)))
+    # Without maintenance: 37 snapshots, 1 + 36 data files, 36 delete files.
+    snapshots, data, deletes, disk = map(max, zip(*sizes, strict=True))
+    assert snapshots <= 6 and data <= 2 * 4 + 2 and deletes <= 2 * 4
+    assert disk <= 60
+    # A steady cycle of `compact_every` writes.
+    assert sizes[-8:] == sizes[-16:-8]
+    t = catalog.load_table("db.totals")
+    assert any(s.summary.operation == Operation.REPLACE for s in t.snapshots())
+    assert IcebergSource(catalog, "db.totals").contract() is not None
+    assert IcebergSource(catalog, "db.totals").stored() is not None
+
+
+def test_a_restart_resumes_past_the_sinks_own_compaction(catalog):
+    src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7), (3, "ada", 1)])
+    sink = IcebergSink(catalog, "db.totals")
+    agg = totals(src).write(sink)
+    agg.refresh()
+    for i in range(4, 8):
+        src.table().append(rows_table([(i, "ada", i)]))
+        assert agg.refresh().writes[0].mode == "row-level"
+    before = live_files(catalog.load_table("db.totals"))
+    assert before == (5, 4)
+    done = sink.maintain()
+    assert done == {"data_files_removed": 5, "delete_files_removed": 4, "data_files_added": 1}
+    t = catalog.load_table("db.totals")
+    assert live_files(t) == (1, 0)
+    assert t.current_snapshot().summary.operation == Operation.REPLACE
+    # Nothing left to compact: no snapshot.
+    assert sink.maintain()["data_files_added"] == 0
+    assert len(catalog.load_table("db.totals").snapshots()) == len(t.snapshots())
+    stored = IcebergSource(catalog, "db.totals").stored()
+    assert stored is not None and stored.sources == {"orders": 5}
+    src.table().append(rows_table([(9, "bob", 1)]))
+    again = totals(src).write(IcebergSink(catalog, "db.totals"))
+    entry = again.refresh()["totals"]
+    assert entry.started == f"resumed from {stored.where}"
+    assert entry.write is not None and entry.write.mode == "row-level"
+    assert rows(again) == recomputed(totals(src), src)
+    # Expiry keeps the newest snapshots and the sink's last one.
+    count = len(catalog.load_table("db.totals").snapshots())
+    out = IcebergSink(catalog, "db.totals").maintain(expire=timedelta(0), min_snapshots=1)
+    t = catalog.load_table("db.totals")
+    # The compaction adds one snapshot, and only it is left.
+    assert len(t.snapshots()) == 1 and out["snapshots_expired"] == count
+    assert out["files_deleted"] > 0
+    assert sorted(tuple(r.values()) for r in t.scan().to_arrow().to_pylist()) == rows(again)
+    stored = IcebergSource(catalog, "db.totals").stored()
+    assert stored is not None and stored.sources == {"orders": 6}
+
+
+def test_maintenance_options_are_checked(catalog):
+    with pytest.raises(ValueError, match="compact_every"):
+        IcebergSink(catalog, "db.out", compact_every=0)
+    with pytest.raises(ValueError, match="min_snapshots"):
+        IcebergSink(catalog, "db.out", min_snapshots=0)
+    assert IcebergSink(catalog, "db.missing").maintain() == {}
