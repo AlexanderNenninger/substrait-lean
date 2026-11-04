@@ -1,0 +1,33 @@
+{
+  "id": "polars-mode",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`mode` returns every most frequent value",
+  "verdict": "a list of all modes, in no stated order",
+  "area": "aggregates",
+  "constructs": [
+    "mode"
+  ],
+  "settings": {},
+  "description": "`mode` returns all the values tied for most frequent, as several rows (a list per group); their order is not documented. `mode().first()` picks one.",
+  "reference": "`MODE` returns one value, any of the tie (`tie_pick`). A writer takes one element of Polars's list.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "mode-ties"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "aggregates-empty"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

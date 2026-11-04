@@ -1,0 +1,56 @@
+{
+  "id": "polars-nan-equality",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "NaN equals NaN: in `==`, grouping, `unique` and joins",
+  "verdict": "`nan_equality: NAN_IS_NAN` natively",
+  "area": "doubles",
+  "constructs": [
+    "==",
+    "is_in",
+    "group_by",
+    "unique",
+    "join"
+  ],
+  "settings": {},
+  "description": "`NaN == NaN` is true and `NaN != NaN` false; `is_in([nan])` finds NaN; `group_by`, `unique`, `n_unique` put every NaN in one group, and a join matches NaN keys. NULL compares as NULL (`eq_missing` makes NULL equal NULL).",
+  "reference": "`NAN_IS_NAN` (#89, an override of IEEE equality) for `=`, grouping, `DISTINCT` and joins.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "Float64 == Float64"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "nan-compare"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "nan-is-in"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "group-nan-zero"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "unique-nan-zero"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "join-nan-zero-null"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}

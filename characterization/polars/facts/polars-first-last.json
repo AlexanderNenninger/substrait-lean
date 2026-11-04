@@ -1,0 +1,44 @@
+{
+  "id": "polars-first-last",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`first`, `last`: the first and last row in input order, NULL included",
+  "verdict": "input order, deterministic; NULLs taken unless `ignore_nulls=True`",
+  "area": "aggregates",
+  "constructs": [
+    "first",
+    "last",
+    "implode",
+    "str.join",
+    "group_by"
+  ],
+  "settings": {},
+  "description": [
+    "`first` and `last` take the first and last row of the group in input order, also when it is NULL; `ignore_nulls=True` skips NULLs. Over 200 000 rows in 10 groups, in memory and streaming, `first` was the least row index, `last` the greatest, and the list a group collects (`pl.col(x)` in `agg`, `implode`) kept input order.",
+    "`str.join` concatenates in that order and skips NULLs."
+  ],
+  "reference": "`tie_pick`: any row of the group (each measure may take its own); `tie_order`: any order for `string_agg` and `array_agg`. Polars's choice is allowed, and deterministic where DuckDB's depends on parallelism (duckdb-mode-ties).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "first-last"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "first-input-order"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "string-agg"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}

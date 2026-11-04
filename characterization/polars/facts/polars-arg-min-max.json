@@ -1,0 +1,34 @@
+{
+  "id": "polars-arg-min-max",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`arg_min`, `arg_max`: the first index of a tie",
+  "verdict": "the first of tied rows",
+  "area": "aggregates",
+  "constructs": [
+    "arg_min",
+    "arg_max"
+  ],
+  "settings": {},
+  "description": "`arg_max` over 1, 3, 3, 1 is 1 and `arg_min` is 0: the first of the tied rows. NaN is skipped (polars-min-max-nan).",
+  "reference": "`tie_pick`: any row of the tie.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "arg-min-max-ties"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "min-max-nan"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}
