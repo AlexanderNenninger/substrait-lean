@@ -13,15 +13,20 @@ that only changes behaviour sverify does not rely on warns.
 DuckDB: sverify runs each plan on a cursor of its own on the process's
 database (`sverify.duckdb_engine`), so a session's `SET` on another cursor
 leaves it alone; `SET GLOBAL` reaches it, and that is what the check sees.
-Polars: the engine a lazy query runs on, `pl.Config.set_engine_affinity`
-(or `POLARS_ENGINE_AFFINITY`).
 
 Not checked, since no choice depends on them: display settings
 (`set_fmt_float`, …), which change no value; threads, which change the
 order of a double `SUM`, an open option every route already allows within
-the plan's bound (`sum_order`); and DuckDB's `TimeZone`, which the written
-SQL never reads, since plans with time-zone-aware timestamps are refused
-(duckdb-time-zones).
+the plan's bound (`sum_order`); and DuckDB's `TimeZone` and `Calendar`,
+which the written SQL never reads, since plans with time-zone-aware
+timestamps are refused (duckdb-time-zones). DuckDB's
+`dialect_compatibility_mode` and `regex_match_operator_semantics` wait on a
+check of DuckDB's source.
+
+Polars: the engine a lazy query runs on, from `pl.Config.set_engine_affinity`
+(`POLARS_ENGINE_AFFINITY`), `POLARS_FORCE_STREAMING` and
+`POLARS_AUTO_STREAMING`. The Polars engine pins `collect(engine="in-memory")`,
+so this check is defence in depth.
 """
 
 from __future__ import annotations
@@ -109,6 +114,41 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             ("duckdb-R4", "duckdb-R5", *_R15),
             "NaN and ±inf from double operations (nan_creation)",
         ),
+        Setting(
+            "default_collation",
+            ("",),
+            "refuse",
+            ("characterization/duckdb/collate.json",),
+            "how strings compare; NOCASE may change starts_with, strpos and replace",
+        ),
+        Setting(
+            "scalar_subquery_error_on_multiple_rows",
+            (True,),
+            "refuse",
+            ("characterization/duckdb/subquery.json",),
+            "whether a scalar subquery with several rows raises or takes one",
+        ),
+        Setting(
+            "enable_optimizer",
+            (True,),
+            "refuse",
+            ("characterization/duckdb/settings.json",),
+            "which rows a raising expression sees",
+        ),
+        Setting(
+            "disabled_optimizers",
+            ("",),
+            "refuse",
+            ("characterization/duckdb/settings.json",),
+            "which rows a raising expression sees",
+        ),
+        Setting(
+            "preserve_insertion_order",
+            (True,),
+            "warn",
+            ("characterization/duckdb/order.json",),
+            "the order of rows without an ORDER BY, which no route relies on",
+        ),
     ),
     "polars": (
         Setting(
@@ -122,6 +162,20 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
                 "polars-mean-float",
             ),
             "the algorithms of float aggregates (sum_order, stat_algo), probed in memory",
+        ),
+        Setting(
+            "force_streaming",
+            (False,),
+            "refuse",
+            ("polars-sum-float", "polars-var-std", "polars-cov"),
+            "the engine a query runs on (POLARS_FORCE_STREAMING), probed in memory",
+        ),
+        Setting(
+            "auto_streaming",
+            (False,),
+            "refuse",
+            ("polars-sum-float", "polars-var-std", "polars-cov"),
+            "the engine a query runs on (POLARS_AUTO_STREAMING), probed in memory",
         ),
     ),
 }
@@ -142,11 +196,22 @@ def _duckdb_reader() -> Callable[[str], Any]:
     return duckdb_engine.setting
 
 
+#: Polars's environment variables for its settings (`pl.Config` writes
+#: `POLARS_ENGINE_AFFINITY` too).
+_POLARS_ENV = {
+    "engine_affinity": ("POLARS_ENGINE_AFFINITY", "auto"),
+    "force_streaming": ("POLARS_FORCE_STREAMING", "0"),
+    "auto_streaming": ("POLARS_AUTO_STREAMING", "0"),
+}
+
+
 def _polars_reader() -> Callable[[str], Any]:
     def read(name: str) -> Any:
+        var, default = _POLARS_ENV[name]
+        value = os.environ.get(var, default)
         if name == "engine_affinity":
-            return os.environ.get("POLARS_ENGINE_AFFINITY", "auto")
-        raise KeyError(name)
+            return value
+        return value.strip().lower() not in ("", "0", "false", "no", "off")
 
     return read
 

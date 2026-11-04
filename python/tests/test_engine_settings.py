@@ -63,6 +63,14 @@ def test_the_defaults_are_the_profiles() -> None:
         ("default_order", "'desc'", "default_order is 'DESC'"),
         ("integer_division", "true", "integer_division is True"),
         ("error_on_division_by_zero", "false", "error_on_division_by_zero is False"),
+        ("default_collation", "'nocase'", "default_collation is 'nocase'"),
+        (
+            "scalar_subquery_error_on_multiple_rows",
+            "false",
+            "scalar_subquery_error_on_multiple_rows is False",
+        ),
+        ("enable_optimizer", "false", "enable_optimizer is False"),
+        ("disabled_optimizers", "'filter_pushdown'", "disabled_optimizers is 'filter_pushdown'"),
     ],
 )
 def test_a_duckdb_setting_a_choice_depends_on_refuses(
@@ -114,6 +122,35 @@ def test_the_time_zone_is_not_checked(con, duckdb_global) -> None:
     assert report.routes["duckdb"].warnings == ()
 
 
+def test_the_calendar_is_not_checked_and_insertion_order_warns(con, duckdb_global) -> None:
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    duckdb_global("Calendar", "'japanese'")
+    report.run(con, "duckdb", route="auto")
+    assert report.routes["duckdb"].warnings == ()
+    duckdb_global("preserve_insertion_order", "false")
+    with pytest.warns(EngineSettingsWarning, match="preserve_insertion_order is False"):
+        report.run(con, "duckdb", route="auto")
+
+
+@pytest.mark.parametrize(
+    ("var", "value", "named"),
+    [
+        ("POLARS_FORCE_STREAMING", "1", "force_streaming is True"),
+        ("POLARS_AUTO_STREAMING", "1", "auto_streaming is True"),
+        ("POLARS_ENGINE_AFFINITY", "gpu", "engine_affinity is 'gpu'"),
+    ],
+)
+def test_polars_streaming_variables(con, monkeypatch, var: str, value: str, named: str) -> None:
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    monkeypatch.setenv(var, value)
+    with pytest.raises(EngineSettingsError, match=named):
+        report.run(con, "polars", route="auto")
+    monkeypatch.setenv(var, "0" if var != "POLARS_ENGINE_AFFINITY" else "in-memory")
+    report.run(con, "polars", route="auto")
+
+
 def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
     extra = _engine_settings.Setting("threads", (4,), "warn", (), "nothing sverify relies on")
     monkeypatch.setitem(_engine_settings.SETTINGS, "duckdb", (extra,))
@@ -146,7 +183,11 @@ def test_values_are_compared_normalised() -> None:
                 "integer_division": "false",
                 "error_on_division_by_zero": True,
                 "ieee_floating_point_ops": "True",
-                "TimeZone": "UTC",
+                "default_collation": "",
+                "scalar_subquery_error_on_multiple_rows": "true",
+                "enable_optimizer": True,
+                "disabled_optimizers": "",
+                "preserve_insertion_order": True,
             },
         )
         == []
