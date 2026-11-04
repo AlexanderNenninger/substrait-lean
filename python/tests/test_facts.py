@@ -109,7 +109,7 @@ def test_coverage_lists_facts_per_item(tmp_path):
     assert found["integers"]["division_type"] == []
     text = facts.report(found)
     assert "  division_type: missing" in text
-    assert text.endswith("2/66 items covered; gaps in: " + ", ".join(found))
+    assert text.endswith("2/67 items covered; gaps in: " + ", ".join(found))
     rows = facts.row_coverage(docs, "polars", root)
     assert rows[("int.arith", "overflow", "i64")] == [("polars-a", "source")]
     assert rows[("int.arith", "overflow", "i8")] == []
