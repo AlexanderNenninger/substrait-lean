@@ -9,9 +9,30 @@
     "nan_order"
   ],
   "rows": [
-    {"group": "cmp", "option": "nan_order", "types": ["fp32", "fp64"]},
-    {"group": "agg.order", "option": "nan_order", "types": ["fp32"]},
-    {"group": "agg.quant", "option": "nan_order", "types": ["fp64"], "evidence": "docs"}
+    {
+      "group": "cmp",
+      "option": "nan_order",
+      "types": [
+        "fp32",
+        "fp64"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "agg.order",
+      "option": "nan_order",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "agg.quant",
+      "option": "nan_order",
+      "types": [
+        "fp64"
+      ]
+    }
   ],
   "constructs": [
     "<",
@@ -27,11 +48,12 @@
   "description": [
     "DuckDB departs from IEEE 754 in one point: NaN compares equal to NaN and greater than any other floating-point number, `+inf` included (`'nan' > sqrt(2)` is true). So `FLOAT` and `DOUBLE` have a total order, and `greatest` and `least` treat NaN as the largest value.",
     "The docs state this for both floating-point types. They say nothing about the sign of a NaN in comparisons (duckdb-nan-equality: `nan = -nan` is true).",
-    "`min`, `max` and `quantile_cont` take the values in this order (\"in the specified order\"); the docs do not restate NaN's place for each aggregate. duckdb-quantile-disc probes `agg.order` for `fp64`."
+    "`min`, `max` and `quantile_cont` take the values in this order (\"in the specified order\"); the docs do not restate NaN's place for each aggregate. duckdb-quantile-disc probes `agg.order` for `fp64`.",
+    "Round 4 (probes): `median` and `quantile_cont` sort NaN above every number: of 1, 2, NaN, 3 the median is 2.5, `quantile_cont(x, 0.75)` and `quantile_cont(x, 1.0)` are NaN and `quantile_disc(x, 0.75)` is 3.0; of 1, NaN the median is NaN."
   ],
   "reference": "`nan_order: GREATEST`, NaN above `+inf`, for sorting, `MIN`, `MAX`, `<`, `greatest` and `least` (docs/core-semantics.md). Substrait's comparisons are IEEE (`NaN < x` false); ST-4 records the gap.",
   "status": "no-finding",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -100,6 +122,18 @@
         }
       ],
       "notes": "The comparisons and the sort put NaN above +inf at both widths. `quantile_cont` has no NaN test, so the `agg.quant` row stays at the docs."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "quantile-nan"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
     }
   ],
   "issues": [

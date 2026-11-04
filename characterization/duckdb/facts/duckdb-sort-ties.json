@@ -13,8 +13,7 @@
       "option": "tie_order",
       "types": [
         "any"
-      ],
-      "evidence": "source"
+      ]
     },
     {
       "group": "agg.seq",
@@ -28,24 +27,21 @@
       "option": "tie_order",
       "types": [
         "any"
-      ],
-      "evidence": "source"
+      ]
     },
     {
       "group": "win.ntile",
       "option": "tie_order",
       "types": [
         "any"
-      ],
-      "evidence": "source"
+      ]
     },
     {
       "group": "win.value",
       "option": "tie_order",
       "types": [
         "any"
-      ],
-      "evidence": "source"
+      ]
     }
   ],
   "constructs": [
@@ -68,11 +64,12 @@
     "`list` (`array_agg`) and `string_agg` are order-sensitive and \"can have non-deterministic results without ordering\"; an `ORDER BY` in the call sorts the values first, and the docs give that sort no stability either, so ties on its keys take any order.",
     "For windows (`row_number`, `ntile`, `lag`, …) the docs only say that without an `ORDER BY` the results \"are not well-defined\"; the order of peers is for round 2.",
     "Round 2 (source): every sort, `ORDER BY`, a window's partition and order, and an aggregate's `ORDER BY`, goes through the same `Sort`. Each thread sorts its rows' keys with vergesort, which falls back to ska_sort, an in-place radix sort; neither is stable, and the key holds only the sort columns. The threads' sorted runs are then merged (K-way Merge Path). Rows that tie on every key come out in an order that depends on the sort and on how rows were split between threads.",
-    "Windows: `row_number` is the row's position in its sorted partition, and `ntile` is computed from that position, so both depend on the order of peers. `rank`, `dense_rank`, `percent_rank` and `cume_dist` step at the start of each peer group and give every peer the same value, so they do not. `lag`, `lead`, `first_value`, `last_value` and `nth_value` read rows by their position in the frame, so a peer's value depends on the order of the peers."
+    "Windows: `row_number` is the row's position in its sorted partition, and `ntile` is computed from that position, so both depend on the order of peers. `rank`, `dense_rank`, `percent_rank` and `cume_dist` step at the start of each peer group and give every peer the same value, so they do not. `lag`, `lead`, `first_value`, `last_value` and `nth_value` read rows by their position in the frame, so a peer's value depends on the order of the peers.",
+    "Round 4 (probes): over 1M rows with 10 distinct keys, `ORDER BY k`, `row_number`, `ntile` and `lag` over `ORDER BY k`, and `list(i ORDER BY k)` return the peers in a different order in each of five runs at 4 threads. At 1 thread the result repeats, and still is not the input order. A top-N (`ORDER BY k LIMIT 5`) gave the same rows every time."
   ],
   "reference": "`tie_order`: any order of the ties (docs/core-semantics.md); the reference fixes nothing, and a plan that needs one order is refused or made `tie_free`. DuckDB's is one of them.",
   "status": "no-finding",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -169,6 +166,18 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin no order of ties; they avoid them (distinct keys, `rowsort`, `threads=1`) and say so. `agg.seq`: `list`, `string_agg` and `first` without an ordering of their own change with the thread count, which the tests document and work around. `win.rank`: `rank` and `percent_rank` do not depend on the order of peers (test_rank_orderby.test); no test pins `row_number` on ties, so the row stays at the source reading. No test pins ties of a sort, of `ntile` or of `lag`/`lead`/`first_value`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "sql": "CREATE TABLE w AS SELECT i, i % 10 k FROM range(1000000) r(i); SELECT i FROM w ORDER BY k; SELECT row_number() / ntile(7) / lag(i) OVER (ORDER BY k) FROM w; SELECT list(i ORDER BY k) FROM w  -- five runs each per SET threads = 1, 4",
+          "observed": "threads = 1: the same result in all five runs for each, but not the input order (row_number 1 … 5 go to i = 20, 40, 30, 0, 10); threads = 4: five distinct results in five runs for each; ORDER BY k LIMIT 5 gives 0, 10, 20, 30, 40 every time at both"
+        }
+      ],
+      "notes": "A scratch script outside the harness, since the results vary run to run."
     }
   ]
 }
