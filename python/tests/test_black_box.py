@@ -436,3 +436,198 @@ def test_printf_keeps_its_laws_on_random_data(fmt, vs):
             continue
         for x, p in rows:
             assert (p is None) == (x is None or fmt is None)
+
+
+# -- #327: lists and vectors ---------------------------------------------------
+
+_VEC = ibis.schema(
+    {"id": "!int64", "a": "array<float64>", "b": "array<float64>", "l": "array<int64>"}
+)
+_VECS = {
+    "v": pa.table(
+        {
+            "id": pa.array([1, 2, 3, 4, 5], pa.int64()),
+            "a": pa.array(
+                [[1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [-1.5, 0.5, 2.0], None, [3.0, -4.0, 0.5]],
+                pa.list_(pa.float64()),
+            ),
+            "b": pa.array(
+                [[2.0, 4.0, 6.0], [1.0, 1.0, 1.0], [1.5, -0.5, -2.0], [1.0, 1.0, 1.0], None],
+                pa.list_(pa.float64()),
+            ),
+            "l": pa.array([[1, 2, None], [], None, [None], [2**62, 2**62]], pa.list_(pa.int64())),
+        }
+    )
+}
+_VEC_SCHEMAS = {"v": _VEC}
+
+
+def _nan_rows(t: pa.Table) -> list:
+    """`_rows` with NaN equal to itself, and one zero (the model's doubles)."""
+
+    def canon(x: object) -> object:
+        if isinstance(x, float) and math.isnan(x):
+            return "NaN"
+        if isinstance(x, float) and x == 0.0:
+            return 0.0
+        return [canon(y) for y in x] if isinstance(x, list) else x
+
+    return _rows(
+        pa.table({c: pa.array([repr(canon(x)) for x in t[c].to_pylist()]) for c in t.column_names})
+    )
+
+
+#: Oracle C: Lean does not evaluate the vector functions.
+VECTORS = [
+    "SELECT id, list_cosine_similarity(a, b) AS s, array_cosine_distance(a, b) AS d,"
+    " list_distance(a, b) AS e FROM v",
+    "SELECT id, list_inner_product(a, b) AS i, array_negative_inner_product(a, b) AS n,"
+    " array_cross_product(a, b) AS c FROM v",
+]
+#: Exact, so oracles A and C: `list_sum` (Lean evaluates it), and DuckDB's
+#: other names of `l[i]` and `[…]`.
+LISTS = [
+    "SELECT id, list_sum(l) AS s FROM v",
+    "SELECT id, list_extract(l, 1) AS x, list_element(l, -1) AS y, array_extract(l, 3) AS z,"
+    " list_extract(l, 0) AS w FROM v",
+    "SELECT id, array_value(1, 2, 3) AS a, list_extract(array_value(4, 5), 2) AS b FROM v",
+]
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("query", VECTORS)
+def test_vectors_written_back_are_duckdbs(query, semantics):
+    plan = json.dumps(lift(query, _VEC_SCHEMAS, semantics).plan)
+    code, out, err = run_checker((), plan)
+    assert code == 0, err or out
+    got = duckdb_engine.run(written_plan(plan), _VECS)
+    want = duckdb_result(
+        query.replace("array_cos", "list_cos").replace("array_neg", "list_neg"), _VECS
+    )
+    assert _nan_rows(got) == _nan_rows(want)
+
+
+@pytest.mark.parametrize("query", LISTS)
+def test_327_lists_through_oracles_a_and_c(query):
+    # `list_sum` overflows a BIGINT on the last row: drop it.
+    tables = {"v": _VECS["v"].slice(0, 4)}
+    result = check(query, tables)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_list_sum_raises_past_a_bigint():
+    # DuckDB's own is a HUGEINT; the model's a BIGINT, as `SUM`'s.
+    plan = written_plan(json.dumps(lift(LISTS[0], _VEC_SCHEMAS).plan))
+    with pytest.raises(Exception, match="out of range|Overflow|overflow"):
+        duckdb_engine.run(plan, _VECS)
+    report = sv.verify(LISTS[0], tables=_VEC_SCHEMAS)
+    assert any("domain" in str(e) for e in report.errors), report
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize(
+    ("query", "ensures"),
+    [
+        ("SELECT array_cosine_similarity(a, b) AS s FROM v", ["s IS NULL OR s >= -1"]),
+        ("SELECT list_cosine_distance(a, b) AS d FROM v", ["d IS NULL OR d >= 0"]),
+        ("SELECT list_distance(a, b) AS e FROM v WHERE a IS NOT NULL AND b IS NOT NULL",
+         ["e IS NOT NULL", "e >= 0.0"]),
+        ("SELECT list_inner_product(a, b) AS i, array_cross_product(a, b) AS c FROM v"
+         " WHERE a IS NOT NULL AND b IS NOT NULL", ["i IS NOT NULL", "c IS NOT NULL"]),
+    ],
+)  # fmt: skip
+def test_the_327_laws_prove_contracts(query, ensures, semantics):
+    report = sv.verify(
+        query, tables=_VEC_SCHEMAS, ensures=ensures, counterexamples=0, semantics=semantics
+    )
+    # They raise on NULL elements and unequal lengths: an error, and the laws.
+    assert all(c.proved for c in report.ensures), report
+    assert any("domain" in str(e) for e in report.errors), report
+
+
+def test_what_the_327_laws_do_not_say_stays_unproved():
+    # A similarity may be NaN (above 1) and is NULL for empty lists.
+    for query, ensures in [
+        ("SELECT list_cosine_similarity(a, b) AS s FROM v", ["s IS NULL OR s <= 1"]),
+        ("SELECT list_cosine_similarity(a, b) AS s FROM v WHERE a IS NOT NULL AND b IS NOT NULL",
+         ["s IS NOT NULL"]),
+        ("SELECT list_sum(l) AS s FROM v WHERE l IS NOT NULL", ["s IS NOT NULL"]),
+    ]:  # fmt: skip
+        report = sv.verify(query, tables=_VEC_SCHEMAS, ensures=ensures, counterexamples=0)
+        assert not any(c.proved for c in report.ensures)
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("SELECT list_sum(a) FROM v", "list_sum of a array<float64>"),
+        ("SELECT list_cosine_similarity(l, l) FROM v", "list_cosine_similarity of a array<int64>"),
+        ("SELECT list_inner_product(a) FROM v", "takes 2 argument"),
+        ("SELECT list_extract(l, id) FROM v", "constant index"),
+        ("SELECT array_value(id, 2) FROM v", "only constants"),
+        ("SELECT array_value(array_value(1, 2), array_value(3, 4, 3)) FROM v", "fixed-size"),
+    ],
+)
+def test_327_refusals_say_what(query, message):
+    with pytest.raises(Refused, match=message):
+        lift(query, _VEC_SCHEMAS)
+
+
+_vec = st.lists(
+    st.one_of(
+        st.floats(-1e6, 1e6),
+        st.sampled_from([0.0, -0.0, 1e-300, 1e300, math.inf, math.nan]),
+    ),
+    min_size=0,
+    max_size=4,
+)
+
+
+@settings(max_examples=80, deadline=None)
+@given(pairs=st.lists(st.tuples(_vec, _vec), max_size=6))
+def test_vectors_keep_their_laws_on_random_data(pairs):
+    # Equal lengths and no NULL elements, where they do not raise.
+    pairs = [(a, b[: len(a)] + [1.0] * (len(a) - len(b))) for a, b in pairs]
+    t = pa.table(
+        {
+            "a": pa.array([a for a, _ in pairs], pa.list_(pa.float64())),
+            "b": pa.array([b for _, b in pairs], pa.list_(pa.float64())),
+        }
+    )
+    query = (
+        "SELECT a, b, list_cosine_similarity(a, b) AS s, list_cosine_distance(a, b) AS d,"
+        " list_distance(a, b) AS e, list_inner_product(a, b) AS i,"
+        " list_negative_inner_product(a, b) AS n FROM t"
+    )
+    for r in duckdb_result(query, {"t": t}).to_pylist():
+        empty = not r["a"]
+        for k in ("s", "d"):
+            assert (r[k] is None) == empty
+        assert r["s"] is None or math.isnan(r["s"]) or r["s"] >= -1.0
+        assert r["d"] is None or math.isnan(r["d"]) or r["d"] >= 0.0
+        assert r["e"] is not None and (math.isnan(r["e"]) or r["e"] >= 0.0)
+        assert r["i"] is not None and r["n"] is not None
+    schemas = {"t": ibis.Schema.from_pyarrow(t.schema)}
+    plan = json.dumps(lift(query, schemas).plan)
+    got = duckdb_engine.run(written_plan(plan), {"t": t})
+    assert _nan_rows(got) == _nan_rows(duckdb_result(query, {"t": t}))
+
+
+@settings(max_examples=40, deadline=None)
+@given(
+    ls=st.lists(
+        st.one_of(
+            st.none(), st.lists(st.one_of(st.none(), st.integers(-(2**40), 2**40)), max_size=4)
+        ),
+        max_size=6,
+    )
+)
+def test_list_sum_keeps_its_laws_on_random_data(ls):
+    # The sum of the values, NULLs skipped, NULL without any: oracles A and C.
+    t = pa.table({"l": pa.array(ls, pa.list_(pa.int64()))})
+    query = "SELECT l, list_sum(l) AS s FROM t"
+    for r in duckdb_result(query, {"t": t}).to_pylist():
+        vs = [v for v in r["l"] or [] if v is not None]
+        assert r["s"] == (sum(vs) if vs else None)
+    result = check(query, {"t": t})
+    assert result.ok, f"{result.stage}: {result.detail}"

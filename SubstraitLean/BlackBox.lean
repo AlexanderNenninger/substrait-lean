@@ -41,7 +41,7 @@ differential tests pin each black box to DuckDB, and the laws are checked
 on random data (`python/tests/test_black_box.py`).
 
 Lean's evaluator computes the black boxes it has an evaluator for
-(`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, and `signbit`
+(`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, `list_sum`, and `signbit`
 away from `±0.0` and NaN) and panics at the others, so `substrait-check`
 refuses to print rows rather than print wrong ones.
 -/
@@ -61,9 +61,16 @@ inductive Ty where
   A double's code or a date is an integer too, so a scalar whose result
   depends on the type (`printf`) takes this. -/
   | atom
+  /-- A list of doubles (their codes) or of integers, NULLs among them. -/
+  | doubles | ints
   /-- Any value (an aggregate's argument). -/
   | any
   deriving Repr, DecidableEq
+
+/-- Is `v` NULL or an integer: an element of `doubles` or `ints`? -/
+def intOrNull : Value → Bool
+  | .null | .int _ => true
+  | _ => false
 
 /-- Is `v` NULL or a value of the type? -/
 def Ty.has : Ty → Value → Bool
@@ -72,6 +79,7 @@ def Ty.has : Ty → Value → Bool
   | .str, .str _ => true
   | .bool, .bool _ => true
   | .atom, .int _ | .atom, .str _ | .atom, .bool _ => true
+  | .doubles, .list vs | .ints, .list vs => vs.all intOrNull
   | .any, _ => true
   | _, _ => false
 
@@ -141,6 +149,11 @@ structure Aggregate where
 A row per function. `CLAUDE.md` ("Adding functions") says what else a new
 row needs: its lift rule and its SQL, both from the row's name. -/
 
+/-- The code of `1.0` (`SubstraitLean/Float.lean`): `2 · 2¹⁰⁷⁴ + 1`. -/
+def codeOne : Int := 2 * 2 ^ 1074 + 1
+
+#guard codeOne == FloatCode.ofFloat 1.0 && -codeOne == FloatCode.ofFloat (-1.0)
+
 /-- The scalar black boxes. -/
 def scalars : List Scalar := [
   -- `base64(encode(s))`: the UTF-8 bytes of `s` in base64 (DuckDB's `base64`
@@ -171,7 +184,32 @@ def scalars : List Scalar := [
   -- raises, as `date_part` is NULL outside chrono's dates. The bounds are
   -- those of DuckDB's dates, to 5881580 AD. Lean evaluates it.
   { name := "yearweek", args := [.date], result := .int,
-    laws := [.atLeast (-587764053), .atMost 588158053], sample := .int 0 }]
+    laws := [.atLeast (-587764053), .atMost 588158053], sample := .int 0 },
+  -- The vector functions of lists of doubles (#327). Each raises where a
+  -- list holds a NULL or the two differ in length. `list_cosine_similarity`
+  -- is NULL for empty lists, NaN where a list is zero or holds NaN or an
+  -- infinity, and else in [-1, 1] (`duckdb-list-vectors`): at least `-1.0`,
+  -- as NaN is above every number. `array_*` are the same functions.
+  { name := "list_cosine_similarity", args := [.doubles, .doubles], result := .double,
+    raises := .sometimes, laws := [.atLeast (-codeOne)], sample := .int 0 },
+  -- `1 - list_cosine_similarity`: in [0, 2], NaN or NULL likewise.
+  { name := "list_cosine_distance", args := [.doubles, .doubles], result := .double,
+    raises := .sometimes, laws := [.atLeast 0], sample := .int 0 },
+  -- The Euclidean distance: `0.0` for empty lists, so not NULL.
+  { name := "list_distance", args := [.doubles, .doubles], result := .double,
+    raises := .sometimes, laws := [.nonNull, .atLeast 0], sample := .int 0 },
+  { name := "list_inner_product", args := [.doubles, .doubles], result := .double,
+    raises := .sometimes, laws := [.nonNull], sample := .int 0 },
+  { name := "list_negative_inner_product", args := [.doubles, .doubles], result := .double,
+    raises := .sometimes, laws := [.nonNull], sample := .int 0 },
+  -- Of lists of length 3; it raises on others.
+  { name := "array_cross_product", args := [.doubles, .doubles], result := .doubles,
+    raises := .sometimes, laws := [.nonNull], sample := .list [] },
+  -- `list_sum(l)` of integers: the sum of the values, NULLs skipped, NULL
+  -- without any (#327). DuckDB's is a HUGEINT; the model's a BIGINT, which
+  -- raises past its range, as `SUM`. Lean evaluates it.
+  { name := "list_sum", args := [.ints], result := .int, raises := .sometimes,
+    sample := .int 0 }]
 
 /-- The aggregate black boxes. -/
 def aggregates : List Aggregate := [
@@ -184,7 +222,8 @@ def aggregates : List Aggregate := [
 example : (scalars.map (·.name) ++ aggregates.map (·.name)).Nodup := by decide
 
 /-- **The laws are consistent**: each row's sample keeps them. -/
-theorem scalars_wf : ∀ f ∈ scalars, ok f.result f.laws true f.sample = true := by decide
+theorem scalars_wf : ∀ f ∈ scalars, ok f.result f.laws true f.sample = true := by
+  decide +kernel
 
 theorem aggregates_wf : ∀ f ∈ aggregates,
     ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := by decide
@@ -237,6 +276,14 @@ def yearweek (d : Int) : Value :=
 #guard yearweek Time.dayMin == .int 101 && yearweek (Time.dayMin - 1) == .int (-52)
 #guard yearweek yearweekMin == .int (-587764001) && yearweek (yearweekMin - 1) == .null
 
+/-- The sum of the integers among `vs`; none without any. -/
+def listSum (vs : List Value) : Option Int :=
+  vs.foldl (fun acc v => match v with
+    | .int i => some (acc.getD 0 + i)
+    | _ => acc) none
+
+#guard listSum [.int 1, .null, .int 2] == some 3 && listSum [.null] == none && listSum [] == none
+
 /-- The scalar black boxes Lean evaluates. -/
 def evalScalar : String → List Value → Value
   | "base64", [.str s] => .str (base64 s)
@@ -245,11 +292,18 @@ def evalScalar : String → List Value → Value
   | "signbit", [.int c] =>
     if c == 0 || c == FloatCode.nan then unevaluated "signbit at ±0.0 or NaN" else .bool (c < 0)
   | "yearweek", [.int d] => yearweek d
+  | "list_sum", [.list vs] => match listSum vs with
+    | some n => .int n
+    | none => .null
   | name, _ => unevaluated name
 
 def evalAgg (name : String) (_ : List Value) : Value := unevaluated name
 
-def evalRaises (name : String) (_ : List Value) : Bool := unevaluated name
+def evalRaises : String → List Value → Bool
+  | "list_sum", [.list vs] => match listSum vs with
+    | some n => !(decide (-2 ^ 63 ≤ n) && decide (n < 2 ^ 63))
+    | none => false
+  | name, _ => unevaluated name
 
 /-! ## The functions -/
 

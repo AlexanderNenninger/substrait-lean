@@ -747,9 +747,10 @@ def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bo
        result == .any then
      some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
    else none,
-   result == .bool || result == .atom || result == .any,
-   result == .bool || result == .atom || result == .any,
-   result == .str || result == .atom || result == .any⟩
+   -- A list is a member where booleans and strings are (`AVal.Mem`).
+   result == .bool || result == .atom || result == .doubles || result == .ints || result == .any,
+   result == .bool || result == .atom || result == .doubles || result == .ints || result == .any,
+   result == .str || result == .atom || result == .doubles || result == .ints || result == .any⟩
 
 theorem BlackBox.lawsBound_mem {set : Bool} {i : Int} :
     ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (.int i)) = true →
