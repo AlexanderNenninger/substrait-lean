@@ -7,8 +7,18 @@
 #   ssh homelab 'bash -s -- <branch> [poe task ...]' < python/scripts/homelab_qa.sh
 #
 # The poe tasks default to `qa`. Each run clones into its own
-# /tmp/substrait-lean-<uuid>, which is deleted at exit, also on failure, and
-# the exit status of the run is passed through. CLAUDE.md has the capacity
+# /tmp/<prefix>-<uuid>, which is deleted at exit, also on failure, and the
+# exit status of the run is passed through.
+#
+# The environment can change the defaults:
+#
+#   PYTEST_XDIST_AUTO_NUM_WORKERS  pytest workers for `-n auto` (6)
+#   HOMELAB_QA_MEMORY_MAX          memory cap of the whole run (8G)
+#   HOMELAB_QA_NICE                niceness of the build and tests (10)
+#   HOMELAB_QA_PREFIX              the run directory's prefix (substrait-lean)
+#
+# The background chaos run uses 2 workers, 2G, nice 19 and the prefix
+# `substrait-chaos`, so the one-run-at-a-time check skips it (CLAUDE.md). CLAUDE.md has the capacity
 # check to do before starting a run; the script refuses to start when less
 # than 6 GB is available.
 #
@@ -32,10 +42,12 @@ shift
 tasks=("${@:-qa}")
 
 export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
-export PYTEST_XDIST_AUTO_NUM_WORKERS=6
+export PYTEST_XDIST_AUTO_NUM_WORKERS=${PYTEST_XDIST_AUTO_NUM_WORKERS:-6}
 cache_root=${SUBSTRAIT_LEAN_CACHE:-$HOME/.cache/substrait-lean/lake}
 keep_toolchains=2
 memory_max=${HOMELAB_QA_MEMORY_MAX:-8G}
+niceness=${HOMELAB_QA_NICE:-10}
+prefix=${HOMELAB_QA_PREFIX:-substrait-lean}
 min_available_kb=$((6 * 1024 * 1024))
 
 # The run itself, which starts again in a new shell inside the memory cap.
@@ -43,7 +55,7 @@ main() {
   branch=$1
   shift
   tasks=("$@")
-  dir=/tmp/substrait-lean-$(uuidgen)
+  dir=/tmp/$prefix-$(uuidgen)
   trap 'rm -rf "$dir"' EXIT
   trap 'exit 143' TERM HUP INT
 
@@ -65,11 +77,11 @@ main() {
   fi
 
   start=$(date +%s)
-  nice -n 10 lake -R -Kcheck_generated=true build SubstraitLean substrait-check; status=$?
+  nice -n "$niceness" lake -R -Kcheck_generated=true build SubstraitLean substrait-check; status=$?
   echo "homelab_qa: Lean build took $(( $(date +%s) - start )) s (exit $status)"
 
   if [ $status -eq 0 ]; then
-    (cd python && nice -n 10 uv run poe "${tasks[@]}"); status=$?
+    (cd python && nice -n "$niceness" uv run poe "${tasks[@]}"); status=$?
   fi
 
   if [ $status -eq 0 ]; then
@@ -111,7 +123,7 @@ if [ "$available_kb" -lt "$min_available_kb" ]; then
   exit 75
 fi
 
-job="set -uo pipefail; $(declare -p cache_root keep_toolchains); $(declare -f main); main \"\$@\""
+job="set -uo pipefail; $(declare -p cache_root keep_toolchains niceness prefix); $(declare -f main); main \"\$@\""
 # Use a user scope only if the cap reaches its cgroup (the memory controller
 # is delegated to the user's systemd).
 max_bytes=$(numfmt --from=iec "$memory_max")

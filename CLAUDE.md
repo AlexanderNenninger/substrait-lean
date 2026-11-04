@@ -48,7 +48,9 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 
 - **One QA run at a time.** If a `/tmp/substrait-lean-*` directory exists,
   another run is going: wait, or run only the tests your change touches
-  locally.
+  locally. The background chaos run (below) is the one exception: it runs
+  under `/tmp/substrait-chaos-*`, which this check leaves out, and one QA run
+  may go alongside it.
 - **Don't start** if the 1-minute load average is above 8, or if less than
   6 GB is available (the `available` column of `free -g`).
 - **Cap the workers:** the poe test tasks use `pytest -n auto`, which takes
@@ -81,7 +83,9 @@ keeps the caches of the two most recent toolchains, about 300 MB each.
 
 The script refuses to start when less than 6 GB is available. It runs the
 whole job in a systemd user scope capped at 8 GB with no swap
-(`HOMELAB_QA_MEMORY_MAX` changes the cap). The first OOM kill stops the whole
+(`HOMELAB_QA_MEMORY_MAX` changes the cap; `PYTEST_XDIST_AUTO_NUM_WORKERS`,
+`HOMELAB_QA_NICE` and `HOMELAB_QA_PREFIX` change the workers, the niceness
+and the directory's prefix). The first OOM kill stops the whole
 run, and its directory is deleted. A Lean change that sends `LiftDuckDB.lean`
 into the full lift search once took 12.4 GB in one `lean` process and nearly
 hung the box. Where user scopes are not available it
@@ -95,11 +99,15 @@ Run long QA commands there in the background, not in the foreground shell.
 and SIGKILLs at each step of a refresh, an S3 outage (moto behind a proxy),
 sources that change or vanish, and racing writers. Its tests carry the
 `chaos` marker, which only `-m chaos` selects, so `qa` and CI leave it out.
-It spawns many processes, so run it on homelab:
+It spawns many processes, so run it on homelab, in the background and
+capped, so that a QA run can go alongside it:
 
 ```bash
-ssh homelab 'bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
+ssh homelab 'PYTEST_XDIST_AUTO_NUM_WORKERS=2 HOMELAB_QA_MEMORY_MAX=2G HOMELAB_QA_NICE=19 HOMELAB_QA_PREFIX=substrait-chaos bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
 ```
+
+One chaos run at a time: check for a `/tmp/substrait-chaos-*` directory
+first. QA runs still need 6 GB available.
 
 Each scenario that fails appends a line to a JSONL ledger as it finishes
 (`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<run>.jsonl`,
