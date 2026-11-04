@@ -498,6 +498,10 @@ best first:
    whose threshold lies within `ε` of its argument's range drops the call
    site to a shim
    ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632287946)).
+   Lean proves `ε` for a double `SUM` and `AVG` under every summation order
+   the engines use, and its propagation through `+`, `−`, `×` and `/`;
+   elementary functions stay probed
+   ([float-bounds.md](float-bounds.md#the-engines-orders-and-epsilon-444)).
 4. Each of the three after a shim: a written flag, a rewrite or a guard,
    mostly for the reference's value choices.
 5. Refused.

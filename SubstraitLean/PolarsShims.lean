@@ -610,5 +610,6 @@ run_cmd do
   for (_, o, r) in Substrait.Profile.polars.obs do
     if let .proved thm _ := (r : Substrait.ObsRow).evidence then
       let n := thm.toName
-      unless (← getEnv).contains (`Substrait ++ n) || (← getEnv).contains n do
+      unless (← getEnv).contains (`Substrait ++ n) || (← getEnv).contains n ||
+          Substrait.floatBoundsTheorems.contains thm do
         throwError "Profile.polars.obs at {o}: no theorem {thm}"

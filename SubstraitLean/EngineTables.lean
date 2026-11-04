@@ -40,6 +40,14 @@ def prototypeSlice : List String :=
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
    "null_join_keys", "float_overflow", "stat_algo", "quantile_interp"]
 
+/-- The theorems of the package `float-bounds` (Mathlib, kept out of the core)
+that rows name as evidence. The core cannot see them: the `run_cmd` at the
+end of `float-bounds/FloatBounds/Epsilon.lean` checks each of these names
+there, and `tests/test_float_bounds.py` that the two lists agree. -/
+def floatBoundsTheorems : List String :=
+  ["FloatBounds.StdModel.epsilon_sum", "FloatBounds.StdModel.epsilon_avg",
+   "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel"]
+
 /-- Evidence from the facts or tests `ids`, none where empty. -/
 def Evidence.ofIds (ids : List String) : Evidence := if ids.isEmpty then .none else .tested ids
 
@@ -126,12 +134,16 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_equality", .native []),
   -- Partials merged in finishing order are trees the reference allows, but a
   -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
-  -- bound. Which order depends on the parallel plan, so at two threads or more
-  -- runs vary (3 to 4 values in 5 runs). `fsum` (Kahan) does not vary.
-  (none, "sum_order", { ObsRow.approxWithin "plan" ["duckdb-sum-double", "duckdb-avg-double"] with
-    note := "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633).",
+  -- bound, which `float-bounds` proves for both (`StdModel.epsilon_sum`).
+  -- Which order depends on the parallel plan, so at two threads or more runs
+  -- vary (3 to 4 values in 5 runs), each within the bound. `fsum` (Kahan)
+  -- does not vary.
+  (none, "sum_order", ({ ObsRow.approxWithin "plan" ["duckdb-sum-double", "duckdb-avg-double"] with
+    note := "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633). Every one of them is within the plan's bound (StdModel.epsilon_sum).",
     rerun := some { floats := .within "plan" },
-    rerunEvidence := .probed ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }),
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum"
+      ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }).proved
+    "FloatBounds.StdModel.epsilon_sum"),
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
@@ -228,13 +240,17 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_order", .native ["polars-nan-order"]),
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
-  -- (groups) is not, so within #85's bound.
+  -- (groups) is not, so within #85's bound, which `float-bounds` proves for
+  -- both (`StdModel.epsilon_sum`, `Rnd.kahan_near`).
   -- Run to run the order varies (morsels, pipelines), within the plan's bound,
   -- whatever the input's size: a grouped sum of [1e16, 1, 1, -1e16] gave 2.0,
   -- 1.0 and 0.0 over 200 runs on 10 threads (always 0.0 with
   -- POLARS_MAX_THREADS ≤ 2).
-  (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
-    rerun := some { floats := .within "plan" } }),
+  (none, "sum_order", ({ ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
+    rerun := some { floats := .within "plan" },
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum"
+      ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
+    "FloatBounds.StdModel.epsilon_sum"),
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),

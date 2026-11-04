@@ -10,18 +10,26 @@ the reference leaves open, with the observation `{"floats": {"bound":
 computes that bound per output column, from what the contract's
 preconditions and row caps give (`Measure.abs`, `floatBound`):
 
-* a reference result is within `sumTolScaled n B` (`avgTolScaled` for an
-  `AVG`) of the exact one, for at most `n` values in `[-B, B]`
-  (`floatSum_mem`, `floatAvg_mem`);
-* an engine's order is taken to meet the same bound: a sequential sum and a
-  pairwise one are orders the reference allows, and Kahan's compensated sum
-  is more accurate than the sequential bound for `n ≥ 3` (Higham, *Accuracy
-  and Stability of Numerical Algorithms*, §4.3). This is the part Lean does
-  not prove; the engine facts record the algorithms (`polars-sum-float`);
+* every order the reference allows (`FloatSums`: trees of additions in any
+  order) and every order the engine profiles allow (`SEQUENTIAL`, `ANY`,
+  `PAIRWISE`, DuckDB's constant run `fl(k · x)` as `SCALED_CONSTANT`, Kahan's
+  compensated sum as `COMPENSATED`) gives a result within
+  `sumTolScaled n B` (`avgTolScaled` for an `AVG`) of the exact one, for at
+  most `n` values in `[-B, B]`;
 * so the engine's result is within twice the bound of one the reference
-  allows: `"abs"`, as a double;
+  allows: `"abs"`, as a double, rounded up. `StdModel.epsilon_sum` and
+  `StdModel.epsilon_avg` in `float-bounds/FloatBounds/Epsilon.lean` prove it;
 * where the argument's values have one sign nothing cancels, and the bound
-  is also relative (`relEps`): `"rel"`.
+  is also relative (`relEps`): `"rel"`, `StdModel.epsilon_sum_rel` and, for a
+  mean of values at least `2⁻¹⁰²²` in magnitude, `StdModel.epsilon_avg_rel`.
+
+`"proved"` marks a bound those theorems cover (`provedEps`): the engines'
+`sum_order` behaviours are among the proved ones, the plan has no
+single-precision column (Polars sums `Float32` in single precision,
+polars-sum-float), and the argument, its rows and its groups are the same on
+every engine (`colEps`). That an engine's algorithm is the one its
+behaviour names rests on its characterization (duckdb-sum-double,
+polars-sum-float, polars-sum-float-streaming).
 
 A column the bound does not carry over to (computed from a double measure
 by an expression) has `"abs": null`, as has a measure whose argument or row
@@ -62,8 +70,9 @@ def upJson (f : Float) : Json :=
 /-- A relative bound where the values cannot cancel (all `≥ 0`, or all `≤ 0`):
 each order's result is within `γ = k·u/(1 − k·u)` of the exact one,
 relatively, with `u = 2⁻⁵³` and `k` the number of roundings (Higham, §4.2), so
-two results are within `2γ/(1 − γ)` of each other relative to either. Like
-the engines' orders, this step is not proved in Lean; it is rounded up. -/
+two results are within `2γ/(1 − γ)` of each other relative to either
+(`StdModel.epsilon_sum_rel`, `epsilon_avg_rel`). Evaluated in doubles, the
+formula's few roundings are covered by the factor `1.000001`. -/
 def relEps (k : Nat) : Float :=
   let u : Float := Float.scaleB 1.0 (-53)
   let ku := Float.ofNat k * u
@@ -74,9 +83,12 @@ def relEps (k : Nat) : Float :=
 def upJsonZ (f : Float) : Json := if f == 0.0 then toJson (0 : Nat) else upJson f
 
 /-- The bound for a double measure over rows described by `env`, at most
-`rows` of them: absolute, and relative where the values have one sign. -/
+`rows` of them: absolute, and relative where the values have one sign, with
+whether the relative bound is one `epsilon_avg_rel` covers (an `AVG`'s
+values at least `2⁻¹⁰²¹` in magnitude, so its decoded doubles and mean at
+least `2⁻¹⁰²²`). -/
 def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
-    Option (Float × Option Float) := do
+    Option (Float × Option (Float × Bool)) := do
   let a := m.arg.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -87,83 +99,67 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
   guard (n ≤ 2 ^ 32 ∧ bs ≤ 2 ^ 1474)
   let t := if m.fn = .avg then FloatCode.avgTolScaled n bs else FloatCode.sumTolScaled n bs
   let oneSign := 0 ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ 0
-  let rel := if oneSign && n < 2 ^ 40 then some (relEps (if m.fn = .avg then n + 2 else n)) else none
+  let normal := (2 ^ 53 : Int) ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ -(2 ^ 53 : Int)
+  let rel := if oneSign && n < 2 ^ 40 then
+      some (relEps (if m.fn = .avg then n + 2 else n), m.fn ≠ .avg || normal)
+    else none
   return (unscale (2 * t), rel)
-
-/-- `"epsilon"` of a `--contract` request: per output column of the
-transformation that is a double `SUM` or `AVG`,
-`{"abs": …, "rel"?: …, "proved": {"abs": false, "rel"?: false}}`.
-
-The bounds are a conjunction: each holds on its own, so the engine's result
-is within `abs` of a result the reference allows and also within `rel` of
-it, and a tolerance that either bound meets is met.
-
-`proved` says which bounds Lean proves. Neither is yet: the reference's
-half of `abs` is (`floatSum_mem`, `floatAvg_mem`), but that an engine's
-order meets the same bound is a cited algorithm (`polars-sum-float`), and
-`rel` is Higham's no-cancellation bound, stated here without a proof. A
-route that rests on them is tested, not proved. -/
-def epsilon (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
-  let plan ← parseJsonPlan tj
-  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
-    parseJsonPlan
-  let tables : Tables := (plan :: requires).flatMap (·.tables)
-  let cat : Catalog := fun t => match tables.lookup t with
-    | some (n, _) => ⟨n, []⟩
-    | none => ⟨0, []⟩
-  let schemas : String → List AVal := fun t => match tables.lookup t with
-    | some (_, s) => schemaEnv s
-    | none => []
-  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
-  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
-  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
-  let root := plan.root.capReads caps
-  let some (r, _, ms) := findAggregate root | return Json.mkObj []
-  let some (srcs, _) := colSrcs plan.root | return Json.mkObj []
-  let T := Rel.keyedWindows cat A F (fun _ => [])
-  let env := r.aeval cat A F T
-  let doubles := (doubleIdx ms).filterMap (ms[·]?)
-  let names := if plan.names.length == srcs.length then plan.names
-    else (List.range srcs.length).map (s!"#{·}")
-  let cols := (names.zip srcs).filterMap fun (name, src) => match src with
-    | .bounded j => some (name, match doubles[j]?.bind (measureEps env · r.maxRows) with
-        | some (e, r) => Json.mkObj ([("abs", upJson e)] ++
-            (match r with | some r => [("rel", upJson r)] | none => []) ++
-            [("proved", Json.mkObj ([("abs", toJson false)] ++
-              match r with | some _ => [("rel", toJson false)] | none => []))])
-        | none => Json.mkObj [("abs", Json.null)])
-    | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
-    | _ => none
-  return Json.mkObj cols
 
 /-! ## Per engine: the error carried through arithmetic
 
-`epsilon` above is the summation order's share, the same for every engine.
+`epsilon` below is the summation order's share, the same for every engine.
 `epsilonByEngine` carries it, and each engine's own per-operation error,
 through the double arithmetic between the aggregates and the output, from
-the ranges the preconditions give (#568's propagation):
+the ranges the preconditions give (#568's propagation, forward mode). With
+`|a| ≤ ma`, `|b| ≤ mb`, the inputs' errors `εa`, `εb` and `t = 2⁻¹⁰²²`, the
+rules of `float-bounds/FloatBounds/Propagate.lean`:
 
-* `+`, `-`: `ε' = (εa + εb)(1 + u) + 2u·(|a| + |b|)` once an input is off;
-* `*`: `ε' = |a|εb + |b|εa + εaεb`, plus `2u` of the result's bound;
-* `/` by an exact divisor bounded away from 0: `ε' = εa / min|b|`, plus `2u`;
-* each engine's operations that differ from the reference's (the
-  characterization's round 5): Polars's `/` by a literal multiplies by the
-  reciprocal (`fl(x · fl(1/y))`, within `3u` of IEEE's quotient,
-  polars-scalar-divisor), its `log10`, `log2` and `log(b)` are `ln / ln`
-  (2.1 ulp), DuckDB's `log(b, x)` 1.4 ulp. `+ - * /` and `sqrt` are correctly
-  rounded on both, as are integer-to-double conversions;
-* other elementary functions are the platform's `libm` (macOS `tan` up to
-  2.4 ulp, glibc `cos` and `tan` far more near zeros of `cos`): unbounded
-  here where an input is off, and their rows stay `tested`.
+* `+`, `-`: `(εa + εb)(1 + u) + 2u (ma + mb + t)` (`rule_add`, `rule_sub`);
+* `*`: `(ma εb + mb εa + εa εb)(1 + u) + 2u (ma mb + t)` (`rule_mul`);
+* `/` by a divisor the same on both sides, `|b| ≥ lb > 0`:
+  `(εa / lb)(1 + u) + 2u (ma / lb + t)` (`rule_div`); Polars's `/` by a
+  literal multiplies by the reciprocal (`fl(x · fl(1/y))`,
+  polars-scalar-divisor): `(εa / lb)(1 + u)² + (3u + u²)(ma / lb) +
+  (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`);
+* `+ - * /` and `sqrt` are correctly rounded on both engines, as are
+  integer-to-double conversions (the characterization's round 5), so an
+  operation on exact inputs is exact there, Polars's literal division aside;
+* each engine's logarithms that differ from the reference's (Polars's
+  `log10`, `log2` and `log(b)` are `ln / ln`, 2.1 ulp; DuckDB's `log(b, x)`
+  1.4 ulp) are probed, not modelled, and the other elementary functions are
+  the platform's `libm` (macOS `tan` up to 2.4 ulp, glibc `cos` and `tan` far
+  more near zeros of `cos`): unbounded here where an input is off, and their
+  bounds are not proved.
 
-None of this is proved in Lean (`proved` false): the per-operation constants
-are probed, not modelled, and the propagation is the standard one. -/
+Each rule holds where the exact results do not overflow, which `fits`
+checks. A column's bound is proved (its flag) where every step is one of
+these rules, the `SUM`s and `AVG`s it reads are proved (`provedOrders`), and
+no filter, sort key, `DISTINCT` or group key reads a value that may differ
+between engines. The formulas are evaluated in doubles: every term is
+nonnegative, so each rounding is relative and the factor `1 + 2⁻⁴⁰` covers
+them. -/
 
 /-- The unit roundoff of a double. -/
 def unitRound : Float := Float.scaleB 1.0 (-53)
+
+/-- `2⁻¹⁰²²`, the least normal double: the underflow term of a rounding. -/
+def tinyF : Float := Float.scaleB 1.0 (-1022)
+
+/-- Below the largest finite double, with room: an exact result this large
+does not overflow. -/
+def fits (x : Float) : Bool := x ≤ 1.0e308
+
+/-- The `sum_order` behaviours `float-bounds` proves the bound for:
+`TreeSum` and Kahan's sum (`StdModel.Summed`). -/
+def provedOrders : List String := ["SEQUENTIAL", "ANY", "PAIRWISE", "SCALED_CONSTANT", "COMPENSATED"]
+
+/-- The engines `epsilon_by_engine` reports on, with their tables. -/
+def epsEngines : List (String × ProfileTable) :=
+  [("duckdb", Profile.duckdb.table {}), ("polars", Profile.polars.table)]
+
+/-- Does every engine's `sum_order` give one of the proved orders? -/
+def ordersProved : Bool :=
+  epsEngines.all fun (_, t) => (t.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
 
 /-- A bound on `|e|` from the preconditions, for a double expression. -/
 def magOf (env : List AVal) (e : Expr) : Option Float := do
@@ -196,84 +192,141 @@ def resultMag (env : List AVal) (e : Expr) : Option Float :=
     | _ => none
 
 /-- An engine's own error at one call, beyond the reference's, relative to
-`u` and the result's bound: Polars's `/` by a literal, its logarithms by
-`ln / ln`, DuckDB's `log(b, x)`. -/
+`u` and the result's bound: its logarithms by `ln / ln` (Polars), DuckDB's
+`log(b, x)`. Polars's `/` by a literal has its own rule (`exprEps`). -/
 def opExtra (engine : String) : Expr → Option Float
-  | .bin .fdiv _ (.lit _) => if engine == "polars" then some 3.0 else some 0.0
   | .un (.fmath .log10) _ | .un (.fmath .log2) _ =>
     if engine == "polars" then some (2.0 * (2.1 + 1.0)) else some 0.0
   | .bin .flogb _ _ =>
     some (2.0 * ((if engine == "polars" then 2.1 else 1.4) + 1.0))
   | _ => some 0.0
 
+/-- An operation the engines may compute otherwise than the reference, on
+the same inputs: the platform's `libm` (`pow`, `atan2`, `log(b, x)`, every
+elementary function but `sqrt`), rounding to decimals, decimal conversions
+and black boxes. Its error is probed or not known, never proved here. -/
+def inexact : Expr → Bool
+  | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ | .bin (.bbox2 _) _ _ => true
+  | .un (.fmath f) _ => f != .sqrt
+  | .un (.froundTo _) _ | .un (.ftod _) _ | .un (.dtof _) _ | .un (.bbox _) _ => true
+  | _ => false
+
+/-- Exact on this engine, with a proof: the same value as the reference's. -/
+def exactP : Option (Float × Bool) → Bool
+  | some (e, p) => e == 0.0 && p
+  | none => false
+
 /-- How far an engine's value of `e` may be from the reference's, from the
-columns' errors `cols` (`none`: not bounded). -/
-def exprEps (engine : String) (env : List AVal) (cols : List (Option Float)) :
-    Expr → Option Float
-  | .lit _ => some 0.0
+columns' errors `cols` (`none`: not bounded), and whether a rule of
+`Propagate.lean` proves it. -/
+def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × Bool))) :
+    Expr → Option (Float × Bool)
+  | .lit _ => some (0.0, true)
   | .field i => cols.getD i none
-  | e@(.un .fneg a) => exprEps engine env cols a |>.map fun x => x + 0.0 * (magOf env e).getD 0.0
-  | .un .itof a => (exprEps engine env cols a).bind fun x => if x == 0.0 then some 0.0 else none
+  | .un .fneg a => exprEps engine env cols a
+  | .un .itof a => (exprEps engine env cols a).bind fun (x, p) =>
+    if x == 0.0 then some (0.0, p) else none
   | e@(.bin f a b) => do
-    let ea ← exprEps engine env cols a
-    let eb ← exprEps engine env cols b
-    let extra ← opExtra engine e
-    let own ← if extra == 0.0 then pure 0.0 else (resultMag env e).map (extra * unitRound * ·)
-    if ea == 0.0 && eb == 0.0 then return own
+    let (ea, pa) ← exprEps engine env cols a
+    let (eb, pb) ← exprEps engine env cols b
+    let u := unitRound
+    let recip := engine == "polars" && (match f, b with | .fdiv, .lit _ => true | _, _ => false)
     match f with
     | .fadd | .fsub =>
+      if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
       let ma ← magOf env a
       let mb ← magOf env b
-      return (ea + eb) * (1.0 + unitRound) + 2.0 * unitRound * (ma + mb) + own
+      guard (fits (ma + mb + ea + eb))
+      return ((ea + eb) * (1.0 + u) + 2.0 * u * (ma + mb + tinyF), pa && pb)
     | .fmul =>
+      if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
       let ma ← magOf env a
       let mb ← magOf env b
-      return ma * eb + mb * ea + ea * eb + 2.0 * unitRound * (ma + ea) * (mb + eb) + own
+      let d := ma * eb + mb * ea + ea * eb
+      guard (fits (ma * mb + d))
+      return (d * (1.0 + u) + 2.0 * u * (ma * mb + tinyF), pa && pb)
     | .fdiv =>
       guard (eb == 0.0)
+      if ea == 0.0 && !recip then return (0.0, pa && pb)
       let lb ← minAbsOf env b
-      let mq ← resultMag env e
-      return ea / lb + 2.0 * unitRound * mq + own
-    | _ => none
+      match magOf env a with
+      | some ma =>
+        guard (fits (ma / lb + ea / lb))
+        if recip then
+          return (ea / lb * (1.0 + u) * (1.0 + u) + (3.0 * u + u * u) * (ma / lb)
+            + (u * (1.0 + u) * (ma + ea) + 2.0 * u) * tinyF, pa && pb)
+        return (ea / lb * (1.0 + u) + 2.0 * u * (ma / lb + tinyF), pa && pb)
+      | none =>
+        -- From the quotient's own bound: not a proved rule.
+        let mq ← resultMag env e
+        return (ea / lb + 2.0 * u * mq + (if recip then 3.0 * u * mq else 0.0), false)
+    | _ =>
+      let extra ← opExtra engine e
+      if ea == 0.0 && eb == 0.0 && extra == 0.0 then return (0.0, pa && pb && !inexact e)
+      guard (ea == 0.0 && eb == 0.0)
+      return (extra * u * (← resultMag env e), false)
   | e@(.un _ a) => do
-    let ea ← exprEps engine env cols a
+    let (ea, pa) ← exprEps engine env cols a
     let extra ← opExtra engine e
-    if ea == 0.0 && extra == 0.0 then return 0.0
-    if ea == 0.0 then return extra * unitRound * (← resultMag env e)
+    if ea == 0.0 && extra == 0.0 then return (0.0, pa && !inexact e)
+    if ea == 0.0 then return (extra * unitRound * (← resultMag env e), false)
     none
-  | .ifThen _ t f => do
+  | .ifThen c t f => do
     let et ← exprEps engine env cols t
     let ef ← exprEps engine env cols f
-    return max et ef
+    -- A condition that may differ between engines may pick the other branch.
+    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps engine env cols c))
   | .hof _ _ _ => none
 
-/-- Each column's error on `engine`, for plans of projections, filters,
-sorts and one aggregate over reads. -/
+/-- `cs` with every flag cleared where `ok` fails: rows or groups that may
+differ between engines. -/
+def keepIf (ok : Bool) (cs : List (Option (Float × Bool))) : List (Option (Float × Bool)) :=
+  if ok then cs else cs.map (·.map fun (e, _) => (e, false))
+
+/-- Each column's error on `engine`, and whether it is proved, for plans of
+projections, filters, sorts and one aggregate over reads. -/
 def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (T : WindowKeys) : Rel → Option (List (Option Float))
-  | .read t => some ((List.range (cat t).arity).map fun _ => some 0.0)
-  | .values n _ => some ((List.range n).map fun _ => some 0.0)
-  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r => colEps engine cat A F T r
+    (T : WindowKeys) : Rel → Option (List (Option (Float × Bool)))
+  | .read t => some ((List.range (cat t).arity).map fun _ => some (0.0, true))
+  | .values n _ => some ((List.range n).map fun _ => some (0.0, true))
+  | .filter r c => (colEps engine cat A F T r).map fun cs =>
+      keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c)) cs
+  | .orderBy r keys => (colEps engine cat A F T r).map fun cs =>
+      keepIf (keys.all fun k => exactP (cs.getD k.col none)) cs
+  | .distinct r => (colEps engine cat A F T r).map fun cs => keepIf (cs.all exactP) cs
+  | .fetch r _ _ => colEps engine cat A F T r
   | .emit r m => (colEps engine cat A F T r).map fun cs => m.map (cs.getD · none)
   | .project r es => (colEps engine cat A F T r).map fun cs =>
       cs ++ es.map (exprEps engine (r.aeval cat A F T) cs)
   | .aggregate r gs ms => (colEps engine cat A F T r).map fun cs =>
       let env := r.aeval cat A F T
-      gs.map (fun _ => some 0.0) ++ ms.map fun m => do
-        let ea ← exprEps engine env cs m.arg
+      let keys := gs.all fun g => exactP (exprEps engine env cs g)
+      keepIf keys <| gs.map (fun _ => some (0.0, true)) ++ ms.map fun m => do
+        let (ea, pa) ← exprEps engine env cs m.arg
+        let pf := m.filter.all fun c => exactP (exprEps engine env cs c)
         match m.fn with
         | .fsum | .avg =>
           let (order, _) ← measureEps env m r.maxRows
           let n ← r.maxRows
-          return order + (if m.fn = .avg then ea else Float.ofNat n * ea)
-        | .count => return 0.0
-        | .min | .max => return ea
-        | _ => if ea == 0.0 then some 0.0 else none
+          -- The order's bound is proved for the same doubles on both sides.
+          return (order + (if m.fn = .avg then ea else Float.ofNat n * ea),
+            ea == 0.0 && pa && pf && ordersProved)
+        | .count => return (0.0, pf)
+        | .min | .max => return (ea, pa && pf)
+        | _ => if ea == 0.0 then some (0.0, false) else none
   | _ => none
+
+/-- Does the plan read or write a single-precision column? Polars sums
+`Float32` in single precision (polars-sum-float), which no bound here covers. -/
+def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
+
+/-- A computed bound as JSON, with the factor that covers its evaluation in
+doubles. -/
+def epsJson (e : Float) : Json := upJsonZ (e * (1.0 + Float.scaleB 1.0 (-40)))
 
 /-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
 output column, how far the engine's value may be from one the reference
-allows, `{"abs": …, "proved": {"abs": false}}` (`null`: not bounded). -/
+allows, `{"abs": …, "proved": {"abs": …}}` (`null`: not bounded). -/
 def epsilonByEngine (input : Json) (engines : List String) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
@@ -296,12 +349,70 @@ def epsilonByEngine (input : Json) (engines : List String) : Except String Json 
   let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
   let names := if plan.names.length == kinds.length then plan.names
     else (List.range kinds.length).map (s!"#{·}")
+  let f32 := hasFp32 tj
   return Json.mkObj <| engines.map fun engine =>
     let cols := colEps engine cat A F T root
     (engine, Json.mkObj <| ((names.zip kinds).zipIdx.filter (·.1.2 == .float)).map
-      fun ((name, _), i) => (name, Json.mkObj [
-        ("abs", match cols.bind (·.getD i none) with | some e => upJsonZ e | none => Json.null),
-        ("proved", Json.mkObj [("abs", toJson false)])]))
+      fun ((name, _), i) => match cols.bind (·.getD i none) with
+        | some (e, p) => (name, Json.mkObj [("abs", epsJson e),
+            ("proved", Json.mkObj [("abs", toJson (p && !f32))])])
+        | none => (name, Json.mkObj [("abs", Json.null),
+            ("proved", Json.mkObj [("abs", toJson false)])]))
+
+/-- `"epsilon"` of a `--contract` request: per output column of the
+transformation that is a double `SUM` or `AVG`,
+`{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}`.
+
+The bounds are a conjunction: each holds on its own, so the engine's result
+is within `abs` of a result the reference allows and also within `rel` of
+it, and a tolerance that either bound meets is met.
+
+`proved` says which bounds Lean proves (`StdModel.epsilon_sum`,
+`epsilon_avg`, `epsilon_sum_rel`, `epsilon_avg_rel`): those whose measure
+reads, on every engine, the same values in the same rows and groups as the
+reference (`colEps`), in a plan without single-precision columns, where
+every engine's `sum_order` is a proved order (`ordersProved`). -/
+def epsilon (input : Json) : Except String Json := do
+  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
+  let plan ← parseJsonPlan tj
+  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
+    parseJsonPlan
+  let tables : Tables := (plan :: requires).flatMap (·.tables)
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  let schemas : String → List AVal := fun t => match tables.lookup t with
+    | some (_, s) => schemaEnv s
+    | none => []
+  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
+  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
+  let A := fun t => tableEnv (schemas t) (preOf t)
+  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let root := plan.root.capReads caps
+  let some (r, gs, ms) := findAggregate root | return Json.mkObj []
+  let some (srcs, _) := colSrcs plan.root | return Json.mkObj []
+  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let env := r.aeval cat A F T
+  -- The measure's values, rows and groups are the same on every engine.
+  let same (m : Measure) : Bool := !hasFp32 tj && ordersProved &&
+    epsEngines.all fun (engine, _) => match colEps engine cat A F T r with
+      | some cs => (m.arg :: gs ++ m.filter.toList).all fun e => exactP (exprEps engine env cs e)
+      | none => false
+  let doubles := (doubleIdx ms).filterMap (ms[·]?)
+  let names := if plan.names.length == srcs.length then plan.names
+    else (List.range srcs.length).map (s!"#{·}")
+  let cols := (names.zip srcs).filterMap fun (name, src) => match src with
+    | .bounded j => some (name, match doubles[j]?.bind fun m =>
+          (measureEps env m r.maxRows).map (·, same m) with
+        | some ((e, rel), p) => Json.mkObj ([("abs", upJson e)] ++
+            (match rel with | some (r, _) => [("rel", upJson r)] | none => []) ++
+            [("proved", Json.mkObj ([("abs", toJson p)] ++
+              match rel with | some (_, pr) => [("rel", toJson (p && pr))] | none => []))])
+        | none => Json.mkObj [("abs", Json.null)])
+    | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
+    | _ => none
+  return Json.mkObj cols
 
 /-! ## The dependency report of a contract
 
