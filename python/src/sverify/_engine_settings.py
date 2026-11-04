@@ -14,10 +14,14 @@ DuckDB: sverify runs each plan on a cursor of its own on the process's
 database (`sverify.duckdb_engine`), so a session's `SET` on another cursor
 leaves it alone; `SET GLOBAL` reaches it, and that is what the check sees.
 Polars: the engine a lazy query runs on, `pl.Config.set_engine_affinity`
-(or `POLARS_ENGINE_AFFINITY`). Display settings (`set_fmt_float`, …) change
-no value and are not checked. Threads are not checked either: they change
-the order of a double `SUM`, an open option every route already allows
-within the plan's bound (`sum_order`).
+(or `POLARS_ENGINE_AFFINITY`).
+
+Not checked, since no choice depends on them: display settings
+(`set_fmt_float`, …), which change no value; threads, which change the
+order of a double `SUM`, an open option every route already allows within
+the plan's bound (`sum_order`); and DuckDB's `TimeZone`, which the written
+SQL never reads, since plans with time-zone-aware timestamps are refused
+(duckdb-time-zones).
 """
 
 from __future__ import annotations
@@ -104,13 +108,6 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             "refuse",
             ("duckdb-R4", "duckdb-R5", *_R15),
             "NaN and ±inf from double operations (nan_creation)",
-        ),
-        Setting(
-            "TimeZone",
-            ("utc", "europe/berlin"),
-            "warn",
-            ("duckdb-time-zones",),
-            "the offset of a TIMESTAMPTZ; checked under UTC and Europe/Berlin",
         ),
     ),
     "polars": (

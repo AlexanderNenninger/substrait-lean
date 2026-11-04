@@ -104,13 +104,22 @@ def test_a_global_only_setting_is_seen_from_any_cursor(con) -> None:
         other.execute("RESET GLOBAL default_null_order").fetchall()
 
 
-def test_a_duckdb_time_zone_warns(con, duckdb_global) -> None:
+def test_the_time_zone_is_not_checked(con, duckdb_global) -> None:
+    """No choice depends on the session's zone: the written SQL never reads
+    it (duckdb-time-zones)."""
     t = con.table("t")
     report = sv.verify(t.select("k"))
     duckdb_global("TimeZone", "'America/New_York'")
-    with pytest.warns(EngineSettingsWarning, match="TimeZone is 'America/New_York'"):
-        report.run(con, "duckdb", route="auto")
-    assert any("TimeZone" in w for w in report.routes["duckdb"].warnings)
+    report.run(con, "duckdb", route="auto")
+    assert report.routes["duckdb"].warnings == ()
+
+
+def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
+    extra = _engine_settings.Setting("threads", (4,), "warn", (), "nothing sverify relies on")
+    monkeypatch.setitem(_engine_settings.SETTINGS, "duckdb", (extra,))
+    with pytest.warns(EngineSettingsWarning, match="threads is 8"):
+        assert routes.check_settings("duckdb", {"threads": 8})
+    assert routes.check_settings("duckdb", {"threads": 4}) == []
 
 
 def test_polars_engine_affinity(con, affinity) -> None:
