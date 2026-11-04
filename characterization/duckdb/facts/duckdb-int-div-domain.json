@@ -1,0 +1,58 @@
+{
+  "id": "duckdb-int-div-domain",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer `//` has no domain error",
+  "verdict": "no finding: only a zero divisor and `MIN // -1` fail",
+  "area": "integers",
+  "options": [
+    "on_domain_error"
+  ],
+  "rows": [
+    {"group": "int.div", "option": "on_domain_error", "types": ["i8", "i16", "i32", "i64"]}
+  ],
+  "constructs": [
+    "//",
+    "divide"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "integer_division": false
+  },
+  "description": [
+    "`//` on TINYINT, SMALLINT, INTEGER and BIGINT runs C++ `/` behind one wrapper, `BinaryNumericDivideWrapper`, instantiated per width. The wrapper has two failure paths: `MIN // -1` raises `Overflow in division` (duckdb-R1-min) and a zero divisor raises or gives NULL by `error_on_division_by_zero` (duckdb-R2). No other input fails, so no domain error occurs.",
+    "`/` of two integers is float division while `integer_division` is false (the default), which the lift reads as a `divide` of doubles."
+  ],
+  "reference": "`divide` on integers: `on_domain_error` never applies (docs/core-semantics.md, `int.div`).",
+  "status": "no-finding",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1182-L1202",
+          "note": "BinaryNumericDivideWrapper: MIN / -1 raises, a zero divisor raises or sets NULL, else OP"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1252-L1284",
+          "note": "INT8, INT16, INT32 and INT64 take the same wrapper"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1395-L1410",
+          "note": "// on integral types binds BindDivisionByZero<DivideOperator>"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_binary_operators.hpp#L17-L23",
+          "note": "DivideOperator: left / right"
+        }
+      ],
+      "notes": "One template for every width, so the reading covers i8 to i64."
+    }
+  ]
+}

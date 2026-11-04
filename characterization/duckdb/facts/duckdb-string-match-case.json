@@ -36,11 +36,12 @@
   },
   "description": [
     "`LIKE` and `like_escape` match case-sensitively; `ILIKE` and `ilike_escape` case-insensitively, \"according to the active locale\". Strings compare by their binary UTF-8 contents under the default `BINARY` collation, so `'hello' = 'hElLO'` is FALSE; the `NOCASE` collation, per expression, per column or as `default_collation`, compares regardless of case.",
-    "`contains` and `suffix` (`ends_with`) state that collations are not supported. For `starts_with`, `instr` (`strpos`, `position`) and `replace` the docs say nothing about case or collations; their case sensitivity rests on the binary default. Whether `default_collation = NOCASE` reaches `LIKE` or these functions is for round 2 (source)."
+    "`contains` and `suffix` (`ends_with`) state that collations are not supported. For `starts_with`, `instr` (`strpos`, `position`) and `replace` the docs say nothing about case or collations; their case sensitivity rests on the binary default. Whether `default_collation = NOCASE` reaches `LIKE` or these functions is for round 2 (source).",
+    "Round 2 (source): `LIKE` (`~~`) matches bytes (`LikeOperatorFunction`). `LIKE`, `NOT LIKE`, `like_escape`, `ILIKE`, `starts_with` (`^@`), `contains` and `instr` (`strpos`, `position`) push combinable collations (`PUSH_COMBINABLE_COLLATIONS`), so an argument typed `VARCHAR COLLATE NOCASE` wraps both sides in `lower` and the match ignores case; the docs' note that `contains` supports no collation does not match this. `prefix`, `suffix` (`ends_with`) and `replace` keep the default handling, which pushes nothing, so they compare bytes under any collation. The push reads only a collation carried by an argument's type and returns early when there is none, so by this reading `default_collation` alone does not reach these functions; a probe should confirm it."
   ],
   "reference": "`case_sensitivity`: the reference is `CASE_SENSITIVE` (docs/core-semantics.md); `ilike` is a function of its own (`str.opaque`). F4 records that the replay skips queries under a collation.",
   "status": "no-finding",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -61,6 +62,62 @@
         }
       ],
       "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/string/like.cpp#L430-L435",
+          "note": "LikeOperator: LikeOperatorFunction on the bytes"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/string/like.cpp#L708-L715",
+          "note": "LikeFun: PUSH_COMBINABLE_COLLATIONS"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/string/like.cpp#L671-L757",
+          "note": "NOT LIKE, ILIKE, NOT ILIKE, glob, the _escape forms: PUSH_COMBINABLE_COLLATIONS"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/string/starts_with.cpp#L39-L48",
+          "note": "starts_with (^@): PUSH_COMBINABLE_COLLATIONS"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/string/contains.cpp#L225-L234",
+          "note": "contains: PUSH_COMBINABLE_COLLATIONS"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/string/instr.cpp#L50-L59",
+          "note": "instr: PUSH_COMBINABLE_COLLATIONS"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/string/prefix.cpp#L64-L71",
+          "note": "prefix: default handling"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/string/suffix.cpp#L71-L78",
+          "note": "suffix: default handling"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/string/replace.cpp#L78-L85",
+          "note": "replace: default handling"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/function_binder.cpp#L1084-L1133",
+          "note": "PushCollations: returns early without a collation on the arguments' types; PROPAGATE_COLLATIONS (the default) pushes nothing"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/collation_binding.cpp#L18-L36",
+          "note": "default_collation is read for an uncollated VARCHAR on the comparison path"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/function.cpp#L263-L264",
+          "note": "nocase (lower) and noaccent are combinable"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
     }
   ]
 }

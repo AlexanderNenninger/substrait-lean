@@ -25,11 +25,11 @@
   "description": [
     "The order preservation page guarantees the input order for a single-table `FROM`, `SELECT`, `WHERE`, `LIMIT`, `OFFSET`, `UNION ALL`, `COPY` and an empty `OVER ()`, and for the CSV, JSON and Parquet readers, while `preserve_insertion_order` is true. Joins, `UNION`, `GROUP BY`, whole-table aggregates, `USING SAMPLE` and scalar subqueries guarantee no order. With the setting off, any query without `ORDER BY` may reorder rows.",
     "The aggregates page marks the double versions of `sum`, `fsum` and `favg`, and `first`, `last`, `any_value`, `list` and `string_agg`, as affected by ordering, with non-deterministic results without an `ORDER BY` in the aggregate. Neither page names threads; the dependence on the thread count is implied by the parallel hash aggregate and goes to a probe (sum of doubles at threads 1 and N; existing facts duckdb-sum-double and duckdb-mode-ties).",
-    "Leads: src/execution/operator/aggregate/physical_hash_aggregate.cpp (the partition merge), test/sql/aggregate/aggregates/test_sum.test and test/sql/parallelism/."
+    "Round 2 (source): `sum` of doubles is a plain running sum (`NumericSumOperation` with `RegularAdd`, `state.value += input`), and combining two states adds their sums. A grouped aggregate builds one hash table per thread, appends each thread's partitions to the global data in the order the threads finish (under a lock), and combines each partition's chunks in that order; an ungrouped aggregate combines each thread's state into the global one as the thread finishes. So with more than one thread the order of the double additions follows scheduling, and the last bits of a double `SUM` may change between runs. `fsum`/`kahan_sum` use Kahan summation, which narrows the difference. A probe at threads 1 and N goes to the next round."
   ],
   "reference": "The reference compares results as bags (`List.Perm`), so row order outside `ORDER BY` is free. `sum_order` is an open option every route allows within the plan's bound; `first`/`any_value` without ordering and `tie_order` allow every order.",
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -45,6 +45,41 @@
         {
           "url": "https://duckdb.org/docs/2.0/configuration/overview.html",
           "note": "preserve_insertion_order, threads"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L206-L207",
+          "note": "NumericSumOperation: RegularAdd"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L557-L558",
+          "note": "sum(DOUBLE) uses NumericSumOperation"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L107-L117",
+          "note": "RegularAdd: value += input"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L212-L218",
+          "note": "Combine adds the source sum"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/radix_partitioned_hashtable.cpp#L709-L765",
+          "note": "thread-local partitions appended to the global data as threads finish"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/radix_partitioned_hashtable.cpp#L1103",
+          "note": "each partition combined in chunk order"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/operator/aggregate/physical_ungrouped_aggregate.cpp#L134-L150",
+          "note": "ungrouped: each thread's state combined under a lock"
         }
       ]
     }

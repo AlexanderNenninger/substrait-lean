@@ -15,10 +15,10 @@
     {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
     {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
     {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "docs"},
-    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "docs"}
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
   ],
   "constructs": [
     "+",
@@ -84,6 +84,26 @@
         }
       ],
       "notes": "https://duckdb.org/docs/stable/ redirects to the 2.0 docs. The fp32 rows rest on these pages: their infinity examples are `FLOAT`, the zero divisors in the table are DECIMAL literals (so DOUBLE), and the IEEE statement covers both floating-point types. The fp64 `on_domain_error` row (`inf / inf`) rests on the probe above too."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1317-L1330",
+          "note": "BindBinaryFloatingPoint: with ieee_floating_point_ops the bare operation, else a zero check that raises or gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1380-L1393",
+          "note": "FLOAT and DOUBLE / bind the same"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L17-L27",
+          "note": "float and double + are the C++ operator, so inf - inf and 0 * inf are NaN at either width"
+        }
+      ],
+      "notes": "FLOAT takes the same code path as DOUBLE at its own width, which raises the fp32 rows from docs to source."
     }
   ],
   "issues": [

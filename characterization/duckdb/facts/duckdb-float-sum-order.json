@@ -7,7 +7,8 @@
   "area": "aggregates",
   "options": [
     "sum_order",
-    "nan_creation"
+    "nan_creation",
+    "rounding"
   ],
   "rows": [
     {
@@ -25,6 +26,14 @@
         "fp32",
         "fp64"
       ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
     }
   ],
   "constructs": [
@@ -36,14 +45,15 @@
   "settings": {},
   "description": [
     "\"The floating-point versions of\" `sum` \"are affected by ordering\"; so are `avg`, `fsum` and `favg`, the last two with Kahan summation. The order in which rows reach a whole-table or grouped aggregate is not guaranteed unless the aggregate states an `ORDER BY` (Order Preservation). Both `FLOAT` and `DOUBLE` are named: the docs do not say whether a `FLOAT` sum accumulates in `FLOAT` or `DOUBLE`, nor its result type (round 2, source).",
-    "`FLOAT` and `DOUBLE` follow IEEE 754 for infinities and NaN \"on machines with the required CPU/FPU support\", NaN's order and equality aside; so a sum meeting `+inf` and `-inf` is NaN. The docs state this for the types, not for `SUM` itself; duckdb-nonfinite-aggregates probes `fsum` of `[inf, 1]`."
+    "`FLOAT` and `DOUBLE` follow IEEE 754 for infinities and NaN \"on machines with the required CPU/FPU support\", NaN's order and equality aside; so a sum meeting `+inf` and `-inf` is NaN. The docs state this for the types, not for `SUM` itself; duckdb-nonfinite-aggregates probes `fsum` of `[inf, 1]`.",
+    "Round 2 (source): `sum` and `avg` have no `FLOAT` overload, and `FLOAT`'s only numeric implicit cast is to `DOUBLE`, so a `FLOAT` sum or average converts each value exactly to `DOUBLE`, accumulates in `DOUBLE` and returns `DOUBLE`. `fsum` and `favg` take `DOUBLE` only. `sum` adds with a plain `state.value += input`, and partial states merge with `target += source`; `avg` divides that sum by the count. `fsum` is Kahan's compensated sum, and its partial states merge by adding the other state's sum and then its negated error, both compensated. All of it is IEEE double arithmetic under the default rounding (to nearest, ties to even), with no check for non-finite values, so `+inf` and `-inf` make NaN."
   ],
   "reference": [
     "`sum_order`: any order and grouping, within #85's bound (`FloatSums`); DuckDB's order-dependent sum is one of them.",
     "`nan_creation`: the reference raises on a `SUM` of `+inf` and `-inf` (#257); an error-side option, so DuckDB's NaN is never reached on a plan verified not to raise."
   ],
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -64,6 +74,46 @@
         }
       ],
       "notes": "Docs for DuckDB 2.0 (duckdb.org/docs/2.0). For fp64 duckdb-sum-double and duckdb-avg-double read the algorithm at the source."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L545-L566",
+          "note": "SumFun::GetFunctions: DECIMAL, BOOLEAN, SMALLINT, INTEGER, BIGINT, HUGEINT, DOUBLE, BIGNUM; no FLOAT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L180-L188",
+          "note": "ImplicitCastFloat: DOUBLE (and BIGNUM)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L105",
+          "note": "KahanAddInternal; CombineSumStateValue (target += source); KahanSumState::Combine"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L107-L117",
+          "note": "RegularAdd: state.value += input"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L17-L45",
+          "note": "SumSetOperation and KahanSumSetOperation: Combine"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L580-L586",
+          "note": "KahanSumFun (fsum): DOUBLE only"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L184-L198",
+          "note": "NumericAverageOperation: state.value / state.count"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L381-L386",
+          "note": "FAvgFun (favg): DOUBLE only"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
     }
   ],
   "issues": [

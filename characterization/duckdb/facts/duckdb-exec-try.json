@@ -16,7 +16,7 @@
   "description": [
     "`TRY_CAST` returns NULL where the cast fails, and the cast page says it never raises. The planner's `CastCanThrow` qualifies this at v2.0.0: a cast to or from an aliased type (one an extension implements, such as `JSON`) can raise even as `TRY_CAST`, for example JSON to a MAP whose key fails to cast.",
     "`TRY(expr)` turns errors caused by a row into NULL for that row (docs: `TRY('abc'::INTEGER)`, `TRY(1 // 0)`). It cannot wrap a volatile function, an aggregate or a scalar subquery; that is refused at bind time. In the executor it runs the child on the whole vector; on an error of type `INVALID_INPUT`, `OUT_OF_RANGE` or `CONVERSION` it runs it again row by row and gives NULL for each row that raises; other error types propagate (`Exception::IsExecutionError`). So `TRY(error('x'))`, an invalid-input error, also gives NULL, and an internal or out-of-memory error still raises.",
-    "Leads: which exception type each raising function throws (division by zero, overflow, domain errors), and DuckDB's tests of TRY (on main: test/sql/error/test_try_in_clause.test, test/sql/subquery/scalar/test_try_subquery.test; paths at v2.0.0 to check)."
+    "Round 2 (source): `TRY_CAST` is not exception handling. The cast function passes an error-message slot to the cast kernels only for a try-cast (`cast.cpp`); a kernel that fails a row reports it through `HandleCastError::AssignError`, which throws a `ConversionException` when there is no slot and otherwise records the message and leaves the row NULL. So `TRY_CAST` nulls exactly the failures a kernel reports, and any other exception still raises: an out-of-memory or string-size `OutOfRange` error, and the kernels of extension types (the `CastCanThrow` case above). The direct throws left in src/function/cast/ are bind-time (struct and union shape errors) or guarded by `parameters.strict`. `TRY` nulls division by zero (an `InvalidInputException`, `arithmetic.cpp`) and overflow (`OutOfRangeException`); DuckDB's test of nested `CASE` and `COALESCE` under `TRY` (test/sql/error/test_try_nested_conditional.test) checks the row-by-row retry."
   ],
   "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB for a double to an integer and an integer to a narrower integer, and refuses `TRY_CAST` to a decimal, of a decimal to an integer and of strings (`docs/reference-semantics.md`, #58). Substrait has no `TRY` of a general expression.",
   "status": "open",
@@ -58,6 +58,33 @@
         {
           "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_cast_expression.cpp#L337-L350",
           "note": "a try_cast of an aliased type can throw"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/cast.cpp#L86-L94",
+          "note": "error slot only for try_cast"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast/default_casts.cpp#L65-L81",
+          "note": "AssignError: throw without a slot, else record and NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast/string_cast.cpp#L383-L394",
+          "note": "a direct throw only under parameters.strict"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1176-L1177",
+          "note": "division by zero throws InvalidInputException"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/error/test_try_nested_conditional.test#L1-L60",
+          "note": "TRY over CASE and COALESCE, row by row"
         }
       ]
     }

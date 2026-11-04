@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "`FLOAT` and `DOUBLE` are IEEE 754 binary32 and binary64",
-  "verdict": "`rounding: TIE_TO_EVEN` for `+ - * /` (docs, hedged)",
+  "verdict": "`rounding: TIE_TO_EVEN` for `+ - * /`: plain C++ float and double operations",
   "area": "doubles",
   "options": [
     "rounding"
@@ -27,11 +27,11 @@
   "description": [
     "`FLOAT` (`FLOAT4`, `REAL`) is single precision and `DOUBLE` (`FLOAT8`) double precision, in practice IEEE 754 \"to the extent that the underlying processor, operating system, and compiler support it\". Addition, subtraction and multiplication are approximate on them, so each result is the operands' IEEE result, rounded to nearest with ties to even, the default IEEE mode. The docs name no other rounding mode and no setting that changes it.",
     "`/` of two integers is float division (`5 / 2 = 2.5`) while `integer_division` is false (the default); `//` divides integers. `ieee_floating_point_ops` (default true) selects IEEE results (NaN, `±inf`) over errors or NULL for supported floating-point operations; it does not touch rounding.",
-    "The docs hedge (\"usually\", \"to the extent … support it\"), so this rests on the platform's FPU; a source or probe check (round 2) would pin it."
+    "The source confirms it (round 2): `+ - * /` on FLOAT and DOUBLE are the C++ operators on `float` and `double`, so a FLOAT operation rounds to binary32 once and is not computed in double. The result is the platform's IEEE arithmetic in its default rounding mode; DuckDB sets no other."
   ],
   "reference": "`rounding: TIE_TO_EVEN` for `+ - × /` of doubles (Lean's native `Float`; docs/core-semantics.md D5). Lean refuses arithmetic on `FLOAT` values (duckdb-R12), so the fp32 rows matter only once binary32 is modelled.",
   "status": "no-finding",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -52,6 +52,35 @@
         }
       ],
       "notes": "https://duckdb.org/docs/stable/ redirects to the 2.0 docs."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L17-L27"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/subtract.cpp#L15-L25"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/multiply.cpp#L17-L27"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1144-L1154",
+          "note": "DivideOperator<float>, <double>"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L516-L521",
+          "note": "+ on floating types binds GetScalarBinaryFunction<AddOperator> at the type's own width"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1380-L1393",
+          "note": "/ of FLOAT and of DOUBLE: BindBinaryFloatingPoint<DivideOperator>"
+        }
+      ],
+      "notes": "Each operator has a `float` and a `double` specialisation that is the bare C++ operation; `ieee_floating_point_ops` only chooses whether `/` and `%` check for a zero divisor first (BindBinaryFloatingPoint)."
     }
   ]
 }

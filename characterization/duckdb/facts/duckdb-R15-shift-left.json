@@ -10,7 +10,8 @@
     "raise_set"
   ],
   "rows": [
-    {"group": "int.shift", "option": "shift_range", "types": ["i64"]}
+    {"group": "int.shift", "option": "shift_range", "types": ["i64"]},
+    {"group": "int.shift", "option": "shift_range", "types": ["i8", "i16", "i32"], "evidence": "source"}
   ],
   "constructs": [
     "<<",
@@ -42,6 +43,22 @@
         }
       ],
       "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/operators/bitwise.cpp#L247-L276",
+          "note": "BitwiseShiftLeftOperator: max_shift is the type's bit width; a negative operand, a shift below 0 or at least the width (unless the input is 0), and lost bits raise"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/operators/bitwise.cpp#L300-L312",
+          "note": "instantiated for every integral type"
+        }
+      ],
+      "notes": "One template for every width, with the range relative to the width: at i8 a shift of 8 or more raises (`0 << 8` is 0), and `1::TINYINT << 7` raises since 128 does not fit. sverify's reference states the range for 64 bits."
     }
   ],
   "issues": [

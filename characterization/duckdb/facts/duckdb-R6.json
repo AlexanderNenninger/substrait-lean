@@ -10,7 +10,8 @@
     "avg_int_result"
   ],
   "rows": [
-    {"group": "agg.isum", "option": "overflow", "types": ["i64"]}
+    {"group": "agg.isum", "option": "overflow", "types": ["i64"]},
+    {"group": "agg.isum", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "source"}
   ],
   "constructs": [
     "sum",
@@ -19,7 +20,7 @@
   "settings": {},
   "description": [
     "Shim. `SUM(BIGINT)` returns `HUGEINT` and never overflows at 64 bits, so DuckDB alone answers where the reference raises. `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan already guards this and raises (`test_sum.test:68`).",
-    "`avg` of integers: the exact `HUGEINT` sum `//` the count. DataFusion's `avg` is a double, so it refuses an integer one."
+    "`avg` of integers returns `DOUBLE` in DuckDB (duckdb-avg-int). sverify's written SQL computes an `i64` average as the exact `HUGEINT` sum `//` the count (`int_avg` in `python/src/sverify/sql/duckdb.py`). DataFusion's `avg` is a double, so it refuses an integer one."
   ],
   "reference": [
     "Substrait and the reference: `sum` of `i8`…`i64` returns `i64?`; with `overflow` omitted, a sum outside `i64` raises.",
@@ -49,6 +50,21 @@
       "method": "source-reading",
       "checked_by": "commit ceaf0de (#209)",
       "notes": "`avg` of integers follows the declared output type."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L405-L452", "note": "GetSumAggregate: SMALLINT, INTEGER, BIGINT, HUGEINT overloads, each returning HUGEINT"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L545-L566", "note": "SumFun::GetFunctions: no TINYINT overload"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L181-L196", "note": "IntegerSumOperation (SMALLINT): int64 state, finalized to HUGEINT"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L341-L402", "note": "SumPropagateStats: swaps in sum_no_overflow (int64 state) when the statistics bound the sum within int64; the result stays HUGEINT"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L155-L200", "note": "AddToHugeint (INTEGER, BIGINT): exact 128-bit accumulation"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/types/hugeint.hpp#L106-L112", "note": "Hugeint::Add (merging states) raises OutOfRange past 128 bits"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L9-L68", "note": "TINYINT binds the BIGINT overload: implicit cast cost 101 against 110 for SMALLINT"}
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). `sum` of `TINYINT` (through the `BIGINT` overload), `SMALLINT` and `INTEGER` returns `HUGEINT`, like `BIGINT`; each width is its own template instantiation. `SMALLINT` accumulates in an unchecked `int64_t`, out of reach below 2^48 rows; `INTEGER` and `BIGINT` in an exact `HUGEINT`, whose merge raises only past 128 bits. So no sum of `i8` to `i32` overflows or raises at 64 bits, as for `i64`."
     }
   ],
   "issues": [

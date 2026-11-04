@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "Platform dependence: IEEE where the hardware supports it",
-  "verdict": "docs: IEEE 754 to the extent of the CPU, OS and compiler; libm not documented",
+  "verdict": "elementary functions call the C++ standard library, so the platform's libm; no bundled math library",
   "area": "execution",
   "options": [
     "platform"
@@ -19,12 +19,12 @@
   "settings": {},
   "description": [
     "The numeric types page says FLOAT and DOUBLE follow IEEE 754 to the extent the processor, operating system and compiler support it, that values out of the double range may cause errors on some platforms but usually become zero or infinity, and that the special-value semantics hold on machines with the required CPU and FPU support.",
-    "The docs say nothing about which math library computes `sin`, `pow`, `exp` or `ln`, about NaN signs, or about SIMD paths. The scalar math functions call the C++ standard library (to check: src/function/scalar/math/numeric.cpp, src/core_functions/scalar/math/), so their last bits are the platform's libm: macOS arm64 for the probes, glibc on Linux x86_64 in CI.",
+    "Source at v2.0.0: the scalar math functions in extension/core_functions/scalar/math/numeric.cpp call the C++ standard library: `std::exp`, `std::pow`, `std::log`, `std::log10`, `std::log2`, `std::sin`, `std::cos`, `std::tan`, `std::asin`, `std::atan2`, `std::cbrt`, the hyperbolic functions, and `std::pow(10, d)` inside `round(x, d)`. DuckDB bundles no portable math library (none under third_party/), so the last bits of these functions are the platform's libm: macOS arm64 for the probes, glibc on Linux x86_64 in CI. `sqrt`, `+`, `-`, `*`, `/` and `fmod` are correctly rounded by IEEE 754 and do not depend on it.",
     "Next rounds: run the double probes (characterization/duckdb/probes.json) on homelab (Linux x86_64) and diff them with the macOS arm64 ledger."
   ],
   "reference": "The reference treats `sin`, `exp`, `pow` and the other elementary functions as black boxes with stated laws (`docs/reference-semantics.md`), so a last-bit difference is allowed; NaN payloads and signs are not observable values for it (duckdb-R14 for -0.0).",
   "status": "open",
-  "evidence": "docs",
+  "evidence": "source",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -35,6 +35,34 @@
           "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1309",
+          "note": "exp: std::exp"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1333-L1340",
+          "note": "pow: std::pow"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1477-L1484",
+          "note": "ln: std::log"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1844-L1959",
+          "note": "sin, cos, tan, asin, atan, atan2: std::"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1007-L1018",
+          "note": "round(x, d) scales by std::pow(10, d)"
+        }
+      ],
+      "notes": "third_party/ at v2.0.0 holds no math library (no fdlibm, openlibm, sleef or crlibm)."
     }
   ]
 }

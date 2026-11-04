@@ -8,11 +8,15 @@
   "options": [
     "min_mod_neg_one",
     "division_type",
-    "raise_set"
+    "raise_set",
+    "overflow"
   ],
   "rows": [
     {"group": "int.mod", "option": "min_mod_neg_one", "types": ["i64"]},
-    {"group": "int.mod", "option": "division_type", "types": ["i64"]}
+    {"group": "int.mod", "option": "division_type", "types": ["i64"]},
+    {"group": "int.mod", "option": "min_mod_neg_one", "types": ["i8", "i16", "i32"], "evidence": "source"},
+    {"group": "int.mod", "option": "division_type", "types": ["i8", "i16", "i32"], "evidence": "source"},
+    {"group": "int.mod", "option": "overflow", "types": ["i8", "i16", "i32", "i64"], "evidence": "source"}
   ],
   "constructs": [
     "%"
@@ -43,6 +47,30 @@
         }
       ],
       "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_binary_operators.hpp#L40-L46",
+          "note": "ModuloOperator: left % right, C++'s truncating remainder"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1182-L1202",
+          "note": "BinaryNumericDivideWrapper: MIN and -1 raise `Overflow in division` before OP runs; a zero divisor raises or gives NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1252-L1284",
+          "note": "INT8 … INT64 all take BinaryNumericDivideWrapper"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469",
+          "note": "% on integral types binds BindDivisionByZero<ModuloOperator>"
+        }
+      ],
+      "notes": "`%` shares `//`'s wrapper, one template instantiated per width, so `MIN % -1` raises at i8, i16 and i32 as at i64, and the remainder truncates (C++ `%`, the dividend's sign). `MIN % -1` is also the only overflow of `%`: every other remainder fits."
     }
   ],
   "issues": [

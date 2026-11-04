@@ -1,0 +1,72 @@
+{
+  "id": "duckdb-avg-int",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`AVG` of integers: a `DOUBLE` from the exact sum",
+  "verdict": "`DOUBLE`; exact integer sum, one division (in `long double` for `INTEGER` and `BIGINT`)",
+  "area": "aggregates",
+  "options": [
+    "avg_int_result"
+  ],
+  "rows": [
+    {
+      "group": "agg.isum",
+      "option": "avg_int_result",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "avg",
+    "mean"
+  ],
+  "settings": {},
+  "description": [
+    "`avg` has one overload per integer width it names, `SMALLINT`, `INTEGER`, `BIGINT` and `HUGEINT`, and each returns `DOUBLE`; there is no integer result. `TINYINT` has none: the binder takes the overload with the cheapest implicit cast, and a cast to `BIGINT` costs 101 against 110 for `SMALLINT`, so `avg(TINYINT)` runs the `BIGINT` one.",
+    "`SMALLINT`: the sum is an `int64_t` (`RegularAdd`, unchecked, out of reach below 2^48 rows) and the result `double(sum) / double(count)`. `INTEGER` and `BIGINT`: the sum is an exact `HUGEINT` (`AddToHugeint`) and the result `long double(sum) / long double(count)`, rounded to `DOUBLE`. `long double` is 80-bit on x86-64 Linux and the same as `double` on arm64 macOS and MSVC, so the last bit of a large mean can depend on the platform.",
+    "No values gives NULL. The width dispatch is one template instantiation per width (`GetAverageAggregate`), which is what lets this reading cover `i8` to `i64`."
+  ],
+  "reference": [
+    "`avg_int_result` follows the plan's declared output type (#209). With `fp64` the reference averages the integers' conversions to doubles (`parseMeasure`), so it rounds each value and then the sum, where DuckDB rounds the exact sum once; both are within #85's bound.",
+    "With `i64` the reference is the exact mean truncated toward zero (`AggFn.iavg`); sverify's DuckDB SQL writes it as `CAST(SUM(v) // COUNT(v) AS BIGINT)` (`sql/duckdb.py`, `int_avg`), on the exact `HUGEINT` sum, so DuckDB's `AVG` is not used there."
+  ],
+  "status": "open",
+  "evidence": "source",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L93-L125",
+          "note": "IntegerAverageOperation (int64 state, double division) and IntegerAverageOperationHugeint (hugeint state, long double division)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L289-L320",
+          "note": "GetAverageAggregate: SMALLINT, INTEGER, BIGINT, HUGEINT overloads, each returning DOUBLE"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L335-L351",
+          "note": "AvgFun::GetFunctions: no TINYINT overload"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L9-L68",
+          "note": "TargetTypeCost (BIGINT 101, SMALLINT the default 110) and ImplicitCastTinyint"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/function_binder.cpp#L137-L240",
+          "note": "the summed implicit-cast cost; Candidates keeps the lowest"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). The x86-64 versus arm64 `long double` difference is from the C++ ABIs, not probed."
+    }
+  ],
+  "issues": [
+    209
+  ]
+}

@@ -10,19 +10,22 @@
     "raise_set"
   ],
   "rows": [
-    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp"]}
+    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp"]},
+    {"group": "time.arith", "option": "date_range", "types": ["timestamp_tz"], "evidence": "source"}
   ],
   "constructs": [
     "DATE + INTEGER",
     "DATE + INTERVAL",
     "TIMESTAMP + INTERVAL",
+    "TIMESTAMPTZ + INTERVAL",
     "date_diff",
     "year"
   ],
   "settings": {},
   "description": [
     "Date arithmetic is not limited to 0001-01-01 … 9999-12-31: `DATE '9999-12-31' + 1` is `10000-01-01`, `DATE '0001-01-01' - 1` is `0001-12-31 (BC)` (year 0), and an interval of months or a second past a timestamp's last one carry on. `year(DATE '0001-01-01' - 1)` is 0.",
-    "DuckDB's dates run from 5877642-06-25 BC to 5881580-07-10; a day past either raises `Out of Range Error: Date out of range`. `DATE + INTERVAL` gives a timestamp, whose range is narrower (to 294247-01-10): past it, `Conversion Error: Date and time not in timestamp range`."
+    "DuckDB's dates run from 5877642-06-25 BC to 5881580-07-10; a day past either raises `Out of Range Error: Date out of range`. `DATE + INTERVAL` gives a timestamp, whose range is narrower (to 294247-01-10): past it, `Conversion Error: Date and time not in timestamp range`.",
+    "`TIMESTAMPTZ + INTERVAL` (and `-`) is the ICU extension's: it sets an ICU calendar (proleptic Gregorian, in the `TimeZone` setting) to the instant, adds months and days, then hours, minutes, seconds and milliseconds (lowest first when any part is negative), and reads the instant back. Nothing checks 0001-01-01 … 9999-12-31; it raises (`Conversion Error: ICU date overflows timestamp range`) only when the result leaves the 64-bit microsecond range, and an infinite timestamp passes through. Round 2 reading, not probed."
   ],
   "reference": "`date_range`: date arithmetic whose operand or result leaves 0001-01-01 … 9999-12-31 raises (#251), reported by `verify`. The written SQL checks the result against the reference's dates and raises \"outside the reference's dates\" (`sql/core/_base.py`), so DuckDB's wider range is never returned; with constant operands the check is made when the plan is written.",
   "status": "shimmed",
@@ -62,6 +65,17 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-dateadd.cpp#L63-L127", "note": "ICUCalendarAdd for TIMESTAMPTZ + INTERVAL: no check against year 9999"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-datefunc.cpp#L140-L169", "note": "TryGetTime, GetTime: raise only past the int64 microsecond range"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-datefunc.cpp#L20-L35", "note": "the calendar: the Calendar setting (gregorian) in the TimeZone setting"}
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). Whether the written plan's date guard covers `TIMESTAMPTZ` was not checked here."
     }
   ],
   "issues": [
