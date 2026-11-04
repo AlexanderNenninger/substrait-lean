@@ -32,7 +32,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | NDS |  |
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | N |  |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✓ | ND |  |
-| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | N | `rows_frame` |
+| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | N | `stddev_var` |
 | fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✓ | ND |  |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | NPD |  |
 | fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | NPD |  |
@@ -133,7 +133,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | ts-asof-fx-tolerance | [Currency conversion at the latest rate within a day](https://docs.pola.rs/user-guide/transformations/joins/) | ✓ | NPDS |  |
 | ts-resample-15min | [Resample sensor readings to 15-minute means](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html) | ✓ | NPD |  |
 | ts-hourly-rollup | [Hourly rollup of sensor readings](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✓ | NPD |  |
-| ts-rolling-time-window | [Rolling one-hour mean](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✗ | N | `range_frame` |
+| ts-rolling-time-window | [Rolling one-hour mean](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✓ | NPD |  |
 | ts-rolling-7day-calendar | [Rolling seven-day revenue via a calendar join](https://www.skeptric.com/sql-fill-gaps/index.html) | ✓ | NPD |  |
 | ts-date-spine | [Daily order counts with a date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | ✓ | NPDS |  |
 | ts-dau-rolling-7d | [Daily and seven-day active users](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | NPDS |  |
@@ -194,7 +194,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | win-top-n-per-group | [Top 3 products per category](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPD |  |
 | win-top-n-with-ties | [Top 3 salaries per department, ties included](https://neon.com/docs/functions/window-rank) | ✓ | NPDS |  |
 | win-running-total | [Running total per customer](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPD |  |
-| win-moving-average | [Seven-reading moving average](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✗ | N | `rows_frame` |
+| win-moving-average | [Seven-reading moving average](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✓ | NPD |  |
 | win-percent-of-total | [Salary relative to the department](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPD |  |
 | win-above-group-average | [Employees paid above their department average](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPD |  |
 | win-ntile-quartiles | [Customer spend quartiles](https://www.thoughtspot.com/sql-tutorial/sql-window-functions) | ✓ | NPD |  |
