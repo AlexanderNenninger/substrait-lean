@@ -1,0 +1,83 @@
+{
+  "id": "duckdb-ulp-casts",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer and decimal to DOUBLE and FLOAT: correctly rounded but from HUGEINT",
+  "verdict": "BIGINT and DECIMAL ≤ 0.5 ulp; HUGEINT and DECIMAL(38, 0) < 1 ulp (0.625 seen)",
+  "area": "casts",
+  "options": [
+    "fp32"
+  ],
+  "constructs": [
+    "CAST(BIGINT AS DOUBLE)",
+    "CAST(BIGINT AS FLOAT)",
+    "CAST(HUGEINT AS DOUBLE)",
+    "CAST(HUGEINT AS FLOAT)",
+    "CAST(DECIMAL AS DOUBLE)",
+    "CAST(DECIMAL AS FLOAT)"
+  ],
+  "settings": {
+    "platform": "macOS arm64"
+  },
+  "description": [
+    "Integers up to 64 bits convert with `static_cast<double>` or `<float>`, one hardware rounding to nearest even: ≤ 0.5 ulp, also above 2^53 (observed 0 of 3 000 off, BIGINT to DOUBLE and to FLOAT).",
+    "A DECIMAL with a nonzero scale converts with one division when the unscaled value is below 2^53 and 10^scale is exact, otherwise through fast_float's decimal algorithm: correctly rounded, ≤ 0.5 ulp, to DOUBLE and to FLOAT (observed 0 off for DECIMAL(18, 6), (18, 17), (38, 10), (38, 30), (38, 2)).",
+    "HUGEINT, and a DECIMAL(38, 0) whose scale 0 takes the integer path, convert as `double(lower) + double(upper) · 2^64`, and for `upper = -1` as `-double(2^64 - 1 - lower) - 1`: two roundings, so not always the nearest double. Bound by the formula: < 1 ulp; observed max 0.625 ulp, 5 of 3 000 HUGEINT and 4 of 1 687 DECIMAL(38, 0) values off, e.g. CAST(-55927220547740261 AS DOUBLE) is -55927220547740256 where the nearest double is -55927220547740264, and -9223372036854776833 gives -2^63 where the nearest is -2^63 - 2048. HUGEINT to FLOAT goes through that double, a third rounding (0 off in the probe).",
+    "All of these are integer and hardware operations: platform-independent."
+  ],
+  "reference": "Casts of integers and decimals to doubles round once to nearest, ties to even (Lean's `Float.ofInt`, `Float.ofScientific`). A HUGEINT reaches a plan only from a sum or an explicit cast; sverify's ε for that cast would be 1 ulp.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (ulp bounds)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_cast.hpp#L26-L71",
+          "note": "TryCastWithOverflowCheck: static_cast<DST>(value)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/operator/cast_operators.cpp#L3293-L3298",
+          "note": "CanUseDecimalFloatingPointFastPath: |unscaled| ≤ 2^53 and 10^scale exact"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/operator/cast_operators.cpp#L3347-L3369",
+          "note": "TryCastDecimalToFloatingPoint: scale 0 or the fast path divide once; otherwise duckdb_fast_float::compute_float"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types/hugeint.cpp#L449-L475",
+          "note": "Hugeint::TryCast to float via double; CastBigintToFloating: two roundings"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (ulp bounds)",
+      "evidence": [
+        {
+          "sql": "CREATE TABLE h AS SELECT row_number() OVER () AS i, x FROM read_csv('big.csv', columns={'x': 'HUGEINT'}); SELECT CAST(x AS DOUBLE) FROM h ORDER BY i  -- 1 500 values in ±2^126, 750 in ±2^64, 750 in [-2^64, -1]",
+          "observed": "max 0.625 ulp, 5 of 3 000 off the nearest double; CAST(x AS FLOAT) 0 off"
+        },
+        {
+          "sql": "SELECT CAST(-55927220547740261::HUGEINT AS DOUBLE), CAST(-9223372036854776833::HUGEINT AS DOUBLE), CAST(-55927220547740261::DECIMAL(38,0) AS DOUBLE)",
+          "observed": "-5.592722054774026e+16, -9.223372036854776e+18, -5.592722054774026e+16 (Python's float() gives -5.5927220547740264e+16 and -9.223372036854778e+18)"
+        },
+        {
+          "sql": "SELECT CAST(x AS DOUBLE), CAST(x AS FLOAT) FROM t  -- t(x BIGINT): 1 500 random int64, 750 above 2^53, 750 near ties",
+          "observed": "max 0.5000 / 0.49999 ulp; 0 of 3 000 off"
+        },
+        {
+          "sql": "SELECT CAST(x AS DOUBLE), CAST(x AS FLOAT) FROM d  -- DECIMAL(18,6), (18,17), (38,10), (38,30), (38,2): 1 500 full-width values and 1 500 up to 10^10 unscaled",
+          "observed": "max ≤ 0.49997 (fp64), ≤ 0.5000 (fp32) ulp; 0 off for each"
+        }
+      ],
+      "notes": [
+        "Probe script ulp_probe.py (session scratchpad, not in the repository), run from python/ as `uv run --with mpmath python ulp_probe.py --n 3000 --seed 1 --out ulp.json`: about 3 000 inputs per operation and type, random and hard cases, against mpmath at 256 bits. 'bad' counts results that differ from the correctly rounded value; the max is in ulps of the result type at the exact value's binade. DuckDB runs on a table loaded from Parquet, Polars on a LazyFrame with collect(engine='streaming'), so the column kernels run. DuckDB 2.0.0 and Polars 2.1.0 (Python wheels), macOS 26.6 arm64, Python 3.12.11, mpmath 1.3.0.",
+        "DuckDB's casts run on a table materialised first: a CAST right on read_csv is pushed into the scan and parses the text, which an earlier run measured by mistake."
+      ]
+    }
+  ]
+}
