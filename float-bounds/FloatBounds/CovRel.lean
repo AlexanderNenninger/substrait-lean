@@ -42,11 +42,7 @@ theorem StdModel.ctail {q ΔC C Ch G P R AA : ℝ} (hP : 0 ≤ P) (hR : 0 ≤ R)
     (hC : |Ch - C| ≤ G) (hGb : G ≤ 2 ^ 900) :
     |M.fl (Ch + M.fl q) - (C + ΔC)|
       ≤ (1 + u) * G + 8.5 * u * P + 7 * u * R + 103 * u ^ 2 * AA + 3 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   have hG0 : 0 ≤ G := le_trans (abs_nonneg _) hC
   obtain ⟨E, hE⟩ : ∃ E, E = 8 * u * P + 4 * u * R + 81 * u ^ 2 * AA := ⟨_, rfl⟩
   rw [← hE] at hq
@@ -104,9 +100,7 @@ theorem StdModel.ydev_err {y m mh' D w A' : ℝ} (hw0 : 0 < w) (hw2 : w ≤ 1 / 
     (hE : y - (m + D * w) = D * (1 - w)) (hm' : |mh' - (m + D * w)| ≤ 6 * u * A')
     (hDA : |D| ≤ A') (htA : tiny ≤ A') (hA'b : A' ≤ 2 ^ 433) :
     |M.fl (y - mh') - D * (1 - w)| ≤ 8 * u * A' + u * |D| := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', -, -, hmax⟩ := fpFacts
   have hA'0 : 0 ≤ A' := le_trans (abs_nonneg _) hDA
   have h1w : 0 ≤ 1 - w := by linarith
   have hEabs : |D * (1 - w)| ≤ |D| := by
@@ -173,10 +167,7 @@ theorem StdModel.cov_step {K : ℕ} (hK1 : 1 ≤ K) (hK : K + 1 ≤ 2 ^ 32)
         - (C + (x - mx) * (y - (my + (y - my) / ((K : ℝ) + 1))))|
       ≤ (1 + u) * G + 8.5 * u * ((Ax + |x| + tiny) * |y - my| + (Ay + |y| + tiny) * |x - mx|)
         + 7 * u * R + 103 * u ^ 2 * ((Ax + |x| + tiny) * (Ay + |y| + tiny)) + 3 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
   have hK1r : (1 : ℝ) ≤ K := by exact_mod_cast hK1
   have hk0 : (0 : ℝ) < K + 1 := by linarith
   have hAx0 : 0 ≤ Ax := le_trans (by positivity) hAxt
@@ -316,10 +307,7 @@ theorem cBound_le {K Ax Ay Dx Dy R L : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) 
     (hDx : Dx ≤ 2 ^ 436) (hDy0 : 0 ≤ Dy) (hDy : Dy ≤ 2 ^ 436) (hR0 : 0 ≤ R) (hR : R ≤ 2 ^ 830)
     (hL0 : 0 ≤ L) (hL : L ≤ 2 ^ 39) : cBound K Ax Ay Dx Dy R L ≤ 2 ^ 900 := by
   unfold cBound
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
   have hKu : K * u ≤ 1 / 2 ^ 21 := by
     calc K * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
       _ = 1 / 2 ^ 21 := by norm_num
@@ -365,8 +353,7 @@ theorem carith {n Ax Ay Ax' Ay' Dx Dy dx dy R R' L L' G : ℝ} (hn : 0 ≤ n)
         + 3 * u * tiny
       ≤ cBound (n + 1) Ax' Ay' (Dx + dx) (Dy + dy) R' L' := by
   unfold cBound at hG ⊢
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hAx'0 : 0 ≤ Ax' := le_trans hAx0 hAx
   have hAy'0 : 0 ≤ Ay' := le_trans hAy0 hAy
   have hR'0 : 0 ≤ R' := le_trans hR0 hR
@@ -427,8 +414,7 @@ def CInv (ps : List (ℝ × ℝ)) (s : WState) : Prop :=
 
 theorem cBound_nonneg {n Ax Ay Dx Dy R L : ℝ} (hn : 0 ≤ n) (hAx : 0 ≤ Ax) (hAy : 0 ≤ Ay)
     (hDx : 0 ≤ Dx) (hDy : 0 ≤ Dy) (hR : 0 ≤ R) (hL : 0 ≤ L) : 0 ≤ cBound n Ax Ay Dx Dy R L := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   unfold cBound; positivity
 
 /-- The facts about the pairs a bound needs. -/
@@ -515,9 +501,7 @@ set_option maxHeartbeats 1000000 in
 theorem StdModel.cInv_snoc {ps : List (ℝ × ℝ)} {x y : ℝ} (hne : ps ≠ [])
     (hN : ps.length + 1 ≤ 2 ^ 32) (hB : Bounded (2 ^ 399) (ps ++ [(x, y)])) {s : WState}
     (hs : CInv ps s) : CInv (ps ++ [(x, y)]) (M.welfordStep s (x, y)) := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   obtain ⟨K', mxh, myh, Ch⟩ := s
   obtain ⟨hn, hεx, hεy, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := hs
   simp only at hn hεx hεy hC
@@ -674,11 +658,7 @@ theorem StdModel.T_chain2 {P : ℝ} {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ n
         - P * ((ns : ℝ) * nt / ((nt : ℝ) + ns))|
       ≤ 5 * u * (|P| * ((ns : ℝ) * nt / ((nt : ℝ) + ns))
         + (1 + (ns : ℝ) * nt / ((nt : ℝ) + ns)) * tiny) := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have htn1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, htn1, hmax⟩ := fpFacts
   have hsr : (1 : ℝ) ≤ ns := by exact_mod_cast hs
   have htr : (1 : ℝ) ≤ nt := by exact_mod_cast ht1
   have hnr : (ns : ℝ) + nt ≤ 2 ^ 32 := by exact_mod_cast hn
@@ -807,8 +787,7 @@ theorem wmerge_arith {ns nt n a b E ms mt As At : ℝ} (hsr : 1 ≤ ns) (htr : 1
     (hms : ns * |ms| ≤ 1.01 * As) (hmt : nt * |mt| ≤ 1.01 * At)
     (hAs : ns * tiny ≤ As) (hAt : nt * tiny ≤ At) :
     E ≤ 6 * u * (ns * At + nt * As) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hAs0 : 0 ≤ As := le_trans (by positivity) hAs
   have hAt0 : 0 ≤ At := le_trans (by positivity) hAt
   have m2 : As ≤ nt * As := le_mul_of_one_le_left hAs0 htr
@@ -837,11 +816,7 @@ theorem StdModel.wmean_spec {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt) (hn :
     |M.fl (M.fl (M.fl ((ns : ℝ) * ms) + M.fl ((nt : ℝ) * mt)) / ((nt : ℝ) + ns))
         - ((nt : ℝ) * mt + ns * ms) / ((nt : ℝ) + ns)|
       ≤ 6 * u * ((ns : ℝ) * At + nt * As) / ((nt : ℝ) + ns) := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have htn1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, htn1, hmax⟩ := fpFacts
   have hsr : (1 : ℝ) ≤ ns := by exact_mod_cast hs
   have htr : (1 : ℝ) ≤ nt := by exact_mod_cast ht1
   have hnr : (ns : ℝ) + nt ≤ 2 ^ 32 := by exact_mod_cast hn
@@ -1009,8 +984,7 @@ theorem cT_err {T Q ΔC P Y A h : ℝ} (hP : 0 ≤ P) (hY : |ΔC| ≤ Y) (hA : 0
     (hQ : |Q - ΔC| ≤ 7.1 * u * P + 2 * u * Y + 103 * u ^ 2 * h * A)
     (hT : |T - Q| ≤ 5 * u * (|Q| + (1 + h) * tiny)) :
     |T - ΔC| ≤ 7.2 * u * P + 7.1 * u * Y + 104 * u ^ 2 * h * A + 5 * u * (1 + h) * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  obtain ⟨hu, hu', -, -, -⟩ := fpFacts
   have hY0 : 0 ≤ Y := le_trans (abs_nonneg _) hY
   have hQa : |Q| ≤ Y + (7.1 * u * P + 2 * u * Y + 103 * u ^ 2 * h * A) := by
     have := abs_sub_abs_le_abs_sub Q ΔC; linarith
@@ -1053,9 +1027,7 @@ theorem cmerge_com {Ca Cb ΔC Sha Shb Sh1 T Sh Ea Eb P Y R A h : ℝ} (hP : 0 �
     (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
     |Sh - (Ca + Cb + ΔC)| ≤ (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * P + 9.2 * u * R
       + 105 * u ^ 2 * h * A + (7.1 + 5.1 * h) * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   have hR0 : 0 ≤ R := le_trans (abs_nonneg _) hR1
   have hE0 : 0 ≤ Ea + Eb := by
     have := abs_nonneg (Sha - Ca); have := abs_nonneg (Shb - Cb); linarith
@@ -1130,8 +1102,7 @@ theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
       ≤ 8.5 * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
         + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb))
         + 12 * u * tiny * L := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have a1 : Axa * Dya ≤ (Axa + Axb) * Dya := mul_le_mul_of_nonneg_right (by linarith) hDya
   have a2 : Aya * Dxa ≤ (Aya + Ayb) * Dxa := mul_le_mul_of_nonneg_right (by linarith) hDxa
   have a3 : Axb * Dyb ≤ (Axa + Axb) * Dyb := mul_le_mul_of_nonneg_right (by linarith) hDyb
@@ -1180,8 +1151,7 @@ theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
     (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
         + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
       ≤ cBound (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + Xx) (Dya + Dyb + Xy) R L := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   unfold cBound at hEa hEb ⊢
   obtain ⟨Ta, hTa⟩ : ∃ T, T = 8.5 * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra
       + 60 * u ^ 2 * La * (Axa * Aya) + 12 * u * tiny * La := ⟨_, rfl⟩
@@ -1309,10 +1279,7 @@ set_option maxHeartbeats 2000000 in
 theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ [])
     (hN : a.length + b.length ≤ 2 ^ 32) (hBa : Bounded (2 ^ 399) a) (hBb : Bounded (2 ^ 399) b)
     {t s : WState} (ht : CInv a t) (hs : CInv b s) : CInv (a ++ b) (M.chan t s) := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have htn := tiny_pos
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', htn, -, hmax⟩ := fpFacts
   obtain ⟨ct, mxa, mya, Sha⟩ := t
   obtain ⟨cs, mxb, myb, Shb⟩ := s
   obtain ⟨hna, exa, eya, Dxa, Dya, hDxa0, hDya0, hDxa, hDya, hEa⟩ := ht
@@ -1634,9 +1601,7 @@ theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.len
           * √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
               * (P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
         + 793 * P.pairs.length * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   obtain ⟨-, -, -, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := M.cInv_plan P hne hN hB hrep
   generalize P.pairs = ps at hne hN hB hrep hDx hDy hC ⊢
   have hL := Lw_le hN

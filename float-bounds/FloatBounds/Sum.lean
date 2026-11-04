@@ -88,8 +88,7 @@ theorem StdModel.sumFrom_error (xs : List ℝ) :
   | cons x xs ih =>
     intro a a' A j hacc hA hn hov
     simp only [List.length_cons] at hn hov ⊢
-    have hu := u_pos
-    have ht := tiny_pos
+    obtain ⟨hu, -, ht, -, -⟩ := fpFacts
     have hjn : j + 1 ≤ j + (xs.length + 1) := by omega
     have hn1 : ((j + 1 : ℕ) : ℝ) * u < 1 :=
       lt_of_le_of_lt (by gcongr) hn
@@ -159,8 +158,7 @@ theorem StdModel.div_error {s s' A : ℝ} {j n : ℕ} (hn0 : 0 < n)
     (hs : |s' - s| ≤ gamma j * A) (hA : |s| ≤ A) (htA : n * tiny ≤ A)
     (hj : ((j + 2 : ℕ) : ℝ) * u < 1) (hov : (1 + gamma j) * A ≤ maxFinite) :
     |M.fl (s' / n) - s / n| ≤ gamma (j + 2) * A / n := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hn : (1 : ℝ) ≤ n := by exact_mod_cast hn0
   have hnpos : (0 : ℝ) < n := by linarith
   have h1 : ((j + 1 : ℕ) : ℝ) * u < 1 := lt_of_le_of_lt (by gcongr; norm_num) hj
@@ -241,8 +239,7 @@ theorem StdModel.sharded_error {ss : List (List ℝ)} {m : ℕ}
     (hov : (1 + gamma (m + ss.length)) * (mag ss.flatten + ss.length * tiny) ≤ maxFinite) :
     |M.shardedSum ss - ss.flatten.sum|
       ≤ gamma (m + ss.length) * (mag ss.flatten + ss.length * tiny) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   set k := ss.length
   have hk : (k : ℝ) * u < 1 := lt_of_le_of_lt (by gcongr; linarith) hn
   have hm' : (m : ℝ) * u < 1 := lt_of_le_of_lt (by gcongr; linarith) hn
@@ -318,8 +315,7 @@ theorem StdModel.sharded_avg_error {ss : List (List ℝ)} {m : ℕ} (hne : ss.fl
     |M.fl (M.shardedSum ss / ss.flatten.length) - ss.flatten.sum / ss.flatten.length|
       ≤ gamma (m + ss.length + 2) * (mag ss.flatten + ss.length * tiny)
         / ss.flatten.length := by
-  have ht := tiny_pos
-  have hu := u_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hk : (0 : ℝ) ≤ ss.length * tiny := by positivity
   have hn' : ((m + ss.length : ℕ) : ℝ) * u < 1 := by
     have : ((m + ss.length : ℕ) : ℝ) ≤ ((m + ss.length + 2 : ℕ) : ℝ) := by

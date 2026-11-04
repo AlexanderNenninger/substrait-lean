@@ -43,8 +43,7 @@ theorem wmean_arith {a b c z d w P Su R : ℝ} (ha : 0 ≤ a) (hb : 0 ≤ b) (hc
     (hP : P ≤ 6 * a * (1 - w) + (z + c) * w + (d * w + c))
     (hS : Su ≤ (a + b) * w + u * P) (hR : R ≤ Su + c) :
     R + P ≤ 6 * a + 6 * b + 6 * c := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  obtain ⟨hu, hu', -, -, -⟩ := fpFacts
   have hw0 : 0 ≤ w := by linarith
   have e1 : z * w ≤ (b + a + 6 * u * a) * w := mul_le_mul_of_nonneg_right hz hw0
   have e2 : d * w ≤ ((1 + u) * z + u * c) * w := mul_le_mul_of_nonneg_right hd hw0
@@ -73,11 +72,7 @@ theorem StdModel.wmean_step {K : ℕ} (hK1 : 1 ≤ K) (hK : K + 1 ≤ 2 ^ 32) {m
     |M.fl (x - mh) - (x - m)| ≤ 7 * u * (A + |x| + tiny) + u * |x - m| ∧
       |M.fl (mh + M.fl (M.fl (x - mh) / ((K : ℝ) + 1))) - (m + (x - m) / ((K : ℝ) + 1))|
         ≤ 6 * u * (A + |x| + tiny) := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   have hK1r : (1 : ℝ) ≤ K := by exact_mod_cast hK1
   have hkr : ((K : ℝ) + 1) ≤ 2 ^ 32 := by exact_mod_cast hK
   have hk0 : (0 : ℝ) < K + 1 := by linarith
@@ -242,11 +237,7 @@ theorem StdModel.wvar_tail {q ΔS A' Dabs S Ch G : ℝ}
     |M.fl (Ch + M.fl q) - (S + ΔS)|
       ≤ (1 + u) * G + 17 * u * A' * Dabs + 7 * u * (S + ΔS) + 103 * u ^ 2 * A' ^ 2
         + 3 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   have hA'0 : 0 ≤ A' := le_trans ht.le htA
   have hA2 : A' ^ 2 ≤ 2 ^ 866 := by
     calc A' ^ 2 ≤ (2 ^ 433) ^ 2 := by gcongr
@@ -332,11 +323,7 @@ theorem StdModel.wvar_step {K : ℕ} (hK1 : 1 ≤ K) (hK : K + 1 ≤ 2 ^ 32) {m 
       ≤ (1 + u) * G + 17 * u * (A + |x| + tiny) * |x - m|
         + 7 * u * (S + (x - m) * (x - (m + (x - m) / ((K : ℝ) + 1))))
         + 103 * u ^ 2 * (A + |x| + tiny) ^ 2 + 3 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   have hK1r : (1 : ℝ) ≤ K := by exact_mod_cast hK1
   have hk0 : (0 : ℝ) < K + 1 := by linarith
   have hA0 : 0 ≤ A := le_trans (by positivity) hAt
@@ -430,8 +417,7 @@ theorem winv_arith {n A A' Ds Dabs S S' G : ℝ} (hn : 1 ≤ n) (hnu : (n + 1) *
     (1 + u) * G + 17 * u * A' * Dabs + 7 * u * S' + 103 * u ^ 2 * A' ^ 2 + 3 * u * tiny
       ≤ (1 + 2 * (n + 1) * u) * (17 * u * A' * (Ds + Dabs) + 7 * u * (n + 1) * S'
         + 103 * u ^ 2 * (n + 1) * A' ^ 2 + 3 * (n + 1) * u * tiny) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hn0 : 0 ≤ n := by linarith
   set T' := 17 * u * A' * Ds + 7 * u * n * S' + 103 * u ^ 2 * n * A' ^ 2 + 3 * n * u * tiny
   have hTT : 17 * u * A * Ds + 7 * u * n * S + 103 * u ^ 2 * n * A ^ 2 + 3 * n * u * tiny ≤ T' := by
@@ -543,8 +529,7 @@ theorem StdModel.wStep_first {x : ℝ} (hx : M.fl x = x) : M.wStep (0, 0, 0) x =
     mul_zero, add_zero]
 
 theorem StdModel.wInv_one {x : ℝ} (hx : M.fl x = x) : WInv [x] (M.wState [x]) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   simp only [StdModel.wState, List.foldl_cons, List.foldl_nil, M.wStep_first hx]
   have hm : mx (dupL [x]) = x := by simp [mx, sx, dupL]
   have hc : comoment (dupL [x]) = 0 := by simp [comoment, dupL, mx, my, sx, sy]
@@ -557,10 +542,7 @@ theorem winv_G_bound {K A Ds S : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) (hA0 :
     (hA : A ≤ 2 ^ 432) (hDs0 : 0 ≤ Ds) (hDs : Ds ≤ 2 ^ 432) (hS0 : 0 ≤ S) (hS : S ≤ 2 ^ 830) :
     (1 + 2 * K * u) * (17 * u * A * Ds + 7 * u * K * S + 103 * u ^ 2 * K * A ^ 2
       + 3 * K * u * tiny) ≤ 2 ^ 900 := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
   have hKu : K * u ≤ 1 / 2 ^ 21 := by
     calc K * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
       _ = 1 / 2 ^ 21 := by norm_num
@@ -592,10 +574,7 @@ theorem winv_G_bound {K A Ds S : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) (hA0 :
 theorem StdModel.wInv_snoc {xs : List ℝ} {x : ℝ} (hne : xs ≠ []) (hN : xs.length + 1 ≤ 2 ^ 32)
     (hB : ∀ y ∈ xs, |y| ≤ 2 ^ 399) (hx : |x| ≤ 2 ^ 399) {s : ℕ × ℝ × ℝ} (hs : WInv xs s) :
     WInv (xs ++ [x]) (M.wStep s x) := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
   obtain ⟨hn, hmean, Ds, hDs0, hDs, hC⟩ := hs
   set K := xs.length with hK
   have hK1 : 1 ≤ K := List.length_pos_iff.mpr hne
@@ -698,9 +677,7 @@ theorem StdModel.welfordVar_rel {xs : List ℝ} (hne : xs ≠ []) (hN : xs.lengt
       ≤ 32 * xs.length * u * √((xs.map fun x => (|x| + tiny) ^ 2).sum * comoment (dupL xs))
         + 104 * xs.length ^ 2 * u ^ 2 * (xs.map fun x => (|x| + tiny) ^ 2).sum
         + 4 * xs.length * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   obtain ⟨-, -, Ds, hDs0, hDs, hC⟩ := M.wInv_all hne hN hB hrep
   set n : ℝ := (xs.length : ℝ) with hn
   set S := comoment (dupL xs)

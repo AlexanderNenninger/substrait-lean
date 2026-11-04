@@ -86,8 +86,7 @@ theorem abs_comoment_le_S {α : Type*} (qs : List α) (a b : α → ℝ) :
 theorem sum_sq_err_le {α : Type*} (qs : List α) (x x' : α → ℝ)
     (hd : ∀ q ∈ qs, |x' q - x q| ≤ 2 * u * |x q|) :
     (qs.map fun q => (x' q - x q) ^ 2).sum ≤ (2 * u) ^ 2 * (qs.map fun q => (|x q| + tiny) ^ 2).sum := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   rw [← List.sum_map_mul_left]
   apply List.sum_le_sum
   intro q hq
@@ -164,9 +163,7 @@ theorem kappa_arith {n X D sx sy qx qy sx' sy' qx' qy' : ℝ} (hn1 : 1 ≤ n)
     (bx : qx' ≤ (1 + 2 * u) * qx) (by' : qy' ≤ (1 + 2 * u) * qy) :
     X + D ≤ 7 * n * u * (sx * sy) + 3.2 * n * u * (qy * sx + qx * sy)
       + 130 * n ^ 2 * u ^ 2 * (qx * qy) + 4 * n ^ 2 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   obtain ⟨v, hv⟩ : ∃ v, v = n * u := ⟨_, rfl⟩
   have hv0 : 0 ≤ v := by rw [hv]; positivity
   have huv : u ≤ v := by rw [hv]; nlinarith
@@ -283,8 +280,7 @@ theorem sqrt_Q_decoded {qs : List ((ℝ × ℝ) × (ℝ × ℝ))}
     (hd : ∀ q ∈ qs, |q.1.1 - q.2.1| ≤ 2 * u * |q.2.1|) :
     √((qs.map fun q => (|q.1.1| + tiny) ^ 2).sum)
       ≤ (1 + 2 * u) * √((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have h : (qs.map fun q => (|q.1.1| + tiny) ^ 2).sum
       ≤ (1 + 2 * u) ^ 2 * (qs.map fun q => (|q.2.1| + tiny) ^ 2).sum := by
     rw [← List.sum_map_mul_left]
@@ -318,8 +314,7 @@ theorem StdModel.tp_exact {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs �
         + 130 * qs.length ^ 2 * u ^ 2 * (√((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum)
           * √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum))
         + 4 * qs.length ^ 2 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  obtain ⟨hu, hu', -, -, -⟩ := fpFacts
   have hb' : Bounded (2 ^ 399) (qs.map (·.1)) := by
     intro p hp
     obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hp
@@ -406,8 +401,7 @@ theorem SQ_facts {α : Type*} {qs : List α} (y : α → ℝ) (hN : qs.length �
     0 ≤ comoment (qs.map fun q => (y q, y q)) ∧
     comoment (qs.map fun q => (y q, y q)) ≤ (qs.map fun q => (|y q| + tiny) ^ 2).sum ∧
     (qs.map fun q => (|y q| + tiny) ^ 2).sum ≤ 2 ^ 830 := by
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨-, -, ht, ht1, -⟩ := fpFacts
   have e : comoment (dupL (qs.map y)) = comoment (qs.map fun q => (y q, y q)) := by
     simp [dupL, List.map_map, Function.comp_def]
   refine ⟨by rw [← e]; exact comoment_dupL_nonneg _, ?_, ?_⟩
@@ -459,10 +453,7 @@ theorem StdModel.core_cov_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs
       * √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum) ≤ rq) :
     |M.fl (M.twoPass (qs.map (·.1)) / d) - comoment (qs.map (·.2)) / d|
       ≤ covTol qs.length d r1 r2 rs rq := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
   have h0 := M.tp_exact hne hN hB hd
   obtain ⟨hSx0, hSQx, hQx⟩ := SQ_facts (qs := qs) (fun q => q.2.1) hN (fun q hq => (hB q hq).1)
   obtain ⟨hSy0, hSQy, hQy⟩ := SQ_facts (qs := qs) (fun q => q.2.2) hN (fun q hq => (hB q hq).2)
@@ -573,8 +564,7 @@ theorem StdModel.core_var_k {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.
     0 ≤ M.fl (M.twoPass (ps.map fun p => (p.1, p.1)) / d) ∧
       |M.fl (M.twoPass (ps.map fun p => (p.1, p.1)) / d) - comoment (ps.map fun p => (p.2, p.2)) / d|
         ≤ varTol ps.length d r (ps.map fun p => (|p.2| + tiny) ^ 2).sum := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   obtain ⟨hS0, hSQ, -⟩ := SQ_facts (qs := ps) (fun p => p.2) hN hB
   have hQ0 : 0 ≤ (ps.map fun p => (|p.2| + tiny) ^ 2).sum := le_trans hS0 hSQ
   have hsq : √(comoment (ps.map fun p => (p.2, p.2))) ≤ √((ps.map fun p => (|p.2| + tiny) ^ 2).sum) :=
@@ -608,8 +598,7 @@ theorem tp_var_le {n s q r Q : ℝ} (hn1 : 1 ≤ n) (hs : 0 ≤ s) (hsq : s ≤ 
     (hr : q * s ≤ r) :
     7 * n * u * (s * s) + 3.2 * n * u * (q * s + q * s) + 130 * n ^ 2 * u ^ 2 * (q * q)
         + 4 * n ^ 2 * u * tiny ≤ varErr n r Q := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   unfold varErr
   have a : s * s ≤ q * s := mul_le_mul_of_nonneg_right hsq hs
   have b : 0 ≤ n * u := by positivity
@@ -629,8 +618,7 @@ theorem tp_cov_le {n sx sy qx qy r1 r2 rs rq : ℝ} (hn1 : 1 ≤ n) (hsx : 0 ≤
     (hq : qx * qy ≤ rq) :
     7 * n * u * (sx * sy) + 3.2 * n * u * (qy * sx + qx * sy) + 130 * n ^ 2 * u ^ 2 * (qx * qy)
         + 4 * n ^ 2 * u * tiny ≤ covErr n r1 r2 rs rq := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   unfold covErr
   have b : 0 ≤ n * u := by positivity
   have c1 := mul_le_mul_of_nonneg_left hs b
@@ -686,8 +674,7 @@ theorem StdModel.core_corr_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : q
           * M.twoPass (qs.map fun q => (q.1.2, q.1.2)))))|
       ≤ 1 + 3 * corrErr qs.length R ((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum
         + (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum) / L + 8 * u := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hc := M.tp_exact hne hN hB hd
   have hx := M.tp_exact (qs := qs.map fun q => ((q.1.1, q.1.1), (q.2.1, q.2.1)))
     (by simpa using hne) (by simpa using hN)

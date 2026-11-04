@@ -37,11 +37,7 @@ theorem sum_dev_shift {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (a b : ℝ) :
 theorem StdModel.prod_step {a b : ℝ} (ha : |a| ≤ 2 ^ 450) (hb : |b| ≤ 2 ^ 450) :
     |M.fl (M.fl a * M.fl b) - a * b|
       ≤ 3.01 * u * (|a| * |b|) + 1.01 * u * (tiny * |a| + tiny * |b|) + 1.01 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   have ea := M.err a (by linarith)
   have eb := M.err b (by linarith)
   generalize hα : M.fl a - a = α at ea
@@ -136,10 +132,7 @@ theorem StdModel.prod_step {a b : ℝ} (ha : |a| ≤ 2 ^ 450) (hb : |b| ≤ 2 ^ 
 /-- A rounded product of rounded values at most `2⁴⁵⁰`. -/
 theorem StdModel.prod_abs_le {a b : ℝ} (ha : |a| ≤ 2 ^ 450) (hb : |b| ≤ 2 ^ 450) :
     |M.fl (M.fl a * M.fl b)| ≤ 2 ^ 901 := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
   have h1 := M.prod_step ha hb
   have h2 := abs_sub_abs_le_abs_sub (M.fl (M.fl a * M.fl b)) (a * b)
   rw [abs_mul] at h2
@@ -166,11 +159,7 @@ theorem StdModel.prod_abs_le {a b : ℝ} (ha : |a| ≤ 2 ^ 450) (hb : |b| ≤ 2 
 theorem StdModel.mean6 {xs : List ℝ} (hne : xs ≠ []) (hN : xs.length ≤ 2 ^ 32)
     (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 399) :
     |M.mean xs - xs.sum / xs.length| ≤ 6 * u * mag xs := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   have hn1 : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
   have hn0 : (0 : ℝ) < xs.length := by linarith
   have hN' : (xs.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN
@@ -207,8 +196,7 @@ theorem tpc_arith {n K H G X P0 P1 W tT exy : ℝ} (hn1 : 1 ≤ n) (hnu : n * u 
     (hG : G ≤ 2 * n * u * (K + H + n * tiny))
     (hexy : exy ≤ 36 * (n * u) ^ 2 * W) (hX : X ≤ G + H + exy) :
     X ≤ 6 * n * u * P0 + 1.1 * u * P1 + 120 * n ^ 2 * u ^ 2 * W + 4 * n ^ 2 * u * tiny := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   obtain ⟨v, hv⟩ : ∃ v, v = n * u := ⟨_, rfl⟩
   rw [← hv] at hnu hK htT hexy
   have hv0 : 0 ≤ v := by rw [hv]; positivity
@@ -402,11 +390,7 @@ theorem StdModel.tpc_core {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.le
         + 120 * ps.length ^ 2 * u ^ 2 * (√((ps.map fun p => (|p.1| + tiny) ^ 2).sum)
           * √((ps.map fun p => (|p.2| + tiny) ^ 2).sum))
         + 4 * ps.length ^ 2 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
-  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
   obtain ⟨⟨hAx0, hAxb, -, -, hmxb, hSx0, -⟩, ⟨hAy0, hAyb, -, -, hmyb, hSy0, -⟩⟩ :=
     pair_facts hne hN hB
   -- names

@@ -155,8 +155,7 @@ theorem StdModel.sharded_near_of_bound {ss : List (List ℝ)} {ws : List ℝ} {m
     (hn : ((N + k : ℕ) : ℝ) * u < 1)
     (hov : (1 + gamma (N + k)) * (N * (B + tiny) + k * tiny) ≤ maxFinite) :
     |M.shardedSum ss - M.sum ws| ≤ (gamma (N + k) + gamma N) * (N * (B + tiny) + k * tiny) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hmk : m + ss.length ≤ N + k := by omega
   have hmku : ((m + ss.length : ℕ) : ℝ) * u < 1 :=
     lt_of_le_of_lt (mul_le_mul_of_nonneg_right (by exact_mod_cast hmk) hu.le) hn
@@ -196,8 +195,7 @@ theorem StdModel.sharded_avg_near_of_bound {ss : List (List ℝ)} {ws : List ℝ
     (hov : (1 + gamma (N + k)) * (N * (B + tiny) + k * tiny) ≤ maxFinite) :
     |M.fl (M.shardedSum ss / ws.length) - M.fl (M.sum ws / ws.length)|
       ≤ (gamma (N + k + 2) + gamma (N + 2)) * (B + tiny + k * tiny) := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hl1 : (1 : ℝ) ≤ ws.length := by exact_mod_cast List.length_pos_iff.mpr hne
   have hmk : m + ss.length + 2 ≤ N + k + 2 := by omega
   have hmk' : m + ss.length ≤ N + k := by omega
@@ -366,7 +364,7 @@ theorem shardAvgTol_le {n m k As : ℕ} (hn : n ≤ 2 ^ 32) (hn1 : 0 < n) (hm : 
 /-- `j u ≤ 1/3` for the counts the core allows. -/
 theorem small_mul_u {j : ℕ} (hj : j ≤ 2 ^ 34) : (j : ℝ) * u ≤ 1 / 3 := by
   have : (j : ℝ) ≤ 2 ^ 34 := by exact_mod_cast hj
-  have hu : u = 1 / 2 ^ 53 := by unfold u; norm_num
+  have hu := u_val
   rw [hu]; rw [mul_one_div, div_le_iff₀ (by norm_num)]; linarith
 
 theorem gamma_le_half {j : ℕ} (hj : j ≤ 2 ^ 34) : gamma j ≤ 1 / 2 := by
@@ -381,9 +379,8 @@ and far from overflow when `n (Bs + 2K) ≤ 2²⁰⁹⁶`. -/
 theorem decoded_mag_le {ws : List (ℝ × ℝ)} (hd : Decoded ws) {Bs : ℕ}
     (hB : ∀ p ∈ ws, |p.2| ≤ Bs / 2 ^ 1074) (hov : ws.length * (Bs + 2 * K) ≤ 2 ^ 2096) :
     mag (ws.map Prod.fst) + ws.length * tiny ≤ 2 ^ 1023 := by
-  have hu := u_pos
-  have ht := tiny_pos
-  have hu2 : 2 * u ≤ 1 := by unfold u; norm_num
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
+  have hu2 : 2 * u ≤ 1 := by rw [u_val]; norm_num
   have hb : ∀ x ∈ ws.map Prod.fst, |x| ≤ 2 * (Bs / 2 ^ 1074) := by
     intro x hx
     obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx
@@ -422,8 +419,7 @@ theorem StdModel.core_shard_sum {ss : List (List (ℝ × ℝ))} {ws : List (ℝ 
     (hAs : (ss.map fun s => M.sum (s.map fun p => |p.1|)).sum ≤ As / 2 ^ 1074) :
     |M.shardedSum (ss.map (·.map Prod.fst)) - M.sum (ws.map Prod.fst)|
       ≤ shardTolScaled ws.length m ss.length As / 2 ^ 1074 := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   set n := ws.length with hn
   set k := ss.length with hk'
   set xs := ws.map Prod.fst
@@ -508,8 +504,7 @@ theorem StdModel.core_shard_avg {ss : List (List (ℝ × ℝ))} {ws : List (ℝ 
     |M.fl (M.shardedSum (ss.map (·.map Prod.fst)) / ws.length)
         - M.fl (M.sum (ws.map Prod.fst) / ws.length)|
       ≤ shardAvgTolScaled ws.length m ss.length As / 2 ^ 1074 := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   have hn1 : 0 < ws.length := List.length_pos_iff.mpr hne
   set n := ws.length with hn
   set k := ss.length with hk'

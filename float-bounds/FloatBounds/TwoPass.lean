@@ -85,7 +85,7 @@ theorem StdModel.mean_error {xs : List ℝ} (hne : xs ≠ []) (hn : xs.length �
   have hu := u_pos
   have hBp := S.B_pos
   have htB := S.tiny_le_B
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have hu' := fpFacts.u_le
   have hl : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
   have hn32 : (xs.length : ℝ) ≤ 2 ^ 32 := le_trans (by exact_mod_cast hn) S.n_le'
   set n : ℝ := (xs.length : ℝ)
@@ -96,7 +96,7 @@ theorem StdModel.mean_error {xs : List ℝ} (hne : xs ≠ []) (hn : xs.length �
   have hov : (1 + gamma xs.length) * (n * (B + tiny)) ≤ maxFinite := by
     have : 1 + gamma xs.length ≤ 2 := by
       have := gamma_le_two (k := xs.length) (by linarith); linarith
-    have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+    have ht1 := fpFacts.tiny_le
     have : n * (B + tiny) ≤ 2 ^ 32 * (2 ^ 400 + 1) :=
       mul_le_mul hn32 (by linarith [S.B_le]) (by linarith [tiny_pos]) (by norm_num)
     have : (1 + gamma xs.length) * (n * (B + tiny)) ≤ 2 * (2 ^ 32 * (2 ^ 400 + 1)) :=
