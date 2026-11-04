@@ -12,6 +12,13 @@ and with a tenth of the Hypothesis examples (the `dev` profile,
 (`homelab_qa.sh` runs `qa`). CI runs every test with the full counts, `core`
 in three shards.
 
+A pull request that changes only facts, probes, `upstream/` or
+`python/tests/lift_backlog.json` (and docs) runs `static` and a `ledger` job
+in CI: the checkers and the tests that read those files. A pull request into
+a branch other than main (a stack) runs `static` only and its `qa` fails;
+retargeting it to main starts the full run (`.github/workflows/retarget.yml`).
+The header of `.github/workflows/ci.yml` has the details.
+
 ### Check capacity before expensive tasks
 
 Several agents often work at once, and together they have crashed the

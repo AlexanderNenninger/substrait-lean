@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # `retarget.yml` starts a run when a pull request is retargeted to main.
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: The pull request whose merge with main to test (empty for the branch itself)
+        required: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,47 +22,86 @@ permissions:
 # sverify builds substrait-check (the editable install's build hook runs lake),
 # from the shared lake cache when the Lean sources have not changed.
 #
-# A pull request that changes only docs (`docs/`, `.claude/`, Markdown at the
-# root other than README.md, which tests run, and docs/guide.md and
+# A pull request that changes only docs (`docs/`, `.claude/`, `changelog.d/`,
+# Markdown at the root other than README.md, which tests run, and docs/guide.md and
 # docs/how-it-works.md, which tests run too) skips everything but `static`,
 # and float-bounds runs only when its own package changes. A push to main
 # always runs everything.
+#
+# A pull request that changes only the ledgers (the facts of
+# `characterization/<engine>/facts/`, `characterization/*.json`, the probes'
+# `probes.json`, Markdown, `upstream/`, `python/tests/lift_backlog.json`,
+# plus docs)
+# runs `static` and `ledger`: the checkers of those records and the tests
+# that read them. The replay ledgers `characterization/duckdb/<area>.json`
+# and `characterization/oracle-a/` feed oracle A, so they run everything.
+#
+# A pull request into a branch other than main (a stacked one) runs `static`
+# only, and `qa` fails, saying so: a green `qa` would stay on the commit after
+# the retarget to main, while the full run that replaces it is still going.
+# When the pull request is retargeted to main, `retarget.yml` starts this
+# workflow on it (`workflow_dispatch`), which runs everything on its merge
+# with main.
 jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.diff.outputs.code }}
       floats: ${{ steps.diff.outputs.floats }}
+      ledger: ${{ steps.diff.outputs.ledger }}
+      backlog: ${{ steps.diff.outputs.backlog }}
+      upstack: ${{ steps.diff.outputs.upstack }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
+          out() { echo "$1" >> "$GITHUB_OUTPUT"; }
+          out ledger=false
+          out backlog=false
+          out upstack=false
           if [ "$EVENT" != pull_request ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "floats=true" >> "$GITHUB_OUTPUT"
+            out code=true
+            out floats=true
+            exit 0
+          fi
+          if [ "$BASE_REF" != main ]; then
+            echo "Base is $BASE_REF: static only until the pull request targets main."
+            out code=false
+            out floats=false
+            out upstack=true
             exit 0
           fi
           files=$(git diff --name-only "$BASE"...HEAD)
           printf '%s\n' "$files"
+          docs='^(docs/|\.claude/|changelog\.d/|[^/]+\.md$)'
+          ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|python/tests/lift_backlog\.json$)'
           # Here-strings, not pipes: under `pipefail` an early exit of `grep -q`
           # could fail the pipe.
-          if grep -qvE '^(docs/|\.claude/|[^/]+\.md$)' <<< "$files" \
+          if grep -qvE "$docs|$ledger" <<< "$files" \
              || grep -qxE 'README\.md|docs/(guide|how-it-works)\.md' <<< "$files"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            out code=true
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
+            out code=false
+            if grep -qE "$ledger" <<< "$files"; then
+              out ledger=true
+            fi
+            if grep -qx 'python/tests/lift_backlog\.json' <<< "$files"; then
+              out backlog=true
+            fi
           fi
           if grep -qE '^(float-bounds/|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
              <<< "$files"; then
-            echo "floats=true" >> "$GITHUB_OUTPUT"
+            out floats=true
           else
-            echo "floats=false" >> "$GITHUB_OUTPUT"
+            out floats=false
           fi
 
   lean:
@@ -67,6 +112,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
@@ -87,6 +133,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
@@ -119,6 +166,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
@@ -155,6 +203,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
@@ -178,12 +227,61 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
       - run: uv run --locked --project python poe -C python notebooks
+
+  # The ledger class (see the header): the checkers of the facts and upstream
+  # bugs, and the tests that read those files. The lake cache makes the
+  # build of substrait-check cheap, as no Lean source changed.
+  ledger:
+    needs: changes
+    if: needs.changes.outputs.ledger == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-lean
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - working-directory: python
+        run: |
+          uv run --locked python -m sverify_dev.facts
+          uv run --locked python -m sverify_dev.bugs
+      # test_functions checks the facts Lean's tables cite; test_probe and
+      # test_probe_polars the probes' `probes.json`; test_polars_shims the
+      # facts its shims cite and `areas.json`.
+      - working-directory: python
+        run: >-
+          uv run --locked pytest -n auto --dist worksteal
+          tests/test_facts.py tests/test_bugs.py tests/test_functions.py
+          tests/test_probe.py tests/test_probe_polars.py tests/test_polars_shims.py
+      # A change to the lift's backlog changes how its tests report
+      # (tests/conftest.py): run every test it lists before or after.
+      - if: needs.changes.outputs.backlog == 'true'
+        working-directory: python
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          uv run --locked python - <<'EOF'
+          import json, os, subprocess, sys
+          def ids(text):
+              return {e["test"] for e in json.loads(text)["tests"]}
+          path = "tests/lift_backlog.json"
+          base = subprocess.run(["git", "show", f"{os.environ['BASE']}:python/{path}"],
+                                capture_output=True, text=True, check=True).stdout
+          tests = sorted(ids(base) | ids(open(path).read()))
+          print("\n".join(tests), flush=True)
+          sys.exit(subprocess.run([sys.executable, "-m", "pytest", "-n", "auto", *tests]).returncode)
+          EOF
 
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.
@@ -195,6 +293,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
         with:
           cache: "false"
@@ -203,11 +302,16 @@ jobs:
 
   # The check the `main` ruleset requires: green only if every job above
   # passed or was skipped by `changes`. A job skipped for any other reason
-  # follows a failed `changes`, which this catches.
+  # follows a failed `changes`, which this catches. A pull request into
+  # another branch fails it (see the header).
   qa:
-    needs: [changes, lean, static, test, notebooks, float-bounds, oracle-a]
+    needs: [changes, lean, static, test, notebooks, float-bounds, oracle-a, ledger]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - if: needs.changes.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: exit 1
+      - if: needs.changes.outputs.upstack == 'true'
+        run: |
+          echo "::error::The base is not main: only static ran. The full matrix runs when the pull request is retargeted to main."
+          exit 1
