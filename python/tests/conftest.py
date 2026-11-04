@@ -31,6 +31,10 @@ that take seconds even in the `dev` profile (engine agreement on many
 queries, long streams, replays), and every Spark test, which starts a JVM.
 `poe test-all`, `poe qa` and CI run them.
 
+`chaos` marks the crash-injection suite in `tests/chaos/` (`poe
+test-chaos`). A run collects it only when its `-m` expression names
+`chaos`, so `poe test`, `poe test-all` and CI leave it out.
+
 `SVERIFY_SHARD=2/3` keeps the second of three shards of the selected tests,
 split by a hash of the node id (CI splits `core` this way); the shards
 together are the whole run.
@@ -59,6 +63,7 @@ SCALE = float(os.environ.get("SVERIFY_EXAMPLES") or ("1" if PROFILE == "ci" else
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "backend(name): the backend a test runs under")
     config.addinivalue_line("markers", "slow: left out of `poe test`, run by CI and `poe test-all`")
+    config.addinivalue_line("markers", "chaos: crash injection, only run by `-m chaos`")
     config._lift_refused = []  # type: ignore[attr-defined]
     for name in BACKENDS:
         config.addinivalue_line("markers", f"{name}: set from the test's backend")
@@ -147,7 +152,18 @@ def _shard(config: pytest.Config, items: list[pytest.Item]) -> None:
     items[:] = keep
 
 
+def _leave_out_chaos(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Deselect the chaos suite unless `-m` names it."""
+    if "chaos" in (config.option.markexpr or ""):
+        return
+    chaos = [item for item in items if item.get_closest_marker("chaos")]
+    if chaos:
+        config.hook.pytest_deselected(items=chaos)
+        items[:] = [item for item in items if not item.get_closest_marker("chaos")]
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    _leave_out_chaos(config, items)
     for item in items:
         name = backend(item)
         if name not in BACKENDS:
