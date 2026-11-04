@@ -1,5 +1,6 @@
 """Contracts: postconditions are proved from preconditions, or refused."""
 
+import warnings
 from datetime import date, datetime
 
 import ibis
@@ -110,6 +111,29 @@ def test_runtime_fallback_checks_unproved_postconditions():
     passthrough(bound_orders([(1, "ada", 30)]))
     with pytest.raises(PostconditionError):
         passthrough(bound_orders([(1, "ada", 300)]))
+
+
+def test_checks_on_data_do_not_warn_through_pandas():
+    # Ibis 12 converts `execute()`'s scalar through pandas, which warns under
+    # pandas 3.1 (#479): the counts are fetched through Arrow.
+    pandas_errors = pytest.importorskip("pandas.errors")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", getattr(pandas_errors, "Pandas4Warning", FutureWarning))
+        warnings.filterwarnings("error", message="The 'future.infer_string' option")
+        con = sv.connect()
+        schema = ibis.schema({"id": "int64", "amount": "int64"})
+        create_table(con, "orders_479", schema, [(1, 30), (1, 300)])
+
+        @sv.transform(ensures=[_.amount < 100], on_unproved="runtime")
+        def passthrough(orders):
+            return orders.select("id", "amount")
+
+        with pytest.raises(PostconditionError):
+            passthrough(con.table("orders_479")).to_pyarrow()
+        t = con.table("orders_479")
+        assert violations(t, sv.unique("id")) == 1
+        assert violations(t, sv.max_rows(1)) == 1
+        assert violations(t, _.amount < 100) == 1
 
 
 # Soundness on data: whatever Lean proves must hold on any input that satisfies

@@ -1831,6 +1831,13 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     )
 
 
+def _count(count: ir.Scalar) -> int:
+    """The value of an Ibis count, fetched through Arrow: Ibis 12 converts
+    `execute()`'s scalar through pandas, which warns under pandas 3.1
+    (#479)."""
+    return int(count.to_pyarrow().as_py())
+
+
 def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
@@ -1848,19 +1855,19 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         other = ibis.get_backend(table).table(cond.table)
         present = table.filter(table[cond.col].notnull())
         missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
-        return int(missing.execute())
+        return _count(missing)
     if isinstance(cond, ArrivesWithin):
         # On one snapshot, only the NULLs break it; batches are checked by
         # the pipeline against the watermark.
         nulls: Any = table.filter(table[cond.col].isnull()).count()
-        return int(nulls.execute())
+        return _count(nulls)
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
-        return int(total.execute()) - int(distinct.execute())
+        return _count(total) - _count(distinct)
     if isinstance(cond, MaxRows):
         rows: Any = table.count()
-        return max(0, int(rows.execute()) - cond.n)
+        return max(0, _count(rows) - cond.n)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -1871,7 +1878,7 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         # is free for the next query, and leave it open.
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
-    return int(count.execute())
+    return _count(count)
 
 
 @dataclass(frozen=True)
