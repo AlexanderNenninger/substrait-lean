@@ -2512,11 +2512,40 @@ def to_lazy(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pl.La
     return lf.rename({col(i): name for i, name in enumerate(names)})
 
 
+def collect_streaming(lf: pl.LazyFrame, **kwargs: Any) -> pl.DataFrame:
+    """`lf.collect` on Polars's streaming engine, named explicitly: with
+    `engine="streaming"`, Polars 2.1.0 ignores `pl.Config.set_engine_affinity`,
+    `POLARS_ENGINE_AFFINITY`, `POLARS_FORCE_STREAMING` and
+    `POLARS_AUTO_STREAMING` (`LazyFrame::collect_with_engine`). Operators the
+    streaming engine lacks still run on the in-memory engine inside the
+    streaming plan (`streaming_fallbacks`)."""
+    return lf.collect(engine="streaming", **kwargs)
+
+
+#: The colour Polars's physical plan gives a node the streaming engine runs
+#: on the in-memory engine (`polars-stream`'s `NodeStyle::InMemoryFallback`).
+_FALLBACK_COLOUR = '"0.0 0.3 1.0"'
+_NODE = re.compile(r'^\d+ \[label="(.*)",style=filled,fillcolor=(".*")\];$')
+
+
+def streaming_fallbacks(lf: pl.LazyFrame) -> list[str]:
+    """The nodes of `lf`'s streaming plan that run on the in-memory engine
+    (`in-memory-map`, `in-memory-join`, `columnar-function`, …), by their
+    first label line."""
+    dot = lf.show_graph(engine="streaming", plan_stage="physical", raw_output=True, show=False)
+    out = []
+    for line in str(dot).splitlines():
+        if (m := _NODE.match(line)) and m[2] == _FALLBACK_COLOUR:
+            out.append(m[1].split("\\n")[0])
+    return out
+
+
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:
-    """Run a translated plan. Predicate pushdown would move `guard`s (and
-    filters) below the filters that come before them, onto rows the plan
-    never evaluates there, so it is off."""
-    return lf.collect(optimizations=pl.QueryOptFlags(predicate_pushdown=False))
+    """Run a translated plan on the streaming engine (`collect_streaming`).
+    Predicate pushdown would move `guard`s (and filters) below the filters
+    that come before them, onto rows the plan never evaluates there, so it
+    is off."""
+    return collect_streaming(lf, optimizations=pl.QueryOptFlags(predicate_pushdown=False))
 
 
 def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:

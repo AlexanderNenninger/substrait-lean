@@ -405,3 +405,83 @@ def test_md5_is_refused_on_polars_with_the_reason():
     plan = written_plan(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
     with pytest.raises(polars_engine.Unsupported, match="see #271"):
         run_plan(con, plan, "polars")
+
+
+# --- The streaming engine ---------------------------------------------------------
+
+
+def _batches(collect) -> int:
+    """How many batches an elementwise function sees: 1 in memory, one per
+    morsel when Polars streams."""
+    calls: list[int] = []
+
+    def f(s: pl.Series) -> pl.Series:
+        calls.append(len(s))
+        return s
+
+    lf = pl.LazyFrame({"x": range(300_000)}).select(
+        pl.col("x").map_batches(f, return_dtype=pl.Int64, is_elementwise=True)
+    )
+    collect(lf)
+    return len(calls)
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [{}, {"POLARS_ENGINE_AFFINITY": "in-memory"}, {"POLARS_FORCE_STREAMING": "0"},
+     {"POLARS_AUTO_STREAMING": "0"}, "config"],
+)  # fmt: skip
+def test_queries_stream_whatever_the_settings(setting, monkeypatch):
+    """Sverify names the streaming engine, so neither `pl.Config` nor the
+    environment moves its queries to the in-memory engine."""
+    in_memory = lambda lf: lf.collect(engine="in-memory")  # noqa: E731
+    assert _batches(in_memory) == 1
+    if setting == "config":
+        with pl.Config() as cfg:
+            cfg.set_engine_affinity("in-memory")
+            assert _batches(lambda lf: lf.collect()) == 1
+            assert _batches(polars_engine.collect) > 1
+        return
+    for k, v in setting.items():
+        monkeypatch.setenv(k, v)
+    assert _batches(polars_engine.collect) > 1
+
+
+def test_streaming_fallbacks_are_found():
+    """`streaming_fallbacks` reads the physical plan: a list per group runs on
+    the in-memory engine, a sum per group streams."""
+    lf = pl.LazyFrame({"g": [1, 2, 1], "x": [1.0, 2.0, 3.0]}).group_by("g", maintain_order=True)
+    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").sum())) == []
+    assert polars_engine.streaming_fallbacks(lf.agg(pl.col("x").implode())) == ["in-memory-map"]
+
+
+# --- CASE: Polars computes every branch -----------------------------------------
+
+CASES = ibis.schema({"a": "int64", "b": "int64", "x": "float64", "s": "string"})
+CASE_ROWS = [(10, 0, 0.0, "ab"), (MIN, -1, -1.0, None), (7, -2, math.nan, "日本"),
+             (3, 2, 1e308, "")]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["CASE WHEN b <> 0 THEN a % b END",
+     "CASE WHEN b <> 0 AND NOT (a = -9223372036854775808 AND b = -1) THEN a // b END",
+     "CASE WHEN a > -9223372036854775808 THEN -a END",
+     "CASE WHEN a < 1000 AND a > -1000 THEN a * a END",
+     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(x AS BIGINT) END",
+     "CASE WHEN x > 0 THEN sqrt(x) END",
+     "CASE WHEN b > 0 THEN pow(a, b) END",
+     "CASE WHEN a < 100 THEN repeat(s, a) END",
+     "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END"],
+)  # fmt: skip
+def test_an_untaken_branch_neither_raises_nor_leaks(case):
+    """Polars evaluates both sides of `when/then/otherwise` on every row. The
+    translator gives an untaken branch safe arguments (a divisor of 1, a
+    shift of 0) and masks its issues, as `Expr.issues` does, so a guarded
+    `a // b`, overflow or cast raises nowhere and gives `Rel.eval`'s rows."""
+    sql = f"SELECT {case} AS y FROM r"
+    lean, polars = lean_and_polars(CASES, CASE_ROWS, sql, doubles="x" in case or "pow" in case)
+    if "x" in case and "BIGINT" not in case:
+        assert [y is None for (y,) in lean] == [y is None for (y,) in polars]
+    else:
+        assert lean == polars

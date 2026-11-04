@@ -78,7 +78,9 @@ def as_arrow(data: Any) -> pa.Table:
     module = type(data).__module__.split(".")[0]
     if module == "polars":
         if hasattr(data, "collect"):
-            data = data.collect()
+            # Polars's streaming engine, whatever the settings say
+            # (`polars_engine.collect_streaming`).
+            data = data.collect(engine="streaming")
         return data.to_arrow()
     if module == "pandas":
         return pa.Table.from_pandas(data, preserve_index=False)
