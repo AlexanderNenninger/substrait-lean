@@ -229,7 +229,10 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound.
-  -- Run to run the order varies (morsels, pipelines), within the plan's bound.
+  -- Run to run the order varies (morsels, pipelines), within the plan's bound,
+  -- whatever the input's size: a grouped sum of [1e16, 1, 1, -1e16] gave 2.0,
+  -- 1.0 and 0.0 over 200 runs on 10 threads (always 0.0 with
+  -- POLARS_MAX_THREADS ≤ 2).
   (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
     rerun := some { floats := .within "plan" } }),
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
