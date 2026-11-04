@@ -31,7 +31,25 @@ Output: `{"mode": "linear" | "two_phase", "proved": <bool>, "partial": <plan>,
 results in the table `__partials`, and `combine` gives the plan's result
 (`Rel.shardSplit_sound`). For a linear plan, `combine` just reads
 `__partials`. `proved` is false when `float_order: "any"` was needed: the
-result then rounds as the split makes it.
+double `SUM`s and `AVG`s then round as the split makes them, and
+`"float_bounds"` says where to read their bound (#428):
+
+```json
+{ "keys": <k>,                       -- the grouping keys, the partial rows' first columns
+  "measures": [{"kind": "sum" | "avg", "abs": <col>, "count": <col>, "max": <col>}, ...],
+  "columns": [{"key": <i>} | {"exact": true} | {"bounded": <j>} | {"unbounded": true}, ...],
+  "filters_read_doubles": <bool> }
+```
+
+Each split double measure `j` adds `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` to the
+partial rows at those columns (`floatBoundParts`); from them, per group, the
+output columns `{"bounded": j}` are within `shardTolScaled` (`"sum"`) or
+`shardAvgTolScaled` (`"avg"`) of Lean's value (`floatSplit_sum`,
+`floatSplit_avg`). `{"key": i}` copies grouping key `i`, `{"exact": true}`
+is Lean's value, and `{"unbounded": true}` is computed from a split double
+by an expression the bound does not carry over to. With
+`filters_read_doubles`, a filter above the aggregate (`HAVING`) reads a split
+double, so a group near its threshold may be kept on one side only.
 
 The JSON handling, the refusal messages and the schema of `__partials` are
 trusted.
@@ -88,6 +106,80 @@ def why (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys
     if b.tables.any S then "the right side of a semi or anti join reads a sharded table"
     else why S K T cat I a
 
+/-- Where an output column above the split aggregate comes from. -/
+inductive ColSrc where
+  | key (i : Nat)
+  | exact
+  | bounded (j : Nat)
+  /-- Computed from a split double. -/
+  | unbounded
+
+def ColSrc.double : ColSrc → Bool
+  | .bounded _ | .unbounded => true
+  | _ => false
+
+def ColSrc.toJson : ColSrc → Json
+  | .key i => obj [("key", Lean.toJson i)]
+  | .exact => obj [("exact", Lean.toJson true)]
+  | .bounded j => obj [("bounded", Lean.toJson j)]
+  | .unbounded => obj [("unbounded", Lean.toJson true)]
+
+/-- The columns an expression reads (a lambda's body reads its parameter). -/
+def reads : Expr → List Nat
+  | .lit _ => []
+  | .field i => [i]
+  | .un _ a => reads a
+  | .bin _ a b => reads a ++ reads b
+  | .ifThen c t e => reads c ++ reads t ++ reads e
+  | .hof _ l _ => reads l
+
+/-- An expression's source: a copy of a column keeps it; anything else is
+exact unless it reads a split double. -/
+def exprSrc (srcs : List ColSrc) : Expr → ColSrc
+  | .field i => srcs.getD i .exact
+  | e => if (reads e).any fun i => (srcs.getD i .exact).double then .unbounded else .exact
+
+/-- The split double measures' indices among `ms`, in order. -/
+def doubleIdx (ms : List Measure) : List Nat :=
+  ms.zipIdx.filterMap fun (m, i) => if m.fn = .fsum ∨ m.fn = .avg then some i else none
+
+/-- The output columns' sources above the aggregate `splitAgg` splits, and
+whether a filter there reads a split double. -/
+def colSrcs : Rel → Option (List ColSrc × Bool)
+  | .aggregate _ gs ms =>
+    let ds := doubleIdx ms
+    some ((List.range gs.length).map .key ++ (List.range ms.length).map fun i =>
+      match ds.idxOf? i with
+      | some j => .bounded j
+      | none => .exact, false)
+  | .filter r c => (colSrcs r).map fun (srcs, f) =>
+      (srcs, f || (reads c).any fun i => (srcs.getD i .exact).double)
+  | .project r es => (colSrcs r).map fun (srcs, f) => (srcs ++ es.map (exprSrc srcs), f)
+  | .emit r m => (colSrcs r).map fun (srcs, f) => (m.map (srcs.getD · .exact), f)
+  | .orderBy r _ => colSrcs r
+  | _ => none
+
+/-- The split aggregate's grouping keys and measures. -/
+def splitAggregate : Rel → Option (Nat × List Measure)
+  | .aggregate _ gs ms => some (gs.length, ms)
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => splitAggregate r
+  | _ => none
+
+/-- Where the bound of each split double measure is read (`floatBoundParts`):
+after the keys and `floatPartial`'s columns, three columns per measure. -/
+def floatBounds (root : Rel) : Option Json := do
+  let (k, ms) ← splitAggregate root
+  let (srcs, f) ← colSrcs root
+  let base := k + (ms.flatMap floatPartial).length
+  let doubles := ms.filter fun m => m.fn = .fsum ∨ m.fn = .avg
+  let measures := doubles.zipIdx.map fun (m, j) =>
+    obj [("kind", Lean.toJson (if m.fn = .avg then "avg" else "sum")),
+      ("abs", Lean.toJson (base + 3 * j)), ("count", Lean.toJson (base + 3 * j + 1)),
+      ("max", Lean.toJson (base + 3 * j + 2))]
+  return obj [("keys", Lean.toJson k), ("measures", Json.arr measures.toArray),
+    ("columns", Json.arr (srcs.map ColSrc.toJson).toArray),
+    ("filters_read_doubles", Lean.toJson f)]
+
 def check (input : Json) : Except String Json := do
   let plan ← parsePlan ((input.getObjVal? "plan").toOption.getD .null).compress
   let sharded := ((input.getObjValAs? (Array String) "sharded").toOption.getD #[]).toList
@@ -122,10 +214,14 @@ def check (input : Json) : Except String Json := do
     let cat' : Catalog := fun t => if t == partials then ⟨pk.length, []⟩ else cat t
     let schemas' : Schemas := fun t n => if t == partials then schemaOf pk else schemas t n
     let linear := plan.root.linear S K T cat
-    return Json.mkObj [
+    let proved := (plan.root.shardSplit S K T cat I partials false).isSome
+    let bounds := if proved then [] else match floatBounds plan.root with
+      | some j => [("float_bounds", j)]
+      | none => []
+    return Json.mkObj ([
       ("mode", toJson (if linear then "linear" else "two_phase")),
-      ("proved", toJson (plan.root.shardSplit S K T cat I partials false).isSome),
+      ("proved", toJson proved),
       ("partial", writePlan schemas cat p (if linear then plan.names else colNames pk.length)),
-      ("combine", writePlan schemas' cat' q plan.names)]
+      ("combine", writePlan schemas' cat' q plan.names)] ++ bounds)
 
 end Substrait.ShardCheck

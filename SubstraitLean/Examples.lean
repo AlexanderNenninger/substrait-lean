@@ -240,6 +240,9 @@ end Substrait.Examples
 #print axioms Substrait.IntArgs.ofTypes_sound
 #print axioms Substrait.Rel.shardSplit_sound
 #print axioms Substrait.inI64_partial
+#print axioms Substrait.floatSplit_sum
+#print axioms Substrait.floatSplit_avg
+#print axioms Substrait.absPart_eval
 #print axioms Substrait.Rel.evalI_eq
 #print axioms Substrait.Rel.guardFree_sound
 #print axioms Substrait.Rel.optimize_sound

@@ -232,17 +232,24 @@ guarantees. The question is when
 * **Float sums are not associative.** `SUM` and `AVG` of doubles add in list
   order in Lean (`floatSum`), and engines already return results that depend
   on their thread partitioning. A different split rounds differently, so
-  `--shard` **refuses** these aggregates by default. With
-  `float_order="any"` it splits them anyway (`floatCombine`: `SUM` of
-  partial sums, `AVG` as summed sums over summed counts). The result is
-  marked `proved: false`: the double sums round as the split makes them,
-  and everything else is still Lean's value. Rewriting `AVG` as `SUM / COUNT`
-  does not help for doubles. For integers, `AVG(x)` is defined as the `AVG`
-  of the converted doubles (`Aggregate.lean`), which is not
-  `CAST(SUM(x)) / COUNT(x)` either. Supporting it needs an exact accumulator.
-  A proved error bound for the two-phase sum, which would let these run
-  sharded with a stated tolerance, is the epic #85; its model and
-  dependency are in `docs/float-bounds.md`.
+  `--shard` refuses these aggregates by default. With `float_order="any"` it
+  splits them anyway (`floatCombine`: `SUM` of partial sums, `AVG` as summed
+  sums over summed counts), within a proved bound
+  ([#428](https://github.com/AlexanderNenninger/substrait-lean/issues/428)).
+  Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split
+  double (`floatBoundParts`), and from them the combined `SUM` of a group of
+  `n` values in `k` shards of at most `m` is within
+  `(γ (m + k) + γ n) · (mag + k · 2⁻¹⁰²²)` of Lean's one-pass sum, the `AVG`
+  within the same with `+ 2` in each `γ`, over `n` (`floatSplit_sum`,
+  `floatSplit_avg`, proved over the reals in
+  [`float-bounds/FloatBounds/Shard.lean`](float-bounds.md#sharded-sum-and-avg-stage-5)).
+  The result stays `proved: false`, and `float_bounds` in `--shard`'s output
+  says which output columns carry the bound; `run_sharded(...,
+  tolerance=True)` gives τ per row. Everything else is still Lean's value.
+  Rewriting `AVG` as `SUM / COUNT` does not help for doubles. For integers,
+  `AVG(x)` is defined as the `AVG` of the converted doubles
+  (`Aggregate.lean`), which is not `CAST(SUM(x)) / COUNT(x)` either. An exact
+  result would need an exact accumulator, deferred with stage 6 of #85.
 * **Other `DISTINCT` aggregates** are refused: a value in two shards counts
   once in the whole and twice in the parts. `DISTINCT` without the split
   key, windows and `FETCH` are refused because they look at rows of other
@@ -253,7 +260,8 @@ guarantees. The question is when
 
 **Wiring.** `substrait-check --shard {"plan", "sharded", "keys", "unique",
 "float_order"}` returns the partial and combining plans in Lean's written
-form and whether the result is proved, or exit code 5 with the reason. The
+form, whether the result is proved, and with split doubles where their
+bound is read (`float_bounds`), or exit code 5 with the reason. The
 schema of `__partials` is trusted. `sverify.partition.split` and
 `run_sharded(plan, shards, sharded=…, broadcast=…, keys=…, unique=…,
 float_order=…)` run the shards on Polars in parallel threads. `run_sharded`

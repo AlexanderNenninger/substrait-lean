@@ -65,6 +65,7 @@ error_on_division_by_zero=on	UnFn.fit .saturate .i16	CASE WHEN #0 < -32768 THEN 
 error_on_division_by_zero=on	UnFn.fit .saturate .i32	CASE WHEN #0 < -2147483648 THEN -2147483648 ELSE CASE WHEN 2147483647 < #0 THEN 2147483647 ELSE #0 END END
 error_on_division_by_zero=on	UnFn.fit .saturate .i64	CASE WHEN 9223372036854775807 < #0 THEN 9223372036854775807 ELSE CASE WHEN #0 < -9223372036854775808 THEN -9223372036854775808 ELSE #0 END END
 error_on_division_by_zero=on	UnFn.isNum	native
+error_on_division_by_zero=on	UnFn.bbox	native
 error_on_division_by_zero=on	BinFn.add	native
 error_on_division_by_zero=on	BinFn.sub	native
 error_on_division_by_zero=on	BinFn.mul	native
@@ -107,4 +108,5 @@ error_on_division_by_zero=on	BinFn.ddiv	native
 error_on_division_by_zero=on	BinFn.pair	native
 error_on_division_by_zero=on	BinFn.greatest	native
 error_on_division_by_zero=on	BinFn.least	native
+error_on_division_by_zero=on	BinFn.bbox2	native
 [exit 0]

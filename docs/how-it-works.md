@@ -528,8 +528,9 @@ Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by gold
 round trips and the differential tests instead.
 
 The size hypothesis (trusted, stated in the theorems that use it): every
-string has fewer than 2³² characters (#336), and every relation a window reads fewer
-than 2⁶² rows. No machine's memory holds more, and it is what bounds lengths,
+string has fewer than 2³² characters (#336), every relation a window reads fewer
+than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³, as
+`COUNT(*)` is a 64-bit integer (#437). No machine's memory holds more, and it is what bounds lengths,
 positions and ranks: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`,
 `levenshtein` and `ascii` there (a cap the hypothesis never reaches), and
 `Rel.Small` is a hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound`
@@ -782,7 +783,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`). `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. [`float-bounds/`](float-bounds.md) proves all six for IEEE rounding with Mathlib, kept out of the core build.
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`). The bound of a sharded `SUM` or `AVG` of doubles (`floatSplit_sum`, `floatSplit_avg`) rests on two more, `floatSum_twoPhase` and `floatAvg_twoPhase` in `Partition.lean`. `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. [`float-bounds/`](float-bounds.md) proves all eight for IEEE rounding with Mathlib, kept out of the core build.
 
 ## Modelling choices
 

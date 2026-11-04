@@ -48,10 +48,27 @@ partition column guarantees. `run_sharded` checks it on the data. With them:
 Refused, with the reason: `SUM`/`AVG` of doubles (floating-point addition is
 not associative, so the rounding would depend on the split), other
 `DISTINCT` aggregates, `DISTINCT` without the key, other windows, `FETCH`,
-and joins of sharded tables that are not co-partitioned. `float_order="any"` splits `SUM`/`AVG` of
-doubles anyway: the result is then `Split.proved = False`, the sums of
-doubles round as the split makes them, and the rest of the plan is still
-what Lean computes.
+and joins of sharded tables that are not co-partitioned.
+
+`float_order="any"` splits `SUM`/`AVG` of doubles anyway, with a proved
+error bound (#428). The sums of doubles round as the split makes them, so
+`Split.proved` is false, and `Split.float_bounds` says which output columns
+are within a tolerance τ of Lean's value; the rest of the plan is still what
+Lean computes. Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)`
+per split double, and `run_sharded(..., tolerance=True)` computes τ for each
+group from them (`floatSplit_sum`, `floatSplit_avg` in
+`SubstraitLean/Partition.lean`, proved over the reals in
+`float-bounds/FloatBounds/Shard.lean`). For `n` values in `k` shards of at
+most `m` values, with `A` the shards' rounded `SUM(|x|)`s added up and
+`γ j = j u / (1 − j u)`, `u = 2⁻⁵³`:
+
+    τ_sum = (γ(m + k) + γ(n)) · ((A + n·2⁻¹⁰²²) / (1 − γ(m)) + k·2⁻¹⁰²²)
+    τ_avg = (γ(m + k + 2) + γ(n + 2)) · ((A + n·2⁻¹⁰²²) / (1 − γ(m)) + k·2⁻¹⁰²²) / n
+
+The bound needs `n ≤ 2³²` and `n · (max |x| + 2⁻¹⁰²¹) ≤ 2¹⁰²²`, far from
+overflow; a group that misses it, or holds NaN or an infinity, gets τ = ∞.
+`apriori_tolerance` gives the bound before running, from a cap on the rows
+(a contract's `sv.max_rows`) and a bound on `|x|`.
 
 Partial integer sums are checked to fit in 64 bits like any `SUM`, so a
 partial sum can fail where the total would not (a shard of large positive
@@ -65,11 +82,13 @@ Shards run on Polars (`sverify.polars_engine`), in parallel threads.
 from __future__ import annotations
 
 import json
+import math
 import struct
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from fractions import Fraction
+from typing import Any, Literal, overload
 
 import pyarrow as pa
 
@@ -102,11 +121,48 @@ class Split:
     when they are aggregated again (see the module docstring)."""
     proved: bool
     """False when `float_order="any"` was needed: sums of doubles then round
-    as the split makes them."""
+    as the split makes them, within the tolerance `float_bounds` locates."""
     partial: dict
     """The plan each shard runs (Lean's written form)."""
     combine: dict
     """The plan that combines the shards' results, read from `PARTIALS`."""
+    float_bounds: dict | None = None
+    """With split doubles, where their bound is read: `keys` (the partial
+    rows' grouping columns), `measures` (per split double: `kind`, and the
+    partial columns `abs`, `count`, `max`), `columns` (per output column:
+    `{"key": i}`, `{"exact": true}`, `{"bounded": j}` or `{"unbounded": true}`)
+    and `filters_read_doubles` (a `HAVING` reads a split double). `None` when
+    the split is exact."""
+
+    @property
+    def bounded(self) -> dict[int, int]:
+        """The output columns within a tolerance of Lean's value, by position,
+        each with the index of its measure in `float_bounds["measures"]`."""
+        if self.float_bounds is None:
+            return {}
+        return {
+            i: c["bounded"] for i, c in enumerate(self.float_bounds["columns"]) if "bounded" in c
+        }
+
+
+@dataclass(frozen=True)
+class Sharded:
+    """`run_sharded(..., tolerance=True)`: the result, and how far its split
+    doubles may be from Lean's values."""
+
+    table: pa.Table
+    """The plan's result, as `run_sharded` returns it."""
+    tolerance: dict[str, list[float]] = field(default_factory=dict)
+    """Per output column that holds a split double `SUM` or `AVG` (or an
+    expression of one), per row: the bound τ on `|value − Lean's value|`.
+    `math.inf` where no bound holds: the column is computed from a split
+    double by an expression, or its group misses the bound's conditions
+    (NaN, an infinity, near overflow, more than 2³² values). Other columns
+    are Lean's values."""
+    rows_exact: bool = True
+    """False when a filter above the aggregate (`HAVING`) reads a split
+    double: a group near its threshold may be kept here and dropped by Lean,
+    or the reverse. The kept rows are still within `tolerance`."""
 
 
 def _columns(plan: dict) -> dict[str, list[str]]:
@@ -154,8 +210,8 @@ def split(
             of column sets. They let windows run on each shard. Default:
             none.
         float_order: `"exact"` (the default) refuses `SUM` and `AVG` of
-            doubles; `"any"` splits them anyway, and the result has
-            `proved=False`.
+            doubles; `"any"` splits them anyway: the result has
+            `proved=False` and `float_bounds` set.
 
     Returns:
         The `Split`.
@@ -197,7 +253,171 @@ def split(
     if code != 0:
         raise ValueError(f"substrait-check --shard failed: {err.strip()}")
     j = json.loads(out)
-    return Split(j["mode"], j["proved"], j["partial"], j["combine"])
+    return Split(j["mode"], j["proved"], j["partial"], j["combine"], j.get("float_bounds"))
+
+
+#: `2⁵²`: `2⁻¹⁰²²` scaled by `2¹⁰⁷⁴`, and `1 / (2u)`.
+_K = 2**52
+_SCALE = 2**1074
+
+
+def _ceil_div(a: int, b: int) -> int:
+    return -(-a // b)
+
+
+def shard_tol_scaled(n: int, m: int, k: int, a: int) -> int:
+    """`FloatCode.shardTolScaled` (`SubstraitLean/Float.lean`): the bound of a
+    split double `SUM`, scaled by `2¹⁰⁷⁴` and rounded up, for `n` values in
+    `k` shards of at most `m`, the shards' `SUM(|x|)`s adding up to `a`
+    (scaled)."""
+    num = ((m + k) * (2 * _K - n) + n * (2 * _K - (m + k))) * (
+        (a + n * _K) * (2 * _K - m) + k * _K * (2 * _K - 2 * m)
+    )
+    return _ceil_div(num, (2 * _K - (m + k)) * (2 * _K - n) * (2 * _K - 2 * m))
+
+
+def shard_avg_tol_scaled(n: int, m: int, k: int, a: int) -> int:
+    """`FloatCode.shardAvgTolScaled`: the same for an `AVG` (`n ≥ 1`)."""
+    num = ((m + k + 2) * (2 * _K - (n + 2)) + (n + 2) * (2 * _K - (m + k + 2))) * (
+        (a + n * _K) * (2 * _K - m) + k * _K * (2 * _K - 2 * m)
+    )
+    return _ceil_div(num, (2 * _K - (m + k + 2)) * (2 * _K - (n + 2)) * (2 * _K - 2 * m) * n)
+
+
+def _up(q: Fraction) -> float:
+    """The smallest double at least `q`."""
+    f = float(q)
+    return f if Fraction(f) >= q else math.nextafter(f, math.inf)
+
+
+def _scaled(x: float) -> int:
+    """A finite double times `2¹⁰⁷⁴`, an integer."""
+    return int(Fraction(x) * _SCALE)
+
+
+def group_tolerance(
+    kind: str, counts: Sequence[int], abs_sums: Sequence[Any], maxima: Sequence[Any]
+) -> float:
+    """τ for one group of one split double, from its partial rows: each
+    shard's `COUNT(x)`, `SUM(|x|)` and `MAX(|x|)` (`floatSplit_sum`,
+    `floatSplit_avg`). `math.inf` when the bound's conditions fail."""
+    parts = [(c, a, x) for c, a, x in zip(counts, abs_sums, maxima, strict=True) if c]
+    n = sum(c for c, _, _ in parts)
+    if n == 0:
+        return 0.0
+    if n > 2**32 or any(
+        a is None or x is None or not math.isfinite(a) or not math.isfinite(x) for _, a, x in parts
+    ):
+        return math.inf
+    bs = max(_scaled(x) for _, _, x in parts)
+    if n * (bs + 2 * _K) > 2**2096:
+        return math.inf
+    m = max(c for c, _, _ in parts)
+    k = len(parts)
+    a = sum(_scaled(a) for _, a, _ in parts)
+    tol = shard_tol_scaled if kind == "sum" else shard_avg_tol_scaled
+    return _up(Fraction(tol(n, m, k, a), _SCALE))
+
+
+def apriori_tolerance(
+    kind: Literal["sum", "avg"], max_rows: int, bound: float, shards: int
+) -> float:
+    """τ before running: a split double `SUM` or `AVG` of at most `max_rows`
+    values (a contract's `sv.max_rows`), each `|x| ≤ bound`, over `shards`
+    shards, is within it of Lean's value (`sharded_near_of_bound`,
+    `sharded_avg_near_of_bound` in `float-bounds/FloatBounds/Shard.lean`).
+
+    `(γ(N + k) + γ(N)) · (N·(B + t) + k·t)` for a `SUM` and
+    `(γ(N + k + 2) + γ(N + 2)) · (B + t + k·t)` for an `AVG`, with `N` the
+    rows, `k = min(N, shards)`, `B` the bound and `t = 2⁻¹⁰²²`.
+    """
+    if max_rows < 0 or shards < 1 or not bound >= 0:
+        raise ValueError("apriori_tolerance needs max_rows ≥ 0, shards ≥ 1 and bound ≥ 0")
+    if max_rows == 0:
+        return 0.0
+    if math.isinf(bound) or max_rows > 2**32:
+        return math.inf
+    big_n, k = max_rows, min(max_rows, shards)
+    u = Fraction(1, 2**53)
+    t = Fraction(1, 2**1022)
+
+    def gamma(j: int) -> Fraction:
+        return j * u / (1 - j * u)
+
+    b = Fraction(bound)
+    if big_n * (b + 2 * t) > 2**1021:
+        return math.inf
+    if kind == "sum":
+        q = (gamma(big_n + k) + gamma(big_n)) * (big_n * (b + t) + k * t)
+    else:
+        q = (gamma(big_n + k + 2) + gamma(big_n + 2)) * (b + t + k * t)
+    return _up(q)
+
+
+def _canon(v: Any) -> Any:
+    """A grouping key's value as Lean compares it: one zero, one NaN, other
+    doubles by their bits."""
+    if isinstance(v, float):
+        if math.isnan(v):
+            return ("f", "nan")
+        return ("f", struct.pack("<d", v + 0.0))
+    return v
+
+
+def tolerances(s: Split, partials: pa.Table, result: pa.Table) -> Sharded:
+    """τ per row of `result` for the split doubles of `s`, from the shards'
+    partial rows (`run_sharded(..., tolerance=True)`)."""
+    fb = s.float_bounds
+    if fb is None:
+        return Sharded(result)
+    k: int = fb["keys"]
+    cols = partials.column_names
+    keys = [partials.column(cols[i]).to_pylist() for i in range(k)]
+    groups: dict[tuple, list[int]] = {}
+    for r, key in enumerate(zip(*keys, strict=True) if k else ([()] * partials.num_rows)):
+        groups.setdefault(tuple(map(_canon, key)), []).append(r)
+    if not groups:
+        groups[()] = []
+    per_group: list[dict[tuple, float]] = []
+    for meas in fb["measures"]:
+        counts = partials.column(cols[meas["count"]]).to_pylist()
+        abs_sums = partials.column(cols[meas["abs"]]).to_pylist()
+        maxima = partials.column(cols[meas["max"]]).to_pylist()
+        per_group.append(
+            {
+                g: group_tolerance(
+                    meas["kind"],
+                    [counts[r] for r in rows],
+                    [abs_sums[r] for r in rows],
+                    [maxima[r] for r in rows],
+                )
+                for g, rows in groups.items()
+            }
+        )
+    out_cols = fb["columns"]
+    key_at = {c["key"]: i for i, c in enumerate(out_cols) if "key" in c}
+    rows_of = (
+        list(zip(*(result.column(key_at[i]).to_pylist() for i in range(k)), strict=True))
+        if k and all(i in key_at for i in range(k))
+        else None
+    )
+    tol: dict[str, list[float]] = {}
+    for i, c in enumerate(out_cols):
+        name = result.column_names[i]
+        if "unbounded" in c:
+            tol[name] = [math.inf] * result.num_rows
+        elif "bounded" in c:
+            by_group = per_group[c["bounded"]]
+            if k == 0:
+                tol[name] = [by_group[()]] * result.num_rows
+            elif rows_of is None:
+                # The output does not keep every grouping key: the largest τ
+                # of any group bounds each row.
+                worst = max(by_group.values(), default=0.0)
+                tol[name] = [worst] * result.num_rows
+            else:
+                tol[name] = [by_group.get(tuple(map(_canon, key)), math.inf) for key in rows_of]
+    return Sharded(result, tol, not fb["filters_read_doubles"])
 
 
 def _key_value(v: Any) -> Any:
@@ -239,6 +459,7 @@ def check_unique(
                     seen.add(k)
 
 
+@overload
 def run_sharded(
     plan: str | dict,
     shards: Sequence[Mapping[str, pa.Table]],
@@ -249,7 +470,37 @@ def run_sharded(
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
     float_order: FloatOrder = "exact",
     max_workers: int | None = None,
-) -> pa.Table:
+    tolerance: Literal[False] = False,
+) -> pa.Table: ...
+
+
+@overload
+def run_sharded(
+    plan: str | dict,
+    shards: Sequence[Mapping[str, pa.Table]],
+    *,
+    sharded: Sequence[str],
+    broadcast: Mapping[str, pa.Table] | None = None,
+    keys: Mapping[str, Sequence[str]] | None = None,
+    unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
+    float_order: FloatOrder = "exact",
+    max_workers: int | None = None,
+    tolerance: Literal[True],
+) -> Sharded: ...
+
+
+def run_sharded(
+    plan: str | dict,
+    shards: Sequence[Mapping[str, pa.Table]],
+    *,
+    sharded: Sequence[str],
+    broadcast: Mapping[str, pa.Table] | None = None,
+    keys: Mapping[str, Sequence[str]] | None = None,
+    unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
+    float_order: FloatOrder = "exact",
+    max_workers: int | None = None,
+    tolerance: bool = False,
+) -> pa.Table | Sharded:
     """The plan's result on all the data, computed shard by shard on Polars.
     This is `sverify.engines.run_sharded`.
 
@@ -257,7 +508,7 @@ def run_sharded(
     `broadcast` holds the other tables. The result equals the plan's on the
     concatenated shards, as a bag (row order is not kept), unless
     `float_order="any"` was needed: sums of doubles then round as the split
-    makes them.
+    makes them, within a proved tolerance that `tolerance=True` reports.
 
     Before running, the split keys and `unique` column sets are checked on
     the data.
@@ -276,13 +527,16 @@ def run_sharded(
             of column sets. They let windows run on each shard. Default:
             none.
         float_order: `"exact"` (the default) refuses `SUM` and `AVG` of
-            doubles; `"any"` splits them anyway, and the result is not
-            proved equal.
+            doubles; `"any"` splits them anyway, within a proved tolerance.
         max_workers: The number of threads running shards in parallel.
             Default: `ThreadPoolExecutor`'s default.
+        tolerance: Return a `Sharded`: the result, with the tolerance τ of
+            each split double per row (see the module docstring). Default:
+            False.
 
     Returns:
-        The plan's result, as an Arrow table.
+        The plan's result, as an Arrow table, or with `tolerance=True` a
+        `Sharded` holding it.
 
     Raises:
         ValueError: The plan's result would depend on how the rows are
@@ -314,4 +568,6 @@ def run_sharded(
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         parts = list(pool.map(run, shards))
-    return polars_engine.run(s.combine, {PARTIALS: pa.concat_tables(parts)})
+    partials = pa.concat_tables(parts)
+    result = polars_engine.run(s.combine, {PARTIALS: partials})
+    return tolerances(s, partials, result) if tolerance else result

@@ -1,4 +1,5 @@
 import SubstraitLean.Value
+import SubstraitLean.BlackBox
 import SubstraitLean.Rounding
 import SubstraitLean.Conversions
 import SubstraitLean.Text

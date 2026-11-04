@@ -284,6 +284,17 @@ except VerificationError as e:
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report; an Ibis condition there reads the query's output, or in `requires`
   its input table ([#438](https://github.com/AlexanderNenninger/substrait-lean/issues/438)).
+* `report.run(con)` runs the plan the report checked over the tables of an
+  `sv.connect()` connection, on its engine or the one you name
+  (`report.run(con, "polars")`). The result is the one the report is about,
+  `params` and `semantics` included
+  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)):
+
+  ```python
+  report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
+  if report.proved:
+      result = report.run(con)
+  ```
 * `requires` maps each input to its conditions. A transformation with one
   input also takes a plain list, `requires=[_.amount >= 0]`. A key that
   names no input raises a `ValueError` that lists the inputs (#408).
@@ -1007,8 +1018,11 @@ proof that this equals the result on all the data. Filters, projections and
 joins with a broadcast table are concatenated; `COUNT`, integer `SUM`, `MIN`
 and `MAX` combine in two phases; with split keys (`keys={"orders":
 ["region"]}`, as a partition column guarantees), aggregates grouped by the
-key, co-partitioned joins and tie-free windows run per shard. Anything else
-raises `NotShardable` with the reason. When a report says `guard_free`,
+key, co-partitioned joins and tie-free windows run per shard. `SUM` and
+`AVG` of doubles split with `float_order="any"`, and `tolerance=True` returns
+a proved bound per row on how far each is from the one-pass sum
+([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg-stage-5)).
+Anything else raises `NotShardable` with the reason. When a report says `guard_free`,
 `to_sql(..., guards=False)` leaves out the per-row overflow checks. And
 `sv.verify(...).optimized` is the transformation rewritten with what the
 preconditions establish, with `rewrites` naming the changes (a `DISTINCT`

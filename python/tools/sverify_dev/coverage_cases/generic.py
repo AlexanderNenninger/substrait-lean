@@ -24,7 +24,7 @@ CASES: list[Case] = [
     # Parsing strings is not modelled.
     case("generic", "try_cast string", R, lambda: t.select(x=t.name.try_cast("int64"))),
     case("generic", "param", R, lambda: t.filter(t.qty > ibis.param(ibis.dtype("int64")))),
-    case("generic", "typeof", R, lambda: t.select(x=t.qty.typeof())),
+    case("generic", "typeof", V, lambda: t.select(x=t.qty.typeof())),
     case("generic", "random", R, lambda: t.select(x=ibis.random())),
     case("generic", "uuid", R, lambda: t.select(x=ibis.uuid())),
     case("generic", "now", R, lambda: t.select(x=ibis.now())),
