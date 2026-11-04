@@ -323,5 +323,11 @@ it (`facts`). We file them upstream in batches, with the `upstream-report`
 skill. Documented engine behaviour that only differs from the reference model
 goes into the engine's characterization.
 
+Behaviour the Substrait YAMLs leave unspecified, but that Substrait could
+express (a missing option, option value or default), is a spec gap: add an
+`ST-<n>` document with `kind: spec-gap` in the same PR that meets it, saying
+how Substrait could express it and what each engine does (its facts).
+`docs/core-semantics.md` lists the ones found so far.
+
 `python -m sverify_dev.bugs` checks the documents and the lift's backlog
 `python/tests/lift_backlog.json` (`tests/test_bugs.py` does too).
