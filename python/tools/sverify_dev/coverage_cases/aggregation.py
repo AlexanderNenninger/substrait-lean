@@ -118,6 +118,28 @@ CASES: list[Case] = [
         V,
         lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs"),
     ),
+    case(
+        "aggregation",
+        "median, quantile",
+        V,
+        lambda: t.group_by("flag").aggregate(
+            m=t.qty.median(), q=t.amount.quantile(0.9), s=t.name.median()
+        ),
+    ),
+    case("aggregation", "mode", V, lambda: t.group_by("name").aggregate(m=t.qty.mode())),
+    case(
+        "aggregation",
+        "argmin, argmax",
+        V,
+        lambda: t.group_by("name").aggregate(a=t.qty.argmin(t.amount), b=t.id.argmax(t.qty)),
+    ),
+    case("aggregation", "approx_median", R, lambda: t.aggregate(m=t.amount.approx_median())),
+    case(
+        "aggregation",
+        "quantile of several",
+        R,
+        lambda: t.aggregate(q=t.amount.quantile([0.25, 0.75])),
+    ),
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
@@ -125,6 +147,9 @@ REFUSED: dict[str, dict[str, str]] = {
     "first, last ordered": DUCKDB_ONLY,
     "distinct(on=)": DUCKDB_ONLY,
     "group_concat ordered": DUCKDB_ONLY,
+    "median, quantile": DUCKDB_ONLY,
+    "mode": DUCKDB_ONLY,
+    "argmin, argmax": DUCKDB_ONLY,
     "count, max, mean": NO_ROW_ORDER,
     "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
@@ -134,7 +159,9 @@ REFUSED: dict[str, dict[str, str]] = {
 
 UNORDERED_LISTS = {"collect"}
 
-APPROXIMATE = {"std", "cov, corr"}
+# DuckDB's own QUANTILE_CONT may round its interpolation past the values,
+# which the written plan keeps between them (#53).
+APPROXIMATE = {"std", "cov, corr", "median, quantile"}
 
 NO_DUCKDB_SQL = {
     # CORR is NULL for fewer than two pairs or a flat side (the SQL standard);
@@ -146,4 +173,9 @@ NO_DUCKDB_SQL = {
     # Without an order, Ibis's own FIRST takes any row's value.
     "distinct(on=)": "FIRST without ORDER BY is any row's value",
     "group_concat ordered": "ties in ORDER BY are the engine's",
+    # Ibis writes MODE(x), whose ties DuckDB breaks in its own order; the
+    # plan takes the smallest of them (#53).
+    "mode": "DuckDB's MODE breaks ties in its own order",
+    # Ibis writes FIRST(x ORDER BY y), which keeps a NULL x; ARG_MIN skips it.
+    "argmin, argmax": "Ibis's FIRST keeps NULLs, and ties are the engine's",
 }

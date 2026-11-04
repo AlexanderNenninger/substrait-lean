@@ -681,10 +681,7 @@ class StageRefresh:
         elif pre:
             parts.append("requires proved from metadata")
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
-        parts += [
-            f"{n} row(s) in touched frames recomputed (tested, not proved)"
-            for n in self.report.framed.values()
-        ]
+        parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
         parts += ["recomputed and diffed" for _ in self.report.diffed]
         if self.report.postconditions:
             # On the rows the batch inserts into the node (keys on its state).
@@ -782,9 +779,9 @@ class NodeStatus:
     """Why the node has no delta rules, when it is maintained by
     recomputing only the groups each batch touches (an aggregate, or a
     window's partitions or frames)."""
-    tested: bool = False
-    """The node's strategy is tested, not proved: windows recomputed near
-    the change by their frames."""
+    framed: bool = False
+    """The node recomputes window rows near the change, by their frames
+    (touched frames)."""
 
     def __str__(self) -> str:
         if self.versions is None:
@@ -795,10 +792,8 @@ class NodeStatus:
             text += f"; stored in {self.stored}"
         if self.recomputed:
             text += f"; recomputed ({self.recomputed})"
-        if self.touched and self.tested:
-            text += (
-                f"; touched frames recomputed (tested, not proved; no delta rules: {self.touched})"
-            )
+        if self.touched and self.framed:
+            text += f"; touched frames recomputed (no delta rules: {self.touched})"
         elif self.touched:
             text += f"; touched groups recomputed (no delta rules: {self.touched})"
         return text

@@ -1,0 +1,64 @@
+{
+  "id": "duckdb-arg-min-nulls",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`ARG_MIN`/`ARG_MAX`: rows with a NULL on either side are skipped",
+  "verdict": "FIRST(x ORDER BY y) over the rows where neither is NULL; ties are the engine's",
+  "area": "aggregates",
+  "constructs": [
+    "arg_min",
+    "arg_max",
+    "min_by",
+    "max_by"
+  ],
+  "settings": {},
+  "description": [
+    "`ARG_MIN(x, y)` gives `x` at the row with the smallest `y`, over the rows where neither `x` nor `y` is NULL (`ARG_MIN_NULL` keeps a NULL `x`). No such rows give NULL. Doubles compare in DuckDB's order, NaN above `+inf`. Of rows that tie on `y` it keeps the one it met first, so ties depend on the order it reads the rows. `ARG_MAX` is the same with the largest `y`."
+  ],
+  "reference": [
+    "The parser reads `arg_min(x, y)` as `FIRST(x ORDER BY y)` with the filter `y IS NOT NULL` (`AggFn.pick`, #53), and `arg_max` with `ORDER BY y DESC`; `FIRST` skips a NULL `x`. Ties are the engine's: `Rel.windowsTotal` reports the result as determined only when the group's and the order's columns contain a key."
+  ],
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session for #53 (exact quantiles, mode, arg_min), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/arg_min_max.cpp"
+        }
+      ],
+      "notes": "Read at tag v2.0.0."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "session for #53 (exact quantiles, mode, arg_min), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT arg_min(a, b), arg_max(a, b) FROM (VALUES (1, NULL), (NULL, 0), (3, 5), (4, 7)) t(a, b)",
+          "observed": "3, 4"
+        },
+        {
+          "sql": "SELECT arg_min_null(a, b) FROM (VALUES (NULL, 0), (3, 5)) t(a, b)",
+          "observed": "NULL"
+        },
+        {
+          "sql": "SELECT arg_min(a, b), arg_max(a, b) FROM (VALUES ('x', 'nan'::DOUBLE), ('y', 1.0)) t(a, b)",
+          "observed": "y, x"
+        },
+        {
+          "sql": "SELECT arg_min(a, b), arg_max(a, b) FROM (VALUES (1, 5), (2, 5)) t(a, b)",
+          "observed": "1, 1"
+        },
+        {
+          "test": "python/tests/test_aggregate.py::test_arg_min_is_determined_by_a_key_and_mode_by_its_value"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    53
+  ]
+}
