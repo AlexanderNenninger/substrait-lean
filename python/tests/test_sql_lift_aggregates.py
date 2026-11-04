@@ -41,6 +41,11 @@ QUERIES = [
     " rank() OVER (PARTITION BY GROUPING(customer) ORDER BY sum(amount)) AS r"
     " FROM orders GROUP BY ROLLUP (customer) ORDER BY g DESC, customer",
     "SELECT customer, sum(amount) AS s FROM orders WHERE id > 99 GROUP BY ROLLUP (customer)",
+    # A double constant is its code in Lean; the plan's literal says double,
+    # so its SUM is a double one, without the integer SUM's guard (#341).
+    "SELECT SUM('inf'::DOUBLE), SUM('-inf'::DOUBLE), SUM('nan'::DOUBLE)",
+    "SELECT customer, sum(2.5::DOUBLE) AS s, avg(CAST(1 AS DOUBLE)) AS a FROM orders"
+    " GROUP BY customer",
 ]
 
 
@@ -111,3 +116,25 @@ def test_duckdb_avg_of_a_nullable_integer_cannot_divide_by_zero():
         {"workflow": "a", "a": None},
         {"workflow": "b", "a": 4.0},
     ]
+
+
+def test_covariance_of_a_double_constant_is_of_that_double():
+    # `Parse.parseMeasure` converts an integer side, but a double constant
+    # is its code, which only the plan's literal calls a double (#341).
+    import pyarrow as pa
+
+    from sverify.engine import connect, plan_json, run_plan, written_plan
+    from sverify.testing import inline_tables, lean_values
+
+    con = connect()
+    con.arrow["t"] = pa.table({"f": [1.0, 2.0, 4.0], "g": [2.5, 2.5, 2.5]})
+    t = con.table("t")
+    plan = json.loads(written_plan(plan_json(con, t.aggregate(c=t.f.cov(t.g, how="pop")))))
+    measure = plan["relations"][0]["root"]["input"]["aggregate"]["measures"][0]["measure"]
+    measure["arguments"][1]["value"] = {"literal": {"fp64": 2.5}}
+    plan = json.dumps(plan)
+    lean = lean_values(
+        json.dumps(inline_tables(json.loads(plan), {"t": [(1.0, 2.5), (2.0, 2.5), (4.0, 2.5)]}))
+    )
+    assert lean == [(0.0,)]
+    assert run_plan(con, plan).to_pylist() == [{"c": 0.0}]

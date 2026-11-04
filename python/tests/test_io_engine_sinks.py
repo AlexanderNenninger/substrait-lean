@@ -264,3 +264,10 @@ def test_constraints_compare_numbers_by_value():
     assert _same_sql("x >= 0.0", "x >= 0")
     assert _same_sql("(x IS NULL) OR (x > 1.50)", "x IS NULL OR x > 1.5")
     assert not _same_sql("x >= 0.5", "x >= 0")
+    # Delta normalises BETWEEN and the side a comparison faces (#439, #487).
+    assert _same_sql("x BETWEEN 0 AND 10", "x >= 0 AND x <= 10")
+    assert _same_sql("hi >= lo", "lo <= hi")
+    assert _same_sql("hi > lo", "lo < hi")
+    assert _same_sql("a = b", "b = a")
+    assert not _same_sql("hi >= lo", "hi <= lo")
+    assert not _same_sql("x BETWEEN 0 AND 10", "x >= 0 AND x <= 11")

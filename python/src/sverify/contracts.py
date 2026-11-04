@@ -70,6 +70,7 @@ import functools
 import inspect
 import json
 import math
+import re
 import warnings
 import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
@@ -514,6 +515,15 @@ class Issue:
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
     there is nothing to suggest."""
+    column: str | None = None
+    """For a "SUM overflow": the column the SUM adds up, named as in its
+    hint (the base table's column where it is passed on unchanged). None if
+    `expr` is not a single column."""
+
+    @property
+    def what(self) -> str:
+        """The column, or else the expression, a report names the issue by."""
+        return self.column or self.expr
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.expr}"
@@ -651,7 +661,7 @@ class Report:
                 lines.append(f"  counterexample: {c.counterexample}")
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
-        lines += [f"assumes: SUM of {i.expr} {SUM_ASSUMED}" for i in self.assumed]
+        lines += [f"assumes: SUM of {i.what} {SUM_ASSUMED}" for i in self.assumed]
         for i in self.errors:
             lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
             if i.hint:
@@ -691,7 +701,7 @@ class Report:
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
-        inferred += [f"SUM of `{i.expr}` {SUM_ASSUMED}" for i in self.assumed]
+        inferred += [f"SUM of `{i.what}` {SUM_ASSUMED}" for i in self.assumed]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
@@ -1615,6 +1625,7 @@ def _verify_once(
                 i["expr"],
                 i["error"],
                 _hint(i["bound"], schemas, assumable) if i["error"] else None,
+                _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
             )
             for i in out["issues"]
         ],
@@ -1747,6 +1758,26 @@ def overflow_hints(
     return list(dict.fromkeys(hints))
 
 
+def _sum_column(transform: ir.Table | str, expr: str) -> str | None:
+    """The column an integer `SUM` that Lean names `expr` (`$i`, its
+    input's i-th column) adds up, named as `_sum_hint` names it, if exactly
+    one `SUM` of the transformation matches."""
+    if isinstance(transform, str) or not re.fullmatch(r"\$\d+", expr):
+        return None
+    names = set()
+    for op in transform.op().find(ops.Sum):
+        arg = op.arg  # type: ignore[attr-defined]
+        rels = list(arg.relations)
+        if not arg.dtype.is_integer() or len(rels) != 1 or not isinstance(arg, ops.Field):
+            continue
+        cols = rels[0].schema.names
+        if arg.name not in cols or f"${cols.index(arg.name)}" != expr:
+            continue
+        origin = _value_origin(arg)
+        names.add(origin[1] if origin else arg.name)
+    return names.pop() if len(names) == 1 else None
+
+
 def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | None:
     """The hint for an integer `SUM`: what bounds its argument, and the
     largest group whose sum fits 64 bits."""
@@ -1800,6 +1831,13 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     )
 
 
+def _count(count: ir.Scalar) -> int:
+    """The value of an Ibis count, fetched through Arrow: Ibis 12 converts
+    `execute()`'s scalar through pandas, which warns under pandas 3.1
+    (#479)."""
+    return int(count.to_pyarrow().as_py())
+
+
 def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
@@ -1817,19 +1855,19 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         other = ibis.get_backend(table).table(cond.table)
         present = table.filter(table[cond.col].notnull())
         missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
-        return int(missing.execute())
+        return _count(missing)
     if isinstance(cond, ArrivesWithin):
         # On one snapshot, only the NULLs break it; batches are checked by
         # the pipeline against the watermark.
         nulls: Any = table.filter(table[cond.col].isnull()).count()
-        return int(nulls.execute())
+        return _count(nulls)
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
-        return int(total.execute()) - int(distinct.execute())
+        return _count(total) - _count(distinct)
     if isinstance(cond, MaxRows):
         rows: Any = table.count()
-        return max(0, int(rows.execute()) - cond.n)
+        return max(0, _count(rows) - cond.n)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -1840,7 +1878,7 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         # is free for the next query, and leave it open.
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
-    return int(count.execute())
+    return _count(count)
 
 
 @dataclass(frozen=True)

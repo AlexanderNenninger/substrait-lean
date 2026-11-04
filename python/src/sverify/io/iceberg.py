@@ -17,8 +17,11 @@ Iceberg has no CHECK constraints, so an `IcebergSink` stores the node's
 contract in the table properties and the summary of every snapshot it
 writes. A reader trusts that contract only while every snapshot of the
 table was written under it (no other writer appended in between). The sink
-writes a change as position delete files and a data file of the new rows,
-one commit the size of the change.
+writes a change as position delete files and data files of the new rows,
+one commit the size of the change. In a partitioned table, it reads only
+the data files of the partitions the deleted rows fall in, each delete file
+carries the partition of the data file it applies to, and the new rows go to
+one data file per partition (#466).
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any, Literal
 
@@ -41,8 +44,12 @@ try:
     from pyiceberg.io.pyarrow import (
         ArrowScan,
         _dataframe_to_data_files,
+        _get_field_from_arrow_table,
         _pyarrow_schema_ensure_small_types,
+        bin_pack_arrow_table,
         parquet_file_to_data_file,
+        pyarrow_to_schema,
+        write_file,
     )
     from pyiceberg.manifest import (
         DataFile,
@@ -54,8 +61,15 @@ try:
         ManifestFile,
         ManifestWriterV2,
     )
-    from pyiceberg.schema import index_name_by_id
-    from pyiceberg.table import FileScanTask, Table, TableProperties, Transaction
+    from pyiceberg.partitioning import (
+        PartitionFieldValue,
+        PartitionKey,
+        PartitionSpec,
+        _to_partition_representation,
+    )
+    from pyiceberg.schema import Schema, index_name_by_id
+    from pyiceberg.table import FileScanTask, Table, TableProperties, Transaction, WriteTask
+    from pyiceberg.table.metadata import TableMetadata
     from pyiceberg.table.snapshots import Operation
     from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
     from pyiceberg.table.update.snapshot import _FastAppendFiles
@@ -529,19 +543,99 @@ class _RowLevel(_FastAppendFiles):
         return out
 
 
-def _positions(t: Table, schema: pa.Schema, remove: Counter[tuple]) -> dict[str, list[int]] | None:
+def _partition_keys(spec: PartitionSpec, schema: Schema, rows: pa.Table) -> list[Record]:
+    """The partition of each row of `rows` under `spec`, as the manifests
+    record it. Transforms run on each value in Python: pyiceberg 0.12 needs
+    `pyiceberg-core` for the Arrow kernels of every transform but `identity`."""
+    if not spec.fields:
+        return [Record()] * rows.num_rows
+    columns = []
+    for f in spec.fields:
+        source = schema.find_field(f.source_id).field_type
+        name = schema.find_column_name(f.source_id)
+        assert name is not None
+        fn = f.transform.transform(source)
+        values = _get_field_from_arrow_table(rows, name).to_pylist()
+        columns.append([fn(_to_partition_representation(source, v)) for v in values])
+    return [Record(*vals) for vals in zip(*columns, strict=True)]
+
+
+def _data_files(metadata: TableMetadata, rows: pa.Table, io: Any) -> list[DataFile]:
+    """Data files of `rows` under the table's current spec: one or more per
+    partition."""
+    spec = metadata.spec()
+    if not rows.num_rows:
+        return []
+    if spec.is_unpartitioned():
+        return list(_dataframe_to_data_files(metadata, rows, io))
+    schema = metadata.schema()
+    groups: dict[Record, list[int]] = {}
+    for i, key in enumerate(_partition_keys(spec, schema, rows)):
+        groups.setdefault(key, []).append(i)
+    target = int(
+        metadata.properties.get(
+            TableProperties.WRITE_TARGET_FILE_SIZE_BYTES,
+            TableProperties.WRITE_TARGET_FILE_SIZE_BYTES_DEFAULT,
+        )
+    )
+    task_schema = pyarrow_to_schema(
+        rows.schema, name_mapping=schema.name_mapping, format_version=metadata.format_version
+    )
+    write_uuid, tasks = uuid.uuid4(), []
+    for key, at in groups.items():
+        partition = PartitionKey(
+            field_values=[
+                PartitionFieldValue(field=f, value=key[i]) for i, f in enumerate(spec.fields)
+            ],
+            partition_spec=spec,
+            schema=schema,
+        )
+        part = rows.take(pa.array(at, pa.int64())).combine_chunks()
+        for batches in bin_pack_arrow_table(part, target):
+            tasks.append(
+                WriteTask(
+                    write_uuid=write_uuid,
+                    task_id=len(tasks),
+                    record_batches=batches,
+                    partition_key=partition,
+                    schema=task_schema,
+                )
+            )
+    return list(write_file(io=io, table_metadata=metadata, tasks=iter(tasks)))
+
+
+def _positions(
+    t: Table, schema: pa.Schema, remove: Counter[tuple], removed: pa.Table
+) -> tuple[dict[str, list[int]], dict[str, DataFile]] | None:
     """Positions in the current snapshot's data files of `remove` (row key
-    -> how many copies), skipping deleted positions; None if the table does
-    not hold them all. Only files whose bounds admit a removed row are read."""
+    -> how many copies, the rows of `removed`), skipping deleted positions,
+    with the data files they are in; None if the table does not hold them
+    all, or holds some in a data file of an older partition spec. Only files
+    of the partitions the removed rows fall in, whose bounds admit a removed
+    row, are read."""
     need = +remove
     out: dict[str, list[int]] = {}
+    files: dict[str, DataFile] = {}
     current = t.current_snapshot()
+    spec = t.spec()
     stats = {e["data_file"]["file_path"]: _stats(e, schema.names) for e in _live_files(t, current)}
     rows = {k: row for k, row in zip(need, map(_unkey, need), strict=True)}
+    touched: set[Record] | None = None
+    if not spec.is_unpartitioned():
+        try:
+            touched = set(_partition_keys(spec, t.schema(), removed))
+        except Exception:
+            touched = None  # A transform pyiceberg can't run here: read every file.
     for task in _tasks(t, current).values():
         if not need:
             break
         path = task.file.file_path
+        if (
+            touched is not None
+            and task.file.spec_id == spec.spec_id
+            and task.file.partition not in touched
+        ):
+            continue
         if not any(_admits(stats.get(path, {}), schema, rows[k]) for k in need):
             continue
         deleted: set[int] = set()
@@ -554,8 +648,11 @@ def _positions(t: Table, schema: pa.Schema, remove: Counter[tuple]) -> dict[str,
             if need[k] > 0 and pos not in deleted:
                 need[k] -= 1
                 out.setdefault(path, []).append(pos)
+                files[path] = task.file
         need = +need
-    return None if need else out
+    if need or any(f.spec_id != spec.spec_id for f in files.values()):
+        return None
+    return out, files
 
 
 def _unkey(key: tuple) -> tuple:
@@ -583,11 +680,15 @@ def _admits(stats: dict[str, ColumnStats], schema: pa.Schema, row: tuple) -> boo
     return True
 
 
-def _position_deletes(t: Table, positions: dict[str, list[int]]) -> list[DataFile]:
-    """One position delete file per data file, with the data file's path as
-    both bounds of `file_path`, so readers apply it to that file only."""
+def _position_deletes(
+    t: Table, positions: dict[str, list[int]], files: dict[str, DataFile]
+) -> list[DataFile]:
+    """One position delete file per data file (of the current spec), in the
+    data file's partition, with its path as both bounds of `file_path`, so
+    readers apply it to that file only."""
     out = []
     for path, pos in positions.items():
+        data = files[path]
         name = t.location_provider().new_data_location(f"{uuid.uuid4()}-deletes.parquet")
         table = pa.table({"file_path": [path] * len(pos), "pos": sorted(pos)}, schema=POSITIONS)
         with t.io.new_output(name).create(overwrite=True) as f:
@@ -597,7 +698,7 @@ def _position_deletes(t: Table, positions: dict[str, list[int]]) -> list[DataFil
                 content=DataFileContent.POSITION_DELETES,
                 file_path=name,
                 file_format=FileFormat.PARQUET,
-                partition=Record(),
+                partition=data.partition,
                 record_count=len(pos),
                 file_size_in_bytes=len(t.io.new_input(name)),
                 column_sizes={},
@@ -606,7 +707,7 @@ def _position_deletes(t: Table, positions: dict[str, list[int]]) -> list[DataFil
                 nan_value_counts={},
                 lower_bounds={PATH_ID: path.encode()},
                 upper_bounds={PATH_ID: path.encode()},
-                spec_id=t.spec().spec_id,
+                spec_id=data.spec_id,
             )
         )
     return out
@@ -628,11 +729,7 @@ def _commit_rows(
         io=t.io,
         snapshot_properties=props,
     )
-    added: Iterable[DataFile]
-    if isinstance(rows, list):
-        added = rows
-    else:
-        added = _dataframe_to_data_files(tx.table_metadata, rows, t.io) if rows.num_rows else []
+    added = rows if isinstance(rows, list) else _data_files(tx.table_metadata, rows, t.io)
     for f in added:
         snapshot.append_data_file(f)
     snapshot.commit()
@@ -645,7 +742,9 @@ class IcebergSink(Sink):
 
     After the first write, each state is one snapshot the size of the change:
     position delete files for the rows that went (one copy each, so
-    duplicates are exact) and a data file of the rows that came. A new sink
+    duplicates are exact) and a data file of the rows that came. In a
+    partitioned table, the deletes and the new rows go to the partitions
+    the change touches, and the other partitions keep their files. A new sink
     on an existing table, or a table that does not hold the rows the sink
     wrote, is overwritten. Every snapshot carries the contract's plan hash,
     the epoch (sum of source versions) and the app id; a state whose epoch
@@ -763,12 +862,14 @@ class IcebergSink(Sink):
             gone = _engine.positions(snap.scan, delta)
             if gone is None:
                 return None
-            uris = {local_path(p): p for p in _tasks(t, t.current_snapshot())}
+            tasks = _tasks(t, t.current_snapshot())
+            uris = {local_path(p): p for p in tasks}
             by_file: dict[str, list[int]] = {}
             files, at = gone.column("file").to_pylist(), gone.column("pos").to_pylist()
             for f, pos in zip(files, at, strict=True):
                 by_file.setdefault(uris[f], []).append(pos)
-            deletes = _position_deletes(t, by_file)
+            data = {p: tasks[p].file for p in by_file}
+            deletes = _position_deletes(t, by_file, data)
         added = data_file(_engine.inserts_sql(delta, schema)) if inserted else []
         with t.transaction() as tx:
             tx.set_properties({KEY: change.contract.to_json()})
@@ -793,27 +894,38 @@ class IcebergSink(Sink):
                 mode, inserted, deleted = done
                 version = _version(self.catalog.load_table(self.identifier).current_snapshot())
                 return SinkWrite(mode, version, contract, inserted, deleted)
-        positions: dict[str, list[int]] | None = None
-        if not created and not change.replace and t.spec().is_unpartitioned():
+        found: tuple[dict[str, list[int]], dict[str, DataFile]] | None = None
+        if not created and not change.replace:
             # The rows that went: as many as the change deletes, so tuples.
             removed = Counter(map(row_key, arrow_rows(change.deletes)))
-            positions = _positions(t, schema, removed) if removed else {}
+            found = _positions(t, schema, removed, change.deletes) if removed else ({}, {})
         mode: Literal["created", "append", "row-level", "overwrite"]
-        if positions is None:
+        if found is None:
             mode = "created" if created else "overwrite"
             rows = change.table
             deleted = 0
+            deletes: list[DataFile] = []
         else:
+            positions, files = found
             mode = "row-level" if positions else "append"
             rows = change.inserts
             deleted = sum(len(p) for p in positions.values())
+            deletes = _position_deletes(t, positions, files)
         with t.transaction() as tx:
             tx.set_properties({KEY: contract.to_json()})
-            if positions is None:
+            if found is None:
                 if not created:
                     _replace_schema(tx, _arrow_schema(t), schema)
-                tx.overwrite(rows, snapshot_properties=props)
+                if tx.table_metadata.spec().is_unpartitioned():
+                    tx.overwrite(rows, snapshot_properties=props)
+                else:
+                    # pyiceberg's overwrite splits rows by partition with
+                    # Arrow kernels that need `pyiceberg-core` for `day()`
+                    # and the other transforms: delete, then append ours.
+                    if t.current_snapshot() is not None:
+                        tx.delete(AlwaysTrue(), snapshot_properties=props)
+                    _commit_rows(tx, t, rows, [], props)
             else:
-                _commit_rows(tx, t, rows, _position_deletes(t, positions), props)
+                _commit_rows(tx, t, rows, deletes, props)
         version = _version(self.catalog.load_table(self.identifier).current_snapshot())
         return SinkWrite(mode, version, contract, rows.num_rows, deleted)

@@ -30,7 +30,7 @@ checked against the latest upstream release), `confirmed` (minimal repro on
 the stated version), `filed` (with the link in `upstream`), `fixed upstream`
 (with the release in `fixed_in`) or `not a bug` (with the reason in
 `status_note`). `checked` records when an entry was last checked, and
-against which releases: every entry was checked on 2026-11-03 against
+against which releases: every entry of the old ledger was checked on 2026-11-03 against
 sqlglot 30.29.0, ibis-framework 12.0.0, datafusion 55.0.0, duckdb 2.0.0 and
 deltalake 1.6.6.
 
