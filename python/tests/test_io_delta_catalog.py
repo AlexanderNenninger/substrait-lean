@@ -5,7 +5,7 @@ from __future__ import annotations
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
-from deltalake.exceptions import DeltaError
+from deltalake.exceptions import DeltaError, TableNotFoundError
 from ibis import _
 
 import sverify as sv
@@ -58,13 +58,14 @@ class _Catalog:
 
     tables: dict[str, object] = {}
     error = "Generic error: Invalid table error: TABLE_NOT_FOUND: Table not found: {}"
+    kind: type[DeltaError] = DeltaError
 
     def __new__(cls, uri, storage_options=None, **kw):
         if not uri.startswith("uc://"):
             return DeltaTable(uri, storage_options=storage_options, **kw)
         table = uri.removeprefix("uc://")
         if table not in cls.tables:
-            raise DeltaError(cls.error.format(table))
+            raise cls.kind(cls.error.format(table))
         return cls.tables[table]
 
     @staticmethod
@@ -79,6 +80,7 @@ def catalog(monkeypatch):
     monkeypatch.setattr(delta_io, "DeltaTable", _Catalog)
     monkeypatch.setattr(_Catalog, "tables", {})
     monkeypatch.setattr(_Catalog, "error", _Catalog.error)
+    monkeypatch.setattr(_Catalog, "kind", DeltaError)
     return _Catalog
 
 
@@ -102,6 +104,19 @@ def test_a_uc_sink_on_an_unregistered_table_fails_the_refresh(catalog, tmp_path)
     node = big(DeltaSource(path)).write(DeltaSink("uc://homelab.metrics.busy"))
     with pytest.raises(ValueError, match="register it in the catalog first"):
         node.refresh()
+
+
+def test_a_registered_table_without_a_delta_log_says_to_write_one(catalog):
+    """#512: the catalog has the table, but its location has no `_delta_log/`
+    yet; delta-rs 1.6.6 says so with a `TableNotFoundError`."""
+    catalog.kind = TableNotFoundError
+    catalog.error = "Generic delta kernel error: No files in log segment"
+    sink = DeltaSink("uc://homelab.sverify_probe.t1")
+    with pytest.raises(ValueError, match="registered in Unity Catalog") as e:
+        sink._stored()
+    assert "no Delta table yet" in str(e.value)
+    assert "No files in log segment" in str(e.value)
+    assert "register it" not in str(e.value)
 
 
 def test_other_catalog_errors_pass_through(catalog):

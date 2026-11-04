@@ -32,7 +32,7 @@ from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 
 import pyarrow as pa
@@ -685,8 +685,9 @@ class DeltaSink(Sink):
     A `uri` of the form `uc://catalog.schema.table` writes a table Unity
     Catalog has registered, with the options described in `DeltaSource`.
     The sink cannot create one: delta-rs writes files and registers no
-    table, so register it in the catalog first, or write to its storage
-    location.
+    table, so register it in the catalog first, and write its first version
+    at its storage location (`write_deltalake` with the catalog's READ_WRITE
+    keys), or write to its storage location.
 
     The node `write` returns reads the table as a `DeltaSource`, through its
     Change Data Feed, and builds on the contract the stored node proved. A
@@ -825,12 +826,21 @@ class DeltaSink(Sink):
             except DeltaError as e:
                 # The catalog's 404 comes as a DeltaError: "Invalid table
                 # error: TABLE_NOT_FOUND: …" (or SCHEMA_/CATALOG_NOT_FOUND).
-                if not isinstance(e, TableNotFoundError) and "_NOT_FOUND" not in str(e):
-                    raise
-                raise ValueError(
-                    f"{self.uri} is not a table Unity Catalog has: register it in the "
-                    "catalog first, since DeltaSink can't create a table through it"
-                ) from e
+                if "_NOT_FOUND" in str(e):
+                    raise ValueError(
+                        f"{self.uri} is not a table Unity Catalog has: register it in the "
+                        "catalog first, since DeltaSink can't create a table through it"
+                    ) from e
+                # A registered table whose location has no Delta log yet:
+                # delta-rs's "No files in log segment" (#512).
+                if isinstance(e, TableNotFoundError):
+                    raise ValueError(
+                        f"{self.uri} is registered in Unity Catalog, but its storage location "
+                        f"has no Delta table yet ({first_line(e)}): write its first version "
+                        "there, for example with write_deltalake and the catalog's READ_WRITE "
+                        "keys, since DeltaSink can't create a table through the catalog"
+                    ) from e
+                raise
         if not DeltaTable.is_deltatable(self.uri, storage_options=options):
             return None
         return DeltaTable(self.uri, storage_options=options)
@@ -1028,11 +1038,18 @@ class DeltaSink(Sink):
         guarantees, so they hold on the rows without delta-rs checking them.
         Returns the rows written and deleted; None if the table's files do
         not hold the rows the change deletes (another writer changed it, or
-        a layout `DeltaSource` does not scan): then the Arrow path writes."""
+        a layout `DeltaSource` does not scan): then the Arrow path writes.
+
+        delta-rs logs the commit as a `WRITE` (it refuses another operation
+        name); its `operationMetrics` are a write's and, for a change, those
+        delta-rs's MERGE records, so the history reads the same whatever the
+        storage (#453)."""
         assert change.native is not None
+        started = time.monotonic()
         rows, delta = change.native
         schema = change.schema
         actions: list[AddAction | RemoveAction] = []
+        copied = 0
 
         def add(sql: str) -> int:
             name = f"part-{uuid.uuid4()}-sverify.parquet"
@@ -1071,7 +1088,9 @@ class DeltaSink(Sink):
                     at = gone.filter(pc.call_function("equal", [gone.column("file"), file]))
                     name = f"part-{uuid.uuid4()}-sverify.parquet"
                     path = os.path.join(root, name)
-                    if _engine.rewrite(file, at.select(["pos"]), path):
+                    kept = _engine.rewrite(file, at.select(["pos"]), path)
+                    copied += kept
+                    if kept:
                         actions.append(_add_action(name, path, schema))
                     else:
                         os.remove(path)
@@ -1082,8 +1101,22 @@ class DeltaSink(Sink):
             if inserted:
                 add(_engine.inserts_sql(delta, schema))
         self._check(dt, change.contract, self._read)
+        added = sum(isinstance(a, AddAction) for a in actions)
+        metrics = _native_metrics(
+            mode, inserted, deleted, copied, added, len(actions) - added, started
+        )
+        logged: dict[str, Any] = {
+            **(commit.custom_metadata or {}),
+            "operationParameters": {"sverify": mode},
+            "operationMetrics": metrics,
+        }
         dt.create_write_transaction(
-            actions, mode="append", schema=dt.schema(), commit_properties=commit
+            actions,
+            mode="append",
+            schema=dt.schema(),
+            commit_properties=CommitProperties(
+                custom_metadata=logged, app_transactions=commit.app_transactions
+            ),
         )
         return inserted, deleted
 
@@ -1152,6 +1185,34 @@ class DeltaSink(Sink):
 
 
 _OLD, _NEW = "__sverify_old", "__sverify_new"
+
+
+def _native_metrics(
+    mode: str, inserted: int, deleted: int, copied: int, added: int, removed: int, started: float
+) -> dict[str, int]:
+    """The `operationMetrics` of a native commit (#453): what delta-rs logs
+    for a write (`num_added_rows`, …), and for a change (`merge`) also what
+    it logs for a MERGE (`num_target_rows_inserted`, …). `copied` rows were
+    kept from the files the change rewrote."""
+    out = {
+        "num_added_files": added,
+        "num_removed_files": removed,
+        "num_partitions": 0,
+        "num_added_rows": inserted + copied,
+        "execution_time_ms": int((time.monotonic() - started) * 1000),
+    }
+    if mode == "merge":
+        out |= {
+            "num_source_rows": inserted + deleted,
+            "num_target_rows_inserted": inserted,
+            "num_target_rows_updated": 0,
+            "num_target_rows_deleted": deleted,
+            "num_target_rows_copied": copied,
+            "num_output_rows": inserted + copied,
+            "num_target_files_added": added,
+            "num_target_files_removed": removed,
+        }
+    return out
 
 
 def _multiplicities(change: pa.Table, state: pa.Table | Native) -> pa.Table:
