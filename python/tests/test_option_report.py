@@ -273,7 +273,7 @@ def test_epsilon_per_engine(monkeypatch):
     assert eps["duckdb"]["q"]["abs"] == 0 and eps["duckdb"]["p"]["abs"] == 0
     assert 1e-10 < eps["polars"]["q"]["abs"] < 1.2e-10  # 3u · 10⁶ / 3
     assert eps["polars"]["p"]["abs"] == 0
-    sv.verify(t.group_by("k").aggregate(s=t.x.sum()).mutate(h=lambda s: s.s / 2.0), requires=req)
+    sv.verify(t.group_by("k").aggregate(s=t.x.sum()).mutate(h=ibis._.s / 2.0), requires=req)
     eps = json.loads(seen["out"])["epsilon_by_engine"]
     for engine in ("duckdb", "polars"):
         s, h = eps[engine]["s"]["abs"], eps[engine]["h"]["abs"]
