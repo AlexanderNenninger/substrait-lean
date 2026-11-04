@@ -51,8 +51,7 @@ QUERIES = [
     "SELECT customer, stddev_samp(amount) AS sd, stddev_pop(price) AS sp, var_samp(qty) AS vs,"
     " var_pop(amount) AS vp, stddev(price) AS s, variance(amount) AS v"
     " FROM orders GROUP BY customer",
-    "SELECT covar_samp(amount, price) AS cs, covar_pop(qty, amount) AS cp, corr(price, qty) AS r"
-    " FROM orders",
+    "SELECT covar_samp(amount, price) AS cs, covar_pop(qty, amount) AS cp FROM orders",
     "SELECT customer, qty, stddev_samp(amount) AS sd, count(*) AS n FROM orders"
     " GROUP BY ROLLUP (customer, qty)",
 ]
@@ -85,7 +84,7 @@ def test_the_reference_lift_is_checked_too(query):
         ),
         ("SELECT stddev_samp(cost) FROM orders", "of a DECIMAL is not supported"),
         ("SELECT var_pop(customer) FROM orders", "variance of"),
-        ("SELECT corr(customer, amount) FROM orders", "corr of"),
+        ("SELECT corr(price, qty) FROM orders", "DuckDB's CORR is NaN"),
         (
             "SELECT var_pop(amount) OVER (PARTITION BY customer) FROM orders",
             "over a window is not supported",
@@ -172,3 +171,13 @@ def test_stddev_samp_of_an_integer_is_proved_as_ibiss():
     plan = lift(query, {"jobs": jobs.schema()}).plan
     measure = plan["relations"][0]["root"]["input"]["aggregate"]["measures"][0]["measure"]
     assert measure["options"] == [{"name": "distribution", "preference": ["SAMPLE"]}]
+
+
+def test_corr_lifts_with_the_reference_semantics():
+    # DuckDB's CORR is NaN where the reference's is NULL (`duckdb-corr`), so
+    # only the reference profile lifts it.
+    plan = json.dumps(lift("SELECT corr(price, qty) AS r FROM orders", SCHEMAS, "reference").plan)
+    code, out, err = run_checker((), plan)
+    assert code == 0, err or out
+    with pytest.raises(Refused, match="corr of"):
+        lift("SELECT corr(customer, amount) FROM orders", SCHEMAS, "reference")

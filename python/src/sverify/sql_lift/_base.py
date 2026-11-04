@@ -1130,6 +1130,13 @@ class _Lift:
             args: list[E] = []
             out: Any = dt.int64
         elif name in _PAIRED:
+            if name == "corr" and self.profile is DUCKDB:
+                # The reference's CORR is NULL for one pair or a side whose
+                # values are all equal, where DuckDB's is NaN (`duckdb-corr`).
+                raise Unsupported(
+                    f"{_shown(node)}: DuckDB's CORR is NaN where the reference's is NULL"
+                    " (one pair, or a constant side); use semantics='reference'"
+                )
             if distinct:
                 raise Unsupported(f"{_shown(node)}: DISTINCT is not supported")
             args = [self.expr(a, scope, bound) for a in (arg, node.expression)]
