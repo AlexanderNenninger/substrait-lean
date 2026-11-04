@@ -73,12 +73,13 @@ import math
 import re
 import warnings
 import weakref
+from collections import Counter
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import ibis
 import ibis.expr.operations as ops
@@ -109,8 +110,80 @@ def q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+_Rows = Callable[[str], list[dict]]
+"""The rows of a table, by name."""
+_KeyResult = Callable[[], tuple[bool, Counterexample | None]]
+"""The checker's next key result, and its counterexample."""
+
+
+class TableCondition:
+    """A condition on a whole table or its batches, not on each row: `Unique`,
+    `References`, `ArrivesWithin`, `MaxRows` and `RowsPer`. Each kind carries
+    its label, how it is counted on data, its entry in the checker's contract
+    and how a source's batch checks it."""
+
+    entry: ClassVar[str | None] = None
+    """The checker contract's entry for it in `requires` (None: none)."""
+    on_state: ClassVar[bool] = False
+    """A view checks it on its whole new state, not on the rows it inserts."""
+    batched: ClassVar[bool] = False
+    """A source's batch checks it by `check_batch` (or against the
+    watermark), not as a row condition on the inserted rows."""
+
+    @property
+    def label(self) -> str:
+        raise NotImplementedError
+
+    def violations(self, table: ir.Table) -> int:
+        """How many rows of the bound `table` break it."""
+        raise NotImplementedError
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        """The `rows` that break it, with values compared by `key`, and
+        `other` the rows of another table."""
+        raise NotImplementedError
+
+    def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
+        """Its value in the checker contract's `entry` for table `t`, by
+        column positions; `names` gives a table's column names."""
+        return None
+
+    def per_key(self) -> tuple[tuple[str, ...], int] | None:
+        """At most so many rows per combination of these columns, if it says so."""
+        return None
+
+    def capped_by(self, rows: int) -> bool:
+        """A table of at most `rows` rows meets it."""
+        return False
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        """What the checker's output `out` proved of it as a postcondition;
+        `key` gives the next key result and its counterexample."""
+        raise NotImplementedError
+
+    def check_batch(self, t: str, inserts: pa.Table, new: pa.Table | Any) -> Discharged | None:
+        """Check it on a batch of source `t` that inserts `inserts`, against
+        the `new` table, raising `PreconditionError`; None if the batch is
+        checked elsewhere."""
+        return None
+
+
+def _positions(cols: Sequence[str], names: Sequence[str]) -> list[int]:
+    missing = [c for c in cols if c not in names]
+    if missing:
+        raise ValueError(f"unique() names unknown columns: {missing}")
+    return [list(names).index(c) for c in cols]
+
+
+def _count(count: ir.Scalar) -> int:
+    """The value of an Ibis count, fetched through Arrow: Ibis 12 converts
+    `execute()`'s scalar through pandas, which warns under pandas 3.1
+    (#479)."""
+    return int(count.to_pyarrow().as_py())
+
+
 @dataclass(frozen=True)
-class Unique:
+class Unique(TableCondition):
     """No two rows agree on these columns (see `unique`).
 
     Attributes:
@@ -118,6 +191,47 @@ class Unique:
     """
 
     cols: tuple[str, ...]
+
+    entry: ClassVar[str | None] = "keys"
+    on_state: ClassVar[bool] = True
+    batched: ClassVar[bool] = True
+
+    @property
+    def label(self) -> str:
+        return f"unique({', '.join(self.cols)})"
+
+    def violations(self, table: ir.Table) -> int:
+        total: Any = table.count()
+        distinct: Any = table.select(*self.cols).distinct().count()
+        return _count(total) - _count(distinct)
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        keys = Counter(key(tuple(r[c] for c in self.cols)) for r in rows)
+        return [r for r in rows if keys[key(tuple(r[c] for c in self.cols))] > 1]
+
+    def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
+        return _positions(self.cols, names(t))
+
+    def per_key(self) -> tuple[tuple[str, ...], int] | None:
+        return self.cols, 1
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        ok, cex = key()
+        value = (
+            "a key"
+            if ok
+            else "not shown to be a key"
+            if out["deterministic"]
+            else "undetermined: rows may tie in an ORDER BY"
+        )
+        return CheckedCondition(self.label, ok, value, cex)
+
+    def check_batch(self, t: str, inserts: pa.Table, new: pa.Table | Any) -> Discharged | None:
+        from sverify._weighted import duplicate_keys
+
+        if inserts.num_rows and (clash := duplicate_keys(new, self.cols, inserts)):
+            raise PreconditionError(f"{clash} inserted key(s) of {t} violate {self.label}")
+        return Discharged(t, self.label, ON_DATA)
 
 
 def unique(*cols: str) -> Unique:
@@ -137,7 +251,7 @@ def unique(*cols: str) -> Unique:
 
 
 @dataclass(frozen=True)
-class References:
+class References(TableCondition):
     """A foreign key: every non-NULL value of `col` occurs in column `other`
     of table `table` (see `references`).
 
@@ -150,6 +264,34 @@ class References:
     col: str
     table: str
     other: str
+
+    entry: ClassVar[str | None] = "references"
+
+    @property
+    def label(self) -> str:
+        return f"references({self.col}, {self.table}.{self.other})"
+
+    def violations(self, table: ir.Table) -> int:
+        other = ibis.get_backend(table).table(self.table)
+        present = table.filter(table[self.col].notnull())
+        missing: Any = present.anti_join(other, [present[self.col] == other[self.other]]).count()
+        return _count(missing)
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        present = {key(r[self.other]) for r in other(self.table)}
+        return [r for r in rows if r[self.col] is not None and key(r[self.col]) not in present]
+
+    def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
+        try:
+            other = names(self.table)
+        except KeyError:
+            raise ValueError(f"references() names an unknown table: {self.table!r}") from None
+        [col] = _positions([self.col], names(t))
+        [ref] = _positions([self.other], other)
+        return [col, self.table, ref]
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        return CheckedCondition(self.label, False, "foreign keys are not proved")
 
 
 def references(col: str, *legacy: str, to: ir.Column | tuple[str, str] | None = None) -> References:
@@ -210,7 +352,7 @@ def references(col: str, *legacy: str, to: ir.Column | tuple[str, str] | None = 
 
 
 @dataclass(frozen=True)
-class ArrivesWithin:
+class ArrivesWithin(TableCondition):
     """Rows arrive at most `lateness` late on `col` (see `arrives_within`).
 
     Attributes:
@@ -220,6 +362,24 @@ class ArrivesWithin:
 
     col: str
     lateness: timedelta
+
+    batched: ClassVar[bool] = True
+
+    @property
+    def label(self) -> str:
+        return f"arrives_within({self.col}, {show_duration(self.lateness)})"
+
+    def violations(self, table: ir.Table) -> int:
+        # On one snapshot, only the NULLs break it; batches are checked by
+        # the pipeline against the watermark.
+        nulls: Any = table.filter(table[self.col].isnull()).count()
+        return _count(nulls)
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        return [r for r in rows if r[self.col] is None]
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        return CheckedCondition(self.label, False, "lateness is checked on a source's batches")
 
 
 def arrives_within(
@@ -259,7 +419,7 @@ def arrives_within(
 
 
 @dataclass(frozen=True)
-class MaxRows:
+class MaxRows(TableCondition):
     """At most `n` rows (see `max_rows`).
 
     Attributes:
@@ -267,6 +427,39 @@ class MaxRows:
     """
 
     n: int
+
+    entry: ClassVar[str | None] = "max_rows"
+    on_state: ClassVar[bool] = True
+    batched: ClassVar[bool] = True
+
+    @property
+    def label(self) -> str:
+        return f"max_rows({self.n})"
+
+    def violations(self, table: ir.Table) -> int:
+        rows: Any = table.count()
+        return max(0, _count(rows) - self.n)
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        return rows[self.n :]
+
+    def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
+        return self.n
+
+    def capped_by(self, rows: int) -> bool:
+        return rows <= self.n
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        n = out.get("rows")
+        value = "no bound on the rows" if n is None else f"at most {n:,} rows"
+        return CheckedCondition(self.label, n is not None and n <= self.n, value)
+
+    def check_batch(self, t: str, inserts: pa.Table, new: pa.Table | Any) -> Discharged | None:
+        from sverify._weighted import row_count
+
+        if (n := row_count(new)) > self.n:
+            raise PreconditionError(f"{n - self.n} row(s) of {t} violate {self.label}")
+        return Discharged(t, self.label, ON_DATA)
 
 
 def max_rows(n: int) -> MaxRows:
@@ -303,7 +496,7 @@ def max_rows(n: int) -> MaxRows:
 
 
 @dataclass(frozen=True)
-class RowsPer:
+class RowsPer(TableCondition):
     """At most `n` rows per combination of `cols` (see `rows_per`).
 
     Attributes:
@@ -313,6 +506,46 @@ class RowsPer:
 
     cols: tuple[str, ...]
     n: int
+
+    entry: ClassVar[str | None] = "rows_per"
+
+    @property
+    def label(self) -> str:
+        return f"rows_per([{', '.join(self.cols)}], at_most={self.n})"
+
+    def violations(self, table: ir.Table) -> int:
+        if not self.cols:
+            everything: Any = table.count()
+            return max(0, _count(everything) - self.n)
+        # Rows beyond the bound in each key's group.
+        sizes = table.group_by(list(self.cols)).aggregate(rows=ibis._.count())
+        big = sizes.filter(sizes.rows > self.n)
+        over: Any = (big.rows - self.n).sum()
+        # A sum over no groups is NULL.
+        return int(over.to_pyarrow().as_py() or 0)
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        # The rows beyond the first `n` of each key.
+        seen: Counter[object] = Counter()
+        over = []
+        for r in rows:
+            k = key(tuple(r[c] for c in self.cols))
+            seen[k] += 1
+            if seen[k] > self.n:
+                over.append(r)
+        return over
+
+    def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
+        return [_positions(self.cols, names(t)), self.n]
+
+    def per_key(self) -> tuple[tuple[str, ...], int] | None:
+        return self.cols, self.n
+
+    def capped_by(self, rows: int) -> bool:
+        return rows <= self.n
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        return CheckedCondition(self.label, False, "rows per key are checked on inputs only")
 
 
 def rows_per(cols: Sequence[str], at_most: int) -> RowsPer:
@@ -468,9 +701,6 @@ def _checked_semantics(semantics: str) -> Semantics:
         raise ValueError(f"semantics must be 'reference' or 'duckdb', not {semantics!r}")
     return semantics  # type: ignore[return-value]
 
-
-TableCondition = (Unique, References, ArrivesWithin, MaxRows, RowsPer)
-"""Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
     Deferred
@@ -1339,16 +1569,8 @@ def _hint(
 def label(cond: Condition) -> str:
     if isinstance(cond, Inferred):
         return cond.text
-    if isinstance(cond, Unique):
-        return f"unique({', '.join(cond.cols)})"
-    if isinstance(cond, References):
-        return f"references({cond.col}, {cond.table}.{cond.other})"
-    if isinstance(cond, ArrivesWithin):
-        return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
-    if isinstance(cond, MaxRows):
-        return f"max_rows({cond.n})"
-    if isinstance(cond, RowsPer):
-        return f"rows_per([{', '.join(cond.cols)}], at_most={cond.n})"
+    if isinstance(cond, TableCondition):
+        return cond.label
     if isinstance(cond, Approx):
         return f"approx({label(cond.cond)}, rel={cond.rel:g})"
     if isinstance(cond, str):
@@ -1440,7 +1662,9 @@ def requires_by_input(
     if requires is None:
         return {}
     if not isinstance(requires, Mapping):
-        conds = [requires] if isinstance(requires, (str, *TableCondition)) else list(requires)
+        conds: list[Any] = (
+            [requires] if isinstance(requires, str | TableCondition) else list(requires)
+        )
         if len(inputs) != 1:
             raise error(
                 f"requires: a list of conditions needs exactly one input {kind}, and there "
@@ -1723,39 +1947,24 @@ def _verify_once(
     transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
 
-    def positions(cols: Sequence[str], names: Sequence[str]) -> list[int]:
-        missing = [c for c in cols if c not in names]
-        if missing:
-            raise ValueError(f"unique() names unknown columns: {missing}")
-        return [list(names).index(c) for c in cols]
+    def names(t: str) -> Sequence[str]:
+        return column_names(schemas[t])
 
-    keys = {
-        t: [positions(c.cols, column_names(schemas[t])) for c in cs if isinstance(c, Unique)]
-        for t, cs in requires.items()
-    }
-    ensures_keys = [positions(c.cols, out_cols) for c in ensures if isinstance(c, Unique)]
+    def entries(kind: str) -> dict[str, list]:
+        return {
+            t: [
+                c.plan_entry(t, names)
+                for c in cs
+                if isinstance(c, TableCondition) and c.entry == kind
+            ]
+            for t, cs in requires.items()
+        }
 
-    def foreign_key(t: str, c: References) -> list:
-        if c.table not in schemas:
-            raise ValueError(f"references() names an unknown table: {c.table!r}")
-        [col] = positions([c.col], column_names(schemas[t]))
-        [other] = positions([c.other], column_names(schemas[c.table]))
-        return [col, c.table, other]
-
-    foreign_keys = {
-        t: [foreign_key(t, c) for c in cs if isinstance(c, References)]
-        for t, cs in requires.items()
-    }
-    caps = {
-        t: min(c.n for c in cs if isinstance(c, MaxRows))
-        for t, cs in requires.items()
-        if any(isinstance(c, MaxRows) for c in cs)
-    }
-    per_key = {
-        t: [[positions(c.cols, column_names(schemas[t])), c.n] for c in cs]
-        for t, all_cs in requires.items()
-        if (cs := [c for c in all_cs if isinstance(c, RowsPer)])
-    }
+    keys = entries("keys")
+    ensures_keys = [_positions(c.cols, out_cols) for c in ensures if isinstance(c, Unique)]
+    foreign_keys = entries("references")
+    caps = {t: min(ns) for t, ns in entries("max_rows").items() if ns}
+    per_key = {t: ps for t, ps in entries("rows_per").items() if ps}
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1805,34 +2014,15 @@ def _verify_once(
             references=foreign_keys,
         )
 
+    def next_key() -> tuple[bool, Counterexample | None]:
+        ok = next(key_results)["proved"]
+        cols = next(key_iter)
+        return ok, None if ok else find(cols)
+
     checked = []
     for c in ensures:
-        if isinstance(c, Unique):
-            ok = next(key_results)["proved"]
-            value = (
-                "a key"
-                if ok
-                else "not shown to be a key"
-                if out["deterministic"]
-                else "undetermined: rows may tie in an ORDER BY"
-            )
-            cols = next(key_iter)
-            cex = None if ok else find(cols)
-            checked.append(CheckedCondition(label(c), ok, value, cex))
-        elif isinstance(c, References):
-            checked.append(CheckedCondition(label(c), False, "foreign keys are not proved"))
-        elif isinstance(c, ArrivesWithin):
-            checked.append(
-                CheckedCondition(label(c), False, "lateness is checked on a source's batches")
-            )
-        elif isinstance(c, MaxRows):
-            n = out.get("rows")
-            value = "no bound on the rows" if n is None else f"at most {n:,} rows"
-            checked.append(CheckedCondition(label(c), n is not None and n <= c.n, value))
-        elif isinstance(c, RowsPer):
-            checked.append(
-                CheckedCondition(label(c), False, "rows per key are checked on inputs only")
-            )
+        if isinstance(c, TableCondition):
+            checked.append(c.ensured(out, next_key))
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -2071,13 +2261,6 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     )
 
 
-def _count(count: ir.Scalar) -> int:
-    """The value of an Ibis count, fetched through Arrow: Ibis 12 converts
-    `execute()`'s scalar through pandas, which warns under pandas 3.1
-    (#479)."""
-    return int(count.to_pyarrow().as_py())
-
-
 def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
@@ -2091,33 +2274,8 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
             raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
         plan = written_plan(plan_json(con, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
-    if isinstance(cond, References):
-        other = ibis.get_backend(table).table(cond.table)
-        present = table.filter(table[cond.col].notnull())
-        missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
-        return _count(missing)
-    if isinstance(cond, ArrivesWithin):
-        # On one snapshot, only the NULLs break it; batches are checked by
-        # the pipeline against the watermark.
-        nulls: Any = table.filter(table[cond.col].isnull()).count()
-        return _count(nulls)
-    if isinstance(cond, Unique):
-        total: Any = table.count()
-        distinct: Any = table.select(*cond.cols).distinct().count()
-        return _count(total) - _count(distinct)
-    if isinstance(cond, MaxRows):
-        rows: Any = table.count()
-        return max(0, _count(rows) - cond.n)
-    if isinstance(cond, RowsPer):
-        if not cond.cols:
-            everything: Any = table.count()
-            return max(0, _count(everything) - cond.n)
-        # Rows beyond the bound in each key's group.
-        sizes = table.group_by(list(cond.cols)).aggregate(rows=ibis._.count())
-        big = sizes.filter(sizes.rows > cond.n)
-        over: Any = (big.rows - cond.n).sum()
-        # A sum over no groups is NULL.
-        return int(over.to_pyarrow().as_py() or 0)
+    if isinstance(cond, TableCondition):
+        return cond.violations(table)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -2228,8 +2386,8 @@ def discharge(
     counted = {
         id(c): source
         for c in todo
-        if isinstance(c, MaxRows | RowsPer)
-        for source in [next((s for n, s in counts if n <= c.n), None)]
+        if isinstance(c, TableCondition)
+        for source in [next((s for n, s in counts if c.capped_by(n)), None)]
         if source is not None
     }
     out += [Discharged(name, label(c), counted[id(c)]) for c in todo if id(c) in counted]
