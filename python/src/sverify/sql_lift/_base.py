@@ -905,6 +905,12 @@ class _Lift:
         args: list[Json] = []
         if type(f) in _RANKING:
             name, out = _RANKING[type(f)]
+            if f.find(sge.Order) is not None:
+                # `rank(ORDER BY x) OVER (… frame)` ranks by `x` within the
+                # frame (#625); a plain ranking ignores the frame.
+                raise Unsupported(
+                    f"{_shown(w)}: a ranking function with its own ORDER BY is not supported"
+                )
             if isinstance(f, sge.Ntile):
                 n = arg(f.this)
                 if not (n.constant and isinstance(n.value, int) and n.value > 0):

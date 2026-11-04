@@ -166,7 +166,8 @@ def test_groups_and_options() -> None:
     for o in fns.OPTIONS.values():
         assert {b for b, _ in o.extra} <= set(o.core), o.id
         for _, fact in o.extra:
-            assert (ROOT / "characterization" / "duckdb" / "facts" / f"{fact}.json").exists()
+            engine = fact.split("-")[0]
+            assert (ROOT / "characterization" / engine / "facts" / f"{fact}.json").exists()
 
 
 @pytest.mark.parametrize("profile", sorted(fns.CHOICES))

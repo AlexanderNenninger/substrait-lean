@@ -46,6 +46,7 @@ from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
+from sverify.observation import Observation
 from sverify.steps import Step, as_transform
 
 if TYPE_CHECKING:
@@ -282,6 +283,7 @@ class Node:
         engine: Any = "duckdb",
         audit: bool = False,
         route: RouteKind | Literal["auto"] | None = None,
+        reproducible: Observation | None = None,
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
         stored ones. `engine` runs the plans: `"duckdb"` (in memory),
@@ -290,11 +292,13 @@ class Node:
         applied (`AuditError`).
 
         A stored node's sink commits each state once, by its epoch, so a
-        rerun must give the same rows: a node whose result is not determined
-        up to row order (its report's `deterministic`) is refused before
-        anything runs (#444, D10). With `route`, each node's proof is also
-        taken to `engine` by a route (`sverify.routes.choose`, D13), or the
-        refresh is refused; `StageRefresh.route` records it.
+        rerun must reproduce its rows up to the sink's `reproducible` (rows
+        as a multiset with exact values by default): a node whose result is
+        not determined up to row order, or whose engine varies between runs
+        more than that, is refused before anything runs (#444, D10, D20).
+        With `route`, each node's proof is also taken to `engine` by a route
+        (`sverify.routes.choose`, D13), or the refresh is refused;
+        `StageRefresh.route` records it.
 
         Each node is refreshed once per call, upstream first, against each
         source's latest version when the call starts, and every stored node
@@ -313,6 +317,9 @@ class Node:
                 chooses a route for each node with a contract; `"native"`,
                 `"reference"`, `"transfer"` or `"recheck"` takes that one or
                 refuses.
+            reproducible: What a rerun must reproduce for every node
+                (`sv.equivalent(...)`, D20), over each sink's own. Default
+                None: a stored node needs its sink's, another node nothing.
 
         Returns:
             A `Refresh`: what was done to each node, upstream first.
@@ -340,7 +347,9 @@ class Node:
             r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
             ```
         """
-        return group(self).refresh(engine=engine, audit=audit, route=route)
+        return group(self).refresh(
+            engine=engine, audit=audit, route=route, reproducible=reproducible
+        )
 
     def status(self) -> Status:
         """Where the node stands: the source versions of its state, where it
@@ -887,6 +896,7 @@ class Group:
         engine: Any = "duckdb",
         audit: bool = False,
         route: RouteKind | Literal["auto"] | None = None,
+        reproducible: Observation | None = None,
     ) -> Refresh:
         """Refresh every node against the same source versions (each
         source's latest when the refresh starts), sharing the stored nodes
@@ -899,6 +909,7 @@ class Group:
                 applying it. Default False.
             route: How each node's proof reaches `engine`; see
                 `Node.refresh`.
+            reproducible: What a rerun must reproduce; see `Node.refresh`.
 
         Returns:
             A `Refresh` with an entry for every node refreshed: the nodes and
@@ -916,7 +927,7 @@ class Group:
                 nothing was refreshed.
         """
         order = self._order()
-        chosen = _routes(order, engine, route)
+        chosen = _routes(order, engine, route, reproducible)
         for n in order:
             if isinstance(n, _Stored) and n._stage is None:
                 _continue_versions(n)
@@ -991,36 +1002,49 @@ def _proof(node: Node) -> Report | None:
 
 
 def _routes(
-    order: Sequence[Node], engine: Any, route: RouteKind | Literal["auto"] | None
+    order: Sequence[Node],
+    engine: Any,
+    route: RouteKind | Literal["auto"] | None,
+    reproducible: Observation | None = None,
 ) -> dict[int, Route]:
     """Each node's route to `engine` (by `id`), checked before anything runs.
-    A stored node needs a result determined up to row order: its sink
-    commits each epoch once (D10)."""
+
+    What a rerun must reproduce (`q_det`, D20): a stored node's sink commits
+    each epoch once, so it needs the sink's `reproducible` (rows as a
+    multiset with exact values by default), or `reproducible` where the
+    refresh states one; another node needs `reproducible`, or nothing. The
+    engine's run-to-run variation must refine it, with or without `route`."""
     from sverify import routes
 
     out: dict[int, Route] = {}
+    e = routes.engine_name(engine)
     for n in order:
         report = _proof(n)
         if report is None:
             continue
-        stored = isinstance(n, _Stored)
+        needed = reproducible
+        if needed is None and isinstance(n, _Stored):
+            needed = n.sink.reproducible if hasattr(n.sink, "reproducible") else Observation()
         if route is None:
-            if stored and not report.deterministic:
-                e = routes.engine_name(engine)
-                raise routes.RouteError(
-                    routes.Route(
-                        e,
-                        None,
-                        report.semantics,
-                        f"{n.name}'s result is not determined up to row order, and its sink "
-                        "commits each epoch once, so a rerun must give the same rows; "
-                        f"{TIES}",
-                        False,
-                        cls="refused",
+            if needed is not None:
+                problems, _ = routes.reproducibility(report, e, needed)
+                if problems:
+                    hint = "" if report.deterministic else f"; {TIES}"
+                    raise routes.RouteError(
+                        routes.Route(
+                            e,
+                            None,
+                            report.semantics,
+                            f"{n.name}: a rerun must give the same result: "
+                            + "; ".join(problems)
+                            + hint,
+                            report.deterministic,
+                            cls="refused",
+                            reproducible=needed,
+                        )
                     )
-                )
             continue
-        chosen = routes.choose(report, engine, route, deterministic=stored)
+        chosen = routes.choose(report, engine, route, reproducible=needed)
         if chosen.refused:
             raise routes.RouteError(replace(chosen, reason=f"{n.name}: {chosen.reason}"))
         out[id(n)] = chosen

@@ -58,6 +58,11 @@ import SubstraitLean.Options
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.EngineTables
+import SubstraitLean.PolarsShims
+import SubstraitLean.SubstraitProfile
+import SubstraitLean.Transfer
+import SubstraitLean.Obligations
+import SubstraitLean.Epsilon
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples

@@ -212,6 +212,7 @@ The values are right; the rendering is not.
 | Topic | Reference | Status |
 |---|---|---|
 | Logic | Three-valued (Kleene): `AND`, `OR`, `NOT`, comparisons. | ✓ |
+| Errors under `AND`, `OR` | Eager: an error in either operand may raise, whatever the other operand's value, as DuckDB and Polars evaluate both ([D19](core-semantics.md#d19-and-and-or-raise-eagerly), #604). `x <> 0 AND 10 // x > 1` may divide by zero; `(CASE WHEN x <> 0 THEN 10 // x END) > 1` does not. A boolean `CASE` is evaluated whole, as `AND`/`OR` (`Parse.eagerly`); another `CASE` evaluates only the branch it takes. The report flags an error inside an `AND` or `OR` and suggests the `CASE`. | ✓ (`Expr.issues` of `.bin`; the hint: `Issue.under_and_or`) |
 | `WHERE`, `ON`, `HAVING`-style conditions | Keep a row only when the condition `IS TRUE` (`Value.isTrue`). | ✓ |
 | Functions | Propagate NULL, unless Substrait says otherwise (`COALESCE`, `IS NULL`, `CASE`, `any_match`…). | ✓ |
 | Equality for grouping | `GROUP BY`, `DISTINCT` and list equality treat NULLs as equal (`[1, NULL] = [1, NULL]` is TRUE). | ✓ |

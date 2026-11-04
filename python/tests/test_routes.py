@@ -249,7 +249,10 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i <= 2]})
     with pytest.raises(PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
         report.run(con, "polars", route="auto")
-    report.run(con, "polars")  # without a route, as before
+    # Without a route too (#604), unless the caller opts out.
+    with pytest.raises(PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
+        report.run(con, "polars")
+    report.run(con, "polars", check_inputs=False)
 
 
 def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:

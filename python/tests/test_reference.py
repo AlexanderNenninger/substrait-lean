@@ -742,3 +742,31 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     assert [i.kind for i in ref.assumed] == [INFINITE]
     with pytest.raises(Exception, match="overflow"):
         ref.run(con, engine)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "lo"),
+    [(pa.int8(), -(2**7)), (pa.int16(), -(2**15)), (pa.int32(), -(2**31)), (pa.int64(), I64_MIN)],
+)
+def test_abs_of_the_smallest_integer_raises_at_its_width(dtype, lo):
+    """`abs` of a column's smallest value does not fit its type, at every
+    width: `abs(-128::TINYINT)` raises in DuckDB, where the model gave 128
+    (#616). `verify` reports it, and a bound above the minimum rules it out."""
+    con = connect()
+    put_table(con, "i", pa.table({"a": pa.array([lo + 1, None], dtype)}))
+    plan = substrait_json(con, "SELECT abs(a) AS q FROM i")
+    assert issues(plan) != []
+    tables = {"i": {"a": str(ibis.dtype(dtype))}}
+    assert not verify("SELECT abs(a) AS q FROM i", tables).proved
+    assert verify("SELECT abs(a) AS q FROM i", tables, [f"a >= {lo + 1}"]).proved
+    # In range: the largest value; DuckDB on the written plan agrees.
+    want = [(-(lo + 1),), (None,)]
+    rows = {"i": [(lo + 1,), (None,)]}
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), rows))) == want
+    assert arrow_rows(run_plan(con, written_plan(plan), "duckdb")) == want
+    # The minimum raises on DuckDB, natively and on the written plan.
+    put_table(con, "i", pa.table({"a": pa.array([lo], dtype)}))
+    with pytest.raises(Exception, match="(?i)overflow|out of range"):
+        run_plan(con, written_plan(plan), "duckdb")
+    with pytest.raises(Exception, match="(?i)overflow|out of range"):
+        duckdb_sql(con, "SELECT abs(a) AS q FROM i")

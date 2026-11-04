@@ -93,6 +93,30 @@ def test_inferred_bounds_prove_the_contract(expr, requires, bounds):
     assert "assumed (inferred)" in report._repr_markdown_()
 
 
+@pytest.mark.parametrize(
+    ("dtype", "bounds"),
+    [
+        ("int8", ["(_.v >= -127)", "(_.v <= 127)"]),
+        ("int16", ["(_.v >= -32_767)", "(_.v <= 32_767)"]),
+        ("int32", ["(_.v >= -2 * 10**9)", "(_.v <= 2_147_483_647)"]),
+        ("int64", ["(_.v >= -9 * 10**18)"]),
+    ],
+)
+def test_abs_of_a_narrow_integer_is_bounded_within_its_type(dtype, bounds):
+    """`ABS` fails on the smallest value of the column's type, not only of
+    BIGINT's, and no bound reaches 2**63, which the lift reads as a HUGEINT
+    (#616)."""
+    report = sv.verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": dtype}})
+    assert report.proved, report
+    assert inferred(report) == bounds
+
+
+def test_abs_of_the_smallest_tinyint_may_fail():
+    report = sv.verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": "int8"}}, infer=False)
+    assert not report.proved
+    assert any("WRAP8" in str(i) for i in report.errors), report
+
+
 def test_without_inference_the_hint_names_the_bound():
     report = sv.verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, infer=False)
     assert not report.proved

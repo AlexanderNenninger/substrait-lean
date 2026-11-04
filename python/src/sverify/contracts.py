@@ -695,14 +695,24 @@ def approx(cond: Any, rel: float = 1e-6) -> Approx:
     return Approx(cond, rel)
 
 
-Semantics = Literal["reference", "duckdb", "polars"]
+Semantics = Literal["reference", "duckdb", "polars", "substrait"]
 """The profile a check is under: sverify's reference semantics (the
-default), DuckDB's (#411), whose SQL also means what DuckDB computes, or
-Polars's, for Ibis transformations (#444)."""
+default), DuckDB's (#411), whose SQL also means what DuckDB computes,
+Polars's, for Ibis transformations, or Substrait's own, as its extension
+YAMLs state it (#444)."""
 
 #: The profiles the checker is asked for by name (`"profile"` in a
 #: `--contract` request): those beyond the reference and DuckDB's lift.
-_PROFILE_REQUESTS = frozenset({"polars"})
+_PROFILE_REQUESTS = frozenset({"polars", "substrait"})
+
+
+def _transfer_failure(f: Mapping[str, Any]) -> str:
+    """Why the reference's proof does not carry over to Substrait at one option."""
+    where = f"{f['group']}'s {f['option']}" if f.get("group") else f["option"]
+    return (
+        f"not proved under Profile.substrait: {where} allows "
+        f"{', '.join(f['substrait'])}, the reference only {', '.join(f['reference']) or 'nothing'}"
+    )
 
 
 def _expr_semantics(transform: Transform) -> Semantics:
@@ -720,8 +730,10 @@ def _expr_semantics(transform: Transform) -> Semantics:
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    if semantics not in ("reference", "duckdb", "polars"):
-        raise ValueError(f"semantics must be 'reference', 'duckdb' or 'polars', not {semantics!r}")
+    if semantics not in ("reference", "duckdb", "polars", "substrait"):
+        raise ValueError(
+            f"semantics must be 'reference', 'duckdb', 'polars' or 'substrait', not {semantics!r}"
+        )
     return semantics  # type: ignore[return-value]
 
 
@@ -899,6 +911,10 @@ class Issue:
     """For a "SUM overflow": the column the SUM adds up, named as in its
     hint (the base table's column where it is passed on unchanged). None if
     `expr` is not a single column."""
+    under_and_or: bool = False
+    """The operation sits inside an operand of an `AND` or `OR`, which
+    evaluates both operands (#604, D19): a guard in the other operand does
+    not keep it from raising. The report suggests a `CASE` (`AND_OR_HINT`)."""
 
     @property
     def what(self) -> str:
@@ -993,9 +1009,9 @@ class Report:
     the bounds Lean proves on its rows and, for an aggregate, on the rows
     of a group (#219)."""
     semantics: Semantics = "reference"
-    """What the SQL the report lifted means (`verify(semantics=...)`):
-    `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
-    computes (#411)."""
+    """The profile the report is under (`verify(semantics=...)`):
+    `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
+    computes (#411); `"polars"`; or `"substrait"`, Substrait's own (#444)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
     plan: str | None = field(default=None, repr=False, compare=False)
@@ -1016,9 +1032,15 @@ class Report:
     by engine name."""
     contract: dict | None = field(default=None, repr=False, compare=False)
     """The request the checker proved, for a check under another profile."""
+    transfer: list[dict] | None = field(default=None, repr=False, compare=False)
+    """Under `semantics="substrait"`, the options where Substrait allows more
+    than the reference, so that the reference's proof does not carry over:
+    `{"group", "option", "preferences", "substrait", "reference"}` rows, each
+    with the behaviours the profile allows. Empty when it carries over; None
+    under every other profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types."""
-    epsilon: dict[str, dict[str, float]] | None = field(default=None, repr=False, compare=False)
+    epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
@@ -1046,7 +1068,7 @@ class Report:
                     raise PreconditionError(
                         f"{n} row(s) of {t} violate {label(c)}: refused before the run"
                     )
-        if self.assumed and self.plan is not None:
+        if any(_sum(i) for i in self.assumed) and self.plan is not None:
             # The proved DuckDB translation checks each SUM as it adds up; it
             # runs first, so a batch whose SUM leaves its type is refused
             # before the plan runs on any engine.
@@ -1067,6 +1089,8 @@ class Report:
         *,
         route: RouteKind | Literal["auto"] | None = None,
         deterministic: bool = False,
+        reproducible: Observation | None = None,
+        check_inputs: bool = True,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1090,8 +1114,18 @@ class Report:
             route: None (the default) runs the plan without choosing a
                 route; `"auto"` chooses one; `"native"`, `"reference"`,
                 `"transfer"` or `"recheck"` takes that one or refuses.
-            deterministic: With `route`, refuse a plan whose result is not
-                determined up to row order (D10).
+            deterministic: With `route`, require a rerun to reproduce the
+                result exactly (`reproducible=sv.equivalent()`, D10).
+            reproducible: With `route`, what a rerun must reproduce
+                (`q_det`, D20): the engine's run-to-run variation must
+                refine it. Default None: determinism is only reported.
+            check_inputs: Check the preconditions (`requires`, the inferred
+                bounds among them) and the assumed `SUM`s on the tables of
+                `con` before the run, and refuse a batch that breaks one
+                (`check_inputs`, #444 goal 1, #604). Default True. False
+                skips the check, for a caller that has made it already: the
+                report's guarantee then holds only on data that meets them,
+                and a batch that does not may raise on the engine.
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1103,6 +1137,8 @@ class Report:
             sverify.routes.RouteError: No route takes the plan to `engine`.
             sverify.routes.EngineVersionError: The engine's major version is
                 not the one its profile's facts were probed at.
+            sverify.errors.PreconditionError: With `check_inputs`, a
+                precondition does not hold on the data: nothing ran.
 
         Examples:
             Verify a query, then run what was verified:
@@ -1130,11 +1166,13 @@ class Report:
                 engine if engine is not None else con.engine,
                 route,
                 deterministic=deterministic,
+                reproducible=reproducible,
             )
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
                 raise routes.RouteError(chosen)
+        if check_inputs:
             self.check_inputs(con)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and
@@ -1146,8 +1184,9 @@ class Report:
     def proved(self) -> bool:
         """Every postcondition holds and no runtime error is possible. With
         an observation (`sv.equivalent`), no postcondition depends on what
-        it ignores."""
-        return all(c.portable for c in self.ensures) and not self.errors
+        it ignores. Under `semantics="substrait"`, the reference's proof
+        also carries over (`transfer` is empty)."""
+        return all(c.portable for c in self.ensures) and not self.errors and not self.transfer
 
     @property
     def errors(self) -> list[Issue]:
@@ -1218,6 +1257,7 @@ class Report:
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
         lines.append(f"semantics: {self.semantics}")
+        lines += [f"  {_transfer_failure(f)}" for f in self.transfer or ()]
         if self.observation != Observation():
             lines.append(f"observes: {self.observation}")
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
@@ -1575,12 +1615,28 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
     null = f"{sql} IS NULL OR " if dtype.nullable else ""
     out = []
     if dtype.is_integer():
+        # A side at or past 64 bits holds for every integer column, and its
+        # constant (2**63) would be a HUGEINT, which the lift refuses (#616).
+        # A narrower column's own limits stay, the proof needs them stated,
+        # each a constant of the column's type, so it is a fact about the
+        # column (`v <= 127` on a TINYINT, not `v < 128`).
+        if lo is not None and lo <= -(2**63):
+            lo = None
+        if hi is not None and hi >= 2**63 - 1:
+            hi = None
         if lo is not None:
-            v, text = _nice(lo, up=True)
+            if lo <= dtype.bounds.lower:
+                v, text = dtype.bounds.lower, f"{dtype.bounds.lower:_}"
+            else:
+                v, text = _nice(lo, up=True)
             out.append(Inferred(f"{null}{sql} >= {v}", f"({ref} >= {text})"))
         if hi is not None:
-            v, text = _nice(hi + 1, up=False)
-            out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
+            if hi >= dtype.bounds.upper:
+                top = dtype.bounds.upper
+                out.append(Inferred(f"{null}{sql} <= {top}", f"({ref} <= {top:_})"))
+            else:
+                v, text = _nice(hi + 1, up=False)
+                out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
         return out
     if dtype.is_floating():
         return _double_conditions(ref, sql, null, lo, hi)
@@ -1713,7 +1769,7 @@ def _render_needs(
             lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
             new = _bound_conditions(col, schema[col], lo, hi)
         have += [c for c in new if c not in have]
-    return out
+    return {t: cs for t, cs in out.items() if cs}
 
 
 def _hint(
@@ -1934,6 +1990,11 @@ def verify(
             `sv.sql(..., semantics="duckdb")`, else `"reference"`.
             `"polars"` checks an Ibis transformation under Polars's
             profile (#444); the checker refuses it until it has one.
+            `"substrait"` checks an Ibis transformation under Substrait's
+            own semantics (`Profile.substrait`, #444): the proof under the
+            reference holds there where Substrait allows nothing more at
+            the options the plan meets, and `Report.transfer` names the
+            options where it allows more.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -2190,10 +2251,14 @@ def _infer_bounds(
         t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
     }
     if extra:
+        guarded = and_or_hints(report.issues)
         widened = {t: list(cs) for t, cs in requires.items()}
         _merge(widened, extra)
         report = once(widened, counterexamples)[0]
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
+        # An inferred precondition that a guard under AND/OR would have made
+        # unnecessary with a CASE (#604): say so.
+        report.hints += [h for h in guarded if h not in report.hints]
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
     report = _confirm_suggestions(report, requires, once)
@@ -2404,6 +2469,7 @@ def _verify_once(
                 if i["kind"] == INFINITE
                 else None,
                 _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
+                i.get("under_and_or", False),
             )
             for i in out["issues"]
             # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
@@ -2426,10 +2492,12 @@ def _verify_once(
         depends=out.get("depends"),
         epsilon=out.get("epsilon"),
         contract=contract,
+        transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
+    report.hints += and_or_hints(report.issues)
     if not isinstance(transform, str):
         report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
     return report, out["inferred"], schemas
@@ -2520,6 +2588,23 @@ def _value_origin(value: Node) -> tuple[str, str] | None:
 
 #: The bound a SUM hint proposes for an unbounded side of a column.
 SUM_BOUND = 1_000_000_000
+
+
+#: What a report suggests for an error under `AND`/`OR` (#604, D19).
+AND_OR_HINT = (
+    "`{}` is inside an AND or OR, which evaluates both operands, as DuckDB and "
+    "Polars do (D19): a guard in the other operand does not keep it from "
+    "raising. Guard the operation itself with a CASE that is not boolean, "
+    "e.g. `(CASE WHEN x <> 0 THEN 10 // x END) > 1`, in Ibis "
+    "`ibis.cases((_.x != 0, 10 // _.x)) > 1` (a boolean CASE is evaluated "
+    "whole, as AND/OR is); or state the guard as a precondition"
+)
+
+
+def and_or_hints(issues: Sequence[Issue]) -> list[str]:
+    """`AND_OR_HINT` for each error under `AND`/`OR`, once per expression."""
+    seen = dict.fromkeys(i.expr for i in issues if i.error and i.under_and_or)
+    return [AND_OR_HINT.format(e) for e in seen]
 
 
 def overflow_hints(

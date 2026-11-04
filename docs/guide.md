@@ -288,7 +288,13 @@ except VerificationError as e:
   `sv.connect()` connection, on its engine or the one you name
   (`report.run(con, "polars")`). The result is the one the report is about,
   `params` and `semantics` included
-  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)):
+  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)).
+  It first checks the report's preconditions on the tables, the inferred
+  ones included, and refuses a batch that breaks one with a
+  `PreconditionError` that names it, before anything runs
+  ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+  `check_inputs=False` skips the check for a caller that has made it
+  already; the report's guarantee then holds only on data that meets them:
 
   ```python
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
@@ -1081,8 +1087,11 @@ assumed `SUM`s are checked on the data, and a batch that breaks one raises
 `deterministic=True` refuses a plan whose result is not determined up to
 row order. `node.refresh(engine=..., route="auto")` chooses a route for
 every node the same way and records it in each entry's `route`. A stored
-node always needs a result determined up to row order, since its sink
-commits each epoch once. Each engine profile names the versions its facts were probed at
+node needs a rerun to reproduce its result, since its sink commits each
+epoch once: rows as a multiset with exact values by default, or what the
+sink states, such as
+`DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(rel=1e-12)))`
+for a double `SUM` whose order varies between runs. Each engine profile names the versions its facts were probed at
 (DuckDB 2.0.0, Polars 2.1.0): another version warns, another major version
 is refused.
 
@@ -1095,14 +1104,18 @@ t = readings.table("t")
 means = sv.verify(
     t.group_by("k").aggregate(mean_x=t.x.mean()).order_by("k"),
     requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
-    ensures=[sv.equivalent(rows="sequence", floats=sv.within(rel=1e-12)), sv.unique("k")],
+    ensures=[sv.equivalent(rows="sequence", floats=sv.within(abs=1e-3)), sv.unique("k")],
 )
 duckdb_result = means.run(readings, "duckdb", route="auto")
 polars_result = means.run(readings, "polars", route="auto")
 means.observation.equal(duckdb_result, polars_result)  # True
 ```
 
-Rows are a multiset and values exact by default. `sv.equivalent` also takes
+Polars sums doubles in its own order, so its mean is within the plan's
+bound of the reference's: here about `2.2e-4`, from the bounds on `x` and the
+row cap (#85; `--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
+values may cancel, so only an absolute bound holds, and the tolerance is
+absolute. Rows are a multiset and values exact by default. `sv.equivalent` also takes
 `elements="multiset"`, `zeros="canon"`, `timestamps="ms"`, `strings="nfc"`,
 `decimals="value"` and `errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as

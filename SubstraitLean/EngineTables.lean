@@ -2,6 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.Observations
 import SubstraitLean.AllowedP
 import SubstraitLean.Profile
+import SubstraitLean.SubstraitProfile
 
 /-!
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
@@ -36,7 +37,8 @@ def prototypeSlice : List String :=
   ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
    "rounding", "nan_creation", "zero_sign", "nan_kind", "nan_order", "nan_equality",
    "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
-   "tie_order"]
+   "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
+   "null_join_keys", "float_overflow", "stat_algo", "quantile_interp"]
 
 /-- Evidence from the facts or tests `ids`, none where empty. -/
 def Evidence.ofIds (ids : List String) : Evidence := if ids.isEmpty then .none else .tested ids
@@ -57,6 +59,11 @@ def ObsRow.upTo (q : Obs) (ids : List String) : ObsRow :=
 def ObsRow.approxWithin (b : String) (ids : List String) : ObsRow :=
   { cls := .approx, q := { floats := .within b }, evidence := .ofIds ids }
 
+/-- The row, proved by the theorem `thm` (`SubstraitLean/PolarsShims.lean`),
+whose trusted model rests on the row's facts. -/
+def ObsRow.proved (r : ObsRow) (thm : String) : ObsRow :=
+  { r with evidence := .proved thm (match r.evidence with | .tested ids | .probed ids => ids | _ => []) }
+
 /-! ## DuckDB -/
 
 /-- DuckDB 2.0.0 under the settings `s`. -/
@@ -71,9 +78,13 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (some "int.div", "on_domain_error", .any),
     (some "int.pow", "on_domain_error", .any),
     (none, "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
+    (some "int.div", "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
+    (some "int.mod", "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
     (none, "min_mod_neg_one", .oneOf ["ERROR"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
     (none, "nan_creation", .oneOf ["NAN"]),
+    (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
@@ -83,11 +94,20 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "empty_group_aggregates", .oneOf ["NULL"]),
     (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_LAST"]),
     (none, "clustered", .oneOf ["ADJACENT"]),
-    (none, "tie_order", .oneOf ["ANY"])] ++ uncharacterized prototypeSlice
+    (none, "tie_order", .oneOf ["ANY"]),
+    (none, "tie_pick", .oneOf ["FIRST_READ"]),
+    (none, "negative_start", .asked ["WRAP_FROM_END"] ["WRAP_FROM_END"]),
+    (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
+    (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
+    (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
+    (none, "quantile_interp", .oneOf ["LINEAR"])] ++ uncharacterized prototypeSlice
 
 def Profile.duckdb.obs : ObsTable := [
   (none, "overflow", .native ["duckdb-R1", "duckdb-R15-int-arith"]),
-  (some "agg.isum", "overflow", .shimmed "CAST(SUM(x) AS BIGINT)" ["duckdb-R6"]),
+  -- `SUM(BIGINT)` is a `HUGEINT`; the written plan casts it back, which raises
+  -- where the reference does: a type, not a value, so no shim.
+  (some "agg.isum", "overflow", .native ["duckdb-R6"]),
   (none, "on_division_by_zero", .native ["duckdb-R2"]),
   (some "fp.div", "on_division_by_zero", .native ["duckdb-R5"]),
   (none, "on_domain_error", .native ["duckdb-R15-double-arith"]),
@@ -95,17 +115,44 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "min_mod_neg_one", .shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]),
   (none, "rounding", .native []),
   (none, "nan_creation", .native ["duckdb-R15-double-arith"]),
-  (none, "zero_sign", .shimmed "Dialect.canon" ["duckdb-R14"]),
+  -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
+  -- after `Dialect.canon`.
+  (none, "zero_sign", { ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
+    shim := some "Dialect.canon" }),
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
-  -- One value at a time: one of the orders the reference allows (`FloatSums`).
-  (none, "sum_order", .native ["duckdb-sum-double", "duckdb-avg-double"]),
-  (none, "avg_int_result", .shimmed "the HUGEINT sum // the count" ["duckdb-R6"]),
+  -- One value at a time: one of the orders the reference allows (`FloatSums`);
+  -- which order depends on the parallel plan, so at two threads or more runs
+  -- vary (3 to 4 values in 5 runs). `fsum` (Kahan) does not vary.
+  (none, "sum_order", { ObsRow.native ["duckdb-sum-double", "duckdb-avg-double"] with
+    rerun := some { floats := .within "plan" },
+    rerunEvidence := .probed ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }),
+  (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
-  (none, "clustered", .shimmed "ORDER BY the keys" []),
-  (none, "tie_order", .native ["duckdb-mode-ties"])]
+  -- The written `ORDER BY` is the model's sort, which `SortAllowed` allows for
+  -- a clustered key (`Rel.duckdb_refines`; `test_realizability.py` runs it).
+  (none, "clustered", (ObsRow.shimmed "ORDER BY the keys" []).proved "Rel.duckdb_refines"),
+  -- Ties come in the order threads read the rows.
+  -- `ORDER BY`, `row_number`, `ntile`, `lag` and `list` without a total order:
+  -- ties, and a list's elements, come in a different order run to run.
+  (none, "tie_order", { ObsRow.native ["duckdb-sort-ties", "duckdb-mode-ties"] with
+    rerun := some { rows := .tiesPermuted, elements := .multiset },
+    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }),
+  (none, "tie_pick", { ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
+    rerun := some { rows := .tiesPermuted },
+    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }),
+  (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
+  (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
+  (none, "negative_start", .native ["duckdb-R13"]),
+  (none, "case_sensitivity", .native []),
+  (none, "string_positions", .native []),
+  (none, "null_join_keys", .native []),
+  -- Welford with Chan's merge meets the generic properties the reference allows.
+  (none, "stat_algo", { ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
+    rerun := some { floats := .within "plan" } }),
+  (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
 
@@ -121,49 +168,133 @@ def Profile.polars.table : ProfileTable where
     (some "int.div", "on_domain_error", .any),
     (some "int.pow", "on_domain_error", .any),
     (none, "division_type", .oneOf ["FLOOR"]),
+    (some "int.div", "division_type", .oneOf ["FLOOR"]),
+    (some "int.mod", "division_type", .oneOf ["FLOOR"]),
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    (some "fp.round", "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- By a length-1 divisor, `x * (1 / c)` (polars-scalar-divisor).
+    (some "fp.div", "rounding", .oneOf ["TIE_TO_EVEN", "RECIPROCAL"]),
+    (some "fp.mod", "division_type", .oneOf ["FLOOR"]),
     (none, "nan_creation", .oneOf ["NAN"]),
+    (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
-    (none, "sum_order", .oneOf ["PAIRWISE", "KAHAN"]),
+    -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
+    -- ungrouped, morsel sums added in scheduling order. In memory (not the
+    -- target): pairwise, Kahan over groups.
+    (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY"]),
+    (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
+    -- Streaming falls back to the in-memory engine; the translation asks for
+    -- `linear` (polars-quantile).
+    (none, "quantile_interp", .oneOf ["LINEAR"]),
     (none, "avg_int_result", .oneOf ["FP64"]),
     (none, "empty_group_aggregates", .oneOf ["ZERO"]),
     (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_FIRST"]),
     (none, "clustered", .oneOf ["ADJACENT"]),
-    (none, "tie_order", .oneOf ["ANY"])] ++ uncharacterized prototypeSlice
+    (none, "tie_order", .oneOf ["ANY"]),
+    (none, "tie_pick", .oneOf ["FIRST_READ"]),
+    (none, "negative_start", .asked ["WRAP_FROM_END"] ["WRAP_FROM_END"]),
+    (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
+    (some "str.sub", "string_positions", .oneOf ["ZERO_BASED_CHARS"]),
+    (some "str.match", "string_positions", .oneOf ["ZERO_BASED_BYTES"]),
+    (none, "null_join_keys", .oneOf ["NO_MATCH"])] ++ uncharacterized prototypeSlice
+  missing := (["md5", "sha256", "levenshtein", "repeat", "ascii", "like", "ilike"].map
+    (·, ["polars-string-functions-missing"]))
 
 def Profile.polars.obs : ObsTable := [
-  (none, "overflow", .native ["polars-int-arith", "polars-int-divide"]),
-  (some "agg.isum", "overflow", .native ["polars-sum-int"]),
-  (none, "on_division_by_zero", .native ["polars-int-divide", "polars-int-modulus"]),
-  (some "fp.div", "on_division_by_zero", .native ["polars-double-divide"]),
-  (none, "on_domain_error", .native ["polars-double-divide"]),
-  (none, "division_type",
-    .shimmed "truncating division and remainder" ["polars-int-divide", "polars-int-modulus"]),
-  (none, "min_mod_neg_one", .native ["polars-int-modulus"]),
+  (none, "overflow", (ObsRow.native ["polars-int-arith", "polars-int-divide"]).proved "Rel.polars_sound"),
+  (some "agg.isum", "overflow", (ObsRow.native ["polars-sum-int"]).proved "Polars.sum_leaves_i64"),
+  (none, "on_division_by_zero", (ObsRow.native ["polars-int-divide", "polars-int-modulus"]).proved "Rel.polars_sound"),
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["polars-double-divide"]).proved "Rel.polars_sound"),
+  (none, "on_domain_error", (ObsRow.native ["polars-double-divide"]).proved "Rel.polars_sound"),
+  (none, "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
+  (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Polars.int_div_trunc"),
+  (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
+  (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
   (none, "rounding", .native []),
-  (none, "nan_creation", .native ["polars-double-arith"]),
-  (none, "zero_sign", .upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]),
+  (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
+  -- Up to one zero; the shim `one_zero` makes it exact.
+  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
+    with shim := some "one_zero" }).proved "Polars.one_zero"),
   (none, "nan_kind", .upTo { zeros := .canon } ["polars-nan-sign"]),
   (none, "nan_order", .native ["polars-nan-order"]),
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound.
-  (none, "sum_order", .approxWithin "#85" ["polars-sum-float", "polars-mean-float"]),
-  (none, "avg_int_result", .shimmed "the exact sum divided by the count" ["polars-avg-int"]),
-  (none, "empty_group_aggregates", .shimmed "NULL for no values" ["polars-sum-int"]),
-  (none, "null_order", .shimmed "nulls_last" ["polars-null-order"]),
-  (none, "clustered", .shimmed "sort on the keys" []),
-  (none, "tie_order", .native ["polars-sort-stability"])]
+  -- Run to run the order varies (morsels, pipelines), within the plan's bound.
+  (none, "sum_order", { ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
+    rerun := some { floats := .within "plan" } }),
+  (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
+    rerun := some { floats := .within "plan" } }),
+  (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
+  -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
+  (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
+    shim := some "one_zero" }).proved "Polars.one_zero"),
+  (none, "avg_int_result", (ObsRow.shimmed "avg_int_declared" ["polars-avg-int"]).proved "Polars.avg_int_declared"),
+  (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),
+  -- Every stated placement is native, by `nulls_last`; where a key leaves it
+  -- open, Polars's default (first) is not the reference's (last), which the
+  -- choices say (`transferB`), so the translation writes `nulls_last` on every
+  -- key, a written argument. `Polars.null_order`: with it, Polars orders as
+  -- `sortLe`.
+  (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Polars.null_order"),
+  (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
+  -- A streaming sort of a large input does not keep ties in input order.
+  (none, "tie_order", ({ ObsRow.native ["polars-sort-stability", "polars-first-last"] with
+    rerun := some { rows := .tiesPermuted } }).proved "Polars.tie_order"),
+  -- `first` and `last` follow input order on streaming, run after run.
+  (none, "tie_pick", { ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }),
+  (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
+  (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
+    precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
+    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }),
+  (some "fp.mod", "division_type", { ObsRow.shimmed "column_divisor"
+      ["polars-double-modulus", "polars-scalar-divisor"] with
+    note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }),
+  (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
+    ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Polars.one_zero"),
+  (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Polars.makes_infinite"),
+  (none, "negative_start", .native ["polars-substring"]),
+  (none, "case_sensitivity", .native ["polars-match-functions"]),
+  (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
+  (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
+  (none, "null_join_keys", .native ["polars-null-keys"])]
 
 /-! ## The engines -/
 
+/-- The options whose functions an engine computes row by row, or exactly
+whatever the order (integer sums, a placement a key fixes, a sorted
+quantile): every run gives the same result, as each row's facts were probed
+to give, where `rerun` is not set already. The others stay unknown. -/
+def rerunExact : List String :=
+  ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
+   "rounding", "nan_creation", "float_overflow", "negative_start", "case_sensitivity",
+   "string_positions", "avg_int_result", "empty_group_aggregates", "null_order",
+   "null_join_keys", "quantile_interp"]
+
+/-- Each row with what reruns give: exact where `rerunExact` says so, with the
+row's facts as evidence; a variation keeps its own. -/
+def withReruns (obs : ObsTable) : ObsTable :=
+  obs.map fun (g, o, r) =>
+    -- A row's correctness theorem is no evidence for its reruns: keep its facts.
+    let ev := match r.evidence with
+      | .tested ids | .proved _ ids => Evidence.tested ids | e => e
+    match r.rerun with
+    | some _ => (g, o, if r.rerunEvidence == .none then { r with rerunEvidence := ev } else r)
+    | none =>
+      -- A sum's sign of zero is the row's own; a group key's or `min`'s zero is
+      -- the one seen first, or the platform's: not settled here.
+      -- Exact only with evidence: a row without facts stays unknown.
+      if ev != .none && (rerunExact.contains o || (o == "zero_sign" && g == some "fp.arith")) then (g, o, { r with rerun := some Obs.exact, rerunEvidence := ev })
+      else (g, o, r)
+
 /-- The engine profiles, under DuckDB's default settings. -/
 def engineTables : List (ProfileTable × ObsTable) :=
-  [(Profile.duckdb.table {}, Profile.duckdb.obs), (Profile.polars.table, Profile.polars.obs)]
+  [(Profile.duckdb.table {}, withReruns Profile.duckdb.obs),
+   (Profile.polars.table, withReruns Profile.polars.obs)]
 
 /-- **Every DuckDB setting refines the core.** -/
 theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
@@ -218,15 +349,85 @@ def toolsJson : Json :=
   ]).toArray
 
 open Lean (Json toJson) in
+/-- A profile's rows as the Python side reads them: per group (or `null`) and
+option, the choice, and where the observation table has a row for it its
+class, observation (only the components that are not exact), shim and
+evidence; for the reference also D9's tool, the precondition of a raise and
+the observation a contract must keep at an option left open. -/
+def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Json :=
+  let keys := (t.choices.map fun (g, o, _) => (g, o)) ++
+    ((obs.map fun (g, o, _) => (g, o)).filter fun k => !(t.choices.any fun (g, o, _) => (g, o) == k))
+  Json.arr <| (keys.map fun (g, o) =>
+    let choice := match g with
+      | some g => t.choice? g o
+      | none => t.dflt? o
+    let row := match g with
+      | some g => obs.row? g o
+      | none => (obs.find? fun (x : Option String × String × ObsRow) =>
+          x.1.isNone && x.2.1 == o).map fun (x : Option String × String × ObsRow) => x.2.2
+    let base : List (String × Json) := [("group", toJson g), ("option", toJson o),
+      ("choice", match choice with | some c => c.json | none => Json.null)]
+    let obsFields : List (String × Json) := match row with
+      | none => []
+      | some r =>
+        -- A refinement only after a shim is the class `shim` (#568's fourth).
+        [("class", toJson (match r.cls, r.shim with
+          | .refines, some _ => "shim"
+          | .refines, none => "refines" | .refinesUpTo, _ => "refines_up_to"
+          | .approx, _ => "approx" | .refused, _ => "refused")),
+         ("shim", toJson r.shim)] ++
+        [("q", r.q.sparseJson)] ++
+        (match r.rerun with
+          | none => []
+          | some q =>
+            [("rerun", q.sparseJson), ("deterministic", toJson (q == Obs.exact))] ++
+            match r.rerunEvidence with
+            | .proved thm _ => [("rerun_evidence", toJson "proved"), ("rerun_theorem", toJson thm)]
+            | .tested ids => [("rerun_evidence", toJson "tested"), ("rerun_facts", toJson ids)]
+            | .probed ids => [("rerun_evidence", toJson "probe"), ("rerun_facts", toJson ids)]
+            | .none => []) ++
+        (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
+        (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
+        (if r.note == "" then [] else [("note", toJson r.note)]) ++
+        (match r.evidence with
+          | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
+          | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
+          | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
+          | .none => [("facts", toJson ([] : List String))])
+    let toolFields : List (String × Json) := if !reference then [] else
+      match Profile.reference.tools.find? (·.option == o) with
+      | none => []
+      | some tr =>
+        [("tool", toJson (match tr.tool with
+          | .raise => "raise" | .choose => "choose" | .leaveOpen => "open"))] ++
+        (if tr.precondition == "" then [] else [("precondition", toJson tr.precondition)]) ++
+        (match tr.q with | some q => [("q", q.sparseJson)] | none => [])
+    -- At an option the reference leaves open, `q` is what a contract keeps.
+    let obsFields := if toolFields.any (·.1 == "q") then obsFields.filter (·.1 != "q") else obsFields
+    Json.mkObj (base ++ obsFields ++ toolFields)).toArray
+
+open Lean (Json toJson) in
 /-- `substrait-check --options`: the options, the groups' options, each
 profile's choices and observation rows, the profiles' versions, and the tool
 table. -/
 def tablesJson : Json :=
   optionsJson
-    |>.setObjVal! "choices" (Json.mkObj ([("reference", choicesJson Profile.reference.table),
-        ("core", choicesJson Profile.core.table)] ++
-      engineTables.map fun (t, _) => (t.name, choicesJson t)))
-    |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs)] ++
+    |>.setObjVal! "choices" (Json.mkObj ([
+        ("reference", profileRowsJson Profile.reference.table Profile.reference.obs true),
+        ("core", choicesJson Profile.core.table),
+        ("substrait", profileRowsJson Profile.substrait.table Profile.substrait.obs false)] ++
+      engineTables.map fun (t, obs) => (t.name, profileRowsJson t obs false)))
+    |>.setObjVal! "profiles" (Json.mkObj ([
+        ("reference", Json.mkObj [("engine", Json.null)]),
+        ("core", Json.mkObj [("engine", Json.null)]),
+        ("substrait", Json.mkObj [("engine", Json.null), ("yaml", toJson Profile.substrait.table.version)])] ++
+      engineTables.map fun (t, _) => (t.name, Json.mkObj [
+        ("engine", toJson t.name), ("versions", toJson [t.version]),
+        ("executes", toJson (if t.name == "polars" then "streaming" else "")),
+        ("missing", Json.arr <| (t.missing.map fun (f, ids) =>
+          Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))
+    |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs),
+        ("substrait", obsTableJson Profile.substrait.obs)] ++
       engineTables.map fun (t, obs) => (t.name, obsTableJson obs)))
     |>.setObjVal! "versions" (Json.mkObj (engineTables.map fun (t, _) => (t.name, toJson t.version)))
     |>.setObjVal! "tools" toolsJson
