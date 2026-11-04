@@ -48,7 +48,7 @@ try:
         Transaction,
         write_deltalake,
     )
-    from deltalake.exceptions import DeltaError, TableNotFoundError
+    from deltalake.exceptions import CommitFailedError, DeltaError, TableNotFoundError
     from deltalake.transaction import AddAction, RemoveAction
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
@@ -61,6 +61,7 @@ from sverify.io import _engine
 from sverify.io._common import (
     FILTER,
     ColumnStats,
+    ConcurrentWriteError,
     Contract,
     SinkWrite,
     filter_rows,
@@ -659,6 +660,8 @@ def _same_sql(a: str | None, b: str) -> bool:
 
 
 OP = "__sverify_op"
+_UNREAD = object()
+"""`DeltaSink._read` before `committed` ran."""
 
 
 class DeltaSink(Sink):
@@ -799,6 +802,9 @@ class DeltaSink(Sink):
         self.compact_every, self.vacuum_retention = compact_every, vacuum_retention
         self._writes = 0
         """Writes of this process since the last compaction."""
+        self._read: int | None | object = _UNREAD
+        """The transaction version (`app_id`) `committed` read last: a write
+        commits only on top of it (#517)."""
 
     def source(self) -> DeltaSource:
         """The table as a source, for the nodes that read the stored node."""
@@ -838,6 +844,7 @@ class DeltaSink(Sink):
         (`app_id`), with its epoch, or None."""
         dt = self._table()
         done = None if dt is None else dt.transaction_version(self.app_id)
+        self._read = done
         if done is None:
             return None
         contract = DeltaSource(self.uri, storage_options=self.storage_options).contract()
@@ -902,7 +909,37 @@ class DeltaSink(Sink):
 
     def write(self, change: SinkChange) -> SinkWrite:
         """Create the table, overwrite it, or MERGE the change, in one commit
-        that records the contract and the transaction `(app_id, epoch)`."""
+        that records the contract and the transaction `(app_id, epoch)`.
+
+        The commit is conditional: it is made on a snapshot of the table
+        whose transaction version is still the one `committed` read, and
+        delta-rs's conflict check rejects it if another writer committed a
+        transaction of `app_id` after that snapshot. Either way the losing
+        writer raises `ConcurrentWriteError` (#517)."""
+        try:
+            return self._write(change)
+        except CommitFailedError as e:
+            raise self._conflict(change.contract, f"delta-rs: {first_line(e)}") from e
+
+    def _conflict(self, contract: Contract, why: str) -> ConcurrentWriteError:
+        read = "none" if self._read in (None, _UNREAD) else f"epoch {self._read}"
+        return ConcurrentWriteError(
+            f"{self.uri}: another writer committed to the sink ({self.app_id}) while this "
+            f"refresh wrote epoch {contract.epoch}, after it read {read} ({why}); this state "
+            "was not committed. Is another process refreshing the same sink? The next "
+            "refresh writes the whole table, or skips the state the other writer committed."
+        )
+
+    def _check(self, dt: DeltaTable, contract: Contract, then: int | None | object) -> None:
+        """Raise unless the snapshot `dt` still has the transaction version
+        `then`: what `committed` read, or what this write committed last."""
+        if then is _UNREAD:
+            return
+        now = dt.transaction_version(self.app_id)
+        if now != then:
+            raise self._conflict(contract, f"the table now has epoch {now}")
+
+    def _write(self, change: SinkChange) -> SinkWrite:
         assert self.view is not None
         view, contract, schema = self.view, change.contract, change.schema
         options = resolve(self.storage_options)
@@ -911,16 +948,25 @@ class DeltaSink(Sink):
             app_transactions=[Transaction(self.app_id, contract.epoch)],
         )
         mode: Literal["created", "overwrite", "merge"]
+        read = self._read
         dt = self._table()
         if dt is None:
-            dt = DeltaTable.create(
-                self.uri,
-                schema,
-                configuration={"delta.enableChangeDataFeed": "true", **self._properties},
-                storage_options=options,
-            )
+            if read not in (None, _UNREAD):
+                raise self._conflict(contract, "the table is gone")
+            try:
+                dt = DeltaTable.create(
+                    self.uri,
+                    schema,
+                    configuration={"delta.enableChangeDataFeed": "true", **self._properties},
+                    storage_options=options,
+                )
+            except DeltaError as e:
+                if self._table() is not None:
+                    raise self._conflict(contract, "it created the table") from e
+                raise
             mode = "created"
         else:
+            self._check(dt, contract, read)
             mode = "overwrite" if change.replace else "merge"
             dt = self._set_properties(dt)
         missing = self._constraints(dt, contract, replace=mode != "merge")
@@ -933,25 +979,34 @@ class DeltaSink(Sink):
         if mode == "merge":
             if missing:
                 dt.alter.add_constraint(missing)
+            self._check(dt, contract, read)
             inserted, deleted = self._merge(dt, schema, change.change, view.state, commit)
         else:
             # The rows may come from another plan, with other columns: the
             # schema becomes the rows'. Its constraints hold only once the
             # rows are in, so the last commit records the epoch: a job that
             # stops in between writes the state again.
+            # The first commit carries the transaction version read (-1 for
+            # none) so that delta-rs's conflict check covers it too (#517).
             rows = change.table
+            kept = read if isinstance(read, int) else -1
+            self._check(dt, contract, read)
             write_deltalake(
                 dt,
                 rows,
                 mode="overwrite",
                 schema_mode="overwrite",
-                commit_properties=None if missing else commit,
+                commit_properties=(
+                    CommitProperties(app_transactions=[Transaction(self.app_id, kept)])
+                    if missing
+                    else commit
+                ),
                 storage_options=options,
             )
             if missing:
-                DeltaTable(self.uri, storage_options=options).alter.add_constraint(
-                    missing, commit_properties=commit
-                )
+                dt = DeltaTable(self.uri, storage_options=options)
+                self._check(dt, contract, kept)
+                dt.alter.add_constraint(missing, commit_properties=commit)
             inserted, deleted = rows.num_rows, 0
         version = DeltaTable(self.uri, storage_options=options).version()
         return SinkWrite(mode, version, contract, inserted, deleted, contract.checks)
@@ -1026,6 +1081,7 @@ class DeltaSink(Sink):
                     )
             if inserted:
                 add(_engine.inserts_sql(delta, schema))
+        self._check(dt, change.contract, self._read)
         dt.create_write_transaction(
             actions, mode="append", schema=dt.schema(), commit_properties=commit
         )

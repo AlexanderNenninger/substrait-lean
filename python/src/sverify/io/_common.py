@@ -367,6 +367,15 @@ class Contract:
         return Contract(**{k: v for k, v in json.loads(text).items() if k in known})
 
 
+class ConcurrentWriteError(RuntimeError):
+    """Another writer committed to a sink between the moment this refresh
+    read what the sink holds (`Sink.committed`) and its own commit: two
+    processes refreshing the same sink (#517). This refresh's write was not
+    committed, and the sink keeps the other writer's state; the next refresh
+    replaces it with this process's state, or skips if the sink already holds
+    it."""
+
+
 @dataclass
 class SinkWrite:
     """What storing a node's state did, in any sink.

@@ -21,6 +21,7 @@ from sverify._state import DuckDBStore, arrow_of
 from sverify._weighted import consolidated, expanded, negated, positive, weighted
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
 from sverify.io._common import (
+    ConcurrentWriteError,
     Contract,
     SinkWrite,
     check_same_state,
@@ -129,6 +130,11 @@ class Sink:
     a restarted job does not write a state again. The nodes reading the stored node read what this
     process wrote, with its exact changes, unless `source` returns a source
     that reads the sink. A restarted job writes its first state in full.
+
+    When two processes refresh the same sink, `write` must fail for the one
+    that commits second: raise `sverify.errors.ConcurrentWriteError` if the
+    sink no longer holds what `committed` returned. Its next refresh then
+    writes the whole table, or skips the state the other writer committed.
 
     Args:
         name: The stored table's name in the plans that read it.
@@ -294,13 +300,22 @@ class Sink:
             self._written = None
         elif done is not None and done.epoch >= contract.epoch:
             check_same_state(self.location, done, contract)
-            self._written = view.serial
+            # The sink holds this view's state only if it was computed from
+            # the same source versions; else (another writer is ahead, #517)
+            # the next write replaces it.
+            self._written = view.serial if done.sources == contract.sources else None
             self._keep(view, contract, None)
             return SinkWrite("skipped", self._version(), contract)
         since = None if self._written is None else view.changes_since(self._written)
         change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
         self._pending = (view.serial, contract)
-        out = self.write(change)
+        try:
+            out = self.write(change)
+        except ConcurrentWriteError:
+            # Not committed: the sink holds another writer's state, so the
+            # next write replaces it (or skips, if it is this state).
+            self._pending, self._written = None, None
+            raise
         self._pending = None
         if out is None:
             mode = "overwrite" if change.replace else "update"
