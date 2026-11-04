@@ -56,6 +56,7 @@ import SubstraitLean.ShardCheck
 import SubstraitLean.Functions
 import SubstraitLean.Options
 import SubstraitLean.AllowedP
+import SubstraitLean.Observations
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples

@@ -309,6 +309,9 @@ structure ProfileTable where
   realize : List (String × Behaviour × Realization) := []
   /-- The facts each option's choice rests on. -/
   facts : List (String × List String) := []
+  /-- The engine version (or range) the facts were probed at (D14); `""` for
+  the reference and the core. -/
+  version : String := ""
 
 /-- The choice at `option` for a function of `group`. -/
 def ProfileTable.choice? (t : ProfileTable) (group option : String) : Option Choice :=

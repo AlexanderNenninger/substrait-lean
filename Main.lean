@@ -311,8 +311,9 @@ def main (args : List String) : IO UInt32 := do
     IO.println Functions.tableJson.compress
     return 0
   | ["--options"] => do
-    -- The options, the groups' options and the reference's choices (#444).
-    IO.println optionsJson.compress
+    -- The options, the groups' options, the profiles' choices and
+    -- observations, and the reference's tools (#444).
+    IO.println tablesJson.compress
     return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB (#241); a golden test.

@@ -79,6 +79,20 @@ def test_reference_is_lean(f: fns.Fn) -> None:
         assert c == lean_choice("reference", f.group, option), (f.name, option)
 
 
+def test_tools_and_observations() -> None:
+    """The tool table (D9) has one row per option, a raise with its
+    precondition; the reference refines itself exactly at every option (D15)."""
+    tables = lean_options()
+    options = [o["id"] for o in tables["options"]]
+    tools = tables["tools"]
+    assert [t["option"] for t in tools] == options
+    assert all((t["tool"] == "raise") == bool(t["precondition"]) for t in tools)
+    assert {t["tool"] for t in tools} == {"raise", "choose", "leave_open"}
+    ref = tables["observations"]["reference"]
+    assert [r["option"] for r in ref] == options
+    assert all(r["row"]["class"] == "refines" and r["row"]["shim"] is None for r in ref)
+
+
 def test_lean_facts_exist() -> None:
     """Every fact Lean's options table cites is a document of `characterization/`."""
     facts = {fact for o in lean_options()["options"] for _, fact in o["extra"]}
