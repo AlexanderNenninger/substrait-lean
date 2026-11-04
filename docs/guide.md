@@ -62,9 +62,8 @@ projections, inner, cross, semi and anti joins, `UNION ALL`, `DISTINCT`, and
 `COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group; another aggregate
 recomputes only the groups a batch touches, and a window only the partitions
 it touches. Other views (left joins) are recomputed and diffed instead, and
-`node.status()`
-says so. [The Ibis coverage table](../README.md#ibis-coverage) has the full
-list.
+`node.status()` says so. [The Ibis coverage table](../README.md#ibis-coverage)
+has the full list.
 
 ## Workflows
 
