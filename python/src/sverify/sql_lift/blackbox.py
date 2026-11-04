@@ -67,6 +67,16 @@ ALIASES = {
     "array_negative_inner_product": "list_negative_inner_product",
     "array_negative_dot_product": "list_negative_inner_product",
     "list_negative_dot_product": "list_negative_inner_product",
+    "fsum": "kahan_sum",
+    "sumkahan": "kahan_sum",
+}
+
+#: DuckDB functions near the black boxes that the model cannot hold yet.
+REFUSED = {
+    "histogram": "histogram's result is a MAP, which the model lacks (#326)",
+    "histogram_exact": "histogram_exact's result is a MAP, which the model lacks (#326)",
+    "weighted_avg": "weighted_avg takes two arguments; black-box aggregates take one (#326)",
+    "wavg": "wavg takes two arguments; black-box aggregates take one (#326)",
 }
 
 
@@ -107,12 +117,18 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
             # SQLGlot's `list_cosine_distance(a, b)` and `list_distance(a, b)`.
             name = "list_cosine_distance" if isinstance(n, sge.CosineDistance) else "list_distance"
             return BlackBoxCall(this=name, expressions=[n.this, n.expression])
+        if isinstance(n, (sge.Kurtosis, sge.Skewness)):
+            # SQLGlot's `kurtosis(x)` and `skewness(x)`.
+            name = "kurtosis" if isinstance(n, sge.Kurtosis) else "skewness"
+            return BlackBoxAgg(this=n.this, fname=sge.Literal.string(name))
         if isinstance(n, sge.Format):
             # SQLGlot's `format(fmt, …)`.
             return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
         if type(n) is not sge.Anonymous:
             return n
         name = n.name.lower()
+        if name in REFUSED:
+            raise Unsupported(REFUSED[name])
         name = ALIASES.get(name, name)
         if name in black_box.SCALARS:
             return BlackBoxCall(this=name, expressions=list(n.expressions))
@@ -135,6 +151,9 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
         e = sub(_unwrap(row.name, a))
         if not _accepts(ty, e.type):
             raise Unsupported(f"{row.name} of a {e.type} is not supported")
+        if row.name == "bit_count" and not e.type.is_int64():
+            # DuckDB counts the bits of the argument's own width.
+            raise Unsupported(f"bit_count of a {e.type}: cast it to BIGINT (#326)")
         js.append(lf.to(e, _TYPES[ty]).json if ty in _CONVERTED else e.json)
     out = _TYPES[row.result]
     return E(_fn(row.name, js, out), out)
@@ -143,12 +162,13 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
 def _aggregate(lf: _Lift, node: sge.Expression, a: E) -> tuple[str, Any]:
     name = node.args["fname"].this
     row = black_box.AGGREGATES[name]
-    if not _accepts(row.args[0], a.type):
+    # An integer becomes a double (`Parse.lean`), as DuckDB converts it.
+    if not (_accepts(row.args[0], a.type) or (row.args[0] == "double" and a.type.is_integer())):
         raise Unsupported(f"{name} of a {a.type} is not supported")
     return name, _TYPES[row.result]
 
 
-_KNOWN.update(black_box.NAMES, ALIASES)
+_KNOWN.update(black_box.NAMES, ALIASES, REFUSED)
 PARSE_REWRITES.append(_rewrite)
 _AGGREGATES[BlackBoxAgg] = "black_box"
 AGG_RULES[BlackBoxAgg] = _aggregate

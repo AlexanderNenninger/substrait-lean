@@ -50,7 +50,8 @@ class BlackBox:
     strict: bool = True
     """NULL in, NULL out (a scalar's)."""
     raises: bool = False
-    """May raise, on some non-NULL arguments (a scalar's)."""
+    """May raise, on some non-NULL arguments (a scalar's) or some values (an
+    aggregate's)."""
     laws: tuple[Law, ...] = ()
     empty: float | int | str | bool | None = None
     """An aggregate's result without values (NULLs are skipped)."""
@@ -156,6 +157,15 @@ TABLE: tuple[BlackBox, ...] = (
         raises=True,
         laws=(("non_null",),),
     ),
+    # Of a BIGINT only: DuckDB counts the bits of the argument's width.
+    BlackBox(
+        "bit_count",
+        "scalar",
+        ("int",),
+        "int",
+        "bit_count({0})",
+        laws=(("non_null",), ("at_least", 0), ("at_most", 64)),
+    ),
     # A BIGINT, which raises past its range: DuckDB's own is a HUGEINT.
     BlackBox("list_sum", "scalar", ("ints",), "int", "CAST(list_sum({0}) AS BIGINT)", raises=True),
     BlackBox(
@@ -167,6 +177,21 @@ TABLE: tuple[BlackBox, ...] = (
         laws=(("non_null",), ("at_least", 0)),
         empty=0.0,
     ),
+    # The statistical aggregates of doubles (#326); integers are converted.
+    BlackBox("product", "aggregate", ("double",), "double", "product({0})", laws=(("non_null",),)),
+    BlackBox(
+        "kahan_sum", "aggregate", ("double",), "double", "kahan_sum({0})", laws=(("non_null",),)
+    ),
+    BlackBox("favg", "aggregate", ("double",), "double", "favg({0})", laws=(("non_null",),)),
+    BlackBox(
+        "sem", "aggregate", ("double",), "double", "sem({0})", laws=(("non_null",), ("at_least", 0))
+    ),
+    BlackBox(
+        "mad", "aggregate", ("double",), "double", "mad({0})", laws=(("non_null",), ("at_least", 0))
+    ),
+    BlackBox("kurtosis", "aggregate", ("double",), "double", "kurtosis({0})", raises=True),
+    BlackBox("kurtosis_pop", "aggregate", ("double",), "double", "kurtosis_pop({0})", raises=True),
+    BlackBox("skewness", "aggregate", ("double",), "double", "skewness({0})", raises=True),
 )
 
 SCALARS: dict[str, BlackBox] = {b.name: b for b in TABLE if b.kind == "scalar"}

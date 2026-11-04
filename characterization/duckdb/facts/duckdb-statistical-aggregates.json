@@ -1,0 +1,48 @@
+{
+  "id": "duckdb-statistical-aggregates",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "product, mad, histogram, weighted_avg and bit_count: types and edge cases",
+  "verdict": "decided: product and mad are black boxes; histogram and weighted_avg are refused; bit_count of a BIGINT only",
+  "area": "aggregates",
+  "constructs": [
+    "product",
+    "mad",
+    "histogram",
+    "weighted_avg",
+    "bit_count"
+  ],
+  "settings": {},
+  "description": [
+    "`product`, `kahan_sum`, `favg`, `sem`, `kurtosis`, `kurtosis_pop` and `skewness` take DOUBLE only, so an integer converts. `product` is NULL without values and does not raise: `inf` past the range, NaN with a NaN.",
+    "`mad` takes DOUBLE, FLOAT and DECIMAL (a DECIMAL result), and dates, times and timestamps (an INTERVAL result); a BIGINT converts to DOUBLE. Of NaN it is NaN; an infinity does not change it when the median is finite.",
+    "`histogram(x)` is a `MAP(x's type, UBIGINT)` of the counts, NULLs skipped. `weighted_avg(x, w)` (`wavg`) is a DOUBLE, skipping rows where `x` or `w` is NULL; NaN where the weights sum to 0, and `inf` for weights summing to 0 from both signs.",
+    "`bit_count(x)` counts the 1 bits of `x` at its own width, as a TINYINT: `bit_count(-1::INTEGER)` is 32, `bit_count(-1::BIGINT)` 64."
+  ],
+  "reference": [
+    "`product` and `mad` of doubles (integers converted) are black boxes (#326), not NULL over values; `mad` is at least `+0.0`. `mad` of a DECIMAL or a temporal type is refused. `histogram` (the model has no MAP) and `weighted_avg` (black-box aggregates take one argument) are refused, naming #326. `bit_count` is a black box of a BIGINT, in [0, 64], that Lean evaluates; narrower integers are refused, as their count depends on the width."
+  ],
+  "status": "decided",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session for #326 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {"sql": "SELECT function_name, parameter_types, return_type FROM duckdb_functions() WHERE function_name IN ('mad', 'sem', 'kurtosis', 'kurtosis_pop', 'product', 'kahan_sum', 'fsum', 'favg', 'sumkahan', 'skewness')", "observed": "all ([DOUBLE] -> DOUBLE) but mad: DECIMAL, FLOAT, DOUBLE, DATE/TIME/TIMESTAMP (-> INTERVAL)"},
+        {"sql": "SELECT product(x), typeof(product(x)) FROM (VALUES (2), (3), (NULL)) t(x)", "observed": "6.0, DOUBLE"},
+        {"sql": "SELECT product(x) FROM (VALUES (1e200::DOUBLE), (1e200)) t(x); SELECT product(x) FROM (VALUES ('nan'::DOUBLE), (0.0)) t(x)", "observed": "inf; NaN"},
+        {"sql": "SELECT mad(x) FROM (VALUES ('nan'::DOUBLE), (1.0)) t(x); SELECT mad(x) FROM (VALUES ('inf'::DOUBLE), (1.0), (2.0)) t(x)", "observed": "NaN; 1.0"},
+        {"sql": "SELECT mad(x), typeof(mad(x)) FROM (VALUES (DATE '2024-01-01'), (DATE '2024-01-05')) t(x)", "observed": "2 days, INTERVAL"},
+        {"sql": "SELECT histogram(x), typeof(histogram(x)) FROM (VALUES (1), (1), (2), (NULL)) t(x)", "observed": "{1: 2, 2: 1}, MAP(INTEGER, UBIGINT)"},
+        {"sql": "SELECT weighted_avg(x, w) FROM (VALUES (1, 1), (3, 3), (NULL, 2), (5, NULL)) t(x, w)", "observed": "2.5"},
+        {"sql": "SELECT weighted_avg(x, w) FROM (VALUES (1, 0), (3, 0)) t(x, w); SELECT weighted_avg(x, w) FROM (VALUES (1, -1), (3, 1)) t(x, w)", "observed": "NaN; inf"},
+        {"sql": "SELECT bit_count(7), bit_count(-1), typeof(bit_count(-1::INTEGER)), bit_count(-1::BIGINT)", "observed": "3, 32, TINYINT, 64"},
+        {"test": "python/tests/test_black_box.py::test_bit_count_keeps_its_laws_on_random_data"}
+      ]
+    }
+  ],
+  "issues": [
+    326
+  ]
+}

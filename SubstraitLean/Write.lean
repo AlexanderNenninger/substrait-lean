@@ -120,8 +120,8 @@ def declared : List (Nat × String) := areas.flatMap (·.1)
 /-- `(anchor, Substrait name)` for every function the writer can emit, by anchor. -/
 def functions : List (Nat × String) := declared.mergeSort fun a b => a.1 ≤ b.1
 
-example : (declared.map (·.1)).Nodup := by decide
-example : (declared.map (·.2)).Nodup := by decide
+example : (declared.map (·.1)).Nodup := by decide +kernel
+example : (declared.map (·.2)).Nodup := by decide +kernel
 example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
   decide
 

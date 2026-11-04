@@ -1006,7 +1006,8 @@ def isInfValue (v : Value) : Bool := v == .int FloatCode.posInf || v == .int Flo
 
 /-- Would IEEE make the aggregate of these values NaN, from numbers (#257)?
 A double `SUM` or `AVG` of `+∞` and `-∞`, and a variance of an infinity
-(`∞ - ∞` in its deviations). -/
+(`∞ - ∞` in its deviations). A black box that raises on them (#326) is
+reported here too, as the same domain error. -/
 def AggFn.makesNan : AggFn → List Value → Bool
   | .fsum, vs | .avg, vs => vs.contains (.int FloatCode.posInf) && vs.contains (.int FloatCode.negInf)
   | .var _ _, vs => vs.contains (.int FloatCode.posInf) || vs.contains (.int FloatCode.negInf)
@@ -1014,6 +1015,8 @@ def AggFn.makesNan : AggFn → List Value → Bool
   | .cov _, vs | .corr, vs => vs.any fun
     | .list [a, b] => isInfValue a || isInfValue b
     | _ => false
+  -- A black box that raises on these values (#326).
+  | .bbox n, vs => BlackBox.aggRaisesOn n vs
   | _, _ => false
 
 /-- May `makesNan` hold of values that `a` describes? -/
@@ -1022,6 +1025,7 @@ def AggFn.mayNan : AggFn → AVal → Bool
   | .var _ _, a => a.has FloatCode.posInf || a.has FloatCode.negInf
   -- A pair's sides are what may be infinite (`Measure.mayNan`).
   | .cov _, _ | .corr, _ => true
+  | .bbox n, _ => BlackBox.aggMayRaise n
   | _, _ => false
 
 theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
@@ -1031,6 +1035,7 @@ theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
   all_goals first
     | exact ⟨has _ h.1, has _ h.2⟩
     | exact h.imp (has _) (has _)
+    | exact BlackBox.aggMayRaise_of_aggRaisesOn h
     | simp at h
 
 /-- Does the aggregate take pairs (`BinFn.pair`)? -/

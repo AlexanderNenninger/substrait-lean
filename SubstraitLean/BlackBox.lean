@@ -130,12 +130,14 @@ structure Scalar where
   sample : Value
   deriving Repr
 
-/-- An aggregate black box. NULLs are skipped (`Measure.inputs`); aggregates
-do not raise. -/
+/-- An aggregate black box. NULLs are skipped (`Measure.inputs`). One that
+may raise does so on some groups of values, which the function decides
+(`rawAggRaises`): `verify` reports a domain error (`AggFn.makesNan`). -/
 structure Aggregate where
   name : String
   arg : Ty
   result : Ty
+  raises : Raises := .never
   /-- The result without values: NULL, or a constant (`entropy` gives `0.0`). -/
   empty : Value := .null
   /-- Hold over values (there is at least one). -/
@@ -205,6 +207,11 @@ def scalars : List Scalar := [
   -- Of lists of length 3; it raises on others.
   { name := "array_cross_product", args := [.doubles, .doubles], result := .doubles,
     raises := .sometimes, laws := [.nonNull], sample := .list [] },
+  -- `bit_count(x)` of a BIGINT: the number of its 64 bits that are 1, in
+  -- two's complement (#326). DuckDB counts the bits of the argument's own
+  -- width, so the lift takes BIGINTs only. Lean evaluates it.
+  { name := "bit_count", args := [.int], result := .int,
+    laws := [.nonNull, .atLeast 0, .atMost 64], sample := .int 0 },
   -- `list_sum(l)` of integers: the sum of the values, NULLs skipped, NULL
   -- without any (#327). DuckDB's is a HUGEINT; the model's a BIGINT, which
   -- raises past its range, as `SUM`. Lean evaluates it.
@@ -216,7 +223,32 @@ def aggregates : List Aggregate := [
   -- `entropy(x)`: the Shannon entropy, in bits, of the counts of the
   -- distinct values; `0.0` without values. A double at least `+0.0`.
   { name := "entropy", arg := .any, result := .double, empty := .int 0,
-    laws := [.nonNull, .atLeast 0], sample := .int 0 }]
+    laws := [.nonNull, .atLeast 0], sample := .int 0 },
+  -- The statistical aggregates of doubles (#326); the parser converts
+  -- integers to doubles, as DuckDB does. NULL without values.
+  -- `product(x)`: the product, in DuckDB's order.
+  { name := "product", arg := .double, result := .double, laws := [.nonNull], sample := .int 0 },
+  -- `kahan_sum(x)` (also `fsum`, `sumkahan`) and `favg(x)`: Kahan's
+  -- compensated sum and its mean (`duckdb-kahan-sum`).
+  { name := "kahan_sum", arg := .double, result := .double, laws := [.nonNull], sample := .int 0 },
+  { name := "favg", arg := .double, result := .double, laws := [.nonNull], sample := .int 0 },
+  -- `sem(x)`: the standard error of the mean, `0.0` for one value.
+  { name := "sem", arg := .double, result := .double, laws := [.nonNull, .atLeast 0],
+    sample := .int 0 },
+  -- `mad(x)`: the median of the absolute deviations from the median.
+  { name := "mad", arg := .double, result := .double, laws := [.nonNull, .atLeast 0],
+    sample := .int 0 },
+  -- `kurtosis(x)` (of a sample, NULL for fewer than 4 values),
+  -- `kurtosis_pop(x)` and `skewness(x)` (NULL for fewer than 3 values or
+  -- equal ones). They raise where a moment is out of range: on an infinity
+  -- or NaN, or a value whose fourth (third, for `skewness`) power
+  -- overflows, from about `1e77` (`duckdb-moments`).
+  { name := "kurtosis", arg := .double, result := .double, raises := .sometimes,
+    sample := .int 0 },
+  { name := "kurtosis_pop", arg := .double, result := .double, raises := .sometimes,
+    sample := .int 0 },
+  { name := "skewness", arg := .double, result := .double, raises := .sometimes,
+    sample := .int 0 }]
 
 /-- Each name once, a scalar's or an aggregate's. -/
 example : (scalars.map (·.name) ++ aggregates.map (·.name)).Nodup := by decide
@@ -226,7 +258,7 @@ theorem scalars_wf : ∀ f ∈ scalars, ok f.result f.laws true f.sample = true 
   decide +kernel
 
 theorem aggregates_wf : ∀ f ∈ aggregates,
-    ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := by decide
+    ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := by decide +kernel
 
 def scalar? (name : String) : Option Scalar := scalars.find? (·.name == name)
 def aggregate? (name : String) : Option Aggregate := aggregates.find? (·.name == name)
@@ -284,6 +316,12 @@ def listSum (vs : List Value) : Option Int :=
 
 #guard listSum [.int 1, .null, .int 2] == some 3 && listSum [.null] == none && listSum [] == none
 
+/-- The bits of `i` that are 1, in 64-bit two's complement. -/
+def bitCount (i : Int) : Nat :=
+  ((Nat.toDigits 2 (i % 2 ^ 64).toNat).filter (· == '1')).length
+
+#guard bitCount 7 == 3 && bitCount (-1) == 64 && bitCount 0 == 0 && bitCount (-2 ^ 63) == 1
+
 /-- The scalar black boxes Lean evaluates. -/
 def evalScalar : String → List Value → Value
   | "base64", [.str s] => .str (base64 s)
@@ -292,12 +330,15 @@ def evalScalar : String → List Value → Value
   | "signbit", [.int c] =>
     if c == 0 || c == FloatCode.nan then unevaluated "signbit at ±0.0 or NaN" else .bool (c < 0)
   | "yearweek", [.int d] => yearweek d
+  | "bit_count", [.int i] => .int (bitCount i)
   | "list_sum", [.list vs] => match listSum vs with
     | some n => .int n
     | none => .null
   | name, _ => unevaluated name
 
 def evalAgg (name : String) (_ : List Value) : Value := unevaluated name
+
+def evalAggRaises (name : String) (_ : List Value) : Bool := unevaluated name
 
 def evalRaises : String → List Value → Bool
   | "list_sum", [.list vs] => match listSum vs with
@@ -313,6 +354,10 @@ def evalRaises : String → List Value → Bool
 /-- The aggregate black box `name` of the values (non-NULL, at least one, in
 the order the engine takes them). -/
 @[implemented_by evalAgg] opaque rawAgg : String → List Value → Value
+
+/-- Does the aggregate black box `name` raise on these values (non-NULL, at
+least one)? -/
+@[implemented_by evalAggRaises] opaque rawAggRaises : String → List Value → Bool
 
 /-- Does the scalar black box `name` raise on these (non-NULL) arguments? -/
 @[implemented_by evalRaises] opaque rawRaises : String → List Value → Bool
@@ -352,6 +397,18 @@ def callAgg (name : String) (vs : List Value) : Value :=
   match aggregate? name with
   | some f => f.call vs
   | none => .null
+
+/-- Does the aggregate raise on these values? -/
+def Aggregate.raisesOn (f : Aggregate) (vs : List Value) : Bool :=
+  f.raises == .sometimes && !vs.isEmpty && rawAggRaises f.name vs
+
+def aggRaisesOn (name : String) (vs : List Value) : Bool :=
+  match aggregate? name with
+  | some f => f.raisesOn vs
+  | none => false
+
+/-- May the aggregate black box `name` raise at all? -/
+def aggMayRaise (name : String) : Bool := (aggregate? name).any (·.raises == .sometimes)
 
 /-! ## The laws hold -/
 
@@ -403,6 +460,11 @@ theorem mayRaise_of_raisesOn {name : String} {vs : List Value} (h : raisesOn nam
     mayRaise name = true := by
   unfold raisesOn at h; unfold mayRaise
   cases hs : scalar? name <;> simp_all [Scalar.raisesOn]
+
+theorem aggMayRaise_of_aggRaisesOn {name : String} {vs : List Value}
+    (h : aggRaisesOn name vs = true) : aggMayRaise name = true := by
+  unfold aggRaisesOn at h; unfold aggMayRaise
+  cases hs : aggregate? name <;> simp_all [Aggregate.raisesOn]
 
 /-! ## The examples' laws, as theorems -/
 

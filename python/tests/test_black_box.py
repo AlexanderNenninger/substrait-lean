@@ -64,8 +64,9 @@ def test_the_table_is_leans():
         assert tuple(r["args"]) == b.args
         assert r["result"] == b.result
         assert tuple(tuple(law) for law in r["laws"]) == b.laws
+        assert r["raises"] == b.raises
         if b.kind == "scalar":
-            assert (r["strict"], r["raises"]) == (b.strict, b.raises)
+            assert r["strict"] == b.strict
         else:
             # A double's code: `0` is `+0.0`.
             assert r["empty"] == ({"i64": "0"} if b.empty == 0.0 else {"null": {"i64": {}}})
@@ -628,5 +629,139 @@ def test_list_sum_keeps_its_laws_on_random_data(ls):
     for r in duckdb_result(query, {"t": t}).to_pylist():
         vs = [v for v in r["l"] or [] if v is not None]
         assert r["s"] == (sum(vs) if vs else None)
+    result = check(query, {"t": t})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+# -- #326: statistical aggregates ----------------------------------------------
+
+#: Oracle C: Lean evaluates none of them. Integers are converted to doubles.
+STATS = [
+    "SELECT customer, product(amount) AS p, kahan_sum(price) AS k, fsum(qty) AS f,"
+    " favg(price) AS a FROM orders GROUP BY customer",
+    "SELECT sem(amount) AS s, mad(price) AS m, sumkahan(amount) AS k, product(price) AS p"
+    " FROM orders",
+    "SELECT kurtosis(amount) AS k, kurtosis_pop(price) AS kp, skewness(qty) AS s,"
+    " sem(price) FILTER (WHERE price > 0) AS f FROM orders",
+    # No values: NULL.
+    "SELECT product(amount) AS p, sem(price) AS s, mad(qty) AS m FROM orders WHERE id > 100",
+]
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("query", STATS)
+def test_statistics_written_back_are_duckdbs(query, semantics):
+    plan = json.dumps(lift(query, SCHEMAS, semantics).plan)
+    code, out, err = run_checker((), plan)
+    assert code == 0, err or out
+    got = duckdb_engine.run(written_plan(plan), TABLES)
+    assert _nan_rows(got) == _nan_rows(duckdb_result(query, TABLES))
+
+
+def test_bit_count_through_oracles_a_and_c():
+    result = check("SELECT id, bit_count(amount) AS b, bit_count(-amount) AS c FROM orders", TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize(
+    ("query", "ensures"),
+    [
+        ("SELECT customer, sem(price) AS s, mad(amount) AS m FROM orders GROUP BY customer",
+         ["s IS NULL OR s >= 0", "m IS NULL OR m >= 0"]),
+        # `amount` is never NULL, so each group has values.
+        ("SELECT customer, sem(amount) AS s, product(amount) AS p, kahan_sum(amount) AS k"
+         " FROM orders GROUP BY customer", ["s >= 0", "p IS NOT NULL", "k IS NOT NULL"]),
+        ("SELECT bit_count(id) AS b FROM orders", ["b BETWEEN 0 AND 64"]),
+    ],
+)  # fmt: skip
+def test_the_326_laws_prove_contracts(query, ensures, semantics):
+    report = sv.verify(
+        query, tables=SCHEMAS, ensures=ensures, counterexamples=0, semantics=semantics
+    )
+    assert report.proved, report
+
+
+def test_moments_may_raise():
+    # DuckDB raises where a moment is out of range: a domain error.
+    for fn in ("kurtosis", "kurtosis_pop", "skewness"):
+        report = sv.verify(f"SELECT {fn}(price) AS k FROM orders", tables=SCHEMAS)
+        assert any("domain" in str(e) for e in report.errors), report
+    report = sv.verify("SELECT sem(price) AS s FROM orders", tables=SCHEMAS)
+    assert not report.errors
+
+
+def test_what_the_326_laws_do_not_say_stays_unproved():
+    for query, ensures in [
+        # Moments are NULL for few or equal values.
+        ("SELECT kurtosis_pop(price) AS k FROM orders", ["k IS NOT NULL"]),
+        ("SELECT product(amount) AS p FROM orders", ["p >= 0"]),
+        ("SELECT sem(price) AS s FROM orders", ["s <= 1000.0"]),
+    ]:
+        report = sv.verify(query, tables=SCHEMAS, ensures=ensures, counterexamples=0)
+        assert not any(c.proved for c in report.ensures)
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("SELECT histogram(amount) FROM orders", "MAP"),
+        ("SELECT weighted_avg(price, amount) FROM orders", "two arguments"),
+        ("SELECT wavg(price, amount) FROM orders", "two arguments"),
+        ("SELECT mad(cost) FROM orders", "mad of a decimal"),
+        ("SELECT mad(day) FROM orders", "mad of a date"),
+        ("SELECT bit_count(qty) FROM orders", "cast it to BIGINT"),
+        ("SELECT product(amount) OVER () FROM orders", "over a window"),
+    ],
+)
+def test_326_refusals_say_what(query, message):
+    with pytest.raises(Refused, match=message):
+        lift(query, SCHEMAS)
+
+
+_doubles = st.lists(
+    st.one_of(
+        st.none(),
+        st.floats(-1e6, 1e6),
+        st.sampled_from([0.0, -0.0, 1e300, -1e300, math.inf, -math.inf, math.nan]),
+    ),
+    max_size=10,
+)
+
+
+@settings(max_examples=80, deadline=None)
+@given(vs=_doubles, groups=st.lists(st.integers(0, 2), max_size=10))
+def test_statistics_keep_their_laws_on_random_data(vs, groups):
+    # Not NULL over values, `sem` and `mad` at least 0 (or NaN), NULL without
+    # values; the moments raise or are doubles.
+    t = _table(pa.float64(), vs, groups)
+    query = (
+        "SELECT g, count(x) AS n, product(x) AS p, kahan_sum(x) AS k, favg(x) AS a,"
+        " sem(x) AS s, mad(x) AS m FROM t GROUP BY g"
+    )
+    for r in duckdb_result(query, {"t": t}).to_pylist():
+        for c in ("p", "k", "a", "s", "m"):
+            assert (r[c] is None) == (r["n"] == 0)
+        for c in ("s", "m"):
+            assert r[c] is None or math.isnan(r[c]) or r[c] >= 0.0
+    for fn in ("kurtosis", "kurtosis_pop", "skewness"):
+        try:
+            duckdb_result(f"SELECT g, {fn}(x) AS k FROM t GROUP BY g", {"t": t})
+        except Exception as e:  # noqa: BLE001 - `raises` says it may
+            assert "out of range" in str(e)
+    schemas = {"t": ibis.Schema.from_pyarrow(t.schema)}
+    plan = json.dumps(lift(query, schemas).plan)
+    got = duckdb_engine.run(written_plan(plan), {"t": t})
+    assert _nan_rows(got) == _nan_rows(duckdb_result(query, {"t": t}))
+
+
+@settings(max_examples=40, deadline=None)
+@given(vs=st.lists(st.one_of(st.none(), st.integers(-(2**63), 2**63 - 1)), max_size=8))
+def test_bit_count_keeps_its_laws_on_random_data(vs):
+    # The 1 bits of 64-bit two's complement, NULL for NULL: oracles A and C.
+    t = pa.table({"x": pa.array(vs, pa.int64())})
+    query = "SELECT x, bit_count(x) AS b FROM t"
+    for r in duckdb_result(query, {"t": t}).to_pylist():
+        assert r["b"] == (None if r["x"] is None else bin(r["x"] % 2**64).count("1"))
     result = check(query, {"t": t})
     assert result.ok, f"{result.stage}: {result.detail}"
