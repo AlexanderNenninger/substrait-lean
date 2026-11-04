@@ -4,12 +4,24 @@ inputs:
   cache:
     description: Restore and save ~/.elan and .lake
     default: "true"
+  save:
+    description: Save .lake after the job (false restores only, for a job whose build differs from the others)
+    default: "true"
 runs:
   using: composite
   steps:
     - name: Cache elan and the lake build
-      if: inputs.cache == 'true'
+      if: inputs.cache == 'true' && inputs.save == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.elan
+          .lake
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', '**/*.lean') }}
+        restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
+    - name: Restore elan and the lake build
+      if: inputs.cache == 'true' && inputs.save != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/.elan

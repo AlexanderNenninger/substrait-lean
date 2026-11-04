@@ -9,10 +9,14 @@ The Lean project is the repository root, or `lean/` in an unpacked sdist.
 A wheel's build checks every generated entry's proof (`-Kcheck_generated=true`,
 `SubstraitLean/Generated.lean`), so no wheel ships an unchecked table; an
 editable install builds with the checkout's current setting.
+
+`SVERIFY_PREBUILT_CHECK=<path>` makes an editable install link that binary
+and skip lake (CI builds the checker once per run and shares it).
 """
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -38,6 +42,12 @@ def platform_tag() -> str:
 
 class LakeBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
+        build_data["pure_python"] = False
+        build_data["tag"] = f"py3-none-{platform_tag()}"
+        prebuilt = os.environ.get("SVERIFY_PREBUILT_CHECK")
+        if version == "editable" and prebuilt:
+            self._link(Path(prebuilt).resolve())
+            return
         repo = Path(self.root) / "lean"
         if not repo.is_dir():
             repo = Path(self.root).parent
@@ -50,10 +60,7 @@ class LakeBuildHook(BuildHookInterface):
 
         built = repo / ".lake" / "build" / "bin" / BINARY
         if version == "editable":
-            link = Path(self.root) / "src" / "sverify" / "_bin" / BINARY
-            link.parent.mkdir(exist_ok=True)
-            link.unlink(missing_ok=True)
-            link.symlink_to(built)
+            self._link(built)
         else:
             staged = Path(self.root) / "build" / BINARY
             staged.parent.mkdir(exist_ok=True)
@@ -61,5 +68,11 @@ class LakeBuildHook(BuildHookInterface):
             subprocess.run(["strip", str(staged)], check=True)
             build_data["force_include"][str(staged)] = f"sverify/_bin/{BINARY}"
 
-        build_data["pure_python"] = False
-        build_data["tag"] = f"py3-none-{platform_tag()}"
+    def _link(self, target: Path) -> None:
+        """Point the editable install's `_bin/substrait-check` at `target`."""
+        if not target.is_file():
+            raise RuntimeError(f"{target} is missing: build substrait-check first")
+        link = Path(self.root) / "src" / "sverify" / "_bin" / BINARY
+        link.parent.mkdir(exist_ok=True)
+        link.unlink(missing_ok=True)
+        link.symlink_to(target)
