@@ -82,7 +82,6 @@ from sverify._weighted import (
     negated,
     negative,
     positive,
-    row_count,
     rows_of,
     split_matching,
     weighted,
@@ -93,10 +92,10 @@ from sverify.contracts import (
     Condition,
     Discharged,
     Fact,
-    MaxRows,
     PostconditionError,
     PreconditionError,
     References,
+    TableCondition,
     Unique,
     discharge,
     label,
@@ -121,6 +120,11 @@ from sverify.engine import (
 from sverify.steps import Pipeable
 
 Row = tuple
+
+
+def _on_state(c: Condition) -> bool:
+    """A view checks `c` on its whole new state (`TableCondition.on_state`)."""
+    return isinstance(c, TableCondition) and c.on_state
 
 
 class NotIncremental(Exception):
@@ -1012,8 +1016,8 @@ class IncrementalView:
     def _check_change(self, delta: pa.Table, new: pa.Table | Native | None) -> list[Discharged]:
         """Check `checked` on a batch: row conditions on the rows `delta`
         inserts, keys on the `new` state (None if no key is checked)."""
-        rowwise = [c for c in self.checked if not isinstance(c, Unique | MaxRows)]
-        keys = [c for c in self.checked if isinstance(c, Unique | MaxRows)]
+        keys = [c for c in self.checked if _on_state(c)]
+        rowwise = [c for c in self.checked if not _on_state(c)]
         out: list[Discharged] = []
         for conds, rows, what in [
             (rowwise, rows_of(positive(delta)), "inserted row(s)"),
@@ -1693,7 +1697,7 @@ class Pipeline:
         found: list[Discharged] = []
         for t, ch in changes.items():
             conds = self.requires.get(t, [])
-            rowwise = [c for c in conds if not isinstance(c, Unique | ArrivesWithin | MaxRows)]
+            rowwise = [c for c in conds if not (isinstance(c, TableCondition) and c.batched)]
             inserts = rows_of(positive(ch))
             if rowwise and inserts.num_rows:
                 name = t + "$inserts"
@@ -1710,15 +1714,8 @@ class Pipeline:
                 finally:
                     self.con.drop(name)
             for c in conds:
-                if isinstance(c, MaxRows):
-                    if (n := row_count(new_tables[t])) > c.n:
-                        raise PreconditionError(f"{n - c.n} row(s) of {t} violate {label(c)}")
-                    found.append(Discharged(t, label(c), ON_DATA))
-                if not isinstance(c, Unique):
-                    continue
-                if inserts.num_rows and (clash := duplicate_keys(new_tables[t], c.cols, inserts)):
-                    raise PreconditionError(f"{clash} inserted key(s) of {t} violate {label(c)}")
-                found.append(Discharged(t, label(c), ON_DATA))
+                if isinstance(c, TableCondition):
+                    found += filter(None, [c.check_batch(t, inserts, new_tables[t])])
         return found
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
@@ -2066,7 +2063,7 @@ class Pipeline:
                 delta = v._delta(deltas)
             deltas[v.name] = delta
             # A checked key is checked on the whole new state.
-            keyed = any(isinstance(c, Unique | MaxRows) for c in v.checked)
+            keyed = any(map(_on_state, v.checked))
             if isinstance(v.state, Resident) and not audit and v.name not in read_new and not keyed:
                 # Only the state rows the change touches, merged with it.
                 old = matching(v.state, delta)

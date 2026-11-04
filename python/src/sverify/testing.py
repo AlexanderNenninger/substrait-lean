@@ -53,13 +53,9 @@ import pyarrow as pa
 
 from sverify import counterexample
 from sverify.contracts import (
-    ArrivesWithin,
     Condition,
-    MaxRows,
     References,
-    RowsPer,
     TableCondition,
-    Unique,
     _lookup,
     condition_query,
     label,
@@ -408,26 +404,8 @@ def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
     """The rows of table `name` where `cond` is not TRUE; for `unique`, every
     row whose key repeats."""
     rows = con.arrow[name].to_pylist()
-    if isinstance(cond, Unique):
-        keys = Counter(_norm(tuple(r[c] for c in cond.cols)) for r in rows)
-        return [r for r in rows if keys[_norm(tuple(r[c] for c in cond.cols))] > 1]
-    if isinstance(cond, ArrivesWithin):
-        return [r for r in rows if r[cond.col] is None]
-    if isinstance(cond, MaxRows):
-        return rows[cond.n :]
-    if isinstance(cond, RowsPer):
-        # The rows beyond the first `n` of each key.
-        seen: Counter[object] = Counter()
-        over = []
-        for r in rows:
-            k = _norm(tuple(r[c] for c in cond.cols))
-            seen[k] += 1
-            if seen[k] > cond.n:
-                over.append(r)
-        return over
-    if isinstance(cond, References):
-        present = {_norm(r[cond.other]) for r in con.arrow[cond.table].to_pylist()}
-        return [r for r in rows if r[cond.col] is not None and _norm(r[cond.col]) not in present]
+    if isinstance(cond, TableCondition):
+        return cond.violating(rows, _norm, lambda t: con.arrow[t].to_pylist())
     if isinstance(cond, str):
         cur = con.ibis.raw_sql(f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({cond}), FALSE)")
         cols = [d[0] for d in cur.description]
@@ -784,14 +762,15 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
     }
     keys = {
         t: [
-            ([schemas[t].names.index(col) for col in c.cols], 1 if isinstance(c, Unique) else c.n)
+            ([schemas[t].names.index(col) for col in cols], n)
             for c in cs
-            if isinstance(c, Unique | RowsPer)
+            if isinstance(c, TableCondition) and (k := c.per_key()) is not None
+            for cols, n in [k]
         ]
         for t, cs in requirements.items()
     }
     foreign = [
-        (t, schemas[t].names.index(c.col), c.table, schemas[c.table].names.index(c.other))
+        (t, *c.plan_entry(t, lambda n: schemas[n].names))
         for t, cs in requirements.items()
         for c in cs
         if isinstance(c, References)
