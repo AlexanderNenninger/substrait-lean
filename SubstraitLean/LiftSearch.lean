@@ -458,7 +458,7 @@ their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckArith, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
-    ``nanCase, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
+    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
     ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
     ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,

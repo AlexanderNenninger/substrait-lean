@@ -466,6 +466,29 @@ theorem sum_makes_nan (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value
     sumMakesNan vs = f.makesNan vs := by
   rcases hf with rfl | rfl <;> rfl
 
+/-- `fractional_power_of_negative`: a negative base, `-∞` included, to a
+finite power that is not a whole number (`x < 0`, `y` finite, `floor y ≠ y`). -/
+def fractionalPowerOfNegative (x y : Int) : Bool :=
+  decide (x < 0) && decide (FloatCode.negInf < y) && decide (y < FloatCode.posInf) &&
+    FloatCode.floor y != y
+
+/-- **`Polars.fractional_power_of_negative`**: on a double's code (none is
+below `-∞`), the guard flags a row exactly where the reference's `power`
+raises a domain error: a finite negative base (`nanCase`) or `-∞`
+(`negInfPow`) to a finite non-integer power. Polars computes `x ** 0.5` as
+`sqrt(x)`, NaN for `-∞`, where IEEE's `pow` gives `+∞`. -/
+theorem fractional_power_of_negative {a : Int} (ha : FloatCode.negInf ≤ a) (b : Int) :
+    fractionalPowerOfNegative a b = (BinFn.fpow.issue (.int a) (.int b) == some .domain) := by
+  simp only [fractionalPowerOfNegative, BinFn.issue, negInfPow, nanIssue, nanCase]
+  by_cases h1 : a = FloatCode.negInf
+  · subst h1
+    have : FloatCode.negInf < 0 := fp64.negInf_lt_zero
+    by_cases hb1 : FloatCode.negInf < b <;> by_cases hb2 : b < FloatCode.posInf <;>
+      by_cases hf : FloatCode.floor b = b <;> simp [*]
+  · have h2 : FloatCode.negInf < a := by omega
+    by_cases h0 : a < 0 <;> by_cases hb1 : FloatCode.negInf < b <;>
+      by_cases hb2 : b < FloatCode.posInf <;> by_cases hf : FloatCode.floor b = b <;> simp [*]
+
 /-- `makes_infinite`: finite arguments, an infinite result (`is_finite`,
 `is_infinite` on codes). -/
 def makesInfinite (y : Int) (xs : List Int) : Bool := xs.all isFiniteCode && isInfCode y

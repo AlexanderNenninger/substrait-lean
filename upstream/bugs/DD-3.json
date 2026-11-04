@@ -2,8 +2,8 @@
   "id": "DD-3",
   "project": "duckdb",
   "version": "2.0",
-  "status": "confirmed",
-  "status_note": "confirmed on 2.0.0 and the 2.0.1 and 2.1.0 nightlies",
+  "status": "filed",
+  "status_note": "filed [#28329](https://github.com/duckdb/duckdb/issues/28329), open (reproduced); fix [#28344](https://github.com/duckdb/duckdb/pull/28344) open. Reproduces on 2.0.0 and the 2.0.1.dev2610291258 and 2.1.0.dev2610310630 nightlies.",
   "summary": "`VAR_POP` and `STDDEV_POP` of a single NaN are `0.0`, not NaN; with a second value they are NaN. IEEE and every other engine propagate the NaN.",
   "repro": "`select var_pop(x) from (values ('nan'::double)) t(x)` gives `0.0`",
   "handling": "The SQL writer returns NaN when an input is NaN (#54)",
@@ -21,6 +21,17 @@
         "duckdb": "2.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "also nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630"
     }
+  ],
+  "upstream": [
+    "https://github.com/duckdb/duckdb/issues/28329",
+    "https://github.com/duckdb/duckdb/pull/28344"
   ]
 }

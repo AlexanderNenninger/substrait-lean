@@ -328,6 +328,12 @@ def schemaBin? (f : BinFn) : Option Tm :=
   let nan (e : Tm) : Option Tm := (nanGuard f).map fun g => .ite g (.raise "domain error" (.field 1)) e
   match f with
   | .fdiv | .fmod => (nan self).map zeroGuard
+  -- `(-∞) ^ y` for a finite `y` that is not an integer raises too
+  -- (`negInfPow`), where DuckDB gives `+∞` or `0`.
+  | .fpow => (nanGuard .fpow).map fun g =>
+    .ite (orFn g (andFn (eqFn (.field 0) negInfT) (andFn (andFn (ltFn negInfT (.field 1))
+      (ltFn (.field 1) posInfT)) (notFn (eqFn (ffloorFn (.field 1)) (.field 1))))))
+      (.raise "domain error" (.field 1)) self
   | .imod => some (zeroGuard
       (.ite (andFn (eqFn (.field 1) (.lit (.int (-1)))) (isNumFn (.field 0))) (.lit (.int 0)) self))
   -- `<<` is `Lowering.shlTemplate`, written and proved by hand
@@ -493,7 +499,7 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM S
     all_goals first
       | exact Outcome.agree_refl _
       | (simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
-         iterate 6
+         iterate 10
            all_goals try
              lowering_split_decide <;>
                simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false]
@@ -677,6 +683,8 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
         let strictSrc := if named then "simp [Substrait.Expr.must, Substrait.Lowering.shlTemplate]"
           else "simp [Substrait.Expr.must]"
         out.modify (·.push (areaOf k.ctor,
+          -- A hand-written schema's proof gets the budget the search gave it.
+          (if written && !byHand then "set_option maxHeartbeats 800000 in\n" else "") ++
           s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
           s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
           s!"  ⟨{← ppSource tmpl}, by {strictSrc}, {agreeName}⟩\n\n"))
