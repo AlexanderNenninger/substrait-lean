@@ -82,14 +82,19 @@ hashes rebuild whatever changed, so a cache from another commit is safe. It
 keeps the caches of the two most recent toolchains, about 300 MB each.
 
 The script refuses to start when less than 6 GB is available. It runs the
-whole job in a systemd user scope capped at 8 GB with no swap
-(`HOMELAB_QA_MEMORY_MAX` changes the cap; `PYTEST_XDIST_AUTO_NUM_WORKERS`,
-`HOMELAB_QA_NICE` and `HOMELAB_QA_PREFIX` change the workers, the niceness
-and the directory's prefix). The first OOM kill stops the whole
-run, and its directory is deleted. A Lean change that sends `LiftDuckDB.lean`
+Lean build and the tests in two systemd user scopes, one after the other,
+each with no swap. The tests' scope is capped at `HOMELAB_QA_MEMORY_MAX`
+(8 GB), the build's at `HOMELAB_QA_BUILD_MEMORY_MAX` (the same by default).
+`PYTEST_XDIST_AUTO_NUM_WORKERS`, `HOMELAB_QA_NICE`, `HOMELAB_QA_PREFIX` and
+`HOMELAB_QA_CHECK_GENERATED` change the workers, the niceness of both
+steps, the directory's prefix and whether the generated proofs are checked.
+The first OOM kill stops its scope, which fails the run, and its directory
+is deleted. A Lean change that sends `LiftDuckDB.lean`
 into the full lift search once took 12.4 GB in one `lean` process and nearly
 hung the box. Where user scopes are not available it
-falls back to `ulimit -v`, which caps each process on its own.
+falls back to `ulimit -v`, which caps each process on its own. To stop a
+run, send SIGTERM to the script's bash by its PID: it stops the running
+scope and deletes the directory.
 
 Run long QA commands there in the background, not in the foreground shell.
 
@@ -103,11 +108,15 @@ It spawns many processes, so run it on homelab, in the background and
 capped, so that a QA run can go alongside it:
 
 ```bash
-ssh homelab 'PYTEST_XDIST_AUTO_NUM_WORKERS=2 HOMELAB_QA_MEMORY_MAX=2G HOMELAB_QA_NICE=19 HOMELAB_QA_PREFIX=substrait-chaos bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
+ssh homelab 'PYTEST_XDIST_AUTO_NUM_WORKERS=2 HOMELAB_QA_MEMORY_MAX=2G HOMELAB_QA_BUILD_MEMORY_MAX=8G HOMELAB_QA_NICE=19 HOMELAB_QA_CHECK_GENERATED=false HOMELAB_QA_PREFIX=substrait-chaos bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
 ```
 
-One chaos run at a time: check for a `/tmp/substrait-chaos-*` directory
-first. QA runs still need 6 GB available.
+Its Lean build skips the generated proofs (CI checks them on every PR) and
+runs at the 8 GB cap: for those minutes it is as heavy as a QA run, so start
+it under the same rules, with 6 GB available and a load under 8. Its tests
+then run in their own scope at 2 GB, with 2 workers. One chaos run at a
+time: check for a `/tmp/substrait-chaos-*` directory first. QA runs still
+need 6 GB available.
 
 Each scenario that fails appends a line to a JSONL ledger as it finishes
 (`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<run>.jsonl`,
