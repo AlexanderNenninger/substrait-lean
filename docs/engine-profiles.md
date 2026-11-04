@@ -19,8 +19,9 @@ An engine runs a plan **correctly** when, on every input, it gives
 
 **The size hypothesis.** Integers have their declared widths, and so do
 lengths, positions and ranks. The reference assumes, as every engine's memory
-guarantees, that every string has fewer than `2³²` characters (#336) and every
-relation a window reads fewer than `2⁶²` rows. It is trusted and stated where
+guarantees, that every string has fewer than `2³²` characters (#336), every
+relation a window reads fewer than `2⁶²` rows, and every relation an aggregate
+reads fewer than `2⁶³` (#437). It is trusted and stated where
 it is used: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`, `levenshtein`
 and `ascii` at `2³²` (a cap no real string reaches), and `Rel.Small` is a
 hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound` and

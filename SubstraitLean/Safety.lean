@@ -1153,6 +1153,24 @@ theorem Measure.sumOk_of_le {m : Measure} {i : Int} (h1 : -m.sumMax ≤ i) (h2 :
     rw [hmax] at h1 h2
     omega
 
+/-- The most rows a group or window frame of `r`'s rows has: `Rel.maxRows`,
+and fewer than `2⁶³` by the size hypothesis (`Rel.Small`, #437), as
+`COUNT(*)` of a group is a BIGINT. So a `SUM` of values in `[-1, 1]` fits
+64 bits without a row cap. -/
+def Rel.sumRows (r : Rel) : Nat := min (r.maxRows.getD (2 ^ 63 - 1)) (2 ^ 63 - 1)
+
+theorem Rel.le_sumRows {cat : Catalog} {r : Rel} {n : Nat} (hlt : (r.eval cat).length < 2 ^ 63)
+    (hn : n ≤ (r.eval cat).length) : n ≤ r.sumRows := by
+  have h63 : (2 : Nat) ^ 63 = 9223372036854775808 := rfl
+  rw [h63] at hlt
+  unfold Rel.sumRows
+  rw [h63]
+  cases hm : r.maxRows with
+  | none => simp only [Option.getD_none, Nat.le_min]; omega
+  | some k =>
+    have := Rel.maxRows_sound (cat := cat) hm
+    simp only [Option.getD_some, Nat.le_min]; omega
+
 /-- Does a `SUM` of `m`'s argument fit its type (`Measure.sumOk`) on at most
 `n` rows, with the argument within `abs m.arg`? -/
 def Measure.sumFits (m : Measure) (abs : Expr → AVal) (n : Option Nat) : Bool :=
@@ -1251,7 +1269,7 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | u, .window r _ _ fns => r.mayIssues cat A F T u ++
       (WinFn.aggs fns).filterMap (fun m =>
         if m.fn = .sum ∧
-          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false
+          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false
         then some (.sumWraps, m.arg) else none) ++
       (WinFn.aggs fns).filterMap fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
@@ -1268,7 +1286,7 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
       (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T)) ++
       ms.filterMap (fun m =>
         if m.fn = .sum ∧
-          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false
+          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false
         then some (.sumWraps, m.arg) else none) ++
       ms.filterMap fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
@@ -1357,11 +1375,12 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     rcases h with h | ⟨m, hm, hf, rfl, frame, hframe, hlen, hov⟩ |
       ⟨m, hm, rfl, frame, hframe, hnan⟩
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h))
-    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false := by
-        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows
+    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false := by
+        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows)
         · rfl
         · have := Measure.sumFits_sound (fun y hy => habs y (hframe y hy) m.arg)
-            (fun k hk => Nat.le_trans hlen (Rel.maxRows_sound hk)) hfit
+            (fun k hk => by
+              cases hk; exact Rel.le_sumRows (Nat.lt_trans hsm.1 (by decide)) hlen) hfit
           rw [hov] at this; cases this
       exact .inl (.inr ⟨m, hm, by simp [hf, hfits]⟩)
     · have hsound : ∀ y ∈ frame, ∀ e : Expr,
@@ -1399,7 +1418,7 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm.1 p h))
     · exact .inl (.inr (mayIssues_sound hcat hA hF hT hwf.2.1 hsm.2 p h))
     · exact .inr (condIssue_sound hcat hA hF hT hwf.1 hwf.2.1 hsm.1 hsm.2 hx hy hp)
-  | u, .aggregate r gs ms, hwf, hsm, p, h => by
+  | u, .aggregate r gs ms, hwf, ⟨hlt, hsm⟩, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
     rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, rfl, grp, hgrp, hov⟩ |
@@ -1415,14 +1434,15 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         · exact Rel.Small.loose (r := r) hsm
       exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
-    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false := by
-        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows
+    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows) = false := by
+        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (some r.sumRows)
         · rfl
         · have := Measure.sumFits_sound (grp := grp) (fun y hy => by
               have hyr := mem_of_mem_aggGroups hgrp hy
               exact Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
                 (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg)
-            (fun k hk => Nat.le_trans (length_le_of_mem_aggGroups hgrp) (Rel.maxRows_sound hk)) hfit
+            (fun k hk => by
+              cases hk; exact Rel.le_sumRows hlt (length_le_of_mem_aggGroups hgrp)) hfit
           rw [hov] at this; cases this
       exact .inl (.inr ⟨m, hm, by simp [hf, hfits]⟩)
     · have hsound : ∀ y ∈ grp, ∀ e : Expr,

@@ -144,7 +144,10 @@ theorem Rel.capJoins_small (hcat : cat.WF)
     ∀ {r : Rel}, r.WF cat → r.Small cat → (r.capJoins cat A F K).Small cat
   | .read _, _, h | .values _ _, _, h => h
   | .filter r _, hw, h | .project r _, hw, h | .emit r _, hw, h | .orderBy r _, hw, h
-  | .aggregate r _ _, hw, h | .unnest r _, hw, h => capJoins_small hcat hA hF hK (r := r) hw.1 h
+  | .unnest r _, hw, h => capJoins_small hcat hA hF hK (r := r) hw.1 h
+  | .aggregate r _ _, hw, h => by
+    simp only [capJoins, Small, capJoins_eval hcat hA hF hK hw.1] at h ⊢
+    exact ⟨h.1, capJoins_small hcat hA hF hK hw.1 h.2⟩
   | .fetch r _ _, hw, h | .distinct r, hw, h => capJoins_small hcat hA hF hK (r := r) hw h
   | .window r _ _ _, hw, h => by
     simp only [capJoins, Small, capJoins_eval hcat hA hF hK hw.1] at h ⊢
@@ -186,8 +189,11 @@ theorem Rel.capReads_small (hcap : ∀ t n, caps t = some n → (cat t).rows.len
     ∀ {r : Rel}, r.Small cat → (r.capReads caps).Small cat
   | .read t, h => by unfold capReads; split <;> trivial
   | .values _ _, h => h
-  | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h | .aggregate r _ _, h
+  | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h
   | .unnest r _, h | .fetch r _ _, h | .distinct r, h => capReads_small hcap (r := r) h
+  | .aggregate r _ _, h => by
+    simp only [capReads, Small, capReads_eval hcap] at h ⊢
+    exact ⟨h.1, capReads_small hcap h.2⟩
   | .window r _ _ _, h => by
     simp only [capReads, Small, capReads_eval hcap] at h ⊢
     exact ⟨h.1, capReads_small hcap h.2⟩

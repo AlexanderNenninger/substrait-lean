@@ -327,6 +327,33 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     assert "checks it while it runs" in str(strict)
 
 
+def test_a_sum_of_a_flag_fits_by_the_row_bound():
+    # A group has fewer than 2^63 rows, as `COUNT(*)` is a BIGINT (the size
+    # hypothesis, `Rel.sumRows`): a SUM of values in [0, 1] or [-1, 1] fits
+    # 64 bits with no row cap (#437).
+    jobs = ibis.table({"workflow": "!string", "conclusion": "!string"}, name="jobs")
+    flag = (jobs.conclusion == "success").ifelse(1, 0)
+    t = jobs.group_by("workflow").aggregate(passed=flag.sum())
+    for report in (sv.verify(t), sv.verify(t, infer=False)):
+        assert report.proved, str(report)
+        assert not report.issues and not report.assumed and not report.warnings
+        assert not any(h.startswith("SUM of") for h in report.hints)
+    sign = (jobs.conclusion == "success").ifelse(1, -1)
+    report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), infer=False)
+    assert report.proved and not report.issues, str(report)
+    # Values in [0, 2] still need a row cap: 2 · (2^63 - 1) leaves 64 bits.
+    double = (jobs.conclusion == "success").ifelse(2, 0)
+    t = jobs.group_by("workflow").aggregate(points=double.sum())
+    assert [i.kind for i in sv.verify(t).assumed] == ["SUM overflow"]
+    report = sv.verify(t, infer=False)
+    assert [i.kind for i in report.errors] == ["SUM overflow"]
+    assert any(
+        "it is in [0, 2], so a group's sum fits 64 bits for up to "
+        "4,611,686,018,427,387,903 rows" in h
+        for h in report.hints
+    ), report.hints
+
+
 def test_an_assumed_sum_names_its_column():
     # The assumed line names the column the SUM adds up, as its hint does
     # (#480): here the base column behind a projection over a join.

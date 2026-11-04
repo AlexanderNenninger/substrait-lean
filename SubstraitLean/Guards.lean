@@ -473,7 +473,7 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
 /-- **Guard elimination from contracts**: when `Rel.mayIssues` reports
 nothing but integer `SUM`s, on every catalog that satisfies the
 preconditions and the size hypothesis (`Rel.Small`: windows read fewer than
-`2⁶²` rows), the plan runs correctly with unchecked functions. -/
+`2⁶²` rows, aggregates fewer than `2⁶³`), the plan runs correctly with unchecked functions. -/
 theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
@@ -738,12 +738,12 @@ theorem Rel.evalG_marks :
     · rfl
   | u, .aggregate r gs ms, hwf, hsm, hs => by
     simp only [looseSub] at hs
-    have ih := evalG_marks (u := u) (r := r) hwf.1 hsm hs
+    have ih := evalG_marks (u := u) (r := r) hwf.1 hsm.2 hs
     simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, eval, ih]
     refine ite_eq_right_of fun hc => ?_
     have hall := contains_zero_ite hc
     exact aggregateEvalI_eq fun row hr e he =>
-      Expr.evalI_of_safe hcat hA hF hT hI (loose_if_wf hwf.1) (loose_if_small hsm)
+      Expr.evalI_of_safe hcat hA hF hT hI (loose_if_wf hwf.1) (loose_if_small hsm.2)
         (List.all_eq_true.mp hall e he) (mem_loose_if (r := r) hs u hr)
 
 end

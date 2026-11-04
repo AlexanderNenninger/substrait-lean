@@ -528,8 +528,9 @@ Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by gold
 round trips and the differential tests instead.
 
 The size hypothesis (trusted, stated in the theorems that use it): every
-string has fewer than 2³² characters (#336), and every relation a window reads fewer
-than 2⁶² rows. No machine's memory holds more, and it is what bounds lengths,
+string has fewer than 2³² characters (#336), every relation a window reads fewer
+than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³, as
+`COUNT(*)` is a 64-bit integer (#437). No machine's memory holds more, and it is what bounds lengths,
 positions and ranks: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`,
 `levenshtein` and `ascii` there (a cap the hypothesis never reaches), and
 `Rel.Small` is a hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound`

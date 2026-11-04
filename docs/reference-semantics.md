@@ -84,7 +84,7 @@ Where the reference departs from Substrait, and why:
 |---|---|---|
 | One zero | `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`, and `GROUP BY`, `DISTINCT` and joins see one zero. | DuckDB, Spark and Snowflake have one zero ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89)); IEEE's two zeros, which DataFusion keeps apart, surprise `-0.0 >= 0`. |
 | One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Spark and Snowflake treat NaN this way (#89); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
-| The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), and every relation a window reads fewer than 2⁶² rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos` and `ROW_NUMBER`. |
+| The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM` ([#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)). |
 
 Engine quirks belong in profiles, never in the reference. Changing the
 reference is a breaking change and is treated as one (#185,
@@ -116,7 +116,10 @@ fires, `Rel.eval`'s value is not the answer.
   the reference raises there, and so does DuckDB past 38 digits.
   Where the plan bounds a group's rows (a `VALUES` list, a `FETCH` count, an
   aggregate without groups: `Rel.maxRows`) and the argument's range bounds
-  each value (`Measure.sumFits`), it is ruled out. Elsewhere `verify` assumes
+  each value (`Measure.sumFits`), it is ruled out. A group has fewer than
+  2⁶³ rows by the size hypothesis (`Rel.sumRows`, [#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)),
+  so an integer `SUM` of values in `[-1, 1]`, such as
+  `SUM(CASE WHEN … THEN 1 ELSE 0 END)`, always fits. Elsewhere `verify` assumes
   each sum fits, as it assumes inferred bounds (#244), and lists it in
   `Report.assumed`; the written SQL checks it on the data while the job runs
   and raises if a sum does not fit. The proof holds under that assumption
@@ -348,7 +351,7 @@ these links connect it to a real run.
 
 | Assumption | Where | Status |
 |---|---|---|
-| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), and every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
+| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`), and every relation an aggregate reads fewer than 2⁶³ (`Rel.sumRows`, #437). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …) and by `SUM` overflow (a `SUM` of values in `[-1, 1]`). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
 | **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/` | On `main`: the Ibis producer, and the SQLGlot lift for DuckDB's SQL (#252, #264). DataFusion's SQL producer is no longer a frontend (#211) |
 | **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
 | **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
