@@ -4,7 +4,10 @@
   "engine_version": "py-2.1.0",
   "title": "NULL keys: one group; joins skip them by default",
   "verdict": "NULLs group together; `nulls_equal=True` joins them",
-  "area": "relations",
+  "area": "nulls",
+  "options": [
+    "null_join_keys"
+  ],
   "constructs": [
     "group_by",
     "unique",

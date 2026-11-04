@@ -5,6 +5,10 @@
   "title": "NaN equals NaN: in `==`, grouping, `unique` and joins",
   "verdict": "`nan_equality: NAN_IS_NAN` natively",
   "area": "doubles",
+  "options": [
+    "nan_equality",
+    "nan_zero_grouping"
+  ],
   "constructs": [
     "==",
     "is_in",

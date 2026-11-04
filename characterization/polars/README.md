@@ -16,6 +16,10 @@ Polars's expression API (`pl.col(...)`, `DataFrame.select`, `group_by`,
 `sort`, `join`), which `sverify.polars_engine` writes plans to; Polars's
 SQL interface (`pl.SQLContext`) is out of scope.
 
+Each fact names the items of the characterization checklist
+([../areas.json](../areas.json)) it settles; `python -m sverify_dev.facts
+--coverage polars` lists them, and the items no fact settles yet.
+
 ## How the facts are judged
 
 As DuckDB's ([../duckdb/README.md](../duckdb/README.md#how-the-facts-are-judged)):

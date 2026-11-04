@@ -5,6 +5,9 @@
   "title": "NaN sorts above +inf, in comparisons and in sorts",
   "verdict": "`nan_order: GREATEST` natively, ascending and descending",
   "area": "doubles",
+  "options": [
+    "nan_order"
+  ],
   "constructs": [
     "<",
     ">",

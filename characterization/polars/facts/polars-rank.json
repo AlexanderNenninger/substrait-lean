@@ -5,6 +5,10 @@
   "title": "`rank`: `average` by default; NULL ranks are NULL",
   "verdict": "`rank('min')` is `RANK`, `'dense'` is `DENSE_RANK`, `'ordinal'` is `ROW_NUMBER`",
   "area": "windows",
+  "options": [
+    "default_window_frame",
+    "ntile_spread"
+  ],
   "constructs": [
     "rank"
   ],

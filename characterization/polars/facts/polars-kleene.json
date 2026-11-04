@@ -4,7 +4,10 @@
   "engine_version": "py-2.1.0",
   "title": "Boolean logic is Kleene's; `all` and `any` skip NULLs by default",
   "verdict": "three-valued `&`, `|`, `~`; `all(ignore_nulls=False)` is Kleene's",
-  "area": "relations",
+  "area": "nulls",
+  "options": [
+    "three_valued_logic"
+  ],
   "constructs": [
     "&",
     "|",

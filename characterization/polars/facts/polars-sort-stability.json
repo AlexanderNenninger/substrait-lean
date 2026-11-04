@@ -5,6 +5,9 @@
   "title": "`sort` is stable on the probe, guaranteed only with `maintain_order`",
   "verdict": "ties keep input order (guaranteed with `maintain_order=True`)",
   "area": "relations",
+  "options": [
+    "tie_order"
+  ],
   "constructs": [
     "sort",
     "top_k"

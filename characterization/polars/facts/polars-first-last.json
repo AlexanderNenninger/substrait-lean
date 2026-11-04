@@ -5,6 +5,10 @@
   "title": "`first`, `last`: the first and last row in input order, NULL included",
   "verdict": "input order, deterministic; NULLs taken unless `ignore_nulls=True`",
   "area": "aggregates",
+  "options": [
+    "tie_pick",
+    "tie_order"
+  ],
   "constructs": [
     "first",
     "last",
