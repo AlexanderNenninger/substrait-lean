@@ -203,6 +203,14 @@ def nanCase : BinFn → Int → Int → Bool
 
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
+/-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
+`+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
+is a square root, NaN. The reference raises (a domain error, as for a finite
+negative base), so a verified plan never meets it and no engine needs a shim. -/
+def negInfPow (a b : Int) : Bool :=
+  decide (a = FloatCode.negInf) && decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) &&
+    FloatCode.floor b != b
+
 def BinFn.issue : BinFn → Value → Value → Option Issue
   | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
   | .add, .int a, .int b => wrapIf (a + b)
@@ -220,7 +228,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .fadd, .int a, .int b => nanIssue .fadd a b
   | .fsub, .int a, .int b => nanIssue .fsub a b
   | .fmul, .int a, .int b => nanIssue .fmul a b
-  | .fpow, .int a, .int b => nanIssue .fpow a b
+  | .fpow, .int a, .int b => if negInfPow a b then some .domain else nanIssue .fpow a b
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
@@ -446,6 +454,27 @@ theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (
       subst this
       simpa using h5
 
+/-- May the inputs be a `negInfPow`? Where the base may be `-∞` and the
+exponent is not a constant integer. -/
+def mayNegInfPow (aa ab : AVal) : Bool :=
+  aa.has FloatCode.negInf && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
+
+theorem mayNegInfPow_sound {aa ab : AVal} {a b : Int} (ha : aa.Mem (.int a))
+    (hb : ab.Mem (.int b)) (h : negInfPow a b = true) : mayNegInfPow aa ab = true := by
+  simp only [negInfPow, Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨h1, _⟩, _⟩, h4⟩ := h
+  subst h1
+  simp only [mayNegInfPow, AVal.has_of_mem ha, Bool.true_and, Bool.not_eq_true']
+  obtain ⟨bd, hbd, hm⟩ := hb
+  rw [hbd]
+  simp only [Option.any_some]
+  cases hp : bd.point with
+  | none => rfl
+  | some k =>
+    have := Bound.point_mem hp hm
+    subst this
+    simpa using h4
+
 /-- `nz`: the divisor is never the integer 0; `sz`: the first argument's
 size, if it is a constant string. -/
 def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat → List Issue
@@ -462,7 +491,8 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .fadd, aa, ab, _, _, _ => if BinFn.mayNan .fadd aa ab then [.domain] else []
   | .fsub, aa, ab, _, _, _ => if BinFn.mayNan .fsub aa ab then [.domain] else []
   | .fmul, aa, ab, _, _, _ => if BinFn.mayNan .fmul aa ab then [.domain] else []
-  | .fpow, aa, ab, _, _, _ => if BinFn.mayNan .fpow aa ab then [.domain] else []
+  | .fpow, aa, ab, _, _, _ =>
+    if BinFn.mayNan .fpow aa ab || mayNegInfPow aa ab then [.domain] else []
   | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
@@ -873,13 +903,25 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       subst hk
       rename_i hn
       right; simp [BinFn.mayNan_sound ha hb hn]
-  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j | fpow.int.int i j =>
+  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j =>
     simp only [BinFn.mayIssue]
     simp only [nanIssue] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     subst hk
     rename_i hn
     simp [BinFn.mayNan_sound ha hb hn]
+  case fpow.int.int i j =>
+    simp only [BinFn.mayIssue]
+    split at hk
+    · simp only [Option.some.injEq] at hk
+      subst hk
+      rename_i hn
+      simp [mayNegInfPow_sound ha hb hn]
+    · simp only [nanIssue] at hk
+      split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk
+      rename_i _ hn
+      simp [BinFn.mayNan_sound ha hb hn]
   case ipow.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     obtain ⟨x, hx, hi⟩ := ha
@@ -1664,5 +1706,60 @@ theorem Rel.noIssue_of_assumedHold {cat : Catalog} (hcat : cat.WF) {A : String �
   have := hok p hp
   rw [List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)] at this
   cases this
+
+/-! ## Constant subexpressions that raise (#609)
+
+DuckDB folds a `CASE`'s constant conditions when it plans a query, with the
+evaluator that raises: `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END`
+raises on any data, an empty table included (DD-5). The reference counts every
+constant subexpression that raises as raising for the whole plan, whatever
+the data and whichever branch a row takes (D21: strict, and constants that
+raise are rare). No precondition rules one out. -/
+
+/-- Does `e` read no column? A lambda's body reads its parameter. -/
+def Expr.isConst : Expr → Bool
+  | .lit _ => true
+  | .field _ => false
+  | .un _ a => a.isConst
+  | .bin _ a b => a.isConst && b.isConst
+  | .ifThen c t e => c.isConst && t.isConst && e.isConst
+  | .hof _ _ _ => false
+
+/-- The errors of `e` itself if it is constant, on no row. -/
+def Expr.selfConstIssues (e : Expr) : List (Issue × Expr) :=
+  if e.isConst then (e.issues []).filter (·.1.isError) else []
+
+/-- The errors of every constant subexpression of `e`, every branch of a
+constant `CASE` included. -/
+def Expr.constIssues : Expr → List (Issue × Expr)
+  | .lit _ | .field _ => []
+  | e@(.un _ a) => e.selfConstIssues ++ a.constIssues
+  | e@(.bin _ a b) => e.selfConstIssues ++ a.constIssues ++ b.constIssues
+  | e@(.ifThen c t x) => e.selfConstIssues ++ c.constIssues ++ t.constIssues ++ x.constIssues
+  | .hof _ l _ => l.constIssues
+
+/-- Every expression of a plan: conditions, projections, grouping keys and
+the measures' arguments and filters. -/
+def Rel.planExprs : Rel → List Expr
+  | .read _ | .values _ _ => []
+  | .filter r c => c :: r.planExprs
+  | .project r es => es ++ r.planExprs
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.planExprs
+  | .window r _ _ fns => (WinFn.aggs fns).flatMap Measure.exprs ++ r.planExprs
+  | .cross a b | .unionAll a b => a.planExprs ++ b.planExprs
+  | .join a b _ on | .semi a b _ on => on :: a.planExprs ++ b.planExprs
+  | .aggregate r gs ms => gs ++ ms.flatMap Measure.exprs ++ r.planExprs
+
+/-- **The plan's constant errors** (#609, D21): each raises when the plan
+runs, on any data. -/
+def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
+  (r.planExprs.flatMap Expr.constIssues).eraseDups
+
+-- `1 // 0 = 1` in a later `WHEN` raises whatever the first condition says;
+-- a constant without an error is nothing.
+#guard (Expr.ifThen (.bin .lt (.lit (.int 0)) (.field 0)) (.lit (.int 1))
+  (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
+    (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
+#guard (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
 
 end Substrait

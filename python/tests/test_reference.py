@@ -22,6 +22,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engine import substrait_json as lift_json
+from sverify.errors import PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.sql_lift import lift
@@ -740,8 +741,32 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
-    with pytest.raises(Exception, match="overflow"):
+    # Refused before the run: the assumption is checked on the data first,
+    # on Polars as on DuckDB.
+    with pytest.raises(PreconditionError, match="stays finite.*refused before the run"):
         ref.run(con, engine)
+    with pytest.raises(Exception, match="overflow"):
+        ref.run(con, engine, check_inputs=False)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_power_of_minus_infinity_to_a_fraction_is_a_domain_error(engine):
+    """`power(-inf, y)` for a finite non-integer `y` raises in the reference
+    (`negInfPow`): IEEE gives +inf or 0, as DuckDB does, and Polars's `** 0.5`
+    NaN (fact duckdb-R15-power-neginf). A bound on the base rules it out; an
+    integer exponent keeps IEEE's value."""
+    tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
+    kinds = lambda sql, req: [i.kind for i in verify(sql, tables, req).issues]  # noqa: E731
+    assert "domain error" in kinds("SELECT power(x, 1.5) AS v FROM f", [])
+    assert "domain error" not in kinds("SELECT power(x, 1.5) AS v FROM f", ["x >= 0"])
+    assert "domain error" not in kinds("SELECT power(x, 2.0) AS v FROM f", [])
+    con = connect()
+    put_table(con, "n", pa.table({"x": [-INF, 4.0]}))
+    plan = written_plan(substrait_json(con, "SELECT power(x, 0.5) AS v FROM n"))
+    with pytest.raises(Exception, match="domain|would make a NaN"):
+        run_plan(con, plan, engine)
+    ok = written_plan(substrait_json(con, "SELECT power(x, 2.0) AS v FROM n"))
+    assert run_plan(con, ok, engine).column("v").to_pylist() == [INF, 16.0]
 
 
 @pytest.mark.parametrize(
