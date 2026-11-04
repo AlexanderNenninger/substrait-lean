@@ -377,3 +377,65 @@ once, and answer a query from a materialised view when the query is a
 filter or projection of it. Incremental views (what a node's `refresh` maintains) are the
 natural targets. This needs a decision procedure for plan containment beyond
 syntactic equality, so it comes after the items above.
+
+## 6. Incremental maintenance
+
+A node's `refresh` maintains filters, projections, inner and cross joins and
+`UNION ALL` from the changes to their inputs, by delta rules Lean proves
+over Z-sets (`Rel.incremental_sound` in
+[`SubstraitLean/Incremental.lean`](../SubstraitLean/Incremental.lean)).
+Epic #248 extends the delta rules to the operators that are not linear. Its
+first stage covers `COUNT` and integer `SUM` per group, and `DISTINCT`
+([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[`sverify._linear`](../python/src/sverify/_linear.py)).
+
+`COUNT` and `SUM` per group are linear over Z-sets: each is a sum of a
+row's value times its weight. So a view that ends in such an aggregate keeps
+a state beside its rows, one row per group: the group's keys, its number of
+input rows, and for each measure the number of values it adds up (rows that
+pass its `FILTER`, with a non-NULL argument) and their exact sum. A batch
+adds each changed row's contribution to the state of its group, and the
+view's rows of the groups it touches are finished from the new state:
+`COUNT` is the number of values, and `SUM` is NULL without values and the
+sum otherwise. A group is in the view while it has rows, so groups appear
+when their row count leaves 0 and disappear when it returns to 0.
+`DISTINCT` is the same with every column a key and no measures: a count per
+row, and a row is in the view while its count is positive.
+
+Lean proves that the old state plus the state of the change finishes to the
+aggregate of the new input, against `Rel.eval`, with the groups that appear
+and disappear (`LinearAgg.aggregate_maintained`), and the same for
+`DISTINCT` (`LinearAgg.distinct_maintained`). The change only needs the
+right weights, so a change feed that deletes and re-inserts a row is fine
+(`ChangeFeed`). The maintenance reads the change and the touched groups'
+state, never the view's input, where touched-group recompute
+(`TouchedGroups.touched_sound`) scans the input for the groups a batch
+touches.
+
+An integer `SUM` that may leave 64 bits is assumed to fit and checked on
+the data while the job runs (`Report.assumed`). The maintained sum is the
+exact sum of the group's values, and the engine's `SUM` that adds the
+contributions to it raises when it leaves 64 bits, so the check is the same
+as on a full recompute. A row's value times its weight must fit 64 bits too.
+
+With retention (`arrives_within`), the state drops the groups of the
+retired buckets with the view's rows, and the contributions to final
+buckets are left out: an admissible batch changes none of them, and a
+source's expiry deletes only their rows (`Retention.expiry_sound`).
+
+A view is maintained this way when it ends in such an aggregate or
+`DISTINCT`, under filters, projections and sorts of its rows that keep the
+keys, and the aggregate's input has delta rules. `status()` reports it as
+maintained, like a view with delta rules. The tests
+([`test_linear.py`](../python/tests/test_linear.py)) compare every refresh
+with a full recompute over random change streams on DuckDB, Polars and
+DataFusion.
+
+Later stages of #248, each with its own delta rule:
+
+* `MIN` and `MAX`, which need the group's values when the extreme is
+  deleted;
+* `AVG`, from the `COUNT` and `SUM` partials of sharded evaluation (#245);
+* semi and anti joins, a count of matches per left row;
+* left joins, which retract their NULL-padded rows when a match arrives;
+* windows.

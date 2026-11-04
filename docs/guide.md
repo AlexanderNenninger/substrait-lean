@@ -597,8 +597,14 @@ string, date and list functions of
 [#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)) and
 refuses the rest, saying what.
 
-A node without delta rules (left join, aggregate, window, `DISTINCT`,
-`LIMIT`) is recomputed and diffed instead, and `status()` says so. An
+A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
+over an input with delta rules, is maintained from a count and a sum per
+group, which each batch's change adds to
+(`LinearAgg.aggregate_maintained` in
+[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
+A node without delta rules (left join, other aggregates, window, `LIMIT`) is
+recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
 touches: Sverify takes the group keys of the input rows the batch inserts or
 deletes, recomputes those groups from the new input (a semi-join on the

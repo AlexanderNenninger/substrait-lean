@@ -46,7 +46,7 @@ UNSUPPORTED: dict[str, ibis.Table] = {
     "left_join": orders.left_join(customers, orders.customer == customers.name).select(
         orders.id, customers.city
     ),
-    "aggregate": orders.group_by("customer").aggregate(total=orders.amount.sum()),
+    "aggregate": orders.group_by("customer").aggregate(top=orders.amount.max()),
 }
 
 
