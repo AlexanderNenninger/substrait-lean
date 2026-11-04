@@ -303,6 +303,72 @@ def max_rows(n: int) -> MaxRows:
 
 
 @dataclass(frozen=True)
+class RowsPer:
+    """At most `n` rows per combination of `cols` (see `rows_per`).
+
+    Attributes:
+        cols: The key's column names, in the order given to `rows_per`.
+        n: The bound.
+    """
+
+    cols: tuple[str, ...]
+    n: int
+
+
+def rows_per(cols: Sequence[str], at_most: int) -> RowsPer:
+    """A bound on the rows per key: at most `at_most` rows agree on `cols`.
+
+    In `requires` it is checked on the data like `unique` (a `GROUP BY` of
+    `cols`, with NULLs in one group), or proved from a row-count fact of a
+    Delta or Iceberg table with at most `at_most` rows. `unique(*cols)` is
+    `rows_per(cols, at_most=1)`.
+
+    Lean carries the bounds through the plan (`Rel.perKey`): filters, sorts,
+    `DISTINCT`, semi-joins, projections and unions keep them, and so does a
+    join on a `unique` key of its right side, which gives each left row at
+    most one partner. An aggregate grouping by all of `cols` then has groups
+    of at most `at_most` rows (`Rel.groupRows_sound`). So an integer or
+    decimal `SUM` of values in `[-m, m]` per group is proved to fit its type
+    when `at_most · m` does (#219), where a cap on the whole table
+    (`max_rows`) would have to bound every group at once. `Report.relations`
+    lists the bounds per relation.
+
+    Incremental views do not check it on batches yet, and refuse it.
+
+    Args:
+        cols: The names of the key's columns.
+        at_most: The most rows that may agree on them.
+
+    Returns:
+        A `RowsPer` condition, for `requires`.
+
+    Raises:
+        ValueError: `cols` is a single string, or `at_most` is negative.
+    """
+    if isinstance(cols, str):
+        raise ValueError(f"rows_per needs a list of columns, such as [{cols!r}]")
+    if at_most < 0:
+        raise ValueError(f"rows_per needs a bound of 0 or more, not {at_most}")
+    return RowsPer(tuple(cols), int(at_most))
+
+
+@dataclass(frozen=True)
+class RelationRows:
+    """What Lean bounds a relation of the transformation's plan by (see
+    `Report.relations`)."""
+
+    op: str
+    """The operator, such as "filter", "join" or "read orders"."""
+    depth: int
+    """How deep in the plan it is: 0 for the result, 1 for its input, …"""
+    rows: int | None
+    """At most this many rows (`Rel.maxRows_sound`); None if unbounded."""
+    group_rows: int | None = None
+    """For an aggregate, at most this many rows per group, from `rows_per`,
+    `unique` or `max_rows` (`Rel.groupRows_sound`)."""
+
+
+@dataclass(frozen=True)
 class Approx:
     """A condition relaxed by a relative tolerance (see `approx`).
 
@@ -403,7 +469,7 @@ def _checked_semantics(semantics: str) -> Semantics:
     return semantics  # type: ignore[return-value]
 
 
-TableCondition = (Unique, References, ArrivesWithin, MaxRows)
+TableCondition = (Unique, References, ArrivesWithin, MaxRows, RowsPer)
 """Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
@@ -414,6 +480,7 @@ Condition = (
     | References
     | ArrivesWithin
     | MaxRows
+    | RowsPer
     | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
@@ -622,6 +689,10 @@ class Report:
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
+    relations: list[RelationRows] = field(default_factory=list, repr=False, compare=False)
+    """Each relation of the plan, from the result down in pre-order, with
+    the bounds Lean proves on its rows and, for an aggregate, on the rows
+    of a group (#219)."""
     semantics: Semantics = "reference"
     """What the SQL the report lifted means (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
@@ -1276,6 +1347,8 @@ def label(cond: Condition) -> str:
         return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
     if isinstance(cond, MaxRows):
         return f"max_rows({cond.n})"
+    if isinstance(cond, RowsPer):
+        return f"rows_per([{', '.join(cond.cols)}], at_most={cond.n})"
     if isinstance(cond, Approx):
         return f"approx({label(cond.cond)}, rel={cond.rel:g})"
     if isinstance(cond, str):
@@ -1678,6 +1751,11 @@ def _verify_once(
         for t, cs in requires.items()
         if any(isinstance(c, MaxRows) for c in cs)
     }
+    per_key = {
+        t: [[positions(c.cols, column_names(schemas[t])), c.n] for c in cs]
+        for t, all_cs in requires.items()
+        if (cs := [c for c in all_cs if isinstance(c, RowsPer)])
+    }
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1686,6 +1764,7 @@ def _verify_once(
         "ensures_keys": ensures_keys,
         "references": foreign_keys,
         "max_rows": caps,
+        "rows_per": per_key,
     }
 
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -1750,6 +1829,10 @@ def _verify_once(
             n = out.get("rows")
             value = "no bound on the rows" if n is None else f"at most {n:,} rows"
             checked.append(CheckedCondition(label(c), n is not None and n <= c.n, value))
+        elif isinstance(c, RowsPer):
+            checked.append(
+                CheckedCondition(label(c), False, "rows per key are checked on inputs only")
+            )
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -1781,6 +1864,10 @@ def _verify_once(
         params=bound,
         bounds=_int_bounds(out["facts"], dtypes),
         rows=out.get("rows"),
+        relations=[
+            RelationRows(r["op"], r["depth"], r["rows"], r["group_rows"])
+            for r in out.get("relations", [])
+        ],
         implied=_implied_sql(out.get("implied", []), schemas),
         plan=json.dumps(transform_plan),
     )
@@ -1952,8 +2039,9 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     def capped(n: int) -> str:
         """The row cap that proves the sum fits (#219)."""
         return (
-            f"`sv.max_rows({n:_})` in {where} proves it; without a row cap, the job checks "
-            "the sum as it runs"
+            f"`sv.max_rows({n:_})` in {where} proves it, and so does "
+            f"`sv.rows_per([<grouping columns>], at_most={n:_})`; without a row bound, the job "
+            "checks the sum as it runs"
         )
 
     if lo is not None and hi is not None:
@@ -2020,6 +2108,16 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     if isinstance(cond, MaxRows):
         rows: Any = table.count()
         return max(0, _count(rows) - cond.n)
+    if isinstance(cond, RowsPer):
+        if not cond.cols:
+            everything: Any = table.count()
+            return max(0, _count(everything) - cond.n)
+        # Rows beyond the bound in each key's group.
+        sizes = table.group_by(list(cond.cols)).aggregate(rows=ibis._.count())
+        big = sizes.filter(sizes.rows > cond.n)
+        over: Any = (big.rows - cond.n).sum()
+        # A sum over no groups is NULL.
+        return int(over.to_pyarrow().as_py() or 0)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -2130,7 +2228,7 @@ def discharge(
     counted = {
         id(c): source
         for c in todo
-        if isinstance(c, MaxRows)
+        if isinstance(c, MaxRows | RowsPer)
         for source in [next((s for n, s in counts if n <= c.n), None)]
         if source is not None
     }
@@ -2344,6 +2442,11 @@ def view_contract(expr: ir.Table) -> ViewContract:
         raise ValueError(
             "cannot maintain incrementally: conditions on derived inputs were "
             f"not proved ({'; '.join(unproved)})"
+        )
+    if per_key := [label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer)]:
+        raise ValueError(
+            "cannot maintain incrementally: batches are not checked against rows_per yet "
+            f"(#219): {', '.join(per_key)}"
         )
     return ViewContract(
         {t: list(cs) for t, cs in requires.items()},

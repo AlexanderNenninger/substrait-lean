@@ -16,7 +16,7 @@ DataFusion and Spark.
 * `transform` gives a function from Ibis tables to an Ibis table a contract:
   what it assumes of its inputs (`requires`) and what it promises of its
   output (`ensures`), which Lean proves. Conditions are Ibis expressions, SQL
-  snippets, `unique` keys, `references` (foreign keys) and `max_rows` caps;
+  snippets, `unique` keys, `references` (foreign keys), `max_rows` caps and `rows_per` bounds;
   `approx` relaxes a condition by a tolerance for rounding.
 * A source (`sverify.io`) or a node piped into a transform,
   `orders.pipe(paid)`, builds a `Node` (as does the call form `paid(orders)`).
@@ -45,6 +45,7 @@ from sverify.contracts import (
     arrives_within,
     max_rows,
     references,
+    rows_per,
     transform,
     unique,
     verify,
@@ -65,6 +66,7 @@ __all__ = [
     "group",
     "max_rows",
     "references",
+    "rows_per",
     "sql",
     "transform",
     "unique",

@@ -3726,6 +3726,12 @@ def sumBoundPos (b : Bound) : Bound :=
   ⟨b.lo.bind fun l => if 0 ≤ l then some l else none,
    b.hi.bind fun h => if h ≤ 0 then some h else none⟩
 
+/-- A sum of at most `n` integers in `b` (#470): at least `n` times its lower
+bound where that is negative, and 0 otherwise (no terms sum to 0); at most
+`n` times its upper bound where that is positive, and 0 otherwise. -/
+def sumCap (b : Bound) (n : Nat) : Bound :=
+  ⟨b.lo.map fun l => min 0 (n * l), b.hi.map fun h => max 0 (n * h)⟩
+
 /-- Admits integers and NULL only: no booleans, strings or lists. -/
 def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 
@@ -3974,8 +3980,12 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false⟩
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
+  -- With at most `rows` rows, at most `rows` times the largest value (#470).
   | .sum => ⟨!valued, some (match a.int with
-      | some b => if a.intsOnly then sumBoundPos b else sumBound b
+      | some b => (if a.intsOnly then sumBoundPos b else sumBound b).meet
+          (match rows with
+            | some n => sumCap b n
+            | none => Bound.top)
       | none => Bound.top), false, false, false⟩
   -- Doubles round: within the proved error bound of the exact sum or mean
   -- when the values are finite and there are at most `rows` of them (#85).
@@ -4230,6 +4240,55 @@ theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
         omega
       · cases hu
 
+theorem sumCap_sound {b : Bound} :
+    ∀ {vs : List Value} {n : Nat}, (∀ i, .int i ∈ vs → b.Mem i) → vs.length ≤ n →
+      (sumCap b n).Mem (intSum vs)
+  | [], _, _, _ => by
+    constructor
+    · intro l hl; simp only [sumCap, Option.map_eq_some_iff] at hl
+      obtain ⟨_, _, rfl⟩ := hl; simp [intSum]; omega
+    · intro u hu; simp only [sumCap, Option.map_eq_some_iff] at hu
+      obtain ⟨_, _, rfl⟩ := hu; simp [intSum]; omega
+  | v :: vs, n, h, hlen => by
+    have hrest : ∀ i, .int i ∈ vs → b.Mem i := fun i hi => h i (List.mem_cons_of_mem _ hi)
+    obtain ⟨n', rfl⟩ : ∃ n', n = n' + 1 := ⟨n - 1, by simp at hlen; omega⟩
+    have hlen' : vs.length ≤ n' := by simp at hlen; omega
+    have hlen'' : vs.length ≤ n' + 1 := by omega
+    have ih := sumCap_sound hrest hlen'
+    have ih' := sumCap_sound hrest hlen''
+    have hcast : ((n' + 1 : Nat) : Int) = (n' : Int) + 1 := by simp
+    constructor
+    · intro l hl
+      simp only [sumCap, Option.map_eq_some_iff] at hl
+      obtain ⟨l₀, hb, rfl⟩ := hl
+      have hi := ih.1 (min 0 ((n' : Int) * l₀)) (by simp [sumCap, hb])
+      have hi' := ih'.1 (min 0 (((n' + 1 : Nat) : Int) * l₀)) (by simp [sumCap, hb])
+      rw [hcast, Int.add_mul, Int.one_mul]
+      rw [hcast, Int.add_mul, Int.one_mul] at hi'
+      have hs1 : 0 ≤ l₀ → 0 ≤ (n' : Int) * l₀ := fun h0 => Int.mul_nonneg (by omega) h0
+      have hs2 : l₀ ≤ 0 → (n' : Int) * l₀ ≤ 0 := fun h0 =>
+        Int.mul_nonpos_of_nonneg_of_nonpos (by omega) h0
+      cases v with
+      | int i =>
+        have := (h i (by simp)).1 l₀ hb
+        simp only [intSum]; omega
+      | _ => simp only [intSum]; omega
+    · intro u hu
+      simp only [sumCap, Option.map_eq_some_iff] at hu
+      obtain ⟨h₀, hb, rfl⟩ := hu
+      have hi := ih.2 (max 0 ((n' : Int) * h₀)) (by simp [sumCap, hb])
+      have hi' := ih'.2 (max 0 (((n' + 1 : Nat) : Int) * h₀)) (by simp [sumCap, hb])
+      rw [hcast, Int.add_mul, Int.one_mul]
+      rw [hcast, Int.add_mul, Int.one_mul] at hi'
+      have hs1 : 0 ≤ h₀ → 0 ≤ (n' : Int) * h₀ := fun h0 => Int.mul_nonneg (by omega) h0
+      have hs2 : h₀ ≤ 0 → (n' : Int) * h₀ ≤ 0 := fun h0 =>
+        Int.mul_nonpos_of_nonneg_of_nonpos (by omega) h0
+      cases v with
+      | int i =>
+        have := (h i (by simp)).2 h₀ hb
+        simp only [intSum]; omega
+      | _ => simp only [intSum]; omega
+
 theorem AVal.intsOnly_mem {a : AVal} (ho : a.intsOnly = true) {v : Value} (hm : a.Mem v)
     (hn : v ≠ .null) : ∃ i b, v = .int i ∧ a.int = some b ∧ b.Mem i := by
   simp only [AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at ho
@@ -4312,6 +4371,16 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       | none => exact Bound.mem_top _
       | some b =>
         simp only
+        refine Bound.mem_meet ?_ ?cap
+        case cap =>
+          cases rows with
+          | none => exact Bound.mem_top _
+          | some n =>
+            refine sumCap_sound (fun i hi => ?_) ?_
+            · obtain ⟨b', hb', hm⟩ := hin (.int i) (hvs ▸ hi)
+              rw [ha] at hb'; cases hb'; exact hm
+            · rw [← hvs]
+              exact Nat.le_trans (Measure.inputs_length_le m grp) (hrows n rfl)
         split
         · -- Every input is an integer in `b`.
           rename_i honly
