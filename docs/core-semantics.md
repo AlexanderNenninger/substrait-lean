@@ -13,10 +13,9 @@ approach is CASL's loose semantics and WebAssembly's profiles, applied to
 Substrait, with refinement as CompCert and Alive2 state it
 ([Prior work](#prior-work)). Wave 3 of #544 builds its function tables in this shape.
 
-Where a choice is still open, the page names the options with a
-recommendation and lists it under [Open questions](#open-questions) for the
-project owner. Everything else follows decisions already made on #185, #202,
-#209, #257, #336, #427 and #444, and on this page's review ([Decisions](#decisions)); [reference-semantics.md](reference-semantics.md)
+The choices this page left open were decided in its review
+([Decisions](#decisions)). Everything else follows decisions already made on
+#185, #202, #209, #257, #336, #427 and #444; [reference-semantics.md](reference-semantics.md)
 records them.
 
 ## The shape
@@ -140,7 +139,7 @@ the first column are the names the tables below use.
 | `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d`, may round past; clamped ([quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
 | `tie_pick` (sverify's: `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE`, ranks over ties) | any row of the tie | `any_value` "selects an arbitrary value" | any row; each measure may take its own | the row it read first, which depends on parallelism ([mode-ties](../characterization/duckdb/facts/duckdb-mode-ties.json), arg-min-nulls) |
 | `tie_order` (sverify's: `STRING_AGG`, `collect`, a sort, a window's order) | any order of the ties | not specified | any order | not stable (mode-ties) |
-| `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | stated by the key's direction; `UNSPECIFIED` leaves it open | as the key states; `NULLS_LAST` for `UNSPECIFIED` ([Q8](#q8-the-references-null-order)) | `NULLS_LAST` by default ([F2](../characterization/duckdb/facts/duckdb-F2.json)); either when the SQL states it |
+| `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | stated by the key's direction; `UNSPECIFIED` leaves it open | as the key states; `NULLS_LAST` for `UNSPECIFIED` ([D8](#d8-the-references-null-order)) | `NULLS_LAST` by default ([F2](../characterization/duckdb/facts/duckdb-F2.json)); either when the SQL states it |
 | `clustered` (a sort key's `CLUSTERED` direction) | equal keys adjacent, the groups in any order | `SORT_DIRECTION_CLUSTERED` | the same relation | an `ORDER BY` on the keys, which clusters them |
 | `ntile_spread` (sverify's) | the SQL standard's, spread out | not specified | the SQL standard's | the SQL standard's (DataFusion spreads, [DF-11](../upstream/bugs/DF-11.json)) |
 | `float_to_int` (casts) | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not specified | `TRUNCATE` (#209) | `TIE_AWAY_FROM_ZERO`; shimmed with `trunc` ([R9](../characterization/duckdb/facts/duckdb-R9.json)) |
@@ -497,7 +496,7 @@ A sort key's NULL placement shows each case of the table. Take a plan with
 - Under `Profile.substrait`, `null_order` is open: `p` is both placements.
   Every engine fixes one, so `q ⊆ p`, and the plan translates to any engine
   natively, with no shim and whatever its default.
-- Under the reference, `p` is `NULLS_LAST` (Q8). DuckDB's default is the
+- Under the reference, `p` is `NULLS_LAST` (D8). DuckDB's default is the
   same (F2), so the key is native there. An engine whose default differs
   needs the shim: the SQL states `NULLS LAST`, which costs nothing at run
   time.
@@ -530,10 +529,32 @@ Two ways to know a translation is sound:
 
 Both are established ([Prior work](#translation-validation)): CompCert proves
 most passes and validates register allocation per run, and Alive2 validates
-LLVM per function. The recommendation is to prove translators once, entry by entry, as today,
-and to add per-plan checks only for translations sverify does not own
-([Q7](#q7-per-plan-checks)). `obligations P Q` is what both need: the
-entries to prove, or the conditions to check.
+LLVM per function. sverify proves translators once, entry by entry, as today,
+and checks single plans only for translations it does not own
+([D7](#d7-per-plan-checks)): such a plan is checked through the lift, by
+proving that `lift(write(T r))` refines `r` with the same refinement checker.
+`obligations P Q` is what both need: the entries to prove, or the conditions
+to check.
+
+### What a proof under the reference gives
+
+A plan verified under the reference, `requires R ⇒ ensures E`, keeps `E` on
+every engine with a sound translation, along every chain of them, and for
+every choice the reference leaves open (ties, order-free `FIRST`, clustered
+groups). It does not carry upward, to the core or to `Profile.substrait`,
+whose allowed sets are larger; a Substrait consumer gets `E` only through a
+translation that shims the choices `E` needs. And refinement keeps
+properties of every outcome: that a plan returns some row is not one of them.
+[#444's comment on translations](https://github.com/AlexanderNenninger/substrait-lean/issues/444#issuecomment-6630983452) sets this out.
+
+What a plan needs from the reference is often less than all of it. The
+weakest set of constraints under which the plan still verifies names the
+choices its proof uses (say `nan_order = GREATEST` and
+`null_order = NULLS_LAST`), and the shims an engine's translation needs for
+that plan are the obligations of those options alone. A plan then pays for
+the choices it uses: the option dependency report (step 3c) computes the
+set, and guard elimination (#83) drops the shims the inferred bounds rule
+out.
 
 ## The steps of #444
 
@@ -548,6 +569,7 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |
 | 3b | `obligations P Q` for any two profiles, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |
+| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. | For each plan, `verify` under core + that set; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. |
 | 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |
 | 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile translated to the second engine directly. | Soundness of the second engine's translation from `obligations reference E`, and of the direct one from `obligations duckdb E`; the query's proof reused by composition. |
 
@@ -612,7 +634,7 @@ verified translator [Leroy09, Thm. 1], and register allocation is checked
 this way [Leroy09, §8.2.4]. sverify's lowering and lift searches are of this
 kind at the granularity of table entries: an unverified search proposes an
 entry, Lean proves it at build time, and `Lowering.lower_correct` composes the
-entries. Q7 asks whether to also check single plans.
+entries. Single plans are checked only for translations sverify does not own (D7).
 
 ### Institutions
 
@@ -677,7 +699,7 @@ the option left open.
 ## Decisions
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
-D1–D5 as the first draft recommended, D6 as its alternative.
+D6 as the first draft's alternative, the others as it recommended.
 
 ### D1. Where the tables live
 
@@ -741,25 +763,15 @@ and each engine profile fix the NULL order (DuckDB: `NULLS_LAST`,
 directions include both, so a faithful profile has to read them. The parser
 keeps refusing them until step 1c lands the choice point and the relation.
 
-## Open questions
+### D7. Per-plan checks
 
-### Q7. Per-plan checks
+Translators are proved once, entry by entry, as the lowering and the lift are
+today, and single plans are checked only for translations sverify does not
+own (another producer's plan, an engine's own SQL). No plan pays for a proof
+at run time, and the generated tables already carry the proofs.
 
-- A. Prove translators once, entry by entry, as the lowering and the lift
-  are today, and check single plans only for translations sverify does not
-  own (another producer's plan, an engine's optimized plan). Recommended:
-  no plan pays for a proof at run time, and the generated tables already
-  carry the proofs.
-- B. Check every translated plan, sverify's own included. Each run then
-  carries its own certificate, at the cost of a Lean check per plan and per
-  engine.
+### D8. The reference's NULL order
 
-### Q8. The reference's NULL order
-
-Where a key's direction is `UNSPECIFIED`, the reference fixes one placement
-(D6).
-
-- A. `NULLS_LAST` in both directions. Recommended: DuckDB's default (F2), and
-  the default of the model's `SortKey` for hand-built values.
-- B. NULLs as the largest value: last ascending, first descending, as
-  PostgreSQL places them.
+Where a key's direction is `UNSPECIFIED`, the reference puts NULLs last in
+both directions: DuckDB's default ([F2](../characterization/duckdb/facts/duckdb-F2.json))
+and the default of the model's `SortKey` for hand-built values.
