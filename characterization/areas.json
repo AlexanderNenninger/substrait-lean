@@ -28,6 +28,7 @@
         {"id": "on_domain_error", "kind": "option", "question": "`sqrt`, logs, `asin`, `acos`, `atan2`, `power` outside their domain: NaN, NULL or a raise."},
         {"id": "on_log_zero", "kind": "option", "question": "A logarithm of zero: -inf, NaN or a raise."},
         {"id": "nan_creation", "kind": "option", "question": "`inf - inf`, `0 · inf`, `inf / inf`, `fmod(inf, y)`, a sum of both infinities: NaN or a raise."},
+        {"id": "float_overflow", "kind": "option", "question": "A finite double operation whose result overflows: `±∞`, or a raise (#575)."},
         {"id": "nan_equality", "kind": "option", "question": "Is NaN equal to NaN in `=`, grouping, `DISTINCT` and joins."},
         {"id": "nan_order", "kind": "option", "question": "Where NaN sorts, and how `MIN`, `MAX`, `<`, `greatest` treat it."},
         {"id": "nan_kind", "kind": "option", "question": "Does a NaN's sign (or payload) survive and show."},
@@ -42,6 +43,7 @@
         {"id": "case_sensitivity", "kind": "option", "question": "`like`, `contains`, `starts_with`, `strpos`, regexes: case-sensitive or not."},
         {"id": "substring_range", "kind": "option", "question": "`substring` offsets and lengths outside 32 bits."},
         {"id": "negative_start", "kind": "option", "question": "`substring` with a negative or zero start; its indexing (characters or bytes, 0- or 1-based)."},
+        {"id": "string_positions", "kind": "option", "question": "What `substring` and `strpos` positions count: characters or bytes, from 0 or 1; `strpos` without a match."},
         {"id": "regex_dialect", "kind": "extra", "question": "The regex engine and syntax, classes on non-ASCII text, a match that fails, replacement references."},
         {"id": "digests", "kind": "extra", "question": "`md5`, `sha256` and other digests: present, and on which bytes."}
       ]
@@ -70,7 +72,7 @@
       "items": [
         {"id": "null_handling", "kind": "option", "question": "`concat` and other functions given a NULL: NULL or skip."},
         {"id": "three_valued_logic", "kind": "extra", "question": "`and`, `or`, `not` with NULLs; `bool_and`, `bool_or` over NULLs."},
-        {"id": "null_join_keys", "kind": "extra", "question": "Do NULL keys match in joins, and how `IS NOT DISTINCT FROM` is spelled."}
+        {"id": "null_join_keys", "kind": "option", "question": "Do NULL keys match in joins, and how `IS NOT DISTINCT FROM` is spelled."}
       ]
     },
     {

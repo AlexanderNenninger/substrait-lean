@@ -123,7 +123,19 @@ def options : List OptionSpec := [
     yaml := ["SAMPLE", "POPULATION"] },
   -- `SUM` of no values (or NULLs only): NULL (the YAML's `sum`), or 0 (`sum0`).
   { id := "empty_group_aggregates", substrait := none, core := ["NULL", "ZERO"],
-    extra := [("ZERO", "polars-sum-int")] }]
+    extra := [("ZERO", "polars-sum-int")] },
+  -- A finite double operation whose result overflows to `±∞` (#575): the
+  -- reference assumes it does not (a precondition, proved or checked on the
+  -- data); IEEE gives `±∞`.
+  { id := "float_overflow", substrait := none, core := ["ERROR", "INFINITY"],
+    extra := [("INFINITY", "polars-double-arith")] },
+  -- NULL keys in a join's equality: no match (SQL's `=`), or a match.
+  { id := "null_join_keys", substrait := none, core := ["NO_MATCH", "MATCH"] },
+  -- What a string position counts: characters from 1 (the YAML's), characters
+  -- from 0, or bytes from 0.
+  { id := "string_positions", substrait := none,
+    core := ["ONE_BASED_CHARS", "ZERO_BASED_CHARS", "ZERO_BASED_BYTES"],
+    extra := [("ZERO_BASED_CHARS", "polars-substring"), ("ZERO_BASED_BYTES", "polars-strpos")] }]
 
 def OptionSpec.find? (id : String) : Option OptionSpec := options.find? (·.id == id)
 
@@ -317,6 +329,9 @@ structure ProfileTable where
   /-- The engine version (or range) the facts were probed at (D14); `""` for
   the reference and the core. -/
   version : String := ""
+  /-- Functions the engine has no expression for, by Substrait name, with the
+  facts that say so: a plan that calls one is refused there. -/
+  missing : List (String × List String) := []
 
 /-- The choice at `option` for a function of `group`. -/
 def ProfileTable.choice? (t : ProfileTable) (group option : String) : Option Choice :=
@@ -477,7 +492,10 @@ def Profile.reference.table : ProfileTable where
     (none, "cast_failure", .asked ["THROW_EXCEPTION", "RETURN_NULL"] ["THROW_EXCEPTION"]),
     -- The sample's unless the plan asks for the population's (#54).
     (none, "distribution", .asked ["SAMPLE", "POPULATION"] ["SAMPLE"]),
-    (none, "empty_group_aggregates", .oneOf ["NULL"])]
+    (none, "empty_group_aggregates", .oneOf ["NULL"]),
+    (none, "float_overflow", .oneOf ["ERROR"]),
+    (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    (none, "string_positions", .oneOf ["ONE_BASED_CHARS"])]
 
 /-! ## Checks -/
 

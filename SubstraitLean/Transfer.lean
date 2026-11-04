@@ -64,6 +64,12 @@ def sortReads (keys : List SortKey) : List Read :=
   keys.map (fun k => ("rel.sort", "null_order", k.nullPrefs)) ++
     if keys.any (·.clustered) then [("rel.sort", "clustered", [])] else []
 
+/-- Rows compared as keys (grouping, `DISTINCT`, a join's equality): NaN and the zeros. -/
+def keyReads : List Read := [("rel.keys", "nan_equality", []), ("rel.keys", "zero_sign", [])]
+
+/-- A join's: its keys, and whether NULL keys match. -/
+def joinReads : List Read := keyReads ++ [("rel.join", "null_join_keys", [])]
+
 /-- The calls of a plan's expressions. -/
 def Rel.ctors : Rel → List Ctor
   | .read _ | .values _ _ => []
@@ -79,11 +85,13 @@ def Rel.reads : Rel → List Read
   | .read _ | .values _ _ => []
   | .filter r c => r.reads ++ c.reads
   | .project r es => r.reads ++ es.flatMap Expr.reads
-  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .distinct r | .unnest r _ => r.reads
+  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .unnest r _ => r.reads
+  | .distinct r => r.reads ++ keyReads
   | .orderBy r keys => r.reads ++ sortReads keys
   | .cross a b | .unionAll a b => a.reads ++ b.reads
-  | .join a b _ on | .semi a b _ on => a.reads ++ b.reads ++ on.reads
-  | .aggregate r gs ms => r.reads ++ gs.flatMap Expr.reads ++ ms.flatMap Measure.reads
+  | .join a b _ on | .semi a b _ on => a.reads ++ b.reads ++ on.reads ++ joinReads
+  | .aggregate r gs ms => r.reads ++ gs.flatMap Expr.reads ++ ms.flatMap Measure.reads ++
+      if gs.isEmpty then [] else keyReads
 
 theorem Expr.ctorReads_sub {e : Expr} {c : Ctor} (hc : c ∈ e.ctors) : ∀ p ∈ ctorReads c, p ∈ e.reads :=
   fun _ hp => List.mem_flatMap.mpr ⟨c, hc, hp⟩
@@ -103,8 +111,11 @@ theorem Rel.ctorReads_sub : ∀ {r : Rel} {c : Ctor}, c ∈ r.ctors → ∀ p �
     · exact .inl (Rel.ctorReads_sub h p hp)
     · exact .inr ⟨e, he, Expr.ctorReads_sub h p hp⟩
   | .emit r _, c, h, p, hp | .fetch r _ _, c, h, p, hp | .window r _ _ _, c, h, p, hp
-  | .distinct r, c, h, p, hp | .unnest r _, c, h, p, hp => by
+  | .unnest r _, c, h, p, hp => by
     simp only [Rel.ctors] at h; simp only [Rel.reads]; exact Rel.ctorReads_sub h p hp
+  | .distinct r, c, h, p, hp => by
+    simp only [Rel.ctors] at h; simp only [Rel.reads, List.mem_append]
+    exact .inl (Rel.ctorReads_sub h p hp)
   | .orderBy r _, c, h, p, hp => by
     simp only [Rel.ctors] at h; simp only [Rel.reads, List.mem_append]
     exact .inl (Rel.ctorReads_sub h p hp)
@@ -118,16 +129,16 @@ theorem Rel.ctorReads_sub : ∀ {r : Rel} {c : Ctor}, c ∈ r.ctors → ∀ p �
     simp only [Rel.ctors, List.mem_append] at h
     simp only [Rel.reads, List.mem_append]
     rcases h with (h | h) | h
-    · exact .inl (.inl (Rel.ctorReads_sub h p hp))
-    · exact .inl (.inr (Rel.ctorReads_sub h p hp))
-    · exact .inr (Expr.ctorReads_sub h p hp)
+    · exact .inl (.inl (.inl (Rel.ctorReads_sub h p hp)))
+    · exact .inl (.inl (.inr (Rel.ctorReads_sub h p hp)))
+    · exact .inl (.inr (Expr.ctorReads_sub h p hp))
   | .aggregate r gs ms, c, h, p, hp => by
     simp only [Rel.ctors, List.mem_append, List.mem_flatMap] at h
     simp only [Rel.reads, List.mem_append, List.mem_flatMap]
     rcases h with (h | ⟨e, he, h⟩) | ⟨m, hm, h⟩
-    · exact .inl (.inl (Rel.ctorReads_sub h p hp))
-    · exact .inl (.inr ⟨e, he, Expr.ctorReads_sub h p hp⟩)
-    · refine .inr ⟨m, hm, ?_⟩
+    · exact .inl (.inl (.inl (Rel.ctorReads_sub h p hp)))
+    · exact .inl (.inl (.inr ⟨e, he, Expr.ctorReads_sub h p hp⟩))
+    · refine .inl (.inr ⟨m, hm, ?_⟩)
       simp only [Measure.ctors, List.mem_append] at h
       simp only [Measure.reads, List.mem_append]
       rcases h with h | h
@@ -348,7 +359,9 @@ theorem Rel.AllowedI.monoOn {I : Impl} {cat : Catalog} :
   | .read _, _, _, ho | .values _ _, _, _, ho => ho
   | .filter r _, h, _, ⟨i, hi, ho⟩ | .project r _, h, _, ⟨i, hi, ho⟩ =>
     ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, ho⟩
-  | .emit r _, h, _, ⟨i, hi, ho⟩ | .fetch r _ _, h, _, ⟨i, hi, ho⟩ | .distinct r, h, _, ⟨i, hi, ho⟩
+  | .distinct r, h, _, ⟨i, hi, ho⟩ =>
+    ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, ho⟩
+  | .emit r _, h, _, ⟨i, hi, ho⟩ | .fetch r _ _, h, _, ⟨i, hi, ho⟩
   | .unnest r _, h, _, ⟨i, hi, ho⟩ | .window r _ _ _, h, _, ⟨i, hi, ho⟩ =>
     ⟨i, Rel.AllowedI.monoOn (r := r) (fun p hp => h p (by simp only [Rel.reads]; exact hp)) hi, ho⟩
   | .orderBy r _, h, _, ⟨i, hi, hp, hs⟩ =>
@@ -419,6 +432,24 @@ theorem Rel.transfer_of_transferB {r : Rel} {t u : ProfileTable} (h : transferB 
   Rel.AllowedP_transfer (fun p hp => ProfileTable.leAt_of_leAtB
     (List.all_eq_true.mp h p hp)) ho
 
+/-! ## Functions an engine lacks -/
+
+/-- The aggregates of a plan. -/
+def Rel.aggFns : Rel → List AggFn
+  | .read _ | .values _ _ => []
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r | .unnest r _ => r.aggFns
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.aggFns ++ b.aggFns
+  | .aggregate r _ ms => r.aggFns ++ ms.map (·.fn)
+
+/-- The Substrait names of the functions a plan calls. -/
+def Rel.functions (r : Rel) : List String :=
+  ((r.ctors ++ r.aggFns.map Ctor.agg).filterMap rowOf |>.map (·.name)).eraseDups
+
+/-- The functions of `r` that `t`'s engine has no expression for, with the facts. -/
+def ProfileTable.missingIn (t : ProfileTable) (fns : List String) : List (String × List String) :=
+  fns.filterMap fun f => (t.missing.lookup f).map (f, ·)
+
 /-! ## The report, for Python -/
 
 /-- The profiles a report compares. -/
@@ -446,9 +477,81 @@ def Rel.dependenciesJson (r : Rel) : Json :=
         ("row", rowAt obs p)]))).toArray),
     ("transfer", Json.mkObj (reportProfiles.map fun (t, _) => (t.name,
       Json.mkObj (reportProfiles.map fun (u, _) => (u.name, toJson (transferB r t u)))))),
+    ("functions", toJson r.functions),
+    ("missing", Json.mkObj (engineTables.map fun (t, _) => (t.name,
+      Json.arr <| ((t.missingIn r.functions).map fun (f, ids) =>
+        Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray))),
     ("shims", Json.mkObj (engineTables.map fun (t, obs) => (t.name,
       Json.arr <| ((reads.map fun p => (p.1, p.2.1)).eraseDups.filterMap fun (g, o) =>
         (obs.row? g o).bind fun row => row.shim.map fun sh =>
           Json.mkObj [("group", toJson g), ("option", toJson o), ("shim", toJson sh)]).toArray)))]
+
+/-! ## The transfer check, on a dependency report -/
+
+/-- The profiles by name: the reference, the core, and the engines (DuckDB under
+its default settings). -/
+def profileNamed (name : String) : Option (ProfileTable × ObsTable) :=
+  ((Profile.reference.table, Profile.reference.obs) :: (Profile.core.table, []) :: engineTables).find?
+    (·.1.name == name)
+
+/-- What `t` allows at `group` (`none`: the row without a group) and `option`. -/
+def ProfileTable.allowsAt (t : ProfileTable) (group : Option String) (option : String)
+    (ps : List Behaviour) : List Behaviour :=
+  match group with
+  | some g => t.allows g option ps
+  | none => match t.dflt? option, OptionSpec.find? option with
+    | some c, some o => c.allows o.core ps
+    | _, _ => []
+
+def ObsTable.factsAt (obs : ObsTable) (group : Option String) (option : String) : List String :=
+  let row := match group with
+    | some g => obs.row? g option
+    | none => (obs.find? fun (x : Option String × String × ObsRow) =>
+        x.1.isNone && x.2.1 == option).map fun (x : Option String × String × ObsRow) => x.2.2
+  match row with
+  | some { evidence := .tested ids, .. } => ids
+  | _ => []
+
+open Lean (Json toJson) in
+/-- `substrait-check --transfer`, on stdin `{"from": P, "to": E, "depends":
+[{"group", "option", "preferences"?, "behaviours"?}], "functions"?: [...]}`:
+whether a proof under `P` that uses only `depends` holds under `E`. Each row
+fails where `E` allows a behaviour outside what the proof used (`behaviours`,
+or else all `P` allows there), and each function `E` lacks fails. With
+`depends` = `Rel.reads` and no `behaviours`, this is `transferB`, which
+`Rel.transfer_of_transferB` proves sound. -/
+def transferJson (input : Json) : Except String Json := do
+  let name (k : String) : Except String (ProfileTable × ObsTable) := do
+    let n ← input.getObjValAs? String k
+    match profileNamed n with
+    | some p => pure p
+    | none => throw s!"unknown profile {n}"
+  let (P, _) ← name "from"
+  let (E, obsE) ← name "to"
+  let rows := (input.getObjValAs? (Array Json) "depends").toOption.getD #[]
+  let mut failures : Array Json := #[]
+  for row in rows do
+    let group := (row.getObjValAs? String "group").toOption
+    let option ← row.getObjValAs? String "option"
+    let ps := (row.getObjValAs? (List String) "preferences").toOption.getD []
+    let used := (row.getObjValAs? (List String) "behaviours").toOption.getD (P.allowsAt group option ps)
+    let target := E.allowsAt group option ps
+    unless target.all used.contains do
+      failures := failures.push (Json.mkObj [("group", toJson group), ("option", toJson option),
+        ("from", toJson used), ("to", toJson target), ("facts", toJson (obsE.factsAt group option))])
+  let fns := (input.getObjValAs? (List String) "functions").toOption.getD []
+  for (f, ids) in E.missingIn fns do
+    failures := failures.push (Json.mkObj [("function", toJson f), ("facts", toJson ids)])
+  return Json.mkObj [("ok", toJson failures.isEmpty), ("failures", Json.arr failures)]
+
+open Lean (Json toJson) in
+/-- The dependency report of a contract's transformation: one row per group
+and option it meets, with the reference's behaviours there. -/
+def Rel.dependsJson (r : Rel) : Json :=
+  let keys := (r.reads.map fun (g, o, _) => (g, o)).eraseDups
+  Json.arr <| (keys.map fun (g, o) =>
+    let bs := (r.reads.filter fun (g', o', _) => g' == g && o' == o).flatMap fun (_, _, ps) =>
+      Profile.reference.table.allows g o ps
+    Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups)]).toArray
 
 end Substrait
