@@ -267,18 +267,18 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DuckDB runs the SQL | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 7 | 0 | 0 | 0 | 7 | 6 | 7 | 6 |
-| finance | 18 | 15 | 0 | 3 | 0 | 16 | 3 | 14 | 3 |
-| h2o | 10 | 9 | 0 | 1 | 0 | 10 | 8 | 8 | 6 |
-| iot | 12 | 11 | 0 | 1 | 0 | 12 | 10 | 11 | 8 |
+| finance | 18 | 16 | 0 | 2 | 0 | 16 | 3 | 15 | 3 |
+| h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 9 | 6 |
+| iot | 12 | 12 | 0 | 0 | 0 | 12 | 10 | 11 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 11 | 0 | 3 | 0 | 14 | 10 | 11 | 9 |
-| product | 13 | 10 | 0 | 3 | 0 | 13 | 9 | 9 | 9 |
+| product | 13 | 11 | 0 | 2 | 0 | 13 | 9 | 10 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 13 | 0 | 2 | 0 | 15 | 13 | 13 | 9 |
 | tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 0 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
-| windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 124 | 0 | 15 | 0 | 137 | 77 | 121 | 68 |
+| windows | 13 | 12 | 0 | 1 | 0 | 13 | 11 | 12 | 5 |
+| **all** | 139 | 129 | 0 | 10 | 0 | 137 | 77 | 125 | 68 |
 
 ### Feature frequency
 
@@ -337,7 +337,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `correlated_subquery` | relational | 4 | 3% | no |
 | `string_basic` | expressions | 3 | 2% | yes |
 | `ntile` | windows | 3 | 2% | yes |
-| `arg_max` | aggregation | 3 | 2% | no |
+| `arg_max` | aggregation | 3 | 2% | yes |
 | `dedup_latest` | windows | 3 | 2% | yes |
 | `union_all` | relational | 3 | 2% | yes |
 | `semi_join` | relational | 3 | 2% | yes |
@@ -345,7 +345,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `scalar_subquery` | relational | 3 | 2% | yes |
 | `full_join` | relational | 2 | 1% | yes |
 | `math_transcendental` | expressions | 2 | 1% | yes |
-| `percentile` | aggregation | 2 | 1% | no |
+| `percentile` | aggregation | 2 | 1% | yes |
 | `epoch` | expressions | 2 | 1% | partial |
 | `interval_to_number` | expressions | 2 | 1% | partial |
 | `cross_join` | relational | 2 | 1% | yes |
@@ -378,9 +378,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `arg_max` | 3 | 3 | no | first_value aggregates are refused |
 | `rows_frame` | 3 | 3 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
-| `percentile` | 2 | 2 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `range_frame` | 1 | 1 | partial | offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). DataFusion's Substrait producer drops RANGE offsets, so such SQL is refused, and DataFusion cannot run Ibis's SQL for an interval frame. Sliding AVG/MIN as for rows_frame |
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
@@ -391,26 +389,30 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 124 queries that verify (some only as DOUBLE):
+Over the 129 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 25 |
 | snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 22 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 15, "scale": | 22 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 10 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 8 |
 | duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
 | polars: error: divide by zero (1 row(s)) | 2 |
+| polars: refused: first is not yet supported on Polars; see #271 | 2 |
 | polars: refused: max of doubles is not yet supported on Polars; see #271 | 2 |
 | snowflake: refused: MAX of doubles is not yet supported on snowflake; see #271 | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
+| polars: refused: quantile_cont is not yet supported on Polars; see #271 | 2 |
+| snowflake: refused: quantile_cont is not yet supported on snowflake; see #271 | 2 |
+| duckdb: differs | 2 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 2 |
 | polars: refused: regexp_replace is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: regexp_replace is not yet supported on snowflake; see #271 | 1 |
-| duckdb: differs | 1 |
 | polars: refused: corr is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: covariance and correlation are not yet supported on snowflake; see #271 | 1 |
+| polars: refused: min of doubles is not yet supported on Polars; see #271 | 1 |
 | polars: refused: md5 is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: md5 is not yet supported on snowflake; see #271 | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
@@ -444,6 +446,7 @@ Over the 124 queries that verify (some only as DOUBLE):
 | `regex_dialect` | 1 | S6 |
 | `duration_vs_interval` | 1 | – |
 | `degenerate_statistic` | 1 | – |
+| `null_at_extreme` | 1 | – |
 | `eager_evaluation` | 1 | E1, E2, E4, E5 |
 | `like_escape` | 1 | S5 |
 | `substr_index` | 1 | S1, S2, S3 |

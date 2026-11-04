@@ -31,7 +31,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✓ | ND |  |
 | fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | NDS |  |
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | N |  |
-| fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | N | `arg_max` |
+| fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✓ | ND |  |
 | fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | N | `rows_frame` |
 | fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✓ | ND |  |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | NPD |  |
@@ -45,7 +45,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | h2o-groupby-q1 | [H2O groupby q1: sum v1 by id1](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
 | h2o-groupby-q3 | [H2O groupby q3: sum v1, mean v3 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPD |  |
-| h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | N | `percentile` |
+| h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | ND |  |
 | h2o-groupby-q7 | [H2O groupby q7: max v1 minus min v2 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
 | h2o-groupby-q8 | [H2O groupby q8: largest two v3 by id6](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
 | h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | N |  |
@@ -64,7 +64,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✓ | NPDS |  |
 | iot-counter-increase | [Increase of a counter with resets](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation) | ✓ | NPDS |  |
 | iot-gapfill-locf | [Hourly averages with last observation carried forward](https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/) | ✓ | NPD |  |
-| iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✗ | N | `arg_max` |
+| iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✓ | N |  |
 | iot-latest-reading | [Latest reading per device](https://questdb.com/docs/query/sql/latest-on/) | ✓ | NPDS |  |
 | iot-change-detection | [Keep only state changes](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | NPDS |  |
 | iot-consecutive-threshold | [Alert on three consecutive high readings](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | NPDS |  |
@@ -109,7 +109,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | pa-repeat-purchase-rate | [Repeat purchase rate](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | NPDS |  |
 | pa-users-without-orders | [Users who never ordered](https://www.postgresql.org/docs/current/functions-subquery.html) | ✓ | NPDS |  |
 | pa-market-basket | [Products bought together](https://oneuptime.com/blog/post/2026-03-31-clickhouse-market-basket-analysis/view) | ✓ | NPDS |  |
-| pa-median-order-value | [Median order value per status](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✗ | N | `percentile` |
+| pa-median-order-value | [Median order value per status](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✓ | ND |  |
 | pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✗ | N | `stddev_var` |
 | pa-histogram | [Histogram of order amounts](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | NPDS |  |
 | pa-string-agg | [Products of each order as a list](https://modern-sql.com/feature/listagg) | ✗ | N | `string_agg` |
@@ -190,7 +190,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
 | win-dedup-latest | [Latest row per key (dedup)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/deduplicate.sql) | ✓ | NPDS |  |
-| win-latest-argmax | [Latest value per key with ARG_MAX](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✗ | N | `arg_max` |
+| win-latest-argmax | [Latest value per key with ARG_MAX](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✓ | ND |  |
 | win-top-n-per-group | [Top 3 products per category](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPD |  |
 | win-top-n-with-ties | [Top 3 salaries per department, ties included](https://neon.com/docs/functions/window-rank) | ✓ | NPDS |  |
 | win-running-total | [Running total per customer](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPD |  |
