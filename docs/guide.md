@@ -1061,6 +1061,46 @@ the following about the warehouse:
 How the engine translations relate to the reference semantics, and where
 that is going, is in [docs/engine-profiles.md](engine-profiles.md).
 
+`report.run(con, engine, route="auto")` first chooses how the proof reaches
+the engine ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444),
+D13 in [core-semantics.md](core-semantics.md#d13-choosing-the-route)):
+natively for a plan verified under the engine's profile
+(`semantics="duckdb"` on DuckDB), through the reference's translation for a
+plan verified under the reference, by the option-wise transfer check for a
+plan verified under another engine's profile, or by checking it again under
+the engine's profile. Otherwise the run raises `sverify.routes.RouteError`
+with the reason, such as the options where the two profiles choose
+differently. `report.routes` records each engine's route, and
+`route="native"` (or another route) takes that one or refuses.
+`deterministic=True` refuses a plan whose result is not determined up to
+row order. Each engine profile names the versions its facts were probed at
+(DuckDB 2.0.0, Polars 2.1.0): another version warns, another major version
+is refused.
+
+A postcondition can name what the result's consumer observes:
+
+```python
+readings = sv.connect()
+readings.put("t", pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}))
+t = readings.table("t")
+means = sv.verify(
+    t.group_by("k").aggregate(mean_x=t.x.mean()).order_by("k"),
+    requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
+    ensures=[sv.equivalent(rows="sequence", floats=sv.within(rel=1e-12)), sv.unique("k")],
+)
+duckdb_result = means.run(readings, "duckdb", route="auto")
+polars_result = means.run(readings, "polars", route="auto")
+means.observation.equal(duckdb_result, polars_result)  # True
+```
+
+Rows are a multiset and values exact by default. `sv.equivalent` also takes
+`zeros="canon"`, `timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
+`errors="kind"`; `Observation.refines` orders observations component by
+component. A postcondition that reads what the observation ignores, such as
+`_.mean_x <= 100` under a float tolerance, is reported with
+`CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
+tolerance.
+
 ### Sharding and other optimizations
 
 `sverify.engines.run_sharded(plan, shards, sharded=[...], broadcast=...)`

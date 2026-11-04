@@ -87,6 +87,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
+from sverify import observation as _observation
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
@@ -100,9 +101,12 @@ from sverify.engine import (
     run_plan,
     written_plan,
 )
+from sverify.observation import Observation
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from sverify.routes import Route, RouteKind
 
 
 def q(name: str) -> str:
@@ -711,6 +715,7 @@ Condition = (
     | ArrivesWithin
     | MaxRows
     | RowsPer
+    | Observation
     | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
@@ -737,6 +742,16 @@ class CheckedCondition:
     """For an unproved condition: preconditions on the inputs, per table,
     under which Lean proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
     Never assumed: adding them is the author's choice."""
+    ignores: tuple[str, ...] = ()
+    """The components of the observation (`sv.equivalent`) the condition
+    depends on but the observation ignores (D12, #444): the proof under the
+    reference does not carry to an engine whose result is only equal up to
+    the observation. Empty for a condition the observation keeps."""
+
+    @property
+    def portable(self) -> bool:
+        """Proved, and independent of what the observation ignores."""
+        return self.proved and not self.ignores
 
     @property
     def why(self) -> str:
@@ -933,8 +948,31 @@ class Report:
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it (#461)."""
+    observation: Observation = field(default_factory=Observation)
+    """What the result's consumer observes (`sv.equivalent` in `ensures`,
+    #444): rows as a multiset and exact values when `ensures` names none."""
+    depends: list[dict] | None = field(default=None, repr=False, compare=False)
+    """The options of the profile the proof depends on (`docs/core-semantics.md`,
+    step 3c), as the checker reports them: `{"group", "option",
+    "behaviours"}` rows. None when the checker does not report them; the
+    option-wise transfer check then takes every option of every group the
+    plan calls."""
+    routes: dict[str, Route] = field(default_factory=dict, repr=False, compare=False)
+    """The route each engine ran the plan by (`run(..., route=...)`, D13),
+    by engine name."""
+    contract: dict | None = field(default=None, repr=False, compare=False)
+    """The request the checker proved, for a check under another profile."""
+    output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    """The output's columns with their Ibis types."""
 
-    def run(self, con: Connection, engine: Engine | Any = None) -> pa.Table:
+    def run(
+        self,
+        con: Connection,
+        engine: Engine | Any = None,
+        *,
+        route: RouteKind | Literal["auto"] | None = None,
+        deterministic: bool = False,
+    ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
 
@@ -942,10 +980,23 @@ class Report:
         runs on `engine` as `sverify.engines.run` runs a plan, with the
         meaning `Rel.eval` gives it.
 
+        With `route`, the run first chooses how the proof reaches the engine
+        (`sverify.routes.choose`, #444): `"auto"` takes the plan natively
+        where it was verified under the engine's profile, through the
+        reference's translation where it was verified under the reference,
+        by the option-wise transfer check, or by a re-check under the
+        engine's profile, and refuses it otherwise. The route goes into
+        `routes`.
+
         Args:
             con: The connection whose tables the plan reads (`sv.connect()`).
             engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
                 Spark session. Default: the connection's engine.
+            route: None (the default) runs the plan without choosing a
+                route; `"auto"` chooses one; `"native"`, `"reference"`,
+                `"transfer"` or `"recheck"` takes that one or refuses.
+            deterministic: With `route`, refuse a plan whose result is not
+                determined up to row order (D10).
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -954,6 +1005,9 @@ class Report:
         Raises:
             ValueError: The report has no plan (it was not made by
                 `verify`), or `engine` is unknown.
+            sverify.routes.RouteError: No route takes the plan to `engine`.
+            sverify.routes.EngineVersionError: The engine's major version is
+                not the one its profile's facts were probed at.
 
         Examples:
             Verify a query, then run what was verified:
@@ -972,12 +1026,26 @@ class Report:
         """
         if self.plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
+        if route is not None:
+            from sverify import routes
+
+            chosen = routes.choose(
+                self,
+                engine if engine is not None else con.engine,
+                route,
+                deterministic=deterministic,
+            )
+            self.routes[chosen.engine] = chosen
+            if chosen.refused:
+                raise routes.RouteError(chosen)
         return run_plan(con, written_plan(self.plan), engine)
 
     @property
     def proved(self) -> bool:
-        """Every postcondition holds and no runtime error is possible."""
-        return all(c.proved for c in self.ensures) and not self.errors
+        """Every postcondition holds and no runtime error is possible. With
+        an observation (`sv.equivalent`), no postcondition depends on what
+        it ignores."""
+        return all(c.portable for c in self.ensures) and not self.errors
 
     @property
     def errors(self) -> list[Issue]:
@@ -1028,6 +1096,8 @@ class Report:
             ]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved: {c.why}"
+            if c.ignores:
+                mark += f"; {_observation.why(c.ignores)}"
             if c.checked:
                 mark += f"; {DATA_CHECK}"
             lines.append(f"ensures {c.label}: {mark}")
@@ -1046,6 +1116,9 @@ class Report:
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
         lines.append(f"semantics: {self.semantics}")
+        if self.observation != Observation():
+            lines.append(f"observes: {self.observation}")
+        lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
         if self.facts or self.rows is not None:
             lines.append("known about the output:")
             if self.rows is not None:
@@ -1573,6 +1646,8 @@ def label(cond: Condition) -> str:
         return cond.label
     if isinstance(cond, Approx):
         return f"approx({label(cond.cond)}, rel={cond.rel:g})"
+    if isinstance(cond, Observation):
+        return cond.label
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
@@ -1840,8 +1915,76 @@ def infer_bounds(
     `inputs` are the tables whose preconditions the caller states (None:
     all): their bounds are assumed with `infer`, and suggested for
     `requires`; bounds on other tables (results of other contracted
-    transformations) are suggested for those tables' `ensures`."""
+    transformations) are suggested for those tables' `ensures`.
 
+    An observation in `ensures` (`sv.equivalent`) is no condition to prove:
+    it goes to `Report.observation`, and each other postcondition that
+    depends on what it ignores says so (`CheckedCondition.ignores`)."""
+    observed, ensures = _observation.split(ensures)
+    report = _infer_bounds(
+        transform, requires, ensures, tables, counterexamples, params, infer, inputs, semantics
+    )
+    if observed is None:
+        return report
+    return _observed(report, observed, ensures)
+
+
+def _observed(report: Report, observed: Observation, ensures: Sequence[Condition]) -> Report:
+    """`report` with the observation, and each postcondition marked with the
+    components it depends on that the observation ignores (D12)."""
+    checked = [
+        replace(
+            c,
+            ignores=tuple(
+                _observation.dependencies(
+                    observed, cond, report.output, _reads(cond, report.output)
+                )
+            ),
+        )
+        for cond, c in zip(ensures, report.ensures, strict=True)
+    ]
+    return replace(report, ensures=checked, observation=observed)
+
+
+def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
+    """The output columns `cond` reads; None where that is not known."""
+    if isinstance(cond, Unique | RowsPer):
+        return list(cond.cols)
+    if isinstance(cond, References | ArrivesWithin):
+        return [cond.col]
+    if isinstance(cond, MaxRows):
+        return []
+    if isinstance(cond, Approx):
+        return _reads(cond.cond, columns)
+    if isinstance(cond, str):
+        import sqlglot
+        from sqlglot import exp
+
+        try:
+            parsed = sqlglot.parse_one(cond, read="duckdb")
+        except sqlglot.errors.ParseError:
+            return None
+        return [c.name for c in parsed.find_all(exp.Column)]
+    if not columns:
+        return None
+    try:
+        expr = resolve(cond, ibis.table(ibis.schema(dict(columns)), name="t"))
+        return [f.name for f in expr.op().find(ops.Field) if isinstance(f, ops.Field)]
+    except Exception:  # noqa: BLE001 - an unreadable condition reads every column
+        return None
+
+
+def _infer_bounds(
+    transform: Transform,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    tables: Mapping[str, ibis.Schema | ir.Table] | None,
+    counterexamples: int,
+    params: list[str],
+    infer: bool,
+    inputs: Collection[str] | None,
+    semantics: Semantics,
+) -> Report:
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
         return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
 
@@ -2060,6 +2203,9 @@ def _verify_once(
         ],
         implied=_implied_sql(out.get("implied", []), schemas),
         plan=json.dumps(transform_plan),
+        depends=out.get("depends"),
+        contract=contract,
+        output=dtypes,
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)

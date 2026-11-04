@@ -17,7 +17,9 @@ DataFusion and Spark.
   what it assumes of its inputs (`requires`) and what it promises of its
   output (`ensures`), which Lean proves. Conditions are Ibis expressions, SQL
   snippets, `unique` keys, `references` (foreign keys), `max_rows` caps and `rows_per` bounds;
-  `approx` relaxes a condition by a tolerance for rounding.
+  `approx` relaxes a condition by a tolerance for rounding; `equivalent`
+  names what the result's consumer observes (rows as a multiset, doubles
+  `within` a tolerance, …).
 * A source (`sverify.io`) or a node piped into a transform,
   `orders.pipe(paid)`, builds a `Node` (as does the call form `paid(orders)`).
   Transforms compose left to right, fused into one plan until `.write`
@@ -53,6 +55,7 @@ from sverify.contracts import (
 from sverify.engine import connect
 from sverify.incremental import Changes
 from sverify.nodes import Node, group
+from sverify.observation import equivalent, within
 from sverify.sql_model import sql
 
 __all__ = [
@@ -63,6 +66,7 @@ __all__ = [
     "arrives_within",
     "asof_join",
     "connect",
+    "equivalent",
     "group",
     "max_rows",
     "references",
@@ -71,4 +75,5 @@ __all__ = [
     "transform",
     "unique",
     "verify",
+    "within",
 ]
