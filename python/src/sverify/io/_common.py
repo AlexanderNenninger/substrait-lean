@@ -154,6 +154,80 @@ def not_true(where: str) -> str:
     return f"CASE WHEN ({where}) THEN FALSE ELSE TRUE END"
 
 
+def _is_string(t: pa.DataType) -> bool:
+    return pa.types.is_string(t) or pa.types.is_large_string(t)
+
+
+def _str_literal(e: sg.exp.Expr) -> str | None:
+    return e.this if isinstance(e, sg.exp.Literal) and e.is_string else None
+
+
+def str_may_true(where: sg.exp.Expr, bounds: Mapping[str, tuple[Any, Any]]) -> bool:
+    """Whether `where` may be TRUE on a row of a file whose string columns
+    lie within `bounds` (column -> (minimum, maximum), either None), where
+    either bound may be cut to a prefix (`StrStats.mayTrue` in
+    `SubstraitLean/Pruning.lean`, proved by `strPrune_sound`): every value
+    is at least the minimum, and every value cut to the maximum's length is
+    at most the maximum. `AND` needs both sides, `OR` and `IN` one, and a
+    comparison of a string column with a string literal its bounds; anything
+    else may be TRUE. Python compares strings by code point, as Lean and the
+    Parquet statistics do."""
+    e = where.unnest() if isinstance(where, sg.exp.Paren) else where
+    if isinstance(e, sg.exp.And):
+        return str_may_true(e.left, bounds) and str_may_true(e.right, bounds)
+    if isinstance(e, sg.exp.Or):
+        return str_may_true(e.left, bounds) or str_may_true(e.right, bounds)
+    if isinstance(e, sg.exp.In) and not e.args.get("query"):
+        return any(
+            str_may_true(sg.exp.EQ(this=e.this, expression=k), bounds) for k in e.expressions
+        )
+    ops: dict[type, str] = {
+        sg.exp.EQ: "=",
+        sg.exp.LT: "<",
+        sg.exp.LTE: "<=",
+        sg.exp.GT: ">",
+        sg.exp.GTE: ">=",
+    }
+    op = ops.get(type(e))
+    if op is None or not isinstance(e, sg.exp.Binary):
+        return True
+    col, k = e.left, _str_literal(e.right)
+    if k is None:  # `k < col` is `col > k`
+        col, k = e.right, _str_literal(e.left)
+        op = {"<": ">", "<=": ">=", ">": "<", ">=": "<="}.get(op, op)
+    if k is None or not isinstance(col, sg.exp.Column) or col.name not in bounds:
+        return True
+    lo, hi = bounds[col.name]
+
+    def may_ge() -> bool:  # some x >= k (`StrStats.mayGe`)
+        return hi is None or k[: len(hi)] <= hi
+
+    def may_le() -> bool:  # some x <= k (`StrStats.mayLe`)
+        return lo is None or lo <= k
+
+    if op == "=":
+        return may_le() and may_ge()
+    if op == "<":
+        return lo is None or lo < k  # `StrStats.mayLt`
+    if op == "<=":
+        return may_le()
+    return may_ge()  # `>` and `>=`
+
+
+def _str_bounds(stats: Mapping[str, ColumnStats], schema: pa.Schema) -> dict[str, tuple]:
+    """The string bounds of a file's statistics, by column."""
+    out = {}
+    for f in schema:
+        s = stats.get(f.name)
+        if s is None or not _is_string(f.type):
+            continue
+        lo = s.lo if isinstance(s.lo, str) else None
+        hi = s.hi if isinstance(s.hi, str) else None
+        if lo is not None or hi is not None:
+            out[f.name] = (lo, hi)
+    return out
+
+
 def prune(
     files: Mapping[str, Mapping[str, ColumnStats]],
     schema: pa.Schema,
@@ -162,13 +236,22 @@ def prune(
     hi_slack: timedelta = timedelta(0),
 ) -> set[str]:
     """The files that may hold rows passing `where`. A file is skipped only
-    if Lean proves from the facts its statistics give that `where` is not
-    TRUE on any of its rows (`contract_sound`); then filtering the table
-    reads the same rows as filtering the other files (`prune_sound` in
-    `SubstraitLean/TableFormat.lean`)."""
+    if its string bounds rule `where` out (`str_may_true`, `strStats_prune`
+    in `SubstraitLean/Pruning.lean`), or if Lean proves from the facts its
+    statistics give that `where` is not TRUE on any of its rows
+    (`contract_sound`, `stats_prune`). Then filtering the table reads the
+    same rows as filtering the other files (`prune_sound` in
+    `SubstraitLean/TableFormat.lean`), and every plan linear in the source
+    gives the same result (`Rel.eval_pruned`)."""
     table = ibis.table(ibis.Schema.from_pyarrow(schema), name="file")
+    try:
+        tree: sg.exp.Expr | None = sg.parse_one(where, read="duckdb")
+    except sg.errors.ParseError:
+        tree = None
     keep = set()
     for path, stats in files.items():
+        if tree is not None and not str_may_true(tree, _str_bounds(stats, schema)):
+            continue
         facts = [f.condition for f in stats_facts([stats], schema, "file", hi_slack=hi_slack)]
         if not facts or not _prove_from(table, facts, [not_true(where)]):
             keep.add(path)
