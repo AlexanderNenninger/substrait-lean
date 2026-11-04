@@ -15,12 +15,22 @@
     "log",
     "sqrt"
   ],
-  "settings": {"engine": ["in-memory", "streaming"]},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ],
+    "platform": [
+      "macOS arm64",
+      "Linux x86_64"
+    ]
+  },
   "description": [
     "The Polars docs say nothing about platform-dependent results.",
     "Source at py-2.1.0: the trigonometric, hyperbolic, `exp`, `log` and `pow` kernels call `num_traits::Float` methods (`v.sin()`, `v.exp()`, `v.log(base)`, `Pow::pow`), which for `f64` are Rust's standard methods and lower to the platform's libm. The `libm` crate is a dependency of polars-ops but only for `scalbn` in `round`, which is exact. So the last bits of the elementary functions may differ between macOS arm64 (probes) and Linux x86_64 (CI).",
     "`pow` with a scalar exponent takes shortcuts: 1 returns the base, 0.5 calls `sqrt` (so `(-inf) ** 0.5` is NaN and `(-0.0) ** 0.5` is -0.0, where IEEE `pow` gives inf and +0), and an integral exponent from 2 to 9 multiplies the base by itself, which rounds after each product. A column exponent calls `pow` for every row. These are platform-independent but can differ from `pow` in the last bits.",
-    "Next round: rerun characterization/polars/probes.json on homelab and diff."
+    "Next round: rerun characterization/polars/probes.json on homelab and diff.",
+    "Platform: on Linux x86_64 a NaN that an operation creates is negative, on macOS arm64 positive. DuckDB 2.0.0 gives `signbit(sin('inf'::DOUBLE))` and `signbit('inf'::DOUBLE - 'inf'::DOUBLE)` true and prints `-nan` on Linux, false and `nan` on macOS; Polars 2.1.0's `sin(inf)` has the bits fff8000000000000 on Linux and 7ff8000000000000 on macOS, on both engines. The sign comes from the CPU's default NaN (x86's is negative) and libm. The reference has one NaN, so only `nan_kind` and anything that shows a NaN's sign (signbit, text) depend on the platform."
   ],
   "reference": "The reference treats the elementary functions as black boxes with stated laws, so a last-bit difference is allowed.",
   "status": "open",
@@ -85,6 +95,21 @@
         "The reference gives IEEE +inf with no domain error: `nanCase` for `fpow` (SubstraitLean/Safety.lean) raises only for a finite negative base to a finite non-integer exponent, and the `-inf` base is excluded; an infinity from the data passes through (docs/reference-semantics.md, the rows on creating NaN and `±∞`). So a literal 0.5 exponent on Polars gives NaN where the reference gives +inf: the writer should not emit `** 0.5` for a base that may be `-inf`, or should guard it.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline platform run (homelab, Linux x86_64, glibc 2.39-0ubuntu8.9; scratchpad ulp_probe.py --n 3000 --seed 1, the same inputs as the macOS run)",
+      "evidence": [
+        {
+          "sql": "SELECT signbit(sin('inf'::DOUBLE)), sin('inf'::DOUBLE)::VARCHAR, signbit(('inf'::DOUBLE) - ('inf'::DOUBLE))",
+          "observed": "Linux x86_64: true, -nan, true; macOS arm64: false, nan, false"
+        },
+        {
+          "note": "Polars: pl.DataFrame({'x': [inf, -inf, 1.039…] * 2000}).lazy().select(pl.col('x').sin()).collect(engine=e) for in-memory and streaming: bits fff8000000000000 on Linux, 7ff8000000000000 on macOS"
+        }
+      ],
+      "notes": "scratchpad platform_repros.py, run on both machines. Also: integer AVG of (2^53+1, 0, 0) is 3002399751580330.5 and BIGINT var_samp/var_pop of 2^53+1..3 are 6.0/4.0 on both platforms (no long double difference seen); tan(1.0391439199447632) is 1.7002787929535204 on macOS and the correctly rounded 1.7002787929535208 on Linux."
     }
   ]
 }
