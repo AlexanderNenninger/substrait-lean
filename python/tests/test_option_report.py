@@ -276,3 +276,34 @@ def test_transfer_up_to_the_behaviour_order():
     assert failure["option"] == "sum_order" and "COMPENSATED" in failure["to"]
     duck = transfer({"from": "reference", "to": "duckdb", "depends": depends})
     assert duck["ok"] is False  # SCALED_CONSTANT
+
+
+def test_epsilon_per_engine(monkeypatch):
+    """`epsilon_by_engine`: the summation order's share, and each engine's own
+    per-operation error, carried through the arithmetic. Polars divides by a
+    literal through the reciprocal (3u of the quotient), DuckDB as IEEE does."""
+    import sverify as sv
+    from sverify import contracts
+
+    seen: dict[str, str] = {}
+    run = contracts.run_checker
+
+    def spy(args, stdin):
+        out = run(args, stdin)
+        seen["out"] = out[1]
+        return out
+
+    monkeypatch.setattr(contracts, "run_checker", spy)
+    t = ibis.table({"k": "int64", "x": "float64", "y": "float64"}, name="t")
+    req = {"t": [ibis._.x.between(-1e6, 1e6), ibis._.y.between(1.0, 10.0), sv.max_rows(1_000_000)]}
+    sv.verify(t.select(q=t.x / 3.0, p=t.x * t.y), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    assert eps["duckdb"]["q"]["abs"] == 0 and eps["duckdb"]["p"]["abs"] == 0
+    assert 1e-10 < eps["polars"]["q"]["abs"] < 1.2e-10  # 3u · 10⁶ / 3
+    assert eps["polars"]["p"]["abs"] == 0
+    sv.verify(t.group_by("k").aggregate(s=t.x.sum()).mutate(h=ibis._.s / 2.0), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    for engine in ("duckdb", "polars"):
+        s, h = eps[engine]["s"]["abs"], eps[engine]["h"]["abs"]
+        assert 200 < s < 250 and s / 2 < h < s / 2 + 1e-3, (engine, s, h)
+        assert eps[engine]["s"]["proved"] == {"abs": False}

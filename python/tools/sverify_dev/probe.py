@@ -304,6 +304,10 @@ def _o(construct: str, area: str, sql: str, *setup: str) -> Observation:
     return Observation(construct, area, sql, setup)
 
 
+#: A macro printing a double as text with any NaN as `nan`, whatever its sign.
+_NAN_TEXT = ("CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END",)
+
+
 #: Two bags with duplicates, NULLs, both NaNs and both zeros, for the set
 #: operations and the NaN keys.
 _BAGS = (
@@ -315,6 +319,11 @@ _BAGS = (
 
 #: Rows of a window: ties, and NULLs in the order key.
 _WIN = "(VALUES (1, 10), (2, 20), (2, 30), (3, 40), (NULL, 50), (NULL, 60)) t(i, x)"
+
+#: A join's input with a row the filter `10 // x > 1` raises on, and two rows
+#: for a guarded division, for the evaluation-order observations.
+_A = "CREATE TABLE a AS SELECT * FROM (VALUES (1, 0), (2, 5)) t(k, x)"
+_T05 = "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
 
 #: Lists for UNNEST: a full one, an empty one, a NULL one, one of a NULL.
 _LISTS = "(VALUES (1, [1, 2]), (2, []), (3, NULL), (4, [NULL])) t(id, l)"
@@ -523,6 +532,201 @@ OBSERVATIONS: list[Observation] = [
        *_BAGS),
     _o("set-operation-types", "relations",
        "SELECT typeof(x) FROM (SELECT 1 x UNION SELECT 1.5) LIMIT 1"),
+    # Evaluation order: what runs on rows the reference never evaluates.
+    _o("exec-case-when-folded", "execution",
+       "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
+       "CREATE TABLE t AS SELECT 1 x"),
+    _o("exec-case-when-folded-empty", "execution",
+       "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
+       "CREATE TABLE t (x INTEGER)"),
+    _o("exec-case-when-folded-cast", "execution",
+       "SELECT CASE WHEN x > 0 THEN 1 WHEN 'a'::INTEGER = 1 THEN 2 END FROM t",
+       "CREATE TABLE t AS SELECT 1 x"),
+    _o("exec-case-else-lazy", "execution",
+       "SELECT CASE WHEN x > 0 THEN 1 ELSE 1 // 0 END FROM t", "CREATE TABLE t AS SELECT 1 x"),
+    _o("exec-pushdown-empty-join", "execution",
+       "SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
+       _A, "CREATE TABLE b (k INTEGER)"),
+    _o("exec-pushdown-empty-join-cast", "execution",
+       "SELECT * FROM a JOIN b ON a.k = b.k WHERE a.s::INTEGER > 1",
+       "CREATE TABLE a AS SELECT * FROM (VALUES (1, 'z'), (2, '5')) t(k, s)",
+       "CREATE TABLE b (k INTEGER)"),
+    _o("exec-pushdown-empty-left-join", "execution",
+       "SELECT * FROM b LEFT JOIN a ON a.k = b.k WHERE 10 // a.x > 1",
+       _A, "CREATE TABLE b (k INTEGER)"),
+    _o("exec-pushdown-join", "execution",
+       "SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
+       _A,
+       "CREATE TABLE b AS SELECT 2 k"),
+    _o("exec-pushdown-join-no-join-filter", "execution",
+       "SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
+       _A,
+       "CREATE TABLE b AS SELECT 2 k", "SET disabled_optimizers = 'join_filter_pushdown'"),
+    _o("exec-and-value", "execution",
+       "SELECT (x <> 0) AND (10 // x > 1) FROM t", _T05),
+    _o("exec-and-value-one-row", "execution",
+       "SELECT (x <> 0) AND (10 // x > 1) FROM t", "CREATE TABLE t AS SELECT 0 x"),
+    _o("exec-or-value", "execution",
+       "SELECT (x = 0) OR (10 // x > 1) FROM t", _T05),
+    _o("exec-and-where", "execution",
+       "SELECT x FROM t WHERE (x <> 0) AND (10 // x > 1)",
+       _T05),
+    _o("exec-and-where-raising-first", "execution",
+       "SELECT x FROM t WHERE (10 // x > 1) AND (x <> 0)",
+       _T05),
+    _o("exec-and-where-raising-first-expr", "execution",
+       "SELECT x FROM t WHERE (10 // x > 1) AND (x * x <> 0)",
+       _T05),
+    _o("exec-or-where", "execution",
+       "SELECT x FROM t WHERE (x = 0) OR (10 // x > 1) ORDER BY x",
+       _T05),
+    _o("exec-and-case-when", "execution",
+       "SELECT CASE WHEN (x <> 0) AND (10 // x > 1) THEN 1 ELSE 0 END FROM t ORDER BY x",
+       _T05),
+    _o("exec-and-aggregate-filter", "execution",
+       "SELECT count(*) FILTER (WHERE (x <> 0) AND (10 // x > 1)) FROM t",
+       _T05),
+    # Signed zeros and NaNs.
+    _o("zero-order-negative-first", "doubles",
+       "SELECT v::VARCHAR, signbit(v) FROM (VALUES (-0.0::DOUBLE), (0.0::DOUBLE), (-0.0::DOUBLE))"
+       " t(v) ORDER BY v"),
+    _o("zero-order-positive-first", "doubles",
+       "SELECT v::VARCHAR, signbit(v) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE), (0.0::DOUBLE))"
+       " t(v) ORDER BY v"),
+    _o("zero-order-desc", "doubles",
+       "SELECT v::VARCHAR FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE)) t(v) ORDER BY v DESC"),
+    _o("zero-order-float", "doubles",
+       "SELECT v::VARCHAR, signbit(v) FROM (VALUES (0.0::FLOAT), (-0.0::FLOAT), (0.0::FLOAT)) t(v)"
+       " ORDER BY v"),
+    _o("least-greatest-zero", "doubles",
+       "SELECT least(-0.0::FLOAT, 0.0::FLOAT)::VARCHAR, least(0.0::FLOAT, -0.0::FLOAT)::VARCHAR,"
+       " greatest(-0.0::FLOAT, 0.0::FLOAT)::VARCHAR, signbit(least(-0.0::FLOAT, -0.0::FLOAT)),"
+       " signbit(greatest(-0.0::FLOAT, -0.0::FLOAT)), least(-0.0::DOUBLE, 0.0::DOUBLE)::VARCHAR,"
+       " least(0.0::DOUBLE, -0.0::DOUBLE)::VARCHAR, greatest(-0.0::DOUBLE, 0.0::DOUBLE)::VARCHAR,"
+       " signbit(least(-0.0::DOUBLE, -0.0::DOUBLE))"),
+    _o("least-greatest-zero-columns", "doubles",
+       "SELECT signbit(least(f, g)), signbit(greatest(f, g)), signbit(least(n, m)),"
+       " signbit(least(d, e)), signbit(greatest(d, e)), signbit(least(f, f)) FROM t",
+       "CREATE TABLE t AS SELECT -0.0::FLOAT f, -0.0::FLOAT g, -'nan'::FLOAT n, -'nan'::FLOAT m,"
+       " -0.0::DOUBLE d, -0.0::DOUBLE e"),
+    _o("least-greatest-nan-sign", "doubles",
+       "SELECT signbit(-'nan'::FLOAT), signbit(least(-'nan'::FLOAT, -'nan'::FLOAT)),"
+       " signbit(greatest(-'nan'::FLOAT, 1::FLOAT)), signbit(-'nan'::DOUBLE),"
+       " signbit(least(-'nan'::DOUBLE, -'nan'::DOUBLE)),"
+       " signbit(greatest(-'nan'::DOUBLE, 1::DOUBLE))"),
+    _o("zero-sign-arith", "doubles",
+       "SELECT signbit(-0.0::FLOAT + -0.0::FLOAT), signbit(-0.0::FLOAT + 0.0::FLOAT),"
+       " signbit(0.0::FLOAT - 0.0::FLOAT), signbit(-1::FLOAT * 0::FLOAT),"
+       " signbit(-0.0::FLOAT / 1::FLOAT), signbit(-0.0::DOUBLE + -0.0::DOUBLE),"
+       " signbit(-0.0::DOUBLE + 0.0::DOUBLE), signbit(0.0::DOUBLE - 0.0::DOUBLE),"
+       " signbit(-1::DOUBLE * 0::DOUBLE), signbit(1::DOUBLE - 1::DOUBLE)"),
+    _o("zero-sign-arith-columns", "doubles",
+       "SELECT signbit(d + d), signbit(f + f), signbit(d * 1), signbit(f * 1), signbit(d - d),"
+       " signbit(-d), signbit(-f) FROM t",
+       "CREATE TABLE t AS SELECT -0.0::DOUBLE d, -0.0::FLOAT f"),
+    _o("zero-sign-mod", "doubles",
+       "SELECT signbit(-4::FLOAT % 2::FLOAT), signbit(4::FLOAT % -2::FLOAT),"
+       " signbit(-0.0::FLOAT % 1::FLOAT), signbit(-4::DOUBLE % 2::DOUBLE),"
+       " signbit(4::DOUBLE % -2::DOUBLE), signbit(-0.0::DOUBLE % 1::DOUBLE)"),
+    # A NaN an operation creates is negative on x86-64 and positive on arm64
+    # (duckdb-exec-platform): `nan_text` prints either as `nan`.
+    _o("float-div-nonfinite", "doubles",
+       "SELECT typeof('inf'::FLOAT / 'inf'::FLOAT), nan_text('inf'::FLOAT / 'inf'::FLOAT),"
+       " nan_text(0::FLOAT * 'inf'::FLOAT), nan_text('inf'::FLOAT - 'inf'::FLOAT),"
+       " nan_text(1::FLOAT / 0::FLOAT), nan_text(0::FLOAT / 0::FLOAT),"
+       " nan_text(-1::FLOAT / 0::FLOAT)", *_NAN_TEXT),
+    _o("float-mod", "doubles",
+       "SELECT typeof(-7::FLOAT % 3::FLOAT), nan_text(-7::FLOAT % 3::FLOAT),"
+       " nan_text(7::FLOAT % -3::FLOAT), nan_text(-7.5::FLOAT % 2::FLOAT),"
+       " nan_text(1::FLOAT % 0::FLOAT), nan_text('inf'::FLOAT % 1::FLOAT)", *_NAN_TEXT),
+    # Narrow integers.
+    _o("int-mod-narrow", "integers",
+       "SELECT -7::TINYINT % 3::TINYINT, 7::TINYINT % -3::TINYINT,"
+       " typeof(-7::TINYINT % 3::TINYINT), (-128)::TINYINT % 1::TINYINT,"
+       " -7::SMALLINT % 3::SMALLINT, 7::SMALLINT % -3::SMALLINT,"
+       " typeof(-7::SMALLINT % 3::SMALLINT), (-32768)::SMALLINT % 1::SMALLINT"),
+    _o("int-mod-min-i8", "integers", "SELECT a % b FROM t",
+       "CREATE TABLE t AS SELECT (-128)::TINYINT a, -1::TINYINT b"),
+    _o("int-mod-min-i16", "integers", "SELECT a % b FROM t",
+       "CREATE TABLE t AS SELECT (-32768)::SMALLINT a, -1::SMALLINT b"),
+    _o("int-mod-min-i32", "integers", "SELECT a % b FROM t",
+       "CREATE TABLE t AS SELECT (-2147483648)::INTEGER a, -1::INTEGER b"),
+    _o("int-mod-min-i64", "integers", "SELECT a % b FROM t",
+       "CREATE TABLE t AS SELECT (-9223372036854775808)::BIGINT a, -1::BIGINT b"),
+    _o("int-pow-narrow", "integers",
+       "SELECT typeof(2::TINYINT ** 3::TINYINT), 2::TINYINT ** 7::TINYINT,"
+       " 2::TINYINT ** -1::TINYINT, 0::TINYINT ** -1::TINYINT, typeof(2::SMALLINT ** 3::SMALLINT),"
+       " 2::SMALLINT ** 15::SMALLINT, 2::SMALLINT ** -1::SMALLINT, 0::SMALLINT ** -1::SMALLINT"),
+    # Aggregates.
+    _o("sum-narrow-int", "aggregates",
+       "SELECT typeof(sum(a)), sum(a), typeof(sum(b)), sum(b), typeof(avg(a)), avg(a),"
+       " typeof(avg(b)), avg(b) FROM t",
+       "CREATE TABLE t AS SELECT * FROM (VALUES (127::TINYINT, 32767::SMALLINT),"
+       " (126::TINYINT, 32766::SMALLINT)) v(a, b)"),
+    _o("avg-bigint-large", "aggregates",
+       "SELECT avg(x)::VARCHAR FROM (VALUES (9223372036854775807), (9223372036854775806),"
+       " (9223372036854775805)) t(x) UNION ALL SELECT avg(x)::VARCHAR FROM"
+       " (VALUES (9007199254740993), (9007199254740994)) t(x)"),
+    _o("sum-float-accumulates-double", "aggregates",
+       "SELECT typeof(sum(x)), sum(x)::VARCHAR FROM (VALUES (1e8::FLOAT), (1::FLOAT),"
+       " (-1e8::FLOAT)) t(x)"),
+    _o("sum-double-rounding", "aggregates",
+       "SELECT sum(x)::VARCHAR, fsum(x)::VARCHAR FROM (VALUES (1e16::DOUBLE), (1::DOUBLE),"
+       " (1::DOUBLE)) t(x)"),
+    _o("sum-infinities", "aggregates",
+       "SELECT nan_text(sum(d)), nan_text(sum(f)), typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE,"
+       " 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)", *_NAN_TEXT),
+    _o("sum-empty", "aggregates",
+       "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM"
+       " (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f,"
+       " 1::TINYINT AS i WHERE false) t"),
+    _o("var-bigint-decimal", "aggregates",
+       "SELECT typeof(var_samp(x)), round(var_samp(x), 12), round(var_pop(x), 12),"
+       " typeof(var_samp(y)), round(var_samp(y), 12), round(stddev_samp(y), 12)"
+       " FROM (VALUES (1::BIGINT, 1.5::DECIMAL(4,1)), (2, 2.5), (4, 4.0)) t(x, y)"),
+    _o("stat-decimal-degenerate", "aggregates",
+       "SELECT 'one', var_samp(y), var_pop(y), stddev_samp(y), corr(y, y), covar_samp(y, y),"
+       " covar_pop(y, y) FROM (VALUES (1.5::DECIMAL(4,1))) t(y) UNION ALL"
+       " SELECT 'constant', var_samp(x), var_pop(x), stddev_samp(x), corr(x, y), covar_samp(x, y),"
+       " covar_pop(x, y) FROM (VALUES (1.5::DECIMAL(4,1), 2.0::DECIMAL(4,1)), (1.5, 3.0)) t(x, y)"
+       " UNION ALL SELECT 'empty', var_samp(x), var_pop(x), stddev_samp(x), corr(x, x),"
+       " covar_samp(x, x), covar_pop(x, x) FROM (SELECT 1.5::DECIMAL(4,1) x WHERE false)"
+       " ORDER BY 1"),
+    _o("stat-bigint-degenerate", "aggregates",
+       "SELECT 'one', var_samp(x), var_pop(x), stddev_samp(x), corr(x, x), covar_samp(x, x),"
+       " covar_pop(x, x) FROM (VALUES (7::BIGINT)) t(x) UNION ALL"
+       " SELECT 'constant', var_samp(x), var_pop(x), stddev_samp(x), corr(x, y), covar_samp(x, y),"
+       " covar_pop(x, y) FROM (VALUES (7::BIGINT, 1::BIGINT), (7, 2)) t(x, y)"
+       " UNION ALL SELECT 'empty', var_samp(x), var_pop(x), stddev_samp(x), corr(x, x),"
+       " covar_samp(x, x), covar_pop(x, x) FROM (SELECT 7::BIGINT x WHERE false) ORDER BY 1"),
+    _o("minmax-zero-last-negative", "aggregates",
+       "SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM"
+       " (VALUES (0.0::DOUBLE, 0.0::FLOAT), (-0.0::DOUBLE, -0.0::FLOAT)) t(d, f)"),
+    _o("minmax-zero-last-positive", "aggregates",
+       "SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM"
+       " (VALUES (-0.0::DOUBLE, -0.0::FLOAT), (0.0::DOUBLE, 0.0::FLOAT)) t(d, f)"),
+    _o("quantile-nan", "aggregates",
+       "SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR,"
+       " quantile_cont(x, 0.75)::VARCHAR, quantile_disc(x, 0.75)::VARCHAR,"
+       " quantile_cont(x, 1.0)::VARCHAR FROM (VALUES (1.0::DOUBLE), (2.0::DOUBLE),"
+       " ('nan'::DOUBLE), (3.0::DOUBLE)) t(x) UNION ALL SELECT median(x)::VARCHAR,"
+       " quantile_cont(x, 0.5)::VARCHAR, NULL, NULL, NULL FROM (VALUES (1.0::DOUBLE),"
+       " ('nan'::DOUBLE)) t(x)"),
+    # Collations.
+    _o("default-collation-nocase", "strings",
+       "SELECT v = 'hello', v LIKE 'h%', v ILIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'),"
+       " strpos(v, 'EL'), ends_with(v, 'LO'), prefix(v, 'he'), replace(v, 'h', 'J') FROM s",
+       "SET default_collation = 'nocase'", "CREATE TABLE s AS SELECT 'Hello' v"),
+    _o("default-collation-nocase-literals", "strings",
+       "SELECT 'Hello' = 'hello', 'Hello' LIKE 'h%', contains('Hello', 'ELL'),"
+       " starts_with('Hello', 'he'), strpos('Hello', 'EL')",
+       "SET default_collation = 'nocase'"),
+    _o("default-collation-nocase-sort", "strings",
+       "SELECT list(w ORDER BY w), count(DISTINCT w) FROM (VALUES ('b'), ('A'), ('a'), ('B')) t(w)",
+       "SET default_collation = 'nocase'"),
+    _o("default-collation-binary", "strings",
+       "SELECT v = 'hello', v LIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'), strpos(v, 'EL')"
+       " FROM s", "CREATE TABLE s AS SELECT 'Hello' v"),
 ]  # fmt: skip
 
 

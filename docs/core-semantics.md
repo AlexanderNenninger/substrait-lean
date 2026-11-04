@@ -1380,8 +1380,14 @@ a constant `THEN` or `ELSE` that raises, `ELSE 1 // 0`, and a constant
 `WHERE 1 // 0 = 1` on an empty table do not). A constant subexpression of a
 condition that raises therefore raises whatever the data. The reference's
 `CASE` evaluates a condition only on the rows that reach it, so a plan with
-such a constant could be proved and raise on DuckDB; the model change is
-[#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609).
+such a constant was proved and raised on DuckDB
+([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609)).
+Under D21 the reference now counts every constant subexpression that raises
+as raising for the whole plan, whatever the data and whichever branch a row
+takes (`Rel.constIssues` in `SubstraitLean/Safety.lean`): stricter than
+DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
+raise are rare in real queries. No precondition rules one out; the report
+names the constant.
 
 
 ### D20. Two observations per output
@@ -1425,3 +1431,7 @@ choosing a value.
 Example: `power(-∞, y)` for a non-integer `y` raises in the reference.
 IEEE 754 gives `+∞`, and Polars's `** 0.5` gives NaN through `sqrt`, so
 Polars needs a guard for such plans and no shim.
+
+A second example: a constant subexpression that raises (`1 // 0 = 1`)
+counts as raising for the whole plan (#609, under D19), since DuckDB may
+evaluate it when it plans the query.

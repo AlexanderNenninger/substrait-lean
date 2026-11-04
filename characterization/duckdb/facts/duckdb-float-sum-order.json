@@ -11,45 +11,9 @@
     "rounding"
   ],
   "rows": [
-    {
-      "group": "agg.fsum",
-      "option": "sum_order",
-      "types": [
-        "fp64"
-      ]
-    },
-    {
-      "group": "agg.fsum",
-      "option": "sum_order",
-      "types": [
-        "fp32"
-      ],
-      "evidence": "source"
-    },
-    {
-      "group": "agg.fsum",
-      "option": "rounding",
-      "types": [
-        "fp32"
-      ]
-    },
-    {
-      "group": "agg.fsum",
-      "option": "rounding",
-      "types": [
-        "fp64"
-      ],
-      "evidence": "source"
-    },
-    {
-      "group": "agg.fsum",
-      "option": "nan_creation",
-      "types": [
-        "fp32",
-        "fp64"
-      ],
-      "evidence": "source"
-    }
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32", "fp64"]},
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "agg.fsum", "option": "nan_creation", "types": ["fp32", "fp64"]}
   ],
   "constructs": [
     "sum",
@@ -62,14 +26,16 @@
     "\"The floating-point versions of\" `sum` \"are affected by ordering\"; so are `avg`, `fsum` and `favg`, the last two with Kahan summation. The order in which rows reach a whole-table or grouped aggregate is not guaranteed unless the aggregate states an `ORDER BY` (Order Preservation). Both `FLOAT` and `DOUBLE` are named: the docs do not say whether a `FLOAT` sum accumulates in `FLOAT` or `DOUBLE`, nor its result type (round 2, source).",
     "`FLOAT` and `DOUBLE` follow IEEE 754 for infinities and NaN \"on machines with the required CPU/FPU support\", NaN's order and equality aside; so a sum meeting `+inf` and `-inf` is NaN. The docs state this for the types, not for `SUM` itself; duckdb-nonfinite-aggregates probes `fsum` of `[inf, 1]`.",
     "Round 2 (source): `sum` and `avg` have no `FLOAT` overload, and `FLOAT`'s only numeric implicit cast is to `DOUBLE`, so a `FLOAT` sum or average converts each value exactly to `DOUBLE`, accumulates in `DOUBLE` and returns `DOUBLE`. `fsum` and `favg` take `DOUBLE` only. `sum` adds with a plain `state.value += input`, and partial states merge with `target += source`; `avg` divides that sum by the count. `fsum` is Kahan's compensated sum, and its partial states merge by adding the other state's sum and then its negated error, both compensated. All of it is IEEE double arithmetic under the default rounding (to nearest, ties to even), with no check for non-finite values, so `+inf` and `-inf` make NaN.",
-    "Round 3 (engine tests): `sum(n ORDER BY abs(n))` and `fsum` give 9007199254740994 for doubles whose sum in insertion order is 9007199254740992, and a `FLOAT` sum is a `DOUBLE` (3.999999872114277e+38 for 2e38 + 2e38). A skipped test records that a double `SUM` past `DBL_MAX` gives `inf` without an error."
+    "Round 3 (engine tests): `sum(n ORDER BY abs(n))` and `fsum` give 9007199254740994 for doubles whose sum in insertion order is 9007199254740992, and a `FLOAT` sum is a `DOUBLE` (3.999999872114277e+38 for 2e38 + 2e38). A skipped test records that a double `SUM` past `DBL_MAX` gives `inf` without an error.",
+    "Round 4 (probes): a double `sum` of the same 1M values gives one result at 1 thread and a different one in most runs at 2 or 8 threads, all within a few units in the 13th digit; `fsum` gives the same result every time. A FLOAT `sum` behaves the same (it is a DOUBLE sum of the cast values). Sequential rounding is visible: `sum` of 1e16, 1, 1 is 1e16, `fsum` 1.0000000000000002e16. A FLOAT `sum` of 1e8, 1, -1e8 is the DOUBLE 1.0, so it accumulates in DOUBLE. `+inf` and `-inf` sum to NaN for both widths.",
+    "Order class: `FLOAT` values convert exactly to `DOUBLE`, so a `FLOAT` `sum` or `avg` has the class of the double one (duckdb-sum-double, duckdb-avg-double): sequential per state, partials merged in finishing order, a constant run as one product; bound γ_{n−1} Σ|x_i| with u = 2⁻⁵³ on the widened values (Higham §4.2), and the result is a `DOUBLE`, rounded once per step. `fsum`/`favg` are Kahan (duckdb-kahan-sum). For the Lean side: SEQUENTIAL at one thread without constant vectors, ANY otherwise, read on the `fp64` codes of the `fp32` inputs; the round-4 thread runs (one result at 1 thread, several at 8) are the evidence of the tree shape."
   ],
   "reference": [
     "`sum_order`: any order and grouping, within #85's bound (`FloatSums`); DuckDB's order-dependent sum is one of them.",
     "`nan_creation`: the reference raises on a `SUM` of `+inf` and `-inf` (#257); an error-side option, so DuckDB's NaN is never reached on a plan verified not to raise."
   ],
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -162,6 +128,54 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `sum_order`: the result of a double `SUM` depends on the order of its inputs (test_sum.test against test_kahan_sum.test); only `DOUBLE` is tested. `rounding` of `FLOAT`: the sum is accumulated and returned as `DOUBLE`. `nan_creation`: the tests sum `+inf` and `-inf` only together with NaN inputs, so `inf + -inf` alone is not pinned and stays at the source reading. The skipped test at nan_aggregate.test:53-61 records that a double `SUM` past `DBL_MAX` gives `inf` and does not raise, where the reference raises (#575)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "sum-float-accumulates-double"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "sum-double-rounding"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "sum-infinities"
+        },
+        {
+          "sql": "CREATE TABLE s AS SELECT ((hash(i) % 2000000)::DOUBLE / 7.0) * (CASE WHEN i % 3 = 0 THEN 1e10 ELSE 1 END) v FROM range(1000000) r(i); SELECT sum(v)::VARCHAR, fsum(v)::VARCHAR FROM s  -- five runs per SET threads = 1, 2, 8",
+          "observed": "threads = 1: sum 4.765632474221446e+20 every run; threads = 2: three distinct sums (4.7656324742237205e+20, 4.765632474223721e+20, 4.7656324742237245e+20); threads = 8: four (4.765632474224197e+20 … 4.7656324742242796e+20), and three more over five fresh connections; fsum 4.765632474224275e+20 in every run"
+        },
+        {
+          "sql": "CREATE TABLE s AS SELECT ((hash(i) % 2000000)::DOUBLE / 7.0) * (CASE WHEN i % 3 = 0 THEN 1e10 ELSE 1 END) v FROM range(1000000) r(i); SELECT sum(v::FLOAT)::VARCHAR FROM s  -- five runs per SET threads = 1, 8",
+          "observed": "threads = 1: 4.76563247446436e+20 every run; threads = 8: five distinct sums (4.7656324744670446e+20 … 4.765632474467199e+20)"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. The thread runs are a scratch script outside the harness, since their result varies."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L180-L188",
+          "note": "FLOAT casts implicitly to DOUBLE only"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L545-L566",
+          "note": "no FLOAT `sum`"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
     }
   ],
   "issues": [

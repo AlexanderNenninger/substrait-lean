@@ -17,7 +17,12 @@
     "str.contains",
     "str.replace_all"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "`starts_with`, `ends_with`, `contains(literal=True)` and `replace_all(literal=True)` are case-sensitive and agree with the reference on every probe row (the empty prefix matches everything). Case-insensitive matching is a regex flag, `(?i)`.",
   "reference": "`starts_with`, `ends_with`, `replace` with `case_sensitivity: CASE_SENSITIVE`.",
   "status": "no-finding",
@@ -50,6 +55,37 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.starts_with('a')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.starts_with('')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.ends_with('a')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.ends_with('')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.replace_all('a', 'xy', literal=True)"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ]
 }

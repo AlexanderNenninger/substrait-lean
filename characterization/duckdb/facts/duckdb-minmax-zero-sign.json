@@ -26,11 +26,12 @@
   "description": [
     "`min` and `max` of `FLOAT` and `DOUBLE` are the `float` and `double` instantiations of one template (`NumericMinMaxBase`). Each update is `Min::Operation(state, input)`, which for floats is `MinFloatingPoint`: a NaN is skipped, otherwise `right > left ? left : right`. When the state and the input compare equal, as `-0.0` and `0.0` do, the input replaces the state. `MaxFloatingPoint` is `left > right ? left : right` (a NaN wins), with the same rule for ties. Merging two partial states applies the same operation, the other state as the input.",
     "So `MIN` over `0.0` and `-0.0` returns the zero read last, which depends on the order rows reach the aggregate and on how the parallel states merge. The sign is kept. A sort also treats the zeros as equal: `Radix::EncodeDouble` and `EncodeFloat` give both zeros the same key.",
-    "The group's `quantile_disc` and `median` were not read for this row."
+    "The group's `quantile_disc` and `median` were not read for this row.",
+    "Round 4 (probes): `min` and `max` of the rows 0.0, -0.0 are both `-0.0`, and of -0.0, 0.0 both `+0.0`, for DOUBLE and FLOAT: the zero read last wins. Over 1M rows the result was the last zero in table order at 1 and at 4 threads, in every run (10 to 20 each), so the merge order the source allows to vary did not show."
   ],
   "reference": "`zero_sign`: one zero (`ONE_ZERO`, #89). sverify's SQL makes `-0.0` into `0.0` on every read and after every operation that can make it (`Dialect.canon`, duckdb-R14), so `MIN` and `MAX` only meet `0.0`.",
   "status": "shimmed",
-  "evidence": "source",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -59,6 +60,30 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "minmax-zero-last-negative"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "minmax-zero-last-positive"
+        },
+        {
+          "sql": "CREATE TABLE z AS SELECT CASE WHEN i % 2 = 0 THEN '0.0' ELSE '-0.0' END::DOUBLE d, CASE WHEN i % 2 = 0 THEN '0.0' ELSE '-0.0' END::FLOAT f FROM range(1000000) r(i); SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM z",
+          "observed": "true, true, true, true in 10 runs each at threads = 1 and threads = 4"
+        },
+        {
+          "sql": "CREATE TABLE z AS SELECT CASE WHEN i < 500000 THEN '-0.0' ELSE '0.0' END::DOUBLE d, CASE WHEN i < 500000 THEN '-0.0' ELSE '0.0' END::FLOAT f FROM range(1000000) r(i); SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM z",
+          "observed": "false, false, false, false in 20 runs each at threads = 1 and threads = 4, grouped or not"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. The 1M-row runs are a scratch script outside the harness, since their result may vary."
     }
   ],
   "issues": [

@@ -6,10 +6,12 @@
   "verdict": "no finding: only a zero divisor and `MIN // -1` fail",
   "area": "integers",
   "options": [
-    "on_domain_error"
+    "on_domain_error",
+    "division_type"
   ],
   "rows": [
-    {"group": "int.div", "option": "on_domain_error", "types": ["i8", "i16", "i32", "i64"]}
+    {"group": "int.div", "option": "on_domain_error", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"], "evidence": "source"}
   ],
   "constructs": [
     "//",

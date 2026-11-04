@@ -1,0 +1,36 @@
+{
+  "id": "DD-6",
+  "project": "duckdb",
+  "version": "2.0.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 2.0.0 (Python, macOS arm64) by the probe observations least-greatest-zero, least-greatest-zero-columns and least-greatest-nan-sign",
+  "summary": [
+    "`least` and `greatest` on `FLOAT` return a value that is none of their arguments when the winner is `-0.0` or a negative NaN: they compare sort keys and decode the winner from its key, which encodes both zeros alike and every NaN as the positive quiet NaN. So `least(-0.0::FLOAT, -0.0::FLOAT)` is `+0.0`. On `DOUBLE` they keep the argument (`least(-0.0, -0.0)` is `-0.0`, `least(-0.0, 0.0)` is `-0.0`), so the two widths disagree."
+  ],
+  "repro": [
+    "`SELECT signbit(least(-0.0::FLOAT, -0.0::FLOAT)), signbit(least(-0.0::DOUBLE, -0.0::DOUBLE))` gives `false, true`.",
+    "`SELECT signbit(-'nan'::FLOAT), signbit(least(-'nan'::FLOAT, -'nan'::FLOAT)), signbit(least(-'nan'::DOUBLE, -'nan'::DOUBLE))` gives `true, false, true`.",
+    "The same from table columns: `CREATE TABLE t AS SELECT -0.0::FLOAT f, -0.0::FLOAT g, -0.0::DOUBLE d, -0.0::DOUBLE e; SELECT signbit(least(f, g)), signbit(least(d, e)) FROM t` gives `false, true`. (`least(f, f)` is simplified to `f` and keeps the sign.)"
+  ],
+  "handling": "No effect on sverify's results: the reference has one zero and one NaN, and sverify's SQL normalises `-0.0` to `0.0` (duckdb-R14, duckdb-float-signs).",
+  "found_by": "characterization pipeline round 4 probe (#444), from round 2's source reading",
+  "issues": [
+    444
+  ],
+  "files": [
+    "python/tools/sverify_dev/probe.py",
+    "characterization/duckdb/probes.json"
+  ],
+  "facts": [
+    "duckdb-float-signs"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "probe on the pinned release; main not checked"
+    }
+  ]
+}

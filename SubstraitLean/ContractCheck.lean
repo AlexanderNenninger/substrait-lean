@@ -182,6 +182,9 @@ structure Report where
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
   issues : List (Issue × Expr) := []
+  /-- The plan's constant errors (`Rel.constIssues`, #609, D21), also in
+  `issues`: they raise on any data, so no precondition rules them out. -/
+  constant : List (Issue × Expr) := []
   /-- The issues' expressions that sit inside an operand of an `AND` or `OR`
   (`Expr.underAndOr`): untrusted, for the report's suggestion (#604). -/
   underAndOr : List Expr := []
@@ -290,6 +293,7 @@ def Report.json (r : Report) : Json :=
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
         ("expr", Lean.toJson e.render),
+        ("constant", Lean.toJson (r.constant.contains (i, e))),
         ("under_and_or", Lean.toJson (r.underAndOr.contains e)),
         ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
           | some (_, _, b) => b.json
@@ -472,9 +476,14 @@ def check (input : Json) : Except String Report := do
   let raw := match transform with
     | some p => if p.root.checkWF cat then p.root.mayIssues cat A F T false else []
     | none => []
+  let constant := match transform with
+    | some p => if p.root.checkWF cat then p.root.constIssues else []
+    | none => []
   let issues := match transform with
     | some p =>
-      if p.root.checkWF cat then (p.root.issuesCapped cat A F T inputKeys caps perKey).eraseDups else []
+      if p.root.checkWF cat then
+        ((p.root.issuesCapped cat A F T inputKeys caps perKey) ++ constant).eraseDups
+      else []
     | none => []
   let rows := match transform with
     | some p => if p.root.checkWF cat then (p.root.capped cat A F inputKeys caps).maxRows else none
@@ -490,7 +499,7 @@ def check (input : Json) : Except String Report := do
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
   let guardFree := match transform with
-    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1.assumed)
+    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1.assumed) && constant.isEmpty
     | none => false
   let unchecked := match transform with
     | some p =>
@@ -525,6 +534,7 @@ def check (input : Json) : Except String Report := do
     inferredNes :=
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
+    constant
     underAndOr := issuesUnderAndOr transform issues
     unchecked }
 

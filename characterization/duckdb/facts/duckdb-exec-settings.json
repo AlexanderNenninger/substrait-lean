@@ -33,11 +33,12 @@
     "Frontend-only, for SQL that sverify does not write: `order_by_non_integer_literal`, `preserve_identifier_case`, `lambda_syntax`, `table_function_identifier_conversion`, `search_path`.",
     "Round 2 (source): `regex_match_operator_semantics` changes only which function the parser writes for the operators `~`, `!~`, `~*` and `!~*`: `regexp_matches` (partial, the default) or `regexp_full_match` (full). The functions themselves do not read it, so sverify's SQL, which writes `regexp_matches(…)` as a function, is unaffected; setting it logs a deprecation warning. `dialect_compatibility_mode` has two values, `NONE` and `SPARK`; in v2.0.0 the binder reads it only to treat `GROUP BY all` and `ORDER BY all` as `GROUP BY ALL` and `ORDER BY ALL` when no column is named `all`. Neither changes a value sverify's SQL computes.",
     "What `dialect_compatibility_mode` and `regex_match_operator_semantics` change, and whether sverify's SQL reaches it (it writes `regexp_matches`, a function, for the match operator), goes to source in a later round.",
-    "Round 3 (engine tests): `default_null_order` also decides where `list_sort`, `list_reverse_sort` and an aggregate's `ORDER BY` (`FIRST`, `LAST`) put NULL (default_null_order_extended.test). `error_on_division_by_zero` is deprecated at v2.0.0 and warns when set."
+    "Round 3 (engine tests): `default_null_order` also decides where `list_sort`, `list_reverse_sort` and an aggregate's `ORDER BY` (`FIRST`, `LAST`) put NULL (default_null_order_extended.test). `error_on_division_by_zero` is deprecated at v2.0.0 and warns when set.",
+    "Round 4 (probes): `default_collation = 'nocase'` makes `=`, `ORDER BY` and `DISTINCT` ignore case and leaves `LIKE`, `contains`, `starts_with`, `strpos`, `ends_with`, `prefix` and `replace` case-sensitive (duckdb-string-match-case). The optimizer setting `disabled_optimizers = 'join_filter_pushdown'` changes whether a raising filter under a join raises (duckdb-exec-filter-pushdown)."
   ],
   "reference": "The reference has no settings: each choice is an option of the plan (null_order, division_type, on_division_by_zero, nan_creation), and a profile's facts hold under the settings they record (`sverify._engine_settings`, #444).",
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -123,6 +124,30 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin `integer_division`, `default_null_order` (which also reaches `FIRST`/`LAST` with `ORDER BY` and `list_sort`), `ieee_floating_point_ops` with `error_on_division_by_zero` (deprecated), and `default_collation` for comparisons and sorts. No test runs `LIKE`, `contains` or `strpos` under `default_collation` (duckdb-string-match-case)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-nocase"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-nocase-literals"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "default-collation-nocase-sort"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "exec-pushdown-join-no-join-filter"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
     }
   ]
 }

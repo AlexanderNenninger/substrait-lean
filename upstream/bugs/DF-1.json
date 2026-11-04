@@ -3,9 +3,10 @@
   "project": "datafusion",
   "version": "51",
   "status": "filed",
-  "status_note": "filed [#12956](https://github.com/apache/datafusion/issues/12956), open; reproduces on 55.0.0",
+  "status_note": "filed [#12956](https://github.com/apache/datafusion/issues/12956), open; reproduces on 55.0.0 and main still plans a left anti join; fix PR [#25742](https://github.com/apache/datafusion/pull/25742) closed unmerged",
   "upstream": [
-    "https://github.com/apache/datafusion/issues/12956"
+    "https://github.com/apache/datafusion/issues/12956",
+    "https://github.com/apache/datafusion/pull/25742"
   ],
   "summary": "`EXCEPT ALL` is planned as a left anti join, which loses multiplicities.",
   "repro": "`[1,1,2,3] EXCEPT ALL [1,3]` gives `[2]`, not `[1,2]` (DuckDB `setops/test_pg_union.test:339,350`)",
@@ -24,6 +25,14 @@
         "datafusion": "55.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "datafusion": "55.0.0",
+        "datafusion core": "55.1.0"
+      },
+      "note": "repro on 51.0.0 and 55.0.0 (latest PyPI); main read at ee55effccc"
     }
   ]
 }

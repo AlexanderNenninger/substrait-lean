@@ -11,17 +11,65 @@
     "rounding"
   ],
   "rows": [
-    {"group": "agg.var", "option": "stat_algo", "types": ["i64", "fp64", "decimal"]},
-    {"group": "agg.var", "option": "stat_degenerate", "types": ["i64", "fp64", "decimal"]},
-    {"group": "agg.var", "option": "distribution", "types": ["i64", "fp64", "decimal"]},
-    {"group": "agg.var", "option": "rounding", "types": ["i64"]},
-    {"group": "agg.var", "option": "rounding", "types": ["fp64", "decimal"], "evidence": "source"}
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "i64"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "fp64",
+        "decimal"
+      ],
+      "evidence": "source"
+    }
   ],
   "constructs": [
     "var",
     "std"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": "in-memory",
+    "POLARS_IDEAL_MORSEL_SIZE": [
+      "100000 (default)",
+      "64"
+    ],
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": [
+      "33554432 (default)",
+      "1024"
+    ]
+  },
   "description": [
     "Ungrouped: two-pass per block of 128 values (`mean = alg_sum(x) / n`, then `dp = alg_sum((x - mean)^2)`; `alg_sum` is a plain left fold, reassociated only on nightly Rust), blocks merged in turn by Chan's combine. The chunks of a ChunkedArray merge the same way.",
     "Grouped, in memory: groups of indices use Welford's online variance; slice groups use the block algorithm; overlapping slices use rolling `VarState` windows. The streaming reducers insert one value at a time (Welford) or combine per chunk. So grouped and ungrouped results come from different algorithms.",
@@ -235,6 +283,18 @@
         "Narrowed to the in-memory engine; the streaming engine is in polars-var-std-streaming. Its ungrouped variance changes between runs (three values in five runs), which this fact did not say; grouped it agrees with the in-memory engine on the probe.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (probe_polars --diff, small morsels)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-var-runs"
+        }
+      ],
+      "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
     }
   ],
   "issues": [
