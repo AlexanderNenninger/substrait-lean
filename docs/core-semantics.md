@@ -34,8 +34,8 @@ Three kinds of semantics, each with one job.
 - The reference profile (`Profile.reference`, "the reference") is what plans
   are verified under. It is strict, stricter than every engine in most
   options. Where engines disagree on an edge case (integer overflow, NaN
-  creation, domain errors, division by zero, out-of-range casts and dates),
-  it raises. Where it picks a value, it picks one every engine can produce
+  creation, double overflow to `±∞` (#575), domain errors, division by zero,
+  out-of-range casts and dates), it raises. Where it picks a value, it picks one every engine can produce
   ([principle 3](reference-semantics.md#principles)).
   The reference may still choose a behaviour some engine needs a shim for,
   where that keeps the profile practical for users (the NULL order, rounding
@@ -66,7 +66,7 @@ second:
 
 | Kind | Reference | Options | A verified plan on an engine |
 |---|---|---|---|
-| Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
+| Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, double overflow to `±∞` (#575), `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
 | Value side | picks one value | `null_order`, `rounding` of `round`, `division_type`, floor or truncating division of negatives, `float_to_int`, `decimal_rescale`, `avg_int_result`, an empty `SUM`, string and list positions, `zero_sign`, `nan_kind`, `nan_order`, `list_null_order`, `stat_degenerate` for `CORR`, result types | native where the engine picks the same value; a shim otherwise |
 | Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `approx[D, ε]` (#568) otherwise |
 
@@ -630,8 +630,10 @@ Beyond `E`, the proof has five goals:
    not hold. With #85's bounds, every floating result has a usable error
    bound. Today the reference raises where an operation would create a NaN
    and on a zero divisor ([No operation creates a NaN](reference-semantics.md#core-numbers-and-nulls));
-   a finite operation whose result overflows to `±∞` (`exp(1000)`) does not
-   raise yet, so that half of the goal is open.
+   a finite operation whose result overflows to `±∞` (`exp(1000)`) will
+   raise too
+   ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)),
+   with its precondition inferred as for integer overflow.
 3. A result determined up to row order. Leaving an option open is the third
    tool beside raising and choosing a value: it costs no shim, and the
    contract must not tell the open choices apart (#568's invariance under an
