@@ -9,17 +9,19 @@ public names (`Sink`, `SinkChange`, `sink_from`) are re-exported by
 
 from __future__ import annotations
 
+import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyarrow as pa
 
 from sverify._scan import Resident
 from sverify._state import DuckDBStore, arrow_of
 from sverify._weighted import consolidated, expanded, negated, positive, weighted
-from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
+from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource, first_line
 from sverify.io._common import (
     ConcurrentWriteError,
     Contract,
@@ -343,6 +345,160 @@ class Sink:
             kept.put(contract.epoch, table, None)
         else:
             kept.put(contract.epoch, table, (change.inserts, change.deletes))
+
+
+_UNREAD = object()
+"""`_TableSink._read` before `committed` ran."""
+
+
+class _TableSink[T](Sink, ABC):
+    """What `DeltaSink` and `IcebergSink` share: the contract and epoch read
+    back from the table (`committed`), the write (create or open the table,
+    then DuckDB's files, else Arrow, then read the version back), the check
+    that no other writer committed in between (#517, #534), and maintenance
+    after every `compact_every` writes.
+
+    A subclass implements the hooks on its table `T`: `_open`, `_epoch_of`,
+    `_contract_of`, `_create`, `_write_native`, `_write_arrow`, `_maintain`
+    and `_version`, and may override `_opened`."""
+
+    _create_errors: ClassVar[tuple[type[Exception], ...]] = ()
+    """What `_create` raises when another writer created the table first."""
+    _commit_errors: ClassVar[tuple[type[Exception], ...]] = ()
+    """What a commit raises when another writer committed first."""
+
+    def __init__(self, name: str, *, app_id: str | None, location: str, compact_every: int | None):
+        super().__init__(name, app_id=app_id, location=location)
+        if compact_every is not None and compact_every < 1:
+            raise ValueError(f"compact_every must be at least 1, got {compact_every}")
+        self.compact_every = compact_every
+        self._writes = 0
+        """Writes of this process since the last compaction."""
+        self._read: int | None | object = _UNREAD
+        """The epoch of this sink's `app_id` that `committed` read last: a
+        write commits only on top of it (#517, #534)."""
+
+    # -- what a table format implements --------------------------------------
+
+    @abstractmethod
+    def _open(self) -> T | None:
+        """The table as it is now, or None if there is none."""
+
+    @abstractmethod
+    def _epoch_of(self, table: T) -> int | None:
+        """The epoch of the last commit of `app_id` in `table`, or None."""
+
+    @abstractmethod
+    def _contract_of(self, table: T) -> Contract | None:
+        """The contract `table` records, or None."""
+
+    @abstractmethod
+    def _create(self, change: SinkChange) -> T:
+        """Create the table for `change`, empty or with its rows; raises one
+        of `_create_errors` if it exists by then."""
+
+    def _opened(self, table: T, created: bool, change: SinkChange) -> T:
+        """Get the table ready for the write, once it exists. Default: as
+        it is."""
+        return table
+
+    @abstractmethod
+    def _write_native(self, table: T, created: bool, change: SinkChange) -> SinkWrite | None:
+        """Commit the files DuckDB writes (`change.native`): the state, if
+        `created`, else the change. None if only `_write_arrow` can write
+        it. The version is filled in afterwards."""
+
+    @abstractmethod
+    def _write_arrow(self, table: T, created: bool, change: SinkChange) -> SinkWrite:
+        """Commit the Arrow tables of `change`: the state, if `created` or
+        `change.replace`, else the change."""
+
+    @abstractmethod
+    def _maintain(self) -> None:
+        """The maintenance every `compact_every` writes."""
+
+    # -- the shared skeleton ---------------------------------------------------
+
+    def committed(self) -> Contract | None:
+        """The contract of the last commit with this sink's `app_id`, with
+        its epoch, or None."""
+        table = self._open()
+        done = None if table is None else self._epoch_of(table)
+        self._read = done
+        if table is None or done is None:
+            return None
+        contract = self._contract_of(table)
+        return None if contract is None else replace(contract, epoch=done)
+
+    def write(self, change: SinkChange) -> SinkWrite:
+        """Create the table, overwrite it, or write the change, in a commit
+        that records the contract and the epoch.
+
+        The commit is conditional: it is made only while the epoch of
+        `app_id` in the table is still the one `committed` read. Otherwise
+        the losing writer raises `ConcurrentWriteError` (#517, #534)."""
+        try:
+            return self._write(change)
+        except self._commit_errors as e:
+            raise self._conflict(change.contract, self._commit_error(e)) from e
+
+    def _commit_error(self, e: Exception) -> str:
+        """Why a commit failed, for `ConcurrentWriteError`."""
+        return first_line(e)
+
+    def _conflict(self, contract: Contract, why: str) -> ConcurrentWriteError:
+        read = "none" if self._read in (None, _UNREAD) else f"epoch {self._read}"
+        return ConcurrentWriteError(
+            f"{self.location}: another writer committed to the sink ({self.app_id}) while this "
+            f"refresh wrote epoch {contract.epoch}, after it read {read} ({why}); this state "
+            "was not committed. Is another process refreshing the same sink? The next "
+            "refresh writes the whole table, or skips the state the other writer committed."
+        )
+
+    def _check(self, table: T, contract: Contract, then: int | None | object) -> None:
+        """Raise unless `table` still has the epoch `then`: what `committed`
+        read, or what this write committed last."""
+        if then is _UNREAD:
+            return
+        now = self._epoch_of(table)
+        if now != then:
+            raise self._conflict(contract, f"the table now has epoch {now}")
+
+    def _write(self, change: SinkChange) -> SinkWrite:
+        contract, read = change.contract, self._read
+        table = self._open()
+        created = table is None
+        if table is None:
+            if read not in (None, _UNREAD):
+                raise self._conflict(contract, "the table is gone")
+            try:
+                table = self._create(change)
+            except self._create_errors as e:
+                if self._open() is not None:
+                    raise self._conflict(contract, "it created the table") from e
+                raise
+        else:
+            self._check(table, contract, read)
+        table = self._opened(table, created, change)
+        out = None
+        if change.native is not None and (created or not change.replace):
+            out = self._write_native(table, created, change)
+        if out is None:
+            out = self._write_arrow(table, created, change)
+        return replace(out, version=self._version())
+
+    def _commit(self) -> SinkWrite:
+        out = super()._commit()
+        if out.mode == "skipped" or self.compact_every is None:
+            return out
+        self._writes += 1
+        if self._writes >= self.compact_every:
+            self._writes = 0
+            try:
+                self._maintain()
+            except Exception as e:  # noqa: BLE001 - the write is committed
+                warnings.warn(f"{self.location}: maintenance failed: {first_line(e)}", stacklevel=2)
+        return out
 
 
 @dataclass

@@ -20,11 +20,6 @@ SCHEMA = pa.schema([("id", pa.int64()), ("amount", pa.int64())])
 ENGINES = ["duckdb", "polars"]
 SINK = "db.paid"
 
-pytestmark = pytest.mark.xfail(
-    strict=True, reason="#534: IcebergSink has no concurrent-writer check"
-)
-
-
 @sv.transform(requires={"orders": [_.amount >= 0]})
 def paid(orders):
     return orders.filter(orders.amount > 0)

@@ -31,8 +31,7 @@ import os
 import uuid
 import warnings
 from collections import Counter
-from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -43,7 +42,7 @@ import pyarrow.parquet as pq
 try:
     from pyiceberg.catalog import Catalog
     from pyiceberg.conversions import to_bytes
-    from pyiceberg.exceptions import CommitFailedException
+    from pyiceberg.exceptions import CommitFailedException, TableAlreadyExistsError
     from pyiceberg.expressions import AlwaysTrue
     from pyiceberg.io.pyarrow import (
         ArrowScan,
@@ -104,7 +103,7 @@ from sverify.io._common import (
     filter_rows,
     q,
 )
-from sverify.io._sink import Sink, SinkChange
+from sverify.io._sink import _UNREAD, SinkChange, _TableSink
 
 CONTRACT = "Iceberg contract"
 KEY = "sverify.contract"
@@ -1031,7 +1030,26 @@ def _expire(t: Table, keep: set[int], older_than: datetime) -> tuple[int, int]:
     return len(gone), len(unused)
 
 
-class IcebergSink(Sink):
+class _Conflict(CommitFailedException):
+    """Another writer of the sink committed while this one did (#534)."""
+
+
+class _Guarded(Transaction):
+    """A transaction whose commit fails where pyiceberg would retry it on
+    top of another writer's snapshot and `check` (of the table refreshed
+    for the retry) raises `_Conflict`: a retry on top of another writer of
+    the sink would write the change a second time (#534)."""
+
+    def __init__(self, table: Table, check: Callable[[Table], None]):
+        super().__init__(table)
+        self._check = check
+
+    def _rebuild_snapshot_updates(self) -> None:
+        self._check(self._table)
+        super()._rebuild_snapshot_updates()
+
+
+class IcebergSink(_TableSink[Table]):
     """Stores a node in an Iceberg table, exactly once per state:
     `node.write(IcebergSink(catalog, identifier))`, written by every
     `refresh`.
@@ -1145,6 +1163,8 @@ class IcebergSink(Sink):
     create_options_ignored = "create options ignored"
     """The start of the warning a sink on an existing table gives when the
     table differs from its `location`, `partition_by` or `properties`."""
+    _create_errors = (TableAlreadyExistsError, CommitFailedException)
+    _commit_errors = (_Conflict,)
 
     def __init__(
         self,
@@ -1162,7 +1182,9 @@ class IcebergSink(Sink):
     ):
         self.catalog, self.identifier = catalog, identifier
         name = name or identifier.rsplit(".", 1)[-1]
-        super().__init__(name, app_id=app_id, location=identifier)
+        if min_snapshots < 1:
+            raise ValueError(f"min_snapshots must be at least 1, got {min_snapshots}")
+        super().__init__(name, app_id=app_id, location=identifier, compact_every=compact_every)
         self.table_location = location
         self.partition_by = _partition_fields(partition_by or [])
         self.properties = {str(k): str(v) for k, v in (properties or {}).items()}
@@ -1170,14 +1192,7 @@ class IcebergSink(Sink):
             raise ValueError(f"properties: {mine} are the sink's own")
         self._checked = False
         """Whether an existing table was compared with the create options."""
-        if compact_every is not None and compact_every < 1:
-            raise ValueError(f"compact_every must be at least 1, got {compact_every}")
-        if min_snapshots < 1:
-            raise ValueError(f"min_snapshots must be at least 1, got {min_snapshots}")
-        self.compact_every, self.snapshot_retention = compact_every, snapshot_retention
-        self.min_snapshots = min_snapshots
-        self._writes = 0
-        """Writes of this process since the last compaction."""
+        self.snapshot_retention, self.min_snapshots = snapshot_retention, min_snapshots
 
     def source(self) -> IcebergSource:
         """The table as a source, for the nodes that read the stored node."""
@@ -1189,22 +1204,36 @@ class IcebergSink(Sink):
         return self.source().stored()
 
     def _version(self) -> int | None:
-        if not self.catalog.table_exists(self.identifier):
-            return None
-        return _version(self.catalog.load_table(self.identifier).current_snapshot())
+        t = self._open()
+        return None if t is None else _version(t.current_snapshot())
 
-    def committed(self) -> Contract | None:
-        """The table's contract, with the epoch of the last snapshot this
-        sink's `app_id` wrote, or None."""
+    def _open(self) -> Table | None:
         if not self.catalog.table_exists(self.identifier):
             return None
-        t = self.catalog.load_table(self.identifier)
-        mine = [s for s in _ancestry(t) if s.summary and s.summary.get(APP) == self.app_id]
-        text = t.properties.get(KEY)
-        if not mine or text is None:
-            return None
-        epoch = int(mine[0].summary.get(EPOCH, "-1"))  # type: ignore[union-attr]
-        return replace(Contract.from_json(text), epoch=epoch)
+        return self.catalog.load_table(self.identifier)
+
+    def _epoch_of(self, table: Table) -> int | None:
+        """The epoch of the last snapshot this sink's `app_id` wrote."""
+        for s in _ancestry(table):
+            if s.summary is not None and s.summary.get(APP) == self.app_id:
+                return int(s.summary.get(EPOCH, "-1"))
+        return None
+
+    def _contract_of(self, table: Table) -> Contract | None:
+        """The table property `sverify.contract`."""
+        text = table.properties.get(KEY)
+        return None if text is None else Contract.from_json(text)
+
+    def _transaction(self, t: Table) -> Transaction:
+        """A transaction on `t` that commits only while the table has the
+        epoch `committed` read (`_Guarded`)."""
+        then = self._read
+
+        def check(now: Table) -> None:
+            if then is not _UNREAD and (epoch := self._epoch_of(now)) != then:
+                raise _Conflict(f"the table now has epoch {epoch}")
+
+        return _Guarded(t, check)
 
     def _own(self, t: Table) -> tuple[list[IcebergSnapshot], dict[str, str]]:
         """The current snapshot's ancestry down to the sink's last snapshot,
@@ -1273,26 +1302,15 @@ class IcebergSink(Sink):
             out["snapshots_expired"], out["files_deleted"] = _expire(t, keep, now - expire)
         return out
 
-    def _commit(self) -> SinkWrite:
-        out = super()._commit()
-        if out.mode == "skipped" or self.compact_every is None:
-            return out
-        self._writes += 1
-        if self._writes >= self.compact_every:
-            self._writes = 0
-            try:
-                self.maintain(expire=self.snapshot_retention)
-            except Exception as e:  # noqa: BLE001 - the write is committed
-                warnings.warn(
-                    f"{self.identifier}: maintenance failed: {first_line(e)}", stacklevel=2
-                )
-        return out
+    def _maintain(self) -> None:
+        self.maintain(expire=self.snapshot_retention)
 
-    def _create(self, schema: pa.Schema, contract: Contract) -> Table:
+    def _create(self, change: SinkChange) -> Table:
         """Create the table with the create options and the contract, in
         one commit."""
         self._checked = True
-        props = {**self.properties, KEY: contract.to_json()}
+        schema = change.schema
+        props = {**self.properties, KEY: change.contract.to_json()}
         if not self.partition_by:
             return self.catalog.create_table(
                 self.identifier, schema=schema, location=self.table_location, properties=props
@@ -1304,6 +1322,11 @@ class IcebergSink(Sink):
             for column, transform, field in self.partition_by:
                 update.add_field(column, transform, field)
         return tx.commit_transaction()
+
+    def _opened(self, table: Table, created: bool, change: SinkChange) -> Table:
+        if not created:
+            self._check_existing(table)
+        return table
 
     def _check_existing(self, t: Table) -> None:
         """Warn, once, where an existing table differs from the create
@@ -1330,15 +1353,19 @@ class IcebergSink(Sink):
                 stacklevel=2,
             )
 
-    def _write_native(
-        self, t: Table, created: bool, change: SinkChange, props: dict[str, str]
-    ) -> tuple[Literal["created", "append", "row-level"], int, int] | None:
+    def _props(self, contract: Contract) -> dict[str, str]:
+        """The sverify properties of the snapshot of `contract`."""
+        return {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}
+
+    def _write_native(self, table: Table, created: bool, change: SinkChange) -> SinkWrite | None:
         """Have DuckDB write the data file of the state (`created`) or of the
         rows the change inserts, find the positions of the rows it deletes,
         and commit them as one snapshot with the contract. None where only
         the Arrow path writes: partitioned tables, nested columns, object
         stores, or a table that does not hold the rows the change deletes."""
+        t = table
         assert change.native is not None
+        contract, props = change.contract, self._props(change.contract)
         rows, delta = change.native
         schema = change.schema
         fields = t.schema().fields
@@ -1364,10 +1391,10 @@ class IcebergSink(Sink):
         if local_path(t.location()) is None:
             return None
         if created:
-            with t.transaction() as tx:
-                tx.set_properties({KEY: change.contract.to_json()})
+            with self._transaction(t) as tx:
+                tx.set_properties({KEY: contract.to_json()})
                 _commit_rows(tx, t, data_file(_engine.rows_sql(rows, schema)), [], props)
-            return "created", _engine.rows_count(rows), 0
+            return SinkWrite("created", None, contract, _engine.rows_count(rows), 0)
         inserted, deleted = _engine.counts(delta)
         deletes: list[DataFile] = []
         if deleted:
@@ -1386,28 +1413,16 @@ class IcebergSink(Sink):
             data = {p: tasks[p].file for p in by_file}
             deletes = _position_deletes(t, by_file, data)
         added = data_file(_engine.inserts_sql(delta, schema)) if inserted else []
-        with t.transaction() as tx:
-            tx.set_properties({KEY: change.contract.to_json()})
+        with self._transaction(t) as tx:
+            tx.set_properties({KEY: contract.to_json()})
             _commit_rows(tx, t, added, deletes, props)
-        return ("row-level" if deleted else "append"), inserted, deleted
+        return SinkWrite("row-level" if deleted else "append", None, contract, inserted, deleted)
 
-    def write(self, change: SinkChange) -> SinkWrite:
+    def _write_arrow(self, table: Table, created: bool, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
         deletes and new rows, in one snapshot that records the contract."""
-        contract, schema = change.contract, change.schema
-        props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}
-        created = not self.catalog.table_exists(self.identifier)
-        if created:
-            t = self._create(schema, contract)
-        else:
-            t = self.catalog.load_table(self.identifier)
-            self._check_existing(t)
-        if change.native is not None and (created or not change.replace):
-            done = self._write_native(t, created, change, props)
-            if done is not None:
-                mode, inserted, deleted = done
-                version = _version(self.catalog.load_table(self.identifier).current_snapshot())
-                return SinkWrite(mode, version, contract, inserted, deleted)
+        t = table
+        contract, schema, props = change.contract, change.schema, self._props(change.contract)
         found: tuple[dict[str, list[int]], dict[str, DataFile]] | None = None
         if not created and not change.replace:
             # The rows that went: as many as the change deletes, so tuples.
@@ -1425,7 +1440,7 @@ class IcebergSink(Sink):
             rows = change.inserts
             deleted = sum(len(p) for p in positions.values())
             deletes = _position_deletes(t, positions, files)
-        with t.transaction() as tx:
+        with self._transaction(t) as tx:
             tx.set_properties({KEY: contract.to_json()})
             if found is None:
                 if not created:
@@ -1441,5 +1456,4 @@ class IcebergSink(Sink):
                     _commit_rows(tx, t, rows, [], props)
             else:
                 _commit_rows(tx, t, rows, deletes, props)
-        version = _version(self.catalog.load_table(self.identifier).current_snapshot())
-        return SinkWrite(mode, version, contract, rows.num_rows, deleted)
+        return SinkWrite(mode, None, contract, rows.num_rows, deleted)

@@ -197,7 +197,14 @@ class Faults:
     ) -> Fault:
         fault = Fault(point, when, nth, action, barrier, parties, callback)
         owner, name = resolve(POINTS[point][0])
-        real = owner.__dict__[name] if isinstance(owner, type) else getattr(owner, name)
+        own = not isinstance(owner, type) or name in owner.__dict__
+        # A method a class inherits is looked up on its bases, patched on the
+        # class, and removed from it again on `undo`.
+        real = (
+            getattr(owner, name)
+            if not isinstance(owner, type)
+            else next(c.__dict__[name] for c in owner.__mro__ if name in c.__dict__)
+        )
         static = isinstance(real, staticmethod | classmethod)
         func = real.__func__ if static else real
 
@@ -218,7 +225,9 @@ class Faults:
         elif isinstance(real, classmethod):
             patched = classmethod(wrapper)
         setattr(owner, name, patched)
-        self._undo.append(lambda: setattr(owner, name, real))
+        self._undo.append(
+            (lambda: setattr(owner, name, real)) if own else (lambda: delattr(owner, name))
+        )
         self.faults.append(fault)
         return fault
 
