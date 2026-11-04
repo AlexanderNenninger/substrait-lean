@@ -1130,7 +1130,7 @@ theorem Measure.sumMax_nonneg (m : Measure) : 0 ≤ m.sumMax := by
   unfold Measure.sumMax
   cases m.sumDigits with
   | some q =>
-    have := Int.pow_pos (n := q) (by decide : (0 : Int) < 10)
+    have : (0 : Int) < 10 ^ q := Int.pow_pos (by decide)
     simp only; omega
   | none => simp only; decide
 
