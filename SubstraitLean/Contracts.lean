@@ -928,6 +928,71 @@ def pickAbs (both : Bound → Bound → Bound) (a b : AVal) : AVal :=
   let ints := joinInt (if b.nonInt then a.int else none) (joinInt (if a.null then b.int else none) pair)
   ⟨a.null && b.null, ints, a.tt || b.tt, a.ff || b.ff, a.str || b.str⟩
 
+/-! ### Double arithmetic (#582)
+
+A double `+`, `-`, `*`, `/` of finite doubles is bounded from its inputs'
+bounds, by the trusted facts `FloatCode.add_scaled` … `div_scaled`: on
+scaled values, the exact result's interval widened by its rounding, then
+back to codes. Where the inputs may be infinite or NaN, or the result may
+come near the largest double, the bound is `top`. -/
+
+/-- The scaled ends of a bound of finite doubles' codes. -/
+def finEnds (x : Bound) : Option (Int × Int) :=
+  match x.lo, x.hi with
+  | some l, some h =>
+    if FloatCode.negInf < l ∧ h < FloatCode.posInf then some (FloatCode.scaled l, FloatCode.scaled h)
+    else none
+  | _, _ => none
+
+/-- The codes whose scaled value is in `[l, h]`. -/
+def codeBound (l h : Int) : Bound := ⟨some (FloatCode.codeLo l), some (FloatCode.codeHi h)⟩
+
+/-- The largest magnitude in `[l, h]`. -/
+def endsMag (l h : Int) : Nat := max l.natAbs h.natAbs
+
+set_option exponentiation.threshold 3200 in
+/-- `x + y` (`sub`: `x - y`) of doubles. -/
+def faddBound (sub : Bool) (x y : Bound) : Bound :=
+  match finEnds x, finEnds y with
+  | some (la, ha), some (lb, hb) =>
+    let S := endsMag la ha + endsMag lb hb
+    if S ≤ 2 ^ 2097 then
+      let e : Int := ((S / 2 ^ 50 + 1 : Nat) : Int)
+      if sub then codeBound (la - hb - e) (ha - lb + e) else codeBound (la + lb - e) (ha + hb + e)
+    else Bound.top
+  | _, _ => Bound.top
+
+set_option exponentiation.threshold 3200 in
+/-- `x * y` of doubles. -/
+def fmulBound (x y : Bound) : Bound :=
+  match finEnds x, finEnds y with
+  | some (la, ha), some (lb, hb) =>
+    let P := endsMag la ha * endsMag lb hb
+    if P ≤ 2 ^ 3171 then
+      let E : Int := ((P / 2 ^ 50 + 2 ^ 1074 : Nat) : Int)
+      match (Bound.mul ⟨some la, some ha⟩ ⟨some lb, some hb⟩) with
+      | ⟨some l, some h⟩ =>
+        codeBound ((l - E) / ((2 ^ 1074 : Nat) : Int)) ((h + E) / ((2 ^ 1074 : Nat) : Int))
+      | _ => Bound.top
+    else Bound.top
+  | _, _ => Bound.top
+
+/-- The least magnitude in `[l, h]`, where `0` is outside. -/
+def endsMin (l h : Int) : Nat := if 0 < l then l.natAbs else if h < 0 then h.natAbs else 0
+
+set_option exponentiation.threshold 3200 in
+/-- `x / y` of doubles, by magnitude. -/
+def fdivBound (x y : Bound) : Bound :=
+  match finEnds x, finEnds y with
+  | some (la, ha), some (lb, hb) =>
+    let Ma := endsMag la ha
+    let mb := endsMin lb hb
+    if 0 < mb ∧ Ma * 2 ^ 1074 ≤ 2 ^ 2097 * mb then
+      let K : Int := ((Ma * (2 ^ 1074 + 2 ^ 1024) / mb + 1 : Nat) : Int)
+      codeBound (-K) K
+    else Bound.top
+  | _, _ => Bound.top
+
 def BinFn.abs : BinFn → AVal → AVal → AVal
   | .bbox2 n, a, b => BlackBox.scalarAbs n (!a.null && !b.null)
   | .greatest, a, b => pickAbs Bound.greatest a b
@@ -946,8 +1011,11 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .dmul, a, b => arith Bound.mul a b
   | .ddiv, a, b => divAbs ddivBound a b
   | .dateAdd, a, b => arith Bound.add a b
-  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fmod, a, b | .fpow, a, b =>
-      arith (fun _ _ => Bound.top) a b
+  | .fadd, a, b => arith (faddBound false) a b
+  | .fsub, a, b => arith (faddBound true) a b
+  | .fmul, a, b => arith fmulBound a b
+  | .fdiv, a, b => arith fdivBound a b
+  | .fmod, a, b | .fpow, a, b => arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
   | .ipow, a, b => powAbs a b
@@ -1590,6 +1658,142 @@ theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Val
     | (obtain ⟨x, hx, hm⟩ := ha
        refine joinInt_mem_left ⟨x, ?_, hm⟩; simp_all; done)
 
+theorem le_of_natAbs_le {z : Int} {n : Nat} (h : z.natAbs ≤ n) : -(n : Int) ≤ z ∧ z ≤ n := by
+  omega
+
+theorem natAbs_le_endsMag {l h s : Int} (h1 : l ≤ s) (h2 : s ≤ h) : s.natAbs ≤ endsMag l h := by
+  unfold endsMag; omega
+
+theorem finEnds_mem {x : Bound} {i la ha : Int} (hx : x.Mem i) (h : finEnds x = some (la, ha)) :
+    FloatCode.IsFin i ∧ la ≤ FloatCode.scaled i ∧ FloatCode.scaled i ≤ ha ∧
+      (FloatCode.scaled i).natAbs ≤ endsMag la ha := by
+  unfold finEnds at h
+  cases hxl : x.lo with
+  | none => simp [hxl] at h
+  | some l =>
+    cases hxh : x.hi with
+    | none => simp [hxl, hxh] at h
+    | some hh =>
+      simp only [hxl, hxh] at h
+      by_cases hc : FloatCode.negInf < l ∧ hh < FloatCode.posInf
+      · simp only [hc, and_self, ↓reduceIte, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        have h1 := hx.1 l hxl
+        have h2 := hx.2 hh hxh
+        have m1 := FloatCode.scaled_mono h1
+        have m2 := FloatCode.scaled_mono h2
+        exact ⟨⟨by omega, by omega⟩, m1, m2, natAbs_le_endsMag m1 m2⟩
+      · simp [hc] at h
+
+theorem codeBound_mem {l h s : Int} {c : Int} (hs : FloatCode.scaled c = s) (hl : l ≤ s) (hh : s ≤ h) :
+    (codeBound l h).Mem c := by
+  refine ⟨fun x hx => ?_, fun x hx => ?_⟩
+  · cases hx; exact FloatCode.codeLo_le (by omega)
+  · cases hx; exact FloatCode.le_codeHi (by omega)
+
+theorem add_ends {la ha lb hb si sj sr : Int} {k e : Nat} (li : la ≤ si) (hi : si ≤ ha)
+    (lj : lb ≤ sj) (hj : sj ≤ hb) (he : -(k : Int) ≤ sr - (si + sj) ∧ sr - (si + sj) ≤ k)
+    (hke : k ≤ e) : la + lb - e ≤ sr ∧ sr ≤ ha + hb + e := by omega
+
+theorem sub_ends {la ha lb hb si sj sr : Int} {k e : Nat} (li : la ≤ si) (hi : si ≤ ha)
+    (lj : lb ≤ sj) (hj : sj ≤ hb) (he : -(k : Int) ≤ sr - (si - sj) ∧ sr - (si - sj) ≤ k)
+    (hke : k ≤ e) : la - hb - e ≤ sr ∧ sr ≤ ha - lb + e := by omega
+
+theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
+    {r : Int} (hr : sub = false → r = FloatCode.lift₂ (· + ·) i j)
+    (hr' : sub = true → r = FloatCode.lift₂ (· - ·) i j) :
+    (faddBound sub x y).Mem r := by
+  unfold faddBound
+  split
+  · rename_i la ha lb hb hfa hfb
+    obtain ⟨fi, li, hi, mi⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, lj, hj, mj⟩ := finEnds_mem hy hfb
+    dsimp only
+    split
+    · rename_i hS
+      have hle : (FloatCode.scaled i).natAbs + (FloatCode.scaled j).natAbs ≤
+          endsMag la ha + endsMag lb hb := Nat.add_le_add mi mj
+      have hke := Nat.add_le_add_right (Nat.div_le_div_right (c := 2 ^ 50) hle) 1
+      cases sub
+      · obtain ⟨-, he⟩ := FloatCode.add_scaled fi fj (Nat.le_trans hle hS)
+        obtain ⟨b1, b2⟩ := add_ends li hi lj hj (le_of_natAbs_le he) hke
+        rw [hr rfl]
+        exact codeBound_mem rfl b1 b2
+      · obtain ⟨-, he⟩ := FloatCode.sub_scaled fi fj (Nat.le_trans hle hS)
+        obtain ⟨b1, b2⟩ := sub_ends li hi lj hj (le_of_natAbs_le he) hke
+        rw [hr' rfl]
+        exact codeBound_mem rfl b1 b2
+    · exact Bound.mem_top _
+  · exact Bound.mem_top _
+
+theorem mul_ends {l h p q : Int} {k E : Nat} {K : Int} (hK : 0 < K) (hl : l ≤ p) (hh : p ≤ h)
+    {sr : Int} (hq : K * sr = q) (he : -(k : Int) ≤ q - p ∧ q - p ≤ k) (hkE : k ≤ E) :
+    (l - E) / K ≤ sr ∧ sr ≤ (h + E) / K := by
+  have a1 : l - E ≤ sr * K := by rw [Int.mul_comm, hq]; omega
+  have a2 : sr * K ≤ h + E := by rw [Int.mul_comm, hq]; omega
+  exact ⟨Int.ediv_le_of_le_mul hK a1, Int.le_ediv_of_mul_le hK a2⟩
+
+theorem fmulBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
+    (fmulBound x y).Mem (FloatCode.lift₂ (· * ·) i j) := by
+  unfold fmulBound
+  split
+  · rename_i la ha lb hb hfa hfb
+    obtain ⟨fi, li, hi, mi⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, lj, hj, mj⟩ := finEnds_mem hy hfb
+    dsimp only
+    split
+    · rename_i hP
+      have hle : (FloatCode.scaled i).natAbs * (FloatCode.scaled j).natAbs ≤
+          endsMag la ha * endsMag lb hb := Nat.mul_le_mul mi mj
+      have hkE := Nat.add_le_add_right (Nat.div_le_div_right (c := 2 ^ 50) hle) (2 ^ 1074)
+      obtain ⟨-, he⟩ := FloatCode.mul_scaled fi fj (Nat.le_trans hle hP)
+      have hm : (Bound.mul ⟨some la, some ha⟩ ⟨some lb, some hb⟩).Mem
+          (FloatCode.scaled i * FloatCode.scaled j) :=
+        Bound.mem_mul ⟨fun _ h => by cases h; exact li, fun _ h => by cases h; exact hi⟩
+          ⟨fun _ h => by cases h; exact lj, fun _ h => by cases h; exact hj⟩
+      split
+      · rename_i l h hb'
+        rw [hb'] at hm
+        have hK : (0 : Int) < ((2 ^ 1074 : Nat) : Int) := by exact_mod_cast Nat.two_pow_pos 1074
+        have hc : ((2 ^ 1074 : Nat) : Int) = 2 ^ 1074 := Int.natCast_pow 2 1074
+        obtain ⟨b1, b2⟩ := mul_ends hK (hm.1 l rfl) (hm.2 h rfl) (by rw [hc]) (le_of_natAbs_le he) hkE
+        exact codeBound_mem rfl b1 b2
+      · exact Bound.mem_top _
+    · exact Bound.mem_top _
+  · exact Bound.mem_top _
+
+theorem endsMin_le {lb hb s : Int} (hl : lb ≤ s) (hh : s ≤ hb) : endsMin lb hb ≤ s.natAbs := by
+  unfold endsMin; split
+  · omega
+  · split <;> omega
+
+set_option exponentiation.threshold 3200 in
+theorem fdivBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
+    (fdivBound x y).Mem (FloatCode.lift₂ (· / ·) i j) := by
+  unfold fdivBound
+  split
+  · rename_i la ha lb hb hfa hfb
+    obtain ⟨fi, li, hi, mi⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, lj, hj, mj⟩ := finEnds_mem hy hfb
+    dsimp only
+    split
+    · rename_i hc
+      obtain ⟨hmb, hM⟩ := hc
+      have hmin := endsMin_le lj hj
+      have hj0 : FloatCode.scaled j ≠ 0 := by
+        intro h0; rw [h0] at hmin; simp at hmin; omega
+      have hguard : (FloatCode.scaled i).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (FloatCode.scaled j).natAbs :=
+        Nat.le_trans (Nat.mul_le_mul_right _ mi) (Nat.le_trans hM (Nat.mul_le_mul_left _ hmin))
+      obtain ⟨-, he⟩ := FloatCode.div_scaled fi fj hj0 hguard
+      have h1 : (FloatCode.scaled i).natAbs * (2 ^ 1074 + 2 ^ 1024) / (FloatCode.scaled j).natAbs ≤
+          endsMag la ha * (2 ^ 1074 + 2 ^ 1024) / endsMin lb hb :=
+        Nat.le_trans (Nat.div_le_div_right (Nat.mul_le_mul_right _ mi))
+          (Nat.div_le_div_left hmin hmb)
+      obtain ⟨b1, b2⟩ := le_of_natAbs_le (Nat.le_trans he (Nat.add_le_add_right h1 1))
+      exact codeBound_mem rfl b1 b2
+    · exact Bound.mem_top _
+  · exact Bound.mem_top _
+
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
@@ -1620,10 +1824,16 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     by_cases hj : j = 0
     · simp [BinFn.apply, roundDivInt?, hj]
     · simp [BinFn.apply, roundDiv, roundDivInt?, hj]
-  case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
-  case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
-  case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
-  case fdiv => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fadd =>
+    exact arith_sound (f := FloatCode.lift₂ (· + ·))
+      (fun hx hy => faddBound_mem' false hx hy (fun _ => rfl) (fun h => by cases h))
+      (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fsub =>
+    exact arith_sound (f := FloatCode.lift₂ (· - ·))
+      (fun hx hy => faddBound_mem' true hx hy (fun h => by cases h) (fun _ => rfl))
+      (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fmul => exact arith_sound fmulBound_mem (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fdiv => exact arith_sound fdivBound_mem (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmod => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
