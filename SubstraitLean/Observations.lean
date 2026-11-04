@@ -174,6 +174,12 @@ structure ObsRow where
   /-- The shim that makes it so, if any: a written argument, a rewrite, a guard. -/
   shim : Option String := none
   evidence : Evidence := .none
+  /-- The engine gives the same result on every run (`false`: its choice
+  varies run to run, within `q`; D10 reads it). -/
+  deterministic : Bool := true
+  /-- Where the engine executes the row's functions, if not its default
+  (Polars: streaming; `"in-memory"` where streaming falls back). -/
+  engine : Option String := none
   deriving Repr, DecidableEq
 
 /-- A row says what its class needs: `refines` is exact, `refinesUpTo` is
