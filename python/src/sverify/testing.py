@@ -248,7 +248,9 @@ def _parse_row(text: str, doubles: bool = False) -> tuple:
 def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
     """The rows section of `substrait-check` output (`renderCell` in `Main.lean`)."""
     rows = []
-    for line in output.split("rows (")[1].splitlines()[1:]:
+    # Lines end at `\n` only: a string may hold U+0085 or U+2028, which
+    # `str.splitlines` also breaks at.
+    for line in output.split("rows (")[1].split("\n")[1:]:
         if not line.startswith("  ("):
             break
         rows.append(_parse_row(line, doubles))

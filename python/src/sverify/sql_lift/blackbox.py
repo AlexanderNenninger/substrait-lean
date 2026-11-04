@@ -47,7 +47,7 @@ class BlackBoxAgg(sge.Expression, sge.AggFunc):
 
 #: The type of each `black_box.Ty`.
 _TYPES: dict[str, Any] = {"int": dt.int64, "double": dt.float64, "str": dt.string,
-                          "bool": dt.boolean}  # fmt: skip
+                          "bool": dt.boolean, "date": dt.date}  # fmt: skip
 
 
 def _accepts(ty: str, t: Any) -> bool:
@@ -58,6 +58,8 @@ def _accepts(ty: str, t: Any) -> bool:
         or (ty == "double" and t.is_floating())
         or (ty == "str" and t.is_string())
         or (ty == "bool" and t.is_boolean())
+        or (ty == "date" and t.is_date())
+        or (ty == "atom" and (t.is_integer() or t.is_string() or t.is_boolean()))
     )
 
 
@@ -79,6 +81,9 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
         if isinstance(n, sge.ToBase64):
             # SQLGlot's `to_base64(x)`, DuckDB's other name for `base64`.
             return BlackBoxCall(this="base64", expressions=[n.this])
+        if isinstance(n, sge.Format):
+            # SQLGlot's `format(fmt, …)`.
+            return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
         if type(n) is not sge.Anonymous:
             return n
         name = n.name.lower()
@@ -103,7 +108,7 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
         e = sub(_unwrap(row.name, a))
         if not _accepts(ty, e.type):
             raise Unsupported(f"{row.name} of a {e.type} is not supported")
-        js.append(lf.to(e, _TYPES[ty]).json if ty != "any" else e.json)
+        js.append(lf.to(e, _TYPES[ty]).json if ty in _TYPES else e.json)
     out = _TYPES[row.result]
     return E(_fn(row.name, js, out), out)
 
