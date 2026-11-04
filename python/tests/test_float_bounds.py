@@ -11,7 +11,9 @@
 """
 
 import math
+import re
 from fractions import Fraction
+from pathlib import Path
 
 import duckdb
 import ibis
@@ -92,6 +94,40 @@ def test_duckdb_meets_the_proved_bounds(xs: list[float]) -> None:
     assert abs(got_sd - sd) <= math.sqrt(tol_var) * (1 + 1e-12) + 1e-300 + 2 * float(U) * (
         sd + math.sqrt(tol_var)
     )
+
+
+def kahan(xs: list[float]) -> float:
+    """Polars's `KahanSum` (polars-sum-float): the running sum, without the
+    compensation."""
+    s = c = 0.0
+    for x in xs:
+        y = x - c
+        t = s + y
+        c = (t - s) - y
+        s = t
+    return s
+
+
+@settings(max_examples=60, deadline=None)
+@given(xs=adversarial())
+def test_kahan_meets_the_tree_bound(xs: list[float]) -> None:
+    """`Rnd.kahan_near`: Kahan's sum is within the sequential sum's bound
+    `γ n · Σ (|x| + tiny)`, as a tree sum is."""
+    s, mag = exact(xs)
+    assert abs(Fraction(kahan(xs)) - s) <= gamma(len(xs)) * mag
+    assert abs(Fraction(kahan(xs[:3])) - exact(xs[:3])[0]) <= gamma(len(xs[:3])) * exact(xs[:3])[1]
+
+
+def test_rows_cite_theorems_float_bounds_has() -> None:
+    """The core cannot see `float-bounds`' theorems: the names its engine rows
+    cite (`floatBoundsTheorems`) are the ones `float-bounds` checks exist."""
+    root = Path(__file__).resolve().parents[2]
+    core = (root / "SubstraitLean" / "EngineTables.lean").read_text()
+    fb = (root / "float-bounds" / "FloatBounds" / "Epsilon.lean").read_text()
+    names = re.compile(r'"(FloatBounds\.[\w.]+)"')
+    cited = core[core.index("def floatBoundsTheorems") :].split("\n\n")[0]
+    checked = fb[fb.index("run_cmd do") :]
+    assert set(names.findall(cited)) == set(names.findall(checked)) != set()
 
 
 def test_cancellation_is_within_the_bound_but_not_exact() -> None:

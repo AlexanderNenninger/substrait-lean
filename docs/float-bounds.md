@@ -187,6 +187,73 @@ The homelab metrics rollup states its contract this way:
 )
 ```
 
+## The engines' orders and `epsilon` (#444)
+
+An engine may add a double `SUM` in another order than the reference, so a
+contract's double `SUM` or `AVG` is `approx`: within a per-plan `ε` of a
+result the reference allows. `substrait-check --contract` reports it per
+output column (`"epsilon"`, `SubstraitLean/Epsilon.lean`), and
+[`Epsilon.lean`](../float-bounds/FloatBounds/Epsilon.lean) proves it for every
+order the engine profiles allow (`sum_order`):
+
+| Behaviour | Algorithm | Theorem |
+|---|---|---|
+| `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order, the reference's `FloatSums` | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
+| `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
+| `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../characterization/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
+
+Each is within `γ n · Σ (|xᵢ| + tiny)` of the exact sum, the sequential
+sum's bound, for `n ≤ 2³²` doubles. For a tree, an error grows with the
+additions on one value's path to the root (Higham, §4.2). For Kahan's sum the
+proof is cruder than Knuth's `(2u + O(n u²)) Σ |xᵢ|`: each step after the
+second adds at most `2u |x| + 3u · tiny + 14 u² A` to the error of `s − c`,
+and the first two steps are exact or nearly so, which keeps `n = 3` within
+`γ 3`. So two results of any of these orders are within twice the core's
+tolerance of each other:
+
+| Theorem | `"epsilon"` |
+|---|---|
+| `epsilon_sum`, `epsilon_avg` | `"abs"`: `2 · sumTolScaled N Bs`, `2 · avgTolScaled N Bs`, scaled by `2¹⁰⁷⁴` |
+| `epsilon_sum_rel` | `"rel"` of a `SUM` of values of one sign: `2γ/(1 − γ)`, `γ = γ n` |
+| `epsilon_avg_rel` | `"rel"` of an `AVG` of values of one sign whose mean is at least `2⁻¹⁰²²` in magnitude: `γ = γ (n + 2)` |
+
+The relative bounds need more of IEEE 754 than the standard model has:
+every rounded value is a multiple of `2⁻¹⁰⁷⁴`, and such a multiple rounds
+with a relative error, since one below the normal range is a double
+(`StdModel.Grid`; a sum that underflows is exact, Hauser 1996). The bounds
+are proved once for a rounding `Rnd` with error `u · (|z| + τ)` on a set of
+values closed under `+` and `−`: the standard model is `τ = tiny` on every
+value, `Grid` is `τ = 0` on the multiples of `2⁻¹⁰⁷⁴`.
+
+The checker marks a bound `"proved"` where these theorems cover it: every
+engine's `sum_order` is in the table above, the plan has no `fp32` column
+(Polars sums `Float32` in single precision), and the measure's argument,
+filter and groups are the same values on every engine. A route that rests on
+a proved bound has evidence `proved`, and the `sum_order` rows of DuckDB and
+Polars cite `StdModel.epsilon_sum` ([realizability](realizability.md)).
+
+### Through arithmetic
+
+`"epsilon_by_engine"` carries each column's `ε` through the double arithmetic
+between the aggregates and the output (#568, forward mode).
+[`Propagate.lean`](../float-bounds/FloatBounds/Propagate.lean) proves the
+rules: the reference rounds the exact result `z` of its inputs once, the
+engine rounds `z'` of its own, and `StdModel.transfer` adds the two roundings
+to the difference `Δ` of the exact results. With `|a| ≤ ma`, `|b| ≤ mb`:
+
+| Operation | Rule |
+|---|---|
+| `a ± b` (`rule_add`, `rule_sub`) | `(εa + εb)(1 + u) + 2u (ma + mb + tiny)` |
+| `a · b` (`rule_mul`) | `(ma εb + mb εa + εa εb)(1 + u) + 2u (ma mb + tiny)` |
+| `a / b`, `b` the same on both sides, `|b| ≥ lb > 0` (`rule_div`) | `(εa / lb)(1 + u) + 2u (ma / lb + tiny)` |
+| Polars's `a / b` by a literal, `fl(a · fl(1/b))` (`rule_div_recip`) | `(εa / lb)(1 + u)² + (3u + u²) ma / lb + (u (1 + u)(ma + εa) + 2u) tiny` |
+
+Elementary functions other than `sqrt` are the platform's `libm`, which
+IEEE 754 does not require to round correctly: their bounds stay probed, not
+proved. The checker evaluates the formulas in doubles; every term is
+nonnegative, so each rounding is relative, and a factor `1 + 2⁻⁴⁰` covers
+them.
+
 ## The generic properties of statistical aggregates
 
 The reference allows any result of `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`

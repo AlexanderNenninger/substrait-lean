@@ -40,7 +40,8 @@ namespace Substrait
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
   else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
-  -- Not modelled (Kahan's compensated sum): any double.
+  -- Not modelled here (Kahan's compensated sum, a constant run's product):
+  -- any double. `float-bounds` bounds both (`StdModel.Summed`).
   else True
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour. An

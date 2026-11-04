@@ -358,3 +358,12 @@ theorem StdModel.epsilon_avg_rel (hg : M.Grid) {xs : List ℝ} (hne : xs ≠ [])
 end FloatBounds
 
 end
+
+/-! The theorems the core's engine rows name (`floatBoundsTheorems` in
+`SubstraitLean/EngineTables.lean`) are these. -/
+open Lean in
+run_cmd do
+  for thm in ["FloatBounds.StdModel.epsilon_sum", "FloatBounds.StdModel.epsilon_avg",
+      "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel"] do
+    unless (← getEnv).contains thm.toName do
+      throwError "no theorem {thm}"
