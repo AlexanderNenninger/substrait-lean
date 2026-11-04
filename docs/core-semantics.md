@@ -7,13 +7,16 @@ the reference's and each engine's
 This page is the design pass of step 3 of epic
 [#544](https://github.com/AlexanderNenninger/substrait-lean/issues/544). It
 lists, per function, the points where profiles differ, gives the tables that
-hold each profile's choices, says which values the core needs, and orders
-#444's steps. Wave 3 of #544 builds its function tables in this shape.
+hold each profile's choices, says which values the core needs, states when a
+translation between two profiles is sound, and orders #444's steps. The
+approach is CASL's loose semantics and WebAssembly's profiles, applied to
+Substrait, with refinement as CompCert and Alive2 state it
+([Prior work](#prior-work)). Wave 3 of #544 builds its function tables in this shape.
 
 Where a choice is still open, the page names the options with a
 recommendation and lists it under [Open questions](#open-questions) for the
 project owner. Everything else follows decisions already made on #185, #202,
-#209, #257, #336, #427 and #444; [reference-semantics.md](reference-semantics.md)
+#209, #257, #336, #427 and #444, and on this page's review ([Decisions](#decisions)); [reference-semantics.md](reference-semantics.md)
 records them.
 
 ## The shape
@@ -61,7 +64,7 @@ set. A theorem that a plan cannot raise is then a theorem about one profile's
 raise set, and holds on every profile whose raise set is smaller. This keeps
 principle 4 (an error means "may raise", so rewrites stay refinements) and
 lets DuckDB's extra raises (`MIN % -1`, `<<` of a negative number) stay
-inside the core without new options. Recommendation in [Q2](#q2-raises-in-the-core).
+inside the core without new options. Decided ([D2](#d2-raises-in-the-core)).
 
 ### Values of an option the YAML does not list
 
@@ -72,7 +75,7 @@ where Substrait's `shift_right` has no option. Its `-∞` for `ln(0)` is the
 YAML's `on_log_zero: MINUS_INFINITY`, and needs nothing new. The core needs every profile's native
 behaviour, so an option's behaviours are the YAML's values and the
 behaviours an engine fact records, each extra one tagged with its fact.
-Recommendation in [Q3](#q3-behaviours-outside-the-yaml).
+Decided ([D3](#d3-behaviours-outside-the-yaml)).
 
 ## Options per function
 
@@ -137,7 +140,8 @@ the first column are the names the tables below use.
 | `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d`, may round past; clamped ([quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
 | `tie_pick` (sverify's: `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE`, ranks over ties) | any row of the tie | `any_value` "selects an arbitrary value" | any row; each measure may take its own | the row it read first, which depends on parallelism ([mode-ties](../characterization/duckdb/facts/duckdb-mode-ties.json), arg-min-nulls) |
 | `tie_order` (sverify's: `STRING_AGG`, `collect`, a sort, a window's order) | any order of the ties | not specified | any order | not stable (mode-ties) |
-| `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | the sort direction states it; `UNSPECIFIED` and `CLUSTERED` exist | stated by every key; others refused | `NULLS_LAST` by default ([F2](../characterization/duckdb/facts/duckdb-F2.json)) |
+| `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | stated by the key's direction; `UNSPECIFIED` leaves it open | as the key states; `NULLS_LAST` for `UNSPECIFIED` ([Q8](#q8-the-references-null-order)) | `NULLS_LAST` by default ([F2](../characterization/duckdb/facts/duckdb-F2.json)); either when the SQL states it |
+| `clustered` (a sort key's `CLUSTERED` direction) | equal keys adjacent, the groups in any order | `SORT_DIRECTION_CLUSTERED` | the same relation | an `ORDER BY` on the keys, which clusters them |
 | `ntile_spread` (sverify's) | the SQL standard's, spread out | not specified | the SQL standard's | the SQL standard's (DataFusion spreads, [DF-11](../upstream/bugs/DF-11.json)) |
 | `float_to_int` (casts) | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not specified | `TRUNCATE` (#209) | `TIE_AWAY_FROM_ZERO`; shimmed with `trunc` ([R9](../characterization/duckdb/facts/duckdb-R9.json)) |
 | `cast_failure` | `THROW_EXCEPTION`, `RETURN_NULL` | the cast's `failureBehavior`; `UNSPECIFIED` exists | `THROW_EXCEPTION` for `UNSPECIFIED` | both native ([R8](../characterization/duckdb/facts/duckdb-R8.json)) |
@@ -193,7 +197,7 @@ exactly one group; wave 3's tables give each function its group.
 | windows | `win.agg` | aggregates over a frame | the aggregate's group, with `sum_order` over the frame |
 | casts | `cast.num` | double or decimal to integer, integer to a narrower one | `float_to_int`, `cast_failure` |
 | casts | `cast.dec` | to and from decimals, integer to double | `decimal_rescale`, `cast_failure` |
-| relations | `rel.sort` | `orderBy`, a window's order | `null_order`, `tie_order` |
+| relations | `rel.sort` | `orderBy`, a window's order | `null_order`, `clustered`, `tie_order` |
 | relations | `rel.fetch` | `fetch` | `tie_order` (the rows taken of a tie) |
 | relations | `rel.keys` | `aggregate`'s keys, `distinct`, joins, `UNION DISTINCT`, `INTERSECT`, `EXCEPT` | `nan_equality`, `zero_sign` |
 
@@ -350,7 +354,7 @@ Python reads them for four things:
 The Lean tables are the source. A test dumps them as JSON (an `#eval` in
 `Examples.lean`, or `substrait-check --tables`) and compares them with the
 Python tables row by row, as `tests/test_black_box.py` does for the black
-boxes. Alternatives in [Q1](#q1-where-the-tables-live).
+boxes. Decided ([D1](#d1-where-the-tables-live)).
 
 ### The realizability table
 
@@ -373,7 +377,7 @@ a double is an `int` code in SQL order with one zero and one NaN
 |---|---|---|
 | `-0.0` | a code apart from `+0.0`, ordered by `zero_sign` | Yes, before step 2: `Profile.substrait` gives `1.0 / -0.0 = -∞`. Step 1 can land with it. |
 | NaN's sign | NaN codes with a sign, ordered by `nan_order` | Yes, before step 2 (Substrait), and for DuckDB's `signbit` ([duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json)). |
-| NaN payloads | not observed by any function sverify models | No. Recommendation in [Q4](#q4-nan-payloads). |
+| NaN payloads | not observed by any function sverify models | No: a NaN is one of two codes, by its sign ([D4](#d4-nan-payloads)). |
 | `fp32` | the `FloatFormat` layer ([PR #558](https://github.com/AlexanderNenninger/substrait-lean/pull/558), #417 stage 1) carries the codes per format; the second instance is #417 stage 3 | No: the core is generic over `FloatFormat` from the start, and every profile refuses `fp32` arithmetic until stage 3 (fact [duckdb-R12](../characterization/duckdb/facts/duckdb-R12.json)). |
 | Timestamp precisions | `precisionTimestamp` at 0, 3, 6 and 9, a count of units ([#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323)) | No: the value is an `int` already; the precision is the type's. Refused in every profile until #323. |
 | Decimal division | `DECIMAL(p, s)` is its unscaled `int`; division needs the YAML's result type and a rounding ([#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27)) | No: refused in every profile until #27. |
@@ -390,6 +394,147 @@ never meets the new codes, so its proofs do not change. The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
+## Translations between profiles
+
+A plan means something only under a profile, so the unit sverify reasons
+about is the pair: a plan `r` under a profile `P`, which allows the results
+`Allowed_P(r)` and may raise on the rows of its raise set `Raises_P(r)`.
+Everything that moves a plan, between profiles or within one, is one
+relation on these pairs.
+
+### Soundness
+
+`(Q, t)` refines `(P, r)`, written `(Q, t) ⊑ (P, r)`, when on every input
+
+- every result `Q` allows for `t` is one `P` allows for `r`:
+  `Allowed_Q(t) ⊆ Allowed_P(r)`, and
+- `t` under `Q` raises only where `r` under `P` may:
+  `Raises_Q(t) ⊆ Raises_P(r)`.
+
+A translation `T : P → Q` maps plans to plans or refuses them, and it is
+sound when `(Q, T r) ⊑ (P, r)` for every plan `r` it does not refuse. A
+theorem about `Allowed_P(r)`, the kind `verify` proves, then holds of every
+result `Q` returns for `T r`, and a proof that `r` cannot raise under `P`
+carries over. A refusal is always sound.
+
+The relation covers every move sverify makes:
+
+| Move | As refinement | Today |
+|---|---|---|
+| A rewrite within a profile | `(P, t) ⊑ (P, r)` | `Rel.Refines` ([Allowed.lean](../SubstraitLean/Allowed.lean)), `Rel.refines_of_perm` |
+| A narrower profile, the same plan | `(P, r) ⊑ (core, r)` when `P`'s choices are within the core's | step 1c's `Rel.AllowedP_mono` |
+| Lowering to an engine | `(E, T_E r) ⊑ (reference, r)` | `Rel.duckdb_shim_allowed`, `Lowering.lower_correct`, `Rel.guardFree_allowed` |
+| Lifting from a source language | `(X, s) ⊑ (P, L s)`: whatever `X` does with `s` is allowed for the lifted plan under `P` | the SQLGlot lift, trusted and tested; `LiftDuckDB`'s entries proved per rule (#242) |
+| A round trip | `(Substrait, s) ⊑ (core, read s)` and back | step 2 |
+
+A lift points the other way from a lowering: it over-approximates its source,
+so that a theorem about the lifted plan covers what the source language
+does. A query written in DuckDB's SQL, lifted, checked under the reference
+and lowered to Polars is the chain
+`(Polars, T_Polars (L s)) ⊑ (reference, L s) ⊒ (DuckDB, s)`: the proof is
+about the middle, and both ends are covered by it.
+
+### Composition
+
+`⊑` is reflexive and transitive, because both of its parts are inclusions.
+So the identity is a sound translation, and sound translations compose, as
+CompCert's passes do ([Prior work](#refinement-of-programs)): if
+`T : P → Q` and `U : Q → R` are sound, so is `U ∘ T : P → R`. Profiles and
+sound translations form a preorder, and every path through it is sound. Two
+consequences:
+
+- The translation switch of #444 (step 5) needs nothing new per query:
+  the query's proof is about `(reference, r)`, and each engine's translation
+  is sound on its own.
+- A translation between two engines (a plan checked under DuckDB's profile,
+  run on Polars) does not have to go through the reference. Going through it
+  would lose plans: DuckDB's `∞ − ∞` is NaN and the reference raises there,
+  so a DuckDB-checked plan has no sound translation into the reference on
+  those rows. The obligations below come from any two profiles' rows
+  directly.
+
+### Obligations, option by option
+
+The core is compositional: replacing a call or an operator by one that
+refines it refines the plan (`Rel.AllowedP_congr`, step 1c, the profile
+form of today's `Rel.evalI_mapExprs` and `Expr.Exact`). A translation that
+keeps the plan's shape and changes calls and operators one at a time is then
+sound when each change is, and each change is about the options of one
+group. For two profiles `P` and `Q`, a group and one of its options, with
+`p = P.allows` and `q = Q.allows` for the plan's preferences:
+
+| Case | Realization | Example |
+|---|---|---|
+| `q ⊆ p` | native: the call as it is | `overflow`, reference to DuckDB: both `ERROR` |
+| `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `zero_sign`, reference (`ONE_ZERO`) to DuckDB (`IEEE`): `Dialect.canon`; `nan_creation` (raise) to DuckDB (`NAN`): a guard that raises (`UnFn.raise`); `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
+| `q ⊄ p` only on inputs a precondition excludes | a precondition, listed in `Report.assumed` and checked on the data | `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
+| none of these | refused | `ntile_spread` on DataFusion ([DF-11](../upstream/bugs/DF-11.json)); `FLOOR` modulus anywhere today |
+
+`obligations P Q` lists, for every group and option, which case holds and
+which shim or precondition discharges it. It is generated from `P`'s and
+`Q`'s choices rows and the shim table, so it stays current with the facts.
+Two of its rows are tables this page already has:
+`obligations reference E` is the [realizability table](#the-realizability-table)
+for the engine `E`, and `obligations substrait reference` is step 2's diff
+between Substrait and the reference.
+
+Two limits of the per-option view:
+
+- A shim's own calls must be native in `Q`, or be discharged in turn. The
+  generator checks this; a shim that needs a refused behaviour makes its row
+  refused.
+- Relational options act on operators, not calls: `null_order` is
+  discharged by writing the sort key's NULL placement, `tie_order` and
+  `tie_pick` by a total order (`tie_free`) or a refusal, and `sum_order`
+  (any order in `P`, a fixed one in `Q`) is native, while the converse needs
+  an ordered aggregation (`Dialect.float_sum`), at the cost of a sort.
+
+### A worked example: NULL order
+
+A sort key's NULL placement shows each case of the table. Take a plan with
+`ORDER BY x` whose key's direction is `UNSPECIFIED`.
+
+- Under `Profile.substrait`, `null_order` is open: `p` is both placements.
+  Every engine fixes one, so `q ⊆ p`, and the plan translates to any engine
+  natively, with no shim and whatever its default.
+- Under the reference, `p` is `NULLS_LAST` (Q8). DuckDB's default is the
+  same (F2), so the key is native there. An engine whose default differs
+  needs the shim: the SQL states `NULLS LAST`, which costs nothing at run
+  time.
+- A key that states `NULLS_FIRST` has `p = {NULLS_FIRST}` under every
+  profile. On DuckDB, `q` is `NULLS_LAST` by default, so it needs the shim:
+  the written SQL says `NULLS FIRST`. The writers do this for every key
+  today, so DuckDB realizes every placement.
+- A `CLUSTERED` key under Substrait allows any order with equal keys
+  adjacent. An engine without clustering realizes it by sorting on the
+  keys: a sorted order is clustered, so `q ⊆ p`, at the cost of a sort.
+
+`obligations substrait duckdb` holds the first and last of these,
+`obligations reference duckdb` the second and third, each generated from the
+`null_order` and `clustered` rows of the two profiles.
+
+### Proved once, or checked per plan
+
+Two ways to know a translation is sound:
+
+- Prove the translator once. sverify does this per table entry: the lowering
+  search (`LoweringSearch.lean`, #241) finds a template for each function and
+  proves it, `Lowering.lower_correct` proves that a lowering with proved
+  entries is sound, and the generated modules are checked in CI. The lift
+  (`LiftDuckDB`) follows the same pattern. Composition is then a theorem
+  proved once, and no plan pays for a proof at run time.
+- Check each translated plan: given `r` and `T r`, prove `(Q, T r) ⊑ (P, r)`
+  for that plan alone. This covers translators sverify did not write, such
+  as another producer's Substrait plan of the same query, or an engine's own
+  optimized plan.
+
+Both are established ([Prior work](#translation-validation)): CompCert proves
+most passes and validates register allocation per run, and Alive2 validates
+LLVM per function. The recommendation is to prove translators once, entry by entry, as today,
+and to add per-plan checks only for translations sverify does not own
+([Q7](#q7-per-plan-checks)). `obligations P Q` is what both need: the
+entries to prove, or the conditions to check.
+
 ## The steps of #444
 
 Each step is a PR or a short stack, and each ends in a theorem.
@@ -399,67 +544,222 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 0 | This page. Wave 3's tables (#544 step 4) with a `group` column and the Python `Option`/`Fn` rows; `optionAccepts` read from the tables. | Nothing new; tests check the Lean and Python tables agree and that every function has a group. |
 | 1a | The options table, `Choice`, `ProfileTable`, and `Profile.reference.table`. | `optionAccepts` equals the reference table's lookup (`#guard` over every group and option); no behaviour change. |
 | 1b | `-0.0` and the signed NaN in `FloatFormat`, with `canon`. | `canon` is idempotent and order-preserving; every existing operation commutes with it on the reference's codes. |
-| 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |
+| 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |
 | 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). |
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |
-| 3b | The realizability table, generated, and its CI check. | For DuckDB, realizability: `Allowed_duckdb(T_duckdb(plan)) ⊆ Allowed_reference(plan)`, which is `Rel.duckdb_shim_allowed` read as refinement. |
+| 3b | `obligations P Q` for any two profiles, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included. |
 | 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine. | Realizability for the second engine, from its table and #271's shims. |
+| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile translated to the second engine directly. | Soundness of the second engine's translation from `obligations reference E`, and of the direct one from `obligations duckdb E`; the query's proof reused by composition. |
 
 Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
 different tables. The Lean side of step 0 and 1a can merge into one PR if
 wave 3 lands first.
 
+## Prior work
+
+The design follows five lines of work, and departs from each where SQL
+engines need it. Full references are at the end of this section.
+
+### Loose specifications and profiles
+
+In CASL, a specification denotes the class of all its models, kept as large
+as possible to leave room for implementations [CASL, §3.1], and a refinement
+is correct when every model of the refined specification is a model of the
+original [MST04, §3]. The core is such a loose specification, a profile adds
+constraints, and `Allowed_P ⊆ Allowed_core` is model-class inclusion. The
+models here are the results of one evaluator per input, so the inclusion is
+a check over finite choice tables (`decide`), with no general theorem
+proving.
+
+WebAssembly's spec is the closest precedent for profiles of one language
+[Wasm, Profiles]. Its full profile holds every behaviour, a NaN result is any
+element of a set the spec defines (`nans_N`), and the deterministic profile
+removes the rules that allow more than one, so that every NaN an operation
+creates is the positive canonical one; every profile is a subset of the full
+one. The core is the full profile and the reference a deterministic one. The
+reference goes further on zeros: Wasm keeps `-0` and `+0` apart, and its
+`fmin(-0, +0)` is `-0`, while the reference has one zero (#89). D4's NaN
+codes by sign follow Wasm's treatment of the sign as a choice; IEEE 754 does
+not interpret a NaN's sign and only recommends that payloads propagate
+[IEEE754, 6.3, 6.2.3].
+
+### Refinement of programs
+
+CompCert proves that every behaviour of the compiled program is one of the
+source's (backward simulation), for sources that cannot go wrong, and that
+correct passes compose [Leroy09, Defs. 2–3, Thm. 2]. `⊑` is the same
+inclusion, input by input, and composes for the same reason. LLVM's
+refinement allows a transformation to remove non-determinism and never to
+add it [Alive2, §1], which is how a profile narrows the core.
+
+sverify departs in what an error allows. In CompCert a source that goes wrong
+constrains the target not at all, and in LLVM undefined behaviour allows any
+result [Leroy09, §2.1; Alive2, §5.1]. In sverify an error means "may raise":
+where `P` may raise, a translated plan may raise or return a result `P`
+allows, and nothing else, and it may raise only where `P` may. This is
+Alive2's check that the target has undefined behaviour only where the source
+does [Alive2, §5.3], read for raises. Poison and
+`undef` [Lee17, §2–4] have no counterpart: the core's open choices are sets
+of defined values.
+
+### Translation validation
+
+Pnueli, Siegel and Singerman validate each run of a translator, so that the
+translator itself can change without a new proof [PSS98], and Necula validates every pass of GCC this
+way [Necula00]; Alive2 does it per function, with bounded unrolling. CompCert
+mixes both: an unverified translator followed by a verified validator is a
+verified translator [Leroy09, Thm. 1], and register allocation is checked
+this way [Leroy09, §8.2.4]. sverify's lowering and lift searches are of this
+kind at the granularity of table entries: an unverified search proposes an
+entry, Lean proves it at build time, and `Lowering.lower_correct` composes the
+entries. Q7 asks whether to also check single plans.
+
+### Institutions
+
+An institution comorphism translates sentences forward and models back, so
+that a sentence holds of a translated model exactly when its translation
+holds [GR02], and comorphisms compose; within one logic, a refinement is a
+theory morphism [GB92]. A translation `T : P → Q` has this shape: plans go
+forward, `Q`'s results are read back as results of `P`, and a theorem about
+`Allowed_P(r)` holds of what `Q` returns for `T r`. sverify uses only the
+preorder: every profile shares the core's values, so the map back is the
+identity, or `canon` where `Q` keeps two zeros. A translation into a profile
+with other values (DuckDB's `HUGEINT` sums) reads them back by a cast in the
+written plan.
+
+### Formal semantics of SQL
+
+Guagliardo and Libkin give SQL's queries one semantics, with bags and
+three-valued logic but without aggregation, `ORDER BY` or `LIMIT`, and test
+it on 100,000 random queries against PostgreSQL and Oracle, with a variant
+for each where they differ [GL17, §4]. Benzaken and Contejean mechanise SQL
+with grouping and aggregates in Coq, with functions and aggregates as fixed
+interpretations passed as parameters [BC19, §3.2]. HoTTSQL and its successor
+U-semiring model relations as K-relations and prove rewrites, leaving
+functions uninterpreted, without NULLs [HoTTSQL, §7; UDP, §6.4], and
+Ricciotti and Cheney mechanise SQL with NULLs over two- and three-valued
+logic [RC22].
+
+sverify follows them in bags, three-valued logic and NULLs equal in grouping,
+and in taking each function's meaning as a parameter (here, the profile).
+None of them gives an engine's choice a set of outcomes, and none models
+`ORDER BY` with ties, `LIMIT`, floating point, NaN or `-0.0`. Guagliardo and
+Libkin's engine variants are separate semantics; here they are profiles of
+one core, so translations between them can be stated. Their random
+differential testing against two engines is the closest precedent for
+sverify's engine facts.
+
+Substrait's own function tests record one result per call, `<!ERROR>`, or
+`<!UNDEFINED>` for any result, and run an omitted option under each of its
+values ([`tests/README.md`](https://github.com/substrait-io/substrait/blob/main/tests/README.md)).
+Step 4 reads `<!UNDEFINED>` as the core's whole set and an omitted option as
+the option left open.
+
+### References
+
+- [Alive2] N. P. Lopes, J. Lee, C.-K. Hur, Z. Liu, J. Regehr. Alive2: Bounded Translation Validation for LLVM. PLDI 2021. [doi:10.1145/3453483.3454030](https://doi.org/10.1145/3453483.3454030)
+- [BC19] V. Benzaken, É. Contejean. A Coq Mechanised Formal Semantics for Realistic SQL Queries. CPP 2019. [doi:10.1145/3293880.3294107](https://doi.org/10.1145/3293880.3294107)
+- [CASL] E. Astesiano, M. Bidoit, H. Kirchner, B. Krieg-Brückner, P. D. Mosses, D. Sannella, A. Tarlecki. CASL: The Common Algebraic Specification Language. TCS 286(2), 2002. [doi:10.1016/S0304-3975(01)00368-1](https://doi.org/10.1016/S0304-3975(01)00368-1)
+- [GB92] J. A. Goguen, R. M. Burstall. Institutions: Abstract Model Theory for Specification and Programming. JACM 39(1), 1992. [doi:10.1145/147508.147524](https://doi.org/10.1145/147508.147524)
+- [GL17] P. Guagliardo, L. Libkin. A Formal Semantics of SQL Queries, Its Validation, and Applications. PVLDB 11(1), 2017. [doi:10.14778/3136610.3136613](https://doi.org/10.14778/3136610.3136613)
+- [GR02] J. Goguen, G. Roșu. Institution Morphisms. Formal Aspects of Computing 13, 2002. [doi:10.1007/s001650200013](https://doi.org/10.1007/s001650200013)
+- [HoTTSQL] S. Chu, K. Weitz, A. Cheung, D. Suciu. HoTTSQL: Proving Query Rewrites with Univalent SQL Semantics. PLDI 2017. [doi:10.1145/3062341.3062348](https://doi.org/10.1145/3062341.3062348)
+- [IEEE754] IEEE Standard for Floating-Point Arithmetic, IEEE 754-2019. [doi:10.1109/IEEESTD.2019.8766229](https://doi.org/10.1109/IEEESTD.2019.8766229). Clauses 6.3 and 6.2.3 as quoted in [C++ LWG issue 4101](https://cplusplus.github.io/LWG/issue4101) and on LLVM's forum; the standard itself was not read.
+- [Lee17] J. Lee, Y. Kim, Y. Song, C.-K. Hur, S. Das, D. Majnemer, J. Regehr, N. P. Lopes. Taming Undefined Behavior in LLVM. PLDI 2017. [doi:10.1145/3062341.3062343](https://doi.org/10.1145/3062341.3062343)
+- [Leroy09] X. Leroy. A Formally Verified Compiler Back-end. JAR 43(4), 2009. [doi:10.1007/s10817-009-9155-4](https://doi.org/10.1007/s10817-009-9155-4)
+- [MST04] T. Mossakowski, D. Sannella, A. Tarlecki. A Simple Refinement Language for CASL. WADT 2004, LNCS 3423.
+- [Necula00] G. C. Necula. Translation Validation for an Optimizing Compiler. PLDI 2000. [doi:10.1145/349299.349314](https://doi.org/10.1145/349299.349314)
+- [PSS98] A. Pnueli, M. Siegel, E. Singerman. Translation Validation. TACAS 1998, LNCS 1384. [doi:10.1007/BFb0054170](https://doi.org/10.1007/BFb0054170)
+- [RC22] W. Ricciotti, J. Cheney. A Formalization of SQL with Nulls. JAR 66, 2022. [doi:10.1007/s10817-022-09632-4](https://doi.org/10.1007/s10817-022-09632-4)
+- [UDP] S. Chu, B. Murphy, J. Roesch, A. Cheung, D. Suciu. Axiomatic Foundations and Algorithms for Deciding Semantic Equivalences of SQL Queries. PVLDB 11(11), 2018. [vldb.org](https://www.vldb.org/pvldb/vol11/p1482-chu.pdf)
+- [Wasm] WebAssembly Core Specification, 3.0: [NaN propagation](https://webassembly.github.io/spec/core/exec/numerics.html#nan-propagation) and [Profiles](https://webassembly.github.io/spec/core/appendix/profiles.html).
+
+## Decisions
+
+Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
+D1–D5 as the first draft recommended, D6 as its alternative.
+
+### D1. Where the tables live
+
+Lean is the source; Python mirrors it, and a test compares the two, as
+`tests/test_black_box.py` does for the black boxes. Lean proves the
+refinement by `decide` on its own table, so the proof depends on no parser
+and no generated module.
+
+### D2. Raises in the core
+
+The core allows raising everywhere, as the reference's correctness does
+today, and each profile states its raise set. It keeps principle 4 and
+admits each engine's extra raises (`MIN % -1`, `<<` of a negative number)
+without new options.
+
+### D3. Behaviours outside the YAML
+
+An option's core set is the YAML's values and the behaviours the engine
+facts record, each extra one tagged with its fact. Every engine profile then
+refines the core by construction, and the facts say why each extra is there.
+
+Each such gap, where Substrait could state the behaviour (an option, an
+option's value, a default) and does not, is also an entry of the upstream
+ledger with `kind: "spec-gap"` ([upstream/README.md](../upstream/README.md)).
+This design pass found seven, each checked against Substrait's `main` at
+`a4d8e00`:
+
+| Entry | The gap | Options here |
+|---|---|---|
+| [ST-1](../upstream/bugs/ST-1.json) | a shift by a count outside the width, bits shifted out | `shift_range` |
+| [ST-2](../upstream/bugs/ST-2.json) | whether `atan2(0, 0)` is a domain error | `on_domain_error` |
+| [ST-3](../upstream/bugs/ST-3.json) | `corr`, `variance`, `std_dev` of one pair, a constant side, or non-finite values | `stat_degenerate` |
+| [ST-4](../upstream/bugs/ST-4.json) | NaN and `-0.0` in equality, grouping and sorting | `nan_equality`, `nan_order`, `zero_sign`, `nan_kind` |
+| [ST-5](../upstream/bugs/ST-5.json) | `inf - inf` and `0 * inf` in `add`, `subtract`, `multiply` | `nan_creation` |
+| [ST-6](../upstream/bugs/ST-6.json) | how a cast to an integer rounds; `FAILURE_BEHAVIOR_UNSPECIFIED` | `float_to_int`, `cast_failure` |
+| [ST-7](../upstream/bugs/ST-7.json) | what `SORT_DIRECTION_UNSPECIFIED` means | `null_order` (D6) |
+
+`CLUSTERED` needs no entry: Substrait's `relations/basics.md` defines it.
+
+### D4. NaN payloads
+
+A NaN is one of two codes, by its sign. No function sverify models reads a
+payload, and `signbit` reads the sign
+([duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json)).
+WebAssembly treats a NaN's sign as a choice too, and IEEE 754 only
+recommends that payloads propagate ([Prior work](#loose-specifications-and-profiles)).
+
+### D5. Rounding of doubles where the plan omits it
+
+The core leaves the YAML's five modes open, and the reference and every
+engine profile fix `TIE_TO_EVEN`. This is what Substrait says, and #85's
+error bounds become theorems of the profiles that fix the mode.
+
+### D6. Sort keys without a NULL order
+
+The core reads a key's `UNSPECIFIED` direction as `null_order` open, and
+`CLUSTERED` as an order relation of its own: rows with equal keys adjacent,
+the groups in any order. `Profile.substrait` accepts both, and the reference
+and each engine profile fix the NULL order (DuckDB: `NULLS_LAST`,
+[F2](../characterization/duckdb/facts/duckdb-F2.json)). Substrait's sort
+directions include both, so a faithful profile has to read them. The parser
+keeps refusing them until step 1c lands the choice point and the relation.
+
 ## Open questions
 
-### Q1. Where the tables live
+### Q7. Per-plan checks
 
-- A. Lean is the source; Python mirrors it, and a test compares them (as the
-  black boxes do). Recommended: Lean proves the refinement by `decide` on its
-  own table, and the mirror costs one test.
-- B. One data file (TOML or JSON) both read: Lean through `include_str` and a
-  parser at elaboration. One source, but the kernel's proofs then depend on
-  a parser.
-- C. Python is the source and generates Lean (as `poe regen-lowering` does).
-  One source, at the cost of a generated module to commit and check.
+- A. Prove translators once, entry by entry, as the lowering and the lift
+  are today, and check single plans only for translations sverify does not
+  own (another producer's plan, an engine's optimized plan). Recommended:
+  no plan pays for a proof at run time, and the generated tables already
+  carry the proofs.
+- B. Check every translated plan, sverify's own included. Each run then
+  carries its own certificate, at the cost of a Lean check per plan and per
+  engine.
 
-### Q2. Raises in the core
+### Q8. The reference's NULL order
 
-- A. The core allows raising everywhere, as the reference's correctness does
-  today, and each profile states its raise set. Recommended: it keeps
-  principle 4 and admits DuckDB's extra raises without options.
-- B. The core raises only at named raise points (overflow, division by zero,
-  domain, casts, the size hypothesis). Tighter, but every engine raise
-  outside them (`<<` of a negative number) needs a new option.
+Where a key's direction is `UNSPECIFIED`, the reference fixes one placement
+(D6).
 
-### Q3. Behaviours outside the YAML
-
-- A. An option's core set is the YAML's values and the engines' recorded
-  extras, each with its fact. Recommended: every engine profile refines the
-  core by construction.
-- B. The core is the YAML's values only, and an engine behaviour outside them
-  is a deviation the engine's translation shims. Closer to Substrait, but
-  DuckDB's native `>>` then fails `Allowed_duckdb ⊆ Allowed_core`.
-
-### Q4. NaN payloads
-
-- A. A NaN is one of two codes, by its sign. Recommended: no function sverify
-  models reads a payload, and `signbit` reads the sign.
-- B. A NaN carries its payload. Faithful to IEEE, at the cost of 2⁵² codes per
-  sign and no order among them.
-
-### Q5. Rounding of doubles where the plan omits it
-
-- A. The core leaves the YAML's five modes open, and the reference and every
-  engine fix `TIE_TO_EVEN`. Recommended: it is what Substrait says, and #85's
-  error bounds become theorems of the profiles that fix it.
-- B. The core fixes `TIE_TO_EVEN`. Bounds proved in the core then hold on
-  every profile, but `Profile.substrait` is narrower than the spec.
-
-### Q6. Sort keys without a NULL order
-
-- A. The parser keeps refusing `UNSPECIFIED` and `CLUSTERED`. Recommended
-  until a frontend writes them: the Ibis producer and the SQL writer state
-  all four parts of every key.
-- B. The core reads `UNSPECIFIED` as `null_order` open, and `CLUSTERED` as
-  "equal keys adjacent", so `Profile.substrait` accepts them.
+- A. `NULLS_LAST` in both directions. Recommended: DuckDB's default (F2), and
+  the default of the model's `SortKey` for hand-built values.
+- B. NULLs as the largest value: last ascending, first descending, as
+  PostgreSQL places them.

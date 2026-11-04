@@ -1,0 +1,38 @@
+{
+  "id": "ST-6",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "The cast expression (`specialized_record_expressions.md`, `Cast` in `algebra.proto`) does not say how a cast from `fp32`/`fp64` or a decimal to an integer rounds, and `FAILURE_BEHAVIOR_UNSPECIFIED` is not described.",
+  "repro": [
+    "`CAST(0.55::fp64 AS i32)` and `CAST(-0.55::fp64 AS i64)`: `0`, or `1` and `-1`?",
+    "DuckDB 2.0: rounds half away from zero (`1`, `-1`); DataFusion truncates (`0`, `0`)."
+  ],
+  "handling": [
+    "The core leaves `float_to_int` open and reads an unspecified failure behaviour as either; the reference truncates toward zero (#209) and throws. DuckDB's written plan casts `trunc(x)`.",
+    "Could be expressed as: A rounding field on the cast (the `rounding` option's values), and a sentence on what `FAILURE_BEHAVIOR_UNSPECIFIED` means."
+  ],
+  "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
+  "issues": [
+    444
+  ],
+  "files": [
+    "docs/core-semantics.md"
+  ],
+  "facts": [
+    "duckdb-R9",
+    "duckdb-R8"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the extension YAMLs and site/docs on main; the gap is there"
+    }
+  ]
+}

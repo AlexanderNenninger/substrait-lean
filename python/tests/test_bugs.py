@@ -58,6 +58,7 @@ def test_validate_finds_problems(tmp_path):
         "DD-2": _bug(id="DD-2", status="filed"),
         "DD-3": _bug(id="DD-3", status="fixed upstream"),
         "DD-4": _bug(id="DD-4", status="wontfix"),
+        "DD-5": _bug(id="DD-5", kind="spec-gap"),
     }
     for name, doc in docs.items():
         (root / "bugs" / f"{name}.json").write_text(json.dumps(doc))
@@ -69,6 +70,7 @@ def test_validate_finds_problems(tmp_path):
     assert "'upstream' is a required property" in problems
     assert "'fixed_in' is a required property" in problems
     assert "'wontfix' is not one of" in problems
+    assert "only Substrait's entries are spec gaps" in problems
 
 
 def test_validate_backlog_finds_problems(tmp_path):

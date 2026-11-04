@@ -1,0 +1,38 @@
+{
+  "id": "ST-1",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`) do not say what a shift count below 0 or at least the base's width gives, nor whether `shift_left` may shift bits out (or a negative base). They have no option for it.",
+  "repro": [
+    "`shift_left(1::i64, 64)`, `shift_right(-5::i64, 64)`, `shift_left(-1::i64, 1)`, `shift_left(2^62::i64, 2)`: the YAML's descriptions define none of them.",
+    "DuckDB 2.0: `1 << 64` raises, `-1 << 1` raises, `(2^62) << 2` raises (a bit shifted out), `-5 >> 64` is `0`."
+  ],
+  "handling": [
+    "The core allows each engine's recorded behaviour (raise, `0`, drop the bits) as the option `shift_range` (docs/core-semantics.md, D3). The reference drops the bits shifted out and raises for a count outside `[0, 63]`; DuckDB's written plan guards both shifts.",
+    "Could be expressed as: An option such as `on_shift_overflow: [ERROR, ZERO, WRAP]` for the count, and the existing `overflow` for bits shifted out of `shift_left`."
+  ],
+  "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
+  "issues": [
+    444
+  ],
+  "files": [
+    "docs/core-semantics.md"
+  ],
+  "facts": [
+    "duckdb-R15-shift-left",
+    "duckdb-R15-shift-right"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the extension YAMLs and site/docs on main; the gap is there"
+    }
+  ]
+}

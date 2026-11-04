@@ -1,0 +1,41 @@
+{
+  "id": "ST-3",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "`corr`, `variance` and `std_dev` say what no input gives (null), and nothing about the degenerate cases: `corr` of one pair or of a side whose values are all equal, and any of them over a group with `±inf` or NaN. Engines give NULL or NaN there.",
+  "repro": [
+    "`corr(x, y)` over `(1, 2)` alone, or over `(1, 1), (1, 2)`.",
+    "DuckDB 2.0 and Polars 2.1: NaN for both; Spark 4.3: NULL for both. DuckDB: `var_samp` over `[inf, 1]` is NaN."
+  ],
+  "handling": [
+    "The core allows NULL, NaN or a raise (`stat_degenerate`); the reference gives NULL for `corr`, as the SQL standard does, and raises for an infinite value. `semantics=\"duckdb\"` gives NaN.",
+    "Could be expressed as: An option, such as `on_degenerate: [NULL, NAN]` and the existing `on_domain_error` for non-finite input, or a sentence in each description."
+  ],
+  "found_by": "the design pass of the loose core (#444), docs/core-semantics.md",
+  "issues": [
+    444
+  ],
+  "files": [
+    "docs/core-semantics.md"
+  ],
+  "facts": [
+    "duckdb-corr",
+    "spark-corr",
+    "polars-corr",
+    "duckdb-nonfinite-aggregates",
+    "duckdb-var-stddev"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the extension YAMLs and site/docs on main; the gap is there"
+    }
+  ]
+}
