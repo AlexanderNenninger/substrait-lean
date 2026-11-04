@@ -56,6 +56,7 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import re
@@ -191,14 +192,9 @@ def _float_key(e: pl.Expr) -> pl.Expr:
     """A double with the model's order and equality: `-0.0` is `0.0`, and
     every NaN is the one positive NaN, which Polars puts above `inf` and
     makes equal to itself in sorts, comparisons, groups and joins
-    (polars-nan-order, polars-nan-equality, on both engines)."""
-    return (
-        pl.when(e.is_nan())
-        .then(pl.lit(math.nan, pl.Float64))
-        .when(e == 0.0)
-        .then(pl.lit(0.0, pl.Float64))
-        .otherwise(e)
-    )
+    (polars-nan-order, polars-nan-equality, on both engines). Each step names
+    `e` once."""
+    return canon(e).fill_nan(math.nan)
 
 
 #: `BinFn.greatest`/`least`, as Lean writes them (and as DataFusion does).
@@ -422,8 +418,9 @@ def _exact_divide(s: pl.Series) -> pl.Series:
 
 def exact_div(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     """IEEE division of each pair, by numpy: for `ROUND(x, d)`, whose
-    division by `10^d` must round once (`FloatCode.roundTo`), where Polars's
-    reciprocal (`fdiv`) would be an ulp off."""
+    division by `10^d` must round once (`FloatCode.roundTo`), and `log(x, b)`
+    (`ln x / ln b`, `logb?`), where Polars's reciprocal (`fdiv`) would be an
+    ulp off."""
     both = pl.struct(x.alias("x"), y.alias("y"))
     q = both.map_batches(_exact_divide, return_dtype=pl.Float64, is_elementwise=True)
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(q)
@@ -758,56 +755,38 @@ def _days(v: Val) -> pl.Expr:
     return v.expr.to_physical().cast(pl.Int64)
 
 
-def _month_index(d: Any) -> tuple[Any, Any]:
-    """`Time.monthIndex` of days `d` (`12 · year + month - 1`), and the day
-    of the month from 0: the civil calendar in integer arithmetic (floor
-    division as Lean's)."""
-    z = d + 719468
-    era = z // 146097
-    doe = z - era * 146097
-    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
-    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
-    mp = (5 * doy + 2) // 153
-    dom = doy - (153 * mp + 2) // 5
-    # March-based years: months from March, so January and February are 10, 11.
-    return 12 * (yoe + era * 400) + mp + 2, dom
-
-
-def _month_start(i: Any) -> Any:
-    """`Time.monthStart`: the first day of month `i`."""
-    y, mp = (i - 2) // 12, (i - 2) % 12
-    era = y // 400
-    yoe = y - era * 400
-    doe = yoe * 365 + yoe // 4 - yoe // 100 + (153 * mp + 2) // 5
-    return era * 146097 + doe - 719468
-
-
-def _on_days(f: Any, d: pl.Expr) -> pl.Expr:
-    """`f` on an `Int64` expression of days: Polars's `//` and `%` of
-    integers floor, as Lean's do (polars-int-divide), and NULLs stay."""
-    return f(d.cast(pl.Int64))
+def _as_date(d: pl.Expr) -> pl.Expr:
+    return d.cast(pl.Int32).cast(pl.Date)
 
 
 def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
-    """`Time.addMonths`: the same day `m` months later, or that month's last."""
-
-    def f(x: Any) -> Any:
-        i, dom = _month_index(x)
-        return pl.min_horizontal(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
-
-    return _on_days(f, d)
+    """`Time.addMonths`: the same day `m` months later, or that month's last,
+    as Polars's `offset_by` clamps it (polars-month-arith). Polars raises past
+    the years chrono represents and evaluates every branch, so a day whose
+    result could leave them is NULL before the call: a non-NULL day that
+    gives NULL is out of range (`add_months` flags it)."""
+    lo = CHRONO_DAY_MIN + 31 * (max(0, -m) + 1)
+    hi = CHRONO_DAY_MAX - 31 * (max(0, m) + 1)
+    if lo > hi:
+        return pl.lit(None, pl.Int64)
+    d = d.cast(pl.Int64)
+    safe = pl.when((d >= lo) & (d <= hi)).then(d)
+    return _as_date(safe).dt.offset_by(f"{m}mo").cast(pl.Int64)
 
 
 def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
-    """`Time.truncDay`."""
+    """`Time.truncDay`, by Polars's calendar for months, quarters and years.
+    `d` must be within the years chrono represents (the caller's range)."""
     if unit == "day":
         return d
     if unit == "week":
         return d - (d + 3) % 7
-    k = {"month": 1, "quarter": 3, "year": 12}.get(unit)
-    if k is None:
+    every = {"month": "1mo", "quarter": "1q", "year": "1y"}.get(unit)
+    if every is None:
         raise Unsupported(f"date_trunc of a date to a {unit} is not supported")
-    return _on_days(lambda x: _month_start(_month_index(x)[0] // k * k), d)
+    d = d.cast(pl.Int64)
+    safe = pl.when((d >= CHRONO_DAY_MIN) & (d <= CHRONO_DAY_MAX)).then(d)
+    return _as_date(safe).dt.truncate(every).cast(pl.Int64)
 
 
 def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -> Val:
@@ -836,10 +815,15 @@ def day_part(part: str, v: Val) -> Val:
 def add_months(m: int, v: Val) -> Val:
     """`UnFn.addMonths` of a date or a timestamp, with its `rangeIssue`."""
     if v.dtype == pl.Date:
-        return date_range(v, add_months_days(m, _days(v)), DAY_MIN, DAY_MAX, "adding months")
+        days = add_months_days(m, _days(v))
+        # A day `add_months_days` cannot take: out of range.
+        days = pl.when(v.expr.is_not_null() & days.is_null()).then(DAY_MAX + 1).otherwise(days)
+        return date_range(v, days, DAY_MIN, DAY_MAX, "adding months")
     us = wide(v)
-    r = add_months_days(m, us // US_PER_DAY) * US_PER_DAY + us % US_PER_DAY
-    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX)
+    shifted = add_months_days(m, us // US_PER_DAY)
+    r = shifted * US_PER_DAY + us % US_PER_DAY
+    lost = us.is_not_null() & shifted.is_null()
+    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX) | lost
     value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
     message = "adding months outside the years chrono represents"
     return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
@@ -1318,7 +1302,8 @@ class Exprs:
             bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
-            return self.domain(bad, canon(fdiv(sx.log(), sy.log())), pl.Float64, name, a, b)
+            # `logb?` divides once, exactly: no reciprocal (`exact_div`).
+            return self.domain(bad, canon(exact_div(sx.log(), sy.log())), pl.Float64, name, a, b)
         if name in BITWISE:
             if unify(ta, tb, name) not in (pl.Int64, pl.Null):
                 raise Unsupported(f"{name} of {ta} and {tb}")
@@ -1520,6 +1505,9 @@ class Exprs:
 # --- Relations ---------------------------------------------------------------
 
 
+_FLAG_IDS = itertools.count()
+
+
 def _raise_issues(issues: tuple[Issue, ...]):
     def check(s: pl.Series) -> pl.Series:
         for k, i in enumerate(issues):
@@ -1538,10 +1526,14 @@ def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS
     found = tuple(i for i in issues(*vals) if i.kind.issue in checks)
     if not found:
         return lf
-    flags = pl.struct([i.flag.alias(f"i{k}") for k, i in enumerate(found)])
+    # Each flag is a column of its own: one expression holding all of them
+    # can outgrow what Polars's plan formatter takes (`fallback_nodes`).
+    names = [f"__sv_flag{next(_FLAG_IDS)}" for _ in found]
+    lf = lf.with_columns([i.flag.alias(n) for i, n in zip(found, names, strict=True)])
+    flags = pl.struct([pl.col(n).alias(f"i{k}") for k, n in enumerate(names)])
     return lf.filter(
         flags.map_batches(_raise_issues(found), return_dtype=pl.Boolean, is_elementwise=True)
-    )
+    ).drop(names)
 
 
 Frame = tuple[pl.LazyFrame, list[DType]]
@@ -2683,19 +2675,30 @@ def fallback_nodes(lf: pl.LazyFrame) -> list[str]:
     """The nodes of `lf`'s streaming plan, as `collect` runs it, that run on
     the in-memory engine: each node's kind and label, one line each
     (`in-memory-map: AGGREGATE[…] …`)."""
-    dot = lf.show_graph(
-        engine="streaming",
-        plan_stage="physical",
-        raw_output=True,
-        show=False,
-        optimizations=_OPTIMIZATIONS,
-    )
+    try:
+        dot = lf.show_graph(
+            engine="streaming",
+            plan_stage="physical",
+            raw_output=True,
+            show=False,
+            optimizations=_OPTIMIZATIONS,
+        )
+    except BaseException as e:  # noqa: BLE001 - pyo3's PanicException is not an Exception
+        if type(e).__name__ != "PanicException":
+            raise
+        # Polars's formatter takes expressions of at most 65 535 characters
+        # (`polars-stream`'s `fmt.rs`); the nodes are then unknown.
+        return [UNINSPECTABLE]
     out = []
     for line in str(dot).splitlines():
         if (m := _NODE.match(line)) and m[2] == _FALLBACK_COLOUR:
             kind, _, label = m[1].replace("\\n", " ").partition(" ")
             out.append(f"{kind}: {label.strip()}")
     return out
+
+
+#: `fallback_nodes` of a plan Polars cannot describe: no allowed fallback.
+UNINSPECTABLE = "unknown: Polars cannot describe the streaming plan (an expression too long)"
 
 
 def plan_fallbacks(plan: str | dict, tables: Tables, *, guards: Guards = True) -> list[str]:

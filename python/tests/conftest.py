@@ -204,6 +204,9 @@ def _polars_plans_stream(monkeypatch: pytest.MonkeyPatch) -> None:
             found = polars_engine.disallowed_fallbacks(lf)
         except Exception:  # noqa: BLE001 - the plan's own error comes from `collect`
             found = []
+        # A plan with an expression too long for Polars's plan formatter
+        # cannot be inspected; `streaming="require"` refuses those.
+        found = [n for n in found if n != polars_engine.UNINSPECTABLE]
         if found:
             raise AssertionError(
                 "the streaming plan runs these nodes on the in-memory engine, which "
