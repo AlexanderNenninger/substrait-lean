@@ -5,6 +5,10 @@
   "title": "`BIGINT << BIGINT`",
   "verdict": "no option matches",
   "area": "integers",
+  "options": [
+    "shift_range",
+    "raise_set"
+  ],
   "constructs": [
     "<<",
     "shift_left"

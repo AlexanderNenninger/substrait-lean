@@ -5,6 +5,10 @@
   "title": "`power`, `sqrt`, `ln`, `log10`, `log2`, `asin`, `acos`, `sin`, `cos`, `tan`",
   "verdict": "no option matches: NaN outside the domain, `-inf` for a logarithm of 0",
   "area": "doubles",
+  "options": [
+    "on_domain_error",
+    "on_log_zero"
+  ],
   "constructs": [
     "power",
     "sqrt",

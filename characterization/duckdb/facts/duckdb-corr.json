@@ -5,6 +5,10 @@
   "title": "`CORR`: three separate states; NaN for one pair or zero variance",
   "verdict": "cov / (std_x · std_y); NaN where the reference is NULL; no clamp",
   "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate"
+  ],
   "constructs": [
     "corr"
   ],

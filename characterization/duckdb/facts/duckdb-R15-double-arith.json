@@ -5,6 +5,10 @@
   "title": "`DOUBLE + - * /`",
   "verdict": "no option matches: NaN from ±inf; `/` by zero is IEEE",
   "area": "doubles",
+  "options": [
+    "nan_creation",
+    "on_division_by_zero"
+  ],
   "constructs": [
     "+",
     "-",

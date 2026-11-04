@@ -5,6 +5,10 @@
   "title": "printf and format: strict, raise on a format that does not fit",
   "verdict": "recorded: printf and format are black boxes that may raise",
   "area": "strings",
+  "options": [
+    "cast_formatting",
+    "raise_set"
+  ],
   "constructs": [
     "printf",
     "format"

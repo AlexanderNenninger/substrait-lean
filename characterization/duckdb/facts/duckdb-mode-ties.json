@@ -5,6 +5,10 @@
   "title": "`MODE`: ties go to the value seen first, in the order DuckDB reads the rows",
   "verdict": "ties are the engine's without ORDER BY; with one, the first in that order",
   "area": "aggregates",
+  "options": [
+    "tie_pick",
+    "tie_order"
+  ],
   "constructs": [
     "mode"
   ],

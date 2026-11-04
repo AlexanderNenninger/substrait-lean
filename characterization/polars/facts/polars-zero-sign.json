@@ -5,6 +5,9 @@
   "title": "`-0.0` in arithmetic: two zeros",
   "verdict": "IEEE: `1 / -0.0` is -inf",
   "area": "doubles",
+  "options": [
+    "zero_sign"
+  ],
   "constructs": [
     "/",
     "unary -",

@@ -5,6 +5,10 @@
   "title": "kurtosis and skewness raise where a moment is out of range",
   "verdict": "decided: black-box aggregates that may raise",
   "area": "aggregates",
+  "options": [
+    "raise_set",
+    "nonfinite_aggregates"
+  ],
   "constructs": [
     "kurtosis",
     "kurtosis_pop",

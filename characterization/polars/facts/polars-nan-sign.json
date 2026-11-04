@@ -5,6 +5,9 @@
   "title": "A NaN's sign survives",
   "verdict": "`-NaN` keeps its sign bit",
   "area": "doubles",
+  "options": [
+    "nan_kind"
+  ],
   "constructs": [
     "unary -",
     "abs",

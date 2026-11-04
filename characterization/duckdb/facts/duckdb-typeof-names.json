@@ -5,6 +5,9 @@
   "title": "typeof: DuckDB's names of the types",
   "verdict": "decided: fold typeof of a column to DuckDB's name",
   "area": "casts",
+  "options": [
+    "type_names"
+  ],
   "constructs": [
     "typeof"
   ],

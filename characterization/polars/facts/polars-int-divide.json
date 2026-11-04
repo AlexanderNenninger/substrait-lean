@@ -5,6 +5,11 @@
   "title": "Integer `//`: floor division, NULL for a zero divisor",
   "verdict": "floors; `x // 0` is NULL; `MIN // -1` wraps",
   "area": "integers",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "overflow"
+  ],
   "constructs": [
     "//",
     "floordiv"

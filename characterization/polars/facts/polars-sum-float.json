@@ -5,6 +5,10 @@
   "title": "`sum` of floats: pairwise, Kahan when grouped",
   "verdict": "pairwise (full); Kahan (grouped by index); plain across chunks",
   "area": "aggregates",
+  "options": [
+    "sum_order",
+    "empty_group_aggregates"
+  ],
   "constructs": [
     "sum"
   ],

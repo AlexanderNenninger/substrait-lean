@@ -5,6 +5,10 @@
   "title": "`-0.0` and `0.0`",
   "verdict": "decided: one zero; DuckDB shim",
   "area": "doubles",
+  "options": [
+    "zero_sign",
+    "nan_zero_grouping"
+  ],
   "constructs": [
     "ORDER BY",
     "/",

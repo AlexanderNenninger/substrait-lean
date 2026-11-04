@@ -5,6 +5,9 @@
   "title": "`regexp_extract`, `regexp_replace` of constant patterns, on ASCII text",
   "verdict": "the reference (RE2's meaning, #50)",
   "area": "strings",
+  "options": [
+    "regex_dialect"
+  ],
   "constructs": [
     "regexp_extract",
     "regexp_replace"

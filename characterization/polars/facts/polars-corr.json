@@ -5,6 +5,10 @@
   "title": "`corr`: shared state; NaN for one pair or zero variance",
   "verdict": "dp_xy / sqrt(dp_xx · dp_yy); NaN where the reference is NULL; no clamp",
   "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate"
+  ],
   "constructs": [
     "corr",
     "pearson_corr"

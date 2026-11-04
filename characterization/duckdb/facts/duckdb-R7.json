@@ -5,6 +5,10 @@
   "title": "`sum`/`avg` of a double constant",
   "verdict": "fixed (#205)",
   "area": "aggregates",
+  "options": [
+    "nonfinite_aggregates",
+    "sum_order"
+  ],
   "constructs": [
     "sum",
     "avg"

@@ -5,6 +5,10 @@
   "title": "`sum` of integers: widened below 32 bits, wraps at 32 and 64; 0 for no values",
   "verdict": "`Int8`/`Int16` sum to `Int64`; `Int32`/`Int64` wrap; empty is 0",
   "area": "aggregates",
+  "options": [
+    "overflow",
+    "empty_group_aggregates"
+  ],
   "constructs": [
     "sum",
     "product"

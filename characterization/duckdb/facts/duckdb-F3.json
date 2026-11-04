@@ -5,6 +5,9 @@
   "title": "Integer literal types",
   "verdict": "frontend",
   "area": "integers",
+  "options": [
+    "literal_types"
+  ],
   "layer": "frontend",
   "constructs": [
     "integer literal"

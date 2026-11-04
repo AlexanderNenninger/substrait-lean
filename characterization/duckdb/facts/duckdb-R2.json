@@ -5,6 +5,9 @@
   "title": "Integer division by zero",
   "verdict": "no finding (`verify`: division by zero error)",
   "area": "integers",
+  "options": [
+    "on_division_by_zero"
+  ],
   "constructs": [
     "//",
     "divide"

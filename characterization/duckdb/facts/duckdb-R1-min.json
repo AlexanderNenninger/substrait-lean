@@ -5,6 +5,9 @@
   "title": "`abs(MIN)` and `divide(MIN, -1)`",
   "verdict": "no finding (`verify`: overflow error)",
   "area": "integers",
+  "options": [
+    "overflow"
+  ],
   "constructs": [
     "abs",
     "/",

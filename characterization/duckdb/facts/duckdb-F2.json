@@ -5,6 +5,9 @@
   "title": "NULLs in `ORDER BY`",
   "verdict": "frontend",
   "area": "relations",
+  "options": [
+    "null_order"
+  ],
   "layer": "frontend",
   "constructs": [
     "ORDER BY"

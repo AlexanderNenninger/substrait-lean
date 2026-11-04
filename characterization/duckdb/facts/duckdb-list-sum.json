@@ -5,6 +5,9 @@
   "title": "list_sum of integers is a HUGEINT, NULL without values",
   "verdict": "decided: a BIGINT in the model, which raises past its range",
   "area": "nested",
+  "options": [
+    "empty_group_aggregates"
+  ],
   "constructs": [
     "list_sum"
   ],

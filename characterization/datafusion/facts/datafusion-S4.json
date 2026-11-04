@@ -5,6 +5,9 @@
   "title": "Decimal literals become doubles",
   "verdict": "frontend",
   "area": "decimals",
+  "options": [
+    "literal_types"
+  ],
   "constructs": [
     "decimal literal"
   ],

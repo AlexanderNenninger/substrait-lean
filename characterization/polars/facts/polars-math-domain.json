@@ -5,6 +5,10 @@
   "title": "Elementary functions: NaN outside the domain, -inf for `log(0)`",
   "verdict": "`on_domain_error: NAN`; `on_log_zero: MINUS_INFINITY`",
   "area": "doubles",
+  "options": [
+    "on_domain_error",
+    "on_log_zero"
+  ],
   "constructs": [
     "sqrt",
     "log",

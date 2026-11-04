@@ -5,6 +5,9 @@
   "title": "`QUANTILE_CONT`: `lo·(1−d) + hi·d` in doubles, NaN between -inf and +inf",
   "verdict": "between the neighbours up to rounding; NaN between -inf and +inf; the written SQL clamps",
   "area": "aggregates",
+  "options": [
+    "quantile_interp"
+  ],
   "constructs": [
     "quantile_cont",
     "median"

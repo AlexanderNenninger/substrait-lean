@@ -5,6 +5,10 @@
   "title": "Collations, macros and identifiers",
   "verdict": "frontend",
   "area": "strings",
+  "options": [
+    "case_sensitivity",
+    "type_names"
+  ],
   "layer": "frontend",
   "constructs": [
     "COLLATE",

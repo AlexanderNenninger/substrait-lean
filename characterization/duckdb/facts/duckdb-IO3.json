@@ -5,6 +5,10 @@
   "title": "delta: access denied with table-scoped vended keys on MinIO",
   "verdict": "open",
   "area": "io",
+  "options": [
+    "object_stores",
+    "io_formats"
+  ],
   "layer": "io",
   "constructs": [
     "ATTACH ... (TYPE unity_catalog)",

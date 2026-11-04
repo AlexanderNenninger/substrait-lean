@@ -5,6 +5,9 @@
   "title": "`round(DOUBLE)`",
   "verdict": "matches `rounding: TIE_AWAY_FROM_ZERO`",
   "area": "doubles",
+  "options": [
+    "rounding"
+  ],
   "constructs": [
     "round"
   ],

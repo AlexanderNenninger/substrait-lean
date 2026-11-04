@@ -5,6 +5,9 @@
   "title": "TIME ± INTERVAL wraps around midnight; no date_trunc of a TIME",
   "verdict": "no-finding: the reference wraps too; months refused",
   "area": "temporal",
+  "options": [
+    "time_interval_months"
+  ],
   "constructs": [
     "TIME + INTERVAL",
     "TIME - INTERVAL",

@@ -5,6 +5,10 @@
   "title": "Double `/`: IEEE",
   "verdict": "`on_division_by_zero: IEEE`, but `±inf / ±inf` is NaN",
   "area": "doubles",
+  "options": [
+    "on_division_by_zero",
+    "nan_creation"
+  ],
   "constructs": [
     "/"
   ],

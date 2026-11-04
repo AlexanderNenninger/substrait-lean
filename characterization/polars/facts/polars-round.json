@@ -5,6 +5,9 @@
   "title": "`round()`: half to even by default",
   "verdict": "`rounding: TIE_TO_EVEN`; `TIE_AWAY_FROM_ZERO` with `mode='half_away_from_zero'`",
   "area": "doubles",
+  "options": [
+    "rounding"
+  ],
   "constructs": [
     "round"
   ],

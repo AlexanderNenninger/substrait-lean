@@ -5,6 +5,9 @@
   "title": "A cast to a narrower integer that does not fit",
   "verdict": "no finding (`verify`: cast out of range error)",
   "area": "casts",
+  "options": [
+    "cast_failure"
+  ],
   "constructs": [
     "CAST",
     "TRY_CAST",

@@ -5,6 +5,9 @@
   "title": "`cov`: two-pass blocks with Chan merge; Welford when streaming",
   "verdict": "two-pass per block + Chan (in memory); Welford (streaming); no clamp",
   "area": "aggregates",
+  "options": [
+    "stat_algo"
+  ],
   "constructs": [
     "cov"
   ],

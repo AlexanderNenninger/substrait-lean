@@ -5,6 +5,9 @@
   "title": "`quantile`: `nearest` by default, six methods",
   "verdict": "`nearest` by default; `linear` interpolates",
   "area": "aggregates",
+  "options": [
+    "quantile_interp"
+  ],
   "constructs": [
     "quantile",
     "median"

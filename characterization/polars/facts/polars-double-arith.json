@@ -5,6 +5,9 @@
   "title": "Double `+ - *`: IEEE, NaN for `inf - inf` and `0 * inf`",
   "verdict": "IEEE: NaN where the reference raises",
   "area": "doubles",
+  "options": [
+    "nan_creation"
+  ],
   "constructs": [
     "+",
     "-",
