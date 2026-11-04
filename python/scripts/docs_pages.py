@@ -143,10 +143,13 @@ def rewrite_links(text: str, source: Path, local: Mapping[str, str]) -> str:
     return _LINK.sub(fix, text)
 
 
-#: Tables fit the page and wrap: long code spans and lists of facts would
-#: otherwise widen a table past the screen. Great Docs gives a table in its
-#: scroll wrapper `width: max-content`, which this overrides.
-TABLE_STYLE = """```{=html}
+#: The ledger pages' style. Tables fit the page and wrap: long code spans and
+#: lists of facts would otherwise widen a table past the screen (Great Docs
+#: gives a table in its scroll wrapper `width: max-content`, which this
+#: overrides). Each entry (a level-2 section once Quarto shifts the
+#: headings) starts below a rule; its metadata line (`.ledger-meta`) is
+#: italic and smaller; inline code is 0.875em of the text around it.
+PAGE_STYLE = """```{=html}
 <style>
 main table, main .gd-table-scroll > table {
   table-layout: fixed; width: 100% !important; min-width: 0; font-size: 0.85rem;
@@ -155,6 +158,15 @@ main table th, main table td {
   overflow-wrap: anywhere; white-space: normal; vertical-align: top;
 }
 main table code { white-space: normal; }
+main :not(pre) > code { font-size: 0.875em !important; line-height: inherit; }
+main section.level2 {
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  margin-top: 2.25rem; padding-top: 0.75rem;
+}
+main .ledger-meta {
+  font-style: italic; font-size: 0.9em; color: var(--bs-secondary-color, #6c757d);
+}
+main .ledger-meta p { margin-bottom: 0.75rem; }
 </style>
 ```
 
@@ -162,7 +174,7 @@ main table code { white-space: normal; }
 
 
 def front(title: str, description: str) -> str:
-    return f'---\ntitle: "{title}"\ndescription: "{description}"\n---\n\n' + TABLE_STYLE
+    return f'---\ntitle: "{title}"\ndescription: "{description}"\n---\n\n' + PAGE_STYLE
 
 
 def strip_title(text: str) -> str:
@@ -213,7 +225,7 @@ def bug_entry(bug: dict, facts: Mapping[str, str]) -> str:
         meta.append(f"kind: {bug['kind']}")
     if bug.get("fixed_in"):
         meta.append(f"fixed in {bug['fixed_in']}")
-    out += ["; ".join(meta) + ".", ""]
+    out += ["::: {.ledger-meta}", "; ".join(meta) + ".", ":::", ""]
     out += [md(p) + "\n" for p in _paragraphs(bug["summary"])]
     if repro := _paragraphs(bug.get("repro")):
         out += ["Reproduction:", ""] + [f"- {md(p)}" for p in repro] + [""]
@@ -263,7 +275,7 @@ def fact_entry(fact: dict, bugs: Mapping[str, dict], engines: Mapping[str, str])
         f"status: {fact['status']}",
         f"evidence: {fact['evidence']}",
     ]
-    out += ["; ".join(meta) + ".", ""]
+    out += ["::: {.ledger-meta}", "; ".join(meta) + ".", ":::", ""]
     out += [f"Verdict: {md(fact['verdict'])}", ""]
     out += [md(p) + "\n" for p in _paragraphs(fact["description"])]
     if fact.get("reference"):
