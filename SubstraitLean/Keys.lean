@@ -210,7 +210,7 @@ def AVal.intOnly (a : AVal) : Bool := !a.null && !a.tt && !a.ff && !a.str
 theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.Mem v) :
     ∃ y, v = .int y := by
   simp only [AVal.intOnly, Bool.and_eq_true, Bool.not_eq_true'] at h
-  rcases mem_cases hm with ⟨_, hn⟩ | ⟨i, _, rfl, _, _⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
+  rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨i, _, rfl, _, _⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
   · simp_all
   · exact ⟨i, rfl⟩
   · simp_all
