@@ -237,8 +237,6 @@ class Observation:
                 [[None if v is None else unicodedata.normalize("NFC", v) for v in c.to_pylist()]],
                 type=t,
             )
-        if pa.types.is_decimal(t) and self.decimals == "value":
-            return pc.cast(c, pa.float64()) if c.num_chunks else c
         return c
 
     def equal(self, a: pa.Table, b: pa.Table) -> bool:
@@ -252,6 +250,12 @@ class Observation:
             return f"columns {a.column_names} and {b.column_names}"
         if a.num_rows != b.num_rows:
             return f"{a.num_rows} and {b.num_rows} rows"
+        if self.decimals == "exact":
+            for name in a.column_names:
+                ta, tb = a.schema.field(name).type, b.schema.field(name).type
+                if pa.types.is_decimal(ta) and pa.types.is_decimal(tb) and ta.scale != tb.scale:
+                    return f"column {name}: scales {ta.scale} and {tb.scale}"
+        # Decimals compare by value from here on (`Decimal("1.50") == Decimal("1.5")`).
         ca, cb = self.canonical(a), self.canonical(b)
         for name in ca.column_names:
             xs, ys = ca.column(name).to_pylist(), cb.column(name).to_pylist()

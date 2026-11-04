@@ -83,6 +83,15 @@ def test_canonical_truncates_and_normalises() -> None:
     assert sv.equivalent(strings="nfc", timestamps="ms").equal(a, b)
 
 
+def test_decimals_up_to_their_scale() -> None:
+    from decimal import Decimal
+
+    a = pa.table({"d": pa.array([Decimal("1.50")], pa.decimal128(5, 2))})
+    b = pa.table({"d": pa.array([Decimal("1.5")], pa.decimal128(5, 1))})
+    assert "scales" in (sv.equivalent().difference(a, b) or "")
+    assert sv.equivalent(decimals="value").equal(a, b)
+
+
 def test_report_names_what_a_condition_depends_on() -> None:
     expr = T.group_by("k").aggregate(avg=T.x.mean(), n=T.k.count(), last=T.ts.max())
     report = sv.verify(
