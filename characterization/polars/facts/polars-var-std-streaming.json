@@ -30,7 +30,8 @@
   "description": [
     "On the streaming engine `var` and `std` run `VarState`. Ungrouped, each morsel's chunks go through the 128-value two-pass blocks and merge by Chan's formula into their pipeline's state, and the pipelines' states merge in turn. Block boundaries follow the morsels and the merge order follows scheduling, so the result can change in the last bits between runs: five runs over 300 000 values gave 4.440337823592621, …622 and …623 (in memory always 4.440337823592626).",
     "Grouped, each value goes through `insert_one` (Welford) and pipelines merge by Chan's formula; on four values near 1e8 it agrees with the in-memory engine (1.6666666666666667).",
-    "Integers and decimals become doubles first (`as f64`, `dec128_to_f64`); the result is `Float64` (`Float32` for `Float32` input). `ddof` is the divisor's offset: SAMPLE is `ddof=1`, POPULATION `ddof=0`; a weight at most `ddof` is NULL, and `VarState::finalize` clamps a negative variance to 0. The in-memory engine's algorithms are in polars-var-std."
+    "Integers and decimals become doubles first (`as f64`, `dec128_to_f64`); the result is `Float64` (`Float32` for `Float32` input). `ddof` is the divisor's offset: SAMPLE is `ddof=1`, POPULATION `ddof=0`; a weight at most `ddof` is NULL, and `VarState::finalize` clamps a negative variance to 0. The in-memory engine's algorithms are in polars-var-std.",
+    "Algorithm and error (sum_order does not apply; `stat_algo`): ungrouped, each run of up to 128 values (`chunk_as_float`, values widened to `f64`) is a two-pass block: the mean by `alg_sum_f64`, then the sum of squared deviations by `alg_sum_f64`, and blocks merge by Schubert and Gertz's update (Chan's pairwise formula), chained per pipeline and then across pipelines. `alg_sum_f64` folds with `algebraic_add` in the `nightly` build the wheels use (`default = [\"full\", \"nightly\"]`), which lets the compiler reassociate, so the order inside a block is unspecified. Grouped, Welford's update per value and the same merge. Error: the two-pass formula has a relative error of order n·u + n²u²κ² for the condition number κ (Higham §1.9), with n ≤ 128 per block here; the chained merges add errors of order u·κ per merge (Higham §1.9 for the updating formulas), unbounded in the number of merges; no tighter bound is stated. For the Lean side this is a WELFORD_CHAN-like algorithm, which `StatAlgo` treats as GENERIC: the generic properties hold, and no error bound is used."
   ],
   "reference": "Substrait's `variance` and `std_dev` with `distribution`; the reference states the generic properties (non-negative, NULL for a weight at most `ddof`) and leaves the algorithm to the engine profile.",
   "status": "open",
@@ -75,6 +76,46 @@
       "notes": [
         "Carried over from polars-var-std's round-2 reading of the streaming paths (`VarStdReducer` with `needs_cast` for integers and decimals). The `i64` and `decimal` rows rest on it: the streaming probes ran `Float64`. Polars's `test_agg_invalid_same_engines_behavior` (round 3) checks the engines agree on one-value input, `Decimal` included."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs#L37-L133",
+          "note": "CHUNK_SIZE = 128; VarState::new (two-pass), insert_one (Welford), combine, finalize"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs#L584-L602",
+          "note": "chunk_as_float: runs of 128 widened values"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs#L629-L642",
+          "note": "var: VarState::new per chunk, combined"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/algebraic_ops.rs#L1-L29",
+          "note": "alg_add_f64: algebraic_add with `nightly`; alg_sum_f64 folds from -0.0"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/runtime/polars-runtime-64/Cargo.toml#L48",
+          "note": "nightly feature"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/runtime/polars-runtime-64/Cargo.toml#L114",
+          "note": "default = [\"full\", \"nightly\"]"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/var_std.rs#L80-L100",
+          "note": "VarStdReducer: combine, insert_one per row, var(arr) per morsel"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch1",
+          "note": "Higham, ch. 1, §1.9: error of the two-pass and updating formulas for the sample variance"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). That the `nightly` feature reaches polars-utils through polars-python was not traced link by link."
     }
   ],
   "supersedes": [
