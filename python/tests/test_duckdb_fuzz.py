@@ -74,3 +74,13 @@ def test_doubles_divide_as_doubles():
     (#619)."""
     out = _check("SELECT (d / d) AS c0 FROM t AS q", [(None, None, 0.0, *T_ROW[3:])])
     assert out.duckdb == '[["nan"]]'
+
+
+def test_aimed_swaps_the_double_values_and_restores_them():
+    before = (fuzz.VALUES[fuzz.DOUBLE], fuzz.LITERALS[fuzz.DOUBLE], dict(fuzz._KINDS))
+    with duckdb_fuzz.aimed(duckdb_fuzz.TARGETS["float_special"]):
+        assert fuzz.VALUES[fuzz.DOUBLE] is not before[0]
+        assert "neg" in fuzz._KINDS[fuzz.DOUBLE] and "cast_int" not in fuzz._KINDS[fuzz.DOUBLE]
+    assert (fuzz.VALUES[fuzz.DOUBLE], fuzz.LITERALS[fuzz.DOUBLE], dict(fuzz._KINDS)) == before
+    with duckdb_fuzz.aimed(duckdb_fuzz.TARGETS["eval_order"]):
+        assert fuzz.VALUES[fuzz.DOUBLE] is before[0]

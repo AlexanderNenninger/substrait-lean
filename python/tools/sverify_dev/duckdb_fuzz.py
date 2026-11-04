@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import random
 import re
 import subprocess
@@ -54,6 +55,10 @@ class Target:
     """Integer literals in expressions."""
     kinds: dict[str, list[str]] = field(default_factory=dict)
     """Expression kinds by type (`sverify_dev.fuzz._KINDS`), replacing the defaults."""
+    doubles: list[float | None] | None = None
+    """Double values the tables hold; `sverify_dev.fuzz`'s when `None`."""
+    double_literals: list[str] | None = None
+    """Double literals in expressions; `sverify_dev.fuzz`'s when `None`."""
 
 
 _BOUNDS = [I64 - 1, -I64, 2**31 - 1, -(2**31), 2**31, 2**32, 3037000500]
@@ -76,6 +81,37 @@ TARGETS = {
         literals=["0", "1", "-1", "2"],
         kinds={DOUBLE: ["arith", "neg", "abs", "cast_int"], BOOL: ["cmp", "isnull"]},
     ),
+    # Evaluation order (`execution.evaluation_order`, #604): integer division
+    # and overflow that raise inside CASE, AND, OR, COALESCE and NULLIF, on
+    # rows a branch or the other operand excludes.
+    "eval_order": Target(
+        ints=[None, 0, 0, 1, -1, 2, 7, I64 - 1, -I64],
+        literals=["0", "1", "-1", "2", str(I64 - 1)],
+        kinds={
+            INT: ["arith", "case", "coalesce", "nullif"],
+            BOOL: ["cmp", "logic", "logic", "not", "isnull", "case"],
+        },
+    ),
+    # Double specials (`zero_sign`, `nan_kind`, `nan_creation`, `nan_order`,
+    # rounding near the limits): ±0, NaN, ±∞, the largest and a subnormal.
+    "float_special": Target(
+        ints=[None, 0, 1, -1],
+        literals=["0", "1"],
+        kinds={
+            DOUBLE: ["arith", "neg", "abs", "case", "coalesce"],
+            BOOL: ["cmp", "isnull", "logic"],
+        },
+        doubles=[None, 0.0, -0.0, 1.0, -1.0, 0.1, math.inf, -math.inf, math.nan, 1.7e308, 5e-324],
+        double_literals=[
+            "0.0::DOUBLE",
+            "-0.0::DOUBLE",
+            "'nan'::DOUBLE",
+            "'inf'::DOUBLE",
+            "1e308::DOUBLE",
+            "0.1::DOUBLE",
+            "CAST(NULL AS DOUBLE)",
+        ],
+    ),
 }
 
 
@@ -83,17 +119,24 @@ TARGETS = {
 def aimed(target: Target) -> Iterator[Any]:
     """`sverify_dev.fuzz`'s strategies drawing `target`'s values, for the block:
     yields the strategy of (query, tables) cases."""
-    saved = (fuzz.VALUES[INT], fuzz.LITERALS[INT], dict(fuzz._KINDS))
+    saved = (
+        fuzz.VALUES[INT], fuzz.LITERALS[INT], fuzz.VALUES[DOUBLE], fuzz.LITERALS[DOUBLE],
+        dict(fuzz._KINDS),
+    )  # fmt: skip
     fuzz.VALUES[INT] = st.sampled_from(target.ints)
     fuzz.LITERALS[INT] = st.sampled_from(target.literals)
+    if target.doubles is not None:
+        fuzz.VALUES[DOUBLE] = st.sampled_from(target.doubles)
+    if target.double_literals is not None:
+        fuzz.LITERALS[DOUBLE] = st.sampled_from(target.double_literals)
     fuzz._KINDS.update(target.kinds)
     try:
         tables = st.fixed_dictionaries({name: fuzz.rows_of(name) for name in fuzz.TABLES})
         yield st.tuples(fuzz.queries(), tables)
     finally:
-        fuzz.VALUES[INT], fuzz.LITERALS[INT] = saved[:2]
+        fuzz.VALUES[INT], fuzz.LITERALS[INT], fuzz.VALUES[DOUBLE], fuzz.LITERALS[DOUBLE] = saved[:4]
         fuzz._KINDS.clear()
-        fuzz._KINDS.update(saved[2])
+        fuzz._KINDS.update(saved[4])
 
 
 #: The DuckDB settings that change what the fuzzed queries compute, recorded
