@@ -31,7 +31,8 @@
     "polars-nan-equality",
     "polars-nan-order",
     "polars-min-max-nan",
-    "polars-zero-order"
+    "polars-zero-order",
+    "duckdb-nan-equality"
   ],
   "checked": [
     {

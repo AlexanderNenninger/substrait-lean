@@ -1,0 +1,62 @@
+{
+  "id": "duckdb-window-frame",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Default frame: `RANGE` up to the current row's peers with an order, the whole partition without; NULLs last in ranks",
+  "verdict": "SQL's default frame; ranks put NULLs last both ways",
+  "area": "windows",
+  "options": [
+    "default_window_frame",
+    "null_order"
+  ],
+  "constructs": [
+    "OVER",
+    "sum",
+    "count",
+    "first_value",
+    "last_value",
+    "rank",
+    "dense_rank",
+    "percent_rank",
+    "cume_dist",
+    "lag",
+    "lead",
+    "nth_value"
+  ],
+  "settings": {},
+  "description": [
+    "With an `ORDER BY` and no frame, the frame is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`: a running aggregate includes the current row's peers (`sum` is 60 on both rows with `i = 2`), and `last_value` is the last peer's value. `ROWS` counts rows instead. Without an `ORDER BY` the frame is the whole partition.",
+    "`rank`, `dense_rank`, `percent_rank` and `cume_dist` give peers the same value; NULL order keys rank after the others, ascending and descending (`default_null_order` is `NULLS LAST`, F2). Without an order every row is a peer: `rank` 1, `percent_rank` 0, `cume_dist` 1. `lag`, `lead` and `nth_value` give NULL (or the default) outside the partition, `nth_value` within the default frame."
+  ],
+  "reference": "The reference's windows follow SQL's default frame, with NULLs placed by the key's direction and `NULLS_LAST` for `UNSPECIFIED` (D8); ties in a window's order are open (`tie_order`).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "window-default-frame"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "window-ranks"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "window-no-order"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "window-offsets"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/src/function/window/window_rank_function.cpp"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ]
+}

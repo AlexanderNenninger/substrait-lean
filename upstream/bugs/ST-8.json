@@ -5,7 +5,7 @@
   "version": "0.106.0 to main@a4d8e00342d0",
   "status": "unverified",
   "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
-  "summary": "`functions_arithmetic_decimal.yaml` gives each function's result type, and nothing about how a result with more digits than the result's scale is rounded: always for `divide`, and for `add`, `subtract`, `multiply` when the precision passes 38 and the scale is borrowed. Casts between decimal scales (`specialized_record_expressions.md`) leave it open too. Engines round half to even (Polars) or half away from zero.",
+  "summary": "`functions_arithmetic_decimal.yaml` gives each function's result type, and nothing about how a result with more digits than the result's scale is rounded: always for `divide`, and for `add`, `subtract`, `multiply` when the precision passes 38 and the scale is borrowed. Casts between decimal scales (`specialized_record_expressions.md`) leave it open too. Engines round half to even (Polars) or half away from zero (DuckDB).",
   "repro": "`multiply(DECIMAL<10,2> 0.05, DECIMAL<10,1> 0.5)` at a result scale of 2 (an engine's own result type, or a cast to `DECIMAL<10,2>`): Polars 2.1.0 gives 0.02, half away from zero gives 0.03. `divide(DECIMAL<10,2> 1.00, DECIMAL<10,0> 8)` at scale 2: 0.12 or 0.13.",
   "handling": [
     "The core's `decimal_rescale` option allows `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` and `TRUNCATE` (docs/core-semantics.md); the reference rounds half away from zero. Decimal division is refused in every profile until #27.",
@@ -21,7 +21,8 @@
     "characterization/polars/probes.json"
   ],
   "facts": [
-    "polars-decimal-arith"
+    "polars-decimal-arith",
+    "duckdb-decimal-arith"
   ],
   "checked": [
     {

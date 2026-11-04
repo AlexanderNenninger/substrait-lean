@@ -1,0 +1,51 @@
+{
+  "id": "duckdb-set-operations",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Set operations: bag `UNION ALL`; `INTERSECT`, `EXCEPT` with NULLs and NaNs equal; `ALL` keeps `min(m, n)` and `m − n`",
+  "verdict": "native, as the reference's",
+  "area": "relations",
+  "options": [
+    "set_operations",
+    "null_join_keys"
+  ],
+  "constructs": [
+    "UNION",
+    "UNION ALL",
+    "INTERSECT",
+    "INTERSECT ALL",
+    "EXCEPT",
+    "EXCEPT ALL"
+  ],
+  "settings": {},
+  "description": [
+    "`UNION ALL` keeps every row; `UNION`, `INTERSECT` and `EXCEPT` remove duplicates, with NULL equal to NULL and NaN equal to NaN of either sign. `INTERSECT ALL` keeps `min(m, n)` copies of a row (three 1s and two give two), `EXCEPT ALL` `max(m − n, 0)` (three and two give one; one NULL of two is left).",
+    "No set operation promises an order. The column types unify as in other expressions (`1 UNION 1.5` is `DECIMAL(11,1)`)."
+  ],
+  "reference": "`UNION ALL` is bag union and `UNION DISTINCT` its `distinct`; `INTERSECT` and `EXCEPT` are semi and anti joins with NULLs equal, then `DISTINCT`, and the `ALL` forms number equal rows, so `m` and `n` copies leave `min(m, n)` and `max(m − n, 0)` (#344). Grouping keys use `NAN_IS_NAN`.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "set-operations"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "set-operation-types"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/setops/test_setops.test"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ],
+  "issues": [
+    344
+  ]
+}

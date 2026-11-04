@@ -1,0 +1,62 @@
+{
+  "id": "duckdb-struct-equality",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Structs: NULL fields equal in `=` and grouping; in order a NULL field is the greatest, also in `<`",
+  "verdict": "structural equality, NULL = NULL inside; `<` two-valued with NULL greatest",
+  "area": "nested",
+  "options": [
+    "struct_equality"
+  ],
+  "constructs": [
+    "=",
+    "<>",
+    "<",
+    ">",
+    "ORDER BY",
+    "GROUP BY",
+    "JOIN"
+  ],
+  "settings": {},
+  "description": [
+    "`{'a': 1, 'b': NULL} = {'a': 1, 'b': NULL}` is true, and so is `[1, NULL] = [1, NULL]`: a NULL inside a struct or list equals NULL. A NULL struct or list compared with anything is NULL. Grouping and joins on struct keys put equal structs, NULL fields included, together.",
+    "Order is field by field, a NULL field after every value, in comparisons as in `ORDER BY`: `{a: 1, b: NULL} < {a: 1, b: 2}` is false and `>` true; ascending order puts `{a: NULL, b: 0}` last and descending first."
+  ],
+  "reference": [
+    "Equality is structural, and NULLs inside lists and structs are equal, as in grouping (reference-semantics.md, NULL and Nested). Lists order element by element, three-valued in `<` (a NULL element that decides gives NULL) and NULL greatest in `ORDER BY` (#207); DuckDB's lists are two-valued in `<` (R11, shimmed with `list_lt`). Structs are the lists of their fields, so the same split would hold.",
+    "DuckDB's SQL refuses struct columns and fields for now (docs/nested-values.md), so no written plan compares structs."
+  ],
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "list-equality"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "struct-equality"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "struct-order"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "struct-group-join"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/struct/struct_comparison.test"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ],
+  "issues": [
+    207
+  ]
+}

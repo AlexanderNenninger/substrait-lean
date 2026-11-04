@@ -55,6 +55,7 @@ def test_probes_json_is_current():
     recorded = json.loads((slt.REPLAY_DIR / "probes.json").read_text())
     assert recorded["duckdb"] == duckdb.__version__
     now = probe.probe_all(log=lambda _: None)
+    recorded_probes = [r for r in recorded["probes"] if "sql" not in r]
 
     def verdicts(found: list[dict]) -> list[tuple]:
         return [
@@ -67,4 +68,18 @@ def test_probes_json_is_current():
             for r in found
         ]
 
-    assert verdicts(now) == verdicts(recorded["probes"])
+    assert verdicts(now) == verdicts(recorded_probes)
+
+
+@pytest.mark.skipif(
+    not (slt.REPLAY_DIR / "probes.json").is_file(),
+    reason="characterization/ of the repository is not here",
+)
+def test_observations_are_current():
+    """The observations in `probes.json` (DuckDB queries the facts cite) are
+    what DuckDB gives now (rerun `python -m sverify_dev.probe --observations
+    --write` after a DuckDB upgrade). They need no Lean, so they run fast."""
+    recorded = json.loads((slt.REPLAY_DIR / "probes.json").read_text())
+    assert recorded["duckdb"] == duckdb.__version__
+    observed = [r for r in recorded["probes"] if "sql" in r]
+    assert observed == probe.observe_all(log=lambda _: None)
