@@ -547,11 +547,14 @@ def transferJson (input : Json) : Except String Json := do
 open Lean (Json toJson) in
 /-- The dependency report of a contract's transformation: one row per group
 and option it meets, with the reference's behaviours there. -/
-def Rel.dependsJson (r : Rel) : Json :=
-  let keys := (r.reads.map fun (g, o, _) => (g, o)).eraseDups
+def readsJson (reads : List Read) : Json :=
+  let keys := (reads.map fun (g, o, _) => (g, o)).eraseDups
   Json.arr <| (keys.map fun (g, o) =>
-    let bs := (r.reads.filter fun (g', o', _) => g' == g && o' == o).flatMap fun (_, _, ps) =>
+    let bs := (reads.filter fun (g', o', _) => g' == g && o' == o).flatMap fun (_, _, ps) =>
       Profile.reference.table.allows g o ps
     Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups)]).toArray
+
+/-- The dependency report of a contract's transformation, from `Rel.reads`. -/
+def Rel.dependsJson (r : Rel) : Lean.Json := readsJson r.reads
 
 end Substrait

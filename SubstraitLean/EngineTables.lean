@@ -97,7 +97,9 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
 
 def Profile.duckdb.obs : ObsTable := [
   (none, "overflow", .native ["duckdb-R1", "duckdb-R15-int-arith"]),
-  (some "agg.isum", "overflow", .shimmed "CAST(SUM(x) AS BIGINT)" ["duckdb-R6"]),
+  -- `SUM(BIGINT)` is a `HUGEINT`; the written plan casts it back, which raises
+  -- where the reference does: a type, not a value, so no shim.
+  (some "agg.isum", "overflow", .native ["duckdb-R6"]),
   (none, "on_division_by_zero", .native ["duckdb-R2"]),
   (some "fp.div", "on_division_by_zero", .native ["duckdb-R5"]),
   (none, "on_domain_error", .native ["duckdb-R15-double-arith"]),
@@ -105,13 +107,16 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "min_mod_neg_one", .shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]),
   (none, "rounding", .native []),
   (none, "nan_creation", .native ["duckdb-R15-double-arith"]),
-  (none, "zero_sign", .shimmed "Dialect.canon" ["duckdb-R14"]),
+  -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
+  -- after `Dialect.canon`.
+  (none, "zero_sign", { ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
+    shim := some "Dialect.canon" }),
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
   (none, "nan_equality", .native []),
   -- One value at a time: one of the orders the reference allows (`FloatSums`).
   (none, "sum_order", .native ["duckdb-sum-double", "duckdb-avg-double"]),
-  (none, "avg_int_result", .shimmed "the HUGEINT sum // the count" ["duckdb-R6"]),
+  (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
   (none, "clustered", .shimmed "ORDER BY the keys" []),
@@ -187,7 +192,10 @@ def Profile.polars.obs : ObsTable := [
   (none, "sum_order", .approxWithin "plan" ["polars-sum-float", "polars-mean-float"]),
   (none, "avg_int_result", .shimmed "avg_int_declared" ["polars-avg-int"]),
   (none, "empty_group_aggregates", .shimmed "sum_empty_null" ["polars-sum-int"]),
-  (none, "null_order", .shimmed "null_order" ["polars-null-order"]),
+  -- Every stated placement is native, by `nulls_last`; where a key leaves it
+  -- open, Polars's default (first) is not the reference's (last), which the
+  -- choices say (`transferB`).
+  (none, "null_order", .native ["polars-null-order"]),
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
   (none, "tie_order", .native ["polars-sort-stability", "polars-first-last"]),
   (none, "tie_pick", .native ["polars-first-last"]),
@@ -279,9 +287,11 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
     let obsFields : List (String × Json) := match row with
       | none => []
       | some r =>
-        [("class", toJson (match r.cls with
-          | .refines => "refines" | .refinesUpTo => "refines_up_to" | .approx => "approx"
-          | .refused => "refused")),
+        -- A refinement only after a shim is the class `shim` (#568's fourth).
+        [("class", toJson (match r.cls, r.shim with
+          | .refines, some _ => "shim"
+          | .refines, none => "refines" | .refinesUpTo, _ => "refines_up_to"
+          | .approx, _ => "approx" | .refused, _ => "refused")),
          ("shim", toJson r.shim)] ++
         [("q", r.q.sparseJson)] ++
         (match r.evidence with

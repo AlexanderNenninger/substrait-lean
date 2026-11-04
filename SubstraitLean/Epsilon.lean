@@ -1,4 +1,5 @@
 import SubstraitLean.ShardCheck
+import SubstraitLean.Transfer
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)
@@ -103,5 +104,116 @@ def epsilon (input : Json) : Except String Json := do
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
   return Json.mkObj cols
+
+/-! ## The dependency report of a contract
+
+`Rel.reads` lists every option a plan's calls, aggregates, sorts and keys
+meet, by syntax: it is what `Rel.transfer_of_transferB` covers. A contract
+knows more, the columns' types and what the preconditions rule out, and its
+`"depends"` leaves out the options the plan cannot meet:
+
+* the keys' NaN and zeros (`rel.keys`), where no grouping or `DISTINCT` key
+  is a double and no join compares doubles;
+* `empty_group_aggregates`, where every `SUM` and `AVG` is grouped, without a
+  filter, over an argument that cannot be NULL (a group then has a value);
+* `avg_int_result`, where no `AVG` has an integer result (`AggFn.iavg`);
+* a comparison's NaN and zeros options (`cmp`), where no comparison has a
+  double side;
+* `min_mod_neg_one`, where every integer `%`'s dividend is bounded above
+  `-2⁶³` by the preconditions. -/
+
+/-- Every aggregate of a plan: its input, keys and measures. -/
+def aggNodes : Rel → List (Rel × List Expr × List Measure)
+  | .read _ | .values _ _ => []
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r | .unnest r _ => aggNodes r
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => aggNodes a ++ aggNodes b
+  | .aggregate r gs ms => (r, gs, ms) :: aggNodes r
+
+/-- The subexpressions of an expression (a lambda's body aside: its column is not the row's). -/
+def subExprs : Expr → List Expr
+  | e@(.lit _) | e@(.field _) => [e]
+  | e@(.un _ a) => e :: subExprs a
+  | e@(.bin _ a b) => e :: (subExprs a ++ subExprs b)
+  | e@(.ifThen c t f) => e :: (subExprs c ++ subExprs t ++ subExprs f)
+  | e@(.hof _ l _) => e :: subExprs l
+
+/-- Does a comparison (`cmp`) compare doubles? -/
+def cmpDouble (cols : List Kind) : Expr → Bool
+  | .un f a => (Functions.rowOf (.un f)).any (·.group == "cmp") && a.kind cols == .float
+  | .bin f a b => (Functions.rowOf (.bin f)).any (·.group == "cmp") &&
+      (a.kind cols == .float || b.kind cols == .float)
+  | _ => false
+
+/-- Does a grouping, `DISTINCT` or join compare doubles as keys? -/
+def doubleKeys (schemas : Write.Schemas) (cat : Catalog) : Rel → Bool
+  | .read _ | .values _ _ => false
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .unnest r _ => doubleKeys schemas cat r
+  | .distinct r => (kinds r).any (· == .float) || doubleKeys schemas cat r
+  | .cross a b | .unionAll a b => doubleKeys schemas cat a || doubleKeys schemas cat b
+  | .join a b _ on | .semi a b _ on =>
+    (subExprs on).any (cmpDouble (kinds a ++ kinds b)) || doubleKeys schemas cat a ||
+      doubleKeys schemas cat b
+  | .aggregate r gs _ =>
+    gs.any (fun g => g.kind (kinds r) == .float) || doubleKeys schemas cat r
+where kinds (r : Rel) : List Kind := (Write.relKinds schemas cat r).map Write.WKind.toKind
+
+/-- Each expression of a plan with its input columns' kinds and description. -/
+def exprCtx (schemas : Write.Schemas) (cat : Catalog) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) : Rel → List (Expr × List Kind × List AVal)
+  | .read _ | .values _ _ => []
+  | .filter r c => (c, kinds r, r.aeval cat A F T) :: exprCtx schemas cat A F T r
+  | .project r es => es.map (·, kinds r, r.aeval cat A F T) ++ exprCtx schemas cat A F T r
+  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+    exprCtx schemas cat A F T r
+  | .cross a b | .unionAll a b => exprCtx schemas cat A F T a ++ exprCtx schemas cat A F T b
+  | .join a b _ on | .semi a b _ on =>
+    (on, kinds a ++ kinds b, a.aeval cat A F T ++ b.aeval cat A F T) ::
+      (exprCtx schemas cat A F T a ++ exprCtx schemas cat A F T b)
+  | .aggregate r gs ms =>
+    (gs ++ ms.flatMap fun m => m.arg :: m.filter.toList).map (·, kinds r, r.aeval cat A F T) ++
+      exprCtx schemas cat A F T r
+where kinds (r : Rel) : List Kind := (Write.relKinds schemas cat r).map Write.WKind.toKind
+
+/-- May an integer `%` see `MIN % -1`: a dividend not bounded above `-2⁶³`? -/
+def minModPossible (env : List AVal) : Expr → Bool
+  | .bin .imod a _ => match ((a.absD env []).int).bind (·.lo) with
+    | some lo => lo ≤ -(2 ^ 63 : Int)
+    | none => true
+  | _ => false
+
+/-- `"depends"` of a `--contract` request. -/
+def depends (input : Json) : Except String Json := do
+  let some tj := (input.getObjVal? "transform").toOption | return .null
+  let plan ← parseJsonPlan tj
+  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
+    parseJsonPlan
+  let tables : Tables := (plan :: requires).flatMap (·.tables)
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  let schemas : String → List AVal := fun t => match tables.lookup t with
+    | some (_, s) => schemaEnv s
+    | none => []
+  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
+  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
+  let A := fun t => tableEnv (schemas t) (preOf t)
+  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let aggs := aggNodes plan.root
+  let keys := doubleKeys (Write.planSchemas plan) cat plan.root
+  let empty := aggs.any fun (r, gs, ms) => ms.any fun m =>
+    (m.fn = .sum || m.fn = .fsum || m.fn = .avg) &&
+      (gs.isEmpty || m.filter.isSome || (m.arg.absD (r.aeval cat A F T) []).null)
+  let iavg := aggs.any fun (_, _, ms) => ms.any (·.fn = .iavg)
+  let ctx := exprCtx (Write.planSchemas plan) cat A F T plan.root
+  let cmp := ctx.any fun (e, cols, _) => (subExprs e).any (cmpDouble cols)
+  let minMod := ctx.any fun (e, _, env) => (subExprs e).any (minModPossible env)
+  let reads := plan.root.reads.filter fun (g, o, _) =>
+    !(g == "rel.keys" && !keys) && !(o == "empty_group_aggregates" && !empty) &&
+      !(o == "avg_int_result" && !iavg) && !(g == "cmp" && !cmp) &&
+      !(o == "min_mod_neg_one" && !minMod)
+  return readsJson reads
 
 end Substrait.Epsilon

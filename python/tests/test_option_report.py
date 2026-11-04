@@ -46,7 +46,8 @@ def test_transfer_and_shims(tmp_path):
     assert r["transfer"]["reference"]["duckdb"] is True
     assert r["transfer"]["reference"]["polars"] is False
     assert r["shims"]["duckdb"] == []
-    assert {s["option"] for s in r["shims"]["polars"]} == {"null_order"}
+    # A stated NULL placement is native on Polars (`nulls_last`).
+    assert r["shims"]["polars"] == []
 
 
 STRINGS = {"t": ibis.schema({"a": "int64", "b": "float64", "s": "string"})}
