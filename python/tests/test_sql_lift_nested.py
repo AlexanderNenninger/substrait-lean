@@ -78,3 +78,20 @@ def test_lists_lift_as_duckdb_reads_them(sql):
 def test_list_refusals_say_why(sql, why):
     with pytest.raises(Refused, match=why):
         lift(sql, {"t": LISTS}, "duckdb")
+
+
+def test_decimals_in_lists_and_structs_keep_their_scale():
+    """Lean prints a decimal inside a list or struct with its scale; it
+    printed the unscaled integer (`[10, 25]` for `[1.0, 2.5]`), which reached
+    the replay's rows and counterexamples (#628)."""
+    from decimal import Decimal
+
+    from sverify.testing import inline_tables, lean_values
+
+    schemas = {
+        "t": ibis.schema({"l": "array<decimal(4, 1)>", "s": "struct<a: string, b: decimal(9, 3)>"})
+    }
+    row = ([Decimal("1.0"), None, Decimal("-2.5")], {"a": "x", "b": Decimal("1.500")})
+    plan = lift("SELECT l, s FROM t", schemas).plan
+    got = lean_values(json.dumps(inline_tables(plan, {"t": [row]})))
+    assert got == [([Decimal("1.0"), None, Decimal("-2.5")], ["x", Decimal("1.500")])]
