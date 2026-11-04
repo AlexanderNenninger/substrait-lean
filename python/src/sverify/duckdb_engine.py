@@ -45,6 +45,18 @@ def _forget_cursor() -> None:
 _duckdb.on_reset(_forget_cursor)
 
 
+def setting(name: str) -> object:
+    """The value of DuckDB setting `name` on the engine's cursor, which
+    every `run` uses: a session's `SET GLOBAL` shows here, a `SET` on
+    another cursor does not."""
+    global _DB
+    with _LOCK:
+        if _DB is None:
+            _DB = _duckdb.cursor()
+        rows = _DB.execute("SELECT current_setting(?)", [name]).fetchall()
+    return rows[0][0] if rows else None
+
+
 @overload
 def run(
     plan: str | dict,

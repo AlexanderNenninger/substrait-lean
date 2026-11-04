@@ -21,6 +21,8 @@
   (`Report.run(..., route=...)`, #444); `.route` says why.
 * `EngineVersionError`, `EngineVersionWarning`: an engine's version is not
   one its profile's facts were probed at (another major version refuses).
+* `EngineSettingsError`, `EngineSettingsWarning`: an engine setting differs
+  from the one its profile's facts were probed under.
 """
 
 from sverify.contracts import (
@@ -32,13 +34,21 @@ from sverify.contracts import (
 from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncremental, SchemaError
 from sverify.io._common import ConcurrentWriteError
-from sverify.routes import EngineVersionError, EngineVersionWarning, RouteError
+from sverify.routes import (
+    EngineSettingsError,
+    EngineSettingsWarning,
+    EngineVersionError,
+    EngineVersionWarning,
+    RouteError,
+)
 
 __all__ = [
     "AuditError",
     "CheckerVersionError",
     "CompositionError",
     "ConcurrentWriteError",
+    "EngineSettingsError",
+    "EngineSettingsWarning",
     "EngineVersionError",
     "EngineVersionWarning",
     "NotIncremental",
