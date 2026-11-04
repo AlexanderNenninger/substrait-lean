@@ -47,6 +47,7 @@ try:
         Transaction,
         write_deltalake,
     )
+    from deltalake.exceptions import DeltaError, TableNotFoundError
     from deltalake.transaction import AddAction, RemoveAction
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
@@ -184,8 +185,21 @@ def _cdf_on(dt: DeltaTable) -> bool:
     return dt.metadata().configuration.get(CDF_KEY, "false").lower() == "true"
 
 
+def _is_catalog(uri: str) -> bool:
+    """Whether `uri` names a table in Unity Catalog (`uc://catalog.schema.table`)."""
+    return urlparse(uri).scheme.lower() == "uc"
+
+
 def _basename(uri: str) -> str:
-    return PurePosixPath(uri.rstrip("/")).name or uri
+    """The default name of the table at `uri`: the last part of the path,
+    with dots replaced by underscores, or the table's own name for
+    `uc://catalog.schema.table`. Plans name a table by its dotted parts
+    (catalog.schema.table), so a dot in the name would make DuckDB look for
+    a table in another schema (#451)."""
+    base = PurePosixPath(uri.rstrip("/")).name or uri
+    if _is_catalog(uri):
+        return base.rsplit(".", 1)[-1]
+    return base.replace(".", "_")
 
 
 # Reader features after which a Delta table's files hold its rows by column
@@ -236,6 +250,16 @@ class DeltaSource(Pipeable):
     rule it out, and changes are filtered. `name` is the table's name in the
     plans that read it (default: the last part of `uri`).
 
+    A `uri` of the form `uc://catalog.schema.table` reads the table through
+    Unity Catalog, which delta-rs asks for the table's location and
+    temporary keys. Its options in `storage_options` are lowercase
+    (`unity_workspace_url`, `unity_access_token`, `unity_allow_http_url`):
+    delta-rs refuses the uppercase spellings with "Failed to get a
+    credential from UnityCatalog client configuration". The keys the
+    catalog vends carry no endpoint, so a MinIO or other S3-compatible
+    endpoint goes in the same options (`aws_endpoint_url`, `aws_region`,
+    `aws_allow_http`).
+
     A refresh reads the Change Data Feed (`delta.enableChangeDataFeed`)
     between the version a node's state was computed from and the latest;
     where the feed is off or its files are gone, the new snapshot is diffed
@@ -244,7 +268,8 @@ class DeltaSource(Pipeable):
     CHECK constraints and file statistics.
 
     Args:
-        uri: The table's location: a path, or a URI such as `s3://...`.
+        uri: The table's location: a path, or a URI such as `s3://...` or
+            `uc://catalog.schema.table`.
         storage_options: Options for delta-rs's object store (credentials,
             region): a `Storage` shared with other tables, a mapping, or a
             function returning one, called whenever the table is opened.
@@ -255,7 +280,8 @@ class DeltaSource(Pipeable):
             their statistics that it is TRUE on none of their rows. Default:
             None, every row.
         name: The table's name in the plans that read it. Default: the last
-            part of `uri`.
+            part of `uri`, with dots replaced by underscores (`a.b` →
+            `a_b`), or the table's name for `uc://catalog.schema.table`.
 
     Attributes:
         uri: The table's location.
@@ -600,6 +626,12 @@ class DeltaSink(Sink):
     (default: the last part of `uri`); `app_id` defaults to
     `sverify:<name>`.
 
+    A `uri` of the form `uc://catalog.schema.table` writes a table Unity
+    Catalog has registered, with the options described in `DeltaSource`.
+    The sink cannot create one: delta-rs writes files and registers no
+    table, so register it in the catalog first, or write to its storage
+    location.
+
     The node `write` returns reads the table as a `DeltaSource`, through its
     Change Data Feed, and builds on the contract the stored node proved. A
     restarted job that builds the same nodes resumes from the table on its
@@ -617,13 +649,14 @@ class DeltaSink(Sink):
     does past another writer's `OPTIMIZE` or `VACUUM`.
 
     Args:
-        uri: The sink table's location: a path, or a URI such as `s3://...`.
+        uri: The sink table's location: a path, or a URI such as `s3://...`
+            or `uc://catalog.schema.table` for a registered table.
         app_id: The transaction's application id. Default:
             `"sverify:<name>"`.
         storage_options: Options for delta-rs's object store, as for
             `DeltaSource`. Default: None.
         name: The table's name in the plans that read the stored node.
-            Default: the last part of `uri`.
+            Default: the last part of `uri`, as for `DeltaSource`.
         checkpoint_interval: Commits between checkpoints
             (`delta.checkpointInterval`). Default: None, the table's
             setting (delta-rs: 100).
@@ -725,6 +758,20 @@ class DeltaSink(Sink):
 
     def _table(self) -> DeltaTable | None:
         options = resolve(self.storage_options)
+        if _is_catalog(self.uri):
+            # delta-rs 1.6.6's `is_deltatable` never returns for `uc://`
+            # (#451), and a sink can't register a table in the catalog.
+            try:
+                return DeltaTable(self.uri, storage_options=options)
+            except DeltaError as e:
+                # The catalog's 404 comes as a DeltaError: "Invalid table
+                # error: TABLE_NOT_FOUND: …" (or SCHEMA_/CATALOG_NOT_FOUND).
+                if not isinstance(e, TableNotFoundError) and "_NOT_FOUND" not in str(e):
+                    raise
+                raise ValueError(
+                    f"{self.uri} is not a table Unity Catalog has: register it in the "
+                    "catalog first, since DeltaSink can't create a table through it"
+                ) from e
         if not DeltaTable.is_deltatable(self.uri, storage_options=options):
             return None
         return DeltaTable(self.uri, storage_options=options)
