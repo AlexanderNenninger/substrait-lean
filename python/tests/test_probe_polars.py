@@ -133,7 +133,19 @@ VARYING: dict[str, Callable[[str, str], bool]] = {
     "s-group-fsum-f32": _one_of("16777218.0", "16777216.0", "16777218.0"),
     "s-group-mean-cancel": _one_of("0.5", "0.0", "0.25", "0.5"),
     "s-group-var": lambda m, s: m == "1.6666666666666667" and abs(float(s) - float(m)) < 1e-8,
+    # Which tied row `arg_min` picks on streaming depends on the morsels.
+    "arg-min-max-ties": lambda m, s: (
+        m == "[(1, 0)]" and re.fullmatch(r"\[\(1, \d+\)\]", s) is not None
+    ),
 }
+
+
+def _counts(observed: str) -> str:
+    """An error's row counts, which follow the morsel size on streaming
+    (`… for 300 out of 600 values` on 10 cores, 750 out of 1500 on CI)."""
+    return re.sub(r"for \d+ out of \d+ values", "for N out of M values", observed)
+
+
 #: Observations over frames of 30,000 rows or more, left out to keep the test
 #: small; `python -m sverify_dev.probe_polars --diff` runs them.
 LARGE = {
@@ -168,7 +180,7 @@ def test_probes_streaming_json_is_current():
             if "code" not in r
             else (r["construct"],)
             if r["construct"] in VARYING
-            else (r["construct"], r["differ"], r["in-memory"], r["streaming"])
+            else (r["construct"], r["differ"], _counts(r["in-memory"]), _counts(r["streaming"]))
             for r in found
         ]
 
