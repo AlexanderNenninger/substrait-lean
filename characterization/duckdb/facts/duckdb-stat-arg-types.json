@@ -85,7 +85,8 @@
     "`stat_algo`: from the cast on, the algorithm is the doubles' one: Welford with Chan's merge (duckdb-var-stddev), the online co-moment (duckdb-covar), three states for `corr` (duckdb-corr).",
     "`rounding`: every step is native IEEE double arithmetic, `+ - * /`, one `fma` in the merge and `sqrt`, under the default floating-point environment (round to nearest, ties to even). No setting selects another mode.",
     "`stat_degenerate`: a cast `BIGINT` or `DECIMAL(38)` is finite and below 1e38 in magnitude, so the squared deviations stay far below `DBL_MAX` and no ±inf reaches the update. NaN comes only from `corr`'s `std_x * std_y == 0` (one pair, a constant side), as for doubles. `var_samp` and `stddev_samp` of one value are NULL, `var_pop` and `stddev_pop` of one value 0, no values NULL.",
-    "Round 4 (probes): `var_samp` of BIGINT and of DECIMAL is a DOUBLE (7/3 and 1.5833… for 1, 2, 4 and 1.5, 2.5, 4.0). BIGINTs above 2^53 lose digits in the cast: `var_samp` of 2^53 + 1, 2^53 + 2, 2^53 + 3 is 6.0 and `var_pop` 4.0, where the exact values are 1 and 2/3. Degenerate inputs are the same for BIGINT and DECIMAL: one value gives `var_samp`, `stddev_samp` and `covar_samp` NULL, `var_pop` and `covar_pop` 0 and `corr(x, x)` NaN; a constant side gives `corr` NaN and the (co)variances 0; no values give NULL throughout."
+    "Round 4 (probes): `var_samp` of BIGINT and of DECIMAL is a DOUBLE (7/3 and 1.5833… for 1, 2, 4 and 1.5, 2.5, 4.0). BIGINTs above 2^53 lose digits in the cast: `var_samp` of 2^53 + 1, 2^53 + 2, 2^53 + 3 is 6.0 and `var_pop` 4.0, where the exact values are 1 and 2/3. Degenerate inputs are the same for BIGINT and DECIMAL: one value gives `var_samp`, `stddev_samp` and `covar_samp` NULL, `var_pop` and `covar_pop` 0 and `corr(x, x)` NaN; a constant side gives `corr` NaN and the (co)variances 0; no values give NULL throughout.",
+    "The docs are silent on the argument and result types and on the cast to DOUBLE: a docs gap."
   ],
   "reference": [
     "`rounding`: the reference's doubles are native `Float` (`TIE_TO_EVEN`).",
@@ -194,6 +195,14 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. The large-BIGINT repro is a scratch query outside the harness: its last bits may depend on the platform (fma contraction), so CI does not rerun it."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "statistical aggregates listed without types; the cast to DOUBLE is not stated"}
+      ]
     }
   ],
   "issues": [

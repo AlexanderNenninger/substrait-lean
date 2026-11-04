@@ -19,7 +19,8 @@
   "settings": {},
   "description": [
     "`CORR` keeps three independent states, a covariance and two Welford variances, and returns `cov / (std_x * std_y)`, NaN when `std_x * std_y == 0`. One pair or a zero variance gives NaN; no pairs gives NULL. Not clamped to [-1, 1]: with the separate states, |corr| can exceed 1 by a few ulps, more so than with a shared state. The square roots are taken separately, so the product of the variances does not overflow or underflow.",
-    "Probed: of no pairs (rows with a NULL on either side skipped) it is NULL; of one pair, of a side whose values are all equal, or where a variance underflows to 0 or overflows to inf, it is NaN, as is any NaN or ±inf input. Where the reference is NULL with at least one pair, DuckDB's is NaN; elsewhere they differ only in rounding (#85)."
+    "Probed: of no pairs (rows with a NULL on either side skipped) it is NULL; of one pair, of a side whose values are all equal, or where a variance underflows to 0 or overflows to inf, it is NaN, as is any NaN or ±inf input. Where the reference is NULL with at least one pair, DuckDB's is NaN; elsewhere they differ only in rounding (#85).",
+    "The docs are silent on NaN against NULL and on the missing clamp to [-1, 1]: a docs gap. No upstream test pins |corr| above 1; it may change between versions."
   ],
   "reference": [
     "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
@@ -80,6 +81,23 @@
         {
           "test": "python/tests/test_sql_lift_aggregates.py::test_corr_of_one_pair_is_nan_with_duckdbs_semantics_and_null_with_the_reference"
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "corr: covar_pop(y, x) / (stddev_pop(x) * stddev_pop(y)); silent on NaN and clamping"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L10-L18", "note": "corr(NULL, NULL) → NULL; corr(1, 1) → NAN"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L52-L60", "note": "corr of (1e301, 0), (-1e301, 0) → nan; no test of |corr| > 1"}
       ]
     }
   ],

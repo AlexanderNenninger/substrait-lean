@@ -22,7 +22,8 @@
   },
   "description": [
     "Native, except `MIN % -1`. `%` raises on zero and truncates (`-7 % 2 = -1`, `7 % -2 = 1`), as Lean does, so `division_type` makes no difference between the two. But `MIN % -1` raises `Overflow in division`, where the reference gives 0 (found by the probes, duckdb-R15-int-modulus), so the SQL writes that case out.",
-    "If the reference picks `FLOOR`, DuckDB needs a shim, `x % y + CASE WHEN x % y <> 0 AND (x % y < 0) <> (y < 0) THEN y ELSE 0 END`. With `error_on_division_by_zero` off, the guard of duckdb-R2."
+    "If the reference picks `FLOOR`, DuckDB needs a shim, `x % y + CASE WHEN x % y <> 0 AND (x % y < 0) <> (y < 0) THEN y ELSE 0 END`. With `error_on_division_by_zero` off, the guard of duckdb-R2.",
+    "The docs are silent on the sign of `%` and on `MIN % -1`: a docs gap. No upstream test pins `MIN % -1` below HUGEINT; it may change between versions."
   ],
   "reference": [
     "Substrait and the reference: `modulus` on integers raises on a zero divisor (the decided default for division by zero). Its `division_type: [TRUNCATE, FLOOR]`, the remainder's sign, is open. The parser accepts an explicit `TRUNCATE`, which is what it models, and refuses `FLOOR`.",
@@ -71,6 +72,23 @@
         }
       ],
       "notes": "`MIN % -1` raises. `sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "% is 'Modulo (remainder)', 5 % 4 = 1; no sign rule, nothing on MIN % -1"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/hugeint/test_hugeint_arithmetic.test#L185-L193", "note": "-90 % 20, 90 % -20 → -10, 10: truncating"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_division_overflow.test#L5-L39", "note": "MIN // -1 raises at TINYINT..BIGINT; no test of MIN % -1 below HUGEINT"}
+      ]
     }
   ],
   "issues": [

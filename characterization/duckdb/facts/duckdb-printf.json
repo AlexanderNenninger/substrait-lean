@@ -17,7 +17,8 @@
   "description": [
     "`printf(fmt, …)` (C's format strings) and `format(fmt, …)` (`{}` fields) are NULL when any argument is NULL, the format included.",
     "Both raise an Invalid Input Error when a field does not fit its value (`printf('%d', 'x')`, `format('{:d}', 'x')`) or has no value (`printf('%d')`, `format('{} {}', 1)`). A format without fields ignores its values: `printf('abc', 1)` is `abc`.",
-    "`printf` formats a signed integer as a BIGINT whatever its width: `printf('%x', -1::TINYINT)` is `ffffffffffffffff`, while `format('{:x}', -1)` is `-1`. A boolean is `true`/`false` under `%s` and `1` under `%d`."
+    "`printf` formats a signed integer as a BIGINT whatever its width: `printf('%x', -1::TINYINT)` is `ffffffffffffffff`, while `format('{:x}', -1)` is `-1`. A boolean is `true`/`false` under `%s` and `1` under `%d`.",
+    "The docs are silent on NULL arguments, errors, extra arguments and the BIGINT widening: a docs gap. No upstream test pins the widening of a negative TINYINT under `%x`; it may change between versions."
   ],
   "reference": [
     "`printf` and `format` of a format and one value are black boxes (#328): strict, may raise (a domain error in `verify`), and a string where they do not. The value is an integer, string or boolean (`BlackBox.Ty.atom`): a double's code and a date are integers in the model, which the function could not tell apart. More values are refused."
@@ -37,6 +38,35 @@
         {"sql": "SELECT printf('%x', -1::INTEGER), printf('%x', -1::TINYINT), printf('%x', 255::UTINYINT), format('{:x}', -1::INTEGER)", "observed": "ffffffffffffffff, ffffffffffffffff, ff, -1"},
         {"sql": "SELECT printf('%s', true), printf('%d', true), format('{}', true)", "observed": "true, 1, true"},
         {"test": "python/tests/test_black_box.py::test_printf_keeps_its_laws_on_random_data"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/string/printf.cpp#L26-L70", "note": "PrintfResolveTypes: TINYINT … BIGINT bound as BIGINT, unsigned as UBIGINT, FLOAT/DECIMAL as DOUBLE"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/string/printf.cpp#L160-L167", "note": "a NULL format or argument → NULL"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/third_party/fmt/include/fmt/printf.h#L74-L130", "note": "printf integer conversion: %x/%o/%u cast to the unsigned type, so a BIGINT -1 prints 16 hex digits"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_printf.test#L17-L21", "note": "NULL argument or format → NULL"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_printf.test#L186-L209", "note": "too few arguments → error; extra ignored; printf('%d', 'hello') → error"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_format.test#L102-L123", "note": "format: too few arguments, '{:d}' of a string → error"}
+      ],
+      "notes": "Negative TINYINT under %x (BIGINT widening): no upstream test."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/text#printf-syntax", "note": "booleans under %s print true/false; NULLs, errors and integer widening not stated (docs gap)"}
       ]
     }
   ],

@@ -33,7 +33,8 @@
     "No double operation raises \"Overflow\": every one whose result is too large for a double gives `inf` or `-inf`, from finite inputs: `1e308 * 10`, `1e308 + 1e308`, `-1e308 - 1e308`, `1e308 / 1e-10`, `power(10, 400)`, `10.0 ** 400`, `exp(1000)` (`exp(709.0)` is finite), `sinh(1000)`, `cosh(1000)`, `gamma(200)`, `lgamma(1e308)`, `degrees(1e308)`, and `power(0, -1)`.",
     "Aggregates too: `sum` and `avg` of `1e308` and `1e308` are `inf`, grouped and over a window; `fsum` of them is NaN; `var_pop` of `1e308` and `-1e308` is `-inf`.",
     "A cast of a double outside `FLOAT`'s range to `FLOAT` raises a conversion error, the one overflow that raises.",
-    "`FLOAT` arithmetic overflows the same way, in single precision: `3e38::FLOAT + 3e38::FLOAT`, `* 10` and `/ 1e-3` are `inf`, `-3e38 - 3e38` is `-inf`, and the result stays `FLOAT`. `sum` and `avg` of `FLOAT` accumulate and return a `DOUBLE` (duckdb-float-sum-order), so `sum` of `3e38` and `3e38` is the finite 6.0000000109955115e+38; grouped, `sum` and `avg` of `1e308` and `1e308` are `inf`."
+    "`FLOAT` arithmetic overflows the same way, in single precision: `3e38::FLOAT + 3e38::FLOAT`, `* 10` and `/ 1e-3` are `inf`, `-3e38 - 3e38` is `-inf`, and the result stays `FLOAT`. `sum` and `avg` of `FLOAT` accumulate and return a `DOUBLE` (duckdb-float-sum-order), so `sum` of `3e38` and `3e38` is the finite 6.0000000109955115e+38; grouped, `sum` and `avg` of `1e308` and `1e308` are `inf`.",
+    "The docs are silent on the DOUBLE-to-FLOAT conversion error: a docs gap. No upstream test pins it; it may change between versions."
   ],
   "reference": "An operation on finite doubles whose result is `±inf` raises (`Issue.infinite`, #575): an inferred precondition the written plan checks on the data (`CASE WHEN … THEN error('overflow to infinity')`), as for a `SUM` that leaves 64 bits.",
   "status": "shimmed",
@@ -86,6 +87,40 @@
         }
       ],
       "notes": "One statement at a time on an in-memory connection with the default settings."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/add.cpp#L17-L27", "note": "float/double +: C++ operator, no overflow check"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_cast.hpp#L186-L198", "note": "double to float fails when a finite value becomes infinite: the one raising overflow"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html", "note": "out-of-range values usually become zero or infinity"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/overflow/double_float_overflow.test#L8-L46", "note": "DOUBLE and FLOAT +, -, *, / past the range → ±inf"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_invalid_math.test#L43-L56", "note": "POW(1e300, 100), EXP(1e300), DEGREES(1e308) → inf"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT 1e308::DOUBLE::FLOAT", "observed": "Conversion Error: Type DOUBLE with value 1e+308 can't be cast because the value is out of range for the destination type"}
+      ]
     }
   ],
   "issues": [

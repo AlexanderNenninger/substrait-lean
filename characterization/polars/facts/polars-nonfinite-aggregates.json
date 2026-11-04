@@ -29,7 +29,9 @@
   "description": [
     "A `sum` or `mean` over both infinities is NaN, and `std`, `var` over a group with an infinity are NaN.",
     "`Float32` takes the same generic code in single precision, so a `Float32` sum of inf and -inf is NaN too, on both engines, grouped and not. Nothing checks for the infinities; the Kahan step keeps its error term only while it is finite, so it adds no NaN of its own.",
-    "A `sum` of finite values that overflows is `±inf` without raising: `sum` of 1e308 and 1e308 (`Float64`) and of 3e38 and 3e38 (`Float32`, summed in `Float32`) is inf, grouped and not, on both engines. `mean` of the `Float64` pair is inf; `mean` of the `Float32` pair sums in `f64` and is the finite 3.0000000054977558e+38."
+    "A `sum` of finite values that overflows is `±inf` without raising: `sum` of 1e308 and 1e308 (`Float64`) and of 3e38 and 3e38 (`Float32`, summed in `Float32`) is inf, grouped and not, on both engines. `mean` of the `Float64` pair is inf; `mean` of the `Float32` pair sums in `f64` and is the finite 3.0000000054977558e+38.",
+    "The docs are silent on infinities and NaN in `sum`, `mean`, `var` and `std`: a docs gap.",
+    "No upstream test pins `inf + (-inf)` or `var` and `std` with an infinity; they may change between versions."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`). ST-3 and ST-5 record that Substrait leaves both open.",
   "status": "open",
@@ -89,6 +91,28 @@
       "evidence": [
         {
           "note": "pl.LazyFrame({'g': [1, 1], 'x': [big, big]}) with x Float64 (big 1e308) and Float32 (big 3e38); select x.sum(), x.mean(), and group_by('g').agg the same; pl.LazyFrame(...).collect(engine=e) for e in ('in-memory', 'streaming'), polars 2.1.0 → Float64: (inf, inf) ungrouped and grouped; Float32: (inf, 3.0000000054977558e+38) ungrouped and grouped; streaming the same"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.sum.html",
+          "note": "sum, mean, var and std pages are silent on infinities and NaN"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_aggregations.py#L1747-L1750",
+          "note": "`test_sum_inf_not_nan_25849`: grouped Float64 sum with one inf among finite values is inf (eager, in memory). No test of inf + -inf or var/std with inf"
         }
       ]
     }

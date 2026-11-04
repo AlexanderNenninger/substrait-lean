@@ -30,7 +30,9 @@
   "description": [
     "`max` over 1, NaN, -inf, inf is inf and `arg_max` points at inf, though `sort` puts NaN last: the aggregates skip NaN, and give NaN only when there is nothing else (`max(NaN, NULL)` is NaN). `pl.max_horizontal(x, NaN)` is x. `nan_max` and `nan_min` propagate NaN.",
     "`min` and `min_horizontal` agree with NaN-as-greatest, since a NaN is never the least of a group with a number.",
-    "`Float32` and `Float64` share the code, and the streaming reducers call the in-memory kernel per morsel and merge with the same `min_ignore_nan`, so both widths and both engines skip NaN."
+    "`Float32` and `Float64` share the code, and the streaming reducers call the in-memory kernel per morsel and merge with the same `min_ignore_nan`, so both widths and both engines skip NaN.",
+    "The `nan_min` docstring names numpy's `nanmax` and gets numpy's NaN handling backwards: PL-10, a text fix.",
+    "No upstream test pins NaN in `min` and `max` on the streaming engine; it may change between versions."
   ],
   "reference": "`MAX`, `greatest` follow `nan_order: GREATEST`, so `max(1, NaN)` is NaN. The writer needs `nan_max` (or a sort) for `max` of doubles and a NaN check for `greatest`; 20 of 144 rows of `greatest` differ.",
   "status": "open",
@@ -118,6 +120,40 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.max.html",
+          "note": "Example: [-1.0, NaN, 1.0].max() is 1.0 (SRC py-polars/src/polars/expr/expr.py L3609-L3627); min gives -1.0 (L3666-L3684)."
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.nan_max.html",
+          "note": "nan_max/nan_min 'propagate/poison encountered NaN values'; Polars 'defaults to ignoring them' (expr.py L3723-L3769)."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_float.py#L8-L64",
+          "note": "`test_nan_in_group_by_agg`, `test_nan_aggregations`, `test_sorted_nan_max_12931`: max/min skip NaN ([1, NaN, 2, 3] max 3.0 min 1.0, nan_max/nan_min NaN; sorted [1, 2, NaN] max 2.0), select and group_by, eager, in memory."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_aggregations.py#L961-L1000",
+          "note": "`test_nan_inf_aggregation`: group [NaN, 5] min 5 max 5, [NaN, None] NaN, eager."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_horizontal.py#L768-L784",
+          "note": "`test_min_max_horizontal_with_nan_28682`: min_horizontal(NaN, 20, 30) 20, max_horizontal 30, eager. No streaming test with NaN in min/max."
+        }
+      ]
     }
   ]
 }

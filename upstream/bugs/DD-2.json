@@ -25,6 +25,13 @@
         "duckdb": "2.0.0"
       },
       "note": "also nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "reverse pass: concat skips NULLs (src/function/scalar/string/concat.cpp#L40-L70), as the docs state (sql/functions/text#concatvalue-); pinned by test/sql/function/string/test_concat.test#L68-L72"
     }
   ]
 }

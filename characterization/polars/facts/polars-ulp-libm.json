@@ -53,7 +53,8 @@
     "Max error in ulps, measured on macOS arm64 (3 000 inputs each), fp64 / fp32: sqrt 0.5 / 0.5; exp 0.502 / 0.511; log() 0.500 / 1.500 (528 of 746 fp32 results off, PL-4); log10() 2.09 / 1.53; log(2) 1.46 / 1.15; log(3) 2.05 / 1.53; log(b) with a column base 2.13 / 1.63; `**` with a column exponent (powf) 0.504 / 0.510; sin 0.77 / 0.77; cos 0.83 / 0.72; tan 2.30 / 0.63; arcsin 0.61 / 0.63; arccos 0.89 / 0.63; arctan 0.72 / 0.65; arctan2 0.56 / 0.68.",
     "The fp64 functions return the same values as DuckDB's on every probed input (same libm). Unlike DuckDB, `log10` and `log(2)` divide two logarithms where DuckDB calls `log10` and `log2` (≤ 0.502 ulp), and `Float32` computes in single precision where DuckDB widens to double: the macOS float functions stay below 0.8 ulp but miss the correctly rounded value up to 30 % of the time (arctan 893 of 3 000).",
     "Linux x86_64 (glibc, version unknown; the glibc 2.39 manual's bounds): double exp, log, sin, cos, asin, acos, atan, pow 1 ulp, tan and atan2 no known error; float expf, logf, sinf, cosf, tanf, asinf, acosf, atanf, powf 1 ulp, atan2f 2 ulp. Polars's `log10` and `log(b)` add about 1.5 ulp to the libm's `log` error by their formula. To be measured on homelab.",
-    "Linux x86_64 (glibc 2.39), same 3000 inputs per function: most functions are within about 0.5 ulp where macOS is not (sin 0.50 against 0.77, acos 0.50 against 0.89, tan at moderate arguments 0.51 against 2.4), but `cos` and `tan` of DOUBLE reach 7.95 and 14.36 ulp at x = 5.319372648326541e+255, near a zero of `cos` (glibc gives cos = -4.68716592425462e-19, the exact value is -4.6871659242546276e-19; macOS is within 0.05 ulp there, checked with mpmath at 3000 bits). `log10` reaches 1.35 ulp on Linux (0.50 on macOS) and `log(b, x)` 1.47 to 1.56. So no libm-backed function has a platform-independent bound below glibc's: take the larger of the two columns, and more for huge arguments of `cos` and `tan`."
+    "Linux x86_64 (glibc 2.39), same 3000 inputs per function: most functions are within about 0.5 ulp where macOS is not (sin 0.50 against 0.77, acos 0.50 against 0.89, tan at moderate arguments 0.51 against 2.4), but `cos` and `tan` of DOUBLE reach 7.95 and 14.36 ulp at x = 5.319372648326541e+255, near a zero of `cos` (glibc gives cos = -4.68716592425462e-19, the exact value is -4.6871659242546276e-19; macOS is within 0.05 ulp there, checked with mpmath at 3000 bits). `log10` reaches 1.35 ulp on Linux (0.50 on macOS) and `log(b, x)` 1.47 to 1.56. So no libm-backed function has a platform-independent bound below glibc's: take the larger of the two columns, and more for huge arguments of `cos` and `tan`.",
+    "No upstream test pins this; it may change between versions."
   ],
   "reference": "The reference computes these with Lean's `Float` (the platform's libm, in double) and fixes `rounding: TIE_TO_EVEN`; the last bits are each engine's (#54). sverify's ε (#85) per function, type and platform comes from this table; `Float32` would round to binary32 in the reference.",
   "status": "open",
@@ -129,6 +130,43 @@
         }
       ],
       "notes": "Same seed and inputs as the macOS measurement."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/rust-toolchain.toml#L1-L2",
+          "note": "Polars py-2.1.0 builds with nightly-2026-09-01, so the std docs to read are the nightly ones, not 1.90.0."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://doc.rust-lang.org/nightly/std/primitive.f64.html#method.sin",
+          "note": "Rust std: 'Unspecified precision': varies by platform, Rust version and invocation; corresponds to the libc function. The same note is on exp, ln, log, powf, tan, asin, acos, atan, atan2."
+        },
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "Polars gives no error guarantee 'unless mentioned otherwise'."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/series/test_series.py#L1872-L1900",
+          "note": "`test_trigonometric` compares with numpy at rel_tol 1e-5; no upstream test pins any function's ulp error."
+        }
+      ]
     }
   ]
 }

@@ -25,6 +25,7 @@
     "`quantile(q)` takes the `nearest` value by default (index `round(q · (n - 1))`); the other methods are `lower`, `higher`, `midpoint`, `linear` and `equiprobable`. `median` is `quantile(0.5, 'linear')`. At `q = 0.4` over 1, 2, 3, 4: nearest 2, lower 2, higher 3, midpoint 2.5, linear 2.2, equiprobable 2. NaN sorts above every number (polars-nan-order).",
     "The position is `f = q · (n - 1)` over the non-null values; `nearest` takes index `f.round()` (halves away from zero), `linear` gives `(f - ⌊f⌋) · (hi - lo) + lo` in `f64`, `midpoint` `(lo + hi) / 2`, and equal neighbours give `lo`. For neighbours of opposite sign near the double's range `hi - lo` overflows to inf, and the result leaves the interval.",
     "Integers go through the same kernel (`QuantileDispatcher` for every `PolarsIntegerType`), each value read `to_f64`, so the result is `Float64`. Decimals: ungrouped, the kernel runs on the scaled `Int128` values, then divides by 10^scale (two roundings); grouped, the column is first cast to `Float64` (correctly rounded). The result is `Float64` in both cases.",
+    "The result type is `moment_dtype`: integers, decimals and `Float64` give `Float64`, `Float32` (and `Float16`) keep their type, and `Date` gives `Datetime(us)`. The docs say a single quantile is f64: PL-11.",
     "The streaming engine has no quantile reduction: ungrouped, `quantile` runs as a columnar function on the collected column and `median` through the in-memory fallback; grouped, the query falls back to the in-memory group_by. So both engines run this kernel."
   ],
   "reference": "`quantile_disc` takes a value of the input; `quantile_cont` any double between the neighbours (`contAllowed`).",
@@ -150,6 +151,47 @@
       "notes": [
         "Streaming agrees with memory: grouped `median` and `quantile(0.3, 'linear')` over 30 000 rows give 50.0 and 30.0 per group on both engines.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs#L689-L704",
+          "note": "moment_dtype: Float32 stays Float32, Float16 stays Float16, other numerics Float64, Date → Datetime(us)"
+        }
+      ],
+      "notes": "Corrected: the description implied the result is always `Float64`; `Float32` stays `Float32` and `Date` gives `Datetime(us)` (`moment_dtype`)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L933-L1010",
+          "note": "`test_quantile` (crate): each method on UInt32 [2, 1, null, 3, 5, null, 4] (in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L151-L165",
+          "note": "`test_quantile`: nearest 2, lower 1, higher 3, midpoint 1.5, linear 1.96 on fruits_cars A (eager and lazy)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L168-L216",
+          "note": "`test_quantile_list_schema_29030`, `test_quantile_schema_dtypes_29030`: result types Float64, List(Float64), Datetime for Date"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "Float32 [1, 2, 3, 4]: quantile(0.4, 'linear') and median() are Float32 on both engines; Date quantile(0.5) is Datetime(us). polars 2.1.0, macOS arm64; the docstring says f64"
+        }
       ]
     }
   ]

@@ -74,26 +74,27 @@ means Polars's own expression gives the reference result.
 | `modulus` (`i8`…`i64`) | `division_type` | `TRUNCATE` | `FLOOR` | [int-modulus](facts/polars-int-modulus.json) |
 | | `on_division_by_zero` | `ERROR` | `NULL` | |
 | | `MIN % -1` | 0 | 0, native | |
-| `/` on integers | | an integer `divide` | a `Float64` division | [int-true-divide](facts/polars-int-true-divide.json) |
+| `/` on integers | | an integer `divide` | a `Float64` division; a literal divisor takes the reciprocal, as below | [int-true-divide](facts/polars-int-true-divide.json) |
 | `shift_left`, `shift_right` | range (ST-1) | drop bits, raise outside `[0, 63]` | no shift expressions | [int-shift](facts/polars-int-shift.json) |
 | `sum` (`i8`…`i64`) | `overflow` | `ERROR`, at the input's type | `i8`, `i16` widen to `i64`; `i32`, `i64` wrap | [sum-int](facts/polars-sum-int.json) |
 | `sum` (all) | no values | NULL | 0 (Substrait's `sum0`) | sum-int, [sum-float](facts/polars-sum-float.json) |
 | `avg` (integers) | `avg_int_result` | the declared type | `Float64` | [avg-int](facts/polars-avg-int.json) |
 | `add` `subtract` `multiply` (`fp64`) | `nan_creation` | raise | NaN (IEEE) | [double-arith](facts/polars-double-arith.json) |
 | `divide` (`fp64`) | `on_division_by_zero` | `ERROR` | `IEEE`; `±inf / ±inf` is NaN | [double-divide](facts/polars-double-divide.json) |
+| `divide`, `modulus` by a literal (`fp32`, `fp64`) | `rounding`, `nan_creation` | one rounding; no NaN from finite operands | `x · (1 / c)`: an ulp off, NaN or inf for a subnormal `c`, `49.0 % 49.0` is 49.0; on streaming per morsel, so it depends on the thread count ([PL-3](../../upstream/bugs/PL-3.json)) | [double-scalar-divisor](facts/polars-double-scalar-divisor.json) |
 | `modulus` (`fp64`) | | truncated (`fmod`), zero divisor raises | `x - y·floor(x / y)`: floor sign, NaN for `x % 0` and finite `x % ±inf` ([PL-1](../../upstream/bugs/PL-1.json)) | [double-modulus](facts/polars-double-modulus.json) |
 | `sqrt`, logs, `asin`, `acos`, `power`, trig of ±inf | `on_domain_error` | `ERROR` | `NAN` | [math-domain](facts/polars-math-domain.json) |
 | `ln`, `log10`, `log2` | `on_log_zero` | `ERROR` | `MINUS_INFINITY` | math-domain |
-| `log10`, `log2` | last bits | the platform's `log10`, `log2` | `ln(x) / ln(b)`, an ulp off at times | [log-base](facts/polars-log-base.json) |
+| `log10`, `log2` | last bits | the platform's `log10`, `log2` | `ln(x) / ln(b)`, an ulp off at times; on `Float32` the natural `log()` too ([PL-4](../../upstream/bugs/PL-4.json)) | [log-base](facts/polars-log-base.json) |
 | `atan2` | `atan2(0, 0)` | raise | 0 | [atan2](facts/polars-atan2.json) |
 | `round` | `rounding` | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` by default; native with `mode='half_away_from_zero'` | [round](facts/polars-round.json) |
 | `round` to `d` digits | | `TIE_AWAY_FROM_ZERO`, `d < 0` allowed | `op(x · 10ᵈ) / 10ᵈ`; `d < 0` refused by the API | [round-digits](facts/polars-round-digits.json) |
 | `floor`, `ceil`, `exp`, `atan` | | | native | round, math-domain |
-| doubles | `zero_sign` | `ONE_ZERO` | two zeros in arithmetic | [zero-sign](facts/polars-zero-sign.json) |
+| doubles | `zero_sign` | `ONE_ZERO` | two zeros in arithmetic; a `±0.0` literal gives -0.0 for `-0.0 + 0.0`, per morsel on streaming | [zero-sign-streaming](facts/polars-zero-sign-streaming.json) |
 | doubles | `nan_kind` | `ONE_NAN` | the sign survives | [nan-sign](facts/polars-nan-sign.json) |
 | `sum`, `avg`, `variance`, `std_dev` over ±inf | `nan_creation`, `stat_degenerate` | raise | NaN | [nonfinite-aggregates](facts/polars-nonfinite-aggregates.json) |
-| `sum`, `avg` (`fp64`) | `sum_order` | any order, within #85's bound | pairwise, Kahan when grouped | [sum-float](facts/polars-sum-float.json), [mean-float](facts/polars-mean-float.json) |
-| `variance`, `std_dev`, `covar_*`, `corr` | `stat_algo`, `stat_degenerate` | generic properties; NULL for `corr` of one pair | two-pass blocks or Welford by path; NaN for degenerate `corr` | [var-std](facts/polars-var-std.json), [cov](facts/polars-cov.json), [corr](facts/polars-corr.json) |
+| `sum`, `avg` (`fp64`) | `sum_order` | any order, within #85's bound | streaming: pairwise per morsel, in turn when grouped, varying between runs; in memory: pairwise, Kahan when grouped | [sum-float-streaming](facts/polars-sum-float-streaming.json), [mean-float-streaming](facts/polars-mean-float-streaming.json) |
+| `variance`, `std_dev`, `covar_*`, `corr` | `stat_algo`, `stat_degenerate` | generic properties; NULL for `corr` of one pair | two-pass blocks or Welford by path; NaN for degenerate `corr`; `Decimal` raises on streaming ([PL-5](../../upstream/bugs/PL-5.json)) | [var-std-streaming](facts/polars-var-std-streaming.json), [cov](facts/polars-cov.json), [corr](facts/polars-corr.json) |
 | `quantile_disc`, `quantile_cont`, `median` | `quantile_interp` | a value of the input; any double between neighbours | `nearest` by default; `linear` for `median` | [quantile](facts/polars-quantile.json) |
 | decimals | result type | the YAML's (`multiply`: s₁ + s₂) | `Decimal(38, max(s₁, s₂))` | [decimal-arith](facts/polars-decimal-arith.json) |
 | | `decimal_rescale` | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` ([ST-8](../../upstream/bugs/ST-8.json)) | |
@@ -107,7 +108,7 @@ means Polars's own expression gives the reference result.
 | `max`, `greatest`, `arg_max` (`fp64`) | `nan_order` | `GREATEST`: `max(1, NaN)` is NaN | NaN skipped unless all NaN; `nan_max` native | [min-max-nan](facts/polars-min-max-nan.json) |
 | `equal`, sorts, grouping (`fp64`) | `zero_sign` | `ONE_ZERO` | one zero; a group key keeps the zero seen first | [zero-order](facts/polars-zero-order.json) |
 | sort key | `null_order` | as the key states; `NULLS_LAST` for `UNSPECIFIED` | `NULLS_FIRST` by default in both directions; native with `nulls_last` | [null-order](facts/polars-null-order.json) |
-| sort, `fetch` | `tie_order` | any order | stable on the probe; guaranteed with `maintain_order` | [sort-stability](facts/polars-sort-stability.json) |
+| sort, `fetch` | `tie_order` | any order | stable with `maintain_order`; on streaming unstable above 32 MiB without it | [sort-stability-streaming](facts/polars-sort-stability-streaming.json) |
 | strings, booleans | order | code points; `false < true` | native | [string-order](facts/polars-string-order.json) |
 | `aggregate` keys, joins | NULL keys | one group; `=` skips NULL | native (`nulls_equal` for `IS NOT DISTINCT FROM`) | [null-keys](facts/polars-null-keys.json) |
 | `and`, `or`, `not`, `bool_and`, `bool_or` | | Kleene; aggregates skip NULLs | native | [kleene](facts/polars-kleene.json) |
@@ -151,10 +152,18 @@ means Polars's own expression gives the reference result.
 | `ORDER BY` of lists, `<` of lists | `list_null_order` | NULL in `<`, `GREATEST` in sorts | `LEAST` in sorts; `<`, `min`, `max` of lists raise | [list-order](facts/polars-list-order.json) |
 | `list_extract` | indexing | 1-based | `list.get`: 0-based, negative from the end, raises out of range | [list-index](facts/polars-list-index.json) |
 | `=` on lists and structs | | structural, NULLs equal | native | [nested-equality](facts/polars-nested-equality.json) |
-| `UNNEST` | NULL and empty lists | no row | a NULL row each; native with `empty_as_null=False, keep_nulls=False` | [explode](facts/polars-explode.json) |
+| `UNNEST` | NULL and empty lists | no row | a NULL row for a NULL list, none for an empty one; native with `keep_nulls=False` | [explode](facts/polars-explode.json) |
 | `UNION`, `INTERSECT`, `EXCEPT` | | NULLs equal | `concat`, `unique`, semi/anti joins with `nulls_equal=True` | [set-operations](facts/polars-set-operations.json) |
 | sort key | `clustered` | equal keys adjacent | a sort | [clustered](facts/polars-clustered.json) |
-| `substring` | `substring_range` | raise outside 32 bits | computes | [substring-range](facts/polars-substring-range.json) |
+| `substring` | `substring_range` | raise outside 32 bits | computes; a negative length raises | [substring-range](facts/polars-substring-range.json) |
 | `fp32` arithmetic | | refused (#417) | native single precision; literals take `Float32` | [fp32](facts/polars-fp32.json) |
 | types | implicit casts, literals, names | explicit in the plan | wider type; literals adopt the column's; `Int32` literals | [implicit-casts](facts/polars-implicit-casts.json), [literal-types](facts/polars-literal-types.json), [type-names](facts/polars-type-names.json) |
 | I/O | formats, object stores, catalogs | outside the plan | Parquet, CSV, IPC, NDJSON, Delta, Iceberg; `storage_options`; `pl.Catalog` | [io](facts/polars-io.json) |
+
+### Execution
+
+| Construct | Option | Reference | Polars | Fact |
+|---|---|---|---|---|
+| `CASE` (`when/then`) | `evaluation_order` | a branch sees only its rows | an elementwise branch is masked on both engines; other branches run on every row | [exec-when-eager](facts/polars-exec-when-eager.json) |
+| a subexpression shared by two branches | `evaluation_order` | a branch sees only its rows | CSE hoists it onto every row, so a guarded strict cast raises ([PL-6](../../upstream/bugs/PL-6.json)) | [exec-cse-hoist](facts/polars-exec-cse-hoist.json) |
+| stacked filters | `evaluation_order` | a filter's condition sees the rows below it | predicate pushdown merges them; `str.to_integer` raises on removed rows ([PL-7](../../upstream/bugs/PL-7.json)); sverify turns pushdown off | [exec-predicate-pushdown](facts/polars-exec-predicate-pushdown.json) |

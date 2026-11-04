@@ -9,7 +9,7 @@
     "float_to_int"
   ],
   "rows": [
-    {"option": "float_to_int", "types": ["any"]}
+    {"option": "float_to_int", "types": ["any"], "evidence": "engine_test"}
   ],
   "constructs": [
     "CAST",
@@ -26,7 +26,7 @@
   ],
   "status": "decided",
   "ledger_entries": 28,
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-01",
@@ -96,6 +96,30 @@
         }
       ],
       "notes": "No test casts a DECIMAL tie to an integer; the source reading covers it."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/numeric_cast.hpp#L74-L88", "note": "TryCastWithOverflowCheckFloat: std::nearbyint (ties to even), range check on the rounded value"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html", "note": "Rounding: float to integer ties to even; DECIMAL to integer ties away from zero"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT CAST(2.5::DOUBLE AS INTEGER), CAST(-2.5::DOUBLE AS INTEGER), CAST(3.5::DOUBLE AS INTEGER), CAST(2.5 AS INTEGER)", "observed": "2, -2, 4, 3"}
+      ]
     }
   ],
   "issues": [

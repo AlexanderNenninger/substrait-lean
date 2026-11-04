@@ -71,8 +71,10 @@
   "description": [
     "When one operand of `/`, `//` or `%` on floats has length 1 and the other more (a literal, `pl.lit`, or a one-row column against a longer one), Polars computes the reciprocal of the divisor once and multiplies: `x / c` is `x * (1 / c)`, `x // c` is `floor(x * (1 / c))`, `x % c` is `x - c * floor(x * (1 / c))`. Two roundings replace one, so `x / c` can miss the IEEE quotient by an ulp: `49.0 / 49.0` is 0.9999999999999999, and then `49.0 // 49.0` is 0.0 and `49.0 % 49.0` is 49.0. Recorded as PL-3.",
     "For a subnormal `c` the reciprocal overflows to inf: `0.0 / 1e-310` is NaN where IEEE gives 0.0, and `1e-300 / 1e-310` is inf where IEEE gives 1e10 (`%` gives -inf). The same holds for `Float32` below about 2.9e-39.",
-    "On a one-row frame, or a one-row morsel of the streaming engine, both sides have length 1 and the IEEE kernel runs, so the one-row probes do not show it, and a small frame under streaming (split into one-row morsels) does not either. Two columns of equal length use `l / r`. Both engines share the kernels.",
-    "polars-scalar-divisor records the same finding from #590's probe and is the id the engine tables cite."
+    "On a one-row frame both sides have length 1 and the IEEE kernel runs, so the one-row probes do not show it. Two columns of equal length use `l / r`. Both engines share the kernels, but the streaming engine picks one per morsel: its in-memory source cuts a frame into morsels of `len.div_ceil(k · threads)` rows, so a frame shorter than the thread count streams as one-row morsels and divides exactly, and a frame a little longer mixes both results in one column. With `POLARS_MAX_THREADS=10`, `49.0 / 49.0` on 4 or 10 rows gave 1.0, on 11 rows both 1.0 and 0.9999999999999999, on 40 rows 0.9999999999999999. With one thread a 4-row frame gives 0.9999999999999999, and `% 49.0` gives 49.0. So the result depends on `POLARS_MAX_THREADS` and `POLARS_IDEAL_MORSEL_SIZE`.",
+    "polars-scalar-divisor records the same finding from #590's probe and is the id the engine tables cite.",
+    "Integer `/` casts both sides to `Float64` and runs the same kernel, so a literal integer divisor takes the reciprocal too: `Int64` `49 / 49` is 0.9999999999999999 and `5 / 3` is 1.6666666666666665 (polars-int-true-divide). A division by an aggregate (`x / x.max()`) has a length-1 divisor as well. `DataFrame / 3` repeats the scalar to the frame's height and divides exactly.",
+    "The `truediv` docs and the user guide call float division IEEE 754, which this contradicts: PL-8. No upstream test pins this; it may change between versions."
   ],
   "reference": "`divide` on doubles is the IEEE quotient, rounded once (`rounding: TIE_TO_EVEN`), and creates no NaN from non-NaN inputs other than `0/0` and `inf/inf`, which raise. `sverify_fmod` is the truncated remainder, smaller than the divisor in magnitude.",
   "status": "open",
@@ -188,6 +190,73 @@
         }
       ],
       "notes": "polars-scalar-divisor records the same finding from #590's probe and is the id the engine tables cite."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/in_memory_source.rs#L118-L122",
+          "note": "morsel length = len.div_ceil(k * num_pipelines): which kernel runs depends on threads and POLARS_IDEAL_MORSEL_SIZE"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/morsel.rs#L12-L14"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/binary.rs#L151-L158",
+          "note": "integer / integer casts both sides to Float64 first, so a literal integer divisor takes the float reciprocal kernel too"
+        }
+      ],
+      "notes": "Corrected the description: it said a small frame under streaming gives the IEEE results; that holds only while the frame is shorter than the thread count (in_memory_source.rs#L118-L122). Added integer `/` and division by an aggregate, which take the reciprocal too."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "sql": "POLARS_MAX_THREADS=10 POLARS_IDEAL_MORSEL_SIZE=64: pl.LazyFrame({'x': [49.0] * n}).select(pl.col('x') / 49.0).collect(engine='streaming') for n in (4, 10, 11, 40)",
+          "observed": "4: [1.0]; 10: [1.0]; 11: [0.9999999999999999, 1.0]; 40: [0.9999999999999999] (Polars 2.1.0, macOS arm64)"
+        },
+        {
+          "sql": "POLARS_MAX_THREADS=1 vs 10: pl.LazyFrame({'x': [49.0, 0.0, 1e-300, 49.0]}).select(pl.col('x') / 49.0, pl.col('x') % 49.0).collect(engine='streaming')",
+          "observed": "1 thread: (0.9999999999999999, 49.0) for x = 49.0; 10 threads: (1.0, 0.0); in-memory: (0.9999999999999999, 49.0) either way"
+        },
+        {
+          "sql": "pl.DataFrame({'a': [49, 5, 0]}).select(pl.col('a') / 49, pl.col('a') / 3, pl.col('a') / pl.col('a').max())",
+          "observed": "49/49 = 0.9999999999999999, 5/3 = 1.6666666666666665 (IEEE 1.6666666666666667), a / a.max() = 0.9999999999999999 for a = 49"
+        },
+        {
+          "sql": "pl.DataFrame({'y': [5.0, -7.0]}) / 3 vs .select(pl.col('y') / 3)",
+          "observed": "DataFrame / 3: 1.6666666666666667, -2.3333333333333335 (IEEE); pl.col('y') / 3: 1.6666666666666665, -2.333333333333333"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "no upstream test pins pl.col(x) / literal on two rows or more; test_df.py#L2982-L3016 checks DataFrame / scalar, which materializes the scalar and runs the column kernel"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/dataframe/test_df.py#L2982-L3016"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "sql": "POLARS_MAX_THREADS=10 POLARS_IDEAL_MORSEL_SIZE=64: pl.LazyFrame({'x': [49.0] * n}).select(pl.col('x') / 49.0).collect(engine='streaming')",
+          "observed": "n=4: [1.0]; n=11: [0.9999999999999999, 1.0]; n=40: [0.9999999999999999]"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-3, which this fact records."
     }
   ]
 }

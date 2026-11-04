@@ -58,7 +58,8 @@
   "description": [
     "`SUM(DOUBLE)` adds each value to the state in turn (`state.value += input`), and partial states merge by plain addition. The order of the values depends on the parallel plan.",
     "Order class: (a) each state adds its values in turn, in the order they reach it; partial states combine by one addition each, in the order threads finish (ungrouped: each thread's state into the global one under a lock; grouped: per-thread hash tables, and abandoned or spilled partitions, merged partition by partition). With more than one thread, or a spilled hash table, the sum is a tree of unknown shape whose leaves are sequential runs. A constant vector (a constant argument, or a constant-compressed segment of a stored table) adds fl(k·x) for its k ≤ 2048 rows in one multiplication (`RepeatedStateValue::Multiply`). (b) With u = 2⁻⁵³ and γ_k = ku/(1 − ku): sequential |ŝ − s| ≤ γ_{n−1} Σ|x_i|, to first order (n − 1)u Σ|x_i| (Higham §4.2); any tree γ_h Σ|x_i|, h the most additions on one value's path to the root, at most n − 1 (§4.2); with P partials merged in a chain h ≤ m − 1 + P, m the largest partial's count. A constant run's product adds at most u·k|x| for its k values, so every path stays within γ_{n−1} Σ|x_i| and within #85's `sumTolScaled`. (c) The source below; duckdb-float-sum-order's round-4 thread runs (one result at 1 thread, several at 2 and 8); the constant-argument probe below (`sum(0.1)` over 10 rows is 1.0, the same values from a table 0.9999999999999999). (d) At one thread, with no constant vector and no spilled partial, SEQUENTIAL. Otherwise the tree shape of ANY (`FloatSums.split` over `seq` leaves), so `sum_order`'s `extra` entry (SEQUENTIAL, citing this fact) holds at threads = 1 only. A constant run's fl(k·x) is no sequential sum (1.0 against 0.9999999999999999 for ten 0.1); a search found it among the tree sums of k copies for each k ≤ 40 over 300 random x, but its membership in `FloatSums` is unproved: the Lean side needs that lemma, or a behaviour that allows a product step.",
-    "`SUM` and `AVG` of no rows, or of NULLs only, are NULL for DOUBLE, FLOAT and integer arguments (`sum-empty`): the clustered sum's state starts unset and finalizes to NULL."
+    "`SUM` and `AVG` of no rows, or of NULLs only, are NULL for DOUBLE, FLOAT and integer arguments (`sum-empty`): the clustered sum's state starts unset and finalizes to NULL.",
+    "The docs are silent on the algorithm and on the constant run's product: a docs gap. No upstream test pins the constant run's product or the dependence on thread order; it may change between versions."
   ],
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
@@ -160,6 +161,23 @@
         }
       ],
       "notes": "The probe covers DOUBLE, FLOAT and TINYINT (bound to the BIGINT overload); SMALLINT, INTEGER and BIGINT share the finalize, read in source."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "sum: floating-point versions affected by ordering; NULL on empty groups; silent on the constant-run product"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17", "note": "sum(9007199254740992.0, 1.0) → 9007199254740992: plain sequential double sum"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum.test#L82-L92", "note": "sum(n ORDER BY ABS(n)) of 2^53, 1, 1, 0 → 9007199254740994; no test of the constant-run product"}
+      ]
     }
   ],
   "issues": [

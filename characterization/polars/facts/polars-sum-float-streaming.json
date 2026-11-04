@@ -52,10 +52,12 @@
     ]
   },
   "description": [
-    "On the streaming engine a grouped float `sum` adds each value in turn to its group's sum (`NumSumReducer`, `reduce_one`, `+=`), in the input's width, and adds the pipelines' partial sums on merge. One `Float64` group of 1e16, 1, 1, -1e16 sums to 0.0 (in memory, Kahan: 2.0); one `Float32` group of 16777216, 1, 1 sums to 16777216 (in memory 16777218). Each step is one IEEE addition rounded to nearest, ties to even.",
+    "On the streaming engine a grouped float `sum` adds each value in turn to its group's sum (`NumSumReducer`, `reduce_one`, `+=`), in the input's width, and adds the pipelines' partial sums on merge. With one pipeline the additions run in input order: one `Float64` group of 1e16, 1, 1, -1e16 sums to 0.0 (in memory, Kahan: 2.0), and one `Float32` group of 16777216, 1, 1 to 16777216 (in memory 16777218). A frame of 2 to 4 rows streams as one-row morsels on a 10-thread machine, so which pipelines add which rows, and in what order their partial sums merge, changes between runs. Over 200 runs on 10 threads the `Float64` group gave 2.0 92 times, 1.0 75 times and 0.0 33 times; with `POLARS_MAX_THREADS=1` or 2 it is always 0.0. The `Float32` group varies the same way (counts not recorded). The recorded results of s-group-fsum-cancel (0.0) and s-group-fsum-f32 (16777216) are one outcome among several. Each step is one IEEE addition rounded to nearest, ties to even.",
     "Ungrouped, each morsel is summed pairwise by the in-memory kernel and added to its pipeline's running sum; which morsels a pipeline gets depends on scheduling. So the same query can give different sums from run to run: five runs of a 300 000-value sum gave 151234.90000035526 and 151234.9000003553 (in memory always the first). A grouped sum over 300 000 rows also varied between runs, on both engines (polars-exec-row-order).",
     "The sum of no values (or only nulls) is 0. The in-memory engine's algorithms are in polars-sum-float.",
-    "Order class (streaming): (a) ungrouped, each morsel is summed by the in-memory kernel (pairwise with blocks of 128: in a block each of 16 lanes adds its 8 values in turn and the lanes reduce in a tree of depth 4, the blocks combine pairwise, and the first n mod 128 values are added in turn and then to the rest), added in turn to its pipeline's running sum, and the pipelines' sums are added in pipeline order; the morsels each pipeline gets depend on scheduling, so the tree's shape changes between runs. Grouped, each pipeline adds each row in turn to its group's sum and the pipelines' partial sums are added on merge: sequential leaves combined in an order of unknown shape. (b) Any tree: γ_h Σ|x_i| (Higham §4.2). Ungrouped, h ≤ h_morsel + M + P with h_morsel as in polars-sum-float (h ≤ max(12 + ⌈log₂ B⌉, r) for one array of n = 128B + r values (7 lane additions, 4 lane levels, ⌈log₂ B⌉ pairwise levels, the final addition; r for the leading remainder) per morsel), M the morsels of one pipeline and P the pipelines; grouped, h ≤ m − 1 + P with m the largest pipeline's row count for the group; at most n − 1 in both. u = 2⁻⁵³ for `Float64`, 2⁻²⁴ for `Float32` (summed in `f32`). (c) The source below; s-fsum-runs (two results over five runs), s-group-fsum-runs, s-group-fsum-cancel (0.0) and s-group-fsum-f32 (16777216). (d) `Float64`: ANY. Grouped with one pipeline, SEQUENTIAL in the order rows arrive; in general ANY. `Float32`: the class of ANY at u = 2⁻²⁴, which `SumOrder` (double steps) cannot express."
+    "Order class (streaming): (a) ungrouped, each morsel is summed by the in-memory kernel (pairwise with blocks of 128: in a block each of 16 lanes adds its 8 values in turn and the lanes reduce in a tree of depth 4, the blocks combine pairwise, and the first n mod 128 values are added in turn and then to the rest), added in turn to its pipeline's running sum, and the pipelines' sums are added in pipeline order; the morsels each pipeline gets depend on scheduling, so the tree's shape changes between runs. Grouped, each pipeline adds each row in turn to its group's sum and the pipelines' partial sums are added on merge: sequential leaves combined in an order of unknown shape. (b) Any tree: γ_h Σ|x_i| (Higham §4.2). Ungrouped, h ≤ h_morsel + M + P with h_morsel as in polars-sum-float (h ≤ max(12 + ⌈log₂ B⌉, r) for one array of n = 128B + r values (7 lane additions, 4 lane levels, ⌈log₂ B⌉ pairwise levels, the final addition; r for the leading remainder) per morsel), M the morsels of one pipeline and P the pipelines; grouped, h ≤ m − 1 + P with m the largest pipeline's row count for the group; at most n − 1 in both. u = 2⁻⁵³ for `Float64`, 2⁻²⁴ for `Float32` (summed in `f32`). (c) The source below; s-fsum-runs (two results over five runs), s-group-fsum-runs, s-group-fsum-cancel (0.0) and s-group-fsum-f32 (16777216). (d) `Float64`: ANY. Grouped with one pipeline, SEQUENTIAL in the order rows arrive; in general ANY. `Float32`: the class of ANY at u = 2⁻²⁴, which `SumOrder` (double steps) cannot express.",
+    "The docs are silent on the float summation order and its variation between runs: a docs gap.",
+    "No upstream test pins the streaming summation order; it may change between versions."
   ],
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
@@ -169,6 +171,52 @@
         }
       ],
       "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.sum.html",
+          "note": "states the Int8/UInt8/Int16/UInt16 → Int64 cast and 0 for no non-null values; silent on float summation order and run-to-run variation"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_scalar_window.py#L84",
+          "note": "streaming `sum().over()` compared with in memory under `check_exact=False`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_aggregations.py#L872-L884",
+          "note": "`test_sum_empty_and_null_set`: Float32 empty and all-null sums are 0, select and group_by (eager, in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_aggregations.py#L1747-L1750",
+          "note": "`test_sum_inf_not_nan_25849`: grouped sum with one inf is inf (eager, in memory)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "regression-test runs on macOS arm64, 10 threads (reported to the characterization pipeline)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-cancel"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-f32"
+        }
+      ],
+      "notes": "Corrected the description: it gave the 4-row grouped sums as fixed. On 10 threads they vary by run (s-group-fsum-cancel over 200 runs: 2.0 ×92, 1.0 ×75, 0.0 ×33); POLARS_MAX_THREADS=1 or 2 always gives 0.0. The recorded `differ` of both probes is one run's outcome."
     }
   ],
   "issues": [

@@ -121,6 +121,14 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin the string limit (results past 2^32 - 1 bytes raise, a 3·10^9-byte string is fine), the vector limit for lists, substring's 32-bit offsets and the 38-digit decimal width."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/text#specifying-a-length-limit", "note": "VARCHAR(n): 'has no effect'; no maximum string size stated (docs gap; MAX_STRING_SIZE = 2^32 - 1 from source)"}
+      ]
     }
   ]
 }

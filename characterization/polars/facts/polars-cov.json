@@ -23,7 +23,9 @@
   "description": [
     "`CovState` follows `var` (polars-var-std): two-pass per block of 128 merged by Chan's combine in memory, Welford's update in the streaming reducer. A weight at most `ddof` is null. `CovState` does not clamp.",
     "Integers become doubles (`as f64`), so values above 2⁵³ round; decimals are cast to `Float64` in memory. The streaming engine checks for a primitive numeric type before it builds the reduction, and a decimal is not one: `cov` of a `Decimal` column raises `InvalidOperationError` on the default lazy engine and succeeds in memory.",
-    "Streaming, ungrouped, merges `moment::cov` per chunk, the block algorithm of the in-memory path; the per-value Welford update is the grouped streaming path. In memory a column of length 1 is taken as a broadcast constant, so the covariance of one pair is 0.0 with `ddof=0` and null with `ddof=1` without reaching `CovState`."
+    "Streaming, ungrouped, merges `moment::cov` per chunk, the block algorithm of the in-memory path; the per-value Welford update is the grouped streaming path. In memory a column of length 1 is taken as a broadcast constant, so the covariance of one pair is 0.0 with `ddof=0` and null with `ddof=1` without reaching `CovState`.",
+    "The docs are silent on a weight at most `ddof` giving NULL, the algorithm, the types `cov` takes and the engines: a docs gap.",
+    "No upstream test pins a `Decimal` input; it may change between versions."
   ],
   "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
@@ -170,6 +172,40 @@
         "Confirms PL-5 on the streaming engine: `cov` of two `Decimal(10, 2)` columns raises `InvalidOperationError` (`cov` operation not supported for dtype `decimal[10,2]`), where memory gives 2.625 (and `corr` 0.9707253433941508).",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.cov.html",
+          "note": "states ddof as the divisor N - ddof; silent on a weight at most ddof (null), the algorithm, dtypes and engines"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L98-L104",
+          "note": "`test_cov`: cov(A, B) of fruits_cars is -2.5, Float64 (lazy collect, default engine). No upstream test of Decimal input"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L269-L293",
+          "note": "no test of cov/corr on Decimal; skew's streaming-vs-in-memory hypothesis test includes pl.Decimal in its dtypes, so the suite expects decimal parity for moment reductions"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-5, which this fact records."
     }
   ],
   "issues": [

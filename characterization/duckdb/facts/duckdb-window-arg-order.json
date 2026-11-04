@@ -64,6 +64,23 @@
         }
       ],
       "notes": "The ledger was written before this round, 427 commits before it; the lift's `_RANKING` branch still reads no argument ordering at this commit, so the lead stands."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rank_function.cpp#L16-L36", "note": "an argument ORDER BY turns on framing and builds a token tree over the argument orders"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rank_function.cpp#L216-L231", "note": "rank within [frame_begin, frame_end) by the token tree, or the peer start clamped to the frame"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/window_functions", "note": "argument ORDER BY allowed for all but dense_rank; computed within the frame using the provided ordering"}
+      ]
     }
   ]
 }

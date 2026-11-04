@@ -13,7 +13,8 @@
   ],
   "settings": {},
   "description": [
-    "`list_sum(l)` of a list of integers (of any width, or of booleans) is a HUGEINT: the sum of the non-NULL elements, NULL for an empty list, a list of NULLs or a NULL list. It does not overflow at 64 bits: `list_sum([9223372036854775807, 1])` is 9223372036854775808. Of doubles it is a DOUBLE (`list_sum(['inf', '-inf'])` is NaN)."
+    "`list_sum(l)` of a list of integers (of any width, or of booleans) is a HUGEINT: the sum of the non-NULL elements, NULL for an empty list, a list of NULLs or a NULL list. It does not overflow at 64 bits: `list_sum([9223372036854775807, 1])` is 9223372036854775808. Of doubles it is a DOUBLE (`list_sum(['inf', '-inf'])` is NaN).",
+    "The docs are silent on `list_sum`'s result type, overflow and NULL handling: a docs gap."
   ],
   "reference": [
     "`list_sum` of integers is a black box (#327) Lean evaluates exactly. Its result is a BIGINT, as `SUM`'s is (#437), so a sum outside the BIGINT range raises a domain error, and the SQL casts DuckDB's HUGEINT to a BIGINT. `list_sum` of doubles is refused."
@@ -30,6 +31,31 @@
         {"sql": "SELECT list_sum([9223372036854775807, 1]), typeof(list_sum([1::INTEGER]))", "observed": "9223372036854775808, HUGEINT"},
         {"sql": "SELECT list_sum([1.5, 2.5]::DOUBLE[]), list_sum(['inf'::DOUBLE, '-inf'::DOUBLE]), list_sum([true, true])", "observed": "4.0, NaN, 2"},
         {"test": "python/tests/test_black_box.py::test_list_sum_keeps_its_laws_on_random_data"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/catalog/default/default_functions.cpp#L191", "note": "list_sum(l) AS list_aggr(l, 'sum'): the sum aggregate, HUGEINT for integers"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/list", "note": "list_sum applies sum; no result type, overflow or NULL handling"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/aggregates/bigints_sum_avg.test#L26-L34", "note": "list_sum([1, 2, 3, 9223372036854775806]) → 9223372036854775812"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/aggregates/sum.test#L25-L37", "note": "list_sum of NULL, [NULL], [] → NULL"}
       ]
     }
   ],

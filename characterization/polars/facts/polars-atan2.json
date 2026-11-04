@@ -21,7 +21,11 @@
       "streaming"
     ]
   },
-  "description": "`pl.arctan2(y, x)` is Rust's `atan2`: `atan2(0, 0)` is 0 and the infinities give the IEEE angles. It is the only edge case that differs.",
+  "description": [
+    "`pl.arctan2(y, x)` is Rust's `atan2`: `atan2(0, 0)` is 0 and the infinities give the IEEE angles. It is the only edge case that differs.",
+    "The docs are silent on `atan2(0, 0)` and the infinities: a docs gap.",
+    "No upstream test pins this; it may change between versions."
+  ],
   "reference": "`atan2` with `on_domain_error: ERROR`, which raises at `(0, 0)`; Substrait leaves its domain open (ST-2).",
   "status": "open",
   "evidence": "probe",
@@ -54,6 +58,32 @@
       "notes": [
         "`atan2` is generic over the float type: a `Float32` `y` computes `f32::atan2` and returns `Float32`, so `atan2(0, 0)` is 0 there too.",
         "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.arctan2.html",
+          "note": "silent on atan2(0, 0) and the infinities"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/functions/lazy.py#L1774-L1809",
+          "note": "the docstring at the tag"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_trigonometric.py#L9-L30",
+          "note": "`test_arctan2`: only (±√2/2, ±√2/2) → ±45°, ±135° (eager, in memory); no upstream test pins (0, 0) or ±inf"
+        }
       ]
     }
   ]

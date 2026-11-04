@@ -75,7 +75,8 @@
     "`pow`, `power`, `**` and `^` are one function with a single signature, `(DOUBLE, DOUBLE) -> DOUBLE`. Integer arguments are cast to DOUBLE, so `2 ** 3` is the double `8.0`, a BIGINT above 2⁵³ loses digits on the way in, and a result outside 64 bits is a large double or `inf`. Nothing checks integer overflow.",
     "The body is C's `std::pow`. With `ieee_floating_point_ops` on (the default) it raises nothing: a negative exponent gives a fraction (`2 ** -1 = 0.5`) and `0 ** -1` gives `inf`. With it off, `0 ** negative` raises `zero raised to a negative power is undefined` and the rest is unchanged.",
     "So the `int.pow` rows have no native DuckDB answer: sverify's SQL never calls `POWER` for `BinFn.ipow`. It writes the power out as repeated checked BIGINT multiplication, which raises `Overflow in multiplication` exactly when a partial product leaves 64 bits (duckdb-R1), and raises on a negative exponent itself.",
-    "Round 4 (probes): `**` of TINYINT and of SMALLINT is a DOUBLE: `2 ** 7 = 128.0` and `2 ** 15 = 32768.0` leave the argument's range without an error, `2 ** -1 = 0.5` and `0 ** -1 = inf`."
+    "Round 4 (probes): `**` of TINYINT and of SMALLINT is a DOUBLE: `2 ** 7 = 128.0` and `2 ** 15 = 32768.0` leave the argument's range without an error, `2 ** -1 = 0.5` and `0 ** -1 = inf`.",
+    "The numeric functions page shows `3 ** 4` as `81` and `pow(2, 3)` as `8` and never states the DOUBLE result: a docs bug, DD-9."
   ],
   "reference": "`power` on integers keeps the integer type; a result outside the width raises (`overflow: ERROR`), and `on_domain_error` never applies (docs/core-semantics.md). Lean's `BinFn.ipow` raises on a negative exponent. The SQL lift reads DuckDB's `**` as the double `power` (`sql_lift/core.py`, `_pow`), as DuckDB computes it.",
   "status": "shimmed",
@@ -152,6 +153,22 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "examples 3 ** 4 → 81 and pow(2, 3) → 8, no result type; the engine returns DOUBLE (draft docs entry)"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT 3 ** 4, typeof(3 ** 4), pow(2,3), typeof(pow(2,3))", "observed": "81.0, DOUBLE, 8.0, DOUBLE"}
+      ]
     }
   ]
 }

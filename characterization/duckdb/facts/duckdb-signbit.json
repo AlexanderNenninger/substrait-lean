@@ -18,7 +18,8 @@
   ],
   "settings": {},
   "description": [
-    "`signbit(x)` is the IEEE sign bit of the double `x`: TRUE for `'-0.0'::DOUBLE`, `-(0.0::DOUBLE)` and `-'nan'::DOUBLE`, FALSE for `+0.0` and `'nan'::DOUBLE`. The literal `-0.0` is a DECIMAL, which converts to `+0.0`, so `signbit(-0.0)` is FALSE. An integer argument is converted to a double."
+    "`signbit(x)` is the IEEE sign bit of the double `x`: TRUE for `'-0.0'::DOUBLE`, `-(0.0::DOUBLE)` and `-'nan'::DOUBLE`, FALSE for `+0.0` and `'nan'::DOUBLE`. The literal `-0.0` is a DECIMAL, which converts to `+0.0`, so `signbit(-0.0)` is FALSE. An integer argument is converted to a double.",
+    "The docs are silent on the type of the literal `-0.0`, a DECIMAL that loses the sign: a docs gap. No upstream test pins `signbit(-0.0)` of the literal; it may change between versions."
   ],
   "reference": [
     "The model's double codes have one zero and one NaN (`SubstraitLean/Float.lean`), so they do not determine `signbit` there. `signbit` is a black box (#328) whose only law is `nonNull`; Lean's evaluator gives `c < 0` for every other code and refuses to print rows at zero and NaN."
@@ -34,6 +35,30 @@
         {"sql": "SELECT signbit(-0.0), signbit(0.0), signbit('nan'::DOUBLE), signbit(-1), signbit(NULL::DOUBLE), signbit(-'nan'::DOUBLE)", "observed": "false, false, false, true, NULL, true"},
         {"sql": "SELECT signbit('-0.0'::DOUBLE), signbit(-(0.0::DOUBLE)), signbit(-'nan'::DOUBLE)", "observed": "true, true, true"},
         {"test": "python/tests/test_black_box.py::test_signbit_keeps_its_laws_on_random_data"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1724-L1744", "note": "signbit: FLOAT and DOUBLE overloads, std::signbit"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "signbit: 'Returns whether the signbit is set or not'"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_sign_bit.test#L8-L38", "note": "FLOAT and DOUBLE: signbit(-3) true, stored -0.0 true, signbit(abs(-0.0)) false"}
       ]
     }
   ],

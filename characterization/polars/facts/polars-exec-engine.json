@@ -23,11 +23,13 @@
     "`collect(engine=\"auto\")`, the default, uses the engine set by `Config.set_engine_affinity` or `POLARS_ENGINE_AFFINITY`, and otherwise the streaming engine (docstring at py-2.1.0). The Rust side resolves `Engine::Auto` to the in-memory engine only for eager operations and to streaming for every lazy query (`polars-lazy/src/frame/mod.rs`); eager `DataFrame` methods always run in memory (`_eager_engine`). With `engine=\"streaming\"` there is no whole-query fallback: `collect_with_engine` runs `polars_stream::run_query` and returns its error. The fallback is per node: the lowering hands operations it cannot stream to the in-memory engine inside the streaming plan (polars-exec-streaming-fallback). The only whole-query switch is `POLARS_AUTO_STREAMING=1`, which tries streaming first for a non-streaming engine.",
     "sverify targets the streaming engine (#605 pins `collect(engine=\"streaming\")`), so the settings that matter are those that move a query off it: `POLARS_ENGINE_AFFINITY` and `Config.set_engine_affinity` no longer apply to an explicit engine, while `POLARS_FORCE_STREAMING` only forces streaming. The risk is the per-node fallback: a node run in memory takes the in-memory engine's algorithms (its float sums, its row order) on a materialized frame. The probes behind polars-sum-float, polars-var-std, polars-cov and polars-mean-float called eager `DataFrame` methods, which run in memory, and need rerunning under `engine=\"streaming\"`.",
     "Switches that change the engine: `Config.set_engine_affinity(name)`, which writes `POLARS_ENGINE_AFFINITY`; `Config.set_engine_affinity(Engine object)`, which clears the variable and keeps the engine in a Python-side override; `POLARS_FORCE_STREAMING=1`, which forces streaming whatever the affinity; `POLARS_AUTO_STREAMING=1`, which tries streaming first for a non-streaming engine. `POLARS_MAX_THREADS`, read once at import, sets the thread pool. `pl.Config`'s other settings change display only.",
-    "Next round: probe the engine-dependent facts under `engine=\"streaming\"`, and the result of `collect()` with each switch."
+    "Next round: probe the engine-dependent facts under `engine=\"streaming\"`, and the result of `collect()` with each switch.",
+    "The docs are silent on `POLARS_FORCE_STREAMING` and `POLARS_AUTO_STREAMING`: a docs gap.",
+    "No upstream test pins that a lazy `collect()` with `engine=\"auto\"` and no affinity runs the streaming engine; it may change between versions."
   ],
   "reference": "The reference has no engine choice. A profile's facts hold under the settings they record (`sverify._engine_settings`, #444); the Polars row accepts the affinity `auto` and `in-memory`.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -88,6 +90,32 @@
         }
       ],
       "notes": "Corrects round 1's 'a query the streaming engine cannot run falls back to the in-memory engine': the fallback is per node, inside the streaming plan."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_engine.py#L141-L155",
+          "note": "affinity streaming makes auto streaming, an explicit engine wins; eager operations always in memory (Python-side selection)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_engine.py#L106-L127",
+          "note": "test_select_engine: auto is passed to Rust unresolved; no upstream test pins that Rust resolves a lazy auto to streaming, or POLARS_FORCE_STREAMING"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/streaming/",
+          "note": "engine='streaming'; POLARS_FORCE_STREAMING and POLARS_AUTO_STREAMING are undocumented"
+        }
+      ]
     }
   ]
 }
