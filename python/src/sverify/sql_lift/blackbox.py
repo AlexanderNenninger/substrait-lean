@@ -47,7 +47,27 @@ class BlackBoxAgg(sge.Expression, sge.AggFunc):
 
 #: The type of each `black_box.Ty`.
 _TYPES: dict[str, Any] = {"int": dt.int64, "double": dt.float64, "str": dt.string,
-                          "bool": dt.boolean, "date": dt.date}  # fmt: skip
+                          "bool": dt.boolean, "date": dt.date,
+                          "doubles": dt.Array(value_type=dt.float64),
+                          "ints": dt.Array(value_type=dt.int64)}  # fmt: skip
+
+#: The types an argument is converted to (`lf.to`); the others are taken as
+#: they are.
+_CONVERTED = ("int", "double", "str", "bool", "date")
+
+#: DuckDB's other names of black boxes: its vector functions of fixed-size
+#: ARRAYs, which the model reads as lists, are those of lists (#327).
+ALIASES = {
+    "array_cosine_similarity": "list_cosine_similarity",
+    "array_cosine_distance": "list_cosine_distance",
+    "array_distance": "list_distance",
+    "list_dot_product": "list_inner_product",
+    "array_inner_product": "list_inner_product",
+    "array_dot_product": "list_inner_product",
+    "array_negative_inner_product": "list_negative_inner_product",
+    "array_negative_dot_product": "list_negative_inner_product",
+    "list_negative_dot_product": "list_negative_inner_product",
+}
 
 
 def _accepts(ty: str, t: Any) -> bool:
@@ -60,6 +80,8 @@ def _accepts(ty: str, t: Any) -> bool:
         or (ty == "bool" and t.is_boolean())
         or (ty == "date" and t.is_date())
         or (ty == "atom" and (t.is_integer() or t.is_string() or t.is_boolean()))
+        or (ty == "doubles" and t.is_array() and t.value_type.is_float64())
+        or (ty == "ints" and t.is_array() and t.value_type.is_integer())
     )
 
 
@@ -81,12 +103,17 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
         if isinstance(n, sge.ToBase64):
             # SQLGlot's `to_base64(x)`, DuckDB's other name for `base64`.
             return BlackBoxCall(this="base64", expressions=[n.this])
+        if isinstance(n, (sge.CosineDistance, sge.EuclideanDistance)):
+            # SQLGlot's `list_cosine_distance(a, b)` and `list_distance(a, b)`.
+            name = "list_cosine_distance" if isinstance(n, sge.CosineDistance) else "list_distance"
+            return BlackBoxCall(this=name, expressions=[n.this, n.expression])
         if isinstance(n, sge.Format):
             # SQLGlot's `format(fmt, …)`.
             return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
         if type(n) is not sge.Anonymous:
             return n
         name = n.name.lower()
+        name = ALIASES.get(name, name)
         if name in black_box.SCALARS:
             return BlackBoxCall(this=name, expressions=list(n.expressions))
         if name in black_box.AGGREGATES:
@@ -108,7 +135,7 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
         e = sub(_unwrap(row.name, a))
         if not _accepts(ty, e.type):
             raise Unsupported(f"{row.name} of a {e.type} is not supported")
-        js.append(lf.to(e, _TYPES[ty]).json if ty in _TYPES else e.json)
+        js.append(lf.to(e, _TYPES[ty]).json if ty in _CONVERTED else e.json)
     out = _TYPES[row.result]
     return E(_fn(row.name, js, out), out)
 
@@ -121,7 +148,7 @@ def _aggregate(lf: _Lift, node: sge.Expression, a: E) -> tuple[str, Any]:
     return name, _TYPES[row.result]
 
 
-_KNOWN.update(black_box.NAMES)
+_KNOWN.update(black_box.NAMES, ALIASES)
 PARSE_REWRITES.append(_rewrite)
 _AGGREGATES[BlackBoxAgg] = "black_box"
 AGG_RULES[BlackBoxAgg] = _aggregate

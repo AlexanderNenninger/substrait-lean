@@ -6,7 +6,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify.plan_json import Unsupported, literal
-from sverify.sql_lift._base import Column, E, Sub, _Lift, _shown, register
+from sverify.sql_lift._base import _KNOWN, PARSE_REWRITES, Column, E, Sub, _Lift, _shown, register
 
 
 def _array(lf: _Lift, node: sge.Array, sub: Sub, scope: list[Column]) -> E:
@@ -50,6 +50,37 @@ def _bracket(lf: _Lift, node: sge.Bracket, sub: Sub, scope: list[Column]) -> E:
     }
     return E(ref, elem)
 
+
+def _index(k: sge.Expression) -> sge.Expression:
+    """A constant index as SQLGlot reads one inside brackets: less 1."""
+    if isinstance(k, sge.Literal) and not k.is_string and k.this.lstrip("-").isdigit():
+        return sge.Literal.number(int(k.this) - 1)
+    if isinstance(k, sge.Neg) and isinstance(k.this, sge.Literal) and k.this.this.isdigit():
+        return sge.Literal.number(-int(k.this.this) - 1)
+    return k
+
+
+def _rewrite(tree: sge.Expr) -> sge.Expr:
+    """DuckDB's other names of indexing and of list literals (#327):
+    `list_extract(l, i)`, `list_element` and `array_extract` are `l[i]`, and
+    `array_value(a, …)` is `[a, …]`."""
+
+    def node(n: sge.Expr) -> sge.Expr:
+        if type(n) is not sge.Anonymous:
+            return n
+        name = n.name.lower()
+        if name in ("list_extract", "list_element", "array_extract") and len(n.expressions) == 2:
+            lst, k = (e.transform(node, copy=False) for e in n.expressions)
+            return sge.Bracket(this=lst, expressions=[_index(k)])
+        if name == "array_value":
+            return sge.Array(expressions=[e.transform(node, copy=False) for e in n.expressions])
+        return n
+
+    return tree.transform(node, copy=False)
+
+
+_KNOWN.update({"list_extract", "list_element", "array_extract", "array_value"})
+PARSE_REWRITES.append(_rewrite)
 
 register(
     {

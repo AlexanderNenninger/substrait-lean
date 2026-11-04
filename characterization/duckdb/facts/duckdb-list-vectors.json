@@ -1,0 +1,49 @@
+{
+  "id": "duckdb-list-vectors",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Vector functions of lists: NULL elements raise, a zero vector gives NaN",
+  "verdict": "decided: black boxes with bounds that allow NaN",
+  "area": "nested",
+  "constructs": [
+    "list_cosine_similarity",
+    "list_cosine_distance",
+    "list_distance",
+    "list_inner_product",
+    "list_negative_inner_product",
+    "array_cross_product",
+    "array_cosine_similarity"
+  ],
+  "settings": {},
+  "description": [
+    "`list_cosine_similarity`, `list_cosine_distance`, `list_distance`, `list_inner_product` and `list_negative_inner_product` of two `DOUBLE[]` raise an Invalid Input Error where a list holds a NULL (`left argument can not contain NULL values`) or the two differ in length (`list dimensions must be equal`). A NULL list gives NULL.",
+    "For two empty lists the cosine similarity and distance are NULL, the distance and the inner products `0.0`. Where a list is zero, or holds NaN or an infinity, the cosine similarity and distance are NaN. Otherwise the similarity stays in [-1, 1] and the distance in [0, 2]: 400000 random pairs, and `a` against `a` and `-a`, gave exactly 1.0, 0.0, -1.0 and 2.0 at the ends.",
+    "The `array_*` functions (`array_cosine_similarity`, `array_distance`, `array_inner_product`, …) take fixed-size ARRAYs only: on two `DOUBLE[]` they fail to bind. `array_cross_product` takes `DOUBLE[3]`, to which a list converts, and raises a Conversion Error for another length; its result is a `DOUBLE[3]`."
+  ],
+  "reference": [
+    "Each is a black box (#327), strict, that may raise. Laws: the similarity at least `-1.0` (NaN is above every number in the model's codes, so `<= 1` is not a law), the cosine distance at least `+0.0`, the distance not NULL and at least `+0.0`, the inner products and the cross product not NULL. The model has no fixed-size ARRAY, so a list stands for one and the `array_*` names lift to the `list_*` functions; the cross product is written as a `DOUBLE[]`."
+  ],
+  "status": "decided",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "Claude session for #327 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {"sql": "SELECT list_cosine_similarity([NULL,1.0]::DOUBLE[], [1.0,1.0]::DOUBLE[])", "observed": "Invalid Input Error: list_cosine_similarity: left argument can not contain NULL values"},
+        {"sql": "SELECT list_cosine_similarity([1.0,2]::DOUBLE[], [2.0]::DOUBLE[])", "observed": "Invalid Input Error: list_cosine_similarity: list dimensions must be equal, got left length '2' and right length '1'"},
+        {"sql": "SELECT list_cosine_similarity([0.0,0]::DOUBLE[], [2.0,1]::DOUBLE[]), list_cosine_similarity(['nan'::DOUBLE,1.0], [1.0,1.0]::DOUBLE[]), list_cosine_similarity(['inf'::DOUBLE,1.0], [1.0,1.0]::DOUBLE[])", "observed": "NaN, NaN, NaN"},
+        {"sql": "SELECT list_cosine_similarity([]::DOUBLE[], []::DOUBLE[]), list_cosine_distance([]::DOUBLE[], []::DOUBLE[]), list_distance([]::DOUBLE[], []::DOUBLE[]), list_inner_product([]::DOUBLE[], []::DOUBLE[])", "observed": "NULL, NULL, 0.0, 0.0"},
+        {"sql": "SELECT max(list_cosine_similarity(a, a)), min(list_cosine_distance(a, a)), min(list_cosine_similarity(a, [-x for x in a])), max(list_cosine_distance(a, [-x for x in a])) FROM (SELECT [random()*2-1, random()*1e5, random()-0.5, random()*1e-3] a FROM range(200000))", "observed": "1.0, 0.0, -1.0, 2.0"},
+        {"sql": "SELECT array_cosine_similarity([1.0,2.0]::DOUBLE[], [2.0,4.0]::DOUBLE[])", "observed": "Binder Error: No function matches the given name and argument types 'array_cosine_similarity(DOUBLE[], DOUBLE[])'"},
+        {"sql": "SELECT array_cosine_similarity([1.0,2]::DOUBLE[2], [2.0,4]::DOUBLE[2]), array_cosine_similarity([0.0,0]::DOUBLE[2], [2.0,4]::DOUBLE[2])", "observed": "1.0, NaN"},
+        {"sql": "SELECT array_cross_product([1.0,0,0]::DOUBLE[], [0.0,1,0]::DOUBLE[]), typeof(array_cross_product([1.0,0,0]::DOUBLE[], [0.0,1,0]::DOUBLE[]))", "observed": "[0.0, 0.0, 1.0], DOUBLE[3]"},
+        {"sql": "SELECT array_cross_product([1.0,0]::DOUBLE[], [0.0,1]::DOUBLE[])", "observed": "Conversion Error: Cannot cast list with length 2 to array with length 3"},
+        {"test": "python/tests/test_black_box.py::test_vectors_keep_their_laws_on_random_data"}
+      ]
+    }
+  ],
+  "issues": [
+    327
+  ]
+}
