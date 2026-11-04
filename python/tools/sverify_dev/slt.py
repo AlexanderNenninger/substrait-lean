@@ -591,6 +591,7 @@ class Replay:
                 if cap is not None and table.num_rows > cap:
                     n = table.num_rows
                     raise OverflowError(f"table {name} has {n} rows, more than {cap}")
+                _check_midnight(name, table)
                 for alias in {name, name.lower()}:
                     self.con.put(alias, table)
                 self.synced[name] = self.version
@@ -854,6 +855,22 @@ class Replay:
                 else "engine"
             )
         return res
+
+
+def _check_midnight(name: str, table: pa.Table) -> None:
+    """Refuse a table with a time of `24:00:00`, which DuckDB's `TIME` holds
+    and Python's `datetime.time`, through which the rows are inlined for
+    Lean, does not: it became `00:00:00` (#619)."""
+    import pyarrow.compute as pc
+
+    for col, f in zip(table.columns, table.schema, strict=True):
+        if pa.types.is_time64(f.type) and f.type.unit == "us":
+            top = pc.call_function("max", [col.cast(pa.int64())]).as_py()
+            if top is not None and top >= 86_400_000_000:
+                raise ValueError(
+                    f"column {f.name} of {name} holds 24:00:00, which the rows inlined "
+                    "for Lean (Python times) cannot"
+                )
 
 
 def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:

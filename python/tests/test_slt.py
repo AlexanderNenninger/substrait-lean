@@ -351,3 +351,29 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     (r,), _ = slt.replay_file(path, "area/trig.test")
     assert (r.cls, r.lean, r.duckdb) == ("disagree", '[["NULL"]]', '[["nan"]]')
     assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
+
+
+def test_a_time_of_24_00_is_refused(tmp_path):
+    """Python's `datetime.time`, through which the rows reach Lean, has no
+    `24:00:00`: it became midnight (#619)."""
+    path = tmp_path / "t24.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE times AS SELECT t::TIME AS t FROM (VALUES ('24:00:00'), ('13:00:00')) v(t)
+
+            query I
+            SELECT t FROM times
+            ----
+            24:00:00
+            13:00:00
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/t24.test")
+    assert (r.cls, r.reason) == (
+        "refused",
+        "tables: column t of times holds 24:00:00, "
+        "which the rows inlined for Lean (Python times) cannot",
+    )
