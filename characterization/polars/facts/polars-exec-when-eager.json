@@ -1,0 +1,72 @@
+{
+  "id": "polars-exec-when-eager",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`when/then/otherwise`, `&`, `|`, `coalesce`: every operand runs on every row",
+  "verdict": "no short-circuit: a raising branch raises on rows its condition excludes",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "when",
+    "then",
+    "otherwise",
+    "&",
+    "|",
+    "coalesce",
+    "cast"
+  ],
+  "settings": {},
+  "description": [
+    "The `when` docstring warns that Polars computes all expressions passed to `when-then-otherwise` in parallel and filters afterwards, so each expression must be valid on its own, whatever the conditions; its examples add that `when-then` always executes all expressions.",
+    "Most Polars arithmetic does not raise (integer division by zero gives NULL, integer overflow wraps: polars-int-divide, polars-int-arith), so the raising expressions are strict casts (polars-cast-int, polars-cast-double-to-int, polars-cast-string), string parsing and temporal errors (polars-temporal-errors). A `pl.when(c).then(x.cast(t))` therefore raises on a row `c` excludes when `x` does not fit `t`. The test of #29799 shows one exception the engine takes care of: a strict cast after masking a struct field succeeds only because masking nulled the field in every chunk.",
+    "The `coalesce` page says it folds left to right keeping the first non-null value, and is silent on whether later arguments run on the rows already decided. `&` and `|` are column operations; the docs do not say they short-circuit.",
+    "Leads: crates/polars-expr/src/expressions/ternary.rs, the `coalesce` kernel in crates/polars-ops, and py-polars/tests/unit/functions/test_when_then.py; probes of a strict cast in a `then` branch and in a later `coalesce` argument, in memory and streaming."
+  ],
+  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's Polars translation would need its `CASE` written so that a raising branch only sees its rows, or the issue analysis to treat Polars's `CASE` as eager.",
+  "status": "open",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.when.html"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.coalesce.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/functions/whenthen.py#L49-L51",
+          "note": "computes all expressions, then filters"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/functions/whenthen.py#L80",
+          "note": "when-then always executes all expressions"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/functions/test_when_then.py#L925-L960",
+          "note": "#29799: strict cast after masking a struct field"
+        }
+      ],
+      "notes": "Read, not replayed."
+    }
+  ]
+}

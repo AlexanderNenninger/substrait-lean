@@ -1,0 +1,39 @@
+{
+  "id": "polars-exec-platform",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Platform dependence: undocumented",
+  "verdict": "docs silent on libm, SIMD and NaN canonicalization",
+  "area": "execution",
+  "options": [
+    "platform"
+  ],
+  "constructs": [
+    "sin",
+    "pow",
+    "exp",
+    "log"
+  ],
+  "settings": {},
+  "description": [
+    "The Polars docs say nothing about platform-dependent results. Rust's `f64` methods (`sin`, `exp`, `powf`) lower to the platform's math library, so their last bits may differ between macOS arm64 (probes) and Linux x86_64 (CI); this is general Rust behaviour, not yet checked in Polars's kernels.",
+    "Leads: crates/polars-compute/src/arithmetic/, the trigonometry kernels in crates/polars-plan/src/dsl/function_expr/trigonometry.rs; rerun characterization/polars/probes.json on homelab and diff."
+  ],
+  "reference": "The reference treats the elementary functions as black boxes with stated laws, so a last-bit difference is allowed.",
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/computation.html",
+          "note": "the computation expressions; no platform note"
+        }
+      ],
+      "notes": "Silent on platform. The libm claim is general knowledge of Rust's standard library and goes to source next round."
+    }
+  ]
+}

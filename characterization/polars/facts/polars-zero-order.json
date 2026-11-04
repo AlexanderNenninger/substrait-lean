@@ -10,7 +10,8 @@
     "nan_zero_grouping"
   ],
   "rows": [
-    {"group": "cmp", "option": "zero_sign", "types": ["fp64"]}
+    {"group": "cmp", "option": "zero_sign", "types": ["fp64"]},
+    {"group": "cmp", "option": "zero_sign", "types": ["fp32"], "evidence": "docs"}
   ],
   "constructs": [
     "==",
@@ -52,6 +53,22 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "User guide, Floating point numbers (stable)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/docs/source/user-guide/concepts/data-types-and-structures.md#L176-L190",
+          "note": "The same section at tag py-2.1.0."
+        }
+      ],
+      "notes": "Polars's user guide says it generally follows IEEE 754 for `Float32` and `Float64`, with two exceptions: any NaN equals any other NaN and is greater than every non-NaN value, and operations guarantee nothing about the sign of zero or NaN or a NaN's payload (a sort or group by may make every zero +0 and every NaN a positive NaN). It promises no error bound unless a function says otherwise. The user guide is not versioned; the section reads the same at tag py-2.1.0. Comparisons are not among the exceptions, so `-0.0 == 0.0` holds in `Float32` as IEEE 754 compares them, and a sort or group by may make every zero +0, which puts them together. Settles `cmp`'s `Float32` row at docs level. The docs do not promise which zero a group key carries."
     }
   ],
   "issues": [

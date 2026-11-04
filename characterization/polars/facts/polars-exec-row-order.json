@@ -1,0 +1,46 @@
+{
+  "id": "polars-exec-row-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Row order: groups, joins and `unique` keep no order unless asked",
+  "verdict": "order only with `maintain_order`; a join's default order may change between runs",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "group_by",
+    "join",
+    "unique",
+    "sum"
+  ],
+  "settings": {
+    "POLARS_MAX_THREADS": "the host's core count"
+  },
+  "description": [
+    "`group_by` keeps the order of the groups consistent with the input only with `maintain_order=True` (which also blocks the streaming engine); rows within a group always keep their order. A join's `maintain_order` defaults to `\"none\"`: the ordering might differ across Polars versions or between runs, and the docs say not to rely on an observed order.",
+    "Float sums depend on the summation tree: pairwise, Kahan when grouped, plain across chunks (polars-sum-float), so chunking and the thread count can change their last bits. The docs do not say so; `sum` only documents that small integers are cast to Int64.",
+    "Leads: probes of a float `sum` and `group_by` order at POLARS_MAX_THREADS 1 and N, in memory and streaming; py-polars/tests/unit/operations/test_group_by.py and tests/unit/streaming/."
+  ],
+  "reference": "The reference compares results as bags, so row order outside a sort is free; `sum_order` is open and allowed within the plan's bound (polars-sum-float).",
+  "status": "open",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.group_by.html"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.join.html"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.sum.html"
+        }
+      ]
+    }
+  ]
+}

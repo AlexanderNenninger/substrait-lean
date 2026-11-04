@@ -1,0 +1,38 @@
+{
+  "id": "ST-11",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "summary": "Substrait does not say whether `IfThen`, `coalesce`, `and` and `or` evaluate operands that do not decide the result, or whether a filter may be evaluated on rows that a relation below it (a join, another filter) removes. Both decide whether a function that raises (an integer division by zero, a failing cast, an overflow) raises for a plan. DuckDB's `CASE` and `COALESCE` are lazy, and its `AND`/`OR` are lazy as conditions and eager as values; Polars's `when/then/otherwise` evaluates every branch on every row.",
+  "repro": "`IfThen(x = 0, 0, 10 / x)` over `x = 0` with `on_division_by_zero: ERROR`: DuckDB 2.0.0 returns 0 (lazy `CASE`), Polars 2.1.0's `when(x == 0).then(0).otherwise(10 // x)` with a strict cast in place of the division raises. `SELECT (x <> 0) AND (10 // x > 1)` in DuckDB raises at `x = 0`.",
+  "handling": [
+    "sverify's guards look for raises on the rows of `Rel.loose`, the plan without the filters an engine may reorder (`Rel.HasIssue`, `SubstraitLean/Guards.lean`), so a filter pushed below a join is covered; whether a raise inside an `IfThen` branch counts on rows its condition excludes is for the round-2 source check. The `execution` area's `evaluation_order` item records what each engine does (duckdb-exec-short-circuit, duckdb-exec-filter-pushdown, polars-exec-when-eager, polars-exec-predicate-pushdown).",
+    "Could be expressed as: a statement in the expression semantics that a function's raise counts only on rows where its value is needed (lazy `IfThen`, `coalesce`, `and`, `or`), and that a filter is evaluated only on the rows of its input; or an option on those functions (`evaluation: LAZY | EAGER`) for producers to ask for."
+  ],
+  "found_by": "the characterization pipeline, round 1 (execution area)",
+  "issues": [
+    444
+  ],
+  "files": [
+    "characterization/areas.json",
+    "SubstraitLean/Guards.lean"
+  ],
+  "facts": [
+    "duckdb-exec-short-circuit",
+    "duckdb-exec-filter-pushdown",
+    "polars-exec-when-eager",
+    "polars-exec-predicate-pushdown"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "Not checked against the spec text yet; to confirm in round 2 (expressions/conditionals, functions_boolean.yaml)."
+    }
+  ]
+}

@@ -7,11 +7,16 @@
   "area": "doubles",
   "options": [
     "on_division_by_zero",
-    "nan_creation"
+    "nan_creation",
+    "on_domain_error"
   ],
   "rows": [
     {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]}
+    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "docs"},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "docs"}
   ],
   "constructs": [
     "/"
@@ -33,6 +38,29 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (doubles)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/version/2/reference/expressions/api/polars.Expr.truediv.html",
+          "note": "Expr.truediv, Notes (API reference, version 2)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L6930-L6933"
+        },
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "User guide, Floating point numbers (stable)."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/docs/source/user-guide/concepts/data-types-and-structures.md#L176-L190",
+          "note": "The same section at tag py-2.1.0."
+        }
+      ],
+      "notes": "`Expr.truediv`'s notes say zero division follows IEEE-754: `0/0` is an invalid operation and returns NaN, `n/0` on finite operands is ±infinity. The note is not tied to a float type, and the user guide says `Float32` and `Float64` both follow IEEE 754, so `Float32` division behaves the same (and `±inf / ±inf` is NaN, IEEE's invalid operation). Settles the `Float32` rows and `on_domain_error` (NaN for `0/0` and `±inf / ±inf`) at docs level; the probes cover `Float64`."
     }
   ],
   "issues": [
