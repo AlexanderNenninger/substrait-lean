@@ -8,14 +8,16 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import math
 import re
+from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import duckdb
 import ibis
@@ -23,7 +25,8 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
-from sverify.incremental import IncrementalView, plan_digest
+from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
+from sverify.steps import Pipeable
 
 
 @dataclass(frozen=True)
@@ -545,11 +548,11 @@ def _cursors(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, An
 
 def _table_ids(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, str]:
     """The id of every source table of `view` that has one
-    (`DeltaSource._table_id`), at the version `view` is at."""
-    out = {}
+    (`_TableSource._table_id`), at the version `view` is at."""
+    out: dict[str, str] = {}
     for t, n in versions.items():
-        at = getattr(view.pipeline.sources.get(t), "_table_id", None)
-        if at is not None and (table_id := at(n)) is not None:
+        src = view.pipeline.sources.get(t)
+        if isinstance(src, _TableSource) and (table_id := src._table_id(n)) is not None:
             out[t] = table_id
     return out
 
@@ -595,3 +598,136 @@ def _base_tables(view: IncrementalView) -> set[str]:
 def sink_schema(view: IncrementalView, not_null: Iterable[str]) -> pa.Schema:
     keep = set(not_null)
     return pa.schema([f.with_nullable(f.name not in keep) for f in view.schema])
+
+
+IDS_KEPT = 64
+"""Versions whose table id a `_TableSource` remembers."""
+
+
+class _TableSource(Pipeable, ABC):
+    """What `DeltaSource` and `IcebergSource` share: the restriction to a
+    predicate (`where`, `_restricted`), the files it prunes (`_keep`), the
+    facts of the files read (`_facts_of`), the table id at each version read
+    (`_table_id`, #516, #533), and the snapshot a refresh reads when no
+    change is available (`_full`).
+
+    Subclasses implement `VersionedSource` and `_id_at`, and set `hi_slack`
+    where the format's upper bounds are truncated."""
+
+    hi_slack = timedelta(0)
+    """How far a value may lie above a file's upper bound (`stats_facts`)."""
+
+    def __init__(self, name: str, where: str | None):
+        self.name, self.where = name, where
+        self.implied: str | None = None
+        """The predicate a node's view implies on this table, if the source
+        reads only the rows that pass it (`_restricted`)."""
+        self.skipped: list[str] = []
+        """The files the last snapshot did not read."""
+        self._kept: dict[tuple[str, str], bool] = {}
+        # Whether `where` may hold in a file, by path and schema: files are
+        # immutable, so their statistics are proved about once.
+        self._ids: dict[int, str] = {}
+        # The table id at each version read: a table dropped and created
+        # again at the same place has a new one (#516, #533).
+
+    @abstractmethod
+    def schema(self) -> pa.Schema: ...
+
+    @abstractmethod
+    def latest(self) -> int: ...
+
+    @abstractmethod
+    def snapshot(self, version: int | None = None) -> Snapshot: ...
+
+    @abstractmethod
+    def changes(self, since: int, until: int | None = None) -> SourceBatch: ...
+
+    @abstractmethod
+    def _id_at(self, version: int | None) -> str | None:
+        """The id of the table at `version` (default: the latest), read from
+        the table; may raise if there is no table at `version`."""
+
+    def _seen(self, version: int, table_id: str) -> None:
+        """Remember the id of the table read at `version`."""
+        if len(self._ids) >= IDS_KEPT:
+            del self._ids[min(self._ids)]
+        self._ids[version] = table_id
+
+    def _table_id(self, version: int | None = None) -> str | None:
+        """The id of the table read at `version` (default: the latest), for
+        a sink to record with the version (`Contract.table_ids`); None if
+        there is no table at `version`."""
+        if version is not None and version in self._ids:
+            return self._ids[version]
+        try:
+            return self._id_at(version)
+        except Exception:  # noqa: BLE001 - no such table or version
+            return None
+
+    def _other_table(self, since: int, now: str) -> str | None:
+        """The id of the table read at `since`, if it is not `now`: the
+        table was dropped and created again since (#516, #533)."""
+        was = self._ids.get(since)
+        return was if was is not None and was != now else None
+
+    def _restricted(self, implied: str) -> Self:
+        """A copy that reads only the rows that also pass `implied`, a
+        predicate a node's view implies on this table (#81): the view gives
+        the same result on them (`Rel.need_eval` in
+        `SubstraitLean/Implied.lean`), and files whose statistics rule it
+        out are skipped."""
+        out = copy.copy(self)
+        out.where = implied if self.where is None else f"({self.where}) AND ({implied})"
+        out.implied = implied
+        out.skipped, out._kept = [], {}
+        return out
+
+    def _keep(
+        self,
+        files: Mapping[str, Mapping[str, ColumnStats]],
+        schema: pa.Schema,
+        *,
+        record: bool = True,
+    ) -> set[str]:
+        """The files (by path, with their statistics) that may hold rows
+        passing `where` (`prune`); with `record`, records the others in
+        `skipped`."""
+        if self.where is None:
+            return set(files)
+        key = str(schema)
+        new = {p: s for p, s in files.items() if (p, key) not in self._kept}
+        if new:
+            kept = prune(new, schema, self.where, hi_slack=self.hi_slack)
+            self._kept.update({(p, key): p in kept for p in new})
+        keep = {p for p in files if self._kept[(p, key)]}
+        if record:
+            self.skipped = sorted(set(files) - keep)
+        return keep
+
+    def _facts_of(
+        self,
+        table_facts: list[Fact],
+        files: Sequence[Mapping[str, ColumnStats]],
+        schema: pa.Schema,
+        source: str,
+    ) -> list[Fact]:
+        """The facts about every row read: the table's own (`table_facts`),
+        those of the statistics of `files`, their row count, and `where`."""
+        filtered = [] if self.where is None else [Fact(self.where, FILTER)]
+        return (
+            table_facts
+            + stats_facts(files, schema, source, hi_slack=self.hi_slack)
+            + rows_fact(files, source)
+            + filtered
+        )
+
+    @staticmethod
+    def _full(
+        since: int, end: int, rows: pa.Table, reason: str, facts: list[Fact], schema: pa.Schema
+    ) -> SourceBatch:
+        """The snapshot `rows` at `end`, where no change from `since` is
+        available (`reason`)."""
+        return SourceBatch.from_snapshot(
+            since, end, rows, reason=reason, snapshot_facts=facts, schema=schema
+        )

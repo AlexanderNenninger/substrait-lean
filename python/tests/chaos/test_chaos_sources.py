@@ -166,11 +166,7 @@ def recreate_iceberg(world: World, n: int, more: int = 0) -> None:
     "more",
     [
         pytest.param(0, id="lower"),
-        pytest.param(
-            6,
-            id="higher",
-            marks=pytest.mark.xfail(strict=True, reason="#533: IcebergSource has no table id"),
-        ),
+        pytest.param(6, id="higher"),
     ],
 )
 def test_an_iceberg_source_recreated(tmp_path, scenario, restart, more):
