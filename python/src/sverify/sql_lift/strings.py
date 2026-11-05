@@ -164,12 +164,22 @@ def _affix(name: str) -> Callable[[_Lift, list[E]], E]:
     return rule
 
 
+def _sha2(lf: _Lift, node: sge.SHA2, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB's `sha256(s)`, which SQLGlot reads as `SHA2(s, 256)`.
+    n = node.args.get("length")
+    if not (isinstance(n, sge.Literal) and n.this == "256"):
+        raise Unsupported("SHA2 of a length other than 256 is not supported")
+    (s_,) = _strings(lf, [sub(node.this)], "sha256")
+    return E(_fn("sha256", [s_], dt.string), dt.string)
+
+
 _ANONYMOUS_STRINGS = {"prefix": _affix("starts_with"), "suffix": _affix("ends_with")}
 
 
 register(
     {
-        # The function table's: `upper`, `lower`, `||`, `starts_with`, `ends_with`.
+        # The function table's: `upper`, `lower`, `||`, `starts_with`, `ends_with`,
+        # `md5`.
         **{getattr(sge, n): _string_fn(f) for f in _functions.area("strings") for n in f.lift},
         sge.Length: _length,
         sge.Reverse: _reverse,
@@ -183,5 +193,6 @@ register(
         sge.Replace: _replace,
         sge.Repeat: _repeat,
         sge.Left: _left,
+        sge.SHA2: _sha2,
     }
 )
