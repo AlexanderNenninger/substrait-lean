@@ -74,7 +74,7 @@ def _public(base: type) -> list[type]:
 
 def test_every_error_has_its_own_snake_case_code() -> None:
     errors = _public(SverifyError)
-    assert len(errors) == 17
+    assert len(errors) == 18
     codes = {c.code for c in errors if c is not SverifyError}
     assert len(codes) == len(errors) - 1
     assert all(re.fullmatch(r"[a-z]+(_[a-z]+)*", c) for c in codes), codes
