@@ -40,14 +40,14 @@ the tables only. The shim count per engine is D9's measure of few shims.
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 24 | 1 | 1 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 11 | 13 | 1 | 2 | 8 | 0 | 16 | 7 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 13 | 14 | 1 | 2 | 8 | 0 | 15 | 7 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 2 | 12 | 11 | 2 | 0 | 0 | 21 |
-| Polars | 25 | 0 | 12 | 0 | 0 | 0 | 17 |
+| Polars | 27 | 0 | 13 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -59,6 +59,8 @@ Rows per evidence level:
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
 | Polars | `column_divisor` | expression | fp.mod: `division_type` |
+| Polars | `decimal_round_half_away` | expression | `decimal_rescale` |
+| Polars | `decimal_div_half_away` | expression | dec.div: `decimal_rescale` |
 | Polars | `round_half_away` | argument | fp.round: `rounding` |
 | Polars | `one_zero` | expression | `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
 | Polars | `avg_int_declared` | expression | `avg_int_result` |
@@ -125,12 +127,13 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-11 shims (2 argument, 8 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
+13 shims (2 argument, 10 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
 | every | `overflow` | raise | `ERROR` | `SILENT` | precondition: every result fits its declared width: proved from the inferred bounds (#244), or a SUM's checked on the data (#316) | proof | proved `Rel.polars_sound`; [polars-int-arith](../characterization/polars/facts/polars-int-arith.json), [polars-int-divide](../characterization/polars/facts/polars-int-divide.json) |
 | int.arith | `overflow` | raise | `ERROR` | `SILENT` | precondition: every result fits its declared width: proved from the inferred bounds (#244), or a SUM's checked on the data (#316); stated `SATURATE`: not native | proof | proved `Rel.polars_sound`; [polars-int-arith](../characterization/polars/facts/polars-int-arith.json), [polars-int-divide](../characterization/polars/facts/polars-int-divide.json) |
+| dec.arith | `overflow` | raise | `ERROR` | `ERROR` | native | probe | tested: [polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json) |
 | agg.isum | `overflow` | raise | `ERROR` | `SILENT` | precondition: every result fits its declared width: proved from the inferred bounds (#244), or a SUM's checked on the data (#316) | proof | proved `Polars.sum_leaves_i64`; [polars-sum-int](../characterization/polars/facts/polars-sum-int.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `NULL` | precondition: no divisor is 0 | proof | proved `Rel.polars_sound`; [polars-int-divide](../characterization/polars/facts/polars-int-divide.json), [polars-int-modulus](../characterization/polars/facts/polars-int-modulus.json) |
 | fp.div | `on_division_by_zero` | raise | `ERROR` | `IEEE` | precondition: no divisor is 0; stated `NULL`, `LIMIT`: not native | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
@@ -140,7 +143,8 @@ Rows per evidence level:
 | fp.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `column_divisor` (expression) | probe | tested: [polars-double-modulus](../characterization/polars/facts/polars-double-modulus.json), [polars-scalar-divisor](../characterization/polars/facts/polars-scalar-divisor.json) |
 | every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | proof | proved `Rel.polars_sound`; [polars-int-modulus](../characterization/polars/facts/polars-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
-| every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
+| every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_round_half_away` (expression) | proof | proved `Polars.decimal_round_half_away`; [polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json), [polars-decimal-casts](../characterization/polars/facts/polars-decimal-casts.json) |
+| dec.div | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_div_half_away` (expression) | proof | proved `Polars.decimal_div_half_away`; [polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | missing | proved `Choice.le_sound` |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../characterization/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../characterization/polars/facts/polars-scalar-divisor.json) |

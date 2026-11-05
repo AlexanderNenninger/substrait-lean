@@ -375,6 +375,33 @@ OBSERVATIONS: list[Observation] = [
     _o("decimal-mean", "decimals",
        "(df(x=['1.00', '2.01']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).item(),"
        " str(df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).dtypes[0]))"),
+    _o("decimal-compare", "decimals",
+       "df(a=['12.35', '1.25', '-0.05'], b=['12.350', '1.300', '-0.051']).select("
+       "(pl.col('a').cast(pl.Decimal(10, 2)) == pl.col('b').cast(pl.Decimal(7, 3))).alias('eq'),"
+       " (pl.col('a').cast(pl.Decimal(10, 2)) < pl.col('b').cast(pl.Decimal(7, 3))).alias('lt'),"
+       " (pl.col('a').cast(pl.Decimal(10, 2)) > 1).alias('gt_int')).rows()"),
+    _o("decimal-sum-empty", "decimals",
+       "[df(x=([], pl.Decimal(10, 2))).select(pl.col('x').sum()).item(),"
+       " df(x=([None], pl.Decimal(10, 2))).select(pl.col('x').sum()).item(),"
+       " df(x=([None], pl.Decimal(10, 2))).select(pl.col('x').min()).item()]"),
+    _o("decimal-from-double", "decimals",
+       "df(x=[0.625, 0.125, -2.675, 0.145, 2.5, -0.375]).select(pl.col('x')"
+       ".cast(pl.Decimal(10, 2))).to_series().to_list()"),
+    # Values where dividing the unscaled value, a double, by 10ˢ rounds twice.
+    _o("decimal-to-double", "decimals",
+       "(lambda xs: [a == float(s) for a, s in zip(df(x=xs).select(pl.col('x')"
+       ".cast(pl.Decimal(38, 20)).cast(pl.Float64)).to_series().to_list(), xs)])("
+       "['543007.68781425681384350086', '1288396.15827294170993372848',"
+       " '-7165545601.899863454715675712', '9549712200552491.230505250722', '0.1'])"),
+    _o("decimal-narrow-precision", "decimals",
+       "[df(x=['123.45']).select(pl.col('x').cast(pl.Decimal(10, 2)).cast(pl.Decimal(4, 2),"
+       " strict=False)).item(), attempt(lambda: df(x=['123.45']).select(pl.col('x')"
+       ".cast(pl.Decimal(10, 2)).cast(pl.Decimal(4, 2))).item())]"),
+    _o("decimal-unscaled", "decimals",
+       "df(x=['1.25', '-1.35', None]).select(pl.col('x').cast(pl.Decimal(10, 2))"
+       ".to_physical()).to_series().to_list()"),
+    _o("int128-wrap", "integers",
+       "df(x=([2**126, -(2**126)], pl.Int128)).select(pl.col('x') * 2).to_series().to_list()"),
     # NaN, -0.0 and NULL: equality, order, grouping.
     _o("nan-compare", "doubles",
        "df(a=[nan, nan, 1.0, inf, 0.0, None], b=[nan, 1.0, nan, nan, -0.0, None]).select("

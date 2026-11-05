@@ -241,8 +241,9 @@ refuses any it cannot (a plan whose written form does not parse back to the
 same `Rel`). DataFusion gets none: it does not compute decimals as the
 reference does.
 
-Of the SQL dialects, only DuckDB runs decimal plans (`Dialect.decimals`).
-Snowflake, Spark and Polars refuse them for now. DuckDB computes `+`, `-` and
+Of the SQL dialects, only DuckDB runs decimal plans (`Dialect.decimals`);
+Snowflake and Spark refuse them for now. Polars runs them too, see
+[below](#decimals-on-polars). DuckDB computes `+`, `-` and
 `×` exactly, and rounds half away from zero when a cast drops decimal places,
 as the reference does. Its translation compensates where DuckDB differs:
 
@@ -258,3 +259,26 @@ as the reference does. Its translation compensates where DuckDB differs:
 `Profile.duckdb` is the reference on decimals: these compensations are what
 make that true of the SQL, and they are tested against `Rel.eval`
 (`tests/test_ibis_decimal.py`), not proved.
+
+#### Decimals on Polars
+
+Polars computes every `+`, `-`, `×` and `/` of decimals as a
+`Decimal(38, max(s₁, s₂))`, rounds half to even, and averages to a `Float64`
+([polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
+[polars-decimal-casts](../characterization/polars/facts/polars-decimal-casts.json)).
+`polars_engine` keeps each value in the plan's `Decimal(p, s)` and computes
+the rest on the unscaled values (`to_physical`, an `Int128`):
+
+| Reference | Polars by itself | Translation |
+|---|---|---|
+| a result of more than `p` digits raises | raises past 38 digits | checks `p` (`fit_decimal`) |
+| `×` is exact at scale `s₁ + s₂` | rounds to `max(s₁, s₂)`, half to even | the product of the unscaled values, where it fits `p` digits |
+| a smaller scale rounds half away from zero | half to even | `decimal_round_half_away` (`Polars.decimal_round_half_away`) |
+| `AVG` is a `DECIMAL(p + 4, s + 4)`, half away from zero | a `Float64` | `SUM` and `COUNT`, divided by `decimal_div_half_away` (`Polars.decimal_div_half_away`) |
+| `SUM` of no values is NULL | 0 | `sum_empty_null` |
+| a double becomes `x · 10ˢ`, rounded once, then half away from zero | the same product, half to even | `round_half_away` on the product; a scale over 22, where Polars's `10ˢ` is inexact, is refused |
+| decimal → double is correctly rounded, → integer truncates, comparisons are exact | the same | native |
+
+`tests/test_polars_decimal.py` runs each operation's written plan on Polars
+and on DuckDB against `Rel.eval`, and the 40 verified catalogue queries with
+decimal columns run on Polars (`catalogue/status.json`).

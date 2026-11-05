@@ -84,6 +84,13 @@ SHIMS: tuple[Shim, ...] = (
     Shim("substring_wrap", "negative_start", "WRAP_FROM_END",
          "str.slice: a negative offset counts from the end, by characters",
          "polars-substring", "expression"),
+    Shim("decimal_round_half_away", "decimal_rescale",
+         "TIE_AWAY_FROM_ZERO: a cast to a smaller scale; a product at scale s1 + s2",
+         "TIE_TO_EVEN, and a product at scale max(s1, s2)", "polars-decimal-casts",
+         "expression"),
+    Shim("decimal_div_half_away", "decimal_rescale",
+         "TIE_AWAY_FROM_ZERO: AVG at scale s + 4, sverify_decimal_div",
+         "mean is a Float64; / rounds half to even", "polars-decimal-arith", "expression"),
 )  # fmt: skip
 
 GUARDS: tuple[Guard, ...] = (
@@ -201,6 +208,43 @@ def zero_divisor(a: pl.Expr, b: pl.Expr) -> pl.Expr:
     """A zero divisor of a value that is not NULL (`Issue.divByZero`); Polars
     gives NULL."""
     return a.is_not_null() & b.eq(0)
+
+
+# --- Decimals ------------------------------------------------------------------
+#
+# On unscaled values, `Int128`s of at most 38 digits; Polars's `Int128`
+# arithmetic wraps silently, so each step stays within 128 bits.
+
+
+def _i128(n: int) -> pl.Expr:
+    return pl.lit(n, pl.Int128)
+
+
+def decimal_round_half_away(u: pl.Expr, k: int) -> pl.Expr:
+    """The unscaled decimal `u` brought to a scale `k ≥ 1` digits smaller,
+    halves away from zero (`decimal_rescale = TIE_AWAY_FROM_ZERO`,
+    `roundDiv10`); Polars's cast rounds them to even (polars-decimal-arith).
+    `|u| + 5·10ᵏ⁻¹ < 1.5·10³⁸` fits 128 bits."""
+    q = (u.abs() + _i128(5 * 10 ** (k - 1))) // _i128(10**k)
+    return pl.when(u < 0).then(_i128(0) - q).otherwise(q)
+
+
+def decimal_div_half_away(x: pl.Expr, n: pl.Expr, k: int) -> tuple[pl.Expr, pl.Expr]:
+    """`x · 10ᵏ / n` rounded half away from zero (`roundDivInt?`), for the
+    unscaled decimal `x`, an integer `n ≠ 0` (64 bits) and `k ≤ 18`; Polars's
+    division rounds to even (polars-decimal-arith). With `|x| = a·|n| + b`,
+    the quotient is `a·10ᵏ + ⌊(2b·10ᵏ + |n|) / 2|n|⌋`, and `2b·10ᵏ < 2⁶⁴·10¹⁸`
+    fits 128 bits. The second value flags an `a ≥ 10³⁸⁻ᵏ`, whose quotient has
+    more than 38 digits (and would leave 128 bits)."""
+    an = n.abs()
+    an = pl.when(an == 0).then(_i128(1)).otherwise(an)
+    ax = x.abs()
+    a, b = ax // an, ax % an
+    bad = a >= _i128(10 ** (38 - k))
+    q = pl.when(bad).then(_i128(0)).otherwise(a) * _i128(10**k) + (_i128(2 * 10**k) * b + an) // (
+        _i128(2) * an
+    )
+    return pl.when((x < 0) != (n < 0)).then(_i128(0) - q).otherwise(q), bad
 
 
 # --- Strings -------------------------------------------------------------------
