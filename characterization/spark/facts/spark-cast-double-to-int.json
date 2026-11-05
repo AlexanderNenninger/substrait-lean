@@ -91,6 +91,42 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/int4.sql.out#L552-L570",
+          "note": "`int(x)` of doubles -2.5 … 2.5 truncates toward zero: -2.5 → -2, -0.5 → 0, 2.5 → 2"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/int2.sql.out#L334-L352",
+          "note": "`smallint(x)` of `decimal(38,18)` -2.5 … 2.5 truncates the same way"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L895-L900",
+          "note": "`int(double('-2147483648.6'))` is -2147483648: truncated into range, no raise"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float4.sql.out#L386-L401",
+          "note": "`int(float('2147483647'))` (2³¹ as a float) raises `CAST_OVERFLOW` under ANSI"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L927-L942",
+          "note": "`bigint(double('-9223372036854780000'))` raises `CAST_OVERFLOW` under ANSI"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L2603-L2618",
+          "note": "`CAST('2147483648' :: long AS int)` raises `CAST_OVERFLOW` (ANSI on)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/cast.sql.out#L1664-L1669",
+          "note": "The same with ANSI off is -2147483648: `BIGINT` to `INT` wraps"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

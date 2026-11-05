@@ -424,6 +424,32 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - run: uv run --locked --project python poe -C python notebooks
 
+  # How long a check takes (#745, #825): every catalogue transform and the
+  # tour's notebooks, cold and warm, by stage, in the job's summary and as
+  # an artifact. Past a budget (`sverify_dev.bench.BUDGETS`) it fails.
+  bench:
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - working-directory: python
+        run: uv run --locked python -m sverify_dev.bench --notebooks --budgets --json ../bench.json
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench
+          path: bench.json
+          if-no-files-found: ignore
+
   # The ledger class (see the header): the checkers of the facts and upstream
   # bugs, and the tests that read those files.
   ledger:
@@ -574,7 +600,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, outside-repo, notebooks, dbt, template, float-bounds, oracle-a, ledger]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger]
     if: always()
     runs-on: ubuntu-latest
     steps:

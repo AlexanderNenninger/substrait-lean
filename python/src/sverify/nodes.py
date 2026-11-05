@@ -43,7 +43,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _quarantine
+from sverify import _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -253,6 +253,46 @@ class Node:
                 "result of a transform without one; wrap the step in sv.transform"
             )
         return report.to_substrait(format, shims=shims)
+
+    def to_sql(self, dialect: Any = "duckdb") -> str:
+        """The node's stage as SQL, in `dialect`: what `refresh` runs for a
+        full recompute, with every run-time check, and the meaning the
+        proof gives it. Windows of a `deterministic` report need no
+        row-order tiebreak (`Report.to_sql`).
+
+        The SQL reads the sources and stored nodes upstream by their names
+        (`internal_plan`). A node whose contract is not proved is refused, as
+        `refresh` refuses it; a node without a contract (a source, or a
+        plain function's result) has no proof to check.
+
+        Args:
+            dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
+                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+
+        Returns:
+            One SQL query.
+
+        Raises:
+            ValueError: `dialect` is unknown.
+            sverify.errors.UnverifiedRunError: The node's contract is not
+                proved.
+            sverify.errors.RouteError: No route takes the plan to the
+                dialect's engine.
+            sverify.errors.Unsupported: The dialect cannot express the plan.
+
+        Examples:
+            ```python
+            node = orders.pipe(paid)
+            print(node.to_sql("snowflake"))
+            ```
+        """
+        from sverify.sql import dialect_of, to_sql
+
+        report = self.report
+        if report is None:
+            return to_sql(self.internal_plan, dialect_of(dialect))
+        d = report._sql_route(dialect)[0]
+        return to_sql(self.internal_plan, d, deterministic=report.deterministic)
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
         """Apply `step` to this node, left to right: `orders.pipe(paid)` is
@@ -496,7 +536,7 @@ class Node:
             RuntimeError: The node has not been refreshed yet.
         """
         view = self._view()
-        return view.con.arrow[view.name]
+        return view.con._arrow[view.name]
 
     def quarantined(self, source: str | None = None) -> pa.Table:
         """The rows of the node's sources set aside by `on_violation=
@@ -1400,6 +1440,7 @@ def _warns(node: Node) -> bool:
     return prov is not None and getattr(prov.transform, "on_unproved", None) == "warn"
 
 
+@_stages.staged("plan")
 def _routes(
     order: Sequence[Node],
     engine: Any,

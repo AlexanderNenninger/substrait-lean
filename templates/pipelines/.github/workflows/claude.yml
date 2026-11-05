@@ -41,4 +41,4 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # CLAUDE.md describes the loop; these let it run the checks.
           claude_args: >-
-            --allowedTools "Bash(sverify check:*),Bash(sverify suggest:*),Bash(sverify explain:*),Bash(python scripts/lake.py check:*),Bash(pytest:*),Bash(python -m pytest:*)"
+            --allowedTools "Bash(sverify check:*),Bash(sverify explain:*),Bash(python scripts/lake.py check:*),Bash(pytest:*),Bash(python -m pytest:*)"

@@ -135,12 +135,12 @@ set_rows = st.lists(
 @settings(max_examples=40, deadline=None, suppress_health_check=list(HealthCheck))
 @given(a=set_rows, b=set_rows)
 def test_set_operations_keep_duckdbs_multiplicities(a, b):
-    from sverify.engine import connect, create_table, run_plan, written_plan
+    from sverify.engine import connect, run_plan, written_plan
     from sverify.testing import duckdb_sql, inline_tables, lean_values
 
     con = connect()
-    create_table(con, "a", SETS, a)
-    create_table(con, "b", SETS, b)
+    con.create("a", SETS, a)
+    con.create("b", SETS, b)
     for op in ("UNION", "UNION ALL", "EXCEPT", "EXCEPT ALL", "INTERSECT", "INTERSECT ALL"):
         sql = f"TABLE a {op} TABLE b"
         plan = json.dumps(lift(sql, {"a": SETS, "b": SETS}, "duckdb").plan)

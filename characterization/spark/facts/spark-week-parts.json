@@ -67,6 +67,54 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/extract.sql.out#L106-L111",
+          "note": "`extract(week …)` of 2011-05-06 is 18, the ISO week"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/extract.sql.out#L50-L55",
+          "note": "`extract(yearofweek …)` is 2011, an `int`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/extract.sql.out#L162-L167",
+          "note": "`extract(dow …)` of Friday 2011-05-06 is 6 (1 = Sunday)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/extract.sql.out#L178-L183",
+          "note": "`extract(dow_iso …)` of the same Friday is 5 (1 = Monday)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/date.sql.out#L214-L220",
+          "note": "`dayofweek('2007-02-03')`, a Saturday, is 7; `dayofweek(null)` NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/date.sql.out#L223-L229",
+          "note": "`weekday('2007-02-03')`, a Saturday, is 5 (0 = Monday)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/timestamp.sql.out#L226-L231",
+          "note": "`date_trunc('week', timestamp '2004-02-29 15:44:17.71393')`, a Sunday, is Monday `2004-02-23 00:00:00`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/extract.sql.out#L274-L279",
+          "note": "`extract(second …)` is a `decimal(8,6)`, `9.123456`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-formatting-invalid.sql.out#L466-L480",
+          "note": "`date_format(…, 'Y')` raises `INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-formatting-invalid.sql.out#L534-L546",
+          "note": "`date_format(…, 'e')` raises `INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_WEEK_BASED_PATTERN`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

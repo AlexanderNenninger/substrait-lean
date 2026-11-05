@@ -135,7 +135,9 @@ def test_datafusion_fails(con, sql, error):
 
 def on_datafusion(con, sql: str) -> list[tuple]:
     """DataFusion running the checked plan the lift writes for `sql`."""
-    return arrow_rows(run_plan(con, written_plan(substrait_json(con, sql)), "datafusion"))
+    return arrow_rows(
+        run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "datafusion")
+    )
 
 
 def claims(sql: str, table: str, requires=(), ensures=()) -> sv.Report:
@@ -205,7 +207,7 @@ def test_datafusion_wraps_where_the_model_raises(con, sql, table, wrapped):
     but DataFusion running the plan wraps around without an error."""
     assert "overflow" in [i.kind for i in claims(sql, table).errors]
     assert on_datafusion(con, sql) == wrapped
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     for engine in ("duckdb", "polars"):
         with pytest.raises(Exception):  # noqa: B017 - each engine raises its own
             run_plan(con, plan, engine)
@@ -223,7 +225,7 @@ def test_datafusion_wraps_where_the_model_raises(con, sql, table, wrapped):
     ],
 )
 def test_datafusion_runs_plans_as_the_model(con, sql, table):
-    plan = json.loads(substrait_json(con, sql))
+    plan = json.loads(substrait_json(con, sql, semantics="duckdb"))
     lean = lean_values(json.dumps(inline_tables(plan, {table: arrow_rows(TABLES[table])})))
     assert nan_aware(on_datafusion(con, sql)) == nan_aware(lean)
 
@@ -231,7 +233,9 @@ def test_datafusion_runs_plans_as_the_model(con, sql, table):
 def test_lean_writes_the_current_fetch_fields(con):
     """DataFusion's protobuf no longer has the deprecated
     `FetchRel.offset`/`count`; Lean writes `offsetExpr`/`countExpr`."""
-    plan = written_plan(substrait_json(con, "SELECT y FROM s ORDER BY y LIMIT 1"))
+    plan = written_plan(
+        substrait_json(con, "SELECT y FROM s ORDER BY y LIMIT 1", semantics="duckdb")
+    )
     assert '"countExpr"' in plan and '"count":' not in plan
     assert arrow_rows(run_substrait_json(con, plan)) == [(1,)]
 
@@ -256,7 +260,7 @@ def test_integer_sum_fails_instead_of_wrapping(con):
     with pytest.raises(Exception, match="out of range Int64"):
         run_plan(con, over, "datafusion")
     sql = "SELECT b, sum(a) AS s, count(*) AS c FROM dm GROUP BY b"
-    within = written_plan(substrait_json(con, sql))
+    within = written_plan(substrait_json(con, sql, semantics="duckdb"))
     translated = sorted(arrow_rows(run_plan(con, within, "datafusion")))
     assert (
         translated
@@ -292,7 +296,7 @@ def test_union_batches_differ_in_nullability(con, sql, expected):
         == expected
     )
     if "RECURSIVE" not in sql:  # the lift has no recursive queries
-        plan = substrait_json(con, sql)
+        plan = substrait_json(con, sql, semantics="duckdb")
         assert sorted(arrow_rows(run_substrait_json(con, plan)), key=str) == expected
 
 
@@ -307,7 +311,7 @@ def test_join_conditions_over_one_input(con, join, cond):
     for name, t in tables.items():
         put_table(con, name, t)
     sql = f"SELECT l.a, l.b, r.y FROM l {join} r ON l.a = r.y AND {cond}"
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     with pytest.raises(Exception, match="FieldNotFound"):
         run_substrait_json(con, plan)
     rows = {name: arrow_rows(t) for name, t in tables.items()}

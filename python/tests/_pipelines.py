@@ -14,7 +14,7 @@ from deltalake import DeltaTable, write_deltalake
 from ibis import _
 
 import sverify as sv
-from sverify.engines import create_table, run
+from sverify.engines import run
 from sverify.io import DeltaSource
 from sverify_dev.examples import create_tables, orders
 
@@ -61,7 +61,7 @@ def connect_with(orders=(), customers=()):
 def bound_orders(rows):
     """`sverify_dev.examples`' unbound `orders`, bound to `rows`."""
     con = sv.connect()
-    create_table(con, "orders", orders.schema(), rows)
+    con.create("orders", orders.schema(), rows)
     return con.table("orders")
 
 

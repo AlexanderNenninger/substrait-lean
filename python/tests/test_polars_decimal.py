@@ -123,7 +123,11 @@ def con():
 
 
 def plan_of(con, query: str | ibis.Table) -> str:
-    return substrait_json(con, query) if isinstance(query, str) else to_substrait_json(query)
+    return (
+        substrait_json(con, query, semantics="duckdb")
+        if isinstance(query, str)
+        else to_substrait_json(query)
+    )
 
 
 def canonical(rows: list[tuple]) -> list[tuple]:

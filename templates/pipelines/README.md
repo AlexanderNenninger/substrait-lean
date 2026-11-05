@@ -53,7 +53,7 @@ When an alert issue opens, ask Claude to fix it from the issue's link.
   sandbox. It comes with paid Claude plans and needs no API key.
   [`CLAUDE.md`](CLAUDE.md) and the skills in [`.claude/skills/`](.claude/skills)
   teach it the loop: probe, write, `sverify check --json`,
-  `sverify suggest --apply`, summary, pull request. Give the cloud
+  `sverify check --fix`, summary, pull request. Give the cloud
   environment network access to your sources.
 - The Claude GitHub app and Action, the secondary path: mention `@claude`
   in an issue or pull request ([`claude.yml`](.github/workflows/claude.yml)).

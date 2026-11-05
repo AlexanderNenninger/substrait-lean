@@ -88,6 +88,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
+from sverify import _stages
 from sverify import observation as _observation
 from sverify._duration import Duration, duration
 from sverify._hooks import COLLECTING, Collected
@@ -101,7 +102,6 @@ from sverify.engine import (
     checker_failed,
     connect,
     connection_of,
-    create_table,
     plan_json,
     run_checker,
     run_plan,
@@ -991,6 +991,10 @@ class CheckedCondition:
     """Why it is not proved, in the user's terms, where the report found
     more than the checker's value says (`_key_reasons`, `_null_reasons`,
     #688): `why` reads it first."""
+    ties: bool = False
+    """Unproved only because rows may tie: the checker proves it where every
+    window orders its rows totally (`Report.tie_places` names where they
+    may not). The counterexample search is skipped for it (#691)."""
 
     @property
     def reason(self) -> UnprovedReason | None:
@@ -1014,7 +1018,7 @@ class CheckedCondition:
             return "observation" if self.ignores else None
         if self.value == "not shown to be a key":
             return "not_a_key"
-        if self.value.startswith("undetermined"):
+        if self.ties or self.value.startswith("undetermined"):
             return "ties"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if parts == {"FALSE"}:
@@ -1041,6 +1045,8 @@ class CheckedCondition:
             return self.detail
         if self.value == "not shown to be a key":
             return "the preconditions do not make it a key"
+        if self.ties:
+            return "it holds where no rows tie in a window's ORDER BY, and rows may tie there"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if "TRUE" not in parts and parts == {"FALSE"}:
             return "it is FALSE on every row"
@@ -1568,6 +1574,89 @@ class Report:
 
         return substrait_export.contract_json(self, shims=shims)
 
+    def to_sql(self, dialect: Any = "duckdb") -> str:
+        """The verified plan as SQL whose meaning is the proof's, in
+        `dialect`.
+
+        The SQL keeps every run-time check, as `run` does. Where the report
+        is `deterministic` (no window ties on data that meets the
+        preconditions), windows need no row-order tiebreak, so Snowflake and
+        Spark take them. A plan verified under an engine's semantics
+        (`semantics="duckdb"`) is written only for an engine its route
+        reaches (`sverify.routes.choose`). Snowflake takes plans verified
+        under the reference. Run the SQL on data that meets the
+        preconditions (`requires`); `run` checks them first
+        (`check_inputs`).
+
+        Args:
+            dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
+                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+
+        Returns:
+            One SQL query, reading the plan's tables by the names it was
+            verified with.
+
+        Raises:
+            ValueError: The report has no plan (it was not made by
+                `verify`), or `dialect` is unknown.
+            sverify.errors.UnverifiedRunError: The plan is not proved.
+            sverify.errors.RouteError: No route takes the plan to the
+                dialect's engine.
+            sverify.errors.Unsupported: The dialect cannot express the plan.
+
+        Examples:
+            ```python
+            report = sv.verify(
+                "SELECT host, max(cpu) AS m FROM t GROUP BY host",
+                tables={"t": t},
+                ensures=[sv.unique("host")],
+            )
+            print(report.to_sql("snowflake"))
+            ```
+        """
+        from sverify.sql import to_sql
+
+        if self.plan is None:
+            raise ValueError("this report has no plan: it was not made by sv.verify")
+        d, finite = self._sql_route(dialect)
+        return to_sql(written_plan(self.plan), d, deterministic=self.deterministic, finite=finite)
+
+    def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
+        """The dialect `dialect` names, and whether its SQL checks the
+        reference's `±∞` precondition, for this report's plan; refused as
+        `run` refuses it."""
+        from sverify import routes
+        from sverify.sql import dialect_of
+
+        d = dialect_of(dialect)
+        if d.name in ("duckdb", "spark"):
+            chosen = routes.choose(self, d.name)
+        else:
+            # Snowflake has no profile: it takes the reference's translation.
+            reason = None
+            if not routes.verified(self):
+                reason = routes.not_verified(self)
+            elif self.semantics != "reference":
+                reason = (
+                    f"verified under {self.semantics} semantics; {d.name} SQL is written "
+                    "only for plans verified under the reference"
+                )
+            chosen = routes.Route(
+                d.name,
+                None if reason else "translated",
+                self.semantics,
+                reason or "the reference's translation",
+                self.deterministic,
+                cls="refused" if reason else None,
+            )
+        if chosen.refused:
+            reason = chosen.reason.removesuffix("; run(..., unverified=True) runs it anyway")
+            chosen = replace(chosen, reason=reason)
+            if not routes.verified(self):
+                raise UnverifiedRunError(self, chosen)
+            raise routes.RouteError(chosen)
+        return d, self.semantics == "reference" or chosen.kind == "translated"
+
     def check_inputs(self, con: Connection) -> None:
         """Check the preconditions (`requires`, the inferred bounds among
         them) and the `SUM`s assumed to fit (`assumed`) on the tables of
@@ -1797,7 +1886,7 @@ class Report:
 
         assert self.plan is not None
         plan = json.loads(written_plan(self.plan))
-        tables = {t: con.arrow[t] for t in read_tables(plan)}
+        tables = {t: con._arrow[t] for t in read_tables(plan)}
         nodes = tuple(polars_engine.plan_fallbacks(plan, tables))
         if chosen is not None:
             chosen = dataclasses.replace(chosen, fallbacks=nodes)
@@ -3794,7 +3883,7 @@ def _verify_once(
         schemas = {**leaf_tables(transform), **schemas}
     con = connect()
     for name, schema in schemas.items():
-        create_table(con, name, schema)
+        con.create(name, schema)
 
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
@@ -3926,15 +4015,16 @@ def _verify_once(
     def find(target: dict | Sequence[int]) -> Counterexample | None:
         if not counterexamples:
             return None
-        return search_counterexample(
-            schemas,
-            req_named,
-            keys,
-            transform_plan,
-            target,
-            budget=counterexamples,
-            references=foreign_keys,
-        )
+        with _stages.stage("counterexamples"):
+            return search_counterexample(
+                schemas,
+                req_named,
+                keys,
+                transform_plan,
+                target,
+                budget=counterexamples,
+                references=foreign_keys,
+            )
 
     def next_key() -> tuple[bool, Counterexample | None]:
         ok = next(key_results)["proved"]
@@ -3948,10 +4038,16 @@ def _verify_once(
         else:
             e = next(rows)
             p = next(ens_iter)
-            cex = None if e["proved"] else find(p)
+            ties = bool(e.get("ties"))
+            # It depends on how ties are ordered, which the search, on
+            # `Rel.eval`'s one order, rarely shows; breaking the ties with
+            # a key proves it (#691).
+            cex = None if e["proved"] or ties else find(p)
             suggested = _suggested(e.get("suggest"), schemas, assumable)
             checked.append(
-                CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
+                CheckedCondition(
+                    e["name"], e["proved"], e["value"], cex, suggested=suggested, ties=ties
+                )
             )
         checked[-1].condition = c
     from sverify import _user_text
@@ -4701,7 +4797,7 @@ _facts: dict[tuple[int, str], list[Fact]] = {}
 
 def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> None:
     """Record (or with None, forget) what metadata says about table `name`."""
-    key = (id(con.ibis), name)
+    key = (id(con._ibis), name)
     if facts is None:
         _facts.pop(key, None)
     else:

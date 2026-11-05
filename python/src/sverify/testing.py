@@ -163,8 +163,8 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
     return plan
 
 
-def _checked(plan_json: str) -> str:
-    code, out, err = run_checker((), plan_json)
+def _checked(plan_json: str, flags: tuple[str, ...] = ()) -> str:
+    code, out, err = run_checker(flags, plan_json)
     if code != 0:
         raise subprocess.CalledProcessError(code, "substrait-check", out, err)
     return out
@@ -178,10 +178,11 @@ def lean_rows(plan_json: str) -> list[tuple]:
     return parse_rows(out)
 
 
-def lean_values(plan_json: str) -> list[tuple]:
+def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
-    decimals and a `d` (so only approximately)."""
-    out = _checked(plan_json)
+    decimals and a `d` (so only approximately). `rows_only` asks the checker
+    for the rows alone (`--rows`), without the plan's other facts."""
+    out = _checked(plan_json, ("--rows",) if rows_only else ())
     return parse_rows(out, doubles=True)
 
 
@@ -375,7 +376,7 @@ def duckdb_sql(con: Connection, sql: str) -> pa.Table:
     from sverify.engine import canonical as canonical_doubles
 
     db = duckdb.connect()
-    for name, table in con.arrow.items():
+    for name, table in con._arrow.items():
         db.register(name, table)
     rel = db.sql(sql)
     # DuckDB sums integers as HUGEINTs; the lifted plan sums into BIGINT
@@ -525,11 +526,11 @@ def _norm(v: object) -> object:
 def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
     """The rows of table `name` where `cond` is not TRUE; for `unique`, every
     row whose key repeats."""
-    rows = con.arrow[name].to_pylist()
+    rows = con._arrow[name].to_pylist()
     if isinstance(cond, TableCondition):
-        return cond.violating(rows, _norm, lambda t: con.arrow[t].to_pylist())
+        return cond.violating(rows, _norm, lambda t: con._arrow[t].to_pylist())
     if isinstance(cond, str):
-        cur = con.ibis.raw_sql(f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({cond}), FALSE)")
+        cur = con._ibis.raw_sql(f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({cond}), FALSE)")
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
     t = con.table(name)

@@ -357,7 +357,7 @@ def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
     """Black boxes in Lean, meaning Rust's case mapping and regex classes
     (#70): Polars computes them as DataFusion does; DuckDB, whose utf8proc and
     RE2 differ on non-ASCII text, raises there; on ASCII text it agrees."""
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == rows
     assert positional(polars_engine.run(plan, {table: TABLES[table]})) == rows
     with pytest.raises(duckdb.Error, match="non-ASCII text differs between engines"):
@@ -375,7 +375,7 @@ def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
 def test_polars_translator_keeps_duplicate_output_names(con):
     """N4: two output columns with one name are legal SQL and Substrait."""
     sql = "SELECT a.a, b.a AS a2 FROM j a JOIN j b ON a.a = b.a"
-    lifted = json.loads(substrait_json(con, sql))
+    lifted = json.loads(substrait_json(con, sql, semantics="duckdb"))
     lifted["relations"][0]["root"]["names"] = ["a", "a"]  # SQL allows it; sv.sql does not
     plan = written_plan(json.dumps(lifted))
     tabs = {"j": TABLES["j"]}
