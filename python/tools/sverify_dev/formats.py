@@ -25,6 +25,10 @@ It writes, under the directory it is given:
 - `report/<case>.json`: `Report.to_json`'s documents, where the version has
   it: proved, not proved with a counterexample, with needs and assumptions,
   and after a run on DuckDB;
+- `quarantine/doubled_quarantine/`: the quarantine table (#184) of a node
+  over a source with rows that break its preconditions, and
+  `quarantine/refresh.json`, that refresh's `Refresh.to_json`, where the
+  version has `on_violation`;
 - `VERSION`: the version that wrote them.
 
 The release skill (`.claude/skills/release-sverify/SKILL.md`) runs it for
@@ -175,6 +179,27 @@ def _write_report(out: Path) -> None:
         (folder / f"{name}.json").write_text(_pretty(report.to_json()))
 
 
+def _write_quarantine(out: Path) -> None:
+    """A node that sets rows aside, its quarantine table and its refresh
+    report, where the version has `on_violation`."""
+    from sverify.io import DeltaSink
+
+    try:
+        policy = sv.transform(on_violation="quarantine")  # type: ignore[call-arg]
+    except TypeError:
+        return
+    del policy
+    folder = out / "quarantine"
+    folder.mkdir(parents=True)
+    dirty = pa.table({"id": [4, 4, 5], "amount": [1, 2, -3], "region": ["us", "eu", "eu"]})
+    rows = pa.concat_tables([ORDERS, dirty.cast(ORDERS.schema)])
+    src = StaticSource(rows, version=1, name="orders", on_violation="quarantine")  # type: ignore[call-arg]
+    node = doubled(src).write(DeltaSink(str(folder / "doubled")))
+    report = node.refresh()
+    (folder / "refresh.json").write_text(_pretty(report.to_json()))
+    shutil.rmtree(folder / "doubled")
+
+
 def write(out: Path) -> None:
     """Write every fixture this version has under `out`, which must not exist."""
     if out.exists():
@@ -184,6 +209,7 @@ def write(out: Path) -> None:
     _write_sink(out)
     _write_substrait(out)
     _write_report(out)
+    _write_quarantine(out)
 
 
 if __name__ == "__main__":

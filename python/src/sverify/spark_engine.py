@@ -15,6 +15,8 @@ order are refused (`Unsupported`) unless `deterministic=True`.
 from __future__ import annotations
 
 import functools
+import os
+import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -32,17 +34,41 @@ if TYPE_CHECKING:
     from pyspark.sql import SparkSession
 
 
+#: Settings of the local session beyond `SPARK_CONF`. The parser's ANTLR DFA
+#: cache is static and unbounded unless Spark manages it: the nested SQL that
+#: `to_sql` writes for date arithmetic (one 51 kB query of
+#: `tests/test_backends.py`) left about 740 MB of a 1 GB driver heap in it,
+#: and later queries failed with `AGGREGATE_OUT_OF_MEMORY` or could not
+#: broadcast. Flushing it at 10 % of the heap keeps it near 100 MB.
+LOCAL_CONF: dict[str, str] = {
+    "spark.ui.enabled": "false",
+    "spark.sql.shuffle.partitions": "2",
+    "spark.log.level": "OFF",
+    "spark.sql.parser.manageParserCaches": "true",
+    "spark.sql.parser.parserDfaCacheFlushRatio": "10",
+}
+
+
+def driver_memory(limit: str) -> str:
+    """`SVERIFY_MEMORY_LIMIT` (#783) as Spark's `spark.driver.memory`:
+    `"2GB"` is `"2g"`, `"512MB"` is `"512m"`."""
+    m = re.fullmatch(r"\s*(\d+)\s*([KMGT])i?B?\s*", limit, re.IGNORECASE)
+    if m is None:
+        raise ValueError(f"memory limit {limit!r}: write a size such as 2GB or 512MB")
+    return f"{m[1]}{m[2].lower()}"
+
+
 @functools.cache
 def session() -> SparkSession:
-    """A local Spark session (one per process) with the settings of `SPARK_CONF`."""
+    """A local Spark session (one per process) with the settings of
+    `SPARK_CONF` and `LOCAL_CONF`. `SVERIFY_MEMORY_LIMIT` sets the driver's
+    memory (Spark's default is 1 GB) when the session's JVM starts."""
     from pyspark.sql import SparkSession
 
     builder = SparkSession.builder.master("local[2]").appName("sverify")
-    conf = SPARK_CONF | {
-        "spark.ui.enabled": "false",
-        "spark.sql.shuffle.partitions": "2",
-        "spark.log.level": "OFF",
-    }
+    conf = SPARK_CONF | LOCAL_CONF
+    if limit := os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip():
+        conf["spark.driver.memory"] = driver_memory(limit)
     for k, v in conf.items():
         builder = builder.config(k, v)
     spark = builder.getOrCreate()

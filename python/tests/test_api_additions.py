@@ -279,7 +279,7 @@ def test_needs_of_sql_are_sql():
 def test_needs_empty_when_assumed():
     t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
     expr = t.select(u=t.total // t.qty)
-    r = sv.verify(expr, on_inferred="silent")
+    r = sv.verify(expr, on_inferred="ignore")
     assert r.needs == [] and r.proved
     # The assumed bound is still in the mapping, so the contract says it.
     assert sv.verify(expr, requires=r.suggested_requires).proved

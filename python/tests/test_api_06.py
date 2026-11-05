@@ -80,7 +80,7 @@ def test_transform_infer_false_is_deprecated_for_on_inferred_off() -> None:
 
 
 def test_on_inferred_names_its_four_values() -> None:
-    with pytest.raises(ValueError, match="'error', 'warn', 'silent' or 'off'"):
+    with pytest.raises(ValueError, match="'error', 'warn', 'ignore' or 'off'"):
         sv.verify(SUM, on_inferred="never")  # type: ignore[arg-type]
 
 
@@ -101,7 +101,7 @@ def test_an_assumed_double_sum_names_the_sum() -> None:
     where its `SUM` overflows, when a `mean` read it too."""
     r = ibis.table({"k": "int64", "temp_c": "float64"}, name="readings")
     both = r.group_by("k").aggregate(s=r.temp_c.sum(), m=r.temp_c.mean(), hi=r.temp_c.max())
-    report = _quiet(sv.verify, both, on_inferred="silent")
+    report = _quiet(sv.verify, both, on_inferred="ignore")
     assert "assumes: sum(temp_c) or mean(temp_c) stays finite" in str(report)
 
 
@@ -134,14 +134,14 @@ def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
     assert node.to_arrow().to_pylist() == [{"id": 1, "big": 5}]
 
 
-@sv.transform(on_unproved="runtime")
+@sv.transform(on_unproved="check")
 def total(t):
     return t.group_by("k").aggregate(s=t.x.sum())
 
 
 def test_an_unproved_refresh_raises_unverified_run_error() -> None:
     """A runtime error cannot be checked on the output data, so a
-    `"runtime"` node that may raise one is not verified."""
+    `"check"` node that may raise one is not verified."""
     src = StaticSource(pa.table({"k": [1], "x": [1.5]}), name="t")
     node = total(src)
     with pytest.raises(UnverifiedRunError, match=r"refresh\(unverified=True\)") as e:

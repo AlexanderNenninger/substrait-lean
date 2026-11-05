@@ -24,14 +24,19 @@ from sverify.cli._limits import (
 )
 from sverify.cli._suggest import place
 
-PROVED, NOT_PROVED, REFUSED, BUDGET, ERROR = 0, 1, 2, 3, 4
+PROVED, NOT_PROVED, REFUSED, BUDGET, ERROR, ATTENTION = 0, 1, 2, 3, 4, 5
 STATUS = {
     PROVED: "proved",
     NOT_PROVED: "not_proved",
     REFUSED: "refused",
     BUDGET: "budget_exceeded",
     ERROR: "error",
+    ATTENTION: "quarantined",
 }
+#: A refresh that completed, by `Refresh.outcome` (#184): rows quarantined
+#: and a node held both need attention, and exit 5; the JSON's `status` says
+#: which.
+OUTCOME_EXIT = {"ok": PROVED, "quarantined": ATTENTION, "held": ATTENTION}
 
 
 def _version() -> str:
@@ -202,7 +207,7 @@ def _emit(
             "sverify": _version(),
             "command": command,
             "exit": code,
-            "status": STATUS[code],
+            "status": result.pop("status", None) or STATUS[code],
             **result,
         }
         print(json.dumps(doc, indent=2, default=str))
@@ -451,6 +456,11 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 "node": s.node,
                 "summary": s.summary(),
                 "started": s.started,
+                "outcome": s.outcome,
+                "held": s.held,
+                "quarantined": s.quarantined,
+                "quarantine_table": s.quarantine_table,
+                "quarantine": [q.to_dict() for q in s.quarantine],
                 "route": str(s.route) if s.route is not None else None,
                 "write": None
                 if w is None
@@ -463,7 +473,16 @@ def cmd_refresh(args: argparse.Namespace) -> int:
             }
         )
     result["memory_limit"] = args.memory_limit
-    return _emit(args, "refresh", PROVED, result, done.summary)
+    result["outcome"] = done.outcome
+    result["alert"] = done.alert()
+
+    def human() -> str:
+        alert = done.alert()
+        return done.summary() + ("" if alert is None else "\n\n" + alert)
+
+    if done.outcome != "ok":
+        result["status"] = done.outcome
+    return _emit(args, "refresh", OUTCOME_EXIT[done.outcome], result, human)
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
@@ -560,7 +579,8 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
     return its exit code: 0 proved, 1 not proved, 2 refused, 3 budget
-    exceeded (time or memory), 4 error."""
+    exceeded (time or memory), 4 error; for `refresh`, 5 completed with rows
+    quarantined or a node held (#184)."""
     args = parser().parse_args(argv)
     try:
         memory_limit_from(args.memory_limit)

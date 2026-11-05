@@ -302,6 +302,22 @@ class Sink:
         """The sink's version, for the refresh report."""
         return None
 
+    # -- the quarantine table (#184) ------------------------------------------
+
+    def _quarantine_default(self) -> Sink | None:
+        """Where the rows a node sets aside go when `write` names no
+        `quarantine`: a table next to this one, or None (kept in memory)."""
+        return None
+
+    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None:
+        """Replace the table's rows by `rows` (`_quarantine.TABLE_SCHEMA`),
+        recording `record` with the commit."""
+        raise TypeError(f"{type(self).__name__} cannot hold a node's quarantine")
+
+    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None:
+        """The rows and the record of the last quarantine write, or None."""
+        return None
+
     def _commit(self) -> SinkWrite:
         """Write the attached view's state, unless the sink has it."""
         view = self._view

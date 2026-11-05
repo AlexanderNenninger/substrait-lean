@@ -328,7 +328,8 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         output=_output(d.get("output") or {}),
         _dialect=d.get("dialect", "ibis"),
         ties={t: list(labs) for t, labs in (d.get("ties") or {}).items()},
-        _on_inferred=d.get("on_inferred", "silent"),
+        # 0.6 wrote "silent" for what is now "ignore".
+        _on_inferred=_on_inferred(d.get("on_inferred")),
         _inferred_from=inferred_from,
     )
 
@@ -353,3 +354,10 @@ def _output(types: Mapping[str, str]) -> dict[str, Any]:
 
 
 __all__ = ["FORMAT", "from_json", "to_json"]
+
+
+def _on_inferred(value: Any) -> Any:
+    """A report's `on_inferred`: 0.6 wrote "silent" for what is now "ignore"."""
+    if value in (None, "silent"):
+        return "ignore"
+    return value

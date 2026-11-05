@@ -27,6 +27,7 @@ one data file per partition (#466).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import uuid
 import warnings
@@ -82,7 +83,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
-from sverify import _deprecated
+from sverify import _deprecated, _quarantine
 from sverify._scan import Scan, ScanSnapshot, local_path
 from sverify._weighted import split
 from sverify.contracts import Fact
@@ -330,6 +331,11 @@ class IcebergSource(_TableSource):
             None, every row.
         name: The table's name in the plans that read it. Default: the last
             part of `identifier`.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition on this source, for transforms that set no
+            `on_violation` of their own: `"error"`, `"quarantine"` or
+            `"hold"` (see `sverify.transform`). Default: None,
+            `"error"`.
 
     Attributes:
         catalog: The catalog.
@@ -346,8 +352,10 @@ class IcebergSource(_TableSource):
         *,
         where: str | None = None,
         name: str | None = None,
+        on_violation: _quarantine.Policy | None = None,
     ):
         self.catalog, self.identifier = catalog, identifier
+        self.on_violation = _quarantine.check_policy(on_violation)
         super().__init__(name or identifier.rsplit(".", 1)[-1], where)
 
     def table(self) -> Table:
@@ -1244,6 +1252,34 @@ class IcebergSink(_TableSink[Table]):
         if not self.catalog.table_exists(self.identifier):
             return None
         return self.catalog.load_table(self.identifier)
+
+    def _quarantine_default(self) -> IcebergSink:
+        return IcebergSink(
+            self.catalog, self.identifier + "_quarantine", name=self.name + "_quarantine"
+        )
+
+    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None:
+        table = self._open()
+        if table is None:
+            table = self.catalog.create_table(self.identifier, schema=rows.schema)
+        props = {_quarantine.RECORD_KEY: json.dumps(record)}
+        if len(table.schema().fields) != rows.num_columns:
+            raise ValueError(f"{self.identifier} is not a quarantine table")
+        table.overwrite(rows, snapshot_properties=props)
+
+    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None:
+        table = self._open()
+        if table is None:
+            return None
+        snap = table.current_snapshot()
+        text = (
+            None
+            if snap is None or snap.summary is None
+            else snap.summary.get(_quarantine.RECORD_KEY)
+        )
+        if text is None:
+            return None
+        return table.scan().to_arrow(), _quarantine.read_record(json.loads(text))
 
     def _epoch_of(self, table: Table) -> int | None:
         """The epoch of the last snapshot this sink's `app_id` wrote."""

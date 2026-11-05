@@ -40,7 +40,7 @@ def test_report_fields_are_public_or_internal():
 
 def _report() -> Report:
     t = ibis.table({"x": "int64"}, name="t")
-    return sv.verify(t.select(y=t.x * 2), on_inferred="silent")
+    return sv.verify(t.select(y=t.x * 2), on_inferred="ignore")
 
 
 @pytest.mark.parametrize("name", _REPORT_INTERNAL)

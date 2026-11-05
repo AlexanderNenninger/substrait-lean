@@ -110,7 +110,7 @@ Sverify infers the bounds that rule most of them out (`amount * 2` needs
 under `needs:` (`report.needs`, ready for `requires=` as
 `report.suggested_requires`) until `requires` states it or the
 transformation no longer needs it (filter those rows first, or a CASE);
-`on_inferred="warn"` or `"silent"` assumes it and checks it on the data, and
+`on_inferred="warn"` or `"ignore"` assumes it and checks it on the data, and
 `on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
 `str(report)` name the bound to add, and an unproved comparison with a constant comes with
 the precondition that proves it (`report.suggestions`). An integer `SUM` that
@@ -126,7 +126,7 @@ states a postcondition up to the proved rounding error.
 `@sv.transform(..., on_unproved=...)`:
 
 * `"error"` (default): raise `VerificationError`.
-* `"runtime"`: check the unproved postconditions on the output data instead,
+* `"check"`: check the unproved postconditions on the output data instead,
   at refresh (raises `PostconditionError`).
 * `"warn"`: warn and continue; a node's refreshes run it unverified, each
   with an `UnverifiedRunWarning`.

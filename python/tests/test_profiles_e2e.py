@@ -492,7 +492,7 @@ def test_f1d_zero_divisor_is_a_precondition_under_polars(con) -> None:
     data before the run. With no bounds on `i` and `j` the floored remainder
     cannot overflow, which the range analysis sees."""
     t = con.table("t")
-    report = sv.verify(t.select(m=t.i % t.j), semantics="polars", on_inferred="silent")
+    report = sv.verify(t.select(m=t.i % t.j), semantics="polars", on_inferred="ignore")
     assert report.proved, str(report)
     assert report._inferred == {"t": ['"j" IS NULL OR "j" <> 0']}, report._inferred
     bad = sv.connect()

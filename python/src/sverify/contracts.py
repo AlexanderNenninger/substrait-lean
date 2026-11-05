@@ -91,6 +91,7 @@ from ibis.common.graph import Node
 from sverify import _deprecated
 from sverify import observation as _observation
 from sverify._hooks import COLLECTING, Collected
+from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
@@ -108,6 +109,10 @@ from sverify.engine import (
 )
 from sverify.observation import Observation
 from sverify.routes import RouteError
+
+type Policies = dict[str, dict[str, set[Policy | None]]]
+"""By table and condition label, the `on_violation` of each transform that
+states the condition (None: unset)."""
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -887,7 +892,7 @@ class CheckedCondition:
     """For an unproved condition: inputs meeting the preconditions on which
     it fails, if the search (`sverify.counterexample`) found one."""
     checked: bool = False
-    """For an unproved condition with `on_unproved="runtime"`: it is checked
+    """For an unproved condition with `on_unproved="check"`: it is checked
     on the output data instead, on a bound result when it is built, or on a
     node at every refresh before its sink commits."""
     suggested: dict[str, list[Condition]] = field(default_factory=dict)
@@ -1347,7 +1352,7 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
-    _on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
+    _on_inferred: OnInferred = field(default="ignore", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
     not proved (`needed`)."""
@@ -1830,7 +1835,7 @@ class Report:
     def suggested_requires(self) -> dict[str, list[Condition]]:
         """The `requires=` mapping that states every precondition the proof
         uses: the stated ones and those sverify inferred (`needs`, and the
-        bounds `on_inferred="warn"` or `"silent"` assumes), per input table,
+        bounds `on_inferred="warn"` or `"ignore"` assumes), per input table,
         ready to pass to `verify` or to paste into a contract."""
         out: dict[str, list[Condition]] = {}
         for t, cs in self._conditions.items():
@@ -2184,7 +2189,7 @@ def _would_hold(c: CheckedCondition) -> str:
 
 PARAMS_NOTE = "proved for these parameter values only"
 
-#: How a report marks a postcondition `on_unproved="runtime"` checks on data.
+#: How a report marks a postcondition `on_unproved="check"` checks on data.
 DATA_CHECK = "checked on the output data"
 
 #: The functions whose order of ties is open, in each input language.
@@ -2305,7 +2310,7 @@ class PreconditionError(SverifyError):
 class PostconditionError(SverifyError):
     """Output data violates a postcondition (only raised by runtime checks).
 
-    Import it from `sverify.errors`. Raised with `on_unproved="runtime"`,
+    Import it from `sverify.errors`. Raised with `on_unproved="check"`,
     when a postcondition the checker could not prove fails on the output rows. The
     message says how many output rows violate which condition.
     """
@@ -3112,12 +3117,13 @@ def verify(
             not proved without it, and the report says where it came from
             and how to state it (`Report.needed`). `"warn"`: it is assumed,
             checked on the data before each run, and a warning names it
-            (`InferredPreconditionWarning`). `"silent"`: it is assumed and
+            (`InferredPreconditionWarning`). `"ignore"`: it is assumed and
             checked without a warning. `"off"`: nothing is inferred or
             assumed, so an integer `SUM` that may leave 64 bits, or a double
             operation that may overflow to ±inf, is an error too, which the
             other values check on the data while the job runs
             (`Report.assumed`); each `Issue.hint` suggests a bound.
+            `"silent"` is a deprecated spelling of `"ignore"`.
         infer: Deprecated: `infer=False` is `on_inferred="off"`.
 
     Returns:
@@ -3246,7 +3252,7 @@ def infer_bounds(
     infer: bool = True,
     inputs: Collection[str] | None = None,
     semantics: Semantics = "reference",
-    on_inferred: OnInferred = "silent",
+    on_inferred: OnInferred = "ignore",
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -3302,7 +3308,9 @@ def infer_bounds(
     return out
 
 
-OnInferred = Literal["error", "warn", "silent", "off"]
+OnInferred = Literal["error", "warn", "ignore", "off"]
+
+OnUnproved = Literal["error", "check", "warn"]
 
 
 class InferredPreconditionWarning(UserWarning):
@@ -3310,8 +3318,29 @@ class InferredPreconditionWarning(UserWarning):
 
 
 def _checked_on_inferred(v: str) -> OnInferred:
-    if v not in ("error", "warn", "silent", "off"):
-        raise ValueError(f"on_inferred must be 'error', 'warn', 'silent' or 'off', not {v!r}")
+    if v == "silent":
+        warnings.warn(
+            'on_inferred="silent" is deprecated; write on_inferred="ignore"',
+            DeprecationWarning,
+            stacklevel=4,
+        )
+        return "ignore"
+    if v not in ("error", "warn", "ignore", "off"):
+        raise ValueError(f"on_inferred must be 'error', 'warn', 'ignore' or 'off', not {v!r}")
+    return v  # type: ignore[return-value]
+
+
+def _checked_on_unproved(v: str) -> OnUnproved:
+    """`on_unproved`, with the deprecated `"runtime"` read as `"check"`."""
+    if v == "runtime":
+        warnings.warn(
+            'on_unproved="runtime" is deprecated; write on_unproved="check"',
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return "check"
+    if v not in ("error", "check", "warn"):
+        raise ValueError(f"on_unproved must be 'error', 'check' or 'warn', not {v!r}")
     return v  # type: ignore[return-value]
 
 
@@ -4813,7 +4842,7 @@ class CompositionError(VerificationError):
     or on a node (`sverify.Node`) built from one, stored or not. The message
     names both sides, for example "doubled needs (_.amount >= 0) (it may be
     FALSE on some rows) on 't'; not_null only guarantees _.amount.notnull()". With
-    `on_unproved="runtime"` and a bound input, the precondition is checked on
+    `on_unproved="check"` and a bound input, the precondition is checked on
     the data instead; with `on_unproved="warn"` it is a warning.
 
     Attributes:
@@ -4857,9 +4886,12 @@ class Provenance:
     merely warned about, instead of proved, and runtime-checked
     postconditions of contracted transformations upstream."""
     checked: list[Condition] = field(default_factory=list)
-    """The postconditions `on_unproved="runtime"` checks on the result's data
+    """The postconditions `on_unproved="check"` checks on the result's data
     because they were not proved: on a bound result when it is built, and in
     an incremental view on every state (`IncrementalView.checked`)."""
+    policies: Policies = field(default_factory=dict)
+    """For each precondition in `external`, by table and label, the
+    `on_violation` of every transform that states it (None: unset)."""
 
 
 def _checked_links(prov: Provenance) -> list[str]:
@@ -4917,6 +4949,14 @@ class _Abstraction:
     assumptions: dict[str, list[Condition]]
     external: dict[str, list[Condition]]
     unproved_links: list[str]
+    policies: Policies = field(default_factory=dict)
+
+
+def _merge_policies(into: Policies, extra: Policies) -> None:
+    for t, by_label in extra.items():
+        have = into.setdefault(t, {})
+        for lab, ps in by_label.items():
+            have.setdefault(lab, set()).update(ps)
 
 
 def _abstract(
@@ -4946,6 +4986,7 @@ def _abstract(
             _merge(out.assumptions, {name: conds})
         if name in used and op not in given and (prov := _lookup(op)):
             _merge(out.external, prov.external)
+            _merge_policies(out.policies, prov.policies)
             out.unproved_links += prov.unproved_links + _checked_links(prov)
     return out
 
@@ -4961,10 +5002,13 @@ class ViewContract:
     provenance: Provenance | None
     checked: list[Condition] = field(default_factory=list)
     """Postconditions that were not proved, which the view checks on every
-    state (`on_unproved="runtime"`)."""
+    state (`on_unproved="check"`)."""
     not_null: list[str] = field(default_factory=list)
     """The columns the proved report shows never NULL (`Report.not_null`):
     they hold in every state, as `guarantees` do."""
+    policies: Policies = field(default_factory=dict)
+    """The `on_violation` the transforms set on each precondition in
+    `requires` (`Provenance.policies`)."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -4974,10 +5018,10 @@ def view_contract(expr: ir.Table) -> ViewContract:
     from base-table changes."""
     prov = _lookup(expr.op())
     if prov is not None:
-        requires, unproved = prov.external, prov.unproved_links
+        requires, unproved, policies = prov.external, prov.unproved_links, prov.policies
     else:
         inner = _abstract(expr)
-        requires, unproved = inner.external, inner.unproved_links
+        requires, unproved, policies = inner.external, inner.unproved_links, inner.policies
     if unproved:
         raise ValueError(
             "cannot maintain incrementally: conditions on derived inputs were "
@@ -4994,6 +5038,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         prov,
         list(prov.checked) if prov else [],
         list(prov.report.not_null) if prov and prov.report.proved else [],
+        {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
     )
 
 
@@ -5023,14 +5068,18 @@ class ContractedTransform:
         fn: Callable[..., ir.Table],
         requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None,
         ensures: Sequence[Condition],
-        on_unproved: Literal["error", "runtime", "warn"],
+        on_unproved: OnUnproved,
         check_requires: bool,
         engine: Engine | None,
         infer: bool = True,
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
+        on_violation: Policy | None = None,
     ):
         self.fn, self.ensures = fn, expand_keys(ensures)
+        self.on_violation: Policy | None = check_policy(on_violation)
+        """What a refresh does with a batch of a source that breaks this
+        transform's preconditions (#184); None: the source's setting."""
         self.on_inferred = on_inferred
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
@@ -5138,7 +5187,7 @@ class ContractedTransform:
                 semantics=self.semantics,
                 # Only the postconditions' proof needs the user's bounds; the
                 # links' and conditions' proofs infer as before.
-                on_inferred=self.on_inferred if tag == "ensures" else "silent",
+                on_inferred=self.on_inferred if tag == "ensures" else "ignore",
             )
         return self._cache[key]
 
@@ -5169,6 +5218,7 @@ class ContractedTransform:
                 prov.assumptions,
                 prov.external,
                 list(prov.unproved_links) + _checked_links(prov),
+                prov.policies,
             )
             known = list(prov.guarantees)
         else:
@@ -5176,7 +5226,9 @@ class ContractedTransform:
             # obligations may still follow from its operations.
             inner, known = _abstract(value), []
         needed = [c for c in conds if label(c) not in {label(k) for k in known}]
-        out = _Abstraction(value, {param: known + needed}, inner.external, inner.unproved_links)
+        out = _Abstraction(
+            value, {param: known + needed}, inner.external, inner.unproved_links, inner.policies
+        )
         if not needed:
             return out
         report = self._verify(inner.body, inner.assumptions, needed, f"link {param}")
@@ -5195,7 +5247,7 @@ class ContractedTransform:
         )
         if self.on_unproved == "warn":
             warnings.warn(str(error), stacklevel=4)
-        elif self.on_unproved == "runtime" and self._check_on_data(value, param, unproved):
+        elif self.on_unproved == "check" and self._check_on_data(value, param, unproved):
             pass
         elif entry is not None:
             entry.links.append(error)
@@ -5241,9 +5293,9 @@ class ContractedTransform:
                 transformation's result does not follow from its guarantees.
             VerificationError: A postcondition, or the absence of runtime
                 errors, could not be proved (with `on_unproved="error"`, or
-                with `"runtime"` when the result is neither bound nor a
+                with `"check"` when the result is neither bound nor a
                 node).
-            PostconditionError: With `on_unproved="runtime"`, an unproved
+            PostconditionError: With `on_unproved="check"`, an unproved
                 postcondition fails on the output data of a bound result. A
                 node's are checked at every refresh instead
                 (`sverify.Node.refresh`).
@@ -5332,6 +5384,7 @@ class ContractedTransform:
         # their preconditions are checked on the data like a base table's.
         plain: dict[str, tuple[str, ir.Table]] = {}
         external: dict[str, list[Condition]] = {}
+        policies: Policies = {}
         unproved_links: list[str] = []
         taken = set(leaf_tables(result))
         for param, value in inputs.items():
@@ -5348,6 +5401,7 @@ class ContractedTransform:
                 continue
             link = self._link(param, value, conds, entry)
             _merge(external, link.external)
+            _merge_policies(policies, link.policies)
             unproved_links += link.unproved_links
             if op in placeholders:  # the same input under two parameters
                 name, assumed = placeholders[op]
@@ -5380,8 +5434,8 @@ class ContractedTransform:
         checked: list[Condition] = []
         if not report.proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in
-            # "runtime" mode the engine raises them if they happen.
-            if self.on_unproved == "runtime" and (node or is_bound(result)):
+            # "check" mode the engine raises them if they happen.
+            if self.on_unproved == "check" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
                 checked = [c for c in self.ensures if label(c) in unproved]
                 report = self.last_report = _marked_checked(report)
@@ -5399,6 +5453,11 @@ class ContractedTransform:
             entry.params = {t: p for t, (p, _) in {**bound_inputs, **plain}.items()}
         _merge(external, abstraction.external)
         _merge(external, base)
+        _merge_policies(policies, abstraction.policies)
+        _merge_policies(
+            policies,
+            {t: {label(c): {self.on_violation} for c in cs} for t, cs in base.items()},
+        )
         proved = {c.label for c in report.ensures if c.proved}
         _register(
             result.op(),
@@ -5411,6 +5470,7 @@ class ContractedTransform:
                 external=external,
                 unproved_links=unproved_links + abstraction.unproved_links,
                 checked=checked,
+                policies=policies,
             ),
         )
         return result
@@ -5427,20 +5487,21 @@ def transform(
     requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
     ensures: Sequence[Condition] = (),
     *,
-    on_unproved: Literal["error", "runtime", "warn"] = "error",
+    on_unproved: OnUnproved | Literal["runtime"] = "error",
     check_requires: bool = True,
     check_engine: Engine | None = None,
     semantics: Semantics = "reference",
     on_inferred: OnInferred = "error",
     engine: Engine | None = None,
     infer: bool | None = None,
+    on_violation: Policy | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
     `requires` maps parameter names to conditions on that input. On each call
     the postconditions are proved (cached per input schema and expression) and
     the report is kept in `.last_report`; see the module docstring. With
-    `on_unproved="runtime"`, unproved postconditions are checked on the output
+    `on_unproved="check"`, unproved postconditions are checked on the output
     data instead: on inputs bound to a connection, when the transform is
     called; on a node, at every refresh, on the rows the batch inserts, before
     its sink commits. The report marks them `checked`. `check_engine` says
@@ -5464,14 +5525,17 @@ def transform(
             errors.
         on_unproved: What happens when a postcondition, or a precondition on
             another contracted transformation's result, is not proved:
-            `"error"` (the default) raises; `"runtime"` checks a postcondition
+            `"error"` (the default) raises; `"check"` checks a postcondition
             on the output data instead (bound inputs, or a node at every
             refresh) and a precondition on a bound input's data; `"warn"`
             emits a warning and returns the result, and a node's refreshes
             run it unverified, each with an `UnverifiedRunWarning`
-            (`refresh(unverified=True)`).
+            (`refresh(unverified=True)`). `"runtime"` is a deprecated
+            spelling of `"check"`.
         check_requires: Whether to check preconditions on the data of bound
-            inputs at call time. Default True.
+            inputs at call time. Default True. False with an
+            `on_violation` other than `"error"` raises `ValueError`: that
+            setting acts on those checks.
         check_engine: Where checks on data run: `"duckdb"`, `"polars"` or
             `"datafusion"` run each condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
@@ -5484,13 +5548,23 @@ def transform(
             contract is not proved until `requires` states it or the
             transformation no longer needs it (`Report.needed`). `"warn"`:
             it is assumed and checked on the data or proved from table
-            metadata, with an `InferredPreconditionWarning`. `"silent"`:
+            metadata, with an `InferredPreconditionWarning`. `"ignore"`:
             the same without the warning. `"off"`: nothing is inferred or
             assumed, so an integer `SUM` that may leave 64 bits is an error
             too, which the other values check on the data while the job
-            runs (`Report.assumed`).
+            runs (`Report.assumed`). `"silent"` is a deprecated spelling of
+            `"ignore"`.
         engine: Deprecated alias of `check_engine`.
         infer: Deprecated: `infer=False` is `on_inferred="off"`.
+        on_violation: What a refresh does with a batch of a source that
+            breaks one of these preconditions, inferred ones included
+            (#184): `"error"` raises `PreconditionError`; `"quarantine"`
+            sets the offending rows aside with the reason, in the node's
+            quarantine table, and the rest flows; `"hold"` commits nothing
+            for the batch and holds the node at its versions until a later
+            version of the source meets the preconditions. Default None:
+            the source's `on_violation`, else `"error"`. Where two
+            transforms state the same condition, the stricter holds.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -5578,6 +5652,13 @@ def transform(
         )
         if check_engine is None:
             check_engine = engine
+    on_unproved = _checked_on_unproved(on_unproved)
+    check_policy(on_violation)
+    if not check_requires and on_violation not in (None, "error"):
+        raise ValueError(
+            f"on_violation={on_violation!r} acts on the checks of the preconditions on the "
+            "data, which check_requires=False turns off"
+        )
     return lambda fn: ContractedTransform(
         fn,
         requires,
@@ -5588,4 +5669,5 @@ def transform(
         on_inferred != "off",
         semantics,
         on_inferred,
+        on_violation,
     )
