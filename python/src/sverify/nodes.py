@@ -246,6 +246,46 @@ class Node:
             )
         return report.to_substrait(format, shims=shims)
 
+    def to_sql(self, dialect: Any = "duckdb") -> str:
+        """The node's stage as SQL, in `dialect`: what `refresh` runs for a
+        full recompute, with every run-time check, and the meaning the
+        proof gives it. Windows of a `deterministic` report need no
+        row-order tiebreak (`Report.to_sql`).
+
+        The SQL reads the sources and stored nodes upstream by their names
+        (`internal_plan`). A node whose contract is not proved is refused, as
+        `refresh` refuses it; a node without a contract (a source, or a
+        plain function's result) has no proof to check.
+
+        Args:
+            dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
+                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+
+        Returns:
+            One SQL query.
+
+        Raises:
+            ValueError: `dialect` is unknown.
+            sverify.errors.UnverifiedRunError: The node's contract is not
+                proved.
+            sverify.errors.RouteError: No route takes the plan to the
+                dialect's engine.
+            sverify.errors.Unsupported: The dialect cannot express the plan.
+
+        Examples:
+            ```python
+            node = orders.pipe(paid)
+            print(node.to_sql("snowflake"))
+            ```
+        """
+        from sverify.sql import dialect_of, to_sql
+
+        report = self.report
+        if report is None:
+            return to_sql(self.internal_plan, dialect_of(dialect))
+        d = report._sql_route(dialect)[0]
+        return to_sql(self.internal_plan, d, deterministic=report.deterministic)
+
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
         """Apply `step` to this node, left to right: `orders.pipe(paid)` is
         `paid(orders)`, and a job reads in the order its data flows.
@@ -480,7 +520,7 @@ class Node:
             RuntimeError: The node has not been refreshed yet.
         """
         view = self._view()
-        return view.con.arrow[view.name]
+        return view.con._arrow[view.name]
 
     def to_polars(self) -> polars.DataFrame:
         """The node's state as a Polars DataFrame (needs `polars`).

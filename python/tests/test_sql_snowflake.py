@@ -28,7 +28,7 @@ import sqlglot
 
 import sverify as sv
 from sverify.engine import run_checker
-from sverify.engines import create_table, substrait_json
+from sverify.engines import substrait_json
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
@@ -115,7 +115,7 @@ def pipeline_plans() -> dict[str, dict]:
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
     plans = {name: json.loads(to_substrait_json(expr)) for name, expr in PIPELINES.items()}
-    plans["sql_query"] = json.loads(substrait_json(con, SQL_QUERY))
+    plans["sql_query"] = json.loads(substrait_json(con, SQL_QUERY, semantics="duckdb"))
     return plans
 
 
@@ -135,11 +135,11 @@ def ordered_plans() -> dict[str, dict]:
         rn=ibis.row_number().over(group_by=w.g, order_by=w.x),
     )
     con = sv.connect()
-    create_table(con, "w", ibis.schema({"g": "int64", "x": "int64"}), ORDERED_ROWS)
+    con.create("w", ibis.schema({"g": "int64", "x": "int64"}), ORDERED_ROWS)
     fetch = "select x from w where g is not null limit 2 offset 1"
     return {
         "window": json.loads(to_substrait_json(window)),
-        "fetch": json.loads(substrait_json(con, fetch)),
+        "fetch": json.loads(substrait_json(con, fetch, semantics="duckdb")),
     }
 
 
@@ -284,7 +284,11 @@ def test_identifiers_are_quoted():
     con = sv.connect()
     create_tables(con)
     sql = to_sql(
-        json.loads(substrait_json(con, ibis.to_sql(PIPELINES["inner_join"], dialect="duckdb"))),
+        json.loads(
+            substrait_json(
+                con, ibis.to_sql(PIPELINES["inner_join"], dialect="duckdb"), semantics="duckdb"
+            )
+        ),
         SNOWFLAKE,
     )
     assert '"orders"' in sql

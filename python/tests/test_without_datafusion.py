@@ -30,20 +30,16 @@ class NoDataFusion(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoDataFusion())
 
 import sverify as sv
-from sverify.engines import create_table
 from sverify.errors import PreconditionError
 from sverify.incremental import IncrementalView, Pipeline
 
 con = sv.connect(ENGINE)
-create_table(
-    con,
+con.create(
     "orders",
     ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
     [(1, "ada", 30), (2, "bob", 5)],
 )
-create_table(
-    con, "customers", ibis.schema({"name": "string", "city": "string"}), [("ada", "Paris")]
-)
+con.create("customers", ibis.schema({"name": "string", "city": "string"}), [("ada", "Paris")])
 orders, customers = con.table("orders"), con.table("customers")
 """
 
@@ -101,7 +97,7 @@ def test_contracts(engine):
             requires={"orders": [_.amount >= 0]}, check_engine=con.engine
         )(lambda orders: orders)
         checked_on_engine(orders)
-        create_table(con, "bad", orders.schema(), [(1, "ada", -1)])
+        con.create("bad", orders.schema(), [(1, "ada", -1)])
         try:
             checked_on_engine(con.table("bad"))
         except PreconditionError:

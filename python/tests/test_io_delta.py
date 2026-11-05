@@ -31,7 +31,6 @@ from _pipelines import (
 from sverify._weighted import WEIGHT
 from sverify.contracts import ON_DATA, SCHEMA, label
 from sverify.engine import Engine
-from sverify.engines import create_table
 from sverify.errors import AuditError, PreconditionError, SchemaError
 from sverify.incremental import IncrementalView, Pipeline, arrow_rows
 from sverify.io import DeltaSink, DeltaSource, StaticSource
@@ -43,7 +42,7 @@ def source_schema(node, name):
     """The schema `node`'s stage holds source `name` in (internal: what the
     stage reads, not what the node gives)."""
     assert node._stage is not None
-    return node._stage.pipe.con.arrow[name].schema
+    return node._stage.pipe.con._arrow[name].schema
 
 
 # -- Step 1: the Change Data Feed as a change source --------------------------
@@ -421,8 +420,7 @@ def test_truncated_timestamp_statistics_are_widened(tmp_path):
 
 def test_tables_without_metadata_are_checked_on_data():
     con = sv.connect()
-    create_table(
-        con,
+    con.create(
         "orders",
         ibis.schema({"id": "!int64", "customer": "string", "amount": "int64"}),
         [(1, "ada", 5)],
@@ -731,7 +729,7 @@ def test_restarted_job_resumes_from_its_sink(tmp_path, monkeypatch):
     seen = spy_on(
         monkeypatch,
         "sverify.incremental.run_plan",
-        lambda con, plan, engine=None: con.arrow["orders"].num_rows,
+        lambda con, plan, engine=None: con._arrow["orders"].num_rows,
     )
     _, again = job1(tmp_path, src)
     report = again.refresh()
@@ -977,7 +975,7 @@ def test_source_tables_change_only_through_refresh(tmp_path):
 
 def test_sink_needs_source_versions(tmp_path):
     con = sv.connect()
-    create_table(con, "orders", ibis.schema({"id": "int64"}), [(1,)])
+    con.create("orders", ibis.schema({"id": "int64"}), [(1,)])
     view = IncrementalView(con, con.table("orders"), "v")
     with pytest.raises(ValueError, match="without a source"):
         attached(DeltaSink(str(tmp_path / "v")), view)._commit()
@@ -1016,7 +1014,7 @@ def test_dropped_column_read_by_a_view_changes_nothing(tmp_path):
         pipe.refresh()
     assert pipe.versions == {"orders": 0}
     assert ids.rows() == [(1,)] and pos.rows() == [(1, 5)]
-    assert pipe.con.arrow["orders"].schema == NARROW
+    assert pipe.con._arrow["orders"].schema == NARROW
 
 
 def test_dropped_column_no_view_reads_replans(tmp_path):

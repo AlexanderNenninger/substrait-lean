@@ -23,7 +23,6 @@ from _pipelines import integer_powers
 from sverify import polars_engine
 from sverify.engine import (
     connect,
-    create_table,
     plan_json,
     put_table,
     read_tables,
@@ -239,7 +238,7 @@ small = st.one_of(st.none(), st.integers(-3, 3))
 
 
 def lean_and_polars(con, sql: str, rows: dict[str, list[tuple]]) -> tuple[list, list]:
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     inlined = inline_tables(json.loads(plan), rows)
     return lean_rows(json.dumps(inlined)), rows_of(run_plan(con, plan, "polars"))
 
@@ -249,7 +248,7 @@ def lean_and_polars(con, sql: str, rows: dict[str, list[tuple]]) -> tuple[list, 
 @given(rows=st.lists(st.tuples(small, small, small), max_size=10, unique_by=lambda r: (r[0], r[1])))
 def test_windows_match_lean_in_order(sql, rows):
     con = connect()
-    create_table(con, "r", WINDOW_SCHEMA, rows)
+    con.create("r", WINDOW_SCHEMA, rows)
     lean, polars = lean_and_polars(con, sql, {"r": rows})
     assert lean == polars
     assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
@@ -263,8 +262,8 @@ def test_windows_match_lean_in_order(sql, rows):
 )
 def test_rewrites_match_lean_in_order(sql, r, s):
     con = connect()
-    create_table(con, "r", R, r)
-    create_table(con, "s", S, s)
+    con.create("r", R, r)
+    con.create("s", S, s)
     lean, polars = lean_and_polars(con, sql, {"r": r, "s": s})
     assert lean == polars
     assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
@@ -302,7 +301,7 @@ def test_delta_plans_agree(name, data):
     for t, row in [("orders", orders_row), ("customers", customers_row)]:
         rows = data.draw(st.lists(row, max_size=4))
         ws = data.draw(st.lists(weights, min_size=len(rows), max_size=len(rows)))
-        put_table(con, t + "$delta", with_weights(rows, ws, con.arrow[t].schema))
+        put_table(con, t + "$delta", with_weights(rows, ws, con._arrow[t].schema))
     deltas = delta_plans(plan)
     assert deltas
     for d in deltas:
@@ -356,8 +355,8 @@ def polars_rows(con, sql: str) -> list[tuple]:
 
 def test_null_join_keys_never_match():
     con = connect()
-    create_table(con, "r", R, [(1, None, 0), (2, 5, 0)])
-    create_table(con, "s", S, [(None, 7), (5, 8)])
+    con.create("r", R, [(1, None, 0), (2, 5, 0)])
+    con.create("s", S, [(None, 7), (5, 8)])
     inner = "SELECT r.a, s.d FROM r JOIN s ON r.b = s.b"
     left = "SELECT r.a, s.d FROM r LEFT JOIN s ON r.b = s.b"
     assert polars_rows(con, inner) == [(2, 8)]
@@ -374,8 +373,8 @@ def test_left_join_keeps_lean_order():
     con = connect()
     r = [(1, 1, 0), (2, 9, 0), (3, 1, 0)]
     s = [(1, 20), (1, 10)]
-    create_table(con, "r", R, r)
-    create_table(con, "s", S, s)
+    con.create("r", R, r)
+    con.create("s", S, s)
     sql = "SELECT r.a, s.d FROM r LEFT JOIN s ON r.b = s.b AND s.d > 0"
     assert polars_rows(con, sql) == [(1, 20), (1, 10), (2, None), (3, 20), (3, 10)]
 
@@ -384,10 +383,10 @@ def test_float_join_keys_have_one_zero_and_one_nan():
     """As the float codes have it: NaN matches NaN, and -0.0 matches 0.0."""
     con = connect()
     schema = ibis.schema({"k": "float64", "v": "int64"})
-    create_table(con, "a", schema, [(math.nan, 1), (-0.0, 2), (0.0, 3), (None, 4)])
-    create_table(con, "b", schema, [(math.nan, 10), (0.0, 30), (None, 40)])
+    con.create("a", schema, [(math.nan, 1), (-0.0, 2), (0.0, 3), (None, 4)])
+    con.create("b", schema, [(math.nan, 10), (0.0, 30), (None, 40)])
     sql = "SELECT a.v, b.v AS w FROM a JOIN b ON a.k = b.k"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
     assert pl_rows == [(1, 10), (2, 30), (3, 30)]
     assert same_bag(df, pl_rows)
 
@@ -395,7 +394,7 @@ def test_float_join_keys_have_one_zero_and_one_nan():
 def test_three_valued_logic_in_filters():
     con = connect()
     rows = [(a, b, 0) for a in (None, -1, 1) for b in (None, -1, 1)]
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     cases = {
         # NOT (NULL AND FALSE) = TRUE keeps the row; NOT (NULL AND TRUE) = NULL drops it.
         "SELECT a, b FROM r WHERE NOT (a > 0 AND b > 0)": [
@@ -426,7 +425,7 @@ def test_three_valued_logic_in_filters():
 def test_null_order_in_windows(direction):
     con = connect()
     rows = [(1, 2, 0), (1, None, 1), (1, 0, 2), (2, None, 3), (None, 1, 4), (None, None, 5)]
-    create_table(con, "r", WINDOW_SCHEMA, rows)
+    con.create("r", WINDOW_SCHEMA, rows)
     sql = (
         f"SELECT s, t, ROW_NUMBER() OVER (PARTITION BY s ORDER BY t {direction}) AS n,"
         f" LAG(v) OVER (PARTITION BY s ORDER BY t {direction}) AS p FROM r"
@@ -444,9 +443,9 @@ def test_float_window_order_has_one_zero_and_one_nan():
     con = connect()
     schema = ibis.schema({"x": "float64"})
     xs = [math.nan, 0.0, -math.inf, -0.0, math.inf, -math.nan, None]
-    create_table(con, "f", schema, [(x,) for x in xs])
+    con.create("f", schema, [(x,) for x in xs])
     sql = "SELECT x, ROW_NUMBER() OVER (ORDER BY x ASC NULLS LAST) AS n FROM f"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
     assert repr(pl_rows) == repr(
         [
             (-math.inf, 1),
@@ -465,7 +464,7 @@ def test_integer_overflow_raises():
     """Lean's integers are unbounded; a 64-bit engine must not wrap."""
     con = connect()
     big = 2**62
-    create_table(con, "r", R, [(big, big, -(2**63))])
+    con.create("r", R, [(big, big, -(2**63))])
     for sql in [
         "SELECT a + b AS x FROM r",
         "SELECT a * b AS x FROM r",
@@ -480,7 +479,7 @@ def test_integer_overflow_raises():
 def test_timestamp_arithmetic_is_checked_too():
     con = connect()
     schema = ibis.schema({"ts": "timestamp"})
-    create_table(con, "t", schema, [(dt.datetime(2024, 1, 1),)])
+    con.create("t", schema, [(dt.datetime(2024, 1, 1),)])
     t = con.table("t")
     expr = t.select(x=t.ts + ibis.interval(seconds=90), d=t.ts - t.ts)
     df, pl_rows = on_both(con, written_plan(to_substrait_json(expr)))
@@ -495,8 +494,8 @@ def test_unwritten_plans_are_refused():
     """DataFusion's own plans use constructs Lean rewrites away (`gt`, casts,
     `ReadRel.projection`, …); the translator refuses them instead of guessing."""
     con = connect()
-    create_table(con, "r", R, [])
-    raw = substrait_json(con, "SELECT a FROM r WHERE a > 1")
+    con.create("r", R, [])
+    raw = substrait_json(con, "SELECT a FROM r WHERE a > 1", semantics="duckdb")
     with pytest.raises(polars_engine.Unsupported):
         polars_engine.to_lazy(raw, {"r": pa.table({"a": [1], "b": [1], "c": [1]})})
 
@@ -504,7 +503,7 @@ def test_unwritten_plans_are_refused():
 def test_string_order_is_refused():
     """`BinFn.lt` is undefined on strings in the model, unlike in SQL."""
     con = connect()
-    create_table(con, "o", ibis.schema({"name": "string"}), [("ada",)])
+    con.create("o", ibis.schema({"name": "string"}), [("ada",)])
     with pytest.raises(polars_engine.Unsupported, match="lt of String"):
         polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
 
@@ -512,7 +511,11 @@ def test_string_order_is_refused():
 def test_unknown_function_is_refused():
     con = connect()
     create_tables(con)
-    plan = json.loads(written_plan(substrait_json(con, "SELECT id FROM orders WHERE amount > 10")))
+    plan = json.loads(
+        written_plan(
+            substrait_json(con, "SELECT id FROM orders WHERE amount > 10", semantics="duckdb")
+        )
+    )
     plan["extensions"][0]["extensionFunction"]["name"] = "sqrt"
     filt = plan["relations"][0]["root"]["input"]["project"]["input"]["filter"]
     filt["condition"] = {
@@ -522,13 +525,13 @@ def test_unknown_function_is_refused():
         }
     }
     with pytest.raises(polars_engine.Unsupported, match="sqrt"):
-        polars_engine.to_lazy(plan, {"orders": con.arrow["orders"]})
+        polars_engine.to_lazy(plan, {"orders": con._arrow["orders"]})
 
 
 def test_integer_sum_overflow_raises():
     """`SUM` of integers is exact in Lean; DataFusion wraps around (`Issue.wraps`)."""
     con = connect()
-    create_table(con, "r", R, [(2**62, 1, 0), (2**62, 1, 0), (1, 2, 0)])
+    con.create("r", R, [(2**62, 1, 0), (2**62, 1, 0), (1, 2, 0)])
     with pytest.raises(polars_engine.IntegerOverflow):
         polars_rows(con, "SELECT b, SUM(a) AS s FROM r GROUP BY b")
     assert polars_rows(con, "SELECT b, SUM(a - 1) AS s FROM r GROUP BY b") == [
@@ -540,8 +543,8 @@ def test_integer_sum_overflow_raises():
 def test_checker_writes_what_polars_reads():
     """`--write` output is a fixed point of the round trip the translator relies on."""
     con = connect()
-    create_table(con, "r", WINDOW_SCHEMA, [])
-    once = written_plan(substrait_json(con, WINDOW_QUERIES[-1]))
+    con.create("r", WINDOW_SCHEMA, [])
+    once = written_plan(substrait_json(con, WINDOW_QUERIES[-1], semantics="duckdb"))
     code, twice, err = run_checker(("--write",), once)
     assert code == 0, err
     assert json.loads(twice) == json.loads(once)
@@ -555,8 +558,8 @@ def test_checker_writes_what_polars_reads():
 @given(rows=st.lists(st.tuples(small, small), max_size=8))
 def test_integer_functions_match_lean_in_order(sql, rows):
     con = connect()
-    create_table(con, "r", NUMERIC_R, rows)
-    plan = written_plan(substrait_json(con, sql))
+    con.create("r", NUMERIC_R, rows)
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     inlined = inline_tables(json.loads(plan), {"r": rows})
     polars = rows_of(run_plan(con, plan, "polars"))
     assert lean_values(json.dumps(inlined)) == polars
@@ -567,14 +570,14 @@ def test_rounding_matches_datafusion_bit_for_bit():
     """Halves away from zero, `CEIL(-0.5)` is 0.0, NaN and ±∞ stay."""
     con = connect()
     xs = [*DOUBLES, -0.0, -0.4, math.nan, math.inf, -math.inf, None]
-    create_table(con, "r", F, [(x,) for x in xs])
+    con.create("r", F, [(x,) for x in xs])
     for sql in [
         "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
         "SELECT f, power(f, 2.0) AS p FROM r",
         # A zero divisor raises (`on_division_by_zero` = ERROR).
         "SELECT f, f / 10.0 AS x, CASE WHEN f <> 0 THEN 3.0 / f END AS y FROM r",
     ]:
-        df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+        df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
         if "/" in sql:
             # Polars divides by a constant through its reciprocal (PL-3): the
             # reference's division is within 2 ulps there (#444).
@@ -596,12 +599,12 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
     """`round(x, d)` is DuckDB's (#335); DataFusion rounds otherwise."""
     con = connect()
     xs = [*DOUBLES, -0.0, -0.4, 521924.88982515107, 1e308, math.nan, math.inf, -math.inf, None]
-    create_table(con, "r", F, [(x,) for x in xs])
+    con.create("r", F, [(x,) for x in xs])
     sql = (
         "SELECT f, round(f, 1) AS x, round(f, -1) AS y, round(f, -5) AS z, round(f, 400) AS w,"
         " round(f, -400) AS v FROM r"
     )
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     duck = rows_of(run_plan(con, plan, "duckdb"))
     assert repr(rows_of(run_plan(con, plan, "polars"))) == repr(duck)
     with pytest.raises(Exception, match="#335"):
@@ -610,14 +613,14 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
 
 def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
-    create_table(con, "r", F, [(x,) for x in DOUBLES])
+    con.create("r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(f AS BIGINT) AS i FROM r"
     df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
     assert df == pl_rows
-    create_table(con, "r", F, [(1.0,), (math.nan,)])
+    con.create("r", F, [(1.0,), (math.nan,)])
     with pytest.raises(polars_engine.BadCast):
         polars_rows(con, sql)
-    create_table(con, "r", F, [(2.0**63,)])
+    con.create("r", F, [(2.0**63,)])
     with pytest.raises(polars_engine.BadCast):
         polars_rows(con, sql)
 
@@ -642,7 +645,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
 )
 def test_runtime_errors_raise(sql, error):
     con = connect()
-    create_table(con, "r", NUMERIC_R, [(5, 0), (MIN, -1), (7, 2)])
+    con.create("r", NUMERIC_R, [(5, 0), (MIN, -1), (7, 2)])
     with pytest.raises(error):
         polars_rows(con, sql)
 
@@ -662,8 +665,8 @@ def test_guarded_operations_do_not_raise(sql):
     con = connect()
     # Lean prints integers of magnitude 2^63 as double codes, so not MIN itself.
     rows = [(5, 0), (-7, 2), (7, -2), (None, 0), (MIN + 1, 1)]
-    create_table(con, "r", NUMERIC_R, rows)
-    plan = written_plan(substrait_json(con, sql))
+    con.create("r", NUMERIC_R, rows)
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     polars = rows_of(run_plan(con, plan, "polars"))
     assert lean_values(json.dumps(inline_tables(json.loads(plan), {"r": rows}))) == polars
 

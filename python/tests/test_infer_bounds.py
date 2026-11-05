@@ -15,7 +15,6 @@ import sverify as sv
 import sverify.contracts as contracts
 from _pipelines import discharged, make_orders, orders_table, paid
 from sverify.contracts import ON_DATA, Inferred, label
-from sverify.engine import create_table
 from sverify.errors import PreconditionError, VerificationError
 from sverify.io import StaticSource
 
@@ -209,12 +208,12 @@ def doubled(orders):
 def test_bound_inputs_are_checked_at_call():
     db = sv.connect()
     schema = ibis.schema({"id": "int64", "amount": "int64"})
-    create_table(db, "ok", schema, [(1, 7)])
+    db.create("ok", schema, [(1, 7)])
     doubled(db.table("ok"))
     assert [str(p) for p in doubled.last_preconditions][-1] == (
         "orders: (_.amount < 2**62) (inferred, checked on data)"
     )
-    create_table(db, "big", schema, [(1, 2**62)])
+    db.create("big", schema, [(1, 2**62)])
     with pytest.raises(
         PreconditionError, match=r"1 row\(s\) of orders violate \(_.amount < 2\*\*62\)"
     ):
@@ -350,7 +349,7 @@ def test_null_passes_an_inferred_bound():
         return t.select(x=t.amount * 2)
 
     db = sv.connect()
-    create_table(db, "nulls", ibis.schema({"amount": "int64"}), [(None,), (3,)])
+    db.create("nulls", ibis.schema({"amount": "int64"}), [(None,), (3,)])
     twice(db.table("nulls"))
     assert [p.condition for p in twice.last_preconditions] == [
         "(_.amount >= -2**62)",

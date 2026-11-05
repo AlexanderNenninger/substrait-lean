@@ -11,7 +11,6 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import violations
 from sverify.counterexample import Counterexample
-from sverify.engines import create_table
 from sverify.errors import VerificationError
 from sverify_dev.examples import customers, orders
 
@@ -38,7 +37,7 @@ def bound(cex: Counterexample) -> dict:
     con = sv.connect()
     schemas = {"orders": orders.schema(), "customers": customers.schema()}
     for name, schema in schemas.items():
-        create_table(con, name, schema, cex.tables.get(name, []))
+        con.create(name, schema, cex.tables.get(name, []))
     return {name: con.table(name) for name in schemas}
 
 

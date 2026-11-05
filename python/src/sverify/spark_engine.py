@@ -90,7 +90,7 @@ def run(
     tie_free: bool | None = None,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
-    This is `sverify.engines.run_spark`.
+    `sverify.engines.run_spark`, deprecated, calls it.
 
     The plan is written as Spark SQL by `sverify.engines.to_sql` in the
     `sverify.engines.SPARK` dialect. `sverify.engines.run(con, plan,

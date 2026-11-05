@@ -864,7 +864,7 @@ def _(mo):
 
 @app.cell
 def _(ibis, math, sv):
-    from sverify.engines import ENGINES, create_table, run, substrait_json, table_rows, written_plan
+    from sverify.engines import ENGINES, run, substrait_json, written_plan
 
     T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
     U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
@@ -872,8 +872,8 @@ def _(ibis, math, sv):
     U_ROWS = [("a", "alpha"), (None, "nothing"), ("b", "beta")]
 
     con = sv.connect()
-    create_table(con, "t", T_SCHEMA, T_ROWS)
-    create_table(con, "u", U_SCHEMA, U_ROWS)
+    con.create("t", T_SCHEMA, T_ROWS)
+    con.create("u", U_SCHEMA, U_ROWS)
     return (
         ENGINES,
         T_ROWS,
@@ -881,19 +881,17 @@ def _(ibis, math, sv):
         U_ROWS,
         U_SCHEMA,
         con,
-        create_table,
         run,
         substrait_json,
-        table_rows,
         written_plan,
     )
 
 
 @app.cell(hide_code=True)
-def _(con, display, table_rows):
+def _(con, display):
     display.side_by_side(
-        display.table(table_rows(con, "t"), ["k", "qty", "v"], title="t"),
-        display.table(table_rows(con, "u"), ["k", "label"], title="u"),
+        display.table(con.rows("t"), ["k", "qty", "v"], title="t"),
+        display.table(con.rows("u"), ["k", "label"], title="u"),
     )
     return
 
@@ -915,10 +913,10 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(ENGINES, con, display, json, mo, query, run, substrait_json, table_rows, written_plan):
+def _(ENGINES, con, display, json, mo, query, run, substrait_json, written_plan):
     from sverify.testing import canonical, inline_tables, lean_rows
 
-    _plan = substrait_json(con, query.value)
+    _plan = substrait_json(con, query.value, semantics="duckdb")
     _written = written_plan(_plan)
     _cols = json.loads(_plan)["relations"][0]["root"]["names"]
     _panels, _results = [], {}
@@ -940,7 +938,7 @@ def _(ENGINES, con, display, json, mo, query, run, substrait_json, table_rows, w
                 )
             )
     if " v" not in query.value and "+ 1" not in query.value:  # see the note below
-        _data = {t: table_rows(con, t) for t in ("t", "u")}
+        _data = {t: con.rows(t) for t in ("t", "u")}
         _lean = lean_rows(json.dumps(inline_tables(json.loads(_plan), _data)))
         _panels.insert(0, display.table(_lean, _cols, title="Lean's Rel.eval"))
     _same = len({repr(canonical(r)) for r in _results.values()}) == 1 and len(_results) == 3
@@ -1098,7 +1096,7 @@ def _(con, dialect, json, mo, sql_query, substrait_json):
     from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, Unsupported, to_sql
 
     try:
-        _plan = json.loads(substrait_json(con, sql_query.value))
+        _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))
         _dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
         _sql = to_sql(_plan, _dialects[dialect.value])
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
@@ -1182,9 +1180,8 @@ def _(mo):
 
 
 @app.cell
-def _(con, create_table, ibis, math):
-    create_table(
-        con,
+def _(con, ibis, math):
+    con.create(
         "m",
         ibis.schema({"v": "float64"}),
         [(1.5,), (math.nan,), (-1.0,), (0.0,), (-0.0,), (math.inf,), (-9999.0,), (None,)],
@@ -1364,14 +1361,12 @@ def _(mo):
 
 
 @app.cell
-def _(con, create_table, display, duckdb_ibis, ibis, json, table_rows):
+def _(con, display, duckdb_ibis, ibis, json):
     from sverify.ibis_substrait import to_substrait_json
     from sverify.testing import inline_tables as _inline_tables
     from sverify.testing import lean_rows as _lean_rows
 
-    create_table(
-        con, "w", ibis.schema({"word": "string"}), [("Grüße",), ("naïve ",), ("a%b",), (None,)]
-    )
+    con.create("w", ibis.schema({"word": "string"}), [("Grüße",), ("naïve ",), ("a%b",), (None,)])
     _w = con.table("w")
     _words = _w.select(
         "word",
@@ -1383,7 +1378,7 @@ def _(con, create_table, display, duckdb_ibis, ibis, json, table_rows):
     )
     _plan = json.loads(to_substrait_json(_words))
     _cols = _plan["relations"][0]["root"]["names"]
-    _lean = _lean_rows(json.dumps(_inline_tables(_plan, {"w": table_rows(con, "w")})))
+    _lean = _lean_rows(json.dumps(_inline_tables(_plan, {"w": con.rows("w")})))
     display.side_by_side(
         display.table(_lean, _cols, title="Lean"),
         display.arrow(duckdb_ibis(con, _words), title="DuckDB"),

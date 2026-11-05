@@ -28,7 +28,6 @@ from sverify.contracts import decode_double
 from sverify.engine import (
     collect,
     connect,
-    create_table,
     run_plan,
     substrait_json,
     written_plan,
@@ -66,7 +65,7 @@ EXACT = [
 def duckdb_rows_of(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
     """DuckDB running `sql`, the oracle for the lifted plan."""
     con = connect()
-    create_table(con, "t", schema, rows)
+    con.create("t", schema, rows)
     out = duckdb_sql(con, sql)
     return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
 
@@ -74,7 +73,7 @@ def duckdb_rows_of(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
 def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
     """DataFusion running `sql`, as an engine."""
     con = connect()
-    create_table(con, "t", schema, rows)
+    con.create("t", schema, rows)
     out = collect(con._datafusion_session.sql(sql))
     return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
 
@@ -82,8 +81,8 @@ def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
 def run(sql: str, schema: ibis.Schema, rows: list) -> tuple[list[tuple], list[tuple]]:
     expected = duckdb_rows_of(sql, schema, rows)
     con = connect()
-    create_table(con, "t", schema, rows)
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"t": rows})
+    con.create("t", schema, rows)
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"t": rows})
     return lean_values(json.dumps(plan)), expected
 
 
@@ -99,8 +98,8 @@ def test_aggregates_match_duckdb(sql, t):
 
 def engine_rows(sql: str, schema: ibis.Schema, rows: list, *engines: str) -> dict[str, list[tuple]]:
     con = connect()
-    create_table(con, "t", schema, rows)
-    plan = written_plan(substrait_json(con, sql))
+    con.create("t", schema, rows)
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     return {
         e: [tuple(r.values()) for r in run_plan(con, plan, e).to_pylist()]
         for e in engines or ("polars", "duckdb")
@@ -124,9 +123,9 @@ def test_engines_raise_where_sum_wraps():
     with pytest.raises(polars_engine.IntegerOverflow):
         engine_rows(sql, T, rows)
     con = connect()
-    create_table(con, "t", T, rows)
+    con.create("t", T, rows)
     with pytest.raises(duckdb.Error, match="overflow in SUM"):
-        run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")
+        run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "duckdb")
 
 
 def close(x: object, y: object) -> bool:
@@ -492,7 +491,7 @@ def test_bit_aggregates_match_every_engine(t):
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": t})))
     assert sorted(lean, key=repr) == expected
     con = connect()
-    create_table(con, "t", B.schema(), t)
+    con.create("t", B.schema(), t)
     written = written_plan(plan)
     for engine in ("duckdb", "polars", "datafusion"):
         got = [tuple(r.values()) for r in run_plan(con, written, engine).to_pylist()]
@@ -540,7 +539,7 @@ def near(x: object, y: object) -> bool:
 @given(rows=v_rows)
 def test_variance_agrees_across_engines(rows):
     con = connect()
-    create_table(con, "t", V.schema(), rows)
+    con.create("t", V.schema(), rows)
     plan = to_substrait_json(var_expr())
     lean = decoded(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
     written = written_plan(plan)
@@ -557,7 +556,7 @@ def test_variance_meaning():
     """A sample of one value is NULL; a population of one is 0."""
     con = connect()
     rows = [(1, 1.5, 1), (1, 2.25, 2), (1, -3.0, 3), (2, 7.0, 4), (2, None, None)]
-    create_table(con, "t", V.schema(), rows)
+    con.create("t", V.schema(), rows)
     mean = (1.5 + 2.25 - 3.0) / 3
     ss = sum((x - mean) * (x - mean) for x in (1.5, 2.25, -3.0))
     expected = [
@@ -579,7 +578,7 @@ def test_variance_meaning():
 def test_variance_of_an_infinity_raises(engine):
     """`inf - mean` would be NaN, which no operation creates (#257)."""
     con = connect()
-    create_table(con, "t", V.schema(), [(1, math.inf, 1), (1, 2.0, 2)])
+    con.create("t", V.schema(), [(1, math.inf, 1), (1, 2.0, 2)])
     with pytest.raises(Exception, match="(?i)domain|NaN"):
         run_plan(con, written_plan(to_substrait_json(var_expr())), engine)
     report = sv.verify(var_expr())
@@ -630,7 +629,7 @@ def test_first_and_last_follow_their_order(rows):
     lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
     assert lean == expected
     con = connect()
-    create_table(con, "t", P.schema(), rows)
+    con.create("t", P.schema(), rows)
     got = sorted(tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist())
     assert got == expected
 
@@ -642,7 +641,7 @@ def test_first_and_last_are_determined_by_a_key():
     assert not sv.verify(expr).deterministic
     assert sv.verify(expr, requires={"t": [sv.unique("k", "o")]}).deterministic
     con = connect()
-    create_table(con, "t", P.schema(), [(1, "a", 1)])
+    con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
@@ -675,7 +674,7 @@ def test_distinct_on_runs_as_lean_says(keep, rows):
     plan = to_substrait_json(D.distinct(on="name", keep=keep))
     lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
     con = connect()
-    create_table(con, "t", D.schema(), rows)
+    con.create("t", D.schema(), rows)
     got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
     assert sorted((tuple(r.values()) for r in got), key=repr) == lean
 
@@ -691,7 +690,7 @@ def test_distinct_on_proves_nothing_about_one_row():
     assert not report.proved
     # LAST of each column skips NULLs on its own: a and b from different rows.
     con = connect()
-    create_table(con, "t", D.schema(), [("x", 1, 5), ("x", 3, None), ("x", None, 2)])
+    con.create("t", D.schema(), [("x", 1, 5), ("x", 3, None), ("x", None, 2)])
     got = run_plan(
         con, written_plan(to_substrait_json(D.distinct(on="name", keep="last"))), "duckdb"
     )
@@ -726,7 +725,7 @@ def test_covariance_agrees_with_duckdb(rows):
     plan = to_substrait_json(cov_expr())
     lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
     con = connect()
-    create_table(con, "t", C.schema(), rows)
+    con.create("t", C.schema(), rows)
     got = sorted(
         (tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()),
         key=repr,
@@ -750,7 +749,7 @@ def test_correlation_is_null_where_the_standard_says():
         (3, None, 1.0),
         (4, 1.0, 1.0),
     ]
-    create_table(con, "t", C.schema(), rows)
+    con.create("t", C.schema(), rows)
     written = written_plan(to_substrait_json(cov_expr()))
     got = sorted(tuple(r.values()) for r in run_plan(con, written, "duckdb").to_pylist())
     assert got == [
@@ -774,7 +773,7 @@ def test_covariance_of_an_infinity_raises():
         i.kind for i in sv.verify(cov_expr(), requires={"t": finite}).issues
     ]
     con = connect()
-    create_table(con, "t", C.schema(), [(1, math.inf, 1.0), (1, 2.0, 3.0)])
+    con.create("t", C.schema(), [(1, math.inf, 1.0), (1, 2.0, 3.0)])
     with pytest.raises(Exception, match="(?i)domain"):
         run_plan(con, written_plan(to_substrait_json(cov_expr())), "duckdb")
 
@@ -813,7 +812,7 @@ def test_group_concat_follows_its_order(rows):
     lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
     assert lean == expected
     con = connect()
-    create_table(con, "t", P.schema(), rows)
+    con.create("t", P.schema(), rows)
     got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
     assert sorted((tuple(r.values()) for r in got), key=repr) == expected
 
@@ -826,7 +825,7 @@ def test_group_concat_is_determined_by_a_key():
     assert not sv.verify(expr).deterministic
     assert sv.verify(expr, requires={"t": [sv.unique("k", "o")]}).deterministic
     con = connect()
-    create_table(con, "t", P.schema(), [(1, "a", 1)])
+    con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
@@ -850,7 +849,7 @@ def test_unordered_group_concat_proves_only_what_holds_for_every_order():
     assert "STRING_AGG" in report.tie_places[0].what
     rows = [(1, "a", 1), (1, "b", 2), (2, None, 3), (1, None, 4)]
     con = connect()
-    create_table(con, "t", P.schema(), rows)
+    con.create("t", P.schema(), rows)
     got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
     assert sorted((r["k"], r["s"]) for r in got) == [(1, "a,b"), (2, None)]
 
@@ -976,7 +975,7 @@ def test_quantiles_mode_and_arg_min_agree_with_duckdb(rows):
     expected = quantile_reference(rows)
     assert same_rows(lean, expected), (lean, expected)
     con = connect()
-    create_table(con, "t", Q.schema(), rows)
+    con.create("t", Q.schema(), rows)
     got = sorted(tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist())
     assert same_rows(got, expected), (got, expected)
 
@@ -991,7 +990,7 @@ def test_quantile_cont_between_infinities_raises():
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
     assert [decode_double(v) if isinstance(v, int) else v for _, v in lean] == [math.inf]
     con = connect()
-    create_table(con, "t", Q.schema(), rows)
+    con.create("t", Q.schema(), rows)
     assert math.isnan(duckdb_sql(con, "SELECT quantile_cont(x, 0.5) FROM t").column(0)[0].as_py())
     with pytest.raises(Exception, match="domain error"):
         run_plan(con, written_plan(plan), "duckdb")
@@ -1034,7 +1033,7 @@ def test_arg_min_is_determined_by_a_key_and_mode_by_its_value():
 )
 def test_quantiles_are_refused_on_other_engines(agg):
     con = connect()
-    create_table(con, "t", Q.schema(), [(1, 1, 1.0, "a")])
+    con.create("t", Q.schema(), [(1, 1, 1.0, "a")])
     written = written_plan(to_substrait_json(Q.group_by("k").aggregate(v=agg)))
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):

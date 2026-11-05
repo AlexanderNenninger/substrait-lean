@@ -53,7 +53,7 @@ class Unsupported(_Unsupported):
     """The plan is outside the Lean model, or the dialect cannot express it.
 
     Raised by `sverify.engines.to_sql`, and so by `sverify.engines.run` on
-    DuckDB and Spark and by `sverify.engines.run_spark`; the message says
+    DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
     `ValueError`, and of `sverify.errors.Unsupported`, which every refusal
@@ -74,9 +74,12 @@ class Dialect:
     subclasses override what their engine writes differently and raise
     `Unsupported` for what it cannot do.
 
-    Use one of the dialect objects rather than building one:
-    `sverify.engines.DUCKDB`, `sverify.engines.SNOWFLAKE` and
-    `sverify.engines.SPARK`. This is `sverify.engines.Dialect`.
+    Use one of the dialect objects: `sverify.engines.DUCKDB`,
+    `sverify.engines.SNOWFLAKE` and `sverify.engines.SPARK`. This is
+    `sverify.engines.Dialect`. Its fields (`name`, `guards`, `finite`,
+    `decimals`) are public; its SQL-writing methods change whenever a
+    function lands, so they and subclassing are outside the 1.x promise
+    (`docs/stability.md`).
 
     Attributes:
         name: The engine's name, used in `Unsupported` messages.
@@ -633,6 +636,8 @@ class Dialect:
     # engine does too, with the hooks below, sets `decimals`.
 
     decimals: bool = False
+    """Whether the engine computes decimals exactly, as the reference does
+    (#27). A dialect without it refuses plans with decimal arithmetic."""
 
     def decimal_type(self, k: Dec) -> str:
         if not self.decimals:

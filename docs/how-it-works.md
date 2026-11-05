@@ -9,11 +9,10 @@ on, is in [proofs.md](proofs.md).
 import ibis
 import sverify as sv
 from ibis import _
-from sverify.engines import create_table
 
 con = sv.connect()
-create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
-             [(2, "bob", 5), (3, "cy", 50)])
+con.create("orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+           [(2, "bob", 5), (3, "cy", 50)])
 ```
 
 ```bash
@@ -106,14 +105,13 @@ node's `refresh` runs an incremental view (`sverify.incremental`, internal):
 ```python
 import ibis
 import sverify as sv
-from sverify.engines import create_table
 from sverify.incremental import IncrementalView
 
 con = sv.connect()          # Arrow tables; plans run on DuckDB
 orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 customers = ibis.table({"name": "string", "city": "string"}, name="customers")
-create_table(con, "orders", orders.schema(), [(1, "ada", 30)])
-create_table(con, "customers", customers.schema(), [("ada", "Paris")])
+con.create("orders", orders.schema(), [(1, "ada", 30)])
+con.create("customers", customers.schema(), [("ada", "Paris")])
 query = orders.join(customers, orders.customer == customers.name).select(orders.id, customers.city)
 view = IncrementalView(con, query, "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
@@ -148,7 +146,7 @@ and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
 
 Connections. `sv.connect(engine=...)` gives a `Connection`: the Arrow
-tables (`sverify.engines.create_table`, `con.arrow`), the engine plans run on, and Ibis
+tables (`con.create`, `con.put`, `con.get`), the engine plans run on, and Ibis
 tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
 contracts find a table's data). The DataFusion engine runs on a private
@@ -163,7 +161,7 @@ schema and the source's filter. DuckDB reads it as a view over
 passes through Python. Columns are cast to the types DuckDB gives the Arrow
 schema, a column no file has is NULL, and doubles are read as the model has
 them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
-([`upstream/bugs/DD-4.json`](../upstream/bugs/DD-4.json)). Looking a scan up in `con.arrow` reads it into
+([`upstream/bugs/DD-4.json`](../upstream/bugs/DD-4.json)). Reading a scan as Arrow (`con.rows`, an engine other than DuckDB) reads it into
 Arrow, which is how the other engines get it. A refresh holds the table as the
 files of the new version, after DuckDB checks that the batch's deletes are in
 the old files. If those files were vacuumed, the views reading the table are
@@ -488,8 +486,9 @@ about Snowflake's behaviour. To run the same checks on a real account, set `SNOW
 
 `to_sql(plan, SPARK)` (from `sverify.sql.spark`) writes checked plans and
 Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. With the
-`spark` extra, `sverify.spark_engine.run(plan, tables)` runs a plan over Arrow
-tables on a local session (or on the session you pass). The session needs the
+`spark` extra, `sverify.engines.run(con, plan, "spark")` runs a plan over a
+connection's tables on a local session (or on the session you pass as the
+engine). The session needs the
 settings of `SPARK_CONF`: ANSI mode
 (`spark.sql.ansi.enabled`), without which an overflow wraps around and a bad
 cast gives NULL, plus a pinned time zone, NTZ timestamps, case-sensitive

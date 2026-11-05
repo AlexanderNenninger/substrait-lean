@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, substrait_json
+from sverify.engine import connect, substrait_json
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
 
 INT_SCHEMA = {"device": "int64", "ts": "int64"}
@@ -51,8 +51,8 @@ def keyed(value):
 
 
 def tables(con, left, right, ts="int64"):
-    create_table(con, "acc", ibis.schema({"device": "int64", "ts": ts, "ax": "int64"}), left)
-    create_table(con, "gyr", ibis.schema({"device": "int64", "ts": ts, "gx": "int64"}), right)
+    con.create("acc", ibis.schema({"device": "int64", "ts": ts, "ax": "int64"}), left)
+    con.create("gyr", ibis.schema({"device": "int64", "ts": ts, "gx": "int64"}), right)
     return con.table("acc"), con.table("gyr")
 
 
@@ -81,7 +81,9 @@ def test_lean_semantics_of_asof_match_duckdb(how, left, right):
         sv.asof_join(acc, gyr, on="ts", by="device", tolerance=3, how=how), dialect="duckdb"
     )
     expected = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"acc": left, "gyr": right})
+    plan = inline_tables(
+        json.loads(substrait_json(con, sql, semantics="duckdb")), {"acc": left, "gyr": right}
+    )
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)
     assert duckdb_rows(json.dumps(plan)) == lean
@@ -136,8 +138,8 @@ def test_aligning_100hz_with_130hz():
     con = connect()
     acc = [(1, T0 + dt.timedelta(microseconds=10_000 * i), float(i)) for i in range(100)]
     gyr = [(1, T0 + dt.timedelta(microseconds=round(1e6 * i / 130)), float(i)) for i in range(130)]
-    create_table(con, "acc", acc_t.schema(), acc)
-    create_table(con, "gyr", gyr_t.schema(), gyr)
+    con.create("acc", acc_t.schema(), acc)
+    con.create("gyr", gyr_t.schema(), gyr)
 
     @sv.transform(requires=KEYS, ensures=GUARANTEES, on_inferred="silent")
     def aligned(acc, gyr):
