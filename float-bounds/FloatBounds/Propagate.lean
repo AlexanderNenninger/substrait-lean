@@ -301,24 +301,8 @@ theorem rule_trunc {t : ℝ → ℝ} (ht : ∀ x, |t x - x| ≤ 1) {a a' εa : �
     (fun x => by have := abs_le.mp (ht x); constructor <;> linarith) h
   linarith
 
-/-- `√` is `1/2`-Hölder: `|√x − √y| ≤ √|x − y|` for `x, y ≥ 0`. -/
-theorem abs_sqrt_sub_sqrt_le {x y : ℝ} (hx : 0 ≤ x) (hy : 0 ≤ y) :
-    |√x - √y| ≤ √|x - y| := by
-  wlog hxy : y ≤ x generalizing x y
-  · rw [abs_sub_comm, abs_sub_comm x y]; exact this hy hx (by linarith)
-  have hs : √y ≤ √x := Real.sqrt_le_sqrt hxy
-  rw [abs_of_nonneg (by linarith), abs_of_nonneg (by linarith)]
-  have h1 : √x ≤ √(x - y) + √y := by
-    have e1 := Real.sq_sqrt (show 0 ≤ x - y by linarith)
-    have e2 := Real.sq_sqrt hy
-    have hsq : x ≤ (√(x - y) + √y) ^ 2 := by
-      nlinarith [Real.sqrt_nonneg (x - y), Real.sqrt_nonneg y,
-        mul_nonneg (Real.sqrt_nonneg (x - y)) (Real.sqrt_nonneg y)]
-    calc √x ≤ √((√(x - y) + √y) ^ 2) := Real.sqrt_le_sqrt hsq
-      _ = √(x - y) + √y := Real.sqrt_sq (by positivity)
-  linarith
-
-/-- And `|√x − √y| ≤ |x − y| / s` where `√x + √y ≥ s > 0`. -/
+/-- `√` is `1/2`-Hölder (`abs_sqrt_sub_sqrt_le`, `Variance.lean`), and
+`|√x − √y| ≤ |x − y| / s` where `√x + √y ≥ s > 0`. -/
 theorem abs_sqrt_sub_sqrt_le_div {x y s : ℝ} (hx : 0 ≤ x) (hy : 0 ≤ y) (hs : 0 < s)
     (hsum : s ≤ √x + √y) : |√x - √y| ≤ |x - y| / s := by
   have e : (√x - √y) * (√x + √y) = x - y := by
