@@ -2,9 +2,11 @@
 plan it was given, for every verified coverage case and catalogue query, in
 every SQL dialect (#821)."""
 
+from _repo import needs_repo
 from sverify_dev.plan_size import BOUND, over, plan_nodes, sizes, sql_size
 
 
+@needs_repo
 def test_written_sql_is_bounded():
     ss = sizes()
     assert len({s.dialect for s in ss}) == 3
