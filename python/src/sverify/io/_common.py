@@ -317,7 +317,9 @@ class Contract:
         view: The stored node's name.
         sources: The version of every source table the state was computed
             from.
-        not_null: Columns the node proves NOT NULL.
+        not_null: Columns the node proves NOT NULL: stated in `ensures`
+            (`_.col.notnull()`), or shown never NULL by its proved report
+            (`Report.not_null`).
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.
@@ -453,6 +455,8 @@ def view_contract_record(view: IncrementalView) -> Contract:
             not_null.append(col)
         else:
             checks[f"sverify_{len(checks) + 1}"] = sql
+    names = set(view.schema.names)
+    not_null += [c for c in view.not_null if c in names and c not in not_null]
     return Contract(
         view=view.name,
         plan=plan_digest(view.plan),

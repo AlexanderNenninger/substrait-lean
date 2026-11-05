@@ -36,6 +36,7 @@ reference:
       - transform
       - verify
       - unique
+      - key
       - references
       - Report
       - from_substrait

@@ -55,7 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 
@@ -75,6 +75,7 @@ from sverify._weighted import (
     concat,
     consolidated,
     deleted_count,
+    duplicate_key_rows,
     duplicate_keys,
     expanded,
     inserted_count,
@@ -89,6 +90,7 @@ from sverify._weighted import (
 )
 from sverify.contracts import (
     ON_DATA,
+    ROWS_SHOWN,
     ArrivesWithin,
     Condition,
     Discharged,
@@ -105,6 +107,7 @@ from sverify.contracts import (
     show_duration,
     table_facts,
     view_contract,
+    violating_rows,
     violations,
 )
 from sverify.engine import (
@@ -121,6 +124,15 @@ from sverify.engine import (
 from sverify.steps import Pipeable
 
 Row = tuple
+
+
+def _rows(fetch: Callable[..., pa.Table], *args: Any) -> pa.Table | None:
+    """The violating rows `fetch(*args)` gives, for a `PreconditionError`;
+    None if they cannot be fetched (the error says how many there are)."""
+    try:
+        return fetch(*args)
+    except Exception:
+        return None
 
 
 def _on_state(c: Condition) -> bool:
@@ -851,6 +863,9 @@ class IncrementalView:
         self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
+        self.not_null: list[str] = contract.not_null if contract else []
+        """The columns the view's proved report shows never NULL, in every
+        state (`Report.not_null`)."""
         self.checked: list[Condition] = contract.checked if contract else []
         """Postconditions that were not proved, checked on every state
         instead (`on_unproved="runtime"`): on the first in full, then on the
@@ -1573,7 +1588,14 @@ class Pipeline:
             for c in new:
                 if isinstance(c, Unique):
                     if dup := duplicate_keys(self.con.get(t), c.cols):
-                        raise PreconditionError(f"{dup} row(s) of {t} violate {label(c)}")
+                        raise PreconditionError(
+                            f"{dup} row(s) of {t} violate {label(c)}",
+                            source=t,
+                            condition=c,
+                            rows=_rows(
+                                duplicate_key_rows, self.con.get(t), c.cols, None, ROWS_SHOWN
+                            ),
+                        )
                     self.preconditions.append(Discharged(t, label(c), ON_DATA))
                 elif isinstance(c, ArrivesWithin):
                     self.preconditions.append(self._first_arrivals(t, table, c))
@@ -1591,7 +1613,12 @@ class Pipeline:
             raise ValueError(f"{label(c)}: {t}.{c.col} is {col.type()}, not a timestamp")
         stats = table.aggregate(latest=col.max(), nulls=col.isnull().sum()).to_pyarrow()
         if nulls := stats.column("nulls")[0].as_py():
-            raise PreconditionError(f"{nulls} row(s) of {t} violate {label(c)}: {c.col} is NULL")
+            raise PreconditionError(
+                f"{nulls} row(s) of {t} violate {label(c)}: {c.col} is NULL",
+                source=t,
+                condition=c,
+                rows=violating_rows(table, col.notnull()),
+            )
         latest = stats.column("latest")[0].as_py()
         self.latest[(t, c.col)] = latest
         seen = "no rows yet" if latest is None else f"latest {_retention.show_time(latest)}"
@@ -1623,20 +1650,29 @@ class Pipeline:
                 if bad is not None and bad.nulls:
                     raise PreconditionError(
                         f"{bad.nulls} changed row(s) of {t} violate {label(c)}: {c.col} is "
-                        "NULL; the batch was rejected, nothing was applied"
+                        "NULL; the batch was rejected, nothing was applied",
+                        source=t,
+                        condition=c,
+                        rows=_rows(_retention.late_rows, ch, c.col, None, ROWS_SHOWN),
                     )
                 if bad is not None and bad.open:
                     raise PreconditionError(
                         f"{bad.open} deleted row(s) of {t} violate {label(c)}: {c.col} before "
                         f"the watermark {_retention.show_time(bad.watermark)}, in a time bucket "
-                        "that is not final yet; the batch was rejected, nothing was applied"
+                        "that is not final yet; the batch was rejected, nothing was applied",
+                        source=t,
+                        condition=c,
                     )
                 if bad is not None:
                     raise PreconditionError(
                         f"{bad.late} inserted row(s) of {t} violate {label(c)}: {c.col} before "
                         f"the watermark {_retention.show_time(bad.watermark)} (the latest "
                         f"{c.col} seen, {_retention.show_time(before)}, minus "
-                        f"{show_duration(c.lateness)}); the batch was rejected, nothing was applied"
+                        f"{show_duration(c.lateness)}); the batch was rejected, nothing was "
+                        "applied",
+                        source=t,
+                        condition=c,
+                        rows=_rows(_retention.late_rows, ch, c.col, bad.watermark, ROWS_SHOWN),
                     )
                 wm = (
                     "no watermark yet"

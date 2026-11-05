@@ -47,6 +47,7 @@ def test_the_top_level_is_small():
         "equivalent",
         "from_substrait",
         "group",
+        "key",
         "max_rows",
         "references",
         "rows_per",

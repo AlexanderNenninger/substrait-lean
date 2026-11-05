@@ -1283,12 +1283,9 @@ def _version() -> str:
 
 
 def _sverify_version() -> str:
-    from importlib.metadata import PackageNotFoundError, version
+    import sverify
 
-    try:
-        return version("sverify")
-    except PackageNotFoundError:
-        return "unknown"
+    return sverify.__version__
 
 
 def _table_condition_json(c: Any) -> Json:

@@ -5,7 +5,9 @@
   transform's precondition does not follow from what the transform feeding
   it guarantees.
 * `PreconditionError`, `PostconditionError`: a condition checked on the data
-  failed (an input, or an output in `on_unproved="runtime"` mode).
+  failed (an input, or an output in `on_unproved="runtime"` mode). A
+  `PreconditionError` names the table (`.source`) and the condition
+  (`.condition`), and holds up to ten of the rows that break it (`.rows`).
 * `NotIncremental`: a plan has no verified delta rules.
 * `SchemaError`: a source's schema changed in a way a contract proved
   against the old schema cannot follow.

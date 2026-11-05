@@ -128,8 +128,9 @@ def test_iceberg_sink_carries_the_contract(catalog):
     big = doubled(src).write(IcebergSink(catalog, "db.big"))
     assert big.refresh().writes[0].mode == "created"
     out = catalog.load_table("db.big")
+    # `id` is NOT NULL in the source, so the report shows it never NULL (#691).
     assert {f.name: f.required for f in out.schema().fields} == {
-        "id": False,
+        "id": True,
         "customer": False,
         "doubled": True,
     }

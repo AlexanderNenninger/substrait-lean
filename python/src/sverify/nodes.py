@@ -181,6 +181,55 @@ class Node:
             self._plan = written_plan(to_substrait_json(self._query()._expr))
         return self._plan
 
+    @property
+    def report(self) -> Report | None:
+        """The `Report` of the contract that made the node's result: the
+        last transform's proof over its inputs, where a contracted node
+        upstream is a placeholder table under that transform's name, assumed
+        to meet what it guarantees. None for a source, or a node of a
+        transform without a contract."""
+        return _proof(self)
+
+    def to_substrait(
+        self,
+        format: Literal["json", "binary"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str | bytes:
+        """The node's verified plan for any conforming Substrait consumer,
+        with its contract as metadata: `Report.to_substrait` of `report`.
+
+        The plan is the last transform's: it reads a contracted node
+        upstream as a table under that transform's name, and the contract's
+        `requires` on it are what that node guarantees. Export each node of a
+        pipeline for the whole of it. `plan` is the fused stage in
+        sverify's internal form.
+
+        Args:
+            format: `"json"` (protobuf JSON, a string) or `"binary"` (the
+                serialized `substrait.Plan`).
+            shims: What to do at a spec gap the proof depends on (see
+                `Report.to_substrait`).
+
+        Returns:
+            The plan, as protobuf JSON or bytes.
+
+        Raises:
+            sverify.errors.ExportError: The node has no contract (a source,
+                or a plain function's node), its report is not proved, or
+                the plan has no conforming Substrait form that keeps the
+                proof.
+        """
+        from sverify.substrait_export import ExportError
+
+        report = self.report
+        if report is None:
+            raise ExportError(
+                f"node {self.name!r} has no contract to export: it is a source or the "
+                "result of a transform without one; wrap the step in sv.transform"
+            )
+        return report.to_substrait(format, shims=shims)
+
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
         """Apply `step` to this node, left to right: `orders.pipe(paid)` is
         `paid(orders)`, and a job reads in the order its data flows.
