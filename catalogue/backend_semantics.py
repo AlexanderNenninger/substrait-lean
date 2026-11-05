@@ -235,8 +235,8 @@ def _(dt, pa, tables):
         put_table(con, _name, _t)
         # DataFusion gets the table as it is, to show its own order.
         _batches = _t.to_batches() or [pa.RecordBatch.from_pylist([], schema=_t.schema)]
-        con.datafusion.deregister_table(_name)
-        con.datafusion.register_record_batches(_name, [_batches])
+        con._datafusion_session.deregister_table(_name)
+        con._datafusion_session.register_record_batches(_name, [_batches])
         duck.register(_name, _t)
     P = {k: pl.from_arrow(t) for k, t in tables.items()}
     MEM = {k: ibis.memtable(t) for k, t in tables.items()}
@@ -315,7 +315,7 @@ def _(dt, pa, tables):
 
         def run(self) -> "E":
             o = self.out
-            o["df"] = attempt(lambda: positional(con.datafusion.sql(self.sql).to_arrow_table()))[0]
+            o["df"] = attempt(lambda: positional(con._datafusion_session.sql(self.sql).to_arrow_table()))[0]
             duck_sql = self.sql if self.duck == "same" else self.duck
             o["duck"] = attempt(lambda: duck.sql(duck_sql).fetchall())[0] if duck_sql else None
             with warnings.catch_warnings():

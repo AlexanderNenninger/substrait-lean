@@ -394,8 +394,6 @@ def _(mo):
 
 @app.cell
 def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_sql):
-    import json
-
     _results = {}
     for _engine in ENGINES:
         _node = orders.pipe(daily_city_revenue, history=history)
@@ -404,8 +402,8 @@ def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_s
     assert len({repr(r) for r in _results.values()}) == 1
     {
         "engines that agree": list(_results),
-        "Snowflake SQL": f"{len(to_sql(json.loads(mart.plan), SNOWFLAKE))} characters",
-        "Spark SQL": f"{len(to_sql(json.loads(mart.plan), SPARK))} characters",
+        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, SNOWFLAKE))} characters",
+        "Spark SQL": f"{len(to_sql(mart.internal_plan, SPARK))} characters",
     }
     return
 

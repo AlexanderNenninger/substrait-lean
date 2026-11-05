@@ -175,7 +175,7 @@ print(means.observation)
 # equivalent(floats=plan, ≤ 2.2e-10)
 on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")
-print(means.observation.equal(on_duckdb, on_polars))
+print(means.equivalence.equal(on_duckdb, on_polars))
 # True
 ```
 
@@ -263,7 +263,7 @@ t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# exact; transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on ...
+# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the proof depends on ...
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -277,11 +277,11 @@ except RouteError as e:
 # refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
 divided.run(con, "polars", route="auto")
 print(divided.routes["polars"])
-# exact; recheck: proved again under Profile.polars
+# exact; recheck: proved again under semantics="polars"
 ```
 
 The transfer check fails on the division's options, so `route="auto"` goes on to the
-re-check: the checker proves the plan again under `Profile.polars`, and
+re-check: the checker proves the plan again under `semantics="polars"`, and
 Polars runs it with the shim of example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with
 each profile's choice.
@@ -338,7 +338,7 @@ print(parity.proved)
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
 print(parity.routes["polars"])
-# exact...; native: verified under Profile.polars
+# exact...; native: verified under semantics="polars"
 print(sv.verify(s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0]).proved)
 # False
 try:

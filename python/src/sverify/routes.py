@@ -4,7 +4,7 @@ of `docs/core-semantics.md`).
 A plan runs on the engine `E` by one of four routes, tried in this order:
 
 1. `"native"`: it was verified under `Profile.E` (`verify(semantics=E)`).
-2. `"reference"`: it was verified under the reference, and runs through
+2. `"translated"`: it was verified under the reference, and runs through
    the translation from the reference to `E` (`TRANSLATIONS`).
 3. `"transfer"`: it was verified under another profile `P`, and for every
    option the proof depends on (`Report.depends`), `E`'s choices are within
@@ -65,10 +65,10 @@ from sverify.observation import Observation, Within
 if TYPE_CHECKING:
     from sverify.contracts import Report
 
-RouteKind = Literal["native", "reference", "transfer", "recheck"]
+RouteKind = Literal["native", "translated", "transfer", "recheck"]
 #: A route taken, or `"unverified"`: a plan that is not proved, run with
 #: `unverified=True`.
-Taken = Literal["native", "reference", "transfer", "recheck", "unverified"]
+Taken = Literal["native", "translated", "transfer", "recheck", "unverified"]
 Class = Literal["exact", "observed", "shim", "refused"]
 Evidence = Literal["proved", "tested"]
 #: The classes, best first (#568): a plan takes the worst of its options'.
@@ -106,7 +106,7 @@ def row_rerun(r: Mapping[str, Any]) -> Mapping[str, Any] | None:
 
 
 #: The routes, in the order `choose` tries them.
-ROUTES: tuple[RouteKind, ...] = ("native", "reference", "transfer", "recheck")
+ROUTES: tuple[RouteKind, ...] = ("native", "translated", "transfer", "recheck")
 
 
 @dataclass(frozen=True)
@@ -140,7 +140,7 @@ TRANSLATIONS: Mapping[str, str] = {
 
 #: How a route line names a route without a class (#687).
 _KIND_TEXT: Mapping[str, str] = {
-    "reference": "verified under the reference",
+    "translated": "verified under the reference",
     "native": "verified under the engine's own semantics",
     "transfer": "verified under another engine's semantics, which carries over",
     "recheck": "verified again under the engine's own semantics",
@@ -201,7 +201,8 @@ def observed_text(obs: Observation) -> str:
 
 class UnverifiedRunWarning(UserWarning):
     """A plan that is not proved runs, because the caller passed
-    `unverified=True`: nothing the report says holds of its result."""
+    `unverified=True`, or the transform says `on_unproved="warn"`: nothing
+    the report says holds of its result."""
 
 
 class EngineVersionWarning(UserWarning):
@@ -245,7 +246,7 @@ class Route:
     profile: str
     """The profile the proof the run relies on is under: the engine's own
     for `"native"`, `"transfer"` and `"recheck"`, `"reference"` for
-    `"reference"`; for a refusal, the profile the plan was verified under."""
+    `"translated"`; for a refusal, the profile the plan was verified under."""
     reason: str
     """Why this route, or why none."""
     deterministic: bool = True
@@ -320,7 +321,7 @@ class Route:
             out += f": {observed_text(self.observation)}"
         if self.evidence:
             out += f"; evidence {self.evidence}"
-        if self.cls and self.kind != "reference":
+        if self.cls and self.kind != "translated":
             # How the proof reaches the engine, where it is not the
             # translation from the reference.
             out += f"; {self.kind}: {self.reason}"
@@ -374,13 +375,14 @@ def check_version(engine: str, version: str | None = None) -> str | None:
     probed = ", ".join(prof.versions)
     if all(_major(version) != _major(v) for v in prof.versions):
         raise EngineVersionError(
-            f"{engine} {version} is another major version than Profile.{engine}'s facts, "
-            f"probed at {probed}: install a {_major(prof.versions[0])}.x release of {engine}; "
+            f"{engine} {version} is another major version than the facts of "
+            f'semantics="{engine}", probed at {probed}: install a '
+            f"{_major(prof.versions[0])}.x release of {engine}; "
             f"running {version} needs its facts probed again (characterization/{engine}/)"
         )
     msg = (
-        f"{engine} {version} is not a version Profile.{engine}'s facts were probed at "
-        f"({probed}); they may no longer hold"
+        f'{engine} {version} is not a version the facts of semantics="{engine}" were '
+        f"probed at ({probed}); they may no longer hold"
     )
     warnings.warn(msg, EngineVersionWarning, stacklevel=3)
     return msg
@@ -1030,19 +1032,33 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
         return None, f"the checker failed: {err.strip()}"
     res = json.loads(out)
     if res.get("profile") != profile:
-        return None, f"the checker has no Profile.{profile} to check under yet"
+        return None, f'the checker cannot check under semantics="{profile}" yet'
     unproved = [e["name"] for e in res.get("ensures", []) if not e.get("proved")]
     unproved += ["a key" for k in res.get("keys", []) if not k.get("proved")]
     errors = [f"{i['kind']}: {i['expr']}" for i in res.get("issues", []) if i.get("error")]
     if unproved or errors:
-        return False, "under Profile.{}: {}".format(
+        return False, 'under semantics="{}": {}'.format(
             profile,
             "; ".join([f"not proved: {u}" for u in unproved] + [f"may fail: {e}" for e in errors]),
         )
-    return True, f"proved again under Profile.{profile}"
+    return True, f'proved again under semantics="{profile}"'
 
 
 # -- choosing the route (D13) -------------------------------------------------
+
+
+def checked_route(route: str) -> Any:
+    """`route`, with the deprecated name `"reference"` of the route
+    `"translated"` (#695) read as it, with a `DeprecationWarning`."""
+    if route == "reference":
+        warnings.warn(
+            'route="reference" is deprecated; write route="translated" (the plan verified '
+            'under semantics="reference" runs through the translation to the engine)',
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return "translated"
+    return route
 
 
 def max_rows_fix(report: Report, engine: str, required: Observation | None) -> dict[str, list[str]]:
@@ -1242,7 +1258,7 @@ def not_verified(report: Report) -> str:
             parts.append(f"ensures {c.label} {_observation.why(c.ignores)}")
         if "report.unproved" not in see:
             see.append("report.unproved")
-    parts += [f"needs {n}" for n in report.needs_lines()]
+    parts += [f"needs {n}" for n in report._needs_lines()]
     if report.floats_unmet:
         first = next(ps[0] for ps in report.floats_on.values() if ps)
         want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
@@ -1287,7 +1303,7 @@ def choose(
     Args:
         report: A report of `sv.verify` (or a transform's `last_report`).
         engine: The engine's name, or a Spark session.
-        route: `"auto"` (the default) tries `"native"`, `"reference"`,
+        route: `"auto"` (the default) tries `"native"`, `"translated"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or
             refused.
         deterministic: Require a rerun to reproduce the result exactly, rows
@@ -1310,6 +1326,7 @@ def choose(
     """
     from sverify import _support
 
+    route = checked_route(route)
     if route != "auto" and route not in ROUTES:
         raise ValueError(f"route must be 'auto' or one of {', '.join(ROUTES)}, not {route!r}")
     e = engine_name(engine)
@@ -1366,7 +1383,7 @@ def choose(
         return refuse(str(err))
 
     def taken(kind: RouteKind, profile: str, reason: str) -> Route:
-        if kind != "reference":
+        if kind != "translated":
             # Verified under the engine's own profile, or transferred to it by
             # monotonicity: every outcome is one the proof covers.
             return Route(
@@ -1412,12 +1429,12 @@ def choose(
     for kind in tried:
         if kind == "native":
             if source == e:
-                return taken("native", e, f"verified under Profile.{e}")
-            why_not.append(f"not verified under Profile.{e}")
-        elif kind == "reference":
+                return taken("native", e, f'verified under semantics="{e}"')
+            why_not.append(f'not verified under semantics="{e}"')
+        elif kind == "translated":
             if source == "reference" and e in TRANSLATIONS:
                 return taken(
-                    "reference",
+                    "translated",
                     "reference",
                     f"verified under the reference; the translation to {e} is {TRANSLATIONS[e]}",
                 )
@@ -1428,12 +1445,13 @@ def choose(
             )
         elif kind == "transfer":
             if source in ("reference", e):
-                why_not.append(f"no transfer from Profile.{source} needed")
+                why_not.append(f'no transfer from semantics="{source}" needed')
                 continue
             found = transfer(source, e, depends)
             if found is None:
                 why_not.append(
-                    f"no choices table for Profile.{source} or Profile.{e} to check a transfer"
+                    f'no choices table for semantics="{source}" or semantics="{e}" to check '
+                    "a transfer"
                 )
             elif not found:
                 which = (
@@ -1442,7 +1460,8 @@ def choose(
                 return taken(
                     "transfer",
                     e,
-                    f"verified under Profile.{source}; {e}'s choices are within its choices "
+                    f'verified under semantics="{source}"; {e}\'s choices are within its '
+                    "choices "
                     f"on every option the proof depends on{which}",
                 )
             else:

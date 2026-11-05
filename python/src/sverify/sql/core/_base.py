@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Callable, Iterator, Sequence
@@ -4707,13 +4708,14 @@ def _no_fields() -> str:
 
 
 def to_sql(
-    plan: dict,
+    plan: dict | str,
     dialect: Dialect,
     *,
-    tie_free: bool = False,
+    deterministic: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
+    tie_free: bool | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -4722,10 +4724,11 @@ def to_sql(
     Raises `Unsupported` for plans outside the Lean model. This is
     `sverify.engines.to_sql`.
 
-    `tie_free=True` promises that no two rows tie on any window's PARTITION BY
-    and ORDER BY columns (what a contract report's `deterministic` says). Then
-    windows need no ordinal tiebreak, so engines without a stable scan order
-    can run them; FETCH still needs one.
+    `deterministic=True` promises that no two rows tie on any window's
+    PARTITION BY and ORDER BY columns (what a contract report's
+    `deterministic` says, and what `Report.run(deterministic=True)`
+    requires). Then windows need no ordinal tiebreak, so engines without a
+    stable scan order can run them; FETCH still needs one.
 
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the
@@ -4737,12 +4740,13 @@ def to_sql(
     every aggregate, keep their checks.
 
     Args:
-        plan: A Substrait JSON plan, parsed (`json.loads`), such as a
-            node's `plan` or `sverify.engines.written_plan`'s output.
+        plan: A Substrait JSON plan, as a string or parsed (`json.loads`),
+            such as a node's `internal_plan` or
+            `sverify.engines.written_plan`'s output.
         dialect: The engine to write SQL for: `sverify.engines.DUCKDB`,
             `sverify.engines.SNOWFLAKE` or `sverify.engines.SPARK`.
-        tie_free: Promise that windows have no ties on their PARTITION BY
-            and ORDER BY columns. Default: False.
+        deterministic: Promise that windows have no ties on their PARTITION
+            BY and ORDER BY columns (`Report.deterministic`). Default: False.
         guards: Write the run-time checks. Default: True.
         unchecked: The expressions to write without checks, as a contract
             report's `unchecked` (`sverify.Report.unchecked`) for this plan.
@@ -4751,6 +4755,7 @@ def to_sql(
             `±∞` (`Dialect.finite`), the reference's precondition (#575).
             Default: True; False for a plan verified with
             `semantics="duckdb"`.
+        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4780,10 +4785,21 @@ def to_sql(
             return orders.filter(orders.amount > 10)
 
 
-        print(to_sql(json.loads(big_orders(orders).plan), SNOWFLAKE))
+        print(to_sql(big_orders(orders).internal_plan, SNOWFLAKE))
         # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
+    if tie_free is not None:
+        import warnings
+
+        warnings.warn(
+            "to_sql(tie_free=...) is deprecated; write deterministic=... (as Report.run takes it)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        deterministic = tie_free
+    if isinstance(plan, str):
+        plan = json.loads(plan)
     if not guards:
         dialect = replace(dialect, guards=False)
     if not finite:
@@ -4796,7 +4812,7 @@ def to_sql(
         raise Unsupported(f"root names {names} do not match the plan's {n} columns")
     for k in kinds(p.root):
         dialect.result_kind(k)
-    w = _Writer(dialect, tie_free)
+    w = _Writer(dialect, deterministic)
     if unchecked is not None:
         w.unchecked = unchecked_slots(p.root, unchecked)
     ordered = order_matters(p.root)

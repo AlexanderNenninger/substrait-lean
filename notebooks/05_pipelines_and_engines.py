@@ -198,7 +198,7 @@ def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city
                 mo.md(
                     f"After {apply_batch.value} batch(es) the maintained view "
                     + ("equals full recomputation" if _equal else "differs from it")
-                    + f". Each batch runs {len(delta_plans(view.plan))} Lean-generated"
+                    + f". Each batch runs {len(delta_plans(view.internal_plan))} Lean-generated"
                     " update plans on DuckDB."
                 ),
                 kind="success" if _equal else "danger",
@@ -368,7 +368,7 @@ def _(mo):
     Lean proves the full rule once. `Rel.delta` generates the update plan
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
-    engine can run it. `sverify.engines.delta_plans(view.plan)` returns the
+    engine can run it. `sverify.engines.delta_plans(view.internal_plan)` returns the
     plans of our view. `orders$delta` and `customers$delta` are the change
     tables, with a trailing `__weight` column; old tables get weight 1
     (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
@@ -393,7 +393,7 @@ def _(delta_plans, mo, view):
         return out.split("tables:")[0].rstrip()
 
     mo.hstack(
-        [mo.md(f"```text\n{_tree(p)}\n```") for p in delta_plans(view.plan)],
+        [mo.md(f"```text\n{_tree(p)}\n```") for p in delta_plans(view.internal_plan)],
         justify="start",
         wrap=True,
     )
@@ -987,7 +987,7 @@ def _(mo):
     session) picks where it runs; DuckDB in memory is the default. A node
     keeps its state between refreshes, so the next refresh may use another
     engine. Contracts checked on data take `engine=` too:
-    `@sv.transform(ensures=[...], on_unproved="runtime", engine="duckdb")`.
+    `@sv.transform(ensures=[...], on_unproved="runtime", check_engine="duckdb")`.
     We refresh a fresh node of the NULL-key join on each engine:
     """)
     return
@@ -1118,7 +1118,7 @@ def _(mo):
     in each dialect. DuckDB gets an ordinal column, so ties break the way
     Lean's stable sort breaks them. Snowflake and Spark refuse, because
     their tables have no row order. When a contract report says
-    `deterministic` (chapter 4), `tie_free=True` promises there are no ties
+    `deterministic` (chapter 4), `deterministic=True` promises there are no ties
     and the SQL is written.
 
     Snowflake: integers are `NUMBER(38,0)` checked against the 64-bit
@@ -1144,7 +1144,7 @@ def _(mo):
       returns, so the SQL stays in `TIMESTAMP_NTZ`.
     * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's) and is
       refused, as are sorts and windows over a table without
-      `tie_free=True`.
+      `deterministic=True`.
 
     Spark runs locally, unlike Snowflake. The tests run every coverage case
     and every query of the Snowflake suite on a local Spark session

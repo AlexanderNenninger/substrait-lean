@@ -563,7 +563,7 @@ def _connection(node: Node, data: Mapping[str, Rows]) -> Connection:
 
 def _output(con: Connection, node: Node, engine: str) -> tuple[pa.Table, list[str]]:
     """The node's output on `engine`, and the postconditions it violates."""
-    out = run_plan(con, node.plan, engine)
+    out = run_plan(con, node.internal_plan, engine)
     query = node._query()
     if not isinstance(query, _Derived):
         return out, []
@@ -887,7 +887,7 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
         if isinstance(c, References)
     ]
     literals = counterexample._plan_literals(
-        [json.loads(node.plan), *(p for ps in row_plans.values() for p in ps)]
+        [json.loads(node.internal_plan), *(p for ps in row_plans.values() for p in ps)]
     )
     tables = {}
     for name, leaf in zip(schemas, leaves, strict=True):

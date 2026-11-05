@@ -127,7 +127,7 @@ def test_division_by_zero_is_an_error(con):
 
 def test_cast_of_a_double_out_of_range_is_an_error(con):
     t = con.table("t")
-    report = sv.verify(t.select(r=t.v.cast("int64")), infer=False)
+    report = sv.verify(t.select(r=t.v.cast("int64")), on_inferred="off")
     assert "cast out of range" in [i.kind for i in report.errors]
 
 

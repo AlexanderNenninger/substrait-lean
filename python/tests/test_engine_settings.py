@@ -105,7 +105,7 @@ def test_a_setting_the_plan_does_not_rely_on_warns(
     duckdb_global(name, value)
     with pytest.warns(EngineSettingsWarning, match=f"{named}.*this plan does not rely on it"):
         report.run(con, "duckdb")
-    assert report.routes["duckdb"].kind == "reference"
+    assert report.routes["duckdb"].kind == "translated"
 
 
 def test_a_session_set_on_another_cursor_is_not_seen(con) -> None:
@@ -119,7 +119,7 @@ def test_a_session_set_on_another_cursor_is_not_seen(con) -> None:
         t = con.table("t")
         report = sv.verify(t.select("k"))
         report.run(con, "duckdb", route="auto")
-        assert report.routes["duckdb"].kind == "reference"
+        assert report.routes["duckdb"].kind == "translated"
     finally:
         other.execute("RESET integer_division").fetchall()
 
@@ -172,7 +172,7 @@ def test_polars_streaming_variables_are_not_refused(con, monkeypatch) -> None:
     monkeypatch.setenv("POLARS_FORCE_STREAMING", "1")
     monkeypatch.setenv("POLARS_AUTO_STREAMING", "1")
     report.run(con, "polars", route="auto")
-    assert report.routes["polars"].kind == "reference"
+    assert report.routes["polars"].kind == "translated"
 
 
 def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:

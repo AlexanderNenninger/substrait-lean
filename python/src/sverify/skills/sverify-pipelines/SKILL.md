@@ -21,9 +21,10 @@ aggregates and windows recompute only the groups and partitions a batch
 touches; others (left joins, `DISTINCT`, `LIMIT`) are recomputed and diffed.
 Needs the `delta` or `iceberg` extra.
 
-A node whose contract is not proved refuses the refresh (`RouteError`,
-"not verified: …"); `refresh(unverified=True)` runs it anyway and records
-the route `"unverified"`. A sink accepts doubles within the plan's proved
+A node whose contract is not proved refuses the refresh
+(`UnverifiedRunError`, a `VerificationError`, "not verified: …");
+`refresh(unverified=True)`, or `on_unproved="warn"` on its transform, runs it
+anyway and records the route `"unverified"`. A sink accepts doubles within the plan's proved
 bound by default (`sv.equivalent(floats="plan")`); `reproducible=sv.equivalent()`
 asks for the same bits on a rerun.
 

@@ -33,6 +33,7 @@ source versions.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -170,16 +171,31 @@ class Node:
         return self._expr.schema()
 
     @property
-    def plan(self) -> str:
+    def internal_plan(self) -> str:
         """The Substrait plan (JSON) of the node's stage, as Lean checked and
-        wrote it: what every engine runs. `sverify.engines.delta_plans(plan)`
-        are the plans that maintain it from changes.
+        wrote it: what every engine runs. It uses sverify's own extension
+        URNs, so only sverify reads it (`sverify.engines.to_sql`, `run`,
+        `delta_plans`); `Report.to_substrait()` is the portable plan.
+        `sverify.engines.delta_plans(plan)` are the plans that maintain it
+        from changes.
 
         The stage reads the sources and stored nodes upstream under their
         names, so a stored node's plan is that of the node it stores."""
         if self._plan is None:
             self._plan = written_plan(to_substrait_json(self._query()._expr))
         return self._plan
+
+    @property
+    def plan(self) -> str:
+        """Deprecated: `internal_plan`, sverify's own form of the plan
+        (`Report.to_substrait()` is the portable one)."""
+        warnings.warn(
+            "Node.plan is deprecated; read node.internal_plan (sverify's own form of the "
+            "plan), or report.to_substrait() for a portable Substrait plan",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.internal_plan
 
     @property
     def report(self) -> Report | None:
@@ -202,7 +218,7 @@ class Node:
         The plan is the last transform's: it reads a contracted node
         upstream as a table under that transform's name, and the contract's
         `requires` on it are what that node guarantees. Export each node of a
-        pipeline for the whole of it. `plan` is the fused stage in
+        pipeline for the whole of it. `internal_plan` is the fused stage in
         sverify's internal form.
 
         Args:
@@ -329,15 +345,15 @@ class Node:
     def refresh(
         self,
         *,
-        engine: Any = "duckdb",
+        engine: Any = None,
         audit: bool = False,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
         reproducible: Observation | None = None,
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
-        stored ones. `engine` runs the plans: `"duckdb"` (in memory),
-        `"polars"`, `"datafusion"`, `"spark"` or a Spark session. With
+        stored ones. `engine` runs the plans: `"duckdb"` (in memory, the
+        default), `"polars"`, `"datafusion"`, `"spark"` or a Spark session. With
         `audit`, every batch is compared with recomputation before it is
         applied (`AuditError`).
 
@@ -348,7 +364,8 @@ class Node:
         not determined up to row order, or whose engine varies between runs
         more than that, is refused before anything runs (#444, D10, D20).
         Each node with a contract is refused unless its report is proved,
-        or `unverified=True` (`Report.run`); its proof is taken to `engine`
+        or `unverified=True` (`Report.run`), or its transform says
+        `on_unproved="warn"`; its proof is taken to `engine`
         by a route (`sverify.routes.choose`, D13), or the refresh is
         refused. `StageRefresh.route` records it.
 
@@ -360,18 +377,22 @@ class Node:
         a node that has none (`status` says which).
 
         Args:
-            engine: What runs the plans: `"duckdb"` (the default, in memory),
-                `"polars"`, `"datafusion"`, `"spark"` or a Spark session. It
-                may differ from one refresh to the next.
+            engine: What runs the plans: `"duckdb"`, `"polars"`,
+                `"datafusion"`, `"spark"` or a Spark session. It may differ
+                from one refresh to the next. Default None: DuckDB, in
+                memory, the engine of the nodes' state (as `Report.run`'s
+                None is its connection's).
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.
             route: `"auto"` (the default) chooses a route for each node
-                with a contract; `"native"`, `"reference"`, `"transfer"` or
-                `"recheck"` takes that one or refuses.
+                with a contract; `"native"`, `"translated"`, `"transfer"` or
+                `"recheck"` takes that one or refuses (`"reference"` is a
+                deprecated alias of `"translated"`).
             unverified: Refresh nodes whose contract is not proved anyway;
                 their route is `"unverified"`, with what was not proved, and
                 an `UnverifiedRunWarning` says so. Default False: such a
-                node refuses the refresh.
+                node refuses the refresh, unless its transform says
+                `on_unproved="warn"`.
             reproducible: What a rerun must reproduce for every node
                 (`sv.equivalent(...)`, D20), over each sink's own. Default
                 None: a stored node needs its sink's, another node nothing.
@@ -389,10 +410,12 @@ class Node:
                 contract, proved against the old schema, cannot follow.
             sverify.errors.AuditError: With `audit`, a batch disagrees with
                 recomputation; nothing was applied.
-            sverify.errors.RouteError: A node's contract is not proved, a
-                stored node's result is not determined up to row order, or
-                no route takes a node's proof to `engine`; nothing was
-                refreshed.
+            sverify.errors.UnverifiedRunError: A node's contract is not
+                proved (a `VerificationError` and a `RouteError`); nothing
+                was refreshed.
+            sverify.errors.RouteError: A stored node's result is not
+                determined up to row order, or no route takes a node's proof
+                to `engine`; nothing was refreshed.
 
         Examples:
             With `r` from the `Node` example:
@@ -403,10 +426,12 @@ class Node:
             r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
             ```
         """
+        from sverify.routes import checked_route
+
         return group(self).refresh(
             engine=engine,
             audit=audit,
-            route=route,
+            route=checked_route(route),
             unverified=unverified,
             reproducible=reproducible,
         )
@@ -514,7 +539,7 @@ class Node:
                 pins.setdefault(id(leaf), leaf._reader.latest())
         versions = {leaf.name: pins[id(leaf)] for leaf in leaves}
         sink = self.sink if isinstance(self, _Stored) else None
-        out = StageRefresh(self.name, None, route=route)
+        out = StageRefresh(self.name, None, route=route, transform=_made_by(self))
         if self._stage is None:
             self._stage = _Stage.build(self, leaves, versions, engine, sink)
             out.started = self._stage.view.resumed or "computed"
@@ -708,7 +733,7 @@ def _implied(pipe: Pipeline, query: ir.Table) -> dict[str, str]:
         conds += [f.condition for f in facts if f.source in _STABLE_FACTS]
         requires[t] = conds
     try:
-        report = verify(query, requires=requires, ensures=[], counterexamples=0, infer=False)
+        report = verify(query, requires=requires, ensures=[], counterexamples=0, on_inferred="off")
     except Exception:  # noqa: BLE001 - a plan the checker cannot read implies nothing
         return {}
     return report.implied
@@ -744,6 +769,16 @@ class StageRefresh:
     route: Route | None = None
     """With `refresh(route=...)`: how the node's proof reached the engine
     (D13), with its class; None without a route or a contract."""
+    transform: str | None = None
+    """For a stored node, the transform that made it, where its name differs
+    from the node's (the sink's): the entry is headed `daily_revenue →
+    daily:` (#695)."""
+
+    @property
+    def heading(self) -> str:
+        """How the entry is headed: the node, after the transform that made
+        it where the names differ."""
+        return self.node if self.transform is None else f"{self.transform} → {self.node}"
 
     @property
     def notable(self) -> list[str]:
@@ -762,20 +797,19 @@ class StageRefresh:
 
     def summary(self) -> str:
         """One line, for the log of a job that refreshes often:
-        "paid: orders@v3→v4, Δ trusted (change feed), requires checked on 2
-        row(s), merge v5: +2 −0". With something `notable`, the full entry
+        "paid: changes from orders v3→v4 (change feed), requires checked on
+        2 row(s), merge v5: +2 −0". With something `notable`, the full entry
         (`str()`) instead."""
         if self.notable or self.report is None:
             return str(self)
         sources = self.report.sources
-        parts = [", ".join(s.span() for s in sources)]
+        spans = ", ".join(s.span().replace("@", " ") for s in sources)
         if all(s.mode == "unchanged" for s in sources):
-            parts[0] += " unchanged"
-        modes = {s.mode for s in sources}
-        if "change feed" in modes:
-            parts.append("Δ trusted (change feed)")
-        if "snapshot diff" in modes:
-            parts.append("Δ exact (snapshot diff)")
+            parts = [f"{spans} unchanged"]
+        else:
+            modes = {s.mode for s in sources}
+            how = [m for m in ("change feed", "snapshot diff") if m in modes]
+            parts = [f"changes from {spans}" + (f" ({', '.join(how)})" if how else "")]
         pre = self.report.preconditions
         # "checked on data, watermark …" (#294) is checked on data too.
         meta = sum(not p.source.startswith(ON_DATA) for p in pre)
@@ -801,10 +835,10 @@ class StageRefresh:
             else:
                 at = "" if w.version is None else f" v{w.version}"
                 parts.append(f"{w.mode}{at}: +{w.inserted} −{w.deleted}")
-        return f"{self.node}: " + ", ".join(parts)
+        return f"{self.heading}: " + ", ".join(parts)
 
     def __str__(self) -> str:
-        lines = [f"{self.node}:"]
+        lines = [f"{self.heading}:"]
         if self.started:
             lines.append(f"  {self.started}")
         lines += [f"  requires {p}" for p in self.preconditions]
@@ -856,7 +890,7 @@ class Refresh:
         a schema change, an overwrite) gets its full entry.
 
         Returns:
-            The summary, such as "paid: orders@v3→v4, Δ trusted (change
+            The summary, such as "paid: changes from orders v3→v4 (change
             feed), requires checked on 2 row(s), merge v5: +2 −0".
         """
         return "\n".join(s.summary() for s in self.nodes)
@@ -953,7 +987,7 @@ class Group:
     def refresh(
         self,
         *,
-        engine: Any = "duckdb",
+        engine: Any = None,
         audit: bool = False,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
@@ -964,8 +998,9 @@ class Group:
         they read: each is refreshed and written once. See `Node.refresh`.
 
         Args:
-            engine: What runs the plans: `"duckdb"` (the default, in memory),
-                `"polars"`, `"datafusion"`, `"spark"` or a Spark session.
+            engine: What runs the plans: `"duckdb"`, `"polars"`,
+                `"datafusion"`, `"spark"` or a Spark session. Default None:
+                DuckDB, in memory.
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.
             route: How each node's proof reaches `engine`; see
@@ -985,10 +1020,17 @@ class Group:
                 contract cannot follow.
             sverify.errors.AuditError: With `audit`, a batch disagrees with
                 recomputation; nothing was applied.
-            sverify.errors.RouteError: A node's contract is not proved, a
-                stored node is not determined up to row order, or no route
-                takes a node's proof to `engine`; nothing was refreshed.
+            sverify.errors.UnverifiedRunError: A node's contract is not
+                proved; nothing was refreshed.
+            sverify.errors.RouteError: A stored node is not determined up to
+                row order, or no route takes a node's proof to `engine`;
+                nothing was refreshed.
         """
+        from sverify.routes import checked_route
+
+        if engine is None:
+            engine = "duckdb"
+        route = checked_route(route)
         order = self._order()
         chosen = _routes(order, engine, route, reproducible, unverified)
         for n in order:
@@ -1064,6 +1106,13 @@ def _proof(node: Node) -> Report | None:
     return None if prov is None else prov.report
 
 
+def _warns(node: Node) -> bool:
+    """Whether the transform that made the node's result says
+    `on_unproved="warn"`: its refreshes run it unverified (#690)."""
+    prov = _lookup(node._query()._expr.op())
+    return prov is not None and getattr(prov.transform, "on_unproved", None) == "warn"
+
+
 def _routes(
     order: Sequence[Node],
     engine: Any,
@@ -1080,9 +1129,8 @@ def _routes(
     within the plan's bound, by default), or `reproducible` where the
     refresh states one; another node needs `reproducible`, or nothing. The
     engine's run-to-run variation must refine it, on every route."""
-    import warnings
-
     from sverify import routes
+    from sverify.contracts import UnverifiedRunError
 
     out: dict[int, Route] = {}
     e = routes.engine_name(engine)
@@ -1094,7 +1142,8 @@ def _routes(
         needed = reproducible
         if needed is None and isinstance(n, _Stored):
             needed = getattr(n.sink, "reproducible", PLAN_BOUND)
-        if unverified and not routes.verified(report):
+        warns = not unverified and _warns(n)
+        if (unverified or warns) and not routes.verified(report):
             if needed is not None:
                 problems, _ = routes.reproducibility(report, e, needed)
                 if problems:
@@ -1113,8 +1162,9 @@ def _routes(
                         )
                     )
             chosen = routes.unverified(report, engine)
+            why = " (on_unproved='warn')" if warns else ""
             warnings.warn(
-                f"refreshing {name} on {e} unverified: {chosen.reason}",
+                f"refreshing {name} on {e} unverified{why}: {chosen.reason}",
                 routes.UnverifiedRunWarning,
                 stacklevel=4,
             )
@@ -1122,9 +1172,27 @@ def _routes(
             continue
         chosen = routes.choose(report, engine, route, reproducible=needed)
         if chosen.refused:
-            raise routes.RouteError(replace(chosen, reason=f"{name}: {chosen.reason}"))
+            refused = replace(chosen, reason=f"{name}: {chosen.reason}")
+            if not routes.verified(report):
+                reason = refused.reason.replace(
+                    "run(..., unverified=True) runs it anyway",
+                    "refresh(unverified=True), or on_unproved='warn' on the transform, "
+                    "runs it anyway",
+                )
+                raise UnverifiedRunError(report, replace(refused, reason=reason))
+            raise routes.RouteError(refused)
         out[id(n)] = chosen
     return out
+
+
+def _made_by(n: Node) -> str | None:
+    """The transform that made a stored node, where its name differs from
+    the node's."""
+    if isinstance(n, _Stored):
+        made_by = getattr(n._query(), "name", None)
+        if made_by and made_by != n.name:
+            return made_by
+    return None
 
 
 def _display(n: Node) -> str:

@@ -430,7 +430,7 @@ def _(DUCKDB, SNOWFLAKE, SPARK, dialect, dups, mo, to_sql):
     import sqlglot
 
     _sql = to_sql(
-        json.loads(dups.plan),
+        json.loads(dups.internal_plan),
         {"snowflake": SNOWFLAKE, "spark": SPARK, "duckdb": DUCKDB}[dialect.value],
     )
     mo.md(f"```sql\n{sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]}\n```")

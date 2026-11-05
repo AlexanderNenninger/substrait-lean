@@ -116,6 +116,6 @@ def test_a_transform_raises_unless_told(con) -> None:
 
 def test_infer_false_still_turns_inference_off(con) -> None:
     t = con.table("t")
-    report = sv.verify(t.select(t.k, per=t.total // t.qty), infer=False)
+    report = sv.verify(t.select(t.k, per=t.total // t.qty), on_inferred="off")
     assert report.inferred == {} and report.needed == {}
     assert any(i.kind == "division by zero" for i in report.errors)
