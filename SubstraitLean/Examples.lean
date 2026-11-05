@@ -19,6 +19,7 @@ import SubstraitLean.Pruning
 import SubstraitLean.Implied
 import SubstraitLean.Partition
 import SubstraitLean.Allowed
+import SubstraitLean.Ties
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
@@ -176,6 +177,12 @@ end Substrait.Examples
 #print axioms Substrait.Rel.refines_of_perm
 #print axioms Substrait.Rel.guardFree_allowed
 #print axioms Substrait.Rel.duckdb_shim_allowed
+#print axioms Substrait.Rel.eval_orderAllowed
+#print axioms Substrait.Rel.orderAllowed_allowed
+#print axioms Substrait.contract_sound_all
+#print axioms Substrait.Rel.keys_sound_all
+#print axioms Substrait.Rel.keyedWindows_soundAll
+#print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines
 #print axioms Substrait.Lowering.lowerRel_raises
 #print axioms Substrait.FloatCode.round_mono

@@ -46,7 +46,7 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 2 | 12 | 11 | 2 | 0 | 0 | 21 |
+| DuckDB | 3 | 12 | 10 | 2 | 0 | 0 | 21 |
 | Polars | 27 | 0 | 13 | 0 | 0 | 0 | 16 |
 
 ## Shims
@@ -108,7 +108,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | open | `ANY` | `ANY`, `SCALED_CONSTANT` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
-| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | probe | tested: [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
+| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [duckdb-quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json) |

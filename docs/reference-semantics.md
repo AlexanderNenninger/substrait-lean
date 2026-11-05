@@ -53,9 +53,15 @@ to the engine:
 
 A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
-of every allowed result. `Report.deterministic` is false where rows may tie in
-the order of a window or of `FIRST`, `LAST` or `STRING_AGG`
-(`Rel.windowsTotal`); it does not yet flag the other choices.
+of every allowed result. Where a plan leaves ties open, the contract checker
+proves its postconditions and keys over every order
+(`Rel.OrderAllowed`, `contract_sound_all`, `SubstraitLean/Ties.lean`), and
+`Rel.eval`'s order is the deterministic profile's
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+`Report.deterministic` is false where rows may tie in the order of a window,
+of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or of a `FETCH`
+(`Rel.windowsTotal`, `Rel.fetchesTotal`), and `Report.tie_places` names each place;
+it does not yet flag the other choices.
 
 The reference is not a model of any engine, DuckDB included. It is stricter
 than every engine in most options: where engines disagree on an edge case it
@@ -382,7 +388,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Bags | A relation is a list of rows read as a bag: two relations are equal when they are permutations of each other (`Rel.Equiv`). | ✓ |
 | Operators | `read`, `values`, `filter`, `project`, `emit`, `cross`, inner and left `join`, `semi` and `anti`, `fetch`, `orderBy`, `distinct`, `aggregate` (one grouping set), `window`, `unnest`, `UNION ALL`. | ✓ |
 | Set operations | `UNION ALL` is bag union and `UNION DISTINCT` is `distinct` of it. The SQL lift writes `INTERSECT` and `EXCEPT` as the left rows with (without) an equal right row, NULLs equal, by a semi (anti) join, and `DISTINCT`; with `ALL` it numbers each side's equal rows (`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and joins on the number too, so `m` and `n` copies leave `min(m, n)` and `max(m − n, 0)`. The window has no order, but the rows it ties are equal, so `INTERSECT ALL` and `EXCEPT ALL` are deterministic without keys (`Rel.window_allColumns`). Substrait's `SET_OP_INTERSECTION_*`/`SET_OP_MINUS_*` are not read yet. | ✓ (#344) |
-| Ties | `Rel.eval` sorts stably and takes `fetch` rows in list order. Engines promise neither, so theorems about `fetch`, ties and windows hold for one choice. A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `tie_free=True` is justified by it. | ✓ |
+| Ties | Any order: rows that tie in a sort or a window's order, the rows a `fetch` takes and the rows `FIRST`, `STRING_AGG` and `MODE` take where their order ties (`Rel.OrderAllowed`). Postconditions and keys are proved for every order (`contract_sound_all`, `Rel.keys_sound_all`). `Rel.eval` sorts stably and takes `fetch` rows in list order, the deterministic profile's order ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys, and `tie_places` names each place where they are not; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `tie_free=True` is justified by it. | ✓ |
 | Sort keys | Every key states where NULLs go. The parser reads only `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}` and **refuses** any other direction (unspecified, clustered), so there is no default to choose. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`; the model's `SortKey` has a default of NULLs last only for hand-built values) |
 
 ## Black boxes

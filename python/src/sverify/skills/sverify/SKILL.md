@@ -182,10 +182,12 @@ test_doubles_are_big()
 
 ## Gotchas
 
-* **Windows need a key.** `LAG`, `LEAD` and `ROW_NUMBER` depend on how ties
-  break unless `requires` has a key on the partition and order columns
-  (`sv.unique("device_id", "ts")`); without it every postcondition is
-  undetermined and `report.deterministic` is False.
+* **Windows need a key for facts about order.** `LAG`, `LEAD` and
+  `ROW_NUMBER` depend on how ties break unless `requires` has a key on the
+  partition and order columns (`sv.unique("device_id", "ts")`). Without it
+  `verify` proves only what holds for every order of the ties (D24),
+  `report.deterministic` is False and `report.tie_places` names the window;
+  a rerun that must give the same rows refuses the plan.
 * **SQL strings are DuckDB's SQL**, read by sverify's lift, which covers a
   subset so far (SELECT, WHERE, joins, subqueries and CTEs, GROUP BY with
   grouping sets, windows, set operations, ORDER BY, LIMIT, CASE, CAST and

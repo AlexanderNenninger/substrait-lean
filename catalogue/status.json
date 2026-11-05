@@ -1183,10 +1183,6 @@
    "proved": false,
    "guard_free": true,
    "deterministic": false,
-   "unproved": [
-    "lochierarchy BETWEEN 0 AND 2",
-    "rank_within_parent >= 1"
-   ],
    "inferred": [
     "store_sales: (_.ss_ext_sales_price >= 0.01)"
    ]
@@ -1222,13 +1218,9 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
+   "proved": true,
    "guard_free": true,
-   "deterministic": false,
-   "unproved": [
-    "(_.web_cumulative > _.store_cumulative)",
-    "(_.store_cumulative >= 0)"
-   ]
+   "deterministic": false
   },
   "verified_sql": {
    "duckdb": "no"

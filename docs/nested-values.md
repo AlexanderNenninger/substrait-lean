@@ -63,12 +63,14 @@ refused for now.
 orders them: Substrait's `AggregateFunction.sorts`, Ibis's
 `collect(order_by=…)`. `Measure` gains `sort : List SortKey` (columns of the
 input), and the group's rows are sorted stably before they are collected.
-Without a sort, `Rel.eval` collects in list order, which is one of the
-orders an engine may choose, not the only one. Such a plan still checks;
-the abstract value of the result says nothing about its elements, so no
-fact about element order is proved, and the differential tests compare
-unordered collects as multisets. Reporting the result itself as
-undetermined belongs with the other order-dependent results (#55).
+Without a sort, `Rel.eval` collects in list order, the deterministic
+profile's order; the reference allows every order
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+Such a plan still checks, and its postconditions are proved for every
+order. The abstract value of the result says nothing about its elements, so
+no fact about element order is proved, and the differential tests compare
+unordered collects as multisets. The report calls the result not
+`deterministic` and names the aggregate in `tie_places`.
 
 The parser accepts `array_agg` only with the filter `x IS NOT NULL` (Ibis's
 form), since the model skips NULLs as for every other measure. `collect` is

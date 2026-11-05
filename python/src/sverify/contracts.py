@@ -222,13 +222,7 @@ class Unique(TableCondition):
 
     def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
         ok, cex = key()
-        value = (
-            "a key"
-            if ok
-            else "not shown to be a key"
-            if out.get("windows_total", out["deterministic"])
-            else "undetermined: rows may tie in an ORDER BY"
-        )
+        value = "a key" if ok else "not shown to be a key"
         return CheckedCondition(self.label, ok, value, cex)
 
     def check_batch(self, t: str, inserts: pa.Table, new: pa.Table | Any) -> Discharged | None:
@@ -753,6 +747,28 @@ Condition = (
 Transform = ir.Table | str
 
 
+@dataclass(frozen=True)
+class TiePlace:
+    """A place where the plan leaves the order of ties open (D24): a window,
+    an ordered aggregate (`first`, `group_concat`, …) or a `LIMIT` whose
+    order is not total on the input's keys."""
+
+    relation: int
+    """The relation's index in the plan, in pre-order (`Report.relations`)."""
+    op: str
+    """The relation's operator: `window`, `aggregate` or `fetch`."""
+    what: str
+    """What is open there, with columns as `$i` of the relation's input."""
+
+    def __str__(self) -> str:
+        return f"the {self.op} at relation {self.relation}: {self.what}"
+
+
+def tie_places(out: Mapping[str, Any]) -> list[TiePlace]:
+    """The `tie_places` of `substrait-check`'s report."""
+    return [TiePlace(t["relation"], t["op"], t["what"]) for t in out.get("tie_places", [])]
+
+
 @dataclass
 class CheckedCondition:
     """One postcondition in a `Report`, and what became of its proof."""
@@ -1038,13 +1054,17 @@ class Report:
     deterministic: bool = True
     """False when rows may tie in the ORDER BY of a window or of an ordered
     aggregate (`first`, `last`, `group_concat`; without an `order_by` every
-    row ties): the engine then picks an order, and nothing is proved about
-    the result; or when a `LIMIT` takes rows that tie in its `ORDER BY`, or
-    has none, so a rerun may give other rows (D10)."""
+    row ties), or when a `LIMIT` takes rows that tie in its `ORDER BY`, or
+    has none. The engine then picks an order, and a rerun may pick another
+    (D10). The postconditions are proved for every order (D24); the
+    deterministic profile (`routes.choose(deterministic=True)`, a sink's
+    `reproducible=`) refuses such a plan and names `tie_places`."""
     windows_total: bool = True
     """False only for the window and ordered-aggregate ties of
-    `deterministic`: a `LIMIT` over ties keeps every proof, and the written
-    SQL breaks its ties by input order."""
+    `deterministic`."""
+    tie_places: list[TiePlace] = field(default_factory=list)
+    """Where the plan leaves the order of ties open (D24), one entry per
+    window, ordered aggregate or `LIMIT`; empty when `deterministic`."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, Lean could not rule out; when
     empty, the transformation provably runs without them."""
@@ -1713,9 +1733,11 @@ PARAMS_NOTE = "proved for these parameter values only"
 DATA_CHECK = "checked on the output data"
 
 TIES_HINT = (
-    "rows may tie in the ORDER BY of a window or of first(), last(), group_concat(), mode(), "
-    "argmin() or argmax(), so the engine decides their order. Declare `unique(...)` on the "
-    "partition (or grouping) and order columns of the input."
+    "rows may tie in the ORDER BY of a window, of a LIMIT or of first(), last(), "
+    "group_concat(), mode(), argmin() or argmax(), so the engine decides their order and a "
+    "rerun may give other rows. The postconditions are proved for every order (D24); for a "
+    "reproducible result, declare `unique(...)` on the partition (or grouping) and order "
+    "columns of the input."
 )
 
 
@@ -3002,6 +3024,7 @@ def _verify_once(
         facts={f["name"]: describe(f) for f in out["facts"]},
         deterministic=out["deterministic"],
         windows_total=out.get("windows_total", out["deterministic"]),
+        tie_places=tie_places(out),
         issues=[
             Issue(
                 i["kind"],

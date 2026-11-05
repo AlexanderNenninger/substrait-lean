@@ -22,3 +22,5 @@ public import FloatBounds.Kahan
 public import FloatBounds.Epsilon
 public import FloatBounds.Arith
 public import FloatBounds.Propagate
+public import FloatBounds.Chan
+public import FloatBounds.ChanCorr
