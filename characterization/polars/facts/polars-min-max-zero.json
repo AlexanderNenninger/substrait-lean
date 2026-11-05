@@ -91,6 +91,17 @@
           "note": "No guarantee on the sign of zero (data-types-and-structures.md L180-L184); Expr.min/max docstrings silent. No upstream test pins the sign of min/max over 0.0 and -0.0."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "manual-repro",
+      "checked_by": "session polars-minmax-doubles (#697)",
+      "evidence": [
+        {
+          "note": "Float64 columns [0.0, -0.0] and [-0.0, 0.0], streaming engine: min -0.0 and max 0.0, in select, group_by and `.over` (a window)."
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64; `engine=\"streaming\"`. The translation reads the result with one zero (`one_zero`, `Polars.min_ignore_nan`, `Polars.max_nan_greatest`)."
     }
   ],
   "issues": [

@@ -17,6 +17,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
+import sverify as sv
 from sverify import _polars_shims as shims
 from sverify import polars_engine
 from sverify.engine import connect, create_table, run_plan, substrait_json, written_plan
@@ -843,3 +844,83 @@ def test_ties_keep_their_order_in_a_large_streaming_sort():
     out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     assert out.stdout.split() == ["True", "True", "False"]
+
+
+# --- MIN and MAX of doubles: nan_order = GREATEST, one zero (#697) -------------
+
+#: polars-min-max-nan's and polars-min-max-zero's cases, a group each: NaN
+#: among numbers, NaN alone, NaN with NULL, both zeros in either order, only
+#: NULLs, infinities, one value.
+EXTREMES = [(1, 1.0), (1, math.nan), (1, -1.0), (2, math.nan), (3, math.nan), (3, None),
+            (4, 0.0), (4, -0.0), (5, -0.0), (5, 0.0), (6, None), (7, math.inf),
+            (7, math.nan), (7, -math.inf), (8, -0.0), (9, 2.5)]  # fmt: skip
+
+
+def _same(a: list, b: list) -> bool:
+    """Equal rows, NaN equal to NaN and each zero's sign compared."""
+    return repr(a) == repr(b)
+
+
+def test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not():
+    x = pl.col("x")
+
+    def both(values: list, shimmed: bool) -> tuple:
+        lf = pl.LazyFrame({"x": values}, schema={"x": pl.Float64})
+        lo, hi = x.min(), x.max()
+        if shimmed:
+            lo, hi = shims.min_ignore_nan(lo), shims.max_nan_greatest(hi, x.is_nan().any())
+        return lf.select(lo.alias("lo"), hi.alias("hi")).collect(engine="streaming").row(0)
+
+    assert both([1.0, math.nan, -1.0], False) == (-1.0, 1.0)
+    lo, hi = both([1.0, math.nan, -1.0], True)
+    assert lo == -1.0 and math.isnan(hi)
+    # macOS arm64 (polars-min-max-zero); the shims read one zero.
+    assert [math.copysign(1.0, z) for z in both([0.0, -0.0], False)] == [-1.0, 1.0]
+    assert [math.copysign(1.0, z) for z in both([0.0, -0.0], True)] == [1.0, 1.0]
+    assert both([None, None], True) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT g, MIN(x) AS lo, MAX(x) AS hi FROM r GROUP BY g",
+        "SELECT MIN(x) AS lo, MAX(x) AS hi FROM r",
+        "SELECT MIN(x) AS lo, MAX(x) AS hi FROM r WHERE g > 99",
+        "SELECT g, MIN(DISTINCT x) AS lo, MAX(DISTINCT x) AS hi FROM r GROUP BY g",
+        "SELECT g, MIN(x) FILTER (WHERE g <> 1) AS lo, MAX(x) FILTER (WHERE g <> 7) AS hi "
+        "FROM r GROUP BY g",
+        "SELECT g, x, MIN(x) OVER (PARTITION BY g) AS lo, MAX(x) OVER (PARTITION BY g) AS hi "
+        "FROM r",
+    ],
+)
+def test_min_and_max_of_doubles_match_lean_and_duckdb(sql):
+    lean, polars = lean_and_polars(FLOATS, EXTREMES, sql, doubles=True)
+    con = connect()
+    create_table(con, "r", FLOATS, EXTREMES)
+    plan = written_plan(substrait_json(con, sql, "reference"))
+    duck = rows_of(run_plan(con, plan, "duckdb"))
+    assert _same(sorted(lean, key=repr), sorted(polars, key=repr)), (lean, polars)
+    assert _same(sorted(duck, key=repr), sorted(polars, key=repr)), (duck, polars)
+
+
+def test_min_and_max_of_doubles_run_on_polars_by_the_auto_route():
+    """The API critique's feature table (#697): `MIN` and `MAX` of doubles
+    run on Polars, by a shim, and agree with DuckDB."""
+    con = sv.connect()
+    rows = {"sensor": ["a", "a", "a", "b", "b", "c", "d"],
+            "temp_c": [20.1, math.nan, 19.9, -0.0, 0.0, None, -3.0]}  # fmt: skip
+    con.put("readings", pa.table(rows))
+    r = con.table("readings")
+    features = r.group_by("sensor").aggregate(lo=r.temp_c.min(), hi=r.temp_c.max())
+    report = sv.verify(features.order_by("sensor"))
+    assert report.proved, str(report)
+    polars = report.run(con, "polars")
+    duck = report.run(con, "duckdb")
+    route = report.routes["polars"]
+    assert not route.refused and route.cls == "shim", route
+    assert any("max_nan_greatest" in s for s in route.shims), route
+    got = list(zip(*(polars.column(c).to_pylist() for c in ("sensor", "lo", "hi")), strict=True))
+    want = list(zip(*(duck.column(c).to_pylist() for c in ("sensor", "lo", "hi")), strict=True))
+    assert _same(got, want), (got, want)
+    assert repr(got) == repr([("a", 19.9, math.nan), ("b", 0.0, 0.0), ("c", None, None),
+                              ("d", -3.0, -3.0)])  # fmt: skip

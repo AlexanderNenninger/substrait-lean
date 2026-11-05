@@ -1919,21 +1919,18 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
             # Finite values whose sum overflows (`Measure.makesInf`, #575).
             raise InfiniteResult(f"{fn} overflows to infinity")
         return acc / len(vs) + 0.0 if fn == "avg" else acc
-    if fn == "fmax":
-        # By the codes' order: NaN above every double.
-        return math.nan if any(math.isnan(v) for v in vs) else max(vs) + 0.0
+    if fn in ("fmin", "fmax"):
+        # By the codes' order: NaN above every double, and one zero.
+        nums = [v for v in vs if not math.isnan(v)]
+        if not nums or (fn == "fmax" and len(nums) < len(vs)):
+            return math.nan
+        return (min(nums) if fn == "fmin" else max(nums)) + 0.0
     # `pickFold` keeps the first extreme; equal values are the same value here.
     return min(vs) if fn == "min" else max(vs)
 
 
 #: `(descending, nulls_last)` per direction (`shims.null_order`).
 SORT_DIRECTIONS = shims.SORT_DIRECTIONS
-
-
-def _is_abs(j: dict, ex: Exprs) -> bool:
-    """Is `j` a call of `abs`?"""
-    f = j.get("scalarFunction")
-    return isinstance(f, dict) and ex.function(f.get("functionReference")) == "abs"
 
 
 @dataclass(frozen=True)
@@ -1963,7 +1960,9 @@ class Measure:
             p, s = self.arg.dtype.precision, self.arg.dtype.scale  # pyrefly: ignore
             more = 10 if self.fn == "dsum" else 4
             return pl.Decimal(min(DEC_DIGITS, p + more), s if self.fn == "dsum" else s + 4)
-        return pl.Float64 if self.fn in ("fsum", "avg", "fmax") else materialize(self.arg.dtype)
+        if self.fn in ("fsum", "avg", "fmin", "fmax"):
+            return pl.Float64
+        return materialize(self.arg.dtype)
 
     @property
     def values(self) -> pl.Expr:
@@ -2057,11 +2056,19 @@ class Measure:
             agg = {"bit_and": v.bitwise_and(), "bit_or": v.bitwise_or(),
                    "bit_xor": v.bitwise_xor()}[self.fn]  # fmt: skip
             return NativeAgg({name: shims.sum_empty_null(agg, v)}, r)
+        if self.fn == "fmin":
+            # NaN is the greatest double and there is one zero; Polars's
+            # `min` skips NaN and keeps either zero (polars-min-max-nan,
+            # polars-min-max-zero). The shims read the aggregated columns, so
+            # `unique` stays the last step before the reduction.
+            return NativeAgg({name: v.min()}, shims.min_ignore_nan(r))
         if self.fn == "fmax":
-            # By the codes' order NaN is the greatest double; Polars's `max`
-            # skips it (polars-min-max-nan).
-            agg = pl.when(v.is_nan().any()).then(pl.lit(math.nan)).otherwise(v.max())
-            return NativeAgg({name: canon(agg)}, r)
+            # Whether the group holds a NaN does not depend on `DISTINCT`.
+            nan = f"{name}_nan"
+            return NativeAgg(
+                {name: v.max(), nan: pl.col(name).is_nan().any()},
+                shims.max_nan_greatest(r, pl.col(nan)),
+            )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             # `AggFn.var` (#54) with Polars's algorithm (`stat_algo = GENERIC`
             # allows it); a sample of one is NULL in both. An infinity makes
@@ -2543,13 +2550,12 @@ class Translator:
                     return WindowSpec("agg", dsum, agg="dsum", col=idx, frame=frame)
                 if name not in ("count", "min", "max"):
                     raise Unsupported(f"{name} of a DECIMAL over a window is not supported")
-            if name in ("min", "max") and t == pl.Float64:
-                raise Unsupported(
-                    f"{name} of doubles is not yet supported on Polars; " + DUCKDB_ONLY
-                )
+            if name in ("min", "max") and t == pl.Float64 and not itof:
+                # By the codes' order: NaN the greatest double, one zero.
+                fn = "f" + name
             out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
-                   "iavg": pl.Int64, "bit_and": pl.Int64, "bit_or": pl.Int64,
-                   "bit_xor": pl.Int64}  # fmt: skip
+                   "fmin": pl.Float64, "fmax": pl.Float64, "iavg": pl.Int64,
+                   "bit_and": pl.Int64, "bit_or": pl.Int64, "bit_xor": pl.Int64}  # fmt: skip
             return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
         raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
@@ -2725,12 +2731,8 @@ class Translator:
             t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date) or is_decimal(t)
         ):
             fn = name
-        elif name == "max" and t == pl.Float64 and _is_abs(args[0], ex):
-            # `MAX(|x|)`, which a split double's partial rows report (#428):
-            # no `-0.0`, so only NaN, the largest double in Lean, needs care.
-            fn = "fmax"
         elif name in ("min", "max") and t == pl.Float64:
-            raise Unsupported(f"{name} of doubles is not yet supported on Polars; " + DUCKDB_ONLY)
+            fn = "f" + name
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):
             fn = "collect"
         elif name in ("bit_and", "bit_or", "bit_xor") and t == pl.Int64:

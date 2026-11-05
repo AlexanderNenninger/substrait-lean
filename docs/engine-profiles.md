@@ -282,3 +282,23 @@ the rest on the unscaled values (`to_physical`, an `Int128`):
 `tests/test_polars_decimal.py` runs each operation's written plan on Polars
 and on DuckDB against `Rel.eval`, and the 40 verified catalogue queries with
 decimal columns run on Polars (`catalogue/status.json`).
+
+#### `MIN` and `MAX` of doubles on Polars
+
+The reference orders doubles by their codes: NaN above `+∞`, one zero.
+Polars's `min` and `max` skip NaN unless every value is NaN
+([polars-min-max-nan](../characterization/polars/facts/polars-min-max-nan.json)),
+and keep whichever zero `f64::min` picks
+([polars-min-max-zero](../characterization/polars/facts/polars-min-max-zero.json)),
+in aggregates and over windows, on the streaming engine
+([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)):
+
+| Reference | Polars by itself | Translation |
+|---|---|---|
+| `MIN` is NaN only when every value is NaN | the same | `min_ignore_nan`: Polars's `min`, read with `one_zero` (`Polars.min_ignore_nan`) |
+| `MAX` of a group with a NaN is NaN | skips NaN | `max_nan_greatest`: NaN where the group holds one (`Polars.max_nan_greatest`) |
+| `MIN` and `MAX` of `0.0` and `-0.0` are `0.0` | `-0.0` for `min` on macOS arm64 | `one_zero` on the result |
+| no values give NULL | the same | native |
+
+`tests/test_polars_shims.py` runs grouped, global, filtered, `DISTINCT` and
+windowed `MIN` and `MAX` of these cases on Polars, DuckDB and `Rel.eval`.

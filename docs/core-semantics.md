@@ -640,7 +640,7 @@ is a choice that accepts every value the plan states.
 | `zero_sign` | all others | `IEEE` | `ONE_ZERO` | choose |
 | `nan_equality` | all others | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_equality` | `cmp` | `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
-| `nan_order` | all others | `GREATEST`, `UNORDERED` | `GREATEST` | choose |
+| `nan_order` | all others | `GREATEST`, `UNORDERED`, `IGNORED` | `GREATEST` | choose |
 | `nan_order` | `cmp` | `UNORDERED` | `GREATEST` | choose |
 | `nan_kind` | all others | `IEEE` | `ONE_NAN` | choose |
 | `negative_start` | all others | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`; `WRAP_FROM_END` by default | choose |
