@@ -144,3 +144,17 @@ def test_run_spark_is_deprecated(monkeypatch):
     with pytest.warns(DeprecationWarning, match=r"run\(con, plan, 'spark'\).*sv\.unique"):
         run_spark("{}", {})
     assert calls == [(("{}", {}, None), {"deterministic": False, "tie_free": None})]
+
+
+def test_rows_and_tables_column_by_column():
+    from sverify.engine import arrow_rows, to_arrow
+
+    schema = pa.schema([pa.field("a", pa.int64()), pa.field("b", pa.string())])
+    rows = [(1, "x"), (None, None), (3, "z")]
+    table = to_arrow(iter(rows), schema)
+    assert table.to_pylist() == [{"a": a, "b": b} for a, b in rows]
+    assert arrow_rows(table) == rows
+    assert to_arrow([], schema).num_rows == 0 and arrow_rows(to_arrow([], schema)) == []
+    assert arrow_rows(pa.table({"a": [1, 2]}).select([])) == [(), ()]
+    with pytest.raises(ValueError, match="2 values"):
+        to_arrow([(1, "x"), (2,)], schema)

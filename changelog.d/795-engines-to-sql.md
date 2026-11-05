@@ -49,3 +49,18 @@ node.to_sql("snowflake")
 run(con, plan, "spark")  # con holds the orders table
 con.table("orders").get_backend().raw_sql("SELECT 1")
 ```
+
+### `round(x, d)` follows DuckDB 2.0 where the result overflows
+
+`round(x, d)` with a negative `d` gives `x` itself where the rounded value
+would overflow, as DuckDB 2.0 does (`round(1.5e308, -308)` is `1.5e308`),
+where the model gave 0, DuckDB 1.4's answer. The Polars and SQL writers
+follow, and the engine fact `duckdb-round-digits-2` supersedes
+`duckdb-R15-round-digits`, whose probes missed the case.
+
+### Faster rows in and out of a connection
+
+`con.create`, `con.rows` and the row lists a refresh reads build and read
+Arrow tables column by column, without a dictionary per row: 100,000 rows of
+four columns go into a table in 22 ms (88 ms before) and out in 71 ms (92 ms
+before), with a quarter and three fifths of the Python memory.

@@ -236,7 +236,7 @@ class Connection:
         Raises:
             KeyError: The connection has no table `name`.
         """
-        return [tuple(r.values()) for r in self._arrow[name].to_pylist()]
+        return arrow_rows(self._arrow[name])
 
     def has(self, name: str) -> bool:
         """Whether the connection has a table `name`."""
@@ -957,10 +957,30 @@ def plain_schema(schema: pa.Schema) -> pa.Schema:
     return pa.schema(fields, metadata=schema.metadata)
 
 
+def arrow_rows(table: pa.Table) -> list[tuple]:
+    """The rows of an Arrow table, as tuples in schema order, read column by
+    column: no dictionary per row."""
+    if table.num_columns == 0:
+        return [()] * table.num_rows
+    return list(zip(*(c.to_pylist() for c in table.columns), strict=True))
+
+
 def to_arrow(rows, schema: pa.Schema) -> pa.Table:
-    """Rows (tuples in schema order) as an Arrow table."""
-    names = schema.names
-    return pa.Table.from_pylist([dict(zip(names, r, strict=True)) for r in rows], schema=schema)
+    """Rows (tuples in schema order) as an Arrow table, built column by
+    column: no dictionary per row.
+
+    Raises:
+        ValueError: A row's length is not the schema's.
+    """
+    rows = rows if isinstance(rows, list | tuple) else list(rows)
+    n = len(schema)
+    if any(len(r) != n for r in rows):
+        raise ValueError(f"every row needs {n} values, one per column of {schema.names}")
+    columns = list(zip(*rows, strict=True)) if rows else [()] * n
+    if n == 0:
+        return pa.Table.from_pylist([{} for _ in rows], schema=schema)
+    arrays = [pa.array(c, type=f.type) for c, f in zip(columns, schema, strict=True)]
+    return pa.Table.from_arrays(arrays, schema=schema)
 
 
 def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
