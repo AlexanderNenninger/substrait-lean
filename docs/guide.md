@@ -1160,10 +1160,9 @@ you can rely on:
 
 | Class (`route.cls`) | What it means for you |
 |---|---|
-| `refines` | every result the engine gives is one the proof covers |
-| `shim` | the same, after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
-| `approx` | doubles are within the plan's proved float bound of a result the proof covers; state the tolerance with `sv.equivalent(floats=sv.within(...))` |
-| `refines_up_to` | the same up to an observation, such as rows as a multiset or one zero; it holds when `ensures` states that observation |
+| `exact` | every result the engine gives is one the proof covers |
+| `observed` | the result equals one the proof covers under an observation that `ensures` states with `sv.equivalent(...)`: rows as a multiset, one zero, or doubles within a tolerance, `floats=sv.within(...)`, at least the plan's proved float bound |
+| `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.routes.RouteError` and nothing runs |
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
@@ -1226,12 +1225,12 @@ of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
 ### Reproducible sinks
 
 A stored node's sink commits each epoch once, so a rerun must give the same
-result. Rows as a multiset with exact values is the default; the sink
-states what else it accepts (`reproducible=`, D20 in
-[core-semantics.md](core-semantics.md)). A refresh whose engine may give
-another result on a rerun is refused with a `RouteError`. Polars's
-streaming `SUM` of doubles may add in another order each run, so a double
-sum on Polars needs both: the transform's
+result. The sink states what "the same" means (`reproducible=`, D20 in
+[core-semantics.md](core-semantics.md)): `sv.equivalent()` asks for exact
+bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
+tolerance. A refresh whose engine may give another result on a rerun is
+refused with a `RouteError`. Polars's streaming `SUM` of doubles may add in
+another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
 sink's `reproducible=sv.equivalent(floats=sv.within(abs=...))` for the
 rerun, each at least the plan's bound. With `x` within ±1000 and
@@ -1254,8 +1253,8 @@ def sample_sums(samples):
 sums = samples.pipe(sample_sums).write(
     DeltaSink("sample_sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
 )
-print(sums.refresh(engine="polars", route="auto").nodes[0].route.cls)
-# observed
+print(sums.refresh(engine="polars", route="auto").nodes[0].route.kind)
+# reference
 ```
 
 A relative tolerance (`rel=`) fails where the values may cancel, since
