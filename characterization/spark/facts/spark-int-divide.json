@@ -70,7 +70,7 @@
   ],
   "reference": "`divide` on integers truncates toward zero and returns the operands' type, with `on_division_by_zero: ERROR` when the plan omits it (`NULL` when asked) and `overflow: ERROR` at `MIN / -1` at the declared width; `on_domain_error` never applies. Spark's `div` truncates natively and raises on zero under ANSI; at `i8`, `i16`, `i32` its `BIGINT` result needs a cast back, which raises under ANSI where the reference does.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -170,6 +170,62 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/operators.sql.out#L168-L173",
+          "note": "`5 div 2` is 2, a `bigint`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/operators.sql.out#L176-L195",
+          "note": "`5 div 0` raises `DIVIDE_BY_ZERO`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/numeric.sql.out#L4895-L4900",
+          "note": "`div` of `DECIMAL(38,0)` -9999999999999999999999 by 10^21 is -9, a `bigint`: it truncates toward zero"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/operators.sql.out#L122-L127",
+          "note": "`5 / 2` is 2.5, a `double`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/operators.sql.out#L130-L149",
+          "note": "`5 / 0` raises `DIVIDE_BY_ZERO`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/int8.sql.out#L678-L697",
+          "note": "`bigint('-9223372036854775808') / smallint('0')` raises `DIVIDE_BY_ZERO`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/int8.sql.out#L933-L938",
+          "note": "`bigint(-9223372036854775808) / bigint(-1)` is 9.223372036854776E18, a `double`: no overflow"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/typeCoercion/native/division.sql.out#L10-L15",
+          "note": "`tinyint / tinyint` is a `double`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "int_divide[0], int_divide[1], int_divide[2], int_divide[3]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 9594 of 9594 results as the fact says; Spark's value differs from Rel.eval's (sverify's lift, reference profile) on 0 of 1146 rows compared.",
+        "int_divide[0]: 300 rows, `a div b`, `a / b`, 2400 of 2400 results as the fact says (raised: DIVIDE_BY_ZERO 48); Spark differs from Rel.eval on 0 of 288; int_divide[1]: 300 rows, `a div b`, `a / b`, 2400 of 2400 results as the fact says (raised: DIVIDE_BY_ZERO 48); Spark differs from Rel.eval on 0 of 288; int_divide[2]: 300 rows, `a div b`, `a / b`, 2400 of 2400 results as the fact says (raised: DIVIDE_BY_ZERO 52); Spark differs from Rel.eval on 0 of 287; int_divide[3]: 300 rows, `a div b`, `a / b`, 2394 of 2394 results as the fact says (raised: ARITHMETIC_OVERFLOW 2, DIVIDE_BY_ZERO 58); Spark differs from Rel.eval on 0 of 283.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ]
 }
