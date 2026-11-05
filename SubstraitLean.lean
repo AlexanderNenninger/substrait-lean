@@ -34,6 +34,7 @@ import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
 import SubstraitLean.Lowering
+import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringSearch

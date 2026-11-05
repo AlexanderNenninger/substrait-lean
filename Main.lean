@@ -222,7 +222,14 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
       return 1
     if let some (code, msg) := checkPlan plan then
       IO.eprintln msg; return code
-  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names df).compress
+  -- Arguments of nested calls become columns (`Rel.bindArgs`, #821), so the
+  -- writers' guards read a column where they would copy a call. Decimal
+  -- arithmetic stays as the parser read it: it must parse back (#27).
+  -- The bound plan is written only where it parses back as itself.
+  let bound := plan.root.bindArgs plan.catalog
+  let root := if df || plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+    else bound
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names df).compress
   return 0
 
 open Lean (Json toJson) in
