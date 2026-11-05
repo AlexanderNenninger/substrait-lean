@@ -1690,14 +1690,33 @@ every export against that release's JSON schema
 `pip install 'sverify[odcs]'`. JSON needs nothing.
 
 ```python
+import pyarrow as pa
+import sverify as sv
+from ibis import _
 from sverify import odcs
+from sverify.io import StaticSource
 
-odcs.write(paid, "contracts/paid.odcs.yaml", descriptions={"id": "the order's id"})
+shop_orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
 
-orders_contract = odcs.read("contracts/orders.odcs.yaml")
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1000, sv.key("id")]},
+    ensures=[_.amount > 10, _.amount < 1000, sv.key("id")],
+)
+def paid_orders(orders):
+    """Paid orders over ten."""
+    return orders.filter(orders.amount > 10)
 
-@sv.transform(requires={"orders": orders_contract.conditions()}, ensures=[...])
-def paid(orders): ...
+odcs.write(shop_orders.pipe(paid_orders), "paid.odcs.yaml", descriptions={"id": "the order's id"})
+
+# Another team reads the contract and builds on it.
+paid_contract = odcs.read("paid.odcs.yaml")
+
+@sv.transform(requires={"paid": paid_contract.conditions()}, ensures=[_.doubled > 20])
+def doubled_paid(paid):
+    return paid.select(paid.id, doubled=paid.amount * 2)
+
+print(doubled_paid.check(paid=paid_contract.schema()).proved)
+# True
 ```
 
 ```bash
