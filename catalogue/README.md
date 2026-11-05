@@ -54,14 +54,16 @@ q = customer_updates.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop
   has both or neither.
 
 A dataset in `schemas.toml` can list `keys` (columns of distinct values in
-the synthetic data, never NULL) and `not_null`, so that the synthetic tables
-meet the contracts' preconditions.
+the synthetic data, never NULL), `not_null` and `rows` (a table's number of
+rows, for a table of fixed size such as TPC-H's 25 nations), so that the
+synthetic tables meet the contracts' preconditions.
 
 ### Verified SQL on DuckDB (#229)
 
 For a query with a contract, the probe records `contract` (whether `verify`
-proves it, whether the plan is `guard_free`, and whether the synthetic tables
-meet the preconditions) and `verified_sql.duckdb`. It is `yes` when every
+proves it, whether the plan is `guard_free`, the preconditions `verify`
+inferred besides the stated ones, and whether the synthetic tables meet the
+preconditions) and `verified_sql.duckdb`. It is `yes` when every
 postcondition is proved, no window's rows depend on how ties are broken
 (`deterministic`: `Rel.window_deterministic`, `window_orderFree`), the
 synthetic tables meet the preconditions, and DuckDB gives the reference's rows
@@ -109,7 +111,11 @@ Polars and DuckDB and compares their rows with DuckDB's own, and writes
 Snowflake SQL (parsed with sqlglot, not run). Where the plan has a FETCH or a
 window, ties in the synthetic data make the native choice of rows
 legitimately differ, so there Polars and DuckDB are compared with each other
-only. A query on a
+only. Where a pitfall of the query makes DuckDB's own rows rightly differ
+(`NATIVE_DIFFERS` in `sverify_dev/catalogue.py`: `degenerate_statistic`,
+`null_at_extreme`, `duration_vs_interval`, `tie_order`), rows that differ from
+them are compared with Lean's own (`Rel.eval` of the plan over the same
+tables) instead, and agree as `runs (Lean's rows: <pitfalls>)`. A query on a
 dataset with DECIMAL columns that fails is probed again with DOUBLE in their
 place (`as_double`), to separate DECIMAL from the other gaps.
 

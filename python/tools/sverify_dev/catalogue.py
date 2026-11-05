@@ -273,13 +273,17 @@ def synthetic(
     where the schema gives one (so filters on literals match), integer
     columns from 0..5 (so joins on keys match), and are NULL one time in ten
     unless listed in `not_null`. A column listed in `keys` holds distinct
-    integers instead, and is never NULL."""
+    integers instead, and is never NULL. A table listed in `rows` has that
+    many rows instead (a table of fixed size, such as TPC-H's 25 nations)."""
     ds = schemas["datasets"][dataset]
     pools = ds.get("values", {})
     keys = set(ds.get("keys", []))
     not_null = set(ds.get("not_null", [])) | keys
+    sizes = ds.get("rows", {})
+    default_rows = rows
     out = {}
     for name, cols in ds["tables"].items():
+        rows = sizes.get(name, default_rows)
         rng = random.Random(f"{seed}/{dataset}/{name}")
         arrow = tables(schemas, dataset, profile)[name].schema().to_pyarrow()
         data: dict[str, list] = {}
@@ -359,6 +363,7 @@ def probe_contract(
     DuckDB's profile), and whether the synthetic tables meet the
     preconditions."""
     import sverify
+    from sverify.contracts import label
 
     requires, ensures = contract(q, schemas, profile)
     # SQL names its tables: `verify` needs their schemas.
@@ -372,6 +377,9 @@ def probe_contract(
         out["unproved"] = unproved
     if errors := [str(i) for i in report.errors]:
         out["may_fail"] = errors
+    if inferred := [f"{t}: {label(c)}" for t, cs in report.inferred.items() for c in cs]:
+        # Preconditions `verify` inferred (#655): the contract needs them too.
+        out["inferred"] = inferred
     if (bad := requires_hold(con, requires)) is not None:
         out["data"] = f"violates the preconditions: {bad}"
     return out
