@@ -661,10 +661,14 @@
   }
  },
  "dbt-unpivot-longer": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "Unnest is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": true,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
  },
  "dbt-unpivot-union": {
   "checker": "verified",

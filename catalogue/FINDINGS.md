@@ -271,14 +271,14 @@ semi-structured data.
 | h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 10 | 6 |
 | iot | 12 | 12 | 0 | 0 | 0 | 12 | 11 | 12 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 11 | 0 | 3 | 0 | 14 | 10 | 11 | 9 |
+| modelling | 14 | 12 | 0 | 2 | 0 | 14 | 11 | 12 | 10 |
 | product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 13 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 14 | 0 | 1 | 0 | 15 | 14 | 14 | 9 |
 | tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 8 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 22 | 22 | 6 |
 | windows | 13 | 13 | 0 | 0 | 0 | 13 | 12 | 13 | 5 |
-| **all** | 139 | 135 | 0 | 4 | 0 | 137 | 124 | 135 | 68 |
+| **all** | 139 | 136 | 0 | 3 | 0 | 137 | 125 | 136 | 69 |
 
 ### Feature frequency
 
@@ -359,7 +359,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `regex_replace` | expressions | 1 | 1% | yes |
 | `offset` | relational | 1 | 1% | yes |
 | `corr` | aggregation | 1 | 1% | partial |
-| `unnest` | relational | 1 | 1% | no |
+| `unnest` | relational | 1 | 1% | partial |
 | `hash` | expressions | 1 | 1% | partial |
 | `recursive_cte` | relational | 1 | 1% | no |
 | `generate_series` | relational | 1 | 1% | partial |
@@ -381,11 +381,10 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
 | `timezone` | 1 | 1 | no |  |
-| `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 
 ### Why engines refuse verified queries
 
-Over the 135 queries that verify (some only as DOUBLE):
+Over the 136 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|

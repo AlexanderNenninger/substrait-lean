@@ -915,6 +915,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .timeOfDay, a =>
       ⟨a.nonInt, a.int.map fun _ => ⟨some 0, some (Time.usPerDay - 1)⟩, false, false, false, none⟩
   | .asTime, a => monoAbs id a
+  | .dateTime, a => monoAbs (· * Time.usPerDay) a
+  | .epochUs, a => monoAbs id a
   | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome, none⟩
   | .bucket k o, a => monoAbs (Time.bucket k o) a
   | .fmath f, a => partialAbs (f.safe a) a
@@ -1551,6 +1553,10 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     · exact monoAbs_sound (Time.addMonths_mono m) (fun v => by cases v <;> rfl) h
     · exact topAbs_sound (fun v => by cases v <;> rfl) h
   case asTime => exact monoAbs_sound (fun h => h) (fun v => by cases v <;> rfl) h
+  case dateTime =>
+    exact monoAbs_sound (fun hxy => Int.mul_le_mul_of_nonneg_right hxy (by decide))
+      (fun v => by cases v <;> rfl) h
+  case epochUs => exact monoAbs_sound (fun h => h) (fun v => by cases v <;> rfl) h
   case bucket k o => exact monoAbs_sound (Time.bucket_mono k o) (fun v => by cases v <;> rfl) h
   case timeOfDay =>
     mem_cases h with i b hb hi

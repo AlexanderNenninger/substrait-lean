@@ -59,7 +59,7 @@ TARGETS = [
         "DATE as TIMESTAMP: the cast, date_trunc and DATE ± INTERVAL of a date column",
         "in",
         "monthly rollups over DATE columns (catalogue date_trunc 11); dbt.dateadd",
-        False,
+        True,
         sql="SELECT date_trunc('month', d), d + INTERVAL 1 DAY, CAST(d AS TIMESTAMP) FROM t",
         issue=807,
     ),

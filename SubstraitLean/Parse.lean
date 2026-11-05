@@ -320,7 +320,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) a => if a.kind cols == .tod then .tod else .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
-  | .un (.addMonths _ true) _ | .un .asTime _ | .un (.bucket _ _) _ => .time
+  | .un (.addMonths _ true) _ | .un .asTime _ | .un (.bucket _ _) _ | .un .dateTime _ => .time
+  | .un .epochUs _ => .int
   | .un .timeOfDay _ => .tod
   | .un (.strftime _) _ => .str
   | .un (.addMonths _ false) _ => .date
@@ -2041,6 +2042,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if target == .tod && k == .time then return .un .timeOfDay e
     -- Microseconds since 1970-01-01 (arrow's cast of an integer).
     if target == .time && k == .int then return .un .asTime e
+    -- A DATE's midnight (#807), and a timestamp's microseconds (#809).
+    if target == .time && k == .date then return .un .dateTime e
+    if target == .int && k == .time && intBits (← field c "type") == 64 then return .un .epochUs e
     -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
     if target == .int && k == .int then
       let bits := intBits (← field c "type")
