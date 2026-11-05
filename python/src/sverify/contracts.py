@@ -89,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
@@ -106,6 +107,10 @@ from sverify.engine import (
 )
 from sverify.observation import Observation
 from sverify.routes import RouteError
+
+type Policies = dict[str, dict[str, set[Policy | None]]]
+"""By table and condition label, the `on_violation` of each transform that
+states the condition (None: unset)."""
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -4687,6 +4692,9 @@ class Provenance:
     """The postconditions `on_unproved="runtime"` checks on the result's data
     because they were not proved: on a bound result when it is built, and in
     an incremental view on every state (`IncrementalView.checked`)."""
+    policies: Policies = field(default_factory=dict)
+    """For each precondition in `external`, by table and label, the
+    `on_violation` of every transform that states it (None: unset)."""
 
 
 def _checked_links(prov: Provenance) -> list[str]:
@@ -4744,6 +4752,14 @@ class _Abstraction:
     assumptions: dict[str, list[Condition]]
     external: dict[str, list[Condition]]
     unproved_links: list[str]
+    policies: Policies = field(default_factory=dict)
+
+
+def _merge_policies(into: Policies, extra: Policies) -> None:
+    for t, by_label in extra.items():
+        have = into.setdefault(t, {})
+        for lab, ps in by_label.items():
+            have.setdefault(lab, set()).update(ps)
 
 
 def _abstract(
@@ -4773,6 +4789,7 @@ def _abstract(
             _merge(out.assumptions, {name: conds})
         if name in used and op not in given and (prov := _lookup(op)):
             _merge(out.external, prov.external)
+            _merge_policies(out.policies, prov.policies)
             out.unproved_links += prov.unproved_links + _checked_links(prov)
     return out
 
@@ -4792,6 +4809,9 @@ class ViewContract:
     not_null: list[str] = field(default_factory=list)
     """The columns the proved report shows never NULL (`Report.not_null`):
     they hold in every state, as `guarantees` do."""
+    policies: Policies = field(default_factory=dict)
+    """The `on_violation` the transforms set on each precondition in
+    `requires` (`Provenance.policies`)."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -4801,10 +4821,10 @@ def view_contract(expr: ir.Table) -> ViewContract:
     from base-table changes."""
     prov = _lookup(expr.op())
     if prov is not None:
-        requires, unproved = prov.external, prov.unproved_links
+        requires, unproved, policies = prov.external, prov.unproved_links, prov.policies
     else:
         inner = _abstract(expr)
-        requires, unproved = inner.external, inner.unproved_links
+        requires, unproved, policies = inner.external, inner.unproved_links, inner.policies
     if unproved:
         raise ValueError(
             "cannot maintain incrementally: conditions on derived inputs were "
@@ -4821,6 +4841,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         prov,
         list(prov.checked) if prov else [],
         list(prov.report.not_null) if prov and prov.report.proved else [],
+        {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
     )
 
 
@@ -4856,8 +4877,12 @@ class ContractedTransform:
         infer: bool = True,
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
+        on_violation: Policy | None = None,
     ):
         self.fn, self.ensures = fn, expand_keys(ensures)
+        self.on_violation: Policy | None = check_policy(on_violation)
+        """What a refresh does with a batch of a source that breaks this
+        transform's preconditions (#184); None: the source's setting."""
         self.on_inferred = on_inferred
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
@@ -4990,6 +5015,7 @@ class ContractedTransform:
                 prov.assumptions,
                 prov.external,
                 list(prov.unproved_links) + _checked_links(prov),
+                prov.policies,
             )
             known = list(prov.guarantees)
         else:
@@ -4997,7 +5023,9 @@ class ContractedTransform:
             # obligations may still follow from its operations.
             inner, known = _abstract(value), []
         needed = [c for c in conds if label(c) not in {label(k) for k in known}]
-        out = _Abstraction(value, {param: known + needed}, inner.external, inner.unproved_links)
+        out = _Abstraction(
+            value, {param: known + needed}, inner.external, inner.unproved_links, inner.policies
+        )
         if not needed:
             return out
         report = self._verify(inner.body, inner.assumptions, needed, f"link {param}")
@@ -5145,6 +5173,7 @@ class ContractedTransform:
         # their preconditions are checked on the data like a base table's.
         plain: dict[str, tuple[str, ir.Table]] = {}
         external: dict[str, list[Condition]] = {}
+        policies: Policies = {}
         unproved_links: list[str] = []
         taken = set(leaf_tables(result))
         for param, value in inputs.items():
@@ -5161,6 +5190,7 @@ class ContractedTransform:
                 continue
             link = self._link(param, value, conds)
             _merge(external, link.external)
+            _merge_policies(policies, link.policies)
             unproved_links += link.unproved_links
             if op in placeholders:  # the same input under two parameters
                 name, assumed = placeholders[op]
@@ -5207,6 +5237,11 @@ class ContractedTransform:
                 raise VerificationError(report)
         _merge(external, abstraction.external)
         _merge(external, base)
+        _merge_policies(policies, abstraction.policies)
+        _merge_policies(
+            policies,
+            {t: {label(c): {self.on_violation} for c in cs} for t, cs in base.items()},
+        )
         proved = {c.label for c in report.ensures if c.proved}
         _register(
             result.op(),
@@ -5219,6 +5254,7 @@ class ContractedTransform:
                 external=external,
                 unproved_links=unproved_links + abstraction.unproved_links,
                 checked=checked,
+                policies=policies,
             ),
         )
         return result
@@ -5242,6 +5278,7 @@ def transform(
     on_inferred: OnInferred = "error",
     engine: Engine | None = None,
     infer: bool | None = None,
+    on_violation: Policy | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -5299,6 +5336,15 @@ def transform(
             runs (`Report.assumed`).
         engine: Deprecated alias of `check_engine`.
         infer: Deprecated: `infer=False` is `on_inferred="off"`.
+        on_violation: What a refresh does with a batch of a source that
+            breaks one of these preconditions, inferred ones included
+            (#184): `"raise"` raises `PreconditionError`; `"quarantine"`
+            sets the offending rows aside with the reason, in the node's
+            quarantine table, and the rest flows; `"skip_batch"` commits
+            nothing for the batch and holds the node at its versions until
+            a later version of the source meets the preconditions. Default
+            None: the source's `on_violation`, else `"raise"`. Where two
+            transforms state the same condition, the stricter holds.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -5386,6 +5432,7 @@ def transform(
         )
         if check_engine is None:
             check_engine = engine
+    check_policy(on_violation)
     return lambda fn: ContractedTransform(
         fn,
         requires,
@@ -5396,4 +5443,5 @@ def transform(
         on_inferred != "off",
         semantics,
         on_inferred,
+        on_violation,
     )

@@ -64,7 +64,8 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _linear, _retention, _semi, _touched
+from sverify import _linear, _quarantine, _retention, _semi, _touched
+from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, by_keys, store_for
@@ -597,6 +598,11 @@ class StaticSource(Pipeable):
         version: The version of these contents. Default: 0.
         name: The table's name in the plans that read it. Default:
             `"table"`.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition on this source, for transforms that set no
+            `on_violation` of their own: `"raise"`, `"quarantine"` or
+            `"skip_batch"` (see `sverify.transform`). Default: None,
+            `"raise"`.
 
     Attributes:
         table: The current contents.
@@ -605,8 +611,16 @@ class StaticSource(Pipeable):
         name: The table's name in the plans that read it.
     """
 
-    def __init__(self, table: pa.Table, version: int = 0, *, name: str = "table"):
+    def __init__(
+        self,
+        table: pa.Table,
+        version: int = 0,
+        *,
+        name: str = "table",
+        on_violation: Policy | None = None,
+    ):
         self.name = name
+        self.on_violation = _quarantine.check_policy(on_violation)
         self._log: ChangeLog[pa.Table] = ChangeLog()
         """Each `apply`'s change, as a weighted table, since the last
         `replace`."""
@@ -793,6 +807,10 @@ class RefreshReport:
     (`TouchedFrames.framed_batch`)."""
     diffed: list[str] = field(default_factory=list)
     """The views the batch recomputed in full and diffed."""
+    quarantine: list[QuarantineReport] = field(default_factory=list)
+    """For each source with rows set aside (`on_violation="quarantine"`,
+    #184): what the batch set aside, released and deleted, and how many
+    rows are held."""
 
     @property
     def recomputed(self) -> list[str]:
@@ -817,6 +835,7 @@ class RefreshReport:
             f"view {v}: {n} row(s) in touched frames recomputed" for v, n in self.framed.items()
         ]
         lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
+        lines += [f"quarantine: {q}" for q in self.quarantine]
         if self.audited:
             lines.append("audit: batch matches the new snapshots; views match recomputation")
         lines += [str(r) for r in self.retention]
@@ -875,7 +894,7 @@ class IncrementalView:
         self.postconditions: list[Discharged] = []
         """How `checked` was established on the first state."""
         self.pipeline = pipeline or Pipeline(con, engine)
-        self.pipeline._check_new_requires(self.requires)
+        self.pipeline._check_new_requires(self.requires, contract.policies if contract else None)
         found = _retention.plan(query, self.requires)
         self.retention: _retention.Retention | None = None if isinstance(found, str) else found
         """How the view drops its final time buckets (`sverify._retention`),
@@ -1497,6 +1516,19 @@ class Pipeline:
         self.latest: dict[tuple[str, str], object] = {}
         """For each `arrives_within(col, …)` on table `t`, the largest `col`
         seen, keyed `(t, col)`: the watermark is it minus the lateness."""
+        self.on_violation: dict[str, Policy | None] = {}
+        """Each source's own `on_violation` (#184)."""
+        self.policies: dict[str, dict[str, Policy]] = {}
+        """What a batch that breaks each precondition does, by table and
+        label: the strictest of the views' and the source's settings."""
+        self.quarantined: dict[str, Quarantined] = {}
+        """The rows of each source set aside (`sverify._quarantine`): the
+        base table holds the others."""
+        self.quarantine: list[QuarantineReport] = []
+        """On the first load: the rows each source set aside."""
+        self.seed: dict[str, Quarantined] = {}
+        """Rows set aside by an earlier run (read back from the quarantine
+        table), whose time and version the first load keeps."""
 
     def source(self, name: str, source: VersionedSource, *, version: int | None = None) -> ir.Table:
         """Load the snapshot of `source` at `version` (default: the latest)
@@ -1516,6 +1548,7 @@ class Pipeline:
         register_facts(self.con, name, facts)
         self.sources[name] = source
         self.versions[name] = read
+        self.on_violation[name] = _quarantine.check_policy(getattr(source, "on_violation", None))
         return self.con.table(name)
 
     def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
@@ -1576,9 +1609,100 @@ class Pipeline:
                 out.update(self.digests(t))
         return out
 
-    def _check_new_requires(self, requires: Mapping[str, Sequence[Condition]]) -> None:
+    def _policy(self, t: str, cond: Condition) -> Policy:
+        return self.policies.get(t, {}).get(label(cond), "raise")
+
+    def _quarantining(self, t: str) -> bool:
+        """Whether a precondition on `t` sets rows aside or holds batches."""
+        return any(p != "raise" for p in self.policies.get(t, {}).values())
+
+    def _held(self, e: PreconditionError) -> Held | None:
+        """`e` as a hold of the stage, if its condition's policy is not raise:
+        a condition with no rule for which rows break it holds the batch
+        under quarantine too."""
+        if e.source is None or e.condition is None:
+            return None
+        policy = self._policy(e.source, e.condition)
+        return None if policy == "raise" else Held(e, policy)
+
+    def _rules(self, t: str) -> tuple[list[Condition], list[Unique]]:
+        """The row conditions and keys on `t` that a split applies."""
+        conds = self.requires.get(t, [])
+        rows = [c for c in conds if not isinstance(c, TableCondition)]
+        return rows, [c for c in conds if isinstance(c, Unique)]
+
+    def _judge(self, t: str, entries: Sequence[_quarantine.Entry]) -> bool:
+        """Whether the rows `entries` sets aside may be set aside: False if
+        one breaks a condition that raises (the checks then raise as they
+        would without quarantine); `Held` if one breaks a condition that
+        holds the batch."""
+        worst = _quarantine.strictest(
+            self.policies.get(t, {}).get(c, "raise") for e in entries for c in e.conditions
+        )
+        if worst == "raise" and entries:
+            return False
+        if worst == "skip_batch" and entries:
+            n = sum(e.copies for e in entries)
+            labels = sorted({c for e in entries for c in e.conditions})
+            shown = pa.Table.from_pylist([e.row for e in entries[:ROWS_SHOWN]])
+            raise Held(
+                PreconditionError(
+                    f"{n} row(s) of {t} violate {', '.join(labels)}",
+                    source=t,
+                    rows=shown,
+                ),
+                "skip_batch",
+            )
+        return True
+
+    def _split_first(self, t: str) -> None:
+        """Set aside the rows of `t` that break its preconditions, on the
+        first load: the base table becomes the kept rows."""
+        row_conds, keys = self._rules(t)
+        rows = _as_arrow(self.con.get(t))
+        version = self.versions.get(t, 0)
+        kept, q = _quarantine.split_snapshot(
+            self.con, rows, row_conds, keys, version, old=self.seed.get(t)
+        )
+        if not self._judge(t, list(q.entries.values())):
+            put_table(self.con, t, rows)
+            return
+        put_table(self.con, t, kept)
+        # Statistics of the files describe the source's rows, not the kept ones.
+        register_facts(self.con, t, None)
+        self.quarantined[t] = q
+        self.quarantine = [r for r in self.quarantine if r.source != t]
+        report = _quarantine.report(t, q)
+        if (seed := self.seed.get(t)) is not None:
+            # Rows an earlier run set aside are not new.
+            report = _quarantine.report(
+                t, _quarantine.Moves(pa.table({}), q, q.added_since(seed), 0, 0)
+            )
+        self.quarantine.append(report)
+
+    def _check_new_requires(
+        self,
+        requires: Mapping[str, Sequence[Condition]],
+        policies: Mapping[str, Mapping[str, set[Policy | None]]] | None = None,
+    ) -> None:
         """Establish a new view's preconditions on the full base tables, once:
-        from metadata where possible, else on the data."""
+        from metadata where possible, else on the data. Where a policy sets
+        rows aside, the base table becomes the kept rows first (#184); a
+        condition that holds the batch raises `Held`."""
+        for t, conds in requires.items():
+            for c in conds:
+                stated = (policies or {}).get(t, {}).get(label(c), {None})
+                p = _quarantine.resolve(stated, self.on_violation.get(t))
+                have = self.policies.setdefault(t, {})
+                have[label(c)] = _quarantine.strictest([p, have.get(label(c), p)])
+        try:
+            self._check_requires(requires)
+        except PreconditionError as e:
+            if (held := self._held(e)) is not None:
+                raise held from e
+            raise
+
+    def _check_requires(self, requires: Mapping[str, Sequence[Condition]]) -> None:
         for t, conds in requires.items():
             if t in self.views:
                 raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
@@ -1586,6 +1710,12 @@ class Pipeline:
                 raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
+            if new and self._quarantining(t) and t in self.sources:
+                self.requires.setdefault(t, []).extend(new)
+                try:
+                    self._split_first(t)
+                finally:
+                    del self.requires[t][-len(new) :]
             table = self.con.table(t)
             for c in new:
                 if isinstance(c, Unique):
@@ -1804,6 +1934,7 @@ class Pipeline:
         rebuild: dict[str, tuple[pa.Table, SourceRefresh]] = {}
         whole: dict[str, pa.Table | Native] = {}
         report: list[SourceRefresh] = []
+        moved: dict[str, _quarantine.Moves] = {}
         for t, src in self.sources.items():
             start = self.versions[t]
             pin = (until or {}).get(t)
@@ -1866,7 +1997,7 @@ class Pipeline:
                     reason = f"{batch.fallback}; " if batch.fallback else ""
                     detail = f"{reason}the files of v{start} are gone; Δ = snapshot v{batch.end}"
                 else:
-                    ch = snapshot_diff(_as_arrow(current), new)
+                    ch = snapshot_diff(self._with_quarantined(t, current), new)
                     if native is not None:
                         whole[t] = native.scan
                     detail = f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
@@ -1880,15 +2011,22 @@ class Pipeline:
                         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
                     whole[t] = native.scan
             if audit and batch.changes is not None and not gone:
-                got = _apply_change(_as_arrow(current), ch, t)
+                got = _apply_change(self._with_quarantined(t, current), ch, t)
                 # A source that reads its table itself reads it again in full.
                 reread = getattr(src, "_reread", None)
                 want = reread(batch.end) if reread else src.snapshot(batch.end).table
                 if evolved:
                     want = _conform(want, schema)
                 _audit_source(t, got, want, start, batch.end)
+            counts = inserted_count(ch), deleted_count(ch)
+            if self._quarantining(t):
+                moves = self._split_batch(t, ch, batch.end)
+                if moves is not None:
+                    ch, moved[t] = moves.kept, moves
+                    # Facts about the batch's files say nothing of released rows.
+                    facts[t] = []
             changes[t], versions[t] = ch, batch.end
-            snapshot_facts[t] = batch.snapshot_facts
+            snapshot_facts[t] = [] if self._quarantining(t) else batch.snapshot_facts
             report.append(
                 SourceRefresh(
                     t,
@@ -1896,8 +2034,7 @@ class Pipeline:
                     batch.end,
                     mode,
                     detail + note,
-                    inserted_count(ch),
-                    deleted_count(ch),
+                    *counts,
                     schema_note,
                 )
             )
@@ -1908,18 +2045,25 @@ class Pipeline:
                 f"{bad} have contracts proved against the old schema: build the pipeline again"
             )
         incremental = {t: n for t, n in versions.items() if t not in rebuild}
-        pending = self._prepare(
-            changes,
-            facts=facts,
-            recompute=recompute,
-            versions=incremental,
-            whole=whole,
-            audit=audit,
-        )
+        try:
+            pending = self._prepare(
+                changes,
+                facts=facts,
+                recompute=recompute,
+                versions=incremental,
+                whole=whole,
+                audit=audit,
+            )
+        except PreconditionError as e:
+            if (held := self._held(e)) is not None:
+                raise held from e
+            raise
         if audit:
             self._audit(pending)
         backup = self._backup() if rebuild else None
         self._commit(pending)
+        for t, moves in moved.items():
+            self.quarantined[t] = moves.quarantined
         if rebuild:
             assert backup is not None
             try:
@@ -1951,7 +2095,30 @@ class Pipeline:
             touched=pending.touched,
             framed=pending.framed,
             diffed=pending.diffed,
+            quarantine=[_quarantine.report(t, m) for t, m in moved.items()],
         )
+
+    def _with_quarantined(self, t: str, current: pa.Table | Native) -> pa.Table:
+        """The source's rows as the pipeline holds them: the base table's,
+        and those set aside."""
+        rows = _as_arrow(current)
+        q = self.quarantined.get(t)
+        if q is None or not q.entries:
+            return rows
+        return concat([rows, expanded(q.weighted()).cast(rows.schema)])
+
+    def _split_batch(self, t: str, ch: pa.Table, version: int) -> _quarantine.Moves | None:
+        """Split the source-level change `ch` of `t` into the base table's
+        change and the rows set aside (`sverify._quarantine`); None if a row
+        breaks a condition that raises, so the checks raise as they would
+        without quarantine."""
+        row_conds, keys = self._rules(t)
+        current = _as_arrow(self.con.get(t))
+        q = self.quarantined.get(t) or Quarantined(current.schema)
+        moves = _quarantine.split_batch(
+            self.con, current, q, ch.cast(weighted(current, 1).schema), row_conds, keys, version
+        )
+        return moves if self._judge(t, moves.set_aside) else None
 
     def _reading(self, tables: set[str]) -> list[IncrementalView]:
         """The views that read any of `tables`, directly or through other

@@ -16,7 +16,7 @@ keyword. This module imports nothing heavy, so that sources
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import ibis.expr.types as ir
@@ -32,6 +32,10 @@ from Ibis tables to an Ibis table."""
 class Pipeable:
     """`pipe` for the sources of `sverify.io`: `orders.pipe(paid)` is the
     node `paid` builds over the source, as `paid(orders)`."""
+
+    on_violation: Literal["raise", "quarantine", "skip_batch"] | None = None
+    """What a refresh does with a batch that breaks a precondition on this
+    source, unless the transform stating it sets its own (#184)."""
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
         """Apply `step` to this source: see `sverify.Node.pipe`.
