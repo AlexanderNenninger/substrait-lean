@@ -584,6 +584,16 @@ interval, possible booleans, and whether it can be a string.
 * `Expr.factsOf_sound`, `Rel.facts_sound`: relational facts (`x − y ∈ [lo, hi]`,
   `x ≠ k`) taken from filter and join conditions hold on every output row. They
   survive projections, emits, joins, NULL padding and unions.
+  A fact `holds e` keeps a whole condition, a conjunct of a precondition or
+  of a filter or inner join condition (`Expr.conjuncts_sound`): projections
+  rename its columns (`Expr.eval_mapFields`), and a left join drops those of
+  its right side, which NULL padding may break (#597).
+* `Expr.refineOr_sound`, `useFacts_sound`: a row on which `p OR q` is TRUE,
+  and `p` cannot be TRUE under the columns' description, has `q` TRUE, so
+  `q` refines the columns; a `CASE` whose condition is decided is its branch.
+  `Rel.aeval` applies the whole conditions at each table and filter, and
+  `Expr.absD` in each `CASE` branch and on the right of each `OR`.
+  `Expr.absF_sound`: a projected condition that is a `holds` fact is TRUE.
 * `Expr.absD_sound`: evaluating expressions with those facts (sharpening
   `x − y`, `x < y`, `x = y` and `x = k`) is sound. Each `CASE` branch is
   evaluated knowing whether its condition is TRUE: `Expr.cstr_sound` turns
