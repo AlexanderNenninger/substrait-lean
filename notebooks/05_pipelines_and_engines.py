@@ -115,7 +115,7 @@ def _(pa, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `orders.apply(sv.Changes(inserts=[...], deletes=[...]))` changes a
+    `orders.apply(sv.io.Changes(inserts=[...], deletes=[...]))` changes a
     source and gives it a new version. The next `view.refresh()` receives
     that change and updates the view from it. To check, we build the same
     node again and refresh it, which computes its result from scratch.
@@ -143,7 +143,7 @@ def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city
     def _batch(rng, source, make_row):
         current = _rows(source.table)
         deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
-        changes = sv.Changes(
+        changes = sv.io.Changes(
             inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes
         )
         source.apply(changes)
@@ -420,7 +420,7 @@ def _(mo):
 def _(mo, orders, sv, view):
     _before = orders.version, view.versions
     try:
-        orders.apply(sv.Changes(inserts=[(7, "ada", 70)], deletes=[(99, "nobody", 1)]))
+        orders.apply(sv.io.Changes(inserts=[(7, "ada", 70)], deletes=[(99, "nobody", 1)]))
     except ValueError as _e:
         _err = _e
     mo.callout(
@@ -619,23 +619,25 @@ def _(directory, dup, feed, good, monday, neg, presses, sv):
             presses["last"] = (kind, e)
             # The demo takes the bad order out of the feed again, so the
             # next batch can go through.
-            feed.apply(sv.Changes(deletes=changes["orders"].inserts))
+            feed.apply(sv.io.Changes(deletes=changes["orders"].inserts))
 
     while presses["good"] < good.value:
         _i = presses["good"]
         _try(
             "good",
             {
-                "orders": sv.Changes(inserts=[(10 + _i, "bob", 3 * _i), (20 + _i, f"new{_i}", 7)]),
-                "customers": sv.Changes(inserts=[(f"new{_i}", _cities[_i % 4])]),
+                "orders": sv.io.Changes(
+                    inserts=[(10 + _i, "bob", 3 * _i), (20 + _i, f"new{_i}", 7)]
+                ),
+                "customers": sv.io.Changes(inserts=[(f"new{_i}", _cities[_i % 4])]),
             },
         )
         presses["good"] += 1
     while presses["dup"] < dup.value:
-        _try("dup", {"orders": sv.Changes(inserts=[(1, "dee", 4)])})
+        _try("dup", {"orders": sv.io.Changes(inserts=[(1, "dee", 4)])})
         presses["dup"] += 1
     while presses["neg"] < neg.value:
-        _try("neg", {"orders": sv.Changes(inserts=[(99, "eve", -5)])})
+        _try("neg", {"orders": sv.io.Changes(inserts=[(99, "eve", -5)])})
         presses["neg"] += 1
     state = (presses["good"], presses["dup"], presses["neg"])
     return (state,)
@@ -752,7 +754,7 @@ def _(base, cities, lake, pa):
             super().__init__(path.stem, location=str(path))
             self.path, self.record = path, path.with_suffix(".contract.json")
 
-        def committed(self):
+        def contract(self, version=None):
             if not self.record.exists():
                 return None
             return Contract.from_json(self.record.read_text())
@@ -813,7 +815,7 @@ def _(mo):
       (`kind="snapshot"`) or rows added and removed (`kind="changes"`).
     * A sink's `write` gets a `SinkChange`: the rows added and removed
       since its last write, or the whole table on the first, with the
-      contract to record. `committed()` reads that contract back, so each
+      contract to record. `contract()` reads that contract back, so each
       state is written once even across restarts; without it sverify
       remembers for the life of the process. `sink_from(fn)` hands the
       whole table to a function.

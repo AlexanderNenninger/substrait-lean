@@ -36,6 +36,7 @@ from sverify.engine import (
 from sverify.engines import ENGINES, delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
+from sverify.io import Changes
 from sverify.sql import Unsupported
 from sverify.testing import (
     canonical,
@@ -331,7 +332,7 @@ def test_polars_view_matches_datafusion_view(name, data):
         views[engine] = IncrementalView(con, PIPELINES[name], "v", engine=engine)
     for _ in range(data.draw(st.integers(1, 3))):
         changes = {
-            t: sv.Changes(
+            t: Changes(
                 inserts=data.draw(
                     st.lists(orders_row if t == "orders" else customers_row, max_size=3)
                 )

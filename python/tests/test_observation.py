@@ -160,8 +160,8 @@ def test_transform_takes_an_observation() -> None:
     con.put("t", pa.table({"k": [1, 1, 2], "x": [1.0, 2.0, 3.0]}))
     out = per_key(con.table("t")).to_pyarrow()
     assert sorted(out.column("k").to_pylist()) == [1, 2]
-    assert per_key.last_report is not None
-    assert isinstance(per_key.last_report.observation.floats, Within)
+    assert per_key.report is not None
+    assert isinstance(per_key.report.observation.floats, Within)
 
 
 def test_two_observations_are_refused() -> None:

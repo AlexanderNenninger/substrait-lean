@@ -1301,7 +1301,7 @@ def choose(
     """The route by which the plan `report` checked reaches `engine` (D13).
 
     Args:
-        report: A report of `sv.verify` (or a transform's `last_report`).
+        report: A report of `sv.verify` (or a transform's `report`).
         engine: The engine's name, or a Spark session.
         route: `"auto"` (the default) tries `"native"`, `"translated"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or

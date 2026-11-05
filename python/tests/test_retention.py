@@ -16,7 +16,7 @@ import sverify as sv
 from _pipelines import recomputed
 from sverify._state import arrow_of
 from sverify.errors import PreconditionError
-from sverify.io import DeltaSink, DeltaSource, Sink, StaticSource, sink_from
+from sverify.io import Changes, DeltaSink, DeltaSource, Sink, StaticSource, sink_from
 
 T0 = datetime(2026, 11, 3)
 SCHEMA = pa.schema([("host", pa.string()), ("ts", pa.timestamp("us")), ("cpu", pa.int64())])
@@ -36,9 +36,7 @@ def samples(rows) -> pa.Table:
 
 
 def rollup(lateness=timedelta(hours=2), bucket=lambda ts: ts.truncate("h")):
-    @sv.transform(
-        requires={"samples": [sv.arrives_within("ts", seconds=lateness.total_seconds()), *BOUNDS]}
-    )
+    @sv.transform(requires={"samples": [sv.arrives_within("ts", lateness), *BOUNDS]})
     def hourly(samples):
         return samples.group_by(["host", bucket(samples.ts).name("bucket")]).aggregate(
             n=samples.count(), cpu=samples.cpu.sum(), peak=samples.cpu.max()
@@ -100,7 +98,7 @@ def test_a_long_stream_keeps_its_state_bounded(engine):
     bound = math.ceil(2 / 1) + 1
     sizes = []
     for minute in range(60, 60 * 48, 10):
-        src.apply(sv.Changes(inserts=samples([("a", minute, 1), ("b", minute, 2)])))
+        src.apply(Changes(inserts=samples([("a", minute, 1), ("b", minute, 2)])))
         entry = node.refresh(engine=engine)["hourly"]
         (report,) = entry.retention
         assert report.open <= report.bound == bound
@@ -131,7 +129,7 @@ def test_the_summary_shows_open_and_retired_buckets():
     node = src.pipe(rollup())
     node.refresh()
     # 5:30 moves the watermark to 3:30: bucket 2:00 is final, 5:00 opens.
-    src.apply(sv.Changes(inserts=samples([("a", 330, 1)])))
+    src.apply(Changes(inserts=samples([("a", 330, 1)])))
     line = node.refresh()["hourly"].summary()
     assert "\n" not in line
     assert line.endswith("bucket: 3/3 bucket(s) open, 1 retired")
@@ -159,7 +157,7 @@ def test_the_bound_is_lateness_over_width_plus_one(lateness, bound):
         wm = latest - lateness / timedelta(minutes=1)
         ts = [rng.uniform(max(wm, 0), latest) for _ in range(3)]
         rows = [("a", t, 1) for t in ts] + [("a", latest, 1)]
-        src.apply(sv.Changes(inserts=samples(rows)))
+        src.apply(Changes(inserts=samples(rows)))
         (report,) = node.refresh()["hourly"].retention
         assert report.bound == bound
         assert report.open <= bound
@@ -177,7 +175,7 @@ def test_a_late_row_is_rejected(engine):
     node.refresh(engine=engine)
     before = (sorted(map(repr, node.to_arrow().to_pylist())), node.versions)
     # The watermark is 2:30; a row at 2:00 is late, one at 2:30 is not.
-    src.apply(sv.Changes(inserts=samples([("a", 120, 5)])))
+    src.apply(Changes(inserts=samples([("a", 120, 5)])))
     with pytest.raises(
         PreconditionError,
         match=r"1 inserted row\(s\) of samples violate "
@@ -196,12 +194,12 @@ def test_a_delete_in_a_final_bucket_is_an_expiry():
     kept = sink.sorted()
     # The latest is 4:30 and the watermark 2:30: the hours before 2:00 are
     # final, so deleting the row at 0:00 is the source's retention.
-    src.apply(sv.Changes(deletes=samples([rows[0]])))
+    src.apply(Changes(deletes=samples([rows[0]])))
     out = node.refresh()["rollup"]
     assert arrivals(out).endswith("1 expired row(s) deleted from final buckets")
     assert sink.sorted() == kept
     # The row at 2:00 is before the watermark, in the hour that is still open.
-    src.apply(sv.Changes(deletes=samples([rows[4]])))
+    src.apply(Changes(deletes=samples([rows[4]])))
     with pytest.raises(PreconditionError, match=r"1 deleted row\(s\) of samples .* not final yet"):
         node.refresh()
     assert sink.sorted() == kept
@@ -212,7 +210,7 @@ def test_without_a_view_that_retires_every_early_delete_is_an_expiry():
     src = StaticSource(samples(rows), name="samples")
     node = src.pipe(rollup()).write(sink_from(lambda change: None, name="rollup"))
     node.refresh()
-    src.apply(sv.Changes(deletes=samples([rows[4]])))
+    src.apply(Changes(deletes=samples([rows[4]])))
     node.refresh()
     # The view keeps every bucket and applies the delete.
     assert sorted(map(tuple, (r.values() for r in node.to_arrow().to_pylist()))) == full(node, src)
@@ -226,16 +224,16 @@ def test_null_times_are_rejected():
     src = StaticSource(rows, name="samples")
     node = src.pipe(rollup())
     node.refresh()
-    src.apply(sv.Changes(inserts=nulls))
+    src.apply(Changes(inserts=nulls))
     with pytest.raises(PreconditionError, match="ts is NULL; the batch was rejected"):
         node.refresh()
 
 
 def test_arrives_within_needs_a_timestamp_and_no_negative_lateness():
     with pytest.raises(ValueError, match="lateness of 0 or more"):
-        sv.arrives_within("ts", hours=-1)
+        sv.arrives_within("ts", timedelta(hours=-1))
 
-    @sv.transform(requires={"t": [sv.arrives_within("cpu", hours=1)]})
+    @sv.transform(requires={"t": [sv.arrives_within("cpu", "PT1H")]})
     def keep(t):
         return t
 
@@ -245,7 +243,7 @@ def test_arrives_within_needs_a_timestamp_and_no_negative_lateness():
 
 def test_verify_does_not_prove_lateness():
     report = sv.verify(
-        "select * from t", tables={"t": SCHEMA}, ensures=[sv.arrives_within("ts", hours=1)]
+        "select * from t", tables={"t": SCHEMA}, ensures=[sv.arrives_within("ts", "PT1H")]
     )
     assert not report.proved
     assert report.ensures[0].value == "lateness is checked on a source's batches"
@@ -302,9 +300,9 @@ def test_retention_matches_a_full_recompute(seed, engine, expire):
     for ins, dels in stream:
         latest = max(view(node).pipeline.latest.values())
         wm = (latest - T0) / timedelta(minutes=1) - 120
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         history.apply(
-            sv.Changes(inserts=samples(ins), deletes=samples([d for d in dels if d[1] >= wm]))
+            Changes(inserts=samples(ins), deletes=samples([d for d in dels if d[1] >= wm]))
         )
         entry = node.refresh(engine=engine)["rollup"]
         retired += entry.retention[0].retired
@@ -327,7 +325,7 @@ def test_a_bucket_expression_with_an_offset():
     (report,) = node.refresh()["rollup"].retention
     assert (report.bound, report.open) == (3, 3)
     for m in range(240, 400, 5):
-        src.apply(sv.Changes(inserts=samples([("a", m, 1)])))
+        src.apply(Changes(inserts=samples([("a", m, 1)])))
         node.refresh()
     assert sink.sorted() == full(node, src)
     assert state_rows(node) <= 3
@@ -355,7 +353,7 @@ def test_an_aggregate_under_a_projection_retires_its_buckets():
     """#394: a projection over the aggregate reads only its own row, though
     its fields lead into the aggregate's reductions."""
 
-    @sv.transform(requires={"samples": [sv.arrives_within("ts", hours=2), *BOUNDS]})
+    @sv.transform(requires={"samples": [sv.arrives_within("ts", "PT2H"), *BOUNDS]})
     def percent(samples):
         g = samples.group_by(["host", samples.ts.truncate("h").name("bucket")]).aggregate(
             peak=samples.cpu.max()
@@ -368,7 +366,7 @@ def test_an_aggregate_under_a_projection_retires_its_buckets():
     (report,) = node.refresh()["percent"].retention
     assert report.off is None
     assert (report.open, report.retired) == (3, 2)
-    src.apply(sv.Changes(inserts=samples([("a", 330, 5)])))
+    src.apply(Changes(inserts=samples([("a", 330, 5)])))
     (report,) = node.refresh()["percent"].retention
     assert report.retired == 1
     assert sink.sorted() == full(node, src)
@@ -383,7 +381,7 @@ def test_an_aggregate_under_a_projection_retires_its_buckets():
     ],
 )
 def test_views_retention_does_not_apply_to_say_why(body, reason):
-    @sv.transform(requires={"samples": [sv.arrives_within("ts", hours=2), *BOUNDS]})
+    @sv.transform(requires={"samples": [sv.arrives_within("ts", "PT2H"), *BOUNDS]})
     def other(samples):
         return body(samples)
 
@@ -437,7 +435,7 @@ def test_a_pipeline_reports_retention_without_nodes():
     table = pipe.source("samples", src)
     v = pipe.view("hourly", rollup()(table))
     assert v.retention is not None and v.retention.bound == 3
-    src.apply(sv.Changes(inserts=samples([("a", 300, 1)])))
+    src.apply(Changes(inserts=samples([("a", 300, 1)])))
     report = pipe.refresh()
     (r,) = report.retention
     assert (r.view, r.column, r.open, r.retired) == ("hourly", "bucket", 3, 3)
@@ -480,7 +478,7 @@ def test_a_flight_log_that_expires_batches():
         node = flight_job(log, sink)
         history = StaticSource(samples([]), name="samples")
         for hour in range(12):
-            history.apply(sv.Changes(inserts=samples(put_hour(log, hour))))
+            history.apply(Changes(inserts=samples(put_hour(log, hour))))
             out = node.refresh()["rollup"]
             (report,) = out.retention
             assert report.off is None and report.open <= report.bound == 3

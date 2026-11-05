@@ -144,7 +144,7 @@ def test_aligning_100hz_with_130hz():
         return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=TOL)
 
     rows = aligned(con.table("acc"), con.table("gyr")).to_pyarrow().to_pylist()
-    report = aligned.last_report
+    report = aligned.report
     assert report is not None and report.proved
     assert len(rows) == 100
     # The gyroscope samples every 7.7 ms, so every sample finds a partner.

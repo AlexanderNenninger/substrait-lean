@@ -51,7 +51,7 @@ class SinkChange:
         contract: What to record with the write (`Contract`): the node, the
             plan, the source versions and what the node proved about every
             row. `contract.epoch` grows with every state; a sink that stores
-            it can tell the state it holds (`Sink.committed`).
+            it can tell the state it holds (`Sink.contract`).
         schema: The table's schema: the node's columns, NOT NULL where the
             node proves it.
         replace: True if the sink's contents must be replaced by `table`:
@@ -128,18 +128,18 @@ class Sink:
     rows added and removed since the last write, or the whole table, with
     the contract to record. sverify writes each state exactly once: it skips
     a state whose `contract.epoch` the sink has already committed
-    (`committed`), unless another plan (`contract.plan`) committed it, or
+    (`contract`), unless another plan (`contract.plan`) committed it, or
     the committed state was computed from other tables (a source with
     another table id, `contract.table_ids`, or at a lower version: dropped
     and created again): then the whole table replaces those rows. By default that record is
-    kept in memory; override `committed` to read it back from the sink, so
+    kept in memory; override `contract` to read it back from the sink, so
     a restarted job does not write a state again. The nodes reading the stored node read what this
     process wrote, with its exact changes, unless `source` returns a source
     that reads the sink. A restarted job writes its first state in full.
 
     When two processes refresh the same sink, `write` must fail for the one
     that commits second: raise `sverify.errors.ConcurrentWriteError` if the
-    sink no longer holds what `committed` returned. Its next refresh then
+    sink no longer holds what `contract` returned. Its next refresh then
     writes the whole table, or skips the state the other writer committed.
 
     Args:
@@ -183,7 +183,7 @@ class Sink:
                 self.path = Path(path)
                 self.record = self.path.with_suffix(".contract.json")
 
-            def committed(self):
+            def contract(self, version=None):
                 if not self.record.exists():
                     return None
                 return Contract.from_json(self.record.read_text())
@@ -254,16 +254,53 @@ class Sink:
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement write()")
 
-    def committed(self) -> Contract | None:
+    def contract(self, version: int | None = None) -> Contract | None:
         """The contract of the last state the sink committed, so that a
         state is written once. Override it to read the contract back from
         the sink (see the example).
 
+        Args:
+            version: The sink's version to look at, where it keeps a
+                history (`DeltaSink`, `IcebergSink`). Default: the latest.
+
         Returns:
             The contract the last write recorded, or None if there is none.
             Default: the one this process wrote last.
+
+        Raises:
+            ValueError: A `version` for a sink that keeps no history.
         """
+        if version is not None:
+            raise ValueError(f"{type(self).__name__} keeps no history: contract(version=None)")
         return self._last
+
+    def committed(self) -> Contract | None:
+        """Deprecated: `contract()`."""
+        warnings.warn(
+            "Sink.committed() is deprecated; call sink.contract()",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.contract()
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # A sink of 0.x overrides `committed`: read it as `contract`.
+        if "committed" in cls.__dict__ and "contract" not in cls.__dict__:
+            warnings.warn(
+                f"{cls.__name__} overrides Sink.committed(), which is deprecated; "
+                "override contract(version=None) instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            legacy = cls.__dict__["committed"]
+
+            def contract(self: Sink, version: int | None = None) -> Contract | None:
+                if version is not None:
+                    raise ValueError(f"{type(self).__name__} keeps no history")
+                return legacy(self)
+
+            cls.contract = contract  # type: ignore[method-assign]
 
     def source(self) -> VersionedSource | None:
         """The stored table as a versioned source, for the nodes reading the
@@ -307,7 +344,7 @@ class Sink:
         if view is None:
             raise ValueError(f"no node is stored in {self.location}: node.write(sink) attaches one")
         contract = view_contract_record(view)
-        done = self.committed()
+        done = self.contract()
         pending, self._pending = self._pending, None
         if (
             pending is not None
@@ -371,12 +408,12 @@ class Sink:
 
 
 _UNREAD = object()
-"""`_TableSink._read` before `committed` ran."""
+"""`_TableSink._read` before `contract` ran."""
 
 
 class _TableSink[T](Sink, ABC):
     """What `DeltaSink` and `IcebergSink` share: the contract and epoch read
-    back from the table (`committed`), the write (create or open the table,
+    back from the table (`contract`), the write (create or open the table,
     then DuckDB's files, else Arrow, then read the version back), the check
     that no other writer committed in between (#517, #534), and maintenance
     after every `compact_every` writes.
@@ -450,9 +487,18 @@ class _TableSink[T](Sink, ABC):
 
     # -- the shared skeleton ---------------------------------------------------
 
-    def committed(self) -> Contract | None:
+    def contract(self, version: int | None = None) -> Contract | None:
         """The contract of the last commit with this sink's `app_id`, with
-        its epoch, or None."""
+        its epoch, or None.
+
+        Args:
+            version: The table's version to look at (a Delta version, an
+                Iceberg snapshot's sequence number): the contract recorded
+                up to it, as the table as a source reads it
+                (`source().contract(version)`). Default: the latest.
+        """
+        if version is not None:
+            return self.source().contract(version)  # type: ignore[union-attr]
         table = self._open()
         done = None if table is None else self._epoch_of(table)
         self._read = done
@@ -466,7 +512,7 @@ class _TableSink[T](Sink, ABC):
         that records the contract and the epoch.
 
         The commit is conditional: it is made only while the epoch of
-        `app_id` in the table is still the one `committed` read. Otherwise
+        `app_id` in the table is still the one `contract` read. Otherwise
         the losing writer raises `ConcurrentWriteError` (#517, #534)."""
         try:
             return self._write(change)

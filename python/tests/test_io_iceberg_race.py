@@ -36,7 +36,7 @@ def ids(catalog) -> list[int]:
 
 
 def epoch(catalog) -> int | None:
-    c = IcebergSink(catalog, SINK).committed()
+    c = IcebergSink(catalog, SINK).contract()
     return None if c is None else c.epoch
 
 

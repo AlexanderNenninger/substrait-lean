@@ -36,7 +36,7 @@ def test_check_returns_an_unproved_report_without_raising() -> None:
     report = unit.check(orders=SCHEMA)
     assert not report.proved
     assert report.needed == {"orders": ["(_.qty != 0)"]}
-    assert unit.last_report is report
+    assert unit.report is report
 
 
 def test_check_takes_schemas_tables_and_positions() -> None:

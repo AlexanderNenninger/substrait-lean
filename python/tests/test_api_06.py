@@ -22,7 +22,7 @@ from sverify.errors import (
     UnverifiedRunWarning,
     VerificationError,
 )
-from sverify.io import DeltaSink, StaticSource
+from sverify.io import Changes, DeltaSink, StaticSource
 
 T = ibis.table({"k": "int64", "amount": "int64"}, name="t")
 SUM = T.group_by("k").aggregate(total=T.amount.sum())
@@ -279,7 +279,7 @@ def test_a_summary_says_changes_from(tmp_path) -> None:
 
     node = keep(src)
     node.refresh()
-    src.apply(sv.Changes(inserts=pa.table({"k": [2], "amount": [4]})))
+    src.apply(Changes(inserts=pa.table({"k": [2], "amount": [4]})))
     line = node.refresh()["keep"].summary()
     assert line.startswith("keep: changes from payments v0→v1"), line
     assert "Δ" not in line

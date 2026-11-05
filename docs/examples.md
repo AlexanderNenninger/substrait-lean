@@ -42,7 +42,7 @@ prices = orders.pipe(unit_prices)  # proved here
 prices.refresh()  # run on DuckDB
 print(sorted(prices.to_arrow().to_pylist(), key=lambda r: r["id"]))
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}]
-print(unit_prices.last_report)
+print(unit_prices.report)
 # requires orders: (_.qty > 0)
 # requires orders: (_.total >= 0)
 # requires orders: unique(id)
@@ -213,7 +213,7 @@ asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and
 one that accepts the plan's float bound is not:
 
 ```python
-from sverify.io import DeltaSink
+from sverify.io import Changes, DeltaSink
 from sverify.errors import RouteError
 
 readings = StaticSource(pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}), name="readings")
@@ -238,7 +238,7 @@ totals = readings.pipe(sums).write(
     DeltaSink("sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
 )
 totals.refresh(engine="polars", route="auto")
-readings.apply(sv.Changes(inserts=[(1, 0.5)]))
+readings.apply(Changes(inserts=[(1, 0.5)]))
 print(totals.refresh(engine="polars", route="auto"))
 # sums:
 #   route on polars: ...
@@ -360,7 +360,7 @@ says which choices the profile takes from Polars.
 any conforming consumer of Substrait 0.106: each call names its YAML's URN,
 its compound name and its output type, and each option the proof depends on
 is pinned at the reference's behaviour. The contract travels with it, and
-`sv.from_substrait` proves it again:
+`sv.Report.from_substrait` proves it again:
 
 ```python
 from sverify.errors import ExportError
@@ -374,7 +374,7 @@ exported = unit.to_substrait()  # protobuf JSON; "binary" for bytes
 manifest = unit.substrait_contract()["manifest"]
 print([(p["group"], p["option"], p["values"]) for p in manifest["pinned"]])
 # [('int.arith', 'overflow', ['ERROR']), ('int.div', 'overflow', ['ERROR']), ('int.div', 'on_division_by_zero', ['ERROR']), ('int.div', 'on_domain_error', ['ERROR', 'NULL'])]
-print(sv.from_substrait(exported).proved)
+print(sv.Report.from_substrait(exported).proved)
 # True
 ```
 

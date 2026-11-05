@@ -80,7 +80,7 @@ class Sink(Protocol):
 
     def _source(self) -> Source: ...
 
-    def committed(self) -> Contract | None: ...
+    def contract(self, version: int | None = None) -> Contract | None: ...
 
 
 class Node:
@@ -117,7 +117,7 @@ class Node:
         import pyarrow as pa
         import sverify as sv
         from ibis import _
-        from sverify.io import DeltaSink, StaticSource
+        from sverify.io import Changes, DeltaSink, StaticSource
 
         orders = StaticSource(
             pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}),
@@ -147,7 +147,7 @@ class Node:
         r = p.pipe(doubled).write(DeltaSink(f"{lake}/doubled"))
         r.refresh()  # paid first, then doubled; each written once
 
-        orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
+        orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
         r.refresh(engine="polars")  # updated from the changes alone
         r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
         r.to_polars(); r.to_pandas(); r.table  # the same rows, other forms
@@ -604,7 +604,7 @@ def _recreated(sink: Sink, leaves: Sequence[Node], stored: Stored) -> bool:
     state of the sources, and the node is computed again."""
     from sverify.io._common import _TableSource
 
-    committed = sink.committed()
+    committed = sink.contract()
     ids = committed.table_ids if committed is not None else None
     if not ids:
         return False
@@ -808,7 +808,7 @@ class StageRefresh:
             parts = [f"{spans} unchanged"]
         else:
             modes = {s.mode for s in sources}
-            how = [m for m in ("change feed", "snapshot diff") if m in modes]
+            how = [m.replace("_", " ") for m in ("change_feed", "snapshot_diff") if m in modes]
             parts = [f"changes from {spans}" + (f" ({', '.join(how)})" if how else "")]
         pre = self.report.preconditions
         # "checked on data, watermark …" (#294) is checked on data too.
@@ -834,7 +834,7 @@ class StageRefresh:
                 parts.append("already committed")
             else:
                 at = "" if w.version is None else f" v{w.version}"
-                parts.append(f"{w.mode}{at}: +{w.inserted} −{w.deleted}")
+                parts.append(f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}")
         return f"{self.heading}: " + ", ".join(parts)
 
     def __str__(self) -> str:
@@ -1097,7 +1097,7 @@ def _continue_versions(node: _Stored) -> None:
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
         if (resume := getattr(src, "_resume_after", None)) is not None:
             resumes[leaf.name] = resume
-    committed = getattr(node.sink, "committed", None)
+    committed = getattr(node.sink, "contract", None)
     contract = committed() if resumes and committed is not None else None
     if contract is None:
         return
@@ -1283,7 +1283,7 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
         if isinstance(v, ir.Table):
             raise TypeError(
                 f"{transform.name} mixes a node or source with an Ibis table: "
-                "read the table through a source, e.g. sverify.io.StaticSource(table)"
+                "read the table through a source, e.g. sverify.io.StaticSource(table, name=...)"
             )
         if not isinstance(v, Node) and not is_source(v):
             return v

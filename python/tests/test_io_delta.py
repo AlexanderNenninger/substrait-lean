@@ -34,7 +34,7 @@ from sverify.engine import Engine
 from sverify.engines import create_table
 from sverify.errors import AuditError, PreconditionError, SchemaError
 from sverify.incremental import IncrementalView, Pipeline, arrow_rows
-from sverify.io import DeltaSink, DeltaSource, StaticSource
+from sverify.io import Changes, DeltaSink, DeltaSource, StaticSource
 from sverify.io._common import ColumnStats
 from sverify.io.delta import file_stats
 
@@ -63,7 +63,7 @@ def test_refresh_applies_cdf(tmp_path, engine: Engine):
     assert rows(node) == recomputed(node, src) == [(1, "ada", 12), (3, "cy", 2)]
     assert node.versions == {"orders": 4}
     [s] = report.sources
-    assert (s.start, s.end, s.mode) == (1, 4, "change feed")
+    assert (s.start, s.end, s.mode) == (1, 4, "change_feed")
     assert (s.inserts, s.deletes) == (2, 2)
     assert "Δ trusted as coming from Delta CDF v1→v4" in str(report)
     assert "view doubled: orders@v4" in str(report)
@@ -250,7 +250,7 @@ def test_audit_catches_a_wrong_feed(tmp_path, monkeypatch):
 
     def lossy(self, since, *args):
         out = real(self, since, *args)
-        out.changes = sv.Changes()
+        out.changes = Changes()
         return out
 
     monkeypatch.setattr(DeltaSource, "changes", lossy)
@@ -428,7 +428,7 @@ def test_tables_without_metadata_are_checked_on_data():
         [(1, "ada", 5)],
     )
     checked(con.table("orders"))
-    assert set(discharged(checked.last_preconditions).values()) == {ON_DATA}
+    assert set(discharged(checked._last_preconditions).values()) == {ON_DATA}
 
 
 # -- Step 3: a Delta sink that carries the contract ---------------------------
@@ -528,7 +528,7 @@ def test_contracts_travel_between_jobs(tmp_path):
     write_deltalake(src.uri, orders_table([(3, "cy", 4)]), mode="append")
     stored.refresh()
     report = batch(halves)
-    assert report.sources[0].mode == "change feed"
+    assert report.sources[0].mode == "change_feed"
     assert rows(halves) == recomputed(halves, big) == [(1, 5), (2, 7), (3, 4)]
     assert discharged(report.preconditions)[("big", "(_.doubled >= 0)")] == "Delta constraint"
 
@@ -548,7 +548,7 @@ def test_added_column_is_left_out(tmp_path):
     assert source_schema(node, "orders") == ORDERS
     # The next batch is read the same way.
     write_deltalake(src.uri, wide.set_column(0, "id", pa.array([4])), mode="append")
-    assert batch(node).sources[0].mode == "change feed"
+    assert batch(node).sources[0].mode == "change_feed"
     assert rows(node) == [(1, "ada", 10), (2, "bob", 14), (3, "cy", 2), (4, "cy", 2)]
 
 
@@ -671,7 +671,7 @@ def test_static_table_changed_without_a_version_is_refused(tmp_path):
     with pytest.raises(ValueError, match="give the changed static table a new version"):
         again.refresh()
     with pytest.raises(ValueError, match="version above 1"):
-        StaticSource(REGIONS, version=1).replace(other, version=1)
+        StaticSource(REGIONS, name="regions", version=1).replace(other, version=1)
 
 
 def fail_write(monkeypatch, *, after_commit: bool) -> None:
@@ -739,7 +739,7 @@ def test_restarted_job_resumes_from_its_sink(tmp_path, monkeypatch):
     assert seen[0] == 0
     entry = report["big"]
     assert entry.started == f"resumed from {state.where}"
-    assert entry.report is not None and entry.report.sources[0].mode == "change feed"
+    assert entry.report is not None and entry.report.sources[0].mode == "change_feed"
     assert entry.write is not None
     assert (entry.write.mode, entry.write.inserted, entry.write.deleted) == ("merge", 1, 0)
     assert delta_rows(uri) == sorted(rows(again), key=repr)
@@ -924,7 +924,7 @@ def test_deletion_vectors(tmp_path, monkeypatch):
     assert rows(node) == [(1, 5), (2, None), (3, 1), (4, 100)]
     monkeypatch.undo()
     [s] = batch(node, audit=True).sources
-    assert (s.mode, s.inserts, s.deletes) == ("change feed", 0, 2)
+    assert (s.mode, s.inserts, s.deletes) == ("change_feed", 0, 2)
     assert rows(node) == [(1, 5), (3, 1)]
 
 
@@ -972,7 +972,7 @@ def test_source_tables_change_only_through_refresh(tmp_path):
     pipe = Pipeline(sv.connect())
     pipe.view("big", doubled(paid(pipe.source("orders", src))))
     with pytest.raises(ValueError, match="refresh"):
-        pipe.apply({"orders": sv.Changes(inserts=[(2, "bob", 1)])})
+        pipe.apply({"orders": Changes(inserts=[(2, "bob", 1)])})
 
 
 def test_sink_needs_source_versions(tmp_path):
@@ -1000,7 +1000,7 @@ def test_widened_column_that_does_not_fit_replans_the_views(tmp_path):
     assert pipe.versions == {"orders": 1}
     # Incremental again from the new schema.
     write_deltalake(src.uri, pa.table({"id": [3], "amount": [-1]}).cast(pos.schema), mode="append")
-    assert pipe.refresh().sources[0].mode == "change feed"
+    assert pipe.refresh().sources[0].mode == "change_feed"
     assert top.rows() == top.recompute()
 
 

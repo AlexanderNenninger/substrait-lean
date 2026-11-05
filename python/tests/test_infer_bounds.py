@@ -211,7 +211,7 @@ def test_bound_inputs_are_checked_at_call():
     schema = ibis.schema({"id": "int64", "amount": "int64"})
     create_table(db, "ok", schema, [(1, 7)])
     doubled(db.table("ok"))
-    assert [str(p) for p in doubled.last_preconditions][-1] == (
+    assert [str(p) for p in doubled._last_preconditions][-1] == (
         "orders: (_.amount < 2**62) (inferred, checked on data)"
     )
     create_table(db, "big", schema, [(1, 2**62)])
@@ -233,10 +233,10 @@ def test_an_eager_table_gets_the_inferred_bound():
 
     orders = ibis.memtable(pa.table({"id": [1, 2], "amount": pa.array([10, 20], pa.int64())}))
     out = mutated(orders)
-    report = mutated.last_report
+    report = mutated.report
     assert report is not None and report.proved
     assert inferred(report) == ["(_.amount < 2**62)"]
-    assert discharged(mutated.last_preconditions)[("orders", "(_.amount < 2**62)")] == ON_DATA
+    assert discharged(mutated._last_preconditions)[("orders", "(_.amount < 2**62)")] == ON_DATA
     assert sorted(out.to_pyarrow().column("doubled").to_pylist()) == [20, 40]
     big = ibis.memtable(pa.table({"id": [1], "amount": pa.array([2**62 + 5], pa.int64())}))
     with pytest.raises(
@@ -300,8 +300,8 @@ def test_inferred_bounds_compose_through_nodes():
 
     shop = StaticSource(pa.table({"id": [1], "customer": ["a"], "amount": [5]}), name="orders")
     paid(shop).pipe(twice)  # `paid` guarantees `amount < 1_000_000_000`
-    assert twice.last_report is not None
-    assert twice.last_report.proved and twice.last_report.inferred == {}
+    assert twice.report is not None
+    assert twice.report.proved and twice.report.inferred == {}
 
 
 def test_strict_requires_explicit_bounds():
@@ -321,7 +321,7 @@ def test_strict_requires_explicit_bounds():
         return orders.select(x=orders.amount * 2)
 
     src.pipe(stated)
-    assert stated.last_report is not None and stated.last_report.proved
+    assert stated.report is not None and stated.report.proved
 
 
 def test_datetime_bound_is_checked_on_data():
@@ -331,7 +331,7 @@ def test_datetime_bound_is_checked_on_data():
 
     ok = StaticSource(pa.table({"ts": [datetime(2024, 5, 3)]}), name="ev")
     node = ok.pipe(per_month)
-    assert inferred(per_month.last_report) == [
+    assert inferred(per_month.report) == [
         "(_.ts >= datetime(1678, 1, 1))",
         "(_.ts < datetime(2262, 1, 1))",
     ]
@@ -352,7 +352,7 @@ def test_null_passes_an_inferred_bound():
     db = sv.connect()
     create_table(db, "nulls", ibis.schema({"amount": "int64"}), [(None,), (3,)])
     twice(db.table("nulls"))
-    assert [p.condition for p in twice.last_preconditions] == [
+    assert [p.condition for p in twice._last_preconditions] == [
         "(_.amount >= -2**62)",
         "(_.amount < 2**62)",
     ]
