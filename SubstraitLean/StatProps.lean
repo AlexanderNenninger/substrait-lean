@@ -36,7 +36,9 @@ spread of the values: they stay small for values far from zero that vary
 little. They hold for the two-pass algorithm (the reference's own,
 `twoPass_var_rel`, `twoPass_cov_rel`) and for Welford's update with Chan's
 merge in any tree, in DuckDB's order of operations (`chanVar_rel`,
-`chanCov_rel`), all in `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
+`chanCov_rel`; with `core_var_chan`, `core_cov_chan` and `core_corr_chan` the
+properties themselves, DuckDB's `CORR` formula included), all in
+`float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
 cancels catastrophically and is not covered. Outside the finite range above,
 the reference's own value is the one allowed.
 

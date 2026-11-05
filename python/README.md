@@ -30,9 +30,11 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB and
   Polars are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
-* Postconditions say what the result's consumer observes:
-  `sv.equivalent(floats=sv.within(abs=1e-6))` accepts doubles within a
-  tolerance, rows as a sequence or a multiset, one zero. A sink states what a
+* Postconditions say what the result's consumer observes. By default,
+  doubles within the plan's proved bound (`floats="plan"`, which the report
+  prints); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
+  which `verify` checks against that bound, and also rows as a sequence or
+  a multiset, one zero. A sink states what a
   rerun must reproduce (`reproducible=`), and a refresh whose engine can't
   promise it is refused.
 * Results are kept up to date from the changes, by delta plans proved
@@ -80,6 +82,14 @@ Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substr
 Work on DataFusion, Spark and Snowflake is paused until the generated lowerings land
 ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
 [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+DataFusion is not installed by default (the `datafusion` extra adds it).
+
+Polars refuses what only DuckDB runs so far, with "see #271": the functions
+that [`SUPPORT` and `WINDOW_SUPPORT`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/_support.py)
+list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `first`, `last`,
+`string_agg`, `median`, the quantiles, `mode`, `arg_min`, `arg_max`, the covariances,
+`corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles
+([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)).
 
 ```bash
 pip install sverify                # or: uv add sverify
@@ -90,7 +100,9 @@ The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
 `datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
 `flight`, `testing`, or `all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
-builds from the sdist, which needs [elan](https://github.com/leanprover/elan).
+builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
+starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
+Contributors with a built checker set `SVERIFY_PREBUILT_CHECK=<path to substrait-check>`, and an editable install links it instead.
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
@@ -203,7 +215,7 @@ def test_big_orders():
     assert_contract(node)  # the contract is proved
     data = {"orders": [(1, "ada", 30), (2, "bob", 5)]}
     assert_contract(node, data=data, expected=[(1, 60)])  # and holds on these rows
-    assert_engines_agree(node, data)  # DuckDB, Polars and DataFusion agree
+    assert_engines_agree(node, data)  # every installed engine agrees
 
 
 test_big_orders()

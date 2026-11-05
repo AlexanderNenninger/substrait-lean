@@ -80,7 +80,7 @@ SQL string ─► SQLGlot lift ────────────────�
 
 * [docs/guide.md](docs/guide.md): what sverify does and how to use it,
   from contracts to Delta and Iceberg pipelines.
-* [docs/examples.md](docs/examples.md): eight short examples, each a step
+* [docs/examples.md](docs/examples.md): ten short examples, each a step
   up: contracts, SQL, inferred preconditions, routes, tolerances,
   reproducible sinks, engine profiles and Substrait's own semantics.
 * [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental

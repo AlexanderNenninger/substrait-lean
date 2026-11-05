@@ -25,11 +25,16 @@
   one its profile's facts were probed at (another major version refuses).
 * `EngineSettingsError`, `EngineSettingsWarning`: an engine setting differs
   from the one its profile's facts were probed under.
+* `Unsupported`: sverify refuses the input; the SQL lift, the Ibis producer,
+  the checker, the SQL writer and the Polars translator all raise it (or a
+  subclass), saying which construct. A `ValueError`; also
+  `sverify.engines.Unsupported`.
 * `ExportError`: a plan has no conforming Substrait form that keeps its
   proof (`Report.to_substrait`, #664); the message names the reason and the
   spec gap.
 """
 
+from sverify._unsupported import Unsupported
 from sverify.contracts import (
     CompositionError,
     PostconditionError,
@@ -65,6 +70,7 @@ __all__ = [
     "RouteError",
     "SchemaError",
     "SqlError",
+    "Unsupported",
     "UnverifiedRunWarning",
     "VerificationError",
 ]

@@ -40,14 +40,14 @@ the tables only. The shim count per engine is D9's measure of few shims.
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 24 | 1 | 1 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 13 | 14 | 1 | 2 | 8 | 0 | 15 | 7 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 14 | 1 | 2 | 8 | 0 | 15 | 7 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 2 | 12 | 11 | 2 | 0 | 0 | 21 |
-| Polars | 27 | 0 | 13 | 0 | 0 | 0 | 16 |
+| DuckDB | 3 | 12 | 10 | 2 | 0 | 0 | 21 |
+| Polars | 28 | 0 | 13 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -63,6 +63,7 @@ Rows per evidence level:
 | Polars | `decimal_div_half_away` | expression | dec.div: `decimal_rescale` |
 | Polars | `round_half_away` | argument | fp.round: `rounding` |
 | Polars | `one_zero` | expression | `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
+| Polars | `max_nan_greatest` | expression | agg.order: `nan_order` |
 | Polars | `avg_int_declared` | expression | `avg_int_result` |
 | Polars | `null_order` | argument | `null_order` |
 | Polars | `sort on the keys` | sort | `clustered` |
@@ -108,7 +109,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | open | `ANY` | `ANY`, `SCALED_CONSTANT` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
-| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | probe | tested: [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
+| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [duckdb-quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json) |
@@ -127,7 +128,7 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-13 shims (2 argument, 10 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
+14 shims (2 argument, 11 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -154,10 +155,11 @@ Rows per evidence level:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.polars_sound`; [polars-double-arith](../characterization/polars/facts/polars-double-arith.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-sign](../characterization/polars/facts/polars-zero-sign.json), [polars-zero-order](../characterization/polars/facts/polars-zero-order.json) |
-| agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-order](../characterization/polars/facts/polars-zero-order.json) |
+| agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-order](../characterization/polars/facts/polars-zero-order.json), [polars-min-max-zero](../characterization/polars/facts/polars-min-max-zero.json) |
 | fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-sign](../characterization/polars/facts/polars-zero-sign.json), [polars-zero-add](../characterization/polars/facts/polars-zero-add.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [polars-nan-equality](../characterization/polars/facts/polars-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [polars-nan-order](../characterization/polars/facts/polars-nan-order.json) |
+| agg.order | `nan_order` | choose | `GREATEST` | `IGNORED` | shim `max_nan_greatest` (expression) | proof | proved `Polars.max_nan_greatest`; [polars-min-max-nan](../characterization/polars/facts/polars-min-max-nan.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | probe | tested: [polars-nan-sign](../characterization/polars/facts/polars-nan-sign.json) |
 | every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | probe | tested: [polars-substring](../characterization/polars/facts/polars-substring.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
