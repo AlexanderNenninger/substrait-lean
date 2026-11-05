@@ -17,6 +17,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
+from _repo import needs_repo
 from sverify import _polars_shims as shims
 from sverify import polars_engine
 from sverify.engine import connect, create_table, run_plan, substrait_json, written_plan
@@ -52,6 +53,7 @@ def native(df: pl.DataFrame, *exprs: pl.Expr) -> list[tuple]:
 # --- The table -----------------------------------------------------------------
 
 
+@needs_repo
 def test_every_shim_and_guard_is_a_function_with_a_fact():
     options = (ROOT / "SubstraitLean" / "Options.lean").read_text()
     areas = (ROOT / "characterization" / "areas.json").read_text()
@@ -535,6 +537,7 @@ def test_an_untaken_branch_neither_raises_nor_leaks(case):
         assert lean == polars
 
 
+@needs_repo
 def test_every_shim_and_guard_is_a_lean_theorem():
     """#444: each shim and guard is proved once, as `Polars.<name>` in
     `SubstraitLean/PolarsShims.lean`; the Polars rows of the option table

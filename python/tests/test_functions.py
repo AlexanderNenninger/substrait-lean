@@ -9,6 +9,7 @@ import ibis.expr.operations as ops
 import pytest
 import sqlglot.expressions as sge
 
+from _repo import needs_repo
 from sverify import _functions as fns
 from sverify.engine import checker_path
 from sverify.sql_lift import PROFILES
@@ -93,6 +94,7 @@ def test_tools_and_observations() -> None:
     assert all(r["row"]["class"] == "refines" and r["row"]["shim"] is None for r in ref)
 
 
+@needs_repo
 def test_checklist_options_are_lean() -> None:
     """The checklist's option items (`characterization/areas.json`) are Lean's
     options, but `fp32` (an item before #417 gives it options) and
@@ -103,6 +105,7 @@ def test_checklist_options_are_lean() -> None:
     assert items - {"fp32"} == lean - {"distribution"}
 
 
+@needs_repo
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_engine_tables(engine: str) -> None:
     """An engine's table (#444 step 3a) chooses at every option, names the
@@ -123,6 +126,7 @@ def test_engine_tables(engine: str) -> None:
         assert t["shims"][engine] == shims, t["option"]
 
 
+@needs_repo
 def test_lean_facts_exist() -> None:
     """Every fact Lean's options table cites is a document of `characterization/`."""
     facts = {fact for o in lean_options()["options"] for _, fact in o["extra"]}
@@ -154,6 +158,7 @@ def test_rows_unique() -> None:
     assert len({f.anchor for f in fns.FUNCTIONS}) == len(fns.FUNCTIONS)
 
 
+@needs_repo
 def test_groups_and_options() -> None:
     """Every row has a group of the design, and every group's options are options."""
     for f in fns.FUNCTIONS:
