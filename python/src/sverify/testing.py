@@ -44,7 +44,7 @@ import math
 import re
 import subprocess
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, overload
 
@@ -182,6 +182,117 @@ def lean_values(plan_json: str) -> list[tuple]:
     decimals and a `d` (so only approximately)."""
     out = _checked(plan_json)
     return parse_rows(out, doubles=True)
+
+
+def lean_choices(plan_json: str) -> list[list[tuple]] | None:
+    """The rows `Rel.evalChoices` gives for a plan with only virtual tables:
+    each cell `("v", value)`, `("any", [value, …])` (a pick that ties),
+    `("concat", sep, [[str, …], …])` or `("collect", [[value, …], …])` (the
+    tie classes of `STRING_AGG` or `collect`, each in any order). None where
+    the data leaves a choice Lean does not list (ties in a window or at a
+    `FETCH`). Doubles as `lean_values` reads them (D24, #679)."""
+    import json
+
+    code, out, err = run_checker(("--eval-choices",), plan_json)
+    if code != 0:
+        raise subprocess.CalledProcessError(code, "substrait-check", out, err)
+    rows = json.loads(out)["rows"]
+    if rows is None:
+        return None
+
+    def val(text: str) -> object:
+        return _parse_row(f"({text})", doubles=True)[0]
+
+    def cell(c: dict) -> tuple:
+        if "v" in c:
+            return ("v", val(c["v"]))
+        if "any" in c:
+            return ("any", [val(x) for x in c["any"]])
+        if "concat" in c:
+            k = c["concat"]
+            return ("concat", k["sep"], [[val(x) for x in cls] for cls in k["classes"]])
+        return ("collect", [[val(x) for x in cls] for cls in c["collect"]])
+
+    return [[cell(c) for c in row] for row in rows]
+
+
+def allows_rows(
+    rows: Sequence[Sequence[object]],
+    choices: Sequence[Sequence[tuple]],
+    same: Callable[[object, object], bool] = lambda a, b: a == b,
+) -> bool:
+    """Whether `rows`, as a multiset, are one result `choices` allows
+    (`lean_choices`): a one-to-one matching of rows to choice rows, each
+    cell one of its values. `same` compares two values (doubles to some
+    precision, for one)."""
+
+    def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:
+        pos = 0
+        for cls in classes:
+            part = list(got[pos : pos + len(cls)])
+            pos += len(cls)
+            if len(part) != len(cls):
+                return False
+            left = list(cls)
+            for g in part:
+                i = next((i for i, c in enumerate(left) if same(g, c)), None)
+                if i is None:
+                    return False
+                left.pop(i)
+        return pos == len(got)
+
+    def concat_ok(got: object, sep: str, classes: Sequence[Sequence[object]]) -> bool:
+        if not isinstance(got, str):
+            return got is None and not classes
+        # The strings of each class in some order, joined by `sep`.
+        pending = [list(map(str, cls)) for cls in classes if cls]
+
+        def go(text: str, k: int, left: list[str], first: bool) -> bool:
+            if not left:
+                if k + 1 == len(pending):
+                    return text == ""
+                return go(text, k + 1, list(pending[k + 1]), first)
+            for i, piece in enumerate(left):
+                head = piece if first else sep + piece
+                if text.startswith(head) and go(
+                    text[len(head) :], k, left[:i] + left[i + 1 :], False
+                ):
+                    return True
+            return False
+
+        return bool(pending) and go(got, 0, list(pending[0]), True)
+
+    def cell_ok(got: object, c: tuple) -> bool:
+        kind = c[0]
+        if kind == "v":
+            return same(got, c[1])
+        if kind == "any":
+            return any(same(got, v) for v in c[1])
+        if kind == "concat":
+            return concat_ok(got, c[1], c[2])
+        return isinstance(got, list | tuple) and seq_ok(list(got), c[1])
+
+    def row_ok(got: Sequence[object], want: Sequence[tuple]) -> bool:
+        return len(got) == len(want) and all(cell_ok(g, w) for g, w in zip(got, want, strict=True))
+
+    if len(rows) != len(choices):
+        return False
+    # A bipartite matching of rows to choice rows (Kuhn's augmenting paths).
+    edges = [[j for j, want in enumerate(choices) if row_ok(got, want)] for got in rows]
+    owner: list[int | None] = [None] * len(choices)
+
+    def augment(i: int, seen: set[int]) -> bool:
+        for j in edges[i]:
+            if j in seen:
+                continue
+            seen.add(j)
+            o = owner[j]
+            if o is None or augment(o, seen):
+                owner[j] = i
+                return True
+        return False
+
+    return all(augment(i, set()) for i in range(len(rows)))
 
 
 _TOKEN = re.compile(r'\s*(NULL|true|false|"(?:[^"\\]|\\.)*"|\[|\]|,|[^,\[\]]+)')

@@ -30,7 +30,8 @@ DataFusion and Spark.
   the keyword inputs by their table names; `sql(query, orders=orders)`
   writes a transform's body in SQL over its input tables.
 * `verify` proves a contract of an Ibis expression without a transform, and
-  returns a `Report`.
+  returns a `Report`; `paid.check(orders=schema)` returns the report of a
+  transform's contract for input schemas, without raising or reading data.
 * `connect` gives a connection of named in-memory tables, for Ibis
   expressions bound to data; `asof_join` matches each row with the latest
   earlier row of another table, with operators Lean verifies.
@@ -42,6 +43,7 @@ Engines, SQL dialects and plans are in `sverify.engines`, the exceptions in
 import sverify.sql  # noqa: F401 - before `sql` below, which a first import of it would replace
 from sverify.asof import asof_join
 from sverify.contracts import (
+    ContractedTransform,
     Report,
     approx,
     arrives_within,
@@ -61,6 +63,7 @@ from sverify.substrait_export import from_substrait
 
 __all__ = [
     "Changes",
+    "ContractedTransform",
     "Node",
     "Report",
     "approx",

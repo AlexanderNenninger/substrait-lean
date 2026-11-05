@@ -311,7 +311,7 @@ class Contract:
     """What a sink records with each commit: which plan produced the data,
     from which source versions, and what it proved about every row.
 
-    `DeltaSource.contract` and `IcebergSource.contract` read it back.
+    `DeltaSource.contract()` and `IcebergSource.contract()` read it back.
 
     Attributes:
         view: The stored node's name.

@@ -27,6 +27,13 @@ Upgrading from 0.4.0, check these first. Each has its own entry below.
 - Polars always runs on its streaming engine. Polars's engine settings and
   environment variables no longer choose the engine.
 - The SQL lift refuses rankings with an `ORDER BY` of their own (#625).
+- The reference leaves the order of ties open (#679, D24). Proofs hold for
+  every order. A deterministic run (`deterministic=True`, an incremental
+  refresh, or a sink's `reproducible=`) refuses a plan whose ties stay open,
+  and names each place (`Report.tie_places`).
+- `verify` checks a stated float tolerance against the plan's bound on each
+  engine (#689). A tolerance tighter than every engine meets leaves the plan
+  unproved; before, it was refused only at run time.
 
 ### `sv.rows_per` bounds the rows per key, and row caps bound exact sums
 
@@ -1206,6 +1213,103 @@ postcondition over a window, `first()`, `group_concat()` or a `LIMIT` over
 ties is proved when it holds for every order, where the report used to say
 `undetermined`. `Report.tie_places` names each window, ordered aggregate and
 `LIMIT` whose order is not total.
+
+### Reports as data for tools built on sverify
+
+What sverify-dbt, a package that checks dbt projects with sverify, needed
+from the public API
+([#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177);
+the gaps left open are [#699](https://github.com/AlexanderNenninger/substrait-lean/issues/699) to [#710](https://github.com/AlexanderNenninger/substrait-lean/issues/710)):
+
+- `sverify.errors.Unsupported` is the one class every refusal raises: the
+  SQL lift's and the Ibis producer's, the SQL writer's and the Polars
+  translator's derive from it. `sverify.engines.Unsupported` is the same
+  class; before, `verify`'s refusals of SQL escaped
+  `except sverify.engines.Unsupported`.
+- `Report.needs` lists the preconditions `on_inferred="error"` needs as
+  `Needed` records: table, column, comparison, bound, the condition as SQL
+  and as the Python `requires` takes (`code`, `_.qty != 0`), and the
+  runtime error each rules out.
+- `CheckedCondition.reason` says why a postcondition is not proved, as a
+  code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, `"ties"`, …), and
+  `CheckedCondition.condition` is the condition as it was given.
+- `verify(tables=...)` takes DuckDB's type names (`{"id": "BIGINT", "name":
+  "VARCHAR NOT NULL"}`) beside Ibis's.
+- The SQL lift reads `IS [NOT] TRUE` and `IS [NOT] FALSE`.
+- The checker's pipes close when it stops, so a script no longer ends with
+  a `ResourceWarning`.
+
+### Deterministic runs name the open ties
+
+`choose(deterministic=True)`, an incremental refresh and a sink's
+`reproducible=` ask for the deterministic profile (D24,
+[#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)). A
+plan whose ties stay open is refused there, and the reason names each window,
+ordered aggregate or `LIMIT` (`Report.tie_places`). Without them the plan
+runs with the engine's own order of the ties, which every proof covers. The
+catalogue accepts any order the reference allows (`substrait-check
+--eval-choices`, `sverify.testing.lean_choices` and `allows_rows`), so
+`iot-downsample` and `pa-string-agg` match on DuckDB without `tie_order`.
+
+### Reading a contract's proof without running it
+
+For tools that read a proof, such as an editor, a CI step or dbt
+([guide](docs/guide.md#checking-without-running), #682):
+
+- `ContractedTransform.check(**schemas)` proves a transform's contract for
+  input schemas and returns the `Report`. It raises no `VerificationError`
+  and reads no data. `sv.ContractedTransform` is exported, the type
+  `@sv.transform` returns.
+- `Report.route(engine)` gives the route a run would take and the plan's
+  class there (exact, observed, shim or refused), without running it.
+- `Report.inputs` gives the schemas of the input tables.
+- `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
+  `Report.notes` give the lines `str(report)` prints.
+- `Issue.suggested` gives the preconditions that rule an issue out, per
+  table, as data.
+- The `SVERIFY_COUNTEREXAMPLES` environment variable sets the counterexample
+  budget of `sv.verify`, transform calls and `check`; 0 skips the search.
+  The default stays 200.
+
+### One model for doubles; every route has a class
+
+Stating no observation, `sv.equivalent(floats="plan")` and the plan's own
+bound are one observation (#689). `report.observation` prints it with the
+bound, `equivalent(floats=plan, ≤ 2.2e-10)`, and `report.observation.equal`
+compares doubles within it. A postcondition that reads a double keeps its
+exact value under a stated `floats="plan"` as it does without one.
+
+`verify` checks a stated tolerance (`abs`, `rel` or `ulps`) and
+`floats="exact"` against the plan's bound on each engine
+(`report.floats_on`). The report's `observes:` line shows the plan's bound
+beside the tolerance and the engines that meet it; where none does, the plan
+is not proved and the line gives the reason and a tolerance that would do.
+A run used to refuse a too-tight `rel` or `ulps` only at run time.
+
+A route prints `rows='multiset'` for a plan with no `ORDER BY`, and the
+Substrait manifest's `class` is `observed` for a plan with a bound on its
+doubles, as its routes are. `Observation`'s repr is its `equivalent(...)`
+form.
+
+Every verified run records one of the four classes in `Route.cls`: a plan
+whose options have no row in the engine's tables, such as a `LAG` over a
+unique key, is `exact` on tested evidence (#696).
+
+### Docs: Ibis `//` floors and `%` truncates, and a hint for the pair
+
+The guide has a section, "Integer division in Ibis and SQL", with the quotient and remainder of `-7` under each front end and semantics ([#693](https://github.com/AlexanderNenninger/substrait-lean/issues/693)). A report carries a hint when one plan uses Ibis `//` and `%` on the same operands, since `q * d + r == x` fails for negative `x`. Ten wrong statements and gaps in the README, `docs/` and the `Contract` docstring are fixed ([#698](https://github.com/AlexanderNenninger/substrait-lean/issues/698)).
+
+### `MIN` and `MAX` of doubles run on Polars
+
+`MIN` and `MAX` of doubles, as aggregates and as window functions, run on
+Polars by `route="auto"` ([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)).
+Polars's `min` and `max` skip NaN and may keep either zero
+([polars-min-max-nan](characterization/polars/facts/polars-min-max-nan.json),
+[polars-min-max-zero](characterization/polars/facts/polars-min-max-zero.json)):
+the translation gives `MAX` of a group with a NaN as NaN, the greatest double,
+and reads both results with one zero. The shim `max_nan_greatest` and
+`Polars.min_ignore_nan` are proved in `SubstraitLean/PolarsShims.lean`, and
+the route's class is `shim`.
 
 ## 0.4.0 (2026-11-03)
 

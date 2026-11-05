@@ -244,9 +244,11 @@ def test_min_and_max_of_doubles_are_refused_on_datafusion():
         engine_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)], "datafusion")
 
 
-def test_min_and_max_of_doubles_are_refused_on_polars():
-    with pytest.raises(Exception, match="(?i)not yet supported on Polars|unsupported aggregate"):
-        engine_rows(EXTREMES, F, [(1, 0.5)], "polars")
+def test_min_and_max_of_doubles_run_on_polars():
+    # #697: NaN is the greatest double and there is one zero, on both engines.
+    rows = [(1, 0.5), (1, math.nan), (2, -0.0), (2, 0.0), (3, None), (4, math.nan)]
+    got = engine_rows(EXTREMES, F, rows)
+    assert repr(sorted(got["polars"])) == repr(sorted(got["duckdb"]))
 
 
 samples = ibis.table({"host": "!string", "cpu": "!float64"}, name="samples")
