@@ -202,8 +202,8 @@ def test_an_engine_refusal_names_the_users_function(con) -> None:
 
 def test_the_lift_quotes_the_sql(con) -> None:
     t = con.table("t")
-    with pytest.raises(Unsupported, match=r"^REGEXP_MATCHES\(t.s, 'x'\) is not supported yet"):
-        sv.verify("SELECT regexp_matches(s, 'x') AS m FROM t", tables={"t": t})
+    with pytest.raises(Unsupported, match=r"^TRANSLATE\(t.s, 'x', 'y'\) is not supported yet"):
+        sv.verify("SELECT translate(s, 'x', 'y') AS m FROM t", tables={"t": t})
 
 
 @pytest.mark.parametrize("call", ["now()", "current_timestamp", "random()"])

@@ -42,6 +42,33 @@ QUERIES = [
     "SELECT md5(cast(coalesce(cast(id AS TEXT), '_dbt_utils_surrogate_key_null_') || '-'"
     " || coalesce(cast(customer AS TEXT), '_dbt_utils_surrogate_key_null_') AS TEXT)) AS k"
     " FROM orders",
+    # Regular expressions (#808): RE2's, which Lean evaluates; `regexp_extract`
+    # is '' without a match or past the groups, `regexp_replace` replaces the
+    # first match, every one with 'g'.
+    "SELECT id, regexp_matches(customer, '^a') AS m, regexp_full_match(customer, 'a|bob|c.') AS f,"
+    " regexp_extract(customer || '42', '([a-z]+)([0-9]+)', 2) AS e,"
+    " regexp_extract(customer, 'x(y)', 1) AS n, regexp_extract(customer, 'a(d)', 3) AS g,"
+    " regexp_extract(customer, '[a-c]') AS z, regexp_replace(customer, '[ab]', '_') AS r1,"
+    " regexp_replace(customer, '[ab]', '_', 'g') AS r2 FROM orders",
+    # `right` counts characters, all but the first `-n` for a negative `n`;
+    # `lpad` and `rpad` cut `s` to `n` characters, or fill it with the fill
+    # repeated and cut (#808).
+    "SELECT id, right(customer, 2) AS r, right(customer, -1) AS r2, right(customer, 10) AS r3,"
+    " right(customer, 0) AS r4, lpad(customer, 5, 'xy') AS l, rpad(customer, 2, '0') AS p,"
+    " rpad(customer, 6, 'é-') AS q, lpad(customer, 0, '*') AS z, lpad(customer, -1, '*') AS n"
+    " FROM orders",
+    # `split_part` and `string_split(s, sep)[n]`: from 1, from the end for a
+    # negative `n`, '' past the pieces; '' splits into characters (#808).
+    "SELECT id, split_part(customer || ',x,,y', ',', 1) AS a,"
+    " split_part(customer || ',x,,y', ',', 3) AS b, split_part(customer || ',x,,y', ',', -1) AS c,"
+    " split_part(customer || ',x,,y', ',', -5) AS c2, split_part(customer, ',', 5) AS d,"
+    " split_part(customer, '', 2) AS e, split_part(customer, ',', 0) AS f,"
+    " string_split(customer || '--' || customer, '--')[2] AS g, str_split(customer, 'a')[-1] AS h"
+    " FROM orders",
+    # `concat_ws` leaves out NULLs: '' if all are NULL (#808).
+    "SELECT o.id, concat_ws('-', o.customer, c.region, NULL) AS k, concat_ws(', ', c.name) AS n,"
+    " concat_ws('', c.region, o.customer) AS m FROM orders o LEFT JOIN customers c"
+    " ON o.customer = c.name",
 ]
 
 
@@ -69,6 +96,13 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT substring(customer, 1, -1) FROM orders", "negative length"),
         ("SELECT customer || 1 FROM orders", "|| of a int32"),
         ("SELECT sha2(customer, 512) FROM orders", "length other than 256"),
+        ("SELECT regexp_matches(customer, 'a', 'i') FROM orders", "with options"),
+        ("SELECT regexp_matches(customer, customer) FROM orders", "constant pattern"),
+        ("SELECT regexp_replace(customer, 'a', 'b', 'i') FROM orders", "only 'g'"),
+        ("SELECT lpad(customer, qty, 'x') FROM orders", "lpad needs a constant int"),
+        ("SELECT rpad(customer, 3, '') FROM orders", "empty fill"),
+        ("SELECT split_part(customer, ',', qty) FROM orders", "constant int"),
+        ("SELECT right(customer, qty) FROM orders", "right needs a constant int"),
     ],
 )
 def test_refusals_say_what(query, message):

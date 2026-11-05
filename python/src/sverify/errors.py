@@ -39,6 +39,8 @@ The same classes are importable where they are defined (`sverify.routes.RouteErr
   the checker, the SQL writer and the Polars translator all raise it (or a
   subclass), saying which construct. A `ValueError`; also
   `sverify.engines.Unsupported`.
+* `SecretError`: a secret could not be read (#775); the message names it,
+  never its value. A `LookupError`.
 * `ExportError`: a plan has no conforming Substrait form that keeps its
   proof (`Report.to_substrait`, #664); the message names the reason and the
   spec gap.
@@ -55,6 +57,7 @@ from sverify.contracts import (
 from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncremental, SchemaError
 from sverify.io._common import ConcurrentWriteError
+from sverify.io._secrets import SecretError
 from sverify.routes import (
     EngineSettingsError,
     EngineSettingsWarning,
@@ -80,6 +83,7 @@ __all__ = [
     "PreconditionError",
     "RouteError",
     "SchemaError",
+    "SecretError",
     "SqlError",
     "SverifyError",
     "Unsupported",

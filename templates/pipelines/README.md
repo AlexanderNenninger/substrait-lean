@@ -98,6 +98,10 @@ image exists, [#770](https://github.com/AlexanderNenninger/substrait-lean/issues
   `main` in the environment `production`, the only one that writes the
   production tables. Add required reviewers to `production` to approve
   each run from the GitHub app.
+- No long-lived key is stored for the cloud stores: the workflows log in
+  through OIDC, and each environment's role reads the sources and writes
+  only its stage
+  ([`docs/for-enterprise.md`](docs/for-enterprise.md#stages)).
 - A Claude Code session holds no lake credentials and reads only public
   sources while it probes.
 

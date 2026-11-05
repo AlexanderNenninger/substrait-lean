@@ -262,6 +262,18 @@ def _deleted(dt: DeltaTable, paths: dict[str, str]) -> pa.Table | None:
     return pa.table({"file": pa.concat_arrays(files), "pos": pa.concat_arrays(positions)})
 
 
+class _Pin:
+    """A slot for the table `DeltaSource.latest` opened, shared by the
+    source and its shallow copies; a pickled or deep-copied source starts
+    with an empty one."""
+
+    def __init__(self) -> None:
+        self.at: tuple[int, DeltaTable] | None = None
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (_Pin, ())
+
+
 class DeltaSource(_TableSource):
     """A Delta table read by version, as the input of transforms.
 
@@ -359,6 +371,22 @@ class DeltaSource(_TableSource):
         self.uri, self.storage_options = str(uri), storage_options
         self.on_violation = _quarantine.check_policy(on_violation)
         super().__init__(name or _basename(self.uri), where)
+        self._pinned = _Pin()
+        """The table `latest` opened, at its version: a refresh reads that
+        version's changes and files from it, where opening the table again
+        would read the log again (and resolve the credentials again). One
+        slot, shared with the restricted copies a node's stage reads
+        through (`_restricted`)."""
+
+    def _at(self, version: int | None) -> DeltaTable:
+        """The table at `version` (the latest for None), the one `latest`
+        opened when it is that version. A version's snapshot never changes;
+        a table created again under the same URI is told apart by its id
+        (`_other_table`) as before."""
+        pinned = self._pinned.at
+        if version is not None and pinned is not None and pinned[0] == version:
+            return pinned[1]
+        return self.table(version)
 
     def _id_at(self, version: int | None) -> str:
         return _table_id(self.table(version))
@@ -400,7 +428,7 @@ class DeltaSource(_TableSource):
         root = local_path(self.uri)
         if root is None:
             return None
-        dt = self._read_at(self.table(version))
+        dt = self._read_at(self._at(version))
         meta = dt.metadata()
         features = set(dt.protocol().reader_features or [])
         mapping = meta.configuration.get("delta.columnMapping.mode", "none")
@@ -442,7 +470,9 @@ class DeltaSource(_TableSource):
 
     def latest(self) -> int:
         """The table's latest version."""
-        return self.table().version()
+        dt = self.table()
+        self._pinned.at = (dt.version(), dt)
+        return dt.version()
 
     def snapshot(self, version: int | None = None) -> Snapshot:
         """The table's rows at a version, with what its metadata says about
@@ -520,7 +550,7 @@ class DeltaSource(_TableSource):
             unavailable for some commit, the snapshot at `until` and the
             reason.
         """
-        dt = self.table(until)
+        dt = self._at(until)
         end = dt.version()
         now = _table_id(dt)
         was = self._other_table(since, now)
