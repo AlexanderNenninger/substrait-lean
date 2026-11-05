@@ -1,7 +1,7 @@
 """The public API is `sverify`, `sverify.io`, `sverify.engines`,
-`sverify.testing`, `sverify.errors`, `sverify.cli` and `sverify.openlineage`, and every name in it
-is documented: a class or function by its own docstring, any other value in
-its module's docstring."""
+`sverify.testing`, `sverify.errors`, `sverify.cli`, `sverify.odcs` and
+`sverify.openlineage`, and every name in it is documented: a class or
+function by its own docstring, any other value in its module's docstring."""
 
 import importlib
 import inspect
@@ -15,6 +15,7 @@ PUBLIC = [
     "sverify.testing",
     "sverify.errors",
     "sverify.cli",
+    "sverify.odcs",
     "sverify.openlineage",
 ]
 

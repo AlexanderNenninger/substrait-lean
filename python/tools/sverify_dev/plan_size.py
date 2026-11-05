@@ -8,7 +8,7 @@ catalogue query, this writes Lean's written plan as the SQL of each dialect
 measures it:
 
 * `chars`: the SQL's length;
-* `nodes`: SQLGlot's expression nodes in it;
+* `nodes`: its SQL tokens (SQLGlot's tokenizer);
 * `depth`: how deeply its `CASE`s nest;
 
 and the input:
@@ -19,8 +19,8 @@ and the input:
 
 with their ratio, `ratio = nodes / in_nodes`. A shim that copies its argument
 makes the ratio grow with the depth of nested calls (#821: three copies,
-three levels deep, is 27). `tests/test_plan_size.py` bounds the ratio and the
-depth (`BOUND`), so a new shim cannot blow up the SQL unnoticed.
+three levels deep, is 27). `tests/test_plan_size.py` bounds the ratio, the
+depth and the length (`BOUND`), so a new shim cannot blow up the SQL unnoticed.
 
     uv run python -m sverify_dev.plan_size              # the worst 25 per dialect
     uv run python -m sverify_dev.plan_size --all --json # every measurement
@@ -37,7 +37,7 @@ from typing import Any
 
 #: The bounds `tests/test_plan_size.py` checks: today's worst cases pass them.
 #: Tighten them when a change makes the SQL smaller.
-BOUND = {"ratio": 1000.0, "depth": 10, "chars": 560_000}
+BOUND = {"ratio": 950.0, "depth": 10, "chars": 70_000}
 
 #: The keys of a Substrait expression node.
 _EXPR_KEYS = frozenset(
@@ -88,22 +88,21 @@ def plan_nodes(plan: Any) -> int:
 
 
 def sql_size(sql: str, read: str) -> tuple[int, int]:
-    """SQLGlot's expression nodes of `sql` and how deeply its `CASE`s nest."""
+    """The tokens of `sql` and how deeply its `CASE`s nest. The tokenizer
+    is a quarter of the cost of SQLGlot's parser, and counts the same
+    depths."""
     import sqlglot
-    from sqlglot import exp
+    from sqlglot.tokens import TokenType
 
-    tree = sqlglot.parse_one(sql, read=read)
-    nodes = 0
-    depth = 0
-    stack: list[tuple[Any, int]] = [(tree, 0)]
-    while stack:
-        node, d = stack.pop()
-        nodes += 1
-        if isinstance(node, exp.Case):
-            d += 1
-            depth = max(depth, d)
-        stack.extend((c, d) for c in node.iter_expressions())
-    return nodes, depth
+    tokens = sqlglot.Dialect.get_or_raise(read).tokenize(sql)
+    depth = deepest = 0
+    for t in tokens:
+        if t.token_type == TokenType.CASE:
+            depth += 1
+            deepest = max(deepest, depth)
+        elif t.token_type == TokenType.END:
+            depth -= 1
+    return len(tokens), deepest
 
 
 def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
@@ -119,7 +118,7 @@ def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
     try:
         plan = json.loads(written_plan(plan_json))
     except ValueError:
-        return  # `--write` refuses it (decimals, #27)
+        return  # the checker or `--write` refuses it (decimals, #27)
     for name, dialect in (("duckdb", DUCKDB), ("snowflake", SNOWFLAKE), ("spark", SPARK)):
         try:
             sql = plan_sql(plan, dialect)
@@ -133,7 +132,6 @@ def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
 
 
 def coverage_sizes() -> Iterator[Size]:
-    from sverify.engine import run_checker
     from sverify.ibis_substrait import Unsupported, to_substrait_json
     from sverify_dev.coverage_cases import CASES
 
@@ -144,13 +142,11 @@ def coverage_sizes() -> Iterator[Size]:
             plan = to_substrait_json(case.build())
         except Unsupported:
             continue
-        if run_checker((), plan)[0] != 0:
-            continue
         yield from measure("coverage", case.label, plan)
 
 
 def catalogue_sizes() -> Iterator[Size]:
-    from sverify.engine import connect, plan_json, put_table, run_checker
+    from sverify.engine import connect, plan_json, put_table
     from sverify_dev import catalogue as cat
 
     schemas = cat.load_schemas()
@@ -168,8 +164,6 @@ def catalogue_sizes() -> Iterator[Size]:
             plan = plan_json(con, cat.build(q, schemas, "native"))
         except Exception:  # noqa: BLE001 - the catalogue's own probe records these
             continue
-        if run_checker((), plan)[0] != 0:
-            continue
         yield from measure("catalogue", q.id, plan)
 
 
@@ -182,7 +176,7 @@ def over(s: Size, bound: dict[str, float] = BOUND) -> list[str]:
     out = []
     if s.ratio > bound["ratio"]:
         out.append(
-            f"{s.nodes} nodes from {s.in_nodes} (ratio {s.ratio:.0f} > {bound['ratio']:.0f})"
+            f"{s.nodes} tokens from {s.in_nodes} nodes (ratio {s.ratio:.0f} > {bound['ratio']:.0f})"
         )
     if s.depth > bound["depth"]:
         out.append(f"CASE depth {s.depth} > {bound['depth']}")
@@ -198,7 +192,7 @@ def report(ss: list[Size], n: int | None) -> str:
         lines += [
             f"## {dialect}: {len(rows)} plans",
             "",
-            "| source | query | in nodes | chars | nodes | ratio | CASE depth |",
+            "| source | query | in nodes | chars | tokens | ratio | CASE depth |",
             "|---|---|---:|---:|---:|---:|---:|",
         ]
         lines += [

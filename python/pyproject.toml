@@ -41,7 +41,9 @@ testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
 # `sverify.openlineage` with the OpenLineage client's own configuration (#792);
 # the file, console and HTTP targets need nothing.
 openlineage = ["openlineage-python>=1.55.0,<2"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,openlineage]"]
+# `sverify.odcs` writes and reads ODCS contracts as YAML (#791); JSON needs nothing.
+odcs = ["pyyaml>=6.0"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs,openlineage]"]
 
 # The command line (`sverify.cli`, #744).
 [project.scripts]
