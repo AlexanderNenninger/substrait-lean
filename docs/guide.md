@@ -1067,6 +1067,14 @@ into one node state the same condition, the stricter setting holds: raise,
 then skip_batch, then quarantine.
 
 ```python
+from deltalake import write_deltalake
+
+write_deltalake(
+    "lake/raw_orders",
+    pa.table({"id": [1, 2, 3, 3], "customer": ["ada", "bob", "cy", "dee"], "amount": [30, -5, 7, 8]}),
+)
+
+
 @sv.transform(
     requires={"orders": [_.amount >= 0, sv.unique("id")]},
     ensures=[_.amount >= 0, sv.unique("id")],
@@ -1075,14 +1083,18 @@ then skip_batch, then quarantine.
 def clean(orders):
     return orders.select("id", "customer", "amount")
 
-node = DeltaSource("lake/orders").pipe(clean).write(DeltaSink("lake/clean"))
+
+raw = DeltaSource("lake/raw_orders", name="orders")
+node = raw.pipe(clean).write(DeltaSink("lake/clean"))
 r = node.refresh()
 print(r)
 # clean:
-#   ...
-#   quarantine: orders: 2 row(s) set aside (1 × (_.amount >= 0), 1 × unique(id)), 2 held in lake/clean_quarantine
-r.outcome          # "quarantined"
-node.quarantined() # the rows set aside, with _conditions, _reason, _source_version
+#   computed
+# ...
+#   quarantine: orders: 3 row(s) set aside (1 × (_.amount >= 0), 2 × unique(id)), 3 held in lake/clean_quarantine
+# ...
+r.outcome           # "quarantined"
+node.quarantined()  # the rows set aside, with _conditions, _reason, _source_version
 ```
 
 Which rows are set aside is a function of the source's rows alone, so a
