@@ -30,6 +30,7 @@ import pyarrow as pa
 import sverify as sv
 from sverify.engine import put_table
 from sverify.incremental import Pipeline
+from sverify.io import Changes
 
 T0 = datetime(2026, 11, 1)
 STEP = 5  # seconds between samples
@@ -76,7 +77,7 @@ def case(
         t = time.perf_counter()
         if profiler is not None:
             profiler.enable()
-        pipe.apply({"samples": sv.Changes(inserts=rows(batch))})
+        pipe.apply({"samples": Changes(inserts=rows(batch))})
         if profiler is not None:
             profiler.disable()
         times.append(time.perf_counter() - t)

@@ -84,6 +84,7 @@ except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
 from sverify import _quarantine
+from sverify._duration import Duration, duration
 from sverify._scan import Scan, ScanSnapshot, local_path
 from sverify._weighted import split
 from sverify.contracts import Fact
@@ -471,11 +472,36 @@ class IcebergSource(_TableSource):
         )
         return ScanSnapshot(v, scan, self._facts(t, live, f"file stats @v{v}"))
 
-    def contract(self) -> Contract | None:
-        """The contract the table property `sverify.contract` records, or
-        None if it has none."""
-        text = self.table().properties.get(KEY)
-        return None if text is None else Contract.from_json(text)
+    def contract(self, version: int | None = None) -> Contract | None:
+        """The contract the table property `sverify.contract` records.
+
+        Args:
+            version: A snapshot's sequence number: the contract the table
+                recorded while that snapshot was current, read from the
+                metadata files the table's metadata log keeps. Default: the
+                current one.
+
+        Returns:
+            The contract, or None if the table had none then (or its
+            metadata file is gone).
+        """
+        t = self.table()
+        if version is None:
+            text = t.properties.get(KEY)
+            return None if text is None else Contract.from_json(text)
+        from pyiceberg.serializers import FromInputFile
+
+        files = [t.metadata_location, *(e.metadata_file for e in reversed(t.metadata.metadata_log))]
+        for f in files:
+            try:
+                meta = FromInputFile.table_metadata(t.io.new_input(f))
+            except (OSError, ValueError):
+                continue
+            s = meta.snapshot_by_id(meta.current_snapshot_id) if meta.current_snapshot_id else None
+            if _version(s) <= version:
+                text = meta.properties.get(KEY)
+                return None if text is None else Contract.from_json(text)
+        return None
 
     def stored(self) -> Stored | None:
         """The node state the current snapshot holds, if an `IcebergSink`
@@ -587,7 +613,7 @@ class IcebergSource(_TableSource):
                 deletes=deletes,
                 facts=self._facts(t, changed, f"file stats @v{end} (changed files)"),
                 snapshot_facts=snapshot_facts,
-                kind="snapshot diff",
+                kind="snapshot_diff",
                 schema=schema,
                 trusted=(
                     f"Δ = snapshot v{end} − snapshot v{since} on the {len(gone)} + "
@@ -1152,7 +1178,7 @@ class IcebergSink(_TableSink[Table]):
             this process (`maintain`). Default: None, never.
         snapshot_retention: With `compact_every`, then expire the snapshots
             older than this and delete the files only they referenced
-            (`maintain(expire=...)`). Nodes reading the stored node from an
+            (`maintain(snapshot_retention=...)`). Nodes reading the stored node from an
             expired snapshot read the whole table, so keep it longer than
             the gap between their refreshes. Default: None, no expiry.
         min_snapshots: The newest snapshots of the table's history an
@@ -1211,7 +1237,7 @@ class IcebergSink(_TableSink[Table]):
         partition_by: Sequence[PartitionField] | None = None,
         properties: Mapping[str, str] | None = None,
         compact_every: int | None = None,
-        snapshot_retention: timedelta | None = None,
+        snapshot_retention: Duration | None = None,
         min_snapshots: int = 1,
         reproducible: Observation | None = None,
     ):
@@ -1233,7 +1259,12 @@ class IcebergSink(_TableSink[Table]):
             raise ValueError(f"properties: {mine} are the sink's own")
         self._checked = False
         """Whether an existing table was compared with the create options."""
-        self.snapshot_retention, self.min_snapshots = snapshot_retention, min_snapshots
+        self.snapshot_retention = (
+            None
+            if snapshot_retention is None
+            else duration(snapshot_retention, "snapshot_retention")
+        )
+        self.min_snapshots = min_snapshots
 
     def source(self) -> IcebergSource:
         """The table as a source, for the nodes that read the stored node."""
@@ -1321,10 +1352,14 @@ class IcebergSink(_TableSink[Table]):
         return mine.walked, {k: v for k, v in own.items() if v is not None}
 
     def maintain(
-        self, *, expire: timedelta | None = None, min_snapshots: int | None = None
+        self,
+        *,
+        snapshot_retention: Duration | None = None,
+        min_snapshots: int | None = None,
+        expire: timedelta | None = None,
     ) -> dict[str, int]:
-        """Compact the table, and with `expire`, expire the snapshots older
-        than that and delete the files only they referenced. The compaction
+        """Compact the table, and with `snapshot_retention`, expire the
+        snapshots older than that and delete the files only they referenced. The compaction
         rewrites, in each partition of the current spec, the data files with
         position deletes, and the files under `write.target-file-size-bytes`
         where there are two or more, as data files of their live rows, and
@@ -1336,16 +1371,20 @@ class IcebergSink(_TableSink[Table]):
         and tag heads.
 
         Args:
-            expire: How old a snapshot may be and still be read. Nodes
-                reading the stored node from an older snapshot read the
-                whole table. Default: None, no expiry.
+            snapshot_retention: How old a snapshot may be and still be read,
+                a `timedelta` or an ISO 8601 duration (`"P7D"`), as the
+                constructor's `snapshot_retention`. Nodes reading the stored
+                node from an older snapshot read the whole table. Default:
+                None, no expiry.
             min_snapshots: The newest snapshots the expiry keeps. Default:
                 the sink's `min_snapshots`.
+            expire: Deprecated name of `snapshot_retention`.
 
         Returns:
             The counts of data files the compaction removed and added
             (`"data_files_removed"`, `"data_files_added"`) and of delete
-            files it removed (`"delete_files_removed"`), and with `expire`,
+            files it removed (`"delete_files_removed"`), and with
+            `snapshot_retention`,
             of snapshots expired (`"snapshots_expired"`) and files deleted
             (`"files_deleted"`); empty if the table does not exist.
 
@@ -1353,6 +1392,14 @@ class IcebergSink(_TableSink[Table]):
             CommitFailedException: Another writer committed to the table
                 during the compaction (pyiceberg's).
         """
+        if expire is not None:
+            warnings.warn(
+                "IcebergSink.maintain(expire=...) is deprecated; write snapshot_retention=...",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            snapshot_retention = expire
+        expire = None if snapshot_retention is None else duration(snapshot_retention)
         if not self.catalog.table_exists(self.identifier):
             return {}
         t = self.catalog.load_table(self.identifier)
@@ -1368,7 +1415,7 @@ class IcebergSink(_TableSink[Table]):
         return out
 
     def _maintain(self) -> None:
-        self.maintain(expire=self.snapshot_retention)
+        self.maintain(snapshot_retention=self.snapshot_retention)
 
     def _create(self, change: SinkChange) -> Table:
         """Create the table with the create options and the contract, in
@@ -1476,7 +1523,7 @@ class IcebergSink(_TableSink[Table]):
         with self._transaction(t) as tx:
             tx.set_properties({KEY: contract.to_json()})
             _commit_rows(tx, t, added, deletes, props)
-        return SinkWrite("row-level" if deleted else "append", None, contract, inserted, deleted)
+        return SinkWrite("row_level" if deleted else "append", None, contract, inserted, deleted)
 
     def _write_arrow(self, table: Table, created: bool, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
@@ -1488,7 +1535,7 @@ class IcebergSink(_TableSink[Table]):
             # The rows that went: as many as the change deletes, so tuples.
             removed = Counter(map(row_key, arrow_rows(change.deletes)))
             found = _positions(t, schema, removed, change.deletes) if removed else ({}, {})
-        mode: Literal["created", "append", "row-level", "overwrite"]
+        mode: Literal["created", "append", "row_level", "overwrite"]
         if found is None:
             mode = "created" if created else "overwrite"
             rows = change.table
@@ -1496,7 +1543,7 @@ class IcebergSink(_TableSink[Table]):
             deletes: list[DataFile] = []
         else:
             positions, files = found
-            mode = "row-level" if positions else "append"
+            mode = "row_level" if positions else "append"
             rows = change.inserts
             deleted = sum(len(p) for p in positions.values())
             deletes = _position_deletes(t, positions, files)

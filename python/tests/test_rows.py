@@ -13,7 +13,7 @@ import sverify as sv
 from _pipelines import discharged, make_orders, orders_table
 from sverify.contracts import ON_DATA
 from sverify.errors import PreconditionError
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 ORDERS = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 ITEMS = ibis.table({"order_id": "int64", "qty": "int64"}, name="items")
@@ -193,7 +193,7 @@ def test_delta_file_counts_prove_a_row_bound(tmp_path):
         ensures=[],
     )(amounts)
     node = src.pipe(contracted)
-    report = contracted.last_report
+    report = contracted.report
     assert report is not None and not sum_risks(report)
     first = discharged(node.refresh()[node.name].preconditions)
     assert first[("orders", "max_rows(10)")] == "file stats @v2"
@@ -212,8 +212,8 @@ def test_a_batch_beyond_the_bound_is_rejected():
     node = src.pipe(contracted)
     first = discharged(node.refresh()[node.name].preconditions)
     assert first[("orders", "max_rows(2)")] == ON_DATA
-    src.apply(sv.Changes(inserts=[(2, "bob", 7)]))
+    src.apply(Changes(inserts=[(2, "bob", 7)]))
     node.refresh()
-    src.apply(sv.Changes(inserts=[(3, "cy", 1)]))
+    src.apply(Changes(inserts=[(3, "cy", 1)]))
     with pytest.raises(PreconditionError, match=r"1 row\(s\) of orders violate max_rows\(2\)"):
         node.refresh()

@@ -147,7 +147,7 @@ ship in the wheel too, under `sverify/skills/`.
 import pyarrow as pa
 import sverify as sv
 from ibis import _
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same way
     pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
@@ -164,10 +164,10 @@ def big_orders(orders):
 
 big = orders.pipe(big_orders)  # proved here, before any data runs
 big.refresh()  # computed, on DuckDB by default
-orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
+orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
 big.refresh(engine="polars", route="auto")  # updated from the changes alone, on Polars
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
-print(big_orders.last_report)
+print(big_orders.report)
 # requires orders: (_.amount >= 0)
 # requires orders: (_.amount < 1000000000)
 # requires orders: unique(id)
@@ -298,7 +298,7 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
 ```
 
 * `@sv.transform(requires=..., ensures=..., on_unproved="error" | "runtime" | "warn")`
-  proves a contract on each call; `.last_report` says what was proved and
+  proves a contract on each call; `.report` says what was proved and
   what is known about every output column. `sv.unique(...)` states keys.
 * `source.pipe(paid).pipe(revenue, regions=regions)` builds nodes left to
   right, in the order the data flows (the call form `revenue(paid(source),

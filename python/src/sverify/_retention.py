@@ -2,7 +2,7 @@
 
 Internal: not part of sverify's public API.
 
-A source with `sv.arrives_within("ts", hours=2)` promises that every row a
+A source with `sv.arrives_within("ts", "PT2H")` promises that every row a
 batch inserts or deletes has `ts` at or after the watermark: the largest `ts`
 seen before the batch, minus the lateness. The pipeline checks it on every
 batch (`check_batch`) and rejects a batch with a late row.

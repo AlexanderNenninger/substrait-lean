@@ -71,7 +71,7 @@ def doubled(t):
 
 
 expr = doubled(paid(orders))
-print(doubled.last_report)  # requires paid: ... (what `paid` guarantees)
+print(doubled.report)  # requires paid: ... (what `paid` guarantees)
 ```
 
 `sv.contracts.provenance(expr)` shows what a contracted result assumed and

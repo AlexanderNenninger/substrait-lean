@@ -26,6 +26,7 @@ import math
 import os
 import time
 import uuid
+import warnings
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import timedelta
 from decimal import Decimal
@@ -52,6 +53,7 @@ except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
 from sverify import _quarantine
+from sverify._duration import Duration, duration
 from sverify._quarantine import Policy
 from sverify._scan import Native, Scan, ScanSnapshot, local_path
 from sverify._weighted import WEIGHT, expanded, rows_of, weights_in
@@ -178,12 +180,18 @@ def _recorded(commit: Mapping[str, Any]) -> Contract | None:
     return None
 
 
-def _last_contract(dt: DeltaTable) -> LastRecord[dict[str, Any], Contract]:
-    """The contract the last sverify commit recorded (`record`), and
-    whether every commit after it changes no rows (`kept`, `_SAME_ROWS`),
-    so that the table holds the state it recorded."""
+def _last_contract(dt: DeltaTable, upto: int | None = None) -> LastRecord[dict[str, Any], Contract]:
+    """The contract the last sverify commit up to version `upto` (default:
+    every commit) recorded (`record`), and whether every commit after it
+    changes no rows (`kept`, `_SAME_ROWS`), so that the table holds the
+    state it recorded. `dt` is the latest table: on a table loaded at an
+    older version, delta-rs's `history` lists the latest commits under
+    shifted version numbers (upstream/bugs/DL-2.json)."""
+    commits = _history(dt)
+    if upto is not None:
+        commits = (c for c in commits if c.get("version", -1) <= upto)
     return last_record(
-        _history(dt),
+        commits,
         _recorded,
         lambda c: c.get("operation") in _SAME_ROWS,
     )
@@ -462,7 +470,7 @@ class DeltaSource(_TableSource):
             The contract a `DeltaSink` stored in the commit metadata, or None
             if no commit has one.
         """
-        return _last_contract(self.table(version)).record
+        return _last_contract(self.table(), version).record
 
     def stored(self) -> Stored | None:
         """The node state the table holds, if a `DeltaSink` stored it: the
@@ -695,7 +703,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         compact_every: Compact the table after every this many writes of
             this process (`maintain`). Default: None, never.
         vacuum_retention: With `compact_every`, then remove the files that
-            no version newer than this needs (`maintain(vacuum=...)`).
+            no version newer than this needs (`maintain(vacuum_retention=...)`).
             Nodes reading the stored node that fell further behind read the
             whole table. Default: None, no vacuum.
         reproducible: What a rerun of a state must reproduce
@@ -760,9 +768,9 @@ class DeltaSink(_TableSink[DeltaTable]):
         storage_options: Options = None,
         name: str | None = None,
         checkpoint_interval: int | None = None,
-        log_retention: timedelta | None = None,
+        log_retention: Duration | None = None,
         compact_every: int | None = None,
-        vacuum_retention: timedelta | None = None,
+        vacuum_retention: Duration | None = None,
         reproducible: Observation | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
@@ -779,9 +787,11 @@ class DeltaSink(_TableSink[DeltaTable]):
         if checkpoint_interval is not None:
             self._properties["delta.checkpointInterval"] = str(checkpoint_interval)
         if log_retention is not None:
-            seconds = math.ceil(log_retention.total_seconds())
+            seconds = math.ceil(duration(log_retention, "log_retention").total_seconds())
             self._properties["delta.logRetentionDuration"] = f"interval {seconds} seconds"
-        self.vacuum_retention = vacuum_retention
+        self.vacuum_retention = (
+            None if vacuum_retention is None else duration(vacuum_retention, "vacuum_retention")
+        )
         self._missing: dict[str, str] = {}
         """The contract's CHECK constraints the table lacks, during a write."""
 
@@ -819,9 +829,11 @@ class DeltaSink(_TableSink[DeltaTable]):
                         "keys, since DeltaSink can't create a table through the catalog"
                     ) from e
                 raise
-        if not DeltaTable.is_deltatable(self.uri, storage_options=options):
+        try:
+            # One read of the log, where `is_deltatable` first would read it twice.
+            return DeltaTable(self.uri, storage_options=options)
+        except TableNotFoundError:
             return None
-        return DeltaTable(self.uri, storage_options=options)
 
     def _version(self) -> int | None:
         dt = self._table()
@@ -861,28 +873,50 @@ class DeltaSink(_TableSink[DeltaTable]):
     def _open(self) -> DeltaTable | None:
         return self._table()
 
+    def _version_after(self, table: DeltaTable) -> int | None:
+        # The table the write went through: read the log's new entries
+        # only, where `_version` would open the table again.
+        table.update_incremental()
+        return table.version()
+
     def _epoch_of(self, table: DeltaTable) -> int | None:
         return table.transaction_version(self.app_id)
 
     def _contract_of(self, table: DeltaTable) -> Contract | None:
         return _last_contract(table).record
 
-    def maintain(self, *, vacuum: timedelta | None = None) -> dict[str, object]:
-        """Compact the table's small files, and with `vacuum`, remove the
-        files no version newer than `vacuum` needs. The commits record the
+    def maintain(
+        self,
+        *,
+        vacuum_retention: Duration | None = None,
+        vacuum: timedelta | None = None,
+    ) -> dict[str, object]:
+        """Compact the table's small files, and with `vacuum_retention`,
+        remove the files no version newer than that needs. The commits record the
         contract of the sink's last commit, if no other writer changed rows
         since, so a restarted job resumes past them.
 
         Args:
-            vacuum: How old a version may be and still be read. Nodes
-                reading the stored node from an older version read the
-                whole table. Default: None, no vacuum.
+            vacuum_retention: How old a version may be and still be read, a
+                `timedelta` or an ISO 8601 duration (`"P7D"`), as the
+                constructor's `vacuum_retention`. Nodes reading the stored
+                node from an older version read the whole table. Default:
+                None, no vacuum.
+            vacuum: Deprecated name of `vacuum_retention`.
 
         Returns:
             delta-rs's metrics of the compaction (`"optimize"`) and the
             files the vacuum removed (`"vacuumed"`); empty if the table does
             not exist.
         """
+        if vacuum is not None:
+            warnings.warn(
+                "DeltaSink.maintain(vacuum=...) is deprecated; write vacuum_retention=...",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            vacuum_retention = vacuum
+        retention = None if vacuum_retention is None else duration(vacuum_retention)
         dt = self._table()
         if dt is None:
             return {}
@@ -891,10 +925,10 @@ class DeltaSink(_TableSink[DeltaTable]):
         if last.record is not None and last.kept:
             commit = CommitProperties(custom_metadata={METADATA_KEY: last.record.to_json()})
         out: dict[str, object] = {"optimize": dt.optimize.compact(commit_properties=commit)}
-        if vacuum is not None:
+        if retention is not None:
             dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
             out["vacuumed"] = dt.vacuum(
-                retention_hours=math.ceil(vacuum.total_seconds() / 3600),
+                retention_hours=math.ceil(retention.total_seconds() / 3600),
                 dry_run=False,
                 enforce_retention_duration=False,
                 commit_properties=commit,
@@ -902,7 +936,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         return out
 
     def _maintain(self) -> None:
-        self.maintain(vacuum=self.vacuum_retention)
+        self.maintain(vacuum_retention=self.vacuum_retention)
 
     def _set_properties(self, dt: DeltaTable) -> DeltaTable:
         """Give the table the sink's table properties, where it lacks them;

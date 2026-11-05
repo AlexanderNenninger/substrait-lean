@@ -1,0 +1,73 @@
+# The job every workflow that reads or writes tables runs: check out, set up
+# sverify, open the stage's store (.github/actions/store), run a script.
+#
+# The environment holds the stage's credentials: `staging` writes only
+# staging/, `production` the production tables (README, "Stages and
+# credentials"). Its variables and secrets are read here, the one place
+# that maps them.
+name: lake
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      stage:
+        description: "`production` or `staging/pr-<n>`"
+        type: string
+        required: true
+      run:
+        description: The script to run, from the repository's root
+        type: string
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      STAGE: ${{ inputs.stage }}
+      GH_TOKEN: ${{ github.token }}
+      SVERIFY_STORE: ${{ vars.SVERIFY_STORE || 'repository' }}
+      SVERIFY_MEMORY_LIMIT: ${{ vars.SVERIFY_MEMORY_LIMIT || '4GB' }}
+      SVERIFY_KEEP_DAYS: ${{ vars.SVERIFY_KEEP_DAYS || '7' }}
+      SVERIFY_CATALOG_DATA: ${{ vars.SVERIFY_CATALOG_DATA }}
+      # For enterprise (README, "For enterprise"); unset otherwise.
+      SVERIFY_AWS_ROLE: ${{ vars.SVERIFY_AWS_ROLE }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ENDPOINT_URL: ${{ vars.AWS_ENDPOINT_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      SVERIFY_GCP_PROVIDER: ${{ vars.SVERIFY_GCP_PROVIDER }}
+      SVERIFY_GCP_SERVICE_ACCOUNT: ${{ vars.SVERIFY_GCP_SERVICE_ACCOUNT }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      TS_TAGS: ${{ vars.TS_TAGS }}
+      OPENBAO_ADDR: ${{ vars.OPENBAO_ADDR }}
+      OPENBAO_ROLE: ${{ vars.OPENBAO_ROLE }}
+      OPENBAO_SECRETS: ${{ vars.OPENBAO_SECRETS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/store
+        with:
+          stage: ${{ inputs.stage }}
+          store: ${{ env.SVERIFY_STORE }}
+          bucket: ${{ vars.SVERIFY_BUCKET }}
+      # Whether the catalog may link the data branch's files (lake.py, --data auto).
+      - run: echo "REPOSITORY_PUBLIC=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.private | not')" >> "$GITHUB_ENV"
+      - run: ${{ inputs.run }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lake-${{ inputs.environment }}
+          path: |
+            check.json
+            refresh.json
+            alert.md
+          if-no-files-found: ignore
+          retention-days: 14

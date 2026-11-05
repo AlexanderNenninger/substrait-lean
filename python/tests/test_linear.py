@@ -11,7 +11,7 @@ import pytest
 import sverify as sv
 from _pipelines import recomputed, rows
 from sverify._state import arrow_of
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 SCHEMA = pa.schema([("host", pa.string()), ("minute", pa.int64()), ("cpu", pa.int64())])
 ENGINES = ["duckdb", "polars", "datafusion"]
@@ -71,7 +71,7 @@ def test_count_and_sum_match_a_full_recompute(seed, engine):
     node.refresh(engine=engine)
     assert view(node).strategy == "delta rules"
     for ins, dels in batches:
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         out = node.refresh(engine=engine)["per_minute"]
         assert out.report is not None
         assert not out.report.touched and not out.report.diffed
@@ -87,7 +87,7 @@ def test_distinct_matches_a_full_recompute(seed, engine):
     node.refresh(engine=engine)
     assert view(node).strategy == "delta rules"
     for ins, dels in batches:
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         node.refresh(engine=engine)
         assert rows(node) == recomputed(node, src)
 
@@ -96,14 +96,14 @@ def test_groups_appear_and_disappear():
     src = StaticSource(samples([("a", 1, 5)]), name="samples")
     node = src.pipe(per_minute)
     node.refresh()
-    src.apply(sv.Changes(inserts=samples([("b", 2, None), ("b", 2, 20)])))
+    src.apply(Changes(inserts=samples([("b", 2, None), ("b", 2, 20)])))
     node.refresh(audit=True)
     assert rows(node) == [("a", 1, 1, 5, 1, None, 0), ("b", 2, 2, 20, 1, 20, 0)]
-    src.apply(sv.Changes(deletes=samples([("a", 1, 5), ("b", 2, 20)])))
+    src.apply(Changes(deletes=samples([("a", 1, 5), ("b", 2, 20)])))
     node.refresh(audit=True)
     # SUM of no values is NULL; the group stays while it has a row.
     assert rows(node) == [("b", 2, 1, None, 0, None, 0)]
-    src.apply(sv.Changes(deletes=samples([("b", 2, None)])))
+    src.apply(Changes(deletes=samples([("b", 2, None)])))
     node.refresh(audit=True)
     assert rows(node) == []
     assert view(node).groups.num_rows == 0
@@ -118,10 +118,10 @@ def test_distinct_keeps_a_row_while_it_has_copies():
     node = src.pipe(keys)
     node.refresh()
     for batch, want in [
-        (sv.Changes(inserts=samples([("a", 1, 6)])), [("a", 1)]),
-        (sv.Changes(deletes=samples([("a", 1, 5)])), [("a", 1)]),
-        (sv.Changes(deletes=samples([("a", 1, 6)])), []),
-        (sv.Changes(inserts=samples([("a", 1, 7), (None, 2, 1)])), [("a", 1), (None, 2)]),
+        (Changes(inserts=samples([("a", 1, 6)])), [("a", 1)]),
+        (Changes(deletes=samples([("a", 1, 5)])), [("a", 1)]),
+        (Changes(deletes=samples([("a", 1, 6)])), []),
+        (Changes(inserts=samples([("a", 1, 7), (None, 2, 1)])), [("a", 1), (None, 2)]),
     ]:
         src.apply(batch)
         node.refresh(audit=True)
@@ -135,7 +135,7 @@ def test_status_says_the_view_is_maintained():
     status = node.status().nodes[0]
     assert status.recomputed is None and status.touched is None
     assert "recomputed" not in str(node.status())
-    src.apply(sv.Changes(inserts=samples([("a", 1, 9)])))
+    src.apply(Changes(inserts=samples([("a", 1, 9)])))
     out = node.refresh()["per_minute"]
     assert "recomputed" not in out.summary()
     assert rows(node) == recomputed(node, src)
@@ -151,9 +151,9 @@ def test_a_filter_and_projection_over_the_aggregate():
     node.refresh()
     assert view(node).strategy == "delta rules"
     for batch in [
-        sv.Changes(inserts=samples([("b", 1, 9)])),
-        sv.Changes(deletes=samples([("a", 1, 7)])),
-        sv.Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
+        Changes(inserts=samples([("b", 1, 9)])),
+        Changes(deletes=samples([("a", 1, 7)])),
+        Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
     ]:
         src.apply(batch)
         node.refresh(audit=True)
@@ -172,10 +172,10 @@ def test_an_aggregate_over_a_join():
     node = src.pipe(by_team, hosts=teams)
     node.refresh()
     assert view(node).strategy == "delta rules"
-    src.apply(sv.Changes(inserts=samples([("a", 1, 9), ("b", 2, 1)])))
-    teams.apply(sv.Changes(inserts=pa.table({"host": ["c"], "team": ["x"]})))
+    src.apply(Changes(inserts=samples([("a", 1, 9), ("b", 2, 1)])))
+    teams.apply(Changes(inserts=pa.table({"host": ["c"], "team": ["x"]})))
     node.refresh(audit=True)
-    src.apply(sv.Changes(inserts=samples([("c", 1, 20)]), deletes=samples([("a", 1, 9)])))
+    src.apply(Changes(inserts=samples([("c", 1, 20)]), deletes=samples([("a", 1, 9)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src, teams)
 
@@ -195,12 +195,12 @@ def test_a_maintained_sum_that_leaves_64_bits_raises_and_changes_nothing():
     node = src.pipe(per_minute)
     node.refresh()
     before = rows(node)
-    src.apply(sv.Changes(inserts=samples([("a", 1, big), ("b", 1, 1)])))
+    src.apply(Changes(inserts=samples([("a", 1, big), ("b", 1, 1)])))
     with pytest.raises(Exception, match="(?i)overflow|out of range|64"):
         node.refresh()
     assert rows(node) == before
     # Deleting the first value brings the sum back within 64 bits.
-    src.apply(sv.Changes(deletes=samples([("a", 1, big)])))
+    src.apply(Changes(deletes=samples([("a", 1, big)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src)
 
@@ -211,7 +211,7 @@ def test_a_maintained_sum_that_leaves_64_bits_raises_and_changes_nothing():
 def test_retention_drops_the_retired_groups_from_the_state(seed, expire, measure):
     import test_retention as tr
 
-    @sv.transform(requires={"samples": [sv.arrives_within("ts", seconds=7200), *tr.BOUNDS]})
+    @sv.transform(requires={"samples": [sv.arrives_within("ts", "PT2H"), *tr.BOUNDS]})
     def hourly(samples):
         cpu = samples.cpu.sum() if measure == "sum" else samples.cpu.max()
         return samples.group_by(["host", samples.ts.truncate("h").name("bucket")]).aggregate(
@@ -229,9 +229,9 @@ def test_retention_drops_the_retired_groups_from_the_state(seed, expire, measure
     for ins, dels in stream:
         latest = max(view(node).pipeline.latest.values())
         wm = (latest - tr.T0) / tr.timedelta(minutes=1) - 120
-        src.apply(sv.Changes(inserts=tr.samples(ins), deletes=tr.samples(dels)))
+        src.apply(Changes(inserts=tr.samples(ins), deletes=tr.samples(dels)))
         history.apply(
-            sv.Changes(inserts=tr.samples(ins), deletes=tr.samples([d for d in dels if d[1] >= wm]))
+            Changes(inserts=tr.samples(ins), deletes=tr.samples([d for d in dels if d[1] >= wm]))
         )
         retired += node.refresh()[node.name].retention[0].retired
         assert sink.sorted() == tr.full(node, history)
@@ -245,9 +245,7 @@ def test_count_of_a_string_column():
     node = src.pipe(lambda samples: samples.group_by("minute").aggregate(n=samples.host.count()))
     node.refresh()
     assert view(node).strategy == "delta rules"
-    src.apply(
-        sv.Changes(inserts=samples([("b", 1, 1), (None, 2, 2)]), deletes=samples([("a", 1, 5)]))
-    )
+    src.apply(Changes(inserts=samples([("b", 1, 1), (None, 2, 2)]), deletes=samples([("a", 1, 5)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src) == [(1, 1), (2, 0)]
 
@@ -263,7 +261,7 @@ def test_a_state_the_checker_refuses_falls_back(monkeypatch):
     node = src.pipe(per_minute)
     node.refresh()
     assert view(node).strategy == "touched groups"
-    src.apply(sv.Changes(inserts=samples([("a", 1, 9)])))
+    src.apply(Changes(inserts=samples([("a", 1, 9)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src)
 
@@ -291,7 +289,7 @@ def test_min_and_max_match_a_full_recompute(seed, engine):
     assert view(node).strategy == "delta rules"
     assert view(node).linear.regroup is not None
     for ins, dels in batches:
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         out = node.refresh(engine=engine)["extremes"]
         assert out.report is not None
         assert not out.report.touched and not out.report.diffed
@@ -315,7 +313,7 @@ def test_inserts_merge_and_deletes_recompute_only_their_groups(monkeypatch):
 
     monkeypatch.setattr(incremental, "run_plan_on", spy)
     # Only inserts: every group merges, the input is not read.
-    src.apply(sv.Changes(inserts=samples([("a", 1, 11), ("b", 1, 1), ("c", 2, None)])))
+    src.apply(Changes(inserts=samples([("a", 1, 11), ("b", 1, 1), ("c", 2, None)])))
     node.refresh(audit=True)
     assert keys == []
     assert rows(node) == [
@@ -324,13 +322,13 @@ def test_inserts_merge_and_deletes_recompute_only_their_groups(monkeypatch):
         ("c", 2, 1, None, None, None, None),
     ]
     # Deleting a's MAX: only a's group is recomputed.
-    src.apply(sv.Changes(deletes=samples([("a", 1, 11)]), inserts=samples([("b", 1, 0)])))
+    src.apply(Changes(deletes=samples([("a", 1, 11)]), inserts=samples([("b", 1, 0)])))
     node.refresh(audit=True)
     assert keys == [[{"k0": "a", "k1": 1}]]
     assert rows(node) == recomputed(node, src)
     assert rows(node)[0] == ("a", 1, 2, 5, 9, 9, 14)
     # Deleting a group's last rows removes it from the state and the view.
-    src.apply(sv.Changes(deletes=samples([("c", 2, None)])))
+    src.apply(Changes(deletes=samples([("c", 2, None)])))
     node.refresh(audit=True)
     assert [r[0] for r in rows(node)] == ["a", "b"]
     assert view(node).groups.num_rows == 2
@@ -346,10 +344,10 @@ def test_a_filter_over_min_and_max():
     node.refresh()
     assert view(node).strategy == "delta rules"
     for batch in [
-        sv.Changes(inserts=samples([("b", 1, 9)])),
-        sv.Changes(deletes=samples([("a", 1, 7)])),
-        sv.Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
-        sv.Changes(deletes=samples([("b", 1, 9), ("c", 4, 2)])),
+        Changes(inserts=samples([("b", 1, 9)])),
+        Changes(deletes=samples([("a", 1, 7)])),
+        Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
+        Changes(deletes=samples([("b", 1, 9), ("c", 4, 2)])),
     ]:
         src.apply(batch)
         node.refresh(audit=True)
@@ -375,9 +373,9 @@ def test_min_and_max_of_strings_and_dates():
     node.refresh()
     assert view(node).strategy == "delta rules"
     for batch in [
-        sv.Changes(inserts=table([(1, "a", day - d.timedelta(1)), (2, None, None)])),
-        sv.Changes(deletes=table([(1, "a", day - d.timedelta(1))])),
-        sv.Changes(deletes=table([(1, "c", None)]), inserts=table([(2, "z", day)])),
+        Changes(inserts=table([(1, "a", day - d.timedelta(1)), (2, None, None)])),
+        Changes(deletes=table([(1, "a", day - d.timedelta(1))])),
+        Changes(deletes=table([(1, "c", None)]), inserts=table([(2, "z", day)])),
     ]:
         src.apply(batch)
         node.refresh(audit=True)
@@ -424,7 +422,7 @@ def test_decimal_avg_and_sum_match_a_full_recompute(seed):
         for d in dels:
             live.remove(d)
         live += ins
-        src.apply(sv.Changes(inserts=amounts(ins), deletes=amounts(dels)))
+        src.apply(Changes(inserts=amounts(ins), deletes=amounts(dels)))
         node.refresh()
         assert rows(node) == recomputed(node, src)
 
@@ -437,7 +435,7 @@ def test_a_decimal_avg_keeps_its_exact_type_and_rounds_half_away_from_zero():
     node.refresh()
     assert view(node).strategy == "delta rules"
     assert rows(node) == [("a", D("-36.195000"))]
-    src.apply(sv.Changes(inserts=amounts([("a", D("1.00")), ("b", None)])))
+    src.apply(Changes(inserts=amounts([("a", D("1.00")), ("b", None)])))
     node.refresh(audit=True)
     # -71.39 / 3 = -23.79666…: six decimal places, the last rounded.
     assert rows(node) == recomputed(node, src) == [("a", D("-23.796667")), ("b", None)]

@@ -17,6 +17,7 @@ from _pipelines import rows
 from sverify.errors import AuditError, PreconditionError
 from sverify.io import (
     Batch,
+    Changes,
     Contract,
     DeltaSink,
     DeltaSource,
@@ -73,7 +74,7 @@ def test_from_query_appends_by_its_cursor():
     f.add({"id": 3, "ts": 30, "amount": 50})
     report = node.refresh()
     [entry] = report["big"].report.sources
-    assert (entry.start, entry.end, entry.mode) == (1, 2, "change feed")
+    assert (entry.start, entry.end, entry.mode) == (1, 2, "change_feed")
     assert "appended to payments v1→v2" in entry.detail
     assert "assuming rows only arrive with a greater ts" in entry.detail
     assert rows(node) == [(1, 10, 30), (3, 30, 50)]
@@ -129,7 +130,7 @@ def test_from_frame_diffs_full_reads():
     node.refresh()
     table["t"] = pa.table({"id": [2, 3], "ts": [2, 3], "amount": [50, 60]})
     [entry] = node.refresh()["big"].report.sources
-    assert (entry.mode, entry.inserts, entry.deletes) == ("snapshot diff", 1, 1)
+    assert (entry.mode, entry.inserts, entry.deletes) == ("snapshot_diff", 1, 1)
     assert "full reads" in entry.detail and "assuming" not in entry.detail
     assert rows(node) == [(2, 2, 50), (3, 3, 60)]
     # The same table again is no new version.
@@ -268,7 +269,7 @@ def test_a_versioned_source_built_with_the_batch_helpers():
         pa.concat_tables([src.versions[1], pa.table({"id": [3], "ts": [3], "amount": [50]})])
     )
     [entry] = node.refresh()["big"].report.sources
-    assert (entry.mode, entry.detail, entry.inserts) == ("change feed", "Δ from the log", 1)
+    assert (entry.mode, entry.detail, entry.inserts) == ("change_feed", "Δ from the log", 1)
     assert rows(node) == [(1, 1, 30), (2, 2, 40), (3, 3, 50)]
 
 
@@ -284,7 +285,7 @@ class ParquetSink(Sink):
         self.record = self.path.with_suffix(".contract.json")
         self.changes = []
 
-    def committed(self):
+    def contract(self, version=None):
         if not self.record.exists():
             return None
         return Contract.from_json(self.record.read_text())
@@ -306,7 +307,7 @@ def test_sink_from_writes_each_state_once():
     first = node.refresh().writes[0]
     assert (first.mode, first.version, first.inserted) == ("overwrite", None, 1)
     assert node.refresh().writes[0].mode == "skipped"
-    src.apply(sv.Changes(inserts=[(3, 3, 50)]))
+    src.apply(Changes(inserts=[(3, 3, 50)]))
     node.refresh()
     assert [t.num_rows for t in written] == [1, 2]
     # Proved NOT NULL columns are not nullable in what the sink gets.
@@ -318,7 +319,7 @@ def test_a_sink_of_its_own_gets_the_change(tmp_path):
     sink = ParquetSink(tmp_path / "big.parquet")
     node = big(src).write(sink)
     node.refresh()
-    src.apply(sv.Changes(inserts=[(3, 3, 50)], deletes=[(1, 1, 30)]))
+    src.apply(Changes(inserts=[(3, 3, 50)], deletes=[(1, 1, 30)]))
     w = node.refresh().writes[0]
     assert (w.mode, w.inserted, w.deleted) == ("update", 1, 1)
     assert sink.changes == [(True, 1, 0), (False, 1, 1)]
@@ -354,9 +355,9 @@ def test_nodes_read_a_stored_node_from_what_was_written(tmp_path):
     stored = big(src).write(ParquetSink(tmp_path / "big.parquet"))
     out = ids(stored)
     out.refresh()
-    src.apply(sv.Changes(inserts=[(3, 3, 50)]))
+    src.apply(Changes(inserts=[(3, 3, 50)]))
     [entry] = out.refresh()["ids"].report.sources
-    assert (entry.mode, entry.inserts) == ("change feed", 1)
+    assert (entry.mode, entry.inserts) == ("change_feed", 1)
     assert entry.detail == "Δ as written to big v1→v2"
     assert rows(out) == [(1,), (3,)]
 

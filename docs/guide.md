@@ -24,12 +24,12 @@ import ibis
 import pyarrow as pa
 import sverify as sv
 from ibis import _
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 orders = StaticSource(
     pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
 )
-orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))  # now orders holds bob and cy
+orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))  # now orders holds bob and cy
 ```
 
 A transform states what it assumes about its inputs (`requires`) and what
@@ -274,7 +274,7 @@ def doubled(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
 expr = doubled(orders)
-print(doubled.last_report)
+print(doubled.report)
 # requires orders: (_.amount >= 0)
 # requires orders: (_.amount < 1000000000)
 # requires orders: _.id.notnull()
@@ -547,7 +547,7 @@ def twice_assumed(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
 twice_assumed(orders)
-print(twice_assumed.last_report)
+print(twice_assumed.report)
 # requires orders: (_.amount >= 0)
 # requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.twice >= 0): proved
@@ -649,7 +649,7 @@ print(report)
 
 ### Rows per key
 
-`sv.rows_per(["customer"], at_most=n)` in `requires` states that at most
+`sv.rows_per("customer", at_most=n)` in `requires` states that at most
 `n` rows of an input agree on the columns (#219). A cap on the whole table
 bounds every group at once; this bounds each group alone, so a table may
 grow without limit while each customer's rows stay few:
@@ -659,7 +659,7 @@ sales = ibis.table({"customer": "string", "amount": "int64"}, name="sales")
 per_customer = sales.group_by("customer").aggregate(total=sales.amount.sum())
 report = sv.verify(
     per_customer,
-    requires={"sales": [_.amount >= 0, _.amount <= 10**6, sv.rows_per(["customer"], at_most=10**12)]},
+    requires={"sales": [_.amount >= 0, _.amount <= 10**6, sv.rows_per("customer", at_most=10**12)]},
 )
 assert not report.assumed and not report.errors
 # Each group's sum is at most 10¹² · 10⁶, which fits 64 bits.
@@ -850,7 +850,7 @@ def doubled_paid(t):
     return t.select(t.id, t.customer, doubled=t.amount * 2)
 
 expr = doubled_paid(paid(orders))
-print(doubled_paid.last_report)
+print(doubled_paid.report)
 # requires paid: (_.amount >= 0)          ← what `paid` guarantees, not `orders`
 # requires paid: _.amount.notnull()
 # requires paid: unique(id)
@@ -883,7 +883,7 @@ def cities(orders, customers):
 
 c = orders.pipe(cities, customers=customers)   # fan-in: the other inputs by keyword
 c.refresh()
-customers.apply(sv.Changes(inserts=[("cy", "Rome")]))
+customers.apply(Changes(inserts=[("cy", "Rome")]))
 print(c.refresh())
 # cities:
 #   customers@v0→v1: 1 insert(s), 0 delete(s); Δ as applied to customers v0→v1
@@ -894,7 +894,7 @@ assert c.table.filter(_.city == "Rome").count().to_pyarrow().as_py() == 1
 
 A step can also be SQL or a plain function. `sv.sql(query)` is a step whose
 inputs are the tables the query reads: the keyword inputs bind their own
-names, and the chained node binds to the one table left over (`as_="orders"`
+names, and the chained node binds to the one table left over (`name="orders"`
 names it, and is checked). A plain function from Ibis tables to an Ibis
 table is a transform with no contract:
 
@@ -997,7 +997,7 @@ def capped(orders):
     return orders.select(orders.id, orders.amount)
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
-print(capped.last_report)
+print(capped.report)
 # ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows
 # ...
 print(n.refresh())
@@ -1044,7 +1044,7 @@ feed, a schema change, or a sink overwriting its table. A failed check raises,
 and its message says which rows failed what:
 
 ```python
-customers.apply(sv.Changes(inserts=[("dan", "Oslo")]))
+customers.apply(Changes(inserts=[("dan", "Oslo")]))
 print(c.refresh().summary())
 # cities: changes from orders v1, customers v1→v2 (change feed)
 ```
@@ -1222,7 +1222,7 @@ schema: `refresh` then raises `SchemaError` and changes nothing.
 
 Tables outside a table format, such as a small lookup table, are
 `StaticSource(table, version=1, name="regions")`, so that sinks still have a
-version for every input; `regions.apply(sv.Changes(...))` changes some rows,
+version for every input; `regions.apply(Changes(...))` changes some rows,
 and `regions.replace(new_table, version=2)` swaps the table, which recomputes
 the nodes that read it.
 
@@ -1233,7 +1233,7 @@ build one from a function or a directory. Sverify numbers the reads as
 versions, works out the change, and says in the report what the reads
 assume ("rows only arrive with a greater ts"), which `refresh(audit=True)`
 checks. A `sverify.io.Sink` implements `write(change)` and optionally
-`committed()`, and sverify writes each state once, with its contract;
+`contract()`, and sverify writes each state once, with its contract;
 `sink_from(fn)` hands the whole table to a function. `Storage` holds object
 store credentials, or a function that renews them, for every table that
 needs them. [Notebook 5](../notebooks/05_pipelines_and_engines.py) of the tour walks
@@ -1315,7 +1315,7 @@ which readers replay and open. Its options keep the table small:
 `checkpoint_interval` and `log_retention` set the table's checkpoint interval
 and log retention, `compact_every=n` compacts the table after every `n`
 writes, and `vacuum_retention` then removes the files older versions needed.
-`sink.maintain(vacuum=...)` does the same by hand. These commits carry the
+`sink.maintain(vacuum_retention=...)` does the same by hand. These commits carry the
 contract, and a restarted job resumes past them, as it does past another
 writer's `OPTIMIZE`, `VACUUM`, property or constraint change. A commit that
 changes rows, by anyone else, makes the job compute the node again. Keep the
@@ -1358,7 +1358,7 @@ write_deltalake(
 
 @sv.transform(
     requires={"samples": [
-        sv.arrives_within("ts", hours=2),
+        sv.arrives_within("ts", "PT2H"),
         _.ts >= datetime(2000, 1, 1), _.ts < datetime(2100, 1, 1),
     ]}
 )
@@ -1375,7 +1375,7 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
 #   retention hourly.hour: 3 bucket(s) open (bound 3), 2 retired, 6 state row(s); watermark 2026-11-03 02:50:00
 ```
 
-- `arrives_within("ts", hours=2)` says every row a batch inserts has `ts` at
+- `arrives_within("ts", "PT2H")` says every row a batch inserts has `ts` at
   or after the watermark: the largest `ts` seen before the batch, minus two
   hours. The first refresh checks that `ts` has no NULLs; every later batch
   is checked at refresh, and a late row rejects the batch with
@@ -1654,7 +1654,7 @@ which a consumer that does not know it ignores. It holds the preconditions
 and as a Substrait plan of one boolean column, and a manifest
 ([`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json)).
 Within 1.x the message and the manifest only gain fields, and
-`sv.from_substrait` reads every earlier 1.x export
+`sv.Report.from_substrait` reads every earlier 1.x export
 ([stability.md](stability.md#the-substrait-contract-message)):
 
 | Key | What it holds |
@@ -1670,7 +1670,7 @@ Within 1.x the message and the manifest only gain fields, and
 | `deterministic`, `rows`, `params`, `output` | as in the report |
 
 `report.substrait_contract()` returns the same contract as JSON, for a
-sidecar file. `sv.from_substrait(exported)` reads a plan back, in either
+sidecar file. `sv.Report.from_substrait(exported)` reads a plan back, in either
 format, and proves its contract again with the checker; the report it
 returns has the same postconditions and verdict.
 [Example 10](examples.md#10-a-verified-plan-for-any-substrait-consumer)
@@ -1678,6 +1678,93 @@ exports a plan and shows the three modes. DataFusion's Substrait consumer
 runs the exports in `tests/test_substrait_export.py` and gives the
 reference's results; it does not know Substrait's `variance` or
 `shift_left` yet.
+
+### ODCS contracts
+
+The [Open Data Contract Standard](https://bitol-io.github.io/open-data-contract-standard/)
+(ODCS, Bitol, Linux Foundation AI & Data) describes a dataset's contract in
+YAML: its schema, quality rules, descriptions and owners. Sverify writes a
+node's contract as ODCS and reads ODCS contracts as conditions
+([#791](https://github.com/AlexanderNenninger/substrait-lean/issues/791)).
+It writes ODCS v3.2.0 (`sverify.odcs.ODCS_VERSION`), and the tests validate
+every export against that release's JSON schema
+([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
+[test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
+`pip install 'sverify[odcs]'`. JSON needs nothing.
+
+```python
+import pyarrow as pa
+import sverify as sv
+from ibis import _
+from sverify import odcs
+from sverify.io import StaticSource
+
+shop_orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1000, sv.key("id")]},
+    ensures=[_.amount > 10, _.amount < 1000, sv.key("id")],
+)
+def paid_orders(orders):
+    """Paid orders over ten."""
+    return orders.filter(orders.amount > 10)
+
+odcs.write(shop_orders.pipe(paid_orders), "paid.odcs.yaml", descriptions={"id": "the order's id"})
+
+# Another team reads the contract and builds on it.
+paid_contract = odcs.read("paid.odcs.yaml")
+
+@sv.transform(requires={"paid": paid_contract.conditions()}, ensures=[_.doubled > 20])
+def doubled_paid(paid):
+    return paid.select(paid.id, doubled=paid.amount * 2)
+
+print(doubled_paid.check(paid=paid_contract.schema()).proved)
+# True
+```
+
+```bash
+sverify contract export pipelines/orders.py:paid --format odcs -o paid.odcs.yaml
+```
+
+The export is one schema object named after the node, with a property per
+column. Each sverify term maps to its ODCS field:
+
+| Sverify | ODCS |
+|---------|------|
+| a column the node proves NOT NULL | `required: true` |
+| `sv.key(...)`, the first key whose columns are all NOT NULL | `primaryKey`, `primaryKeyPosition` |
+| `sv.unique(col)` | `unique: true` |
+| `sv.unique(a, b)` | a `duplicateValues` rule on the object, `arguments.properties`, `mustBe: 0` |
+| `_.col.isin([...])` | an `invalidValues` rule, `arguments.validValues`, `mustBe: 0` |
+| `sv.max_rows(n)` | a `rowCount` rule, `mustBeLessOrEqualTo: n` |
+| `sv.rows_per(cols, n)` | a `sql` rule counting the keys with more than `n` rows |
+| `sv.references(col, to=...)` | a `foreignKey` relationship on the property |
+| any other row condition, such as a range | a `sql` rule, `SELECT COUNT(*) FROM {object} WHERE NOT COALESCE(<condition>, FALSE)`, `mustBe: 0` |
+| the transform's docstring, `descriptions=` | `description` |
+
+Every flag and rule carries a custom property `sverify` (vendor
+`sverify`) with its `status`: `proved` by the checker, `checked` on the
+data at every refresh (`on_unproved="check"`), or `declared` and
+neither. Its `label` is the condition as the transform states it. The
+document's own `sverify` property names the node, the sha256 of its plan
+(as the sink's [contract record](stability.md) has it) and whether the
+whole contract is proved. Sverify's conditions hold where they are TRUE, so
+the SQL rules count a NULL against the condition, and a value set marks its
+column `required`.
+
+`odcs.read` takes a file, the text or a dict of ODCS 3.0 to 3.2 and gives
+the conditions of each schema object (`conditions(table)`) and its columns
+as an Ibis schema (`schema(table)`), for `requires` on an input or
+`ensures` on a node. It reads the fields of the table above, `enum`, the
+bounds in `logicalTypeOptions`, `nullValues` and `missingValues` rules,
+and any `sql` rule of the form `SELECT COUNT(*) FROM {object} WHERE <rows
+that break it>` that must be 0. ODCS leaves NULLs to `required`, so on a
+column that may be NULL a rule on values lets NULL through. The rules it
+cannot read (free text, another engine's rules, patterns, thresholds other
+than 0, shares of rows, lower bounds on the row count) are listed in
+`unread`, each with the reason, and `read` warns with
+`odcs.UnreadRuleWarning`; `strict=True` raises instead. A round trip, ODCS
+to sverify and back, keeps every rule sverify reads.
 
 ### Reproducible sinks
 
