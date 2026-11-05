@@ -60,7 +60,12 @@ proves its postconditions and keys over every order
 ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
 `Report.deterministic` is false where rows may tie in the order of a window,
 of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or of a `FETCH`
-(`Rel.windowsTotal`, `Rel.fetchesTotal`), and `Report.tie_places` names each place;
+(`Rel.windowsTotal`, `Rel.fetchesTotal`), and `Report.tie_places` names each place.
+`RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
+order need no key: tied rows get the same value in every arrangement
+(`window_tieFree`). A key on one column of a pair an inner join's or a filter's
+condition equates is a key on the other (`KeyOn.eqVariants`), so a key breaks ties
+through a join from either side;
 it does not yet flag the other choices.
 
 The reference is not a model of any engine, DuckDB included. It is stricter
