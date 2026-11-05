@@ -159,10 +159,10 @@ intent = "Flag readings more than three standard deviations from their sensor's 
 domain = "iot"
 source = { name = "Polars user guide: window functions over groups", url = "https://docs.pola.rs/user-guide/expressions/window-functions/", licence = "MIT" }
 features = ["window_partition_agg", "avg", "stddev_var", "math_funcs", "filter", "arithmetic_float"]
-pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0", "float_nan: NaN readings"]
+pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0; NULLIF makes its z-scores NULL", "float_nan: NaN readings"]
 ibis = '''
 w = ibis.window(group_by="sensor_id")
-z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w)
+z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w).nullif(0)
 q = readings.mutate(z=z).filter(_.z.abs() > 3)
 '''
 
