@@ -1,0 +1,72 @@
+[project]
+name = "sverify-dbt"
+version = "0.5.0"
+description = "Check a dbt project's tests and model contracts with sverify, before the models run"
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    # sverify-dbt is released with sverify, at its version
+    # (.claude/skills/release-sverify/SKILL.md bumps both).
+    "sverify==0.5.0",
+    # Rewrites the relations of each model's compiled SQL to its inputs' names.
+    "sqlglot>=30.17.0",
+    # Writes the selectors file (dbt depends on it too).
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+sverify-dbt = "sverify_dbt.cli:main"
+
+[project.urls]
+Source = "https://github.com/AlexanderNenninger/substrait-lean/tree/main/dbt"
+Issues = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sverify_dbt"]
+
+# The sdist: the package, its tests and the sample project's sources, without
+# what dbt writes there (`dbt deps`, `dbt compile`, `dbt build`).
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "examples/*/dbt_packages",
+    "examples/*/target",
+    "examples/*/logs",
+    "examples/*/*.duckdb",
+    "examples/*/*.duckdb.wal",
+    "examples/*/selectors.yml",
+    "examples/*/.user.yml",
+]
+
+[dependency-groups]
+dev = [
+    "dbt-core>=1.10",
+    "dbt-duckdb>=1.9",
+    "pyrefly>=1.4.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.uv.sources]
+# The sverify of this checkout; `SVERIFY_PREBUILT_CHECK` links a built checker.
+sverify = { path = "../python", editable = true }
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+search-path = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["examples"]
