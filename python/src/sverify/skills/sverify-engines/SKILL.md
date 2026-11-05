@@ -6,7 +6,7 @@ description: >
   semantics. Use when a user wants the same result on several engines, moves
   a job between engines or to a warehouse, gets
   `sverify.engines.Unsupported` and wants to know why, needs
-  `tie_free=True`, or aligns two time series with `asof_join`.
+  `deterministic=True`, or aligns two time series with `asof_join`.
 ---
 
 # sverify engines: one plan, the same answer everywhere
@@ -58,13 +58,14 @@ rows in those libraries.
 
 ## Write the plan as warehouse SQL
 
-`node.plan` is the plan in Lean's written form. `sverify.engines.to_sql`
+`node.internal_plan` is the plan in Lean's written form, which only sverify reads
+(`report.to_substrait()` is the portable plan). `sverify.engines.to_sql`
 writes it as SQL whose meaning is the model's:
 
 ```python
 from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, Unsupported, to_sql
 
-plan = json.loads(node.plan)
+plan = json.loads(node.internal_plan)
 for dialect in (DUCKDB, SNOWFLAKE, SPARK):
     assert to_sql(plan, dialect).startswith("SELECT")
 ```
@@ -85,20 +86,20 @@ def numbered(orders):
     return orders.mutate(rn=ibis.row_number().over(w))
 
 
-plan = json.loads(numbered(orders).plan)
+plan = json.loads(numbered(orders).internal_plan)
 try:
     to_sql(plan, SNOWFLAKE)
 except Unsupported as e:
     print(str(e).split(",")[0])
 # Snowflake tables have no row order
-print(to_sql(plan, SNOWFLAKE, tie_free=True)[:6])
+print(to_sql(plan, SNOWFLAKE, deterministic=True)[:6])
 # SELECT
 ```
 
 * **Snowflake and Spark tables have no row order**, so sorts, `LIMIT` and
-  windows are refused unless you pass `tie_free=True`, and so is `SUM` or
+  windows are refused unless you pass `deterministic=True`, and so is `SUM` or
   `AVG` of doubles (the rounding depends on the order of additions). Pass
-  `tie_free=True` only when a contract report says `deterministic` (a key on
+  `deterministic=True` only when a contract report says `deterministic` (a key on
   the partition and order columns rules out ties).
 * **Snowflake has no interval type**: interval-valued expressions are refused.
 * **Warehouse setup the SQL assumes:** Snowflake time columns are

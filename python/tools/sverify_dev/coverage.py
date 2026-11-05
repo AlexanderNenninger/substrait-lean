@@ -112,7 +112,7 @@ def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
             tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}
             polars_engine.run(plan, tables)
         else:
-            plan_sql(plan, dialects[engine], tie_free=tie_free)
+            plan_sql(plan, dialects[engine], deterministic=tie_free)
     except (polars_engine.Unsupported, Untranslatable) as e:
         return str(e)
     return None
@@ -183,7 +183,8 @@ def table(rs: list[Result]) -> str:
     for e in ENGINES:
         out = [r for r in verified if e in r.refused]
         refused = " · ".join(
-            r.case.label + (" (with `tie_free=True` it runs)" if r.case.label in TIE_FREE else "")
+            r.case.label
+            + (" (with `deterministic=True` it runs)" if r.case.label in TIE_FREE else "")
             for r in out
         )
         lines.append(f"| {NAMES[e]} | {len(verified) - len(out)} | {refused or '—'} |")

@@ -9,13 +9,12 @@ are Lean's `Rel.eval`, see `sverify.sql.spark`) and runs it on a Spark
 session holding the given tables as temporary views. `session()` is a local
 session with the settings of `SPARK_CONF`; on a cluster or Databricks, pass
 your own session, configured the same way. Plans that need a table's row
-order are refused (`Unsupported`) unless `tie_free=True`.
+order are refused (`Unsupported`) unless `deterministic=True`.
 """
 
 from __future__ import annotations
 
 import functools
-import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -87,7 +86,8 @@ def run(
     tables: Mapping[str, pa.Table],
     spark: SparkSession | None = None,
     *,
-    tie_free: bool = False,
+    deterministic: bool = False,
+    tie_free: bool | None = None,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
     This is `sverify.engines.run_spark`.
@@ -103,10 +103,11 @@ def run(
         spark: The Spark session to run on, configured with
             `sverify.engines.SPARK_CONF`. Default: a local session with
             those settings.
-        tie_free: Promise that no two rows tie on any window's
+        deterministic: Promise that no two rows tie on any window's
             `PARTITION BY` and `ORDER BY` columns (what a contract report's
             `deterministic` says), so windows run without a row-order
             tiebreak (see `sverify.engines.to_sql`). Default False.
+        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         The plan's result, as an Arrow table.
@@ -114,11 +115,20 @@ def run(
     Raises:
         sverify.engines.Unsupported: Spark SQL cannot express the plan with
             Lean's meaning, for example a plan that needs a table's row order
-            without `tie_free=True`.
+            without `deterministic=True`.
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
+    if tie_free is not None:
+        import warnings
+
+        warnings.warn(
+            "run_spark(tie_free=...) is deprecated; write deterministic=...",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        deterministic = tie_free
     spark = spark or session()
-    sql = to_sql(json.loads(plan) if isinstance(plan, str) else plan, SPARK, tie_free=tie_free)
+    sql = to_sql(plan, SPARK, deterministic=deterministic)
     put_tables(tables, spark)
     return spark.sql(sql).toArrow()

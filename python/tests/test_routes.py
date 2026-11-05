@@ -45,7 +45,7 @@ def test_native_and_reference(con) -> None:
     for engine in ("duckdb", "polars"):
         out = report.run(con, engine, route="auto")
         r = report.routes[engine]
-        assert r.kind == "reference" and r.profile == "reference", r
+        assert r.kind == "translated" and r.profile == "reference", r
         assert sorted(out.column("j").to_pylist()) == [-6, 3, 4]
     assert "route on polars: exact" in str(report)
     duck = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": t}, semantics="duckdb")
@@ -55,9 +55,9 @@ def test_native_and_reference(con) -> None:
 def test_explicit_route_is_taken_or_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
-    assert routes.choose(report, "duckdb", "reference").kind == "reference"
+    assert routes.choose(report, "duckdb", "translated").kind == "translated"
     r = routes.choose(report, "duckdb", "native")
-    assert r.refused and "not verified under Profile.duckdb" in r.reason
+    assert r.refused and 'not verified under semantics="duckdb"' in r.reason
     with pytest.raises(routes.RouteError, match="refused on duckdb"):
         report.run(con, "duckdb", route="native")
     with pytest.raises(ValueError, match="route must be"):
@@ -125,7 +125,7 @@ def test_transfer_without_tables_is_refused_with_the_reason(monkeypatch, con) ->
 
 def test_unproved_plan_is_refused(con) -> None:
     t = con.table("t")
-    report = sv.verify(t.select("k", j=t.i * t.i), infer=False)
+    report = sv.verify(t.select("k", j=t.i * t.i), on_inferred="off")
     assert not report.proved
     reason = routes.choose(report, "duckdb").reason
     assert reason.startswith("not verified: may fail: overflow: i * i (see report.errors)")
@@ -136,7 +136,7 @@ def test_run_refuses_an_unproved_plan_unless_asked(con) -> None:
     """#655: an unproved plan does not run silently; `unverified=True` runs
     it, and the result, the routes and a warning say so."""
     t = con.table("t")
-    report = sv.verify(t.select("k", j=t.i * t.i), infer=False)
+    report = sv.verify(t.select("k", j=t.i * t.i), on_inferred="off")
     with pytest.raises(routes.RouteError, match=r"refused on duckdb: not verified: may fail"):
         report.run(con)
     with pytest.warns(routes.UnverifiedRunWarning, match="running on duckdb unverified"):
@@ -152,7 +152,7 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     report = sv.verify(expr)
     assert report.proved and not report.deterministic
     r = routes.choose(report, "duckdb")
-    assert r.kind == "reference" and not r.deterministic
+    assert r.kind == "translated" and not r.deterministic
     assert any("ties stay open" in w for w in r.warnings)
     strict = routes.choose(report, "duckdb", deterministic=True)
     assert strict.refused and "rerun must give the same result" in strict.reason
@@ -169,7 +169,7 @@ def test_sequence_needs_a_sorted_result(con) -> None:
         requires=req,
         ensures=[seq],
     )
-    assert routes.choose(ordered, "duckdb").kind == "reference"
+    assert routes.choose(ordered, "duckdb").kind == "translated"
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -224,7 +224,7 @@ def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
         monkeypatch, [_row("a", "refines"), _row("b", "shim", shim="CASE", ev="tested")]
     )
     r = routes.choose(report, "polars")
-    assert (r.kind, r.cls, r.evidence, r.shims) == ("reference", "shim", "tested", ("b: CASE",))
+    assert (r.kind, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
     assert str(r).startswith("shim (") and str(r).endswith("; evidence tested")
     _classed_tables(monkeypatch, [_row("a", "refines"), _row("b", "refused")])
     r = routes.choose(report, "polars")
@@ -277,7 +277,7 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     # Without a route too (#604), unless the caller opts out.
     with pytest.raises(PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
         report.run(con, "polars")
-    report.run(con, "polars", check_inputs=False)
+    report.run(con, "polars", check_requires=False)
 
 
 def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:

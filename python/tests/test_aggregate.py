@@ -325,7 +325,7 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     assert [str(i) for i in report.assumed] == ["SUM overflow: sum(amount)"]
     assert "assumes: SUM of amount fits 64 bits in every group" in str(report)
     # Without inference it is an error like any other.
-    strict = sv.verify(orders.aggregate(total=orders.amount.sum()), infer=False)
+    strict = sv.verify(orders.aggregate(total=orders.amount.sum()), on_inferred="off")
     assert [str(i) for i in strict.errors] == ["SUM overflow: sum(amount)"]
     assert not strict.proved and not strict.assumed
     assert "checks it while it runs" in str(strict)
@@ -338,18 +338,18 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     jobs = ibis.table({"workflow": "!string", "conclusion": "!string"}, name="jobs")
     flag = (jobs.conclusion == "success").ifelse(1, 0)
     t = jobs.group_by("workflow").aggregate(passed=flag.sum())
-    for report in (sv.verify(t), sv.verify(t, infer=False)):
+    for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
         assert report.proved, str(report)
         assert not report.issues and not report.assumed and not report.warnings
         assert not any(h.startswith("SUM of") for h in report.hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
-    report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), infer=False)
+    report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
     assert report.proved and not report.issues, str(report)
     # Values in [0, 2] still need a row cap: 2 · (2^63 - 1) leaves 64 bits.
     double = (jobs.conclusion == "success").ifelse(2, 0)
     t = jobs.group_by("workflow").aggregate(points=double.sum())
     assert [i.kind for i in sv.verify(t).assumed] == ["SUM overflow"]
-    report = sv.verify(t, infer=False)
+    report = sv.verify(t, on_inferred="off")
     assert [i.kind for i in report.errors] == ["SUM overflow"]
     assert any(
         "it is in [0, 2], so a group's sum fits 64 bits for up to "
@@ -387,13 +387,17 @@ def test_a_bounded_sum_over_bounded_rows_is_proved_outright():
     # with nothing to assume.
     first = orders.limit(1000)
     bounded = {"orders": [_.amount >= -1_000_000, _.amount <= 1_000_000]}
-    report = sv.verify(first.aggregate(total=first.amount.sum()), requires=bounded, infer=False)
+    report = sv.verify(
+        first.aggregate(total=first.amount.sum()), requires=bounded, on_inferred="off"
+    )
     assert report.proved, str(report)
     assert not report.assumed
     # Without the bound on the values, or on the rows, it may overflow.
-    report = sv.verify(first.aggregate(total=first.amount.sum()), infer=False)
+    report = sv.verify(first.aggregate(total=first.amount.sum()), on_inferred="off")
     assert [i.kind for i in report.errors] == ["SUM overflow"]
-    report = sv.verify(orders.aggregate(total=orders.amount.sum()), requires=bounded, infer=False)
+    report = sv.verify(
+        orders.aggregate(total=orders.amount.sum()), requires=bounded, on_inferred="off"
+    )
     assert [i.kind for i in report.errors] == ["SUM overflow"]
 
 
@@ -439,7 +443,7 @@ def test_a_global_aggregate_has_one_row():
 
 def test_errors_in_measures_are_reported():
     expr = orders.group_by("customer").aggregate(q=(100 // orders.amount).sum())
-    report = sv.verify(expr, infer=False)
+    report = sv.verify(expr, on_inferred="off")
     assert any(i.kind == "division by zero" for i in report.errors)
     guarded = (
         orders.filter(orders.amount != 0)

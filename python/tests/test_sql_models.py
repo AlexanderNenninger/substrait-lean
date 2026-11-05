@@ -113,7 +113,7 @@ def test_engines_give_the_rows_of_run(engine):
     node.refresh(engine=engine)
     con = sv.connect()
     con.put("orders", orders.table)
-    want = sorted(tuple(r.values()) for r in run(con, node.plan, engine).to_pylist())
+    want = sorted(tuple(r.values()) for r in run(con, node.internal_plan, engine).to_pylist())
     assert rows(node) == want == [("ada", 5), ("bob", 7)]
 
 

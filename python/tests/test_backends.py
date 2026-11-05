@@ -217,7 +217,7 @@ def engine_sql(case, engine: str, dialect, read: str) -> str | None:
             plan_sql(plan, dialect)
         if case.label not in TIE_FREE:
             return None
-        sql = plan_sql(plan, dialect, tie_free=True)
+        sql = plan_sql(plan, dialect, deterministic=True)
     else:
         sql = plan_sql(plan, dialect)
     sqlglot.parse_one(sql, read=read)

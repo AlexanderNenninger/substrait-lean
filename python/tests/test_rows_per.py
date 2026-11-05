@@ -118,7 +118,7 @@ def test_a_decimal_sum_scaled_after_a_capped_aggregate_fits():
     t = ibis.table({"c": "decimal(15,2)", "g": "int64"}, name="t")
     q = t.group_by("g").aggregate(s=_.c.sum() * 0.0001)
     report = sv.verify(
-        q, requires={"t": [_.c.between(1, 1000), sv.max_rows(1000)]}, ensures=[], infer=False
+        q, requires={"t": [_.c.between(1, 1000), sv.max_rows(1000)]}, ensures=[], on_inferred="off"
     )
     assert report.errors == [], str(report)
     lo, hi = report.bounds.get("s", (None, None)) if report.bounds else (None, None)
@@ -129,9 +129,11 @@ def test_rows_per_bounds_a_decimal_sum():
     t = ibis.table({"d": "decimal(20,0)", "g": "int64"}, name="t")
     q = t.group_by("g").aggregate(s=t.d.sum())
     bounded = [_.d.between(-(10**18), 10**18)]
-    report = sv.verify(q, requires={"t": [*bounded, sv.rows_per(["g"], at_most=1000)]}, infer=False)
+    report = sv.verify(
+        q, requires={"t": [*bounded, sv.rows_per(["g"], at_most=1000)]}, on_inferred="off"
+    )
     assert report.errors == [] and report.assumed == [], str(report)
-    report = sv.verify(q, requires={"t": bounded}, infer=False)
+    report = sv.verify(q, requires={"t": bounded}, on_inferred="off")
     assert [i.kind for i in report.errors] == [SUM_OVERFLOW]
 
 

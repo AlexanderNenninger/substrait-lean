@@ -45,7 +45,7 @@ pytestmark = pytest.mark.backend("spark")
 def spark_sql(plan: dict, tie_free: bool = False) -> str:
     """The query, or the reason it is refused, for snapshots."""
     try:
-        return to_sql(plan, SPARK, tie_free=tie_free)
+        return to_sql(plan, SPARK, deterministic=tie_free)
     except Unsupported as e:
         return f"-- Unsupported: {e}"
 
@@ -89,7 +89,7 @@ def test_refusals():
     with pytest.raises(Unsupported, match="no row order"):
         to_sql(NAMED_ORDERED["window"], SPARK)
     with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["fetch"], SPARK, tie_free=True)
+        to_sql(NAMED_ORDERED["fetch"], SPARK, deterministic=True)
 
 
 # ------------------------------------------------------------ on Spark

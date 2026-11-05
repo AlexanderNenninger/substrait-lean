@@ -98,7 +98,7 @@ def test_contracts(engine):
 
         assert doubled(orders).to_pyarrow().to_pylist() == [{"id": 1, "doubled": 60}]
         checked_on_engine = sv.transform(
-            requires={"orders": [_.amount >= 0]}, engine=con.engine
+            requires={"orders": [_.amount >= 0]}, check_engine=con.engine
         )(lambda orders: orders)
         checked_on_engine(orders)
         create_table(con, "bad", orders.schema(), [(1, "ada", -1)])

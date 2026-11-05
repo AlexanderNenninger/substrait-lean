@@ -5,7 +5,7 @@
 
 [tie_order]
 description = "The result depends on how ties are broken: ROW_NUMBER, LIMIT or first/last over non-unique sort keys."
-engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake tables have no row order, so sverify refuses such plans there unless tie_free=True."
+engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake tables have no row order, so sverify refuses such plans there unless deterministic=True."
 quirks = []
 
 [null_ordering]

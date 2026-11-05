@@ -191,7 +191,7 @@ TIE_FREE = {"window_tie_free": NAMED_ORDERED["window"]}
 def snowflake_sql(plan: dict, tie_free: bool = False) -> str:
     """The query, or the reason it is refused, for snapshots."""
     try:
-        return to_sql(plan, SNOWFLAKE, tie_free=tie_free)
+        return to_sql(plan, SNOWFLAKE, deterministic=tie_free)
     except Unsupported as e:
         return f"-- Unsupported: {e}"
 
@@ -277,7 +277,7 @@ def test_windows_and_relations():
     with pytest.raises(Unsupported, match="no row order"):
         to_sql(NAMED_ORDERED["window"], SNOWFLAKE)
     with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["fetch"], SNOWFLAKE, tie_free=True)
+        to_sql(NAMED_ORDERED["fetch"], SNOWFLAKE, deterministic=True)
 
 
 def test_identifiers_are_quoted():
@@ -371,7 +371,7 @@ def run_differential(
         got = run(to_sql(plan, d))
         assert got == lean_rows(plan, {}), name  # in Lean's row order
     for name, plan in TIE_FREE.items():
-        got = run(retarget(to_sql(plan, d, tie_free=True)))
+        got = run(retarget(to_sql(plan, d, deterministic=True)))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in FEATURE_PLANS.items():
         got = run(retarget(to_sql(plan, d)))
@@ -380,7 +380,7 @@ def run_differential(
     create_tables(con, ORDERS, CUSTOMERS)
     for name, expr in SORTED.items():
         plan = json.loads(to_substrait_json(expr))
-        got = run(retarget(to_sql(plan, d, tie_free=True)))
+        got = run(retarget(to_sql(plan, d, deterministic=True)))
         assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():
         plan = json.loads(path.read_text())
