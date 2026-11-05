@@ -341,7 +341,7 @@ def test_window_sums_may_wrap():
     query = "SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r"
     report = sv.verify(query, tables={"r": SCHEMA})
     assert "SUM overflow" in [i.kind for i in report.assumed]
-    strict = sv.verify(query, tables={"r": SCHEMA}, infer=False)
+    strict = sv.verify(query, tables={"r": SCHEMA}, on_inferred="off")
     assert "SUM overflow" in [i.kind for i in strict.errors]
     assert not strict.proved
 

@@ -25,11 +25,11 @@ def test_refresh_reports_the_route(tmp_path) -> None:
     for engine in ("duckdb", "polars"):
         out = node.refresh(engine=engine, route="auto")
         r = out["doubled"].route
-        assert r is not None and r.kind == "reference" and r.engine == engine
-        assert f"route on {engine}: reference" in str(out)
+        assert r is not None and r.kind == "translated" and r.engine == engine
+        assert f"route on {engine}: " in str(out) and "(translated): " in str(out)
     # "auto" is the default.
     plain = doubled(paid(orders)).refresh(engine="polars")
-    assert plain["doubled"].route is not None and plain["doubled"].route.kind == "reference"
+    assert plain["doubled"].route is not None and plain["doubled"].route.kind == "translated"
 
 
 def test_a_refused_route_refreshes_nothing(tmp_path) -> None:
@@ -37,12 +37,13 @@ def test_a_refused_route_refreshes_nothing(tmp_path) -> None:
     node = doubled(paid(orders)).write(DeltaSink(str(tmp_path / "out")))
     with pytest.raises(
         RouteError,
-        match=r"refused on duckdb: doubled \(stored as out\): not verified under Profile.duckdb",
+        match=r"refused on duckdb: doubled \(stored as out\): not verified under "
+        r'semantics="duckdb"',
     ):
         node.refresh(route="native")
     with pytest.raises(Exception):  # noqa: B017 - nothing was written
         DeltaTable(str(tmp_path / "out"))
-    node.refresh(route="reference")
+    node.refresh(route="translated")
     assert DeltaTable(str(tmp_path / "out")).to_pyarrow_table().num_rows == 1
 
 
@@ -56,7 +57,7 @@ def test_a_stored_node_needs_a_determined_result(tmp_path) -> None:
     route = open_pick.refresh(route="auto")["any_amount"].route
     assert route is not None and not route.deterministic and route.warnings
     stored = any_amount(orders).write(DeltaSink(str(tmp_path / "picked")))
-    for how in ("auto", "reference"):
+    for how in ("auto", "translated"):
         # #655: the fix sentence is kept on every route.
         with pytest.raises(RouteError, match="rerun must give the same.*declare `unique"):
             stored.refresh(route=how)

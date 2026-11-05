@@ -54,7 +54,7 @@ def verify(sql: str, tables: dict, requires: list | None = None) -> sv.Report:
     return sv.verify(
         sv.sql(sql, semantics="reference", **inputs),
         requires={n: requires or [] for n in tables},
-        infer=False,
+        on_inferred="off",
     )
 
 
@@ -262,7 +262,7 @@ def test_double_division_by_zero_may_fail():
     def ref(sql: str) -> ibis.Table:
         return sv.sql(sql, semantics="reference", f=f)
 
-    report = sv.verify(ref("SELECT x / y AS q FROM f"), infer=False)
+    report = sv.verify(ref("SELECT x / y AS q FROM f"), on_inferred="off")
     assert [str(i) for i in report.errors] == [
         "division by zero: x / y",
         "domain error: x / y",
@@ -749,10 +749,10 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     # first, on Polars as on DuckDB.
     with pytest.raises(RouteError, match="not verified: may fail: domain error: x \\* y"):
         ref.run(con, engine)
-    with pytest.raises(PreconditionError, match="may overflow to ±inf.*refused before the run"):
+    with pytest.raises(PreconditionError, match="stays finite on finite inputs.*refused before the run"):
         ref.run(con, engine, unverified=True)
     with pytest.raises(Exception, match="overflow"):
-        ref.run(con, engine, check_inputs=False, unverified=True)
+        ref.run(con, engine, check_requires=False, unverified=True)
 
 
 def test_bounds_rule_out_overflow_to_infinity():

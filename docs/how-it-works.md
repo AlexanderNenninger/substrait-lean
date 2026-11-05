@@ -389,7 +389,7 @@ run. Contracts take `engine=` for their runtime checks on data too:
 ```python
 view = IncrementalView(con, query, "v", engine="duckdb")
 
-@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
+@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", check_engine="duckdb")
 def passthrough(orders): ...
 ```
 
@@ -465,7 +465,7 @@ raises when it would answer differently:
 * FETCH over a named table is refused: Snowflake tables have no row order.
   So is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
   the additions.
-  Windows and sorts are refused too, unless you pass `tie_free=True` to
+  Windows and sorts are refused too, unless you pass `deterministic=True` to
   promise there are no ties on their keys (a contract report's
   `deterministic` says so for windows).
 * Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
@@ -509,7 +509,7 @@ Spark differs:
   identifier is quoted with backticks.
 
 Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
-table without `tie_free=True` (tables have no row order), and so `SUM` or
+table without `deterministic=True` (tables have no row order), and so `SUM` or
 `AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
 `Math.pow` (within 1 ulp of C's).
 
@@ -678,9 +678,9 @@ the JSON plumbing.
 runtime errors, or reports what may go wrong. `sverify` reports these as
 `may fail: …` (a `VerificationError` from `@sv.transform`). A `SUM` that
 may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
-group (inferred; checked on the data while the job runs …)` (or
+group (checked at run time: the job raises if it does not …)` (or
 `fits DECIMAL(38, 2)` for a decimal `SUM`, #316), and is an error with
-`infer=False`.
+`on_inferred="off"`.
 
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,

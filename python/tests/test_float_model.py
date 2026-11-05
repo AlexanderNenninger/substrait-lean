@@ -149,7 +149,7 @@ def test_an_observation_reprs_as_its_call() -> None:
 
 def test_a_window_over_a_key_has_a_class() -> None:
     """`api-critique/tasks/t7_engines.py`: a LAG over a unique key runs on
-    both engines with route `reference`; its class is one of the four."""
+    both engines with route `translated`; its class is one of the four."""
     c = sv.connect()
     c.put(
         "events",
@@ -170,6 +170,6 @@ def test_a_window_over_a_key_has_a_class() -> None:
     for engine in ("duckdb", "polars"):
         assert report.run(c, engine).num_rows == 4
         route = report.routes[engine]
-        assert route.kind == "reference"
+        assert route.kind == "translated"
         assert route.cls in routes.CLASSES
         assert route.cls == "exact" and route.evidence == "tested"

@@ -27,7 +27,7 @@ GUARDED_BY_CASE = T.filter(ibis.cases((_.x != 0, 10 // _.x)) > 1).select("x")  #
 
 
 def test_an_error_under_and_is_reported_with_the_case_rewrite():
-    report = verify(GUARDED_BY_AND, tables={"t": T}, requires=REQUIRES, infer=False)
+    report = verify(GUARDED_BY_AND, tables={"t": T}, requires=REQUIRES, on_inferred="off")
     assert not report.proved
     [issue] = report.errors
     assert issue.kind == "division by zero" and issue.under_and_or
@@ -55,14 +55,14 @@ def test_the_issues_batch_is_refused_before_the_run(engine):
         report.run(con, engine)
     # Opting out gives up the guarantee: the engine raises.
     with pytest.raises(Exception, match="(?i)divi"):
-        report.run(con, engine, check_inputs=False)
+        report.run(con, engine, check_requires=False)
     put_table(con, "t", pa.table({"x": [2, 5]}))
     assert report.run(con, engine).column("x").to_pylist() == [2, 5]
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_the_case_form_is_proved_and_runs(engine):
-    report = verify(GUARDED_BY_CASE, tables={"t": T}, requires=REQUIRES, infer=False)
+    report = verify(GUARDED_BY_CASE, tables={"t": T}, requires=REQUIRES, on_inferred="off")
     assert report.proved, str(report)
     con = connect()
     put_table(con, "t", pa.table({"x": [0, 2, 5]}))
@@ -79,7 +79,7 @@ def test_a_where_above_a_join_is_analysed_on_every_row_of_its_side():
         "SELECT a.k FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
         "SELECT a.k FROM a JOIN b ON a.k = b.k AND b.k <> 0 WHERE 10 // b.k > 1",
     ]:
-        report = verify(sql, tables={"a": a, "b": b}, infer=False)
+        report = verify(sql, tables={"a": a, "b": b}, on_inferred="off")
         assert [i.kind for i in report.errors] == ["division by zero"], sql
 
 
@@ -88,7 +88,7 @@ def test_an_aggregate_filter_under_and_evaluates_both_operands():
     operands too (DuckDB raises, probed for #609), so `x <> 0` does not guard
     `10 // x`; the batch with `x = 0` is refused before the run."""
     sql = "SELECT SUM(x) FILTER (WHERE x <> 0 AND 10 // x > 1) AS s FROM t"
-    off = verify(sql, tables={"t": T}, requires=REQUIRES, infer=False)
+    off = verify(sql, tables={"t": T}, requires=REQUIRES, on_inferred="off")
     [div] = [i for i in off.errors if i.kind == "division by zero"]
     assert div.under_and_or
     report = verify(sql, tables={"t": T}, requires=REQUIRES)

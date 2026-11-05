@@ -175,6 +175,11 @@ _OPS: dict[Dialect, dict[str, str]] = {
 }  # fmt: skip
 
 
+#: Measures that raise no runtime error of their own: an issue on a column
+#: they share with a `SUM` is the `SUM`'s.
+_NO_ISSUES = frozenset({"min", "max", "count", "first", "last", "any_value"})
+
+
 def _strip(s: str) -> str:
     """`s` without the parentheses around the whole of it."""
     while s.startswith("(") and s.endswith(")"):
@@ -198,9 +203,13 @@ def user_expr(expr: str, plan: Mapping[str, Any] | None, dialect: Dialect = "ibi
         return None
     names, measures = found
     out = expr
-    # A bare column an aggregate adds up is named by its measure: `sum(x)`.
-    if (m := _FIELD.fullmatch(out)) and len(measures.get(int(m[1]), [])) == 1:
-        return f"{measures[int(m[1])][0]}({names[int(m[1])]})"
+    # A bare column an aggregate adds up is named by its measure, `sum(x)`,
+    # or by each of its measures that may raise, `sum(x) or avg(x)` (#690).
+    if (m := _FIELD.fullmatch(out)) and measures.get(int(m[1])):
+        col = names[int(m[1])]
+        fns = list(dict.fromkeys(measures[int(m[1])]))
+        fns = [fn for fn in fns if fn not in _NO_ISSUES] or fns
+        return " or ".join(f"{fn}({col})" for fn in fns)
     out = _FIELD.sub(lambda m: names[int(m[1])], out)
     # Implicit casts the user did not write.
     while (new := re.sub(r"\b(?:DOUBLE|AS_DECIMAL_\d+_\d+)\(([^()]*)\)", r"\1", out)) != out:

@@ -17,10 +17,12 @@
 * `ConcurrentWriteError`: another process committed to a sink while this
   refresh wrote it; the write was not committed, and the next refresh
   recovers.
-* `RouteError`: the plan is not proved, or no route takes it to an engine
-  (`Report.run`, `Node.refresh`, #444); `.route` says why.
+* `RouteError`: no route takes a plan to an engine (`Report.run`,
+  `Node.refresh`, #444); `.route` says why.
+* `UnverifiedRunError`: a run or refresh of a plan that is not proved,
+  refused. It is a `VerificationError` and a `RouteError`.
 * `UnverifiedRunWarning`: a plan that is not proved runs, with
-  `unverified=True`.
+  `unverified=True` or `transform(on_unproved="warn")`.
 * `EngineVersionError`, `EngineVersionWarning`: an engine's version is not
   one its profile's facts were probed at (another major version refuses).
 * `EngineSettingsError`, `EngineSettingsWarning`: an engine setting differs
@@ -39,6 +41,7 @@ from sverify.contracts import (
     CompositionError,
     PostconditionError,
     PreconditionError,
+    UnverifiedRunError,
     VerificationError,
 )
 from sverify.engine import CheckerVersionError, SqlError
@@ -71,6 +74,7 @@ __all__ = [
     "SchemaError",
     "SqlError",
     "Unsupported",
+    "UnverifiedRunError",
     "UnverifiedRunWarning",
     "VerificationError",
 ]

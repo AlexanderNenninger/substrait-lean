@@ -68,7 +68,7 @@ def test_inferred_preconditions_prove_the_plan(expr, conds):
     report = verify(expr, counterexamples=0)
     assert report.proved, str(report)
     assert inferred(report) == conds
-    off = verify(expr, counterexamples=0, infer=False)
+    off = verify(expr, counterexamples=0, on_inferred="off")
     assert not off.proved
     assert all(i.hint for i in off.errors)
 
@@ -124,7 +124,7 @@ def test_a_global_count_divisor_gets_no_bound():
 
 
 def test_a_computed_divisor_gets_no_bound():
-    report = verify(T.select(r=T.a % (T.b * T.b)), counterexamples=0, infer=False)
+    report = verify(T.select(r=T.a % (T.b * T.b)), counterexamples=0, on_inferred="off")
     [issue] = [i for i in report.errors if i.kind == "division by zero"]
     assert issue.hint is not None and issue.hint.startswith("no bound on an input column")
 

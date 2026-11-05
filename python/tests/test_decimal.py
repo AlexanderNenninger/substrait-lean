@@ -161,9 +161,9 @@ def test_avg_over_a_window(con):
 )
 def test_verify_reports_overflow_where_it_can_happen(sql, errors):
     report = (
-        sv.verify(sql, tables=SCHEMAS, infer=False)
+        sv.verify(sql, tables=SCHEMAS, on_inferred="off")
         if isinstance(sql, str)
-        else sv.verify(sql, infer=False)
+        else sv.verify(sql, on_inferred="off")
     )
     assert [i.kind for i in report.errors] == errors
 
@@ -209,7 +209,7 @@ def test_a_decimal_sum_that_leaves_38_digits_is_reported(col, scale):
     sql = f"SELECT sum({col}) AS s FROM decimals"
     with pytest.raises(duckdb.Error, match="Overflow in SUM of DECIMAL"):
         con.execute(sql).fetchall()
-    strict = sv.verify(sql, tables=OVERFLOW_SCHEMAS, infer=False)
+    strict = sv.verify(sql, tables=OVERFLOW_SCHEMAS, on_inferred="off")
     assert [i.kind for i in strict.errors] == ["SUM overflow"]
     assert not strict.proved
     report = sv.verify(sql, tables=OVERFLOW_SCHEMAS)
@@ -223,10 +223,10 @@ def test_a_bounded_decimal_sum_over_capped_rows_is_proved_to_fit():
     t = ibis.table({"d": "decimal(20,0)"}, name="t")
     q = t.aggregate(s=t.d.sum())
     capped = sv.verify(
-        q, requires={"t": [_.d.between(-(10**18), 10**18), sv.max_rows(1000)]}, infer=False
+        q, requires={"t": [_.d.between(-(10**18), 10**18), sv.max_rows(1000)]}, on_inferred="off"
     )
     assert capped.errors == [] and capped.assumed == [], str(capped)
-    uncapped = sv.verify(q, requires={"t": [_.d.between(-(10**18), 10**18)]}, infer=False)
+    uncapped = sv.verify(q, requires={"t": [_.d.between(-(10**18), 10**18)]}, on_inferred="off")
     assert [i.kind for i in uncapped.errors] == ["SUM overflow"]
 
 
@@ -272,7 +272,7 @@ def test_report_shows_decimals_at_their_scale():
     unscaled integer (#250, TPC-H Q6's `revenue`)."""
     li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
     sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
-    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), infer=False)
+    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), on_inferred="off")
     assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
     assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
     t = ibis.table({"a": "decimal(10,2)"}, name="t")

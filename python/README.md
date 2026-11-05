@@ -278,8 +278,6 @@ adds two guides, to contracts and to pipelines and engines; it runs locally with
 ## The API in brief
 
 ```python
-import json
-
 import ibis
 from sverify.engines import SNOWFLAKE, to_sql  # also DUCKDB, SPARK
 from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
@@ -289,7 +287,7 @@ sv.verify(
     tables={"orders": ibis.table({"id": "int64", "amount": "int64"}, name="orders")},
     ensures=["amount > 0"],
 )  # SQL, checked; returns the report
-to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.Unsupported
+to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Unsupported
 
 # p = DeltaSource("s3://.../orders").pipe(paid).write(DeltaSink("s3://.../paid"))  # stored
 # r = p.pipe(revenue, regions=regions).write(DeltaSink("s3://.../revenue"))

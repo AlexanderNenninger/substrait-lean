@@ -356,7 +356,7 @@ def test_runs_on_a_substrait_consumer(case: str) -> None:
     con = sv.connect()
     for name, table in DATA.items():
         con.put(name, table)
-    expected = report.run(con, "duckdb", check_inputs=False)
+    expected = report.run(con, "duckdb", check_requires=False)
     assert _norm(got.to_arrow_table()) == _norm(expected)
 
 

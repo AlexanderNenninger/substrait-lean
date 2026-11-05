@@ -662,7 +662,7 @@ def test_tie_free_windows_need_no_scan_order():
     plan = json.loads(plan_of(sql, {"r": r}))
     with pytest.raises(Unsupported, match="no scan order"):
         to_sql(plan, NoScanOrder("no-scan-order"))
-    text = to_sql(plan, NoScanOrder("no-scan-order"), tie_free=True)
+    text = to_sql(plan, NoScanOrder("no-scan-order"), deterministic=True)
     db = duckdb.connect()
     db.register("r", r)
     got = [tuple(x) for x in db.sql(text).fetchall()]
@@ -670,7 +670,7 @@ def test_tie_free_windows_need_no_scan_order():
     # FETCH still needs the scan order.
     fetch = json.loads(plan_of("SELECT s FROM r LIMIT 2", {"r": r}))
     with pytest.raises(Unsupported, match="no scan order"):
-        to_sql(fetch, NoScanOrder("no-scan-order"), tie_free=True)
+        to_sql(fetch, NoScanOrder("no-scan-order"), deterministic=True)
 
 
 def renamed(plan_json: str, old: str, new: str) -> dict:
@@ -722,7 +722,7 @@ def test_contract_checks_on_duckdb():
         requires={"orders": [_.amount >= 0]},
         ensures=[_.amount < 100],
         on_unproved="runtime",
-        engine="duckdb",
+        check_engine="duckdb",
     )
     def passthrough(orders):
         return orders.select(orders.amount)
@@ -797,7 +797,7 @@ def test_timestamp_differences_compare_with_intervals(name):
     lean = lean_on(json.loads(plan), {"events": EVENTS})
     assert canonical(duckdb_rows(plan, {"events": EVENTS})) == canonical(lean)
     assert lean, "the query should keep some rows"
-    snowflake = to_sql(json.loads(plan), SNOWFLAKE, tie_free=True)
+    snowflake = to_sql(json.loads(plan), SNOWFLAKE, deterministic=True)
     assert "MICROSECOND" in snowflake
 
 

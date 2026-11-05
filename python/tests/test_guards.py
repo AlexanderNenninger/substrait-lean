@@ -53,7 +53,7 @@ def test_preconditions_make_plans_guard_free(expr):
 
 @pytest.mark.parametrize("expr", GUARD_FREE)
 def test_without_preconditions_guards_stay(expr):
-    assert not sv.verify(expr, infer=False).guard_free
+    assert not sv.verify(expr, on_inferred="off").guard_free
 
 
 def test_unguarded_sql_has_no_row_checks():
@@ -79,7 +79,7 @@ MIXED_REQUIRES = {"t": [_.a >= 0, _.a <= 1000, _.b >= 1]}
 
 def test_per_expression_guards():
     """`Rel.evalG_marks`: the division runs unchecked, the product keeps its check."""
-    report = sv.verify(MIXED, requires=MIXED_REQUIRES, infer=False)
+    report = sv.verify(MIXED, requires=MIXED_REQUIRES, on_inferred="off")
     assert not report.guard_free and report.unchecked is not None
     p = plan(MIXED)
     checked = to_sql(p, SNOWFLAKE)
@@ -89,13 +89,13 @@ def test_per_expression_guards():
 
 
 def test_per_expression_guards_below_a_projection():
-    report = sv.verify(MIXED_FILTER, requires=MIXED_REQUIRES, infer=False)
+    report = sv.verify(MIXED_FILTER, requires=MIXED_REQUIRES, on_inferred="off")
     sql = to_sql(plan(MIXED_FILTER), SNOWFLAKE, unchecked=report.unchecked)
     assert "division by zero" not in sql and "sverify: integer overflow" in sql
 
 
 def test_unchecked_marks_are_checked_against_the_plan():
-    report = sv.verify(MIXED, requires=MIXED_REQUIRES, infer=False)
+    report = sv.verify(MIXED, requires=MIXED_REQUIRES, on_inferred="off")
     with pytest.raises(Unsupported, match="another plan"):
         to_sql(plan(GUARD_FREE[1]), DUCKDB, unchecked=report.unchecked)
 
@@ -114,7 +114,7 @@ def test_unchecked_runs_agree(expr, rows):
     tables = {"t": pa.table({"a": [r[0] for r in rows], "b": [r[1] for r in rows]})}
     p = plan(expr)
     requires = MIXED_REQUIRES if any(expr is x for x in (MIXED, MIXED_FILTER)) else BOUNDED
-    report = sv.verify(expr, requires=requires, infer=False)
+    report = sv.verify(expr, requires=requires, on_inferred="off")
     con = duckdb.connect()
     con.register("t", tables["t"])
     want = canonical(con.execute(to_sql(p, DUCKDB)).fetchall())

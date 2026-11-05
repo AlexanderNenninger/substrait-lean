@@ -53,16 +53,17 @@ def sums(orders):
     return orders.select("id", big=orders.amount.clip(0, 10))
 
 
-def test_a_refresh_refuses_an_unproved_node_unless_asked(tmp_path) -> None:
+def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
+    """#690: `on_unproved="warn"` needs no second opt-in at refresh."""
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
     with pytest.warns(UserWarning):
         node = sums(orders)
-    with pytest.raises(
-        RouteError, match=r"sums: not verified: ensures \(_.big > 100\) is not proved"
+    with pytest.warns(
+        UnverifiedRunWarning,
+        match=r"refreshing sums on duckdb unverified \(on_unproved='warn'\): not verified: "
+        r"ensures \(_.big > 100\) is not proved",
     ):
-        node.refresh()
-    with pytest.warns(UnverifiedRunWarning, match="refreshing sums on duckdb unverified"):
-        out = node.refresh(unverified=True)
+        out = node.refresh()
     assert out["sums"].route is not None and out["sums"].route.kind == "unverified"
     assert "route on duckdb: unverified: not verified" in str(out)
 
@@ -81,7 +82,7 @@ def test_a_mean_into_a_sink_needs_no_settings(tmp_path, engine) -> None:
     node = mean(orders).write(DeltaSink(str(tmp_path / "m")))
     out = node.refresh(engine=engine)
     route = out["m"].route
-    assert route is not None and route.kind == "reference"
+    assert route is not None and route.kind == "translated"
     assert node.to_arrow().to_pylist() == [{"customer": "ada", "m": 6.0}]
 
 
@@ -149,7 +150,7 @@ def test_issues_name_columns_and_operators(con) -> None:
     assert "it divides by the constant 0" in text
     # The error and the assumption about the same operation no longer both show.
     assert "assumes: x / 0" not in text
-    sql = sv.verify("SELECT k, total * total AS y FROM t", tables={"t": t}, infer=False)
+    sql = sv.verify("SELECT k, total * total AS y FROM t", tables={"t": t}, on_inferred="off")
     assert "overflow: total * total" in str(sql)
 
 
@@ -229,7 +230,7 @@ def test_a_route_names_its_class_and_observation(tmp_path) -> None:
     assert route.observation is not None
     assert isinstance(route.observation.floats, sv.observation.Within)
     assert route.bound_proved in (True, False)
-    assert f"[observed {route.observation}" in str(route)
+    assert str(route).startswith(f"observed {route.observation}")
 
 
 def test_rows_are_read_by_the_old_and_new_keys() -> None:

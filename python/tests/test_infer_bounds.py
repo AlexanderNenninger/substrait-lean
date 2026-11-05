@@ -119,13 +119,15 @@ def test_abs_of_a_narrow_integer_is_bounded_within_its_type(dtype, bounds):
 
 
 def test_abs_of_the_smallest_tinyint_may_fail():
-    report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": "int8"}}, infer=False)
+    report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": "int8"}}, on_inferred="off")
     assert not report.proved
     assert any("WRAP8" in str(i) for i in report.errors), report
 
 
 def test_without_inference_the_hint_names_the_bound():
-    report = verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, infer=False)
+    report = verify(
+        T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, on_inferred="off"
+    )
     assert not report.proved
     assert report.inferred == {}
     [issue] = report.errors
@@ -241,7 +243,7 @@ def test_an_eager_table_gets_the_inferred_bound():
         PreconditionError, match=r"1 row\(s\) of orders violate \(_.amount < 2\*\*62\)"
     ):
         mutated(big)
-    explicit = sv.transform(**contract, infer=False)(double)
+    explicit = sv.transform(**contract, on_inferred="off")(double)
     with pytest.raises(VerificationError, match=r"in the requires of 'orders'"):
         explicit(orders)
 
@@ -303,7 +305,7 @@ def test_inferred_bounds_compose_through_nodes():
 
 
 def test_strict_requires_explicit_bounds():
-    @transform(requires={"orders": [_.amount >= 0]}, infer=False)
+    @transform(requires={"orders": [_.amount >= 0]}, on_inferred="off")
     def strictly(orders):
         return orders.select(x=orders.amount * 2)
 
@@ -314,7 +316,7 @@ def test_strict_requires_explicit_bounds():
     [issue] = e.value.report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
 
-    @transform(requires={"orders": [_.amount >= 0, _.amount < 2**62]}, infer=False)
+    @transform(requires={"orders": [_.amount >= 0, _.amount < 2**62]}, on_inferred="off")
     def stated(orders):
         return orders.select(x=orders.amount * 2)
 
