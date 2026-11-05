@@ -744,12 +744,92 @@ The report's parts come as data and as the lines `str(report)` prints:
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.
+- `report.to_json()` writes the report as a versioned JSON document for CI
+  jobs and tools: the verdict, each postcondition with its reason and
+  counterexample, the issues, the needs, the facts and the routes, in the
+  format of [`report.schema.json`](../python/src/sverify/schemas/report.schema.json).
+  `sv.Report.from_json(text)` reads it back into a `Report` with the same
+  verdict ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736),
+  [stability](stability.md)).
 
 The counterexample search tries 200 inputs per unproved postcondition. The
 `SVERIFY_COUNTEREXAMPLES` environment variable sets that budget for
 `sv.verify`, a transform's call and `check`; 0 skips the search, for a tool
 that only needs the verdicts
 ([test_check_api.py](../python/tests/test_check_api.py)).
+
+### The command line
+
+The `sverify` command checks, fixes and runs a pipeline's file from a
+shell, a CI job or an agent
+([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)):
+
+```bash
+sverify check pipelines/orders.py            # prove every transform and node in the file
+sverify check pipelines/orders.py:paid       # one node or transform
+sverify suggest pipelines/orders.py --apply  # write the preconditions proofs need into requires=
+sverify refresh pipelines/orders.py:paid     # run a node and report what changed
+sverify explain may-be-false                 # what a [code] of check's output means
+```
+
+`check` imports the file without running it. Every contracted transform
+the file applies is proved, a node's on its sources' schemas, and a proof
+that fails is reported where a call would raise, so one unproved node does
+not hide the next. A `refresh()` in the file belongs under
+`if __name__ == "__main__":`; while sverify checks the file, it raises. A
+directory with a `dbt_project.yml` goes to `sverify-dbt check`.
+
+The output starts with the contract in plain words, for a pull request's
+comment or a phone's screen: what the output guarantees, what each refresh
+checks on the data, and what is not proved, each problem with a code.
+
+```text
+Contract of pipelines/orders.py
+  The output guarantees:
+    paid (p): amount > 10; no two rows share id
+  Each refresh checks on the data:
+    paid (p): orders: amount ≥ 0; orders: amount < 1000; orders: no two rows share id
+  Not proved:
+    doubled (d): needs _.amount < 2**62 on orders (else overflow in amount * 2)  [needs]
+
+paid (p): proved
+doubled (d): NOT proved: 1 precondition needed
+```
+
+`sverify explain <code>` says what a code means and how to fix it, and
+`sverify explain <file>:<node>` prints the node's full report, so the
+default output stays short in an agent's context. `sverify suggest` shows
+the preconditions the proofs need (`Report.needs`) as a diff of the
+decorators' `requires=`; with `--apply` it writes them and checks the file
+again.
+
+Every command takes `--json`, one document for tools with the same fields
+(`items`, each with its `status`, `summary`, `problems` and `needs`). Until
+the versioned report format
+([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736))
+lands, the document says `"format": "provisional"`. The exit codes are:
+
+| Code | Meaning |
+|------|---------|
+| 0 | proved, or every postcondition it does not prove is checked on the data at each refresh |
+| 1 | not proved |
+| 2 | refused: a construct outside sverify's model (`sverify.errors.Unsupported`) |
+| 3 | budget exceeded: time or memory |
+| 4 | error |
+| 5 | `refresh` completed, and rows of a node's sources are set aside (`on_violation="quarantine"`) |
+| 6 | `refresh` completed, and a node held its batch (`on_violation="skip_batch"`) |
+
+With 5 or 6, `refresh` prints `Refresh.alert()` after the summary, and its
+JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-skip_batch)).
+
+`--timeout` (default 30 s, or `SVERIFY_TIMEOUT`; 0 turns it off) bounds
+proof, planning and checking. A refresh moving data has no time limit:
+`--memory-limit` (or `SVERIFY_MEMORY_LIMIT`, such as `2GB`) bounds it
+instead, as DuckDB's `memory_limit`, past which DuckDB spills to a
+temporary directory (`SVERIFY_SPILL_DIRECTORY`). Past either budget the
+call stops with code 3 before any sink commits, and reports what was
+proved before it ([test_cli.py](../python/tests/test_cli.py)).
+`sverify.cli.discover(path)` does what `check` does from Python.
 
 ### Composing contracts
 

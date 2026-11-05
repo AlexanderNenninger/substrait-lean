@@ -40,6 +40,10 @@ flight = ["pyarrow>=26.0.0"]
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
 all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing]"]
 
+# The command line (`sverify.cli`, #744).
+[project.scripts]
+sverify = "sverify.cli:main"
+
 # The pytest plugin (`sverify.pytest_plugin`): `pytest -p no:sverify` turns it off.
 [project.entry-points.pytest11]
 sverify = "sverify.pytest_plugin"

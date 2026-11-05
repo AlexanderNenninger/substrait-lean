@@ -1,0 +1,63 @@
+{
+  "assumed": [
+    {
+      "assumption": "SUM of total fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)",
+      "column": "total",
+      "constant": false,
+      "error": true,
+      "expr": "$2",
+      "hint": null,
+      "kind": "SUM overflow",
+      "message": "SUM overflow: sum(total) (the job also checks it while it runs and raises if it happens; a bound on the column and on the rows of a group rules it out)",
+      "needs": [],
+      "shown": "sum(total)",
+      "suggested": {},
+      "under_and_or": false
+    }
+  ],
+  "deterministic": true,
+  "dialect": "ibis",
+  "ensures": [],
+  "facts": {
+    "s": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 1,
+  "hints": [
+    "SUM of `total`: bound it in `requires` of orders, for example `_.total <= 1_000_000_000` and `_.total >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows, and `sv.max_rows(9_223_372_036)` in `requires` of orders proves it, and so does `sv.rows_per([<grouping columns>], at_most=9_223_372_036)`; without a row bound, the job checks the sum as it runs"
+  ],
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "needs": [],
+  "not_null": [],
+  "observation": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "on_inferred": "error",
+  "output": {
+    "s": "int64"
+  },
+  "params": [],
+  "proved": true,
+  "requires": {},
+  "rewrites": [],
+  "routes": {},
+  "rows": 1,
+  "semantics": "reference",
+  "sverify": "0.5.0",
+  "tie_places": [],
+  "ties": {},
+  "transfer": null,
+  "verdict": "proved"
+}

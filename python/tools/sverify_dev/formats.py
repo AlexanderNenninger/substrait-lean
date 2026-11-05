@@ -1,7 +1,7 @@
 """Fixtures of the formats a running pipeline reads (#734, #735, #736,
 `docs/stability.md`): the sink's contract record, the Substrait export and
-its contract, written by one version of sverify, for the tests that read
-them with every later one (`tests/test_formats.py`).
+its contract, and the report as JSON, written by one version of sverify,
+for the tests that read them with every later one (`tests/test_formats.py`).
 
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of
 sverify's API.
@@ -22,6 +22,9 @@ It writes, under the directory it is given:
 - `sink/contract.json`: the last contract, as `Contract.to_json` wrote it;
 - `substrait/<case>.json` (and `.bin` for one case): `Report.to_substrait`'s
   exports, where the version has it;
+- `report/<case>.json`: `Report.to_json`'s documents, where the version has
+  it: proved, not proved with a counterexample, with needs and assumptions,
+  and after a run on DuckDB;
 - `quarantine/doubled_quarantine/`: the quarantine table (#184) of a node
   over a source with rows that break its preconditions, and
   `quarantine/refresh.json`, that refresh's `Refresh.to_json`, where the
@@ -145,6 +148,37 @@ def _write_substrait(out: Path) -> None:
     (folder / "row_and_table.bin").write_bytes(cases["row_and_table"].to_substrait(format="binary"))
 
 
+def _write_report(out: Path) -> None:
+    """Reports as JSON, where the version has `Report.to_json`."""
+    if not hasattr(sv.Report, "to_json"):
+        return
+    orders = ibis.table({"id": "int64", "qty": "int64", "total": "int64"}, name="orders")
+    bounded = {"orders": [_.total >= 0, _.total < 1000, sv.unique("id")]}
+    ran = sv.verify(orders.select("id", d=_.total * 2), requires=bounded)
+    con = sv.connect()
+    con.put("orders", pa.table({"id": [1, 2], "qty": [1, 1], "total": [3, 4]}))
+    ran.run(con)
+    cases = {
+        "proved": sv.verify(
+            orders.select("id", d=_.total * 2),
+            requires=bounded,
+            ensures=[_.d >= 0, sv.unique("id")],
+        ),
+        "not_proved": sv.verify(
+            orders.select("id", d=_.total - 5),
+            requires={"orders": [_.total >= 0, _.total < 1000]},
+            ensures=[_.d >= 0, sv.unique("id")],
+        ),
+        "needs": sv.verify(orders.select(r=_.total // _.qty), on_inferred="error"),
+        "assumed": sv.verify(orders.aggregate(s=orders.total.sum())),
+        "ran": ran,
+    }
+    folder = out / "report"
+    folder.mkdir(parents=True)
+    for name, report in cases.items():
+        (folder / f"{name}.json").write_text(_pretty(report.to_json()))
+
+
 def _write_quarantine(out: Path) -> None:
     """A node that sets rows aside, its quarantine table and its refresh
     report, where the version has `on_violation`."""
@@ -174,6 +208,7 @@ def write(out: Path) -> None:
     (out / "VERSION").write_text(importlib.metadata.version("sverify") + "\n")
     _write_sink(out)
     _write_substrait(out)
+    _write_report(out)
     _write_quarantine(out)
 
 

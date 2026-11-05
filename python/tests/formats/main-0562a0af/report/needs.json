@@ -1,0 +1,121 @@
+{
+  "assumed": [],
+  "deterministic": true,
+  "dialect": "ibis",
+  "ensures": [],
+  "facts": {
+    "r": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 1,
+  "hints": [],
+  "implied": {},
+  "inferred": {
+    "orders": [
+      {
+        "column": "total",
+        "label": "(_.total >= -9 * 10**18)",
+        "sql": "\"total\" IS NULL OR \"total\" >= -9000000000000000000"
+      },
+      {
+        "column": "qty",
+        "label": "(_.qty != 0)",
+        "sql": "\"qty\" IS NULL OR \"qty\" <> 0"
+      }
+    ]
+  },
+  "issues": [],
+  "needs": [
+    {
+      "code": "_.total >= -9 * 10**18",
+      "column": "total",
+      "issue": {
+        "column": null,
+        "constant": false,
+        "error": true,
+        "expr": "($2 / $1)",
+        "hint": "state `(_.total >= -9 * 10**18)` in the requires of 'orders'",
+        "kind": "overflow",
+        "message": "overflow: total // qty",
+        "needs": [
+          "(_.total >= -9 * 10**18)"
+        ],
+        "shown": "total // qty",
+        "suggested": {
+          "orders": [
+            "(_.total >= -9 * 10**18)"
+          ]
+        },
+        "under_and_or": false
+      },
+      "label": "(_.total >= -9 * 10**18)",
+      "op": ">=",
+      "sql": "\"total\" IS NULL OR \"total\" >= -9000000000000000000",
+      "table": "orders",
+      "value": "-9000000000000000000"
+    },
+    {
+      "code": "_.qty != 0",
+      "column": "qty",
+      "issue": {
+        "column": null,
+        "constant": false,
+        "error": true,
+        "expr": "($2 / $1)",
+        "hint": "state `(_.qty != 0)` in the requires of 'orders'",
+        "kind": "division by zero",
+        "message": "division by zero: total // qty",
+        "needs": [
+          "(_.qty != 0)"
+        ],
+        "shown": "total // qty",
+        "suggested": {
+          "orders": [
+            "(_.qty != 0)"
+          ]
+        },
+        "under_and_or": false
+      },
+      "label": "(_.qty != 0)",
+      "op": "<>",
+      "sql": "\"qty\" IS NULL OR \"qty\" <> 0",
+      "table": "orders",
+      "value": "0"
+    }
+  ],
+  "not_null": [],
+  "observation": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "on_inferred": "error",
+  "output": {
+    "r": "int64"
+  },
+  "params": [],
+  "proved": false,
+  "requires": {
+    "orders": [
+      "(_.total >= -9 * 10**18)",
+      "(_.qty != 0)"
+    ]
+  },
+  "rewrites": [],
+  "routes": {},
+  "rows": null,
+  "semantics": "reference",
+  "sverify": "0.5.0",
+  "tie_places": [],
+  "ties": {},
+  "transfer": null,
+  "verdict": "NOT proved: 2 preconditions needed"
+}

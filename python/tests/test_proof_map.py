@@ -10,8 +10,14 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
+
+# The Wheels workflow runs a copy of `tests` without the docs or the Lean sources.
+pytestmark = needs_repo
+
 ROOT = Path(__file__).resolve().parents[2]
-MAP = (ROOT / "docs" / "proofs.md").read_text()
+MAP_PATH = ROOT / "docs" / "proofs.md"
+MAP = MAP_PATH.read_text() if MAP_PATH.is_file() else ""
 
 GENERATED_DIRS = [
     ROOT / "SubstraitLean" / "LoweringDuckDB" / "On",

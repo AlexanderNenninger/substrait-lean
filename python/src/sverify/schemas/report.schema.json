@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/report.schema.json",
+  "title": "sverify report",
+  "description": "A report as Report.to_json writes it and Report.from_json reads it (#736). Format 1. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Conditions appear as their labels, the text str(report) prints.",
+  "type": "object",
+  "required": ["format", "sverify", "proved", "verdict", "semantics", "requires", "ensures", "issues", "assumed", "needs", "facts", "routes"],
+  "properties": {
+    "format": {"description": "The version of this format.", "const": 1},
+    "sverify": {"description": "The version of sverify that wrote the report.", "type": "string"},
+    "proved": {"description": "Report.proved: every postcondition holds, no runtime error is possible, and nothing more is needed.", "type": "boolean"},
+    "verdict": {"description": "The report's first line: \"proved\", or \"NOT proved: \" and what is missing, counted.", "type": "string"},
+    "semantics": {"description": "The profile the report is under. 1.x may add values.", "type": "string", "examples": ["reference", "duckdb", "polars", "substrait"]},
+    "dialect": {"description": "The language of the transformation, which the labels and code are written in.", "type": "string", "examples": ["ibis", "sql"]},
+    "on_inferred": {"description": "What the inferred preconditions do to the proof (verify(on_inferred=...)).", "type": "string", "examples": ["error", "warn", "silent", "off"]},
+    "observation": {"$ref": "#/$defs/observation"},
+    "deterministic": {"description": "Whether the result is determined up to row order (Report.deterministic).", "type": "boolean"},
+    "rows": {"description": "At most this many output rows; null if nothing bounds them.", "type": ["integer", "null"]},
+    "params": {"description": "The ibis.param values the transformation was verified with, as `name (type) = value`.", "type": "array", "items": {"type": "string"}},
+    "requires": {"description": "The preconditions assumed, as labels, per input table: the declared ones and those inferred.", "$ref": "#/$defs/labels"},
+    "inferred": {
+      "description": "The bounds sverify inferred, per input table.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["label", "sql"],
+          "properties": {
+            "label": {"type": "string"},
+            "sql": {"description": "The condition as DuckDB's SQL.", "type": "string"},
+            "column": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "ensures": {"description": "Each postcondition, in the order given.", "type": "array", "items": {"$ref": "#/$defs/checked"}},
+    "issues": {"description": "The runtime errors the checker could not rule out.", "type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "assumed": {
+      "description": "The SUMs assumed to fit their type and the double operations assumed to stay finite, each checked on the data while the job runs.",
+      "type": "array",
+      "items": {"allOf": [{"$ref": "#/$defs/issue"}, {"required": ["assumption"], "properties": {"assumption": {"type": "string"}}}]}
+    },
+    "needs": {"description": "The preconditions the proof needs that requires does not state (Report.needs); empty unless on_inferred is \"error\".", "type": "array", "items": {"$ref": "#/$defs/needed"}},
+    "facts": {"description": "What the checker established about each output column, in words.", "type": "object", "additionalProperties": {"type": "string"}},
+    "not_null": {"description": "The output columns the checker proved never NULL (Report.not_null), in the output's order.", "type": "array", "items": {"type": "string"}},
+    "output": {"description": "The output's columns with their Ibis types.", "type": "object", "additionalProperties": {"type": "string"}},
+    "routes": {"description": "The route each engine ran the plan by, by engine name; empty until the report's plan runs.", "type": "object", "additionalProperties": {"$ref": "#/$defs/route"}},
+    "tie_places": {
+      "description": "Where the plan leaves the order of ties open.",
+      "type": "array",
+      "items": {"type": "object", "required": ["relation", "op", "what"], "properties": {"relation": {"type": "integer"}, "op": {"type": "string"}, "what": {"type": "string"}}}
+    },
+    "ties": {"description": "The sv.unique(...) per input table that would determine a result with ties.", "$ref": "#/$defs/labels"},
+    "hints": {"type": "array", "items": {"type": "string"}},
+    "rewrites": {"description": "The rewrites of the optimized plan.", "type": "array", "items": {"type": "string"}},
+    "implied": {"description": "A SQL condition per input table that every row reaching the result passes.", "type": "object", "additionalProperties": {"type": "string"}},
+    "transfer": {"description": "Under semantics=\"substrait\", the options where the reference's proof does not carry over; null under the other profiles.", "type": ["array", "null"], "items": {"type": "object"}},
+    "floats_on": {"description": "Per engine, why its doubles may not meet the observation (empty where they do).", "type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "labels": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "observation": {
+      "description": "What the result's consumer observes (sv.equivalent): its text and its components; a tolerance on doubles is {abs, rel, ulps}.",
+      "type": "object",
+      "required": ["text", "components"],
+      "properties": {
+        "text": {"type": "string"},
+        "components": {
+          "type": "object",
+          "properties": {
+            "floats": {"oneOf": [{"type": "string"}, {"type": "object", "properties": {"abs": {"type": ["number", "null"]}, "rel": {"type": ["number", "null"]}, "ulps": {"type": ["integer", "null"]}}}]}
+          },
+          "additionalProperties": {"type": "string"}
+        }
+      }
+    },
+    "checked": {
+      "type": "object",
+      "required": ["label", "proved", "value", "message"],
+      "properties": {
+        "label": {"type": "string"},
+        "proved": {"type": "boolean"},
+        "value": {"description": "What the checker established about the condition, such as \"TRUE or NULL\".", "type": "string"},
+        "reason": {"description": "CheckedCondition.reason: why it is not proved, as a code; null when it is proved and independent of the observation. 1.x may add values.", "type": ["string", "null"], "examples": ["observation", "not_a_key", "ties", "always_false", "may_be_false", "may_be_null", "not_proved_kind", "unknown"]},
+        "message": {"description": "Its status in words, as str(report) prints it.", "type": "string"},
+        "detail": {"type": ["string", "null"]},
+        "checked": {"description": "Checked on the output data instead (on_unproved=\"runtime\").", "type": "boolean"},
+        "ignores": {"type": "array", "items": {"type": "string"}},
+        "reads": {"type": ["array", "null"], "items": {"type": "string"}},
+        "nullable": {"type": ["array", "null"], "items": {"type": "string"}},
+        "approx": {"type": "boolean"},
+        "suggested": {"$ref": "#/$defs/labels"},
+        "counterexample": {
+          "description": "Inputs that meet the preconditions on which the condition fails. Values are JSON's own; NaN, infinities, decimals, dates, times and bytes (as hex) are text.",
+          "type": ["object", "null"],
+          "properties": {
+            "text": {"type": "string"},
+            "tables": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "array"}}},
+            "output": {"type": "array", "items": {"type": "array"}},
+            "columns": {"$ref": "#/$defs/labels"}
+          }
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["kind", "expr", "error", "message"],
+      "properties": {
+        "kind": {"description": "1.x may add values.", "type": "string", "examples": ["division by zero", "overflow", "cast out of range", "negative exponent", "domain error", "SUM overflow", "overflow to infinity"]},
+        "expr": {"description": "The operation in Lean's notation.", "type": "string"},
+        "shown": {"description": "The operation in the user's terms.", "type": ["string", "null"]},
+        "column": {"type": ["string", "null"]},
+        "error": {"type": "boolean"},
+        "message": {"description": "The issue in words, as str(report) prints it.", "type": "string"},
+        "hint": {"type": ["string", "null"]},
+        "constant": {"type": "boolean"},
+        "under_and_or": {"type": "boolean"},
+        "needs": {"type": "array", "items": {"type": "string"}},
+        "suggested": {"$ref": "#/$defs/labels"}
+      }
+    },
+    "needed": {
+      "type": "object",
+      "required": ["table", "sql", "label", "code"],
+      "properties": {
+        "table": {"type": "string"},
+        "column": {"type": ["string", "null"]},
+        "op": {"type": ["string", "null"]},
+        "value": {"description": "The bound as a SQL literal.", "type": ["string", "null"]},
+        "sql": {"type": "string"},
+        "label": {"type": "string"},
+        "code": {"description": "The condition as the Python a user writes in requires.", "type": "string"},
+        "issue": {"oneOf": [{"$ref": "#/$defs/issue"}, {"type": "null"}]}
+      }
+    },
+    "route": {
+      "type": "object",
+      "required": ["engine", "kind", "profile", "reason"],
+      "properties": {
+        "engine": {"type": "string"},
+        "kind": {"description": "The route taken; null for a refusal. 1.x may add values.", "type": ["string", "null"], "examples": ["native", "translated", "transfer", "recheck", "unverified"]},
+        "class": {"description": "The plan's class on the engine. 1.x may add values.", "type": ["string", "null"], "examples": ["exact", "observed", "shim", "refused"]},
+        "evidence": {"type": ["string", "null"], "examples": ["proved", "tested"]},
+        "profile": {"type": "string"},
+        "reason": {"type": "string"},
+        "deterministic": {"type": "boolean"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "shims": {"type": "array", "items": {"type": "string"}},
+        "failures": {"type": "array", "items": {"type": "object"}},
+        "observation": {"oneOf": [{"$ref": "#/$defs/observation"}, {"type": "null"}]},
+        "bound_proved": {"type": ["boolean", "null"]},
+        "reproducible": {"oneOf": [{"$ref": "#/$defs/observation"}, {"type": "null"}]},
+        "rerun_evidence": {"type": ["string", "null"]},
+        "fallbacks": {"type": "array", "items": {"type": "string"}},
+        "suggested": {"$ref": "#/$defs/labels"}
+      }
+    }
+  }
+}

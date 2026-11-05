@@ -19,6 +19,8 @@ the garbage collector queues it (`forget`), and the next cursor that asks
 
 from __future__ import annotations
 
+import os
+import tempfile
 import threading
 from collections.abc import Callable
 
@@ -34,13 +36,36 @@ _GONE: list[tuple[str, str]] = []
 _FORGET: list[Callable[[], None]] = []
 
 
+def limits() -> dict[str, bool | float | int | list[str] | str]:
+    """The settings `SVERIFY_MEMORY_LIMIT` asks of the database (#744,
+    #783): DuckDB's `memory_limit` (`"2GB"`, `"512MB"`), and a directory to
+    spill to beyond it, `SVERIFY_SPILL_DIRECTORY` or one under the system's
+    temporary directory. Empty when the variable is unset or empty."""
+    limit = os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip()
+    if not limit:
+        return {}
+    spill = os.environ.get("SVERIFY_SPILL_DIRECTORY") or os.path.join(
+        tempfile.gettempdir(), f"sverify-spill-{os.getpid()}"
+    )
+    return {"memory_limit": limit, "temp_directory": spill}
+
+
 def cursor() -> duckdb.DuckDBPyConnection:
-    """A new connection to the process's database."""
+    """A new connection to the process's database, under `limits`."""
     global _DB
     with _LOCK:
         if _DB is None:
-            _DB = duckdb.connect()
+            _DB = duckdb.connect(config=limits())
         return _DB.cursor()
+
+
+def apply_limits() -> None:
+    """Set `limits` on the process's database if it is open already (a
+    new one reads them when it opens)."""
+    with _LOCK:
+        if _DB is not None:
+            for name, value in limits().items():
+                _DB.execute(f"SET {name} = '{value}'")
 
 
 def on_reset(forget_cursor: Callable[[], None]) -> None:

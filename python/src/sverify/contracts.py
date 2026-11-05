@@ -89,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
@@ -1356,6 +1357,48 @@ class Report:
     """The schema of each input table the plan reads, by table name: the
     columns `requires` may name, per table, as `output` holds those
     `ensures` may name."""
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The report as a versioned JSON document, for CI jobs and tools
+        (#736), in the format of `sverify/schemas/report.schema.json`:
+        `format` (1), the verdict, each postcondition with its status and
+        `reason`, the runtime errors and assumptions, `needs`, the facts on
+        each output column, the routes engines ran the plan by, and the rest
+        `str(report)` says. Conditions appear as their labels. Within 1.x
+        the format only gains keys (`docs/stability.md`).
+
+        Args:
+            indent: Indent the JSON by this many spaces; None writes one line.
+
+        Returns:
+            The JSON document, keys sorted.
+        """
+        from sverify import report_json
+
+        return json.dumps(report_json.to_json(self), indent=indent, sort_keys=True)
+
+    @staticmethod
+    def from_json(data: str | Mapping[str, Any]) -> Report:
+        """A report from what `to_json` wrote, by this version of sverify or
+        an earlier one. Keys this version does not know are left out.
+
+        The report has the same verdict, postconditions, issues, needs,
+        facts and routes. It holds no plan, and its conditions are their
+        labels, so it does not `run`, `check_inputs` or `to_substrait`.
+
+        Args:
+            data: The JSON, as text or parsed.
+
+        Returns:
+            The report.
+
+        Raises:
+            ValueError: The document's `format` is newer than this version
+                reads.
+        """
+        from sverify import report_json
+
+        return report_json.from_json(data)
 
     @overload
     def to_substrait(
@@ -5004,7 +5047,13 @@ class ContractedTransform:
         )
         return True
 
-    def _link(self, param: str, value: ir.Table, conds: list[Condition]) -> _Abstraction:
+    def _link(
+        self,
+        param: str,
+        value: ir.Table,
+        conds: list[Condition],
+        entry: Collected | None = None,
+    ) -> _Abstraction:
         """Discharge this transformation's preconditions on a derived input by
         proving them from what produced it (assume-guarantee composition).
         Returns, as `assumptions`, what may be assumed about the input."""
@@ -5044,7 +5093,11 @@ class ContractedTransform:
         )
         if self.on_unproved == "warn":
             warnings.warn(str(error), stacklevel=4)
-        elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
+        elif self.on_unproved == "runtime" and self._check_on_data(value, param, unproved):
+            pass
+        elif entry is not None:
+            entry.links.append(error)
+        else:
             raise error
         return out
 
@@ -5165,6 +5218,10 @@ class ContractedTransform:
         at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
+        entry = None
+        if (collected := COLLECTING.get()) is not None:
+            entry = Collected(self, node)
+            collected.append(entry)
         result = self.fn(*args, **kwargs)
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}
@@ -5188,7 +5245,7 @@ class ContractedTransform:
                 if self.check_requires:
                     self._check_on_data(value, param, conds)
                 continue
-            link = self._link(param, value, conds)
+            link = self._link(param, value, conds, entry)
             _merge(external, link.external)
             _merge_policies(policies, link.policies)
             unproved_links += link.unproved_links
@@ -5222,19 +5279,24 @@ class ContractedTransform:
                 self._check_on_data(value, param, conds)
         checked: list[Condition] = []
         if not report.proved and raise_unproved:
-            if self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in
             # "runtime" mode the engine raises them if they happen.
-            elif self.on_unproved == "runtime" and (node or is_bound(result)):
+            if self.on_unproved == "runtime" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
                 checked = [c for c in self.ensures if label(c) in unproved]
                 report = self.last_report = _marked_checked(report)
                 for c in [] if node else checked:
                     if n := violations(result, c, self.check_engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
+            elif entry is not None:
+                pass  # collected: the caller reads the report
+            elif self.on_unproved == "warn":
+                warnings.warn(str(VerificationError(report)), stacklevel=3)
             else:
                 raise VerificationError(report)
+        if entry is not None:
+            entry.report = report
+            entry.params = {t: p for t, (p, _) in {**bound_inputs, **plain}.items()}
         _merge(external, abstraction.external)
         _merge(external, base)
         _merge_policies(policies, abstraction.policies)
