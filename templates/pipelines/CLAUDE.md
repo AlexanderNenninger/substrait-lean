@@ -23,15 +23,15 @@ When asked for a pipeline or a change to one:
    nodes to refresh (the last stored node of each chain), and a
    `[table.<name>]` with a title, a description, the source and a chart.
 4. Run `sverify check pipelines/<name>.py --json`. Exit 0 means proved.
-   Otherwise read each problem's `code` (`sverify explain <code>`):
-   - `needs`: run `sverify suggest pipelines/<name>.py --apply`, which adds
+   Otherwise read each finding's `code` (`sverify explain <code>`):
+   - `needs`: run `sverify check pipelines/<name>.py --fix`, which adds
      the preconditions the proof needs to `requires=`. Keep only those the
      source really guarantees (step 1); otherwise change the transform.
-   - `may-be-false` with a counterexample: the transform can break its
+   - `may_be_false` with a counterexample: the transform can break its
      promise on such rows. Fix the transform (filter, coalesce, bound) or
      weaken `ensures=` if the promise was wrong.
-   - `refused` (exit 2): a construct sverify can't prove; rewrite it with
-     the constructs the `sverify` skill lists.
+   - `unsupported` (exit 3): a construct sverify can't prove; rewrite it
+     with the constructs the `sverify` skill lists.
    Repeat until it exits 0.
 5. Add a recorded sample of the source to `tests/fixtures/` and run
    `pytest` (it runs the workflows' steps offline, `EUROSTAT_FIXTURES`
