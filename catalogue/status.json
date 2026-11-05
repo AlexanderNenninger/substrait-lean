@@ -124,7 +124,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
@@ -134,7 +134,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
@@ -144,7 +144,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql"
   }
  },
@@ -154,7 +154,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql"
   }
  },
@@ -164,7 +164,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
@@ -174,7 +174,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
@@ -184,7 +184,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
@@ -194,7 +194,7 @@
   "native": "error: Binder Error: Cannot compare values of type BIGINT and type INTERVAL - an explicit cast is required",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
@@ -204,7 +204,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
@@ -214,7 +214,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   }
  },
@@ -1125,7 +1125,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   },
   "contract": {
@@ -1142,7 +1142,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   },
   "contract": {
@@ -1159,7 +1159,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1176,7 +1176,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   },
   "contract": {
@@ -1201,7 +1201,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   },
   "contract": {
@@ -1218,7 +1218,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1240,7 +1240,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1262,7 +1262,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1282,7 +1282,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1299,7 +1299,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   },
   "contract": {
@@ -1316,7 +1316,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1333,7 +1333,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   },
   "contract": {
@@ -1350,7 +1350,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1367,7 +1367,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1384,7 +1384,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1401,7 +1401,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1418,7 +1418,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1435,7 +1435,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1452,7 +1452,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1469,7 +1469,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   },
   "contract": {
@@ -1486,7 +1486,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   },
   "contract": {
@@ -1503,7 +1503,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1520,7 +1520,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   },
   "contract": {
@@ -1537,7 +1537,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   },
   "contract": {
@@ -1554,7 +1554,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1571,7 +1571,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1588,7 +1588,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1605,7 +1605,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
@@ -1622,7 +1622,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "sql (tie_free)"
   },
   "contract": {
@@ -1639,7 +1639,7 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   },
   "contract": {

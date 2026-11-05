@@ -1,9 +1,10 @@
 # Examples
 
-Nine short examples, each a step up from the one before: a contract proved
+Ten short examples, each a step up from the one before: a contract proved
 and run, SQL, the preconditions Sverify infers, routes to Polars, tolerances
 for doubles, reproducible sinks, engine profiles, Substrait's own semantics,
-and a plan checked under Polars's. The inputs are a few rows in memory. Every block runs as written,
+a plan checked under Polars's, and the export of a verified plan to any
+Substrait consumer. The inputs are a few rows in memory. Every block runs as written,
 in order: `python/tests/test_readme.py` runs them and checks each printed
 line against the comment under it.
 
@@ -327,6 +328,53 @@ does not hold there, and DuckDB refuses the plan. A zero divisor and integer
 overflow raise under `Profile.polars` as under the reference, so `verify`
 infers the same preconditions. [core-semantics.md](core-semantics.md#polars-as-a-profile)
 says which choices the profile takes from Polars.
+
+## 10. A verified plan for any Substrait consumer
+
+`report.to_substrait()` returns the plan the checker verified, written for
+any conforming consumer of Substrait 0.106: each call names its YAML's URN,
+its compound name and its output type, and each option the proof depends on
+is pinned at the reference's behaviour. The contract travels with it, and
+`sv.from_substrait` proves it again:
+
+```python
+from sverify.errors import ExportError
+
+unit = sv.verify(
+    t.select(t.id, unit=t.total // t.qty),
+    requires={"orders": [_.qty > 0, _.total >= 0]},
+    ensures=[_.unit >= 0],
+)
+exported = unit.to_substrait()  # protobuf JSON; "binary" for bytes
+manifest = unit.substrait_contract()["manifest"]
+print([(p["group"], p["option"], p["values"]) for p in manifest["pinned"]])
+# [('int.arith', 'overflow', ['ERROR']), ('int.div', 'overflow', ['ERROR']), ('int.div', 'on_division_by_zero', ['ERROR']), ('int.div', 'on_domain_error', ['ERROR', 'NULL'])]
+print(sv.from_substrait(exported).proved)
+# True
+```
+
+Where Substrait has no option for a choice the proof uses, a spec gap,
+`shims` decides. A standard deviation of one value is NULL in the
+reference, and Substrait leaves it open
+([ST-3](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)):
+
+```python
+spread = sv.verify(t.group_by("qty").aggregate(spread=t.total.std()))
+print([s["shim"] for s in spread.substrait_contract()["manifest"]["shims"]])
+# ['variance and std_dev: if count(x) < 2 (1 for POPULATION) then NULL']
+print([a["text"] for a in spread.substrait_contract(shims="annotate")["manifest"]["assumptions"]])
+# ["the consumer gives NULL at agg.var's stat_degenerate"]
+try:
+    spread.to_substrait(shims="refuse")
+except ExportError as e:
+    print(e)
+# refused for Substrait: agg.var's stat_degenerate: Substrait allows NULL, NAN, ERROR where the proof uses NULL (ST-3, upstream/bugs/ST-3.json); export with shims='apply' or 'annotate'
+```
+
+`"apply"`, the default, rewrites the plan so that every conforming consumer
+gives the reference's result; `"annotate"` leaves the plan as written and
+ships the choice as an assumption; `"refuse"` refuses. The
+[guide](guide.md#exporting-to-substrait) lists what the export carries.
 
 ## Where next
 

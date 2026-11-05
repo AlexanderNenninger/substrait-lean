@@ -986,7 +986,8 @@ the quantile's `method`. The others are shims with a cost:
   terms), and `round` to negative digits
   ([round-digits](../characterization/polars/facts/polars-round-digits.json));
 - decimal result types and `decimal_rescale`
-  ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json)),
+  ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
+  [decimal-casts](../characterization/polars/facts/polars-decimal-casts.json)),
   the `i64` against `fp64` comparison, `sum`'s widening of `i8`, `i16`, and
   the implicit casts and literal types of #573;
 - 0-based positions of `substring`, `strpos` and `list_extract`,

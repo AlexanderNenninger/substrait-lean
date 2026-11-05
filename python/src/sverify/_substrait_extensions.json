@@ -1,0 +1,9622 @@
+{
+ "functions": {
+  "abs": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "decimal<P,S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "acos": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "acosh": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "add": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P1,S1>"
+     },
+     {
+      "type": "decimal<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "init_scale = max(S1,S2)\ninit_prec = init_scale + max(P1 - S1, P2 - S2) + 1\nmin_scale = min(init_scale, 6)\ndelta = init_prec - 38\nprec = min(init_prec, 38)\nscale_after_borrow = max(init_scale - delta, min_scale)\nscale = init_prec > 38 ? scale_after_borrow : init_scale\nDECIMAL<prec, scale>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "date",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     },
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u8",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     },
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u16",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     },
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u32",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     },
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "add_intervals": [
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_day<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_year",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "all_match": [
+   {
+    "args": [
+     {
+      "type": "list<any1>"
+     },
+     {
+      "type": "func<any1 -> boolean?>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean?",
+    "urn": "extension:io.substrait:functions_list"
+   }
+  ],
+  "and": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_boolean",
+    "variadic": 0
+   }
+  ],
+  "and_not": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     },
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_boolean"
+   }
+  ],
+  "any_match": [
+   {
+    "args": [
+     {
+      "type": "list<any1>"
+     },
+     {
+      "type": "func<any1 -> boolean?>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean?",
+    "urn": "extension:io.substrait:functions_list"
+   }
+  ],
+  "any_value": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "ignore_nulls": [
+      "TRUE",
+      "FALSE"
+     ]
+    },
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_aggregate_generic"
+   }
+  ],
+  "approx_count_distinct": [
+   {
+    "args": [
+     {
+      "type": "any"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_aggregate_approx"
+   },
+   {
+    "args": [
+     {
+      "type": "any"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "decimal<38,0>",
+    "urn": "extension:io.substrait:functions_aggregate_decimal_output"
+   }
+  ],
+  "asin": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "asinh": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "assume_timezone": [
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision = integer_parameter(precision)\nprecision_timestamp_tz<precision>",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "atan": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "atan2": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "atanh": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "avg": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P,S>"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "DECIMAL?<38,S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "between": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "bit_length": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "bitwise_and": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P1,0>"
+     },
+     {
+      "type": "DECIMAL<P2,0>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "max_precision = max(P1, P2)\nDECIMAL<max_precision, 0>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "bitwise_not": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "bitwise_or": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P1,0>"
+     },
+     {
+      "type": "DECIMAL<P2,0>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "max_precision = max(P1, P2)\nDECIMAL<max_precision, 0>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "bitwise_xor": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P1,0>"
+     },
+     {
+      "type": "DECIMAL<P2,0>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "max_precision = max(P1, P2)\nDECIMAL<max_precision, 0>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "bool_and": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "boolean?",
+    "urn": "extension:io.substrait:functions_boolean"
+   }
+  ],
+  "bool_or": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "boolean?",
+    "urn": "extension:io.substrait:functions_boolean"
+   }
+  ],
+  "buffer": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "capitalize": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "cardinality": [
+   {
+    "args": [
+     {
+      "type": "list<any1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_list"
+   }
+  ],
+  "ceil": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "integral_least_num_digits = P - S + 1\nprecision = min(integral_least_num_digits, 38)\ndecimal<precision, 0>",
+    "urn": "extension:io.substrait:functions_rounding_decimal"
+   }
+  ],
+  "center": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "padding": [
+      "RIGHT",
+      "LEFT"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "padding": [
+      "RIGHT",
+      "LEFT"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "centroid": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "char_length": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "coalesce": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_comparison",
+    "variadic": 2
+   }
+  ],
+  "collection_extract": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   },
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "concat": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "null_handling": [
+      "IGNORE_NULLS",
+      "ACCEPT_NULLS"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string",
+    "variadic": 1
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "null_handling": [
+      "IGNORE_NULLS",
+      "ACCEPT_NULLS"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string",
+    "variadic": 1
+   }
+  ],
+  "concat_ws": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string",
+    "variadic": 1
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string",
+    "variadic": 1
+   }
+  ],
+  "contains": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "corr": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "cos": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "cosh": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "count": [
+   {
+    "args": [
+     {
+      "type": "any"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "decimal<38,0>",
+    "urn": "extension:io.substrait:functions_aggregate_decimal_output"
+   },
+   {
+    "args": [],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "decimal<38,0>",
+    "urn": "extension:io.substrait:functions_aggregate_decimal_output"
+   },
+   {
+    "args": [
+     {
+      "type": "any"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_aggregate_generic"
+   },
+   {
+    "args": [],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_aggregate_generic"
+   }
+  ],
+  "count_substring": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "cume_dist": [
+   {
+    "args": [],
+    "kind": "window",
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "degrees": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "dense_rank": [
+   {
+    "args": [],
+    "kind": "window",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "dimension": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "divide": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "IEEE",
+      "LIMIT",
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "IEEE",
+      "LIMIT",
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P1,S1>"
+     },
+     {
+      "type": "decimal<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "init_scale = max(6, S1 + P2 + 1)\ninit_prec = P1 - S1 + P2 + init_scale\nmin_scale = min(init_scale, 6)\ndelta = init_prec - 38\nprec = min(init_prec, 38)\nscale_after_borrow = max(init_scale - delta, min_scale)\nscale = init_prec > 38 ? scale_after_borrow : init_scale\nDECIMAL<prec, scale>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     },
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ]
+    },
+    "return": "u!u8",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     },
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ]
+    },
+    "return": "u!u16",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     },
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ]
+    },
+    "return": "u!u32",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     },
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_division_by_zero": [
+      "NULL",
+      "ERROR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "ends_with": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "envelope": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "equal": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "exp": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "extract": [
+   {
+    "args": [
+     {
+      "enum": [
+       "YEAR",
+       "ISO_YEAR",
+       "US_YEAR",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND",
+       "NANOSECOND",
+       "PICOSECOND",
+       "SUBSECOND",
+       "UNIX_TIME",
+       "TIMEZONE_OFFSET"
+      ]
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "YEAR",
+       "ISO_YEAR",
+       "US_YEAR",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND",
+       "NANOSECOND",
+       "SUBSECOND",
+       "UNIX_TIME"
+      ]
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "YEAR",
+       "ISO_YEAR",
+       "US_YEAR",
+       "UNIX_TIME"
+      ]
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND",
+       "SUBSECOND"
+      ]
+     },
+     {
+      "type": "precision_time<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "QUARTER",
+       "MONTH",
+       "DAY",
+       "DAY_OF_YEAR",
+       "MONDAY_DAY_OF_WEEK",
+       "SUNDAY_DAY_OF_WEEK",
+       "MONDAY_WEEK",
+       "SUNDAY_WEEK",
+       "ISO_WEEK",
+       "US_WEEK"
+      ]
+     },
+     {
+      "enum": [
+       "ONE",
+       "ZERO"
+      ]
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "QUARTER",
+       "MONTH",
+       "DAY",
+       "DAY_OF_YEAR",
+       "MONDAY_DAY_OF_WEEK",
+       "SUNDAY_DAY_OF_WEEK",
+       "MONDAY_WEEK",
+       "SUNDAY_WEEK",
+       "ISO_WEEK",
+       "US_WEEK"
+      ]
+     },
+     {
+      "enum": [
+       "ONE",
+       "ZERO"
+      ]
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "QUARTER",
+       "MONTH",
+       "DAY",
+       "DAY_OF_YEAR",
+       "MONDAY_DAY_OF_WEEK",
+       "SUNDAY_DAY_OF_WEEK",
+       "MONDAY_WEEK",
+       "SUNDAY_WEEK",
+       "ISO_WEEK",
+       "US_WEEK"
+      ]
+     },
+     {
+      "enum": [
+       "ONE",
+       "ZERO"
+      ]
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "extract_boolean": [
+   {
+    "args": [
+     {
+      "enum": [
+       "IS_LEAP_YEAR"
+      ]
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "IS_LEAP_YEAR",
+       "IS_DST"
+      ]
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "IS_LEAP_YEAR"
+      ]
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "factorial": [
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P,0>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "DECIMAL<38,0>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "filter": [
+   {
+    "args": [
+     {
+      "type": "list<any1>"
+     },
+     {
+      "type": "func<any1 -> boolean?>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "list<any1>",
+    "urn": "extension:io.substrait:functions_list"
+   }
+  ],
+  "first_value": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "window",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "flip_coordinates": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "floor": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "integral_least_num_digits = P - S + 1\nprecision = min(integral_least_num_digits, 38)\ndecimal<precision, 0>",
+    "urn": "extension:io.substrait:functions_rounding_decimal"
+   }
+  ],
+  "geometry_type": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "greatest": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_comparison",
+    "variadic": 2
+   }
+  ],
+  "greatest_skip_null": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_comparison",
+    "variadic": 2
+   }
+  ],
+  "gt": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "gte": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "index_in": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "list<any1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "nan_equality": [
+      "NAN_IS_NAN",
+      "NAN_IS_NOT_NAN"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_set"
+   }
+  ],
+  "initcap": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "is_closed": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "is_distinct_from": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_empty": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "is_false": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "BOOLEAN",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_finite": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_infinite": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_nan": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_not_distinct_from": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_not_false": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "BOOLEAN",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_not_null": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_not_true": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "BOOLEAN",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_null": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_ring": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "is_simple": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "is_true": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "BOOLEAN",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "is_valid": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "lag": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "window",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "window",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "window",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "last_value": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "window",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "lead": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "window",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "window",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "window",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "least": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_comparison",
+    "variadic": 2
+   }
+  ],
+  "least_skip_null": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "any1",
+    "urn": "extension:io.substrait:functions_comparison",
+    "variadic": 2
+   }
+  ],
+  "left": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "like": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "ln": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   }
+  ],
+  "local_timestamp": [
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "log10": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   }
+  ],
+  "log1p": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   }
+  ],
+  "log2": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   }
+  ],
+  "logb": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P1,S1>"
+     },
+     {
+      "type": "decimal<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "NULL",
+      "ERROR"
+     ],
+     "on_log_zero": [
+      "NAN",
+      "ERROR",
+      "MINUS_INFINITY"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_logarithmic"
+   }
+  ],
+  "lower": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "lpad": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "lt": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "lte": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "ltrim": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "make_line": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     },
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "max": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i8?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i16?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P,S>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "DECIMAL?<P, S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "date?",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_time<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "precision_time?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "precision_timestamp?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "precision_timestamp_tz?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "interval_day?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "interval_year?",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u8?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u16?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u32?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u64?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "median": [
+   {
+    "args": [
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "i8?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "i16?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "min": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i8?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i16?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P, S>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "DECIMAL?<P, S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "date?",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_time<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "precision_time?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "precision_timestamp?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "precision_timestamp_tz?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "interval_day?<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "interval_year?",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u8?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u16?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u32?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "u!u64?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "minimum_bounding_circle": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "mode": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i8?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i16?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "modulus": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "division_type": [
+      "TRUNCATE",
+      "FLOOR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "division_type": [
+      "TRUNCATE",
+      "FLOOR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "division_type": [
+      "TRUNCATE",
+      "FLOOR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "division_type": [
+      "TRUNCATE",
+      "FLOOR"
+     ],
+     "on_domain_error": [
+      "NULL",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P1,S1>"
+     },
+     {
+      "type": "decimal<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "init_scale = max(S1,S2)\ninit_prec = min(P1 - S1, P2 - S2) + init_scale\nmin_scale = min(init_scale, 6)\ndelta = init_prec - 38\nprec = min(init_prec, 38)\nscale_after_borrow = max(init_scale - delta, min_scale)\nscale = init_prec > 38 ? scale_after_borrow : init_scale\nDECIMAL<prec, scale>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "multiply": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P1,S1>"
+     },
+     {
+      "type": "decimal<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "init_scale = S1 + S2\ninit_prec = P1 + P2 + 1\nmin_scale = min(init_scale, 6)\ndelta = init_prec - 38\nprec = min(init_prec, 38)\nscale_after_borrow = max(init_scale - delta, min_scale)\nscale = init_prec > 38 ? scale_after_borrow : init_scale\nDECIMAL<prec, scale>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_day<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_day<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_day<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_day<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_year",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_year",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_year",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "interval_year",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     },
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u8",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     },
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u16",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     },
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u32",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     },
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "negate": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "decimal<P,S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "not": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_boolean"
+   }
+  ],
+  "not_equal": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "nth_value": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "window",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ]
+    },
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "ntile": [
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "window",
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "window",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "nullif": [
+   {
+    "args": [
+     {
+      "type": "any1"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "scalar",
+    "return": "any1?",
+    "urn": "extension:io.substrait:functions_comparison"
+   }
+  ],
+  "num_points": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "octet_length": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "or": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_boolean",
+    "variadic": 0
+   }
+  ],
+  "percent_rank": [
+   {
+    "args": [],
+    "kind": "window",
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "point": [
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "power": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P1,S1>"
+     },
+     {
+      "type": "DECIMAL<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "complex_number_result": [
+      "NAN",
+      "ERROR"
+     ],
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "product": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "quantile": [
+   {
+    "args": [
+     {
+      "enum": [
+       "NEITHER",
+       "MINIMUM",
+       "MAXIMUM",
+       "BOTH"
+      ]
+     },
+     {
+      "enum": [
+       "EXACT",
+       "APPROXIMATE"
+      ]
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "any1"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "LIST?<any1>",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "radians": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "rank": [
+   {
+    "args": [],
+    "kind": "window",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "regexp_count_substring": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "regexp_match_substring": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "regexp_match_substring_all": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "List<varchar<L1>>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "List<string>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "regexp_replace": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "varchar<L3>"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "varchar<L3>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "regexp_string_split": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "List<varchar<L1>>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "List<string>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "regexp_strpos": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ],
+     "dotall": [
+      "DOTALL_DISABLED",
+      "DOTALL_ENABLED"
+     ],
+     "multiline": [
+      "MULTILINE_DISABLED",
+      "MULTILINE_ENABLED"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "remove_repeated_points": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   },
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "u!geometry",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "repeat": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "replace": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     },
+     {
+      "type": "varchar<L3>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "replace_slice": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "reverse": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "right": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "round": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "i8?",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "i16?",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "i32?",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_rounding"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P,S>"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR",
+      "AWAY_FROM_ZERO",
+      "TIE_DOWN",
+      "TIE_UP",
+      "TIE_TOWARDS_ZERO",
+      "TIE_TO_ODD"
+     ]
+    },
+    "return": "precision = min(P + 1, 38)\ndecimal?<precision, S>",
+    "urn": "extension:io.substrait:functions_rounding_decimal"
+   }
+  ],
+  "round_calendar": [
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "WEEK",
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "MONDAY_WEEK",
+       "SUNDAY_WEEK",
+       "ISO_WEEK",
+       "US_WEEK",
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND"
+      ]
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "WEEK",
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "MONDAY_WEEK",
+       "SUNDAY_WEEK",
+       "ISO_WEEK",
+       "US_WEEK",
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND"
+      ]
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "WEEK",
+       "DAY"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "MONDAY_WEEK",
+       "SUNDAY_WEEK",
+       "ISO_WEEK",
+       "US_WEEK",
+       "DAY"
+      ]
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "date",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_time<P>"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND"
+      ]
+     },
+     {
+      "enum": [
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND"
+      ]
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_time<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "round_temporal": [
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "WEEK",
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND"
+      ]
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "precision_timestamp<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "WEEK",
+       "DAY",
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND"
+      ]
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "precision_timestamp_tz<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "YEAR",
+       "MONTH",
+       "WEEK",
+       "DAY"
+      ]
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "date"
+     }
+    ],
+    "kind": "scalar",
+    "return": "date",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_time<P>"
+     },
+     {
+      "enum": [
+       "FLOOR",
+       "CEIL",
+       "ROUND_TIE_DOWN",
+       "ROUND_TIE_UP"
+      ]
+     },
+     {
+      "enum": [
+       "HOUR",
+       "MINUTE",
+       "SECOND",
+       "MILLISECOND",
+       "MICROSECOND"
+      ]
+     },
+     {
+      "type": "i64"
+     },
+     {
+      "type": "precision_time<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_time<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "row_number": [
+   {
+    "args": [],
+    "kind": "window",
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "rpad": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "rtrim": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "shift_left": [
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "shift_right": [
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "shift_right_unsigned": [
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "sign": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "sin": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "sinh": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "sort": [
+   {
+    "args": [
+     {
+      "type": "list<any1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "direction": [
+      "ASC_NULLS_FIRST",
+      "ASC_NULLS_LAST",
+      "DESC_NULLS_FIRST",
+      "DESC_NULLS_LAST"
+     ]
+    },
+    "return": "list<any1>",
+    "urn": "extension:io.substrait:functions_list"
+   }
+  ],
+  "sqrt": [
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "on_domain_error": [
+      "NAN",
+      "ERROR"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P,S>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "starts_with": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "std_dev": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "distribution": [
+      "SAMPLE",
+      "POPULATION"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "SAMPLE",
+       "POPULATION"
+      ]
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "distribution": [
+      "SAMPLE",
+      "POPULATION"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "SAMPLE",
+       "POPULATION"
+      ]
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "strftime": [
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_time<P>"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "string_agg": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "aggregate",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "string_split": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "List<varchar<L1>>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "List<string>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "strpos": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     },
+     {
+      "type": "fixedchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "case_sensitivity": [
+      "CASE_SENSITIVE",
+      "CASE_INSENSITIVE",
+      "CASE_INSENSITIVE_ASCII"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "strptime_date": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "date",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "strptime_time": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision = integer_parameter(precision)\nprecision_time<precision>",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "strptime_timestamp": [
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision = integer_parameter(precision)\nprecision_timestamp_tz<precision>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision = integer_parameter(precision)\nprecision_timestamp_tz<precision>",
+    "urn": "extension:io.substrait:functions_datetime"
+   }
+  ],
+  "substring": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "negative_start": [
+      "WRAP_FROM_END",
+      "LEFT_OF_BEGINNING",
+      "ERROR"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "negative_start": [
+      "WRAP_FROM_END",
+      "LEFT_OF_BEGINNING",
+      "ERROR"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<l1>"
+     },
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "negative_start": [
+      "WRAP_FROM_END",
+      "LEFT_OF_BEGINNING",
+      "ERROR"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "negative_start": [
+      "WRAP_FROM_END",
+      "LEFT_OF_BEGINNING"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "negative_start": [
+      "WRAP_FROM_END",
+      "LEFT_OF_BEGINNING"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<l1>"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "negative_start": [
+      "WRAP_FROM_END",
+      "LEFT_OF_BEGINNING"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "subtract": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     },
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i8",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     },
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i16",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     },
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     },
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "decimal<P1,S1>"
+     },
+     {
+      "type": "decimal<P2,S2>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "init_scale = max(S1,S2)\ninit_prec = init_scale + max(P1 - S1, P2 - S2) + 1\nmin_scale = min(init_scale, 6)\ndelta = init_prec - 38\nprec = min(init_prec, 38)\nscale_after_borrow = max(init_scale - delta, min_scale)\nscale = init_prec > 38 ? scale_after_borrow : init_scale\nDECIMAL<prec, scale>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "interval_year"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "interval_year"
+     }
+    ],
+    "kind": "scalar",
+    "return": "date",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "precision_timestamp_tz<P>"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp_tz<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "date"
+     },
+     {
+      "type": "interval_day<P>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "precision_timestamp<P>",
+    "urn": "extension:io.substrait:functions_datetime"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     },
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u8",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     },
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u16",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     },
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u32",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     },
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "sum": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P, S>"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "DECIMAL?<38,S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u8"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u16"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   },
+   {
+    "args": [
+     {
+      "type": "u!u64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "u!u64?",
+    "urn": "extension:io.substrait:unsigned_integers"
+   }
+  ],
+  "sum0": [
+   {
+    "args": [
+     {
+      "type": "i8"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i16"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "i64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "i64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "DECIMAL<P, S>"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "overflow": [
+      "SILENT",
+      "SATURATE",
+      "ERROR"
+     ]
+    },
+    "return": "DECIMAL<38,S>",
+    "urn": "extension:io.substrait:functions_arithmetic_decimal"
+   }
+  ],
+  "swapcase": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "tan": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "tanh": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "title": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "transform": [
+   {
+    "args": [
+     {
+      "type": "list<any1>"
+     },
+     {
+      "type": "func<any1 -> any2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "list<any2>",
+    "urn": "extension:io.substrait:functions_list"
+   }
+  ],
+  "trim": [
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     },
+     {
+      "type": "varchar<L2>"
+     }
+    ],
+    "kind": "scalar",
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "upper": [
+   {
+    "args": [
+     {
+      "type": "string"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "string",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "varchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "varchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   },
+   {
+    "args": [
+     {
+      "type": "fixedchar<L1>"
+     }
+    ],
+    "kind": "scalar",
+    "options": {
+     "char_set": [
+      "UTF8",
+      "ASCII_ONLY"
+     ]
+    },
+    "return": "fixedchar<L1>",
+    "urn": "extension:io.substrait:functions_string"
+   }
+  ],
+  "variance": [
+   {
+    "args": [
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "distribution": [
+      "SAMPLE",
+      "POPULATION"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "SAMPLE",
+       "POPULATION"
+      ]
+     },
+     {
+      "type": "fp32"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp32?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "distribution": [
+      "SAMPLE",
+      "POPULATION"
+     ],
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   },
+   {
+    "args": [
+     {
+      "enum": [
+       "SAMPLE",
+       "POPULATION"
+      ]
+     },
+     {
+      "type": "fp64"
+     }
+    ],
+    "kind": "aggregate",
+    "options": {
+     "rounding": [
+      "TIE_TO_EVEN",
+      "TIE_AWAY_FROM_ZERO",
+      "TRUNCATE",
+      "CEILING",
+      "FLOOR"
+     ]
+    },
+    "return": "fp64?",
+    "urn": "extension:io.substrait:functions_arithmetic"
+   }
+  ],
+  "x_coordinate": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ],
+  "xor": [
+   {
+    "args": [
+     {
+      "type": "boolean"
+     },
+     {
+      "type": "boolean"
+     }
+    ],
+    "kind": "scalar",
+    "return": "boolean",
+    "urn": "extension:io.substrait:functions_boolean"
+   }
+  ],
+  "y_coordinate": [
+   {
+    "args": [
+     {
+      "type": "u!geometry"
+     }
+    ],
+    "kind": "scalar",
+    "return": "fp64",
+    "urn": "extension:io.substrait:functions_geometry"
+   }
+  ]
+ },
+ "substrait": "0.106.0"
+}

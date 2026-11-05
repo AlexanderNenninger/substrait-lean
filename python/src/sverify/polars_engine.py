@@ -62,6 +62,7 @@ import math
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import pyarrow as pa
@@ -242,6 +243,8 @@ def null_type(t: dict) -> DType:
             return pl.Time
         case "int", _:
             return pl.Null
+        case "decimal", (p, s):
+            return decimal_type(p, s)
         case "list", elem:
             return pl.List(materialize(null_type(elem or {"i64": {}})))
         case "struct", fields:
@@ -269,6 +272,9 @@ def literal(lit: dict) -> tuple[Any, DType]:
             return v, pl.String
         case "float":
             return v + 0.0, pl.Float64  # the one zero
+        case "decimal":
+            m, p, s = v
+            return Decimal(m).scaleb(-s), decimal_type(p, s)
         case "null":
             return None, null_type(v)
         case "time":
@@ -341,6 +347,9 @@ def unify(a: DType, b: DType, what: str) -> DType:
         return b
     if b == pl.Null or a == b:
         return a
+    if is_decimal(a) and is_decimal(b) and a.scale == b.scale:  # pyrefly: ignore
+        # One scale: the larger precision holds both (`Parse.decimalPassThrough`).
+        return decimal_type(max(a.precision, b.precision), a.scale)  # pyrefly: ignore
     raise Unsupported(f"{what} of {a} and {b}")
 
 
@@ -381,6 +390,124 @@ def arith_type(name: str, a: DType, b: DType) -> DType:
     if out is None:
         raise Unsupported(f"{name} of {a} and {b}")
     return out
+
+
+# --- Decimals (#27) -----------------------------------------------------------
+#
+# A `DECIMAL(p, s)` is its unscaled integer (`UnFn.decimal`), and a value has
+# the plan's type, `pl.Decimal(p, s)`. Polars computes every result of `+`,
+# `-`, `*` and `/` as a `Decimal(38, max(s₁, s₂))`, rounding half to even
+# (polars-decimal-arith); the reference's product has scale `s₁ + s₂`, exactly,
+# a rescale rounds half away from zero, and a result of more than `p` digits
+# is an overflow. So `+` and `-` (exact at the larger scale) run natively and
+# are checked against `p`; a product, a rescale and a division run on the
+# unscaled values (`to_physical`, an `Int128`), with the reference's rounding
+# (`shims.decimal_round_half_away`, `shims.decimal_div_half_away`).
+
+#: Polars's largest precision, and the reference's.
+DEC_DIGITS = 38
+
+
+def decimal_type(p: int, s: int) -> DType:
+    if not 0 <= s <= p <= DEC_DIGITS or p == 0:
+        raise Unsupported(f"DECIMAL({p}, {s}) is not a decimal type Polars has")
+    return pl.Decimal(p, s)
+
+
+def is_decimal(t: DType) -> bool:
+    return isinstance(t, pl.Decimal)
+
+
+def decimal_of(t: DType, what: str) -> tuple[int, int]:
+    """`(p, s)` of a decimal operand; an integer is a `DECIMAL(19, 0)` and an
+    untyped NULL a `DECIMAL(1, 0)` (`decimalCall`)."""
+    if is_decimal(t):
+        return t.precision, t.scale  # pyrefly: ignore
+    if t == pl.Int64:
+        return 19, 0
+    if t == pl.Null:
+        return 1, 0
+    if t == pl.Float64:
+        raise Unsupported(f"{what} of a DECIMAL and a double is not supported; cast one of them")
+    raise Unsupported(f"{what} of a DECIMAL and {t} is not supported")
+
+
+def unscaled(v: Val) -> pl.Expr:
+    """The unscaled value of a decimal, or an integer, as an `Int128`."""
+    return v.expr.to_physical() if is_decimal(v.dtype) else v.expr.cast(pl.Int128)
+
+
+def of_unscaled(u: pl.Expr, s: int) -> pl.Expr:
+    """The `Decimal(38, s)` whose unscaled value is the `Int128` `u`, which has
+    at most 38 digits: `u` at scale 0 times `10⁻ˢ`, a product Polars computes
+    exactly (its scale is the result's)."""
+    return u.cast(pl.Decimal(DEC_DIGITS, 0)) * pl.lit(
+        Decimal(1).scaleb(-s), pl.Decimal(DEC_DIGITS, s)
+    )
+
+
+def i128(n: int) -> pl.Expr:
+    return pl.lit(n, pl.Int128)
+
+
+def fit_decimal(
+    u: pl.Expr,
+    p: int,
+    s: int,
+    what: str,
+    *vals: Val,
+    bad: pl.Expr | None = None,
+    kind: type[RuntimeIssue] | None = None,
+) -> Val:
+    """The unscaled `Int128` result `u` as a `DECIMAL(p, s)`; more than `p`
+    digits is an overflow (`UnFn.decimal`), as is `bad`, where `u` is not the
+    result (it would leave 128 bits)."""
+    out = u.abs() >= i128(10**p)
+    if bad is not None:
+        out = bad | out
+    value = of_unscaled(pl.when(out).then(None).otherwise(u), s).cast(pl.Decimal(p, s))
+    found = issue(out, kind or IntegerOverflow, f"{what} leaves DECIMAL({p}, {s})")
+    return Val(value, pl.Decimal(p, s), (*issues(*vals), found))
+
+
+def decimal_rescale(v: Val, p: int, s: int, what: str) -> Val:
+    """A decimal or an integer as a `DECIMAL(p, s)` (`UnFn.decimal`, `dround`):
+    exact to a larger scale, half away from zero to a smaller one, where
+    Polars's cast rounds half to even (polars-decimal-arith)."""
+    s0 = decimal_of(v.dtype, what)[1]
+    if s == s0:
+        return fit_decimal(unscaled(v), p, s, what, v)
+    if s > s0:
+        # Exact; NULL past 38 digits, which overflows any `p`.
+        up = v.expr.cast(pl.Decimal(DEC_DIGITS, s), strict=False)
+        lost = up.is_null() & v.expr.is_not_null()
+        u = pl.when(lost).then(i128(0)).otherwise(up.to_physical())
+        return fit_decimal(u, p, s, what, v, bad=lost)
+    return fit_decimal(shims.decimal_round_half_away(unscaled(v), s0 - s), p, s, what, v)
+
+
+def decimal_mul(a: Val, b: Val, p: int, s: int) -> Val:
+    """`a × b` at scale `s₁ + s₂`, exactly (`BinFn.dmul`): the product of the
+    unscaled values. Polars's own product rounds to `max(s₁, s₂)`. It is
+    computed only where it has at most `p` digits, so it never leaves 128
+    bits: `|x| ≤ (10ᵖ − 1) // |y|`."""
+    x, y = unscaled(a), unscaled(b)
+    ay = y.abs()
+    bad = (ay != 0) & (x.abs() > (i128(10**p - 1) // pl.when(ay == 0).then(i128(1)).otherwise(ay)))
+    u = pl.when(bad).then(i128(0)).otherwise(x) * y
+    return fit_decimal(u, p, s, "multiply", a, b, bad=bad)
+
+
+def decimal_div(a: Val, b: Val, p: int, s: int) -> Val:
+    """`a / b`, a decimal of scale `s₁` by an integer, at scale `s ≥ s₁`, half
+    away from zero (`BinFn.ddiv`, `roundDivInt?`); NULL for `b = 0`."""
+    s1 = decimal_of(a.dtype, "sverify_decimal_div")[1]
+    if s - s1 > 18:
+        raise Unsupported("sverify_decimal_div by more than 18 decimal places is not supported")
+    x, n = unscaled(a), b.expr.cast(pl.Int128)
+    u, bad = shims.decimal_div_half_away(x, n, s - s1)
+    out = fit_decimal(u, p, s, "sverify_decimal_div", a, b, bad=bad.fill_null(False) & (n != 0))
+    return Val(pl.when(n == 0).then(None).otherwise(out.expr), out.dtype, out.issues)
 
 
 def _numpy() -> Any:
@@ -1023,8 +1150,61 @@ class Exprs:
                     raise Unsupported(f"substring with negative_start = {start}")
                 wrap = start == "WRAP_FROM_END"
                 return self.substring(self(arg_js[0]), self(arg_js[1]), n, wrap)
-            return self.call(name, [self(a) for a in arg_js])
+            args = [self(a) for a in arg_js]
+            if any(is_decimal(v.dtype) for v in args):
+                return self.decimal_call(name, args, f.get("outputType"))
+            return self.call(name, args)
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
+
+    def decimal_call(self, name: str, args: list[Val], out_ty: dict | None) -> Val:
+        """A call with a `DECIMAL` argument (#27), as `Parse.decimalCall` reads
+        it: the result type from the operands', or the declared precision."""
+        tys = [decimal_of(v.dtype, name) for v in args]
+        declared = _plan_read.type_kind(out_ty) if isinstance(out_ty, dict) else None
+        dp, ds = declared[1] if declared and declared[0] == "decimal" else (None, None)
+
+        def scale(sc: int) -> int:
+            # A plan that declares a smaller scale rounds, which is not modelled.
+            if ds is not None and ds != sc:
+                raise Unsupported(
+                    f"{name}: a DECIMAL result of scale {ds} where the exact one has {sc} "
+                    "is not supported"
+                )
+            return sc
+
+        match name, args, tys:
+            case (("add" | "subtract"), [a, b], [(p1, s1), (p2, s2)]):
+                sc = scale(max(s1, s2))
+                p = dp if dp is not None else min(DEC_DIGITS, max(p1 - s1, p2 - s2) + sc + 1)
+                x, y = (v.expr.cast(pl.Decimal(DEC_DIGITS, 0)) if v.dtype == pl.Null else v.expr
+                        for v in (a, b))  # fmt: skip
+                # Exact at the larger scale (polars-decimal-arith).
+                w = x + y if name == "add" else x - y
+                return fit_decimal(w.to_physical(), p, sc, name, a, b)
+            case "multiply", [a, b], [(p1, s1), (p2, s2)]:
+                sc = scale(s1 + s2)
+                if sc > DEC_DIGITS:
+                    raise Unsupported(
+                        "a DECIMAL product with more than 38 decimal places is not supported"
+                    )
+                p = dp if dp is not None else min(DEC_DIGITS, p1 + p2 + 1)
+                return decimal_mul(a, b, p, sc)
+            case (("negate" | "subtract"), [a], _):
+                return Val(-a.expr, a.dtype, a.issues)
+            case "abs", [a], _:
+                return Val(a.expr.abs(), a.dtype, a.issues)
+            case "sverify_decimal_div", [a, b], [(_, s1), (_, 0)] if b.dtype in (pl.Int64, pl.Null):
+                if dp is None or ds is None or ds < s1:
+                    raise Unsupported("sverify_decimal_div needs a DECIMAL type of a larger scale")
+                return decimal_div(a, b, dp, ds)
+            case (("equal" | "lt"), [a, b], _):
+                # Polars compares decimals of any scales, and with integers,
+                # exactly (polars-decimal-compare).
+                x, y = a.expr, b.expr
+                return Val(x == y if name == "equal" else x < y, pl.Boolean, issues(a, b))
+            case "is_null", [a], _:
+                return self.unary(name, a)
+        raise Unsupported(f"{name} of DECIMAL is not yet supported on Polars")
 
     @staticmethod
     def months(j: dict) -> int | None:
@@ -1083,6 +1263,8 @@ class Exprs:
             raise Unsupported("TRY_CAST is not yet supported on Polars; " + DUCKDB_ONLY)
         v = self(c["input"])
         target = c.get("type", {})
+        if "decimal" in target or is_decimal(v.dtype):
+            return self.decimal_cast(v, target)
         if ("fp64" in target or "fp32" in target) and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
         if "fp64" in target and v.dtype in (pl.Float64, pl.Float32):
@@ -1113,6 +1295,54 @@ class Exprs:
             return Val(days.cast(pl.Int32).cast(pl.Date), pl.Date, v.issues)
         raise Unsupported(f"unsupported cast from {v.dtype} to {json.dumps(target)}")
 
+    def decimal_cast(self, v: Val, target: dict) -> Val:
+        """Casts to and from decimals (#27), as the parser reads them."""
+        kind, arg = _plan_read.type_kind(target) or ("other", (0, 0))
+        t = v.dtype
+        if kind == "decimal":
+            p, s = arg
+            if s == 0 and p >= 19 and t in (pl.Int64, pl.Null):
+                # `Parse.wideIntDecimal`: an integer, kept as one.
+                return Val(v.expr.cast(pl.Int64), pl.Int64, v.issues)
+            if t == pl.Float64:
+                return self.double_to_decimal(v, p, s)
+            if t == pl.Null:
+                return Val(pl.lit(None, decimal_type(p, s)), decimal_type(p, s), v.issues)
+            if t == pl.Int64 or is_decimal(t):
+                return decimal_rescale(v, p, s, f"CAST to DECIMAL({p}, {s})")
+            raise Unsupported(f"unsupported cast from {t} to DECIMAL({p}, {s})")
+        if kind == "float" and "fp64" in target:
+            # Correctly rounded, as `FloatCode.ofDecimal` (polars-decimal-casts).
+            return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
+        if kind == "int":
+            # Truncated toward zero (`UnFn.dtrunc`), then the integer width.
+            bits = next((n for n in (8, 16, 32) if f"i{n}" in target), 64)
+            return narrow_int(Val(v.expr.cast(pl.Int128), pl.Int128, v.issues), bits)
+        raise Unsupported(f"unsupported cast from {t} to {json.dumps(target)}")
+
+    @staticmethod
+    def double_to_decimal(v: Val, p: int, s: int) -> Val:
+        """`FloatCode.toDecimal?`: `x · 10ˢ` rounded to a double, then to an
+        integer half away from zero; NaN and ±∞ fail (`badCast`). Polars rounds
+        the product half to even (polars-decimal-casts). Past `10²²` the double
+        `10ˢ` is inexact and Polars's product rounds twice."""
+        if s > 22:
+            raise Unsupported(
+                "a CAST of a double to a DECIMAL of more than 22 decimal places is not "
+                "supported on Polars"
+            )
+        x = v.expr
+        y = x * (10.0**s)
+        fails = ~y.is_finite()
+        r = shims.round_half_away(pl.when(fails).then(0.0).otherwise(y))
+        # Past 2¹²⁷ it has more than 38 digits; the cast to `Int128` would fail.
+        big = r.abs() >= 2.0**127
+        u = pl.when(big).then(0.0).otherwise(r).cast(pl.Int128)
+        out = fit_decimal(u, p, s, f"CAST to DECIMAL({p}, {s})", v, bad=big & ~fails)
+        bad = issue(fails, BadCast, "cannot cast NaN or infinity to a decimal")
+        value = pl.when(fails).then(None).otherwise(out.expr)
+        return Val(value, out.dtype, (*out.issues, bad))
+
     def if_then(self, t: dict) -> Val:
         """A `CASE` only evaluates the branch a row takes, so a branch's issues
         count only on its rows (`Expr.issues`)."""
@@ -1123,9 +1353,11 @@ class Exprs:
                 raise Unsupported(f"IF condition of type {c.dtype}")
             then = self(clause["then"])
             taken = is_true(c.expr)
+            dtype = unify(then.dtype, out.dtype, "IF branches")
+            value = pl.when(taken).then(then.expr).otherwise(out.expr)
             out = Val(
-                pl.when(taken).then(then.expr).otherwise(out.expr),
-                unify(then.dtype, out.dtype, "IF branches"),
+                value.cast(dtype) if is_decimal(dtype) else value,
+                dtype,
                 (
                     *c.issues,
                     *(Issue(taken & i.flag, i.kind, i.message) for i in then.issues),
@@ -1450,7 +1682,7 @@ class Exprs:
         t = pl.Null
         for v in vals:
             t = unify(t, v.dtype, name)
-        if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
+        if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null) and not is_decimal(t):
             raise Unsupported(f"{name} of {t}")
         if t == pl.Null:
             return Val(pl.lit(None), t, issues(*vals))
@@ -1587,6 +1819,8 @@ def type_of(t: dict) -> DType:
             return pl.Time
         case "interval", _:
             return INTERVAL
+        case "decimal", (p, s):
+            return decimal_type(p, s)
         case "list", elem:
             return pl.List(type_of(elem or {}))
         case "struct", fields:
@@ -1725,6 +1959,10 @@ class Measure:
             return pl.List(materialize(self.arg.dtype))
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             return pl.Float64
+        if self.fn in ("dsum", "davg"):
+            p, s = self.arg.dtype.precision, self.arg.dtype.scale  # pyrefly: ignore
+            more = 10 if self.fn == "dsum" else 4
+            return pl.Decimal(min(DEC_DIGITS, p + more), s if self.fn == "dsum" else s + 4)
         return pl.Float64 if self.fn in ("fsum", "avg", "fmax") else materialize(self.arg.dtype)
 
     @property
@@ -1776,6 +2014,26 @@ class Measure:
             )
         if self.fn == "iavg":
             return NativeAgg({name: shims.avg_int_declared(v)}, r)
+        if self.fn in ("dsum", "davg"):
+            # Polars's exact sum, a `Decimal(38, s)` (polars-decimal-arith),
+            # NULL without values (`sum_empty_null`); the sum's digits are
+            # those of `SUM`'s type (`Measure.sumDigits`, #316), for `AVG` too.
+            out = self.dtype
+            p, s = self.arg.dtype.precision, self.arg.dtype.scale  # pyrefly: ignore
+            digits = min(DEC_DIGITS, p + 10)
+            total, n = f"{name}_sum", f"{name}_n"
+            aggs = {total: shims.sum_empty_null(v.sum(), v), n: v.count().cast(pl.Int64)}
+            u = pl.col(total).to_physical()
+            leaves = (u.abs() >= i128(10**digits)).fill_null(False)
+            flags = ((leaves, SumOverflow, f"SUM leaves DECIMAL({digits}, {s})"),)
+            if self.fn == "dsum":
+                # NULL past the precision, where the guard raises.
+                return NativeAgg(aggs, pl.col(total).cast(out, strict=False), flags)
+            # `AVG`: the sum by the count at scale `s + 4`, half away from zero
+            # (`decimalAvgs`, `roundDivInt?`); Polars's `mean` is a `Float64`.
+            q, _ = shims.decimal_div_half_away(u, pl.col(n), 4)
+            avg = of_unscaled(q, s + 4).cast(out)
+            return NativeAgg(aggs, pl.when(pl.col(n) == 0).then(None).otherwise(avg), flags)
         if self.fn in ("fsum", "avg"):
             nan, inf = f"{name}_nan", f"{name}_inf"
             agg = shims.float_sum(v) if self.fn == "fsum" else shims.float_avg(v)
@@ -1972,7 +2230,13 @@ def python_windows(
                     else:
                         frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
                         vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
-                        if f.fn == "agg":
+                        if f.fn == "agg" and f.agg == "dsum":
+                            # Unscaled values, summed exactly (`Measure.sumDigits`).
+                            xs = [x for x in vals if x is not None]
+                            v = sum(xs) if xs else None
+                            if v is not None and abs(v) >= 10**f.dtype.precision:  # pyrefly: ignore
+                                raise SumOverflow(f"SUM leaves {f.dtype}")
+                        elif f.fn == "agg":
                             v = _aggregate(f.agg, False, [x for x in vals if x is not None], True)
                         elif f.fn == "first_value":
                             v = vals[0] if vals else None
@@ -1993,6 +2257,12 @@ def python_windows(
                 if t == pl.Time
                 else t
             )
+            if is_decimal(t):
+                # Decimals were read as their unscaled values (`to_physical`).
+                sc = t.scale  # pyrefly: ignore
+                vs = [None if x is None else Decimal(x).scaleb(-sc) for x in out[o]]
+                new.append(pl.Series(col(o), vs, dtype=t))
+                continue
             s = pl.Series(col(o), out[o], dtype=physical)
             new.append(s.cast(t) if physical != t else s)
         return df.with_columns(new).select(list(schema))
@@ -2265,6 +2535,14 @@ class Translator:
             fn = {"sum": "fsum" if t == pl.Float64 or itof else "sum"}.get(name, name)
             if name == "avg" and not itof and t == pl.Int64 and _int_output(w):
                 fn = "iavg"
+            if is_decimal(t) and not itof:
+                # A decimal `SUM` has ten more digits (#27); Lean writes a
+                # windowed `AVG` as `sverify_decimal_div` of `SUM` and `COUNT`.
+                if name == "sum":
+                    dsum = pl.Decimal(min(DEC_DIGITS, t.precision + 10), t.scale)  # pyrefly: ignore
+                    return WindowSpec("agg", dsum, agg="dsum", col=idx, frame=frame)
+                if name not in ("count", "min", "max"):
+                    raise Unsupported(f"{name} of a DECIMAL over a window is not supported")
             if name in ("min", "max") and t == pl.Float64:
                 raise Unsupported(
                     f"{name} of doubles is not yet supported on Polars; " + DUCKDB_ONLY
@@ -2427,6 +2705,12 @@ class Translator:
             fn = "count"
         elif name == "sum" and t in (pl.Int64, pl.Float64):
             fn = "sum" if t == pl.Int64 else "fsum"
+        elif name in ("sum", "avg") and is_decimal(t):
+            # `SUM` has ten more digits, `AVG` four more and four more places
+            # (`Measure.kind`, `decimalAvgs`, #27).
+            if name == "avg" and t.precision + 4 > DEC_DIGITS:  # pyrefly: ignore
+                raise Unsupported("AVG of a DECIMAL of more than 34 digits is not supported")
+            fn = "dsum" if name == "sum" else "davg"
         elif name == "avg" and t == pl.Float64:
             fn = "avg"
         elif name in ("variance", "std_dev") and t == pl.Float64:
@@ -2437,7 +2721,9 @@ class Translator:
             fn = ("var" if name == "variance" else "std") + ("_pop" if pop else "_samp")
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
-        elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
+        elif name in ("min", "max") and (
+            t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date) or is_decimal(t)
+        ):
             fn = name
         elif name == "max" and t == pl.Float64 and _is_abs(args[0], ex):
             # `MAX(|x|)`, which a split double's partial rows report (#428):

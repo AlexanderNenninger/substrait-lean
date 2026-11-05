@@ -98,6 +98,8 @@ def shimCosts : List (String × String × ShimCost) := [
   ("polars", "strpos_chars", .expression),
   ("polars", "substring_wrap", .expression),
   ("polars", "column_divisor", .expression),
+  ("polars", "decimal_round_half_away", .expression),
+  ("polars", "decimal_div_half_away", .expression),
   ("polars", "sort on the keys", .sort)]
 
 def shimCost? (engine name : String) : Option ShimCost :=

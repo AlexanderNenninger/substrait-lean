@@ -38,7 +38,7 @@ def prototypeSlice : List String :=
    "rounding", "nan_creation", "zero_sign", "nan_kind", "nan_order", "nan_equality",
    "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
-   "null_join_keys", "float_overflow", "stat_algo", "quantile_interp"]
+   "null_join_keys", "float_overflow", "stat_algo", "quantile_interp", "decimal_rescale"]
 
 /-- The theorems of the package `float-bounds` (Mathlib, kept out of the core)
 that rows name as evidence. The core cannot see them: the `run_cmd` at the
@@ -111,7 +111,10 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
     (none, "null_join_keys", .oneOf ["NO_MATCH"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
-    (none, "quantile_interp", .oneOf ["LINEAR"])] ++ uncharacterized prototypeSlice
+    (none, "quantile_interp", .oneOf ["LINEAR"]),
+    -- Not characterized on DuckDB yet: the core's behaviours.
+    (none, "decimal_rescale", .loose ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"])] ++
+    uncharacterized prototypeSlice
 
 def Profile.duckdb.obs : ObsTable := [
   (none, "overflow", .native ["duckdb-R1", "duckdb-R15-int-arith"]),
@@ -217,7 +220,12 @@ def Profile.polars.table : ProfileTable where
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
     (some "str.sub", "string_positions", .oneOf ["ZERO_BASED_CHARS"]),
     (some "str.match", "string_positions", .oneOf ["ZERO_BASED_BYTES"]),
-    (none, "null_join_keys", .oneOf ["NO_MATCH"])] ++ uncharacterized prototypeSlice
+    (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    -- Decimals are `Decimal(38, max(s₁, s₂))`: they raise past 38 digits, and
+    -- round a product, a quotient and a rescale half to even
+    -- (polars-decimal-arith, polars-decimal-casts).
+    (some "dec.arith", "overflow", .oneOf ["ERROR"]),
+    (none, "decimal_rescale", .oneOf ["TIE_TO_EVEN"])] ++ uncharacterized prototypeSlice
   missing := (["md5", "sha256", "levenshtein", "repeat", "ascii", "like", "ilike"].map
     (·, ["polars-string-functions-missing"]))
 
@@ -285,7 +293,18 @@ def Profile.polars.obs : ObsTable := [
   (none, "case_sensitivity", .native ["polars-match-functions"]),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
   (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
-  (none, "null_join_keys", .native ["polars-null-keys"])]
+  (none, "null_join_keys", .native ["polars-null-keys"]),
+  -- Past 38 digits, where the reference raises past the result's precision,
+  -- which the translation checks (`fit_decimal`).
+  (some "dec.arith", "overflow", .native ["polars-decimal-arith"]),
+  -- A product's scale is the sum of the operands' there, computed on the
+  -- unscaled values; a cast to a smaller scale rounds half away from zero.
+  (none, "decimal_rescale", (ObsRow.shimmed "decimal_round_half_away"
+    ["polars-decimal-arith", "polars-decimal-casts"]).proved "Polars.decimal_round_half_away"),
+  -- `AVG` of decimals and `sverify_decimal_div`: Polars's `mean` is a
+  -- `Float64`, its `/` rounds half to even.
+  (some "dec.div", "decimal_rescale", (ObsRow.shimmed "decimal_div_half_away"
+    ["polars-decimal-arith"]).proved "Polars.decimal_div_half_away")]
 
 /-! ## The engines -/
 
@@ -297,7 +316,7 @@ def rerunExact : List String :=
   ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
    "rounding", "nan_creation", "float_overflow", "negative_start", "case_sensitivity",
    "string_positions", "avg_int_result", "empty_group_aggregates", "null_order",
-   "null_join_keys", "quantile_interp"]
+   "null_join_keys", "quantile_interp", "decimal_rescale"]
 
 /-- Each row with what reruns give: exact where `rerunExact` says so, with the
 row's facts as evidence; a variation keeps its own. -/
