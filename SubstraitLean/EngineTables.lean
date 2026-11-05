@@ -205,6 +205,8 @@ def Profile.polars.table : ProfileTable where
     (none, "zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
+    -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
+    (some "agg.order", "nan_order", .oneOf ["IGNORED"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
     -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
@@ -267,8 +269,14 @@ def Profile.polars.obs : ObsTable := [
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
+  -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
+  -- with NaN as the greatest double (`Polars.min_ignore_nan`).
+  (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
+    note := "MIN and MAX; QUANTILE_DISC sorts its values, NaN last (polars-nan-order)." }).proved
+    "Polars.max_nan_greatest"),
   -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
-  (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
+  (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
+    ["polars-zero-order", "polars-min-max-zero"] with
     shim := some "one_zero" }).proved "Polars.one_zero"),
   (none, "avg_int_result", (ObsRow.shimmed "avg_int_declared" ["polars-avg-int"]).proved "Polars.avg_int_declared"),
   (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),
