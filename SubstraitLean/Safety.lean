@@ -658,25 +658,166 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
     · simp at hk
   · simp at hk
 
-def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
+/-! ## Guards on the NaN of a double operation (#702)
+
+A `CASE` that guards `a * b` with `(a = ∞ OR a = -∞) AND b = 0` leaves its
+`ELSE` branch with alternatives (`Expr.cstrAlts`): `a ≠ ±∞`, or `b ≠ 0`.
+They go into the assumptions when there is one, and otherwise into a clause
+of `Clauses`. An operation whose only domain error is a NaN case
+(`BinFn.nanOnly`) has none where, under each combination of the clauses'
+alternatives, its inputs cannot meet a NaN case (`Expr.nanExcluded`), by
+their abstract values and the assumptions `x ≠ k`. This is how the DuckDB
+lift's `+`, `-`, `*` and `/` of doubles, which give NaN as DuckDB does, are
+shown not to raise. -/
+
+/-- Operations of doubles whose only domain error is a NaN case (`nanCase`). -/
+def BinFn.nanOnly : BinFn → Bool
+  | .fadd | .fsub | .fmul | .fdiv | .fmod => true
+  | _ => false
+
+theorem BinFn.nanCase_of_issue {f : BinFn} (hf : f.nanOnly = true) {v w : Value}
+    (h : f.issue v w = some .domain) : ∃ a b, v = .int a ∧ w = .int b ∧ nanCase f a b = true := by
+  cases f <;> simp only [BinFn.nanOnly, Bool.false_eq_true] at hf <;>
+    cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at h <;>
+    (try split at h) <;> simp_all [nanIssue] <;>
+    (split at h <;> simp_all)
+
+/-- `BinFn.mayNan` of the operations `nanOnly` names, where `pa k` and `pb k`
+say whether each input may be the code `k`. -/
+def BinFn.mayNanBy (f : BinFn) (pa pb : Int → Bool) : Bool :=
+  let inf (p : Int → Bool) := p FloatCode.posInf || p FloatCode.negInf
+  match f with
+  | .fadd => (pa FloatCode.posInf && pb FloatCode.negInf) ||
+      (pa FloatCode.negInf && pb FloatCode.posInf)
+  | .fsub => (pa FloatCode.posInf && pb FloatCode.posInf) ||
+      (pa FloatCode.negInf && pb FloatCode.negInf)
+  | .fmul => (pa 0 && inf pb) || (inf pa && pb 0)
+  | .fdiv => inf pa && inf pb
+  | .fmod => inf pa
+  | _ => true
+
+theorem BinFn.mayNanBy_sound {f : BinFn} {pa pb : Int → Bool} {a b : Int} (ha : pa a = true)
+    (hb : pb b = true) (h : nanCase f a b = true) : f.mayNanBy pa pb = true := by
+  cases f <;> simp only [nanCase, Bool.false_eq_true] at h <;>
+    simp only [BinFn.mayNanBy, isInfCode, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq,
+      bne_iff_ne, ne_eq] at h ⊢
+  · rcases h with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+    · exact .inl ⟨ha, hb⟩
+    · exact .inr ⟨ha, hb⟩
+  · rcases h with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+    · exact .inl ⟨ha, hb⟩
+    · exact .inr ⟨ha, hb⟩
+  · rcases h with ⟨rfl, rfl | rfl⟩ | ⟨rfl | rfl, rfl⟩
+    · exact .inl ⟨ha, .inl hb⟩
+    · exact .inl ⟨ha, .inr hb⟩
+    · exact .inr ⟨.inl ha, hb⟩
+    · exact .inr ⟨.inr ha, hb⟩
+  · obtain ⟨rfl | rfl, rfl | rfl⟩ := h
+    all_goals exact ⟨by first | exact .inl ha | exact .inr ha, by first | exact .inl hb | exact .inr hb⟩
+  · obtain ⟨rfl | rfl, _⟩ := h
+    · exact .inl ha
+    · exact .inr ha
+
+/-- May `x` be the code (or integer) `k`? Its abstract value may hold `k`,
+no assumption says `x ≠ k`, and for `0`, `Expr.nonZero` does not rule it out. -/
+def Expr.mayBe (env : List AVal) (fs : List Fact) (ks : Assumptions) (x : Expr) (k : Int) : Bool :=
+  (x.absD env fs ks).has k &&
+    !(ks.any fun sk => sk.1 == x && match sk.2 with | .ne j => j == k | _ => false) &&
+    (k != 0 || !x.nonZero env fs ks)
+
+/-- Clauses: lists of alternatives, one of each of which holds. -/
+abbrev Clauses := List (List Assumptions)
+
+def ClausesHold (ors : Clauses) (row : Row) : Prop := ∀ as ∈ ors, AltsHold as row
+
+/-- The combinations of one alternative per clause, the newest clauses
+first, while there are at most `budget` of them. -/
+def clauseCombos (budget : Nat) : Clauses → List Assumptions
+  | [] => [[]]
+  | as :: rest =>
+    if as.length ≤ budget then altsProd as (clauseCombos (budget / max as.length 1) rest)
+    else clauseCombos budget rest
+
+theorem clauseCombos_sound {row : Row} (budget : Nat) :
+    ∀ {ors : Clauses}, ClausesHold ors row → AltsHold (clauseCombos budget ors) row
+  | [], _ => ⟨[], by simp [clauseCombos], fun _ hp => by simp at hp⟩
+  | as :: rest, h => by
+    have hr : ClausesHold rest row := fun a ha => h a (List.mem_cons_of_mem _ ha)
+    unfold clauseCombos
+    split
+    · exact (h as (List.mem_cons_self ..)).prod (clauseCombos_sound _ hr)
+    · exact clauseCombos_sound _ hr
+
+/-- Assumptions and clauses with the alternatives `as` added: to the
+assumptions when there is one, as a clause otherwise. -/
+def withAlts (as : List Assumptions) (ks : Assumptions) (ors : Clauses) : Assumptions × Clauses :=
+  match as with
+  | [k] => (k ++ ks, ors)
+  | _ => (ks, as :: ors)
+
+theorem withAlts_sound {as : List Assumptions} {ks : Assumptions} {ors : Clauses} {row : Row}
+    (h : AltsHold as row) (hks : KsHold ks row) (hors : ClausesHold ors row) :
+    KsHold (withAlts as ks ors).1 row ∧ ClausesHold (withAlts as ks ors).2 row := by
+  unfold withAlts
+  split
+  · obtain ⟨k', hk', hh⟩ := h
+    simp only [List.mem_singleton] at hk'
+    subst hk'
+    exact ⟨hh.append hks, hors⟩
+  · refine ⟨hks, fun a ha => ?_⟩
+    rcases List.mem_cons.mp ha with rfl | ha
+    · exact h
+    · exact hors a ha
+
+/-- Do the assumptions and clauses rule out every NaN case of `f a b`, for
+an operation `nanOnly` names? -/
+def Expr.nanExcluded (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors : Clauses)
+    (f : BinFn) (a b : Expr) : Bool :=
+  f.nanOnly && (clauseCombos 16 ors).all fun ks' =>
+    !f.mayNanBy (a.mayBe env fs (ks' ++ ks)) (b.mayBe env fs (ks' ++ ks))
+
+/-- `BinFn.mayIssue`, without its domain error where `excl`. -/
+def BinFn.mayIssueX (f : BinFn) (aa ab ar : AVal) (nz : Bool) (sz : Option Nat) (excl : Bool) :
+    List Issue :=
+  if excl then (f.mayIssue aa ab ar nz sz).filter (· != .domain) else f.mayIssue aa ab ar nz sz
+
+def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (ors : Clauses := []) :
     Expr → List (Issue × Expr)
   | .lit _ | .field _ => []
   | .un f a =>
-    a.mayIssues env fs ks ++
+    a.mayIssues env fs ks ors ++
       (f.mayIssue (a.absD env fs ks) ((Expr.un f a).absD env fs ks) ++
         f.mayInf (a.absD env fs ks)).map (·, .un f a)
   | .bin f a b =>
-    a.mayIssues env fs ks ++ b.mayIssues env fs ks ++
-      (f.mayIssue (a.absD env fs ks) (b.absD env fs ks) ((Expr.bin f a b).absD env fs ks)
-        (b.nonZero env fs ks) a.strBytes? ++ f.mayInf (a.absD env fs ks) (b.absD env fs ks)).map
-        (·, .bin f a b)
+    a.mayIssues env fs ks ors ++ b.mayIssues env fs ks ors ++
+      (f.mayIssueX (a.absD env fs ks) (b.absD env fs ks) ((Expr.bin f a b).absD env fs ks)
+        (b.nonZero env fs ks) a.strBytes? (Expr.nanExcluded env fs ks ors f a b) ++
+        f.mayInf (a.absD env fs ks) (b.absD env fs ks)).map (·, .bin f a b)
   | .ifThen c t e =>
     let ac := c.absD env fs ks
-    c.mayIssues env fs ks ++
-      (if ac.tt then t.mayIssues (c.refine env) fs (c.cstrs true ++ ks) else []) ++
-      (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs (c.cstrs false ++ ks) else [])
+    let tk := withAlts (c.cstrAlts true) ks ors
+    let ek := withAlts (c.cstrAlts false) ks ors
+    c.mayIssues env fs ks ors ++
+      (if ac.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else [])
   -- The body on any element: it reads only its parameter.
-  | .hof _ l b => l.mayIssues env fs ks ++ b.mayIssues [AVal.top] [] []
+  | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues [AVal.top] [] []
+
+-- The DuckDB lift's `a * b` of doubles (#702): the NaN of `0 · ∞` and
+-- `∞ · 0` as a `CASE`, whose `ELSE` branch has no domain error; the bare product
+-- has one. (Both may overflow to `±∞`, an assumed issue of its own.)
+#guard
+  let dbl : AVal := ⟨false, some Bound.top, false, false, false⟩
+  let a := Expr.field 0
+  let b := Expr.field 1
+  let isInf (x : Expr) := Expr.bin .or (.bin .eq x (.lit (.int FloatCode.posInf)))
+    (.bin .eq x (.lit (.int FloatCode.negInf)))
+  let isZero (x : Expr) := Expr.bin .eq x (.lit (.int 0))
+  let nan := Expr.lit (.int FloatCode.nan)
+  let guarded := Expr.ifThen (.bin .and (isZero a) (isInf b)) nan
+    (.ifThen (.bin .and (isInf a) (isZero b)) nan (.bin .fmul a b))
+  (guarded.mayIssues [dbl, dbl] []).all (·.1 != .domain) &&
+    ((Expr.bin .fmul a b).mayIssues [dbl, dbl] []).any (·.1 == .domain)
 
 /-! ## Soundness for expressions -/
 
@@ -1075,15 +1216,76 @@ theorem Expr.strBytes?_sound (row : Row) (e : Expr) :
     simp only [Expr.eval, Value.str.injEq] at hs
     subst hs; exact hm
 
-theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {row : Row}
-    (h : EnvMem env row) (hfs : FactsHold fs row) (hks : KsHold ks row) :
-    ∀ (e : Expr), ∀ p ∈ e.issues row, p ∈ e.mayIssues env fs ks
+theorem Expr.mayBe_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {row : Row}
+    (h : EnvMem env row) (hfs : FactsHold fs row) (hks : KsHold ks row) {x : Expr} {c : Int}
+    (hx : x.eval row = .int c) : x.mayBe env fs ks c = true := by
+  have hm := Expr.absD_sound h hfs hks x
+  rw [hx] at hm
+  simp only [Expr.mayBe, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true, bne_iff_ne, ne_eq]
+  refine ⟨⟨AVal.has_of_mem hm, ?_⟩, ?_⟩
+  · rw [List.any_eq_false]
+    intro sk hsk hsk'
+    simp only [Bool.and_eq_true, beq_iff_eq] at hsk'
+    obtain ⟨rfl, hne⟩ := hsk'
+    have := hks sk hsk
+    match hk' : sk.2, hne with
+    | .ne j, hj =>
+      rw [hk'] at this
+      simp only [beq_iff_eq] at hj
+      exact this c hx hj.symm
+  · by_cases hc : c = 0
+    · right
+      subst hc
+      cases hnz : x.nonZero env fs ks with
+      | false => rfl
+      | true => exact absurd rfl (Expr.nonZero_sound h hfs hks x hnz 0 hx)
+    · exact .inl hc
+
+/-- Where `nanExcluded` holds, the operation has no domain error. -/
+theorem Expr.nanExcluded_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
+    {ors : Clauses} {row : Row} (h : EnvMem env row) (hfs : FactsHold fs row)
+    (hks : KsHold ks row) (hors : ClausesHold ors row) {f : BinFn} {a b : Expr}
+    (hx : Expr.nanExcluded env fs ks ors f a b = true) :
+    f.issue (a.eval row) (b.eval row) ≠ some .domain := by
+  intro hd
+  simp only [Expr.nanExcluded, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hx
+  obtain ⟨hf, hall⟩ := hx
+  obtain ⟨x, y, hxa, hyb, hn⟩ := BinFn.nanCase_of_issue hf hd
+  obtain ⟨ks', hk', hh⟩ := clauseCombos_sound 16 hors
+  have hk := hh.append hks
+  have := BinFn.mayNanBy_sound (Expr.mayBe_sound h hfs hk hxa) (Expr.mayBe_sound h hfs hk hyb) hn
+  rw [hall ks' hk'] at this
+  exact Bool.false_ne_true this
+
+theorem BinFn.mayIssueX_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz excl : Bool}
+    {sz : Option Nat} {k : Issue}
+    (ha : aa.Mem v) (hb : ab.Mem w) (hr : ar.Mem (f.apply v w))
+    (hnz : nz = true → ∀ j, w = .int j → j ≠ 0)
+    (hsz : ∀ m s, sz = some m → v = .str s → s.utf8ByteSize = m)
+    (hex : excl = true → f.issue v w ≠ some .domain) (hk : f.issue v w = some k) :
+    k ∈ f.mayIssueX aa ab ar nz sz excl := by
+  have hm := BinFn.mayIssue_sound f ha hb hr hnz hsz hk
+  unfold BinFn.mayIssueX
+  split
+  · rename_i he
+    refine List.mem_filter.mpr ⟨hm, ?_⟩
+    have hne : k ≠ .domain := fun hd => hex he (hd ▸ hk)
+    simpa using hne
+  · exact hm
+
+/-- `Expr.mayIssues` reports every issue evaluating `e` runs into, on a row
+its abstract environment, facts, assumptions and clauses describe. -/
+theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
+    {ors : Clauses} {row : Row}
+    (h : EnvMem env row) (hfs : FactsHold fs row) (hks : KsHold ks row)
+    (hors : ClausesHold ors row) :
+    ∀ (e : Expr), ∀ p ∈ e.issues row, p ∈ e.mayIssues env fs ks ors
   | .lit _, p, hp | .field _, p, hp => by simp [Expr.issues] at hp
   | .un f a, p, hp => by
     simp only [Expr.issues, List.mem_append] at hp
     simp only [Expr.mayIssues, List.mem_append]
     rcases hp with hp | hp
-    · exact .inl (Expr.mayIssues_sound h hfs hks a p hp)
+    · exact .inl (Expr.mayIssuesC_sound h hfs hks hors a p hp)
     · right
       cases hi : f.issueAll (a.eval row) with
       | none => simp [hi] at hp
@@ -1104,8 +1306,8 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
     simp only [Expr.issues, List.mem_append] at hp
     simp only [Expr.mayIssues, List.mem_append]
     rcases hp with (hp | hp) | hp
-    · exact .inl (.inl (Expr.mayIssues_sound h hfs hks a p hp))
-    · exact .inl (.inr (Expr.mayIssues_sound h hfs hks b p hp))
+    · exact .inl (.inl (Expr.mayIssuesC_sound h hfs hks hors a p hp))
+    · exact .inl (.inr (Expr.mayIssuesC_sound h hfs hks hors b p hp))
     · right
       cases hi : f.issueAll (a.eval row) (b.eval row) with
       | none => simp [hi] at hp
@@ -1117,9 +1319,10 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
         cases hj : f.issue (a.eval row) (b.eval row) with
         | some k' =>
           rw [hj] at hi; cases hi
-          exact .inl (BinFn.mayIssue_sound f (Expr.absD_sound h hfs hks a)
+          exact .inl (BinFn.mayIssueX_sound f (Expr.absD_sound h hfs hks a)
             (Expr.absD_sound h hfs hks b) (Expr.absD_sound h hfs hks (.bin f a b))
-            (fun hnz => Expr.nonZero_sound h hfs hks b hnz) (Expr.strBytes?_sound row a) hj)
+            (fun hnz => Expr.nonZero_sound h hfs hks b hnz) (Expr.strBytes?_sound row a)
+            (fun hx => Expr.nanExcluded_sound h hfs hks hors hx) hj)
         | none =>
           rw [hj, Option.none_or] at hi
           exact .inr (BinFn.mayInf_sound f (Expr.absD_sound h hfs hks a)
@@ -1129,14 +1332,15 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
     simp only [Expr.mayIssues, List.mem_append]
     have hc := Expr.absD_sound h hfs hks c
     rcases hp with hp | hp
-    · exact .inl (.inl (Expr.mayIssues_sound h hfs hks c p hp))
+    · exact .inl (.inl (Expr.mayIssuesC_sound h hfs hks hors c p hp))
     · by_cases hct : (c.eval row).isTrue = true
       · simp only [hct, ite_true] at hp
         left; right
         rw [Value.eq_true_of_isTrue hct] at hc
         have htt : (c.absD env fs ks).tt = true := hc
         simp only [htt, ite_true]
-        exact Expr.mayIssues_sound (Expr.refine_sound env c h hct) hfs (KsHold.cons_cstrs hct hks) t p hp
+        have hw := withAlts_sound (Expr.cstrAlts_sound hct) hks hors
+        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct) hfs hw.1 hw.2 t p hp
       · simp only [hct, ite_false, Bool.false_eq_true] at hp
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct
@@ -1149,17 +1353,23 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
           · simp [AVal.nonBool, hs]
           · simp [AVal.nonBool, hs]
         simp only [this, ite_true]
-        exact Expr.mayIssues_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e p hp
+        have hw := withAlts_sound (Expr.cstrAlts_sound hf) hks hors
+        exact Expr.mayIssuesC_sound (Expr.refineNeg_sound env c h hf) hfs hw.1 hw.2 e p hp
   | .hof _ l b, p, hp => by
     simp only [Expr.issues, List.mem_append, List.mem_flatMap] at hp
     simp only [Expr.mayIssues, List.mem_append]
     rcases hp with hp | ⟨x, _, hp⟩
-    · exact .inl (Expr.mayIssues_sound h hfs hks l p hp)
+    · exact .inl (Expr.mayIssuesC_sound h hfs hks hors l p hp)
     · -- The body sees one element, which `AVal.top` describes.
       have hx : EnvMem [AVal.top] [x] := fun i => by
         cases i <;> simp [AVal.mem_top]
-      exact .inr (Expr.mayIssues_sound hx (fun _ hf => by simp at hf)
-        (fun _ hk => by simp at hk) b p hp)
+      exact .inr (Expr.mayIssuesC_sound hx (fun _ hf => by simp at hf)
+        (fun _ hk => by simp at hk) (fun _ ha => by simp at ha) b p hp)
+
+theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {row : Row}
+    (h : EnvMem env row) (hfs : FactsHold fs row) (hks : KsHold ks row) :
+    ∀ (e : Expr), ∀ p ∈ e.issues row, p ∈ e.mayIssues env fs ks :=
+  Expr.mayIssuesC_sound h hfs hks (fun _ ha => by simp at ha)
 
 /-! ## Plans -/
 
