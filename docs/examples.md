@@ -1,9 +1,10 @@
 # Examples
 
-Nine short examples, each a step up from the one before: a contract proved
+Ten short examples, each a step up from the one before: a contract proved
 and run, SQL, the preconditions Sverify infers, routes to Polars, tolerances
-for doubles, reproducible sinks, engine profiles, Substrait's own
-semantics, and the export of a verified plan to any Substrait consumer. The inputs are a few rows in memory. Every block runs as written,
+for doubles, reproducible sinks, engine profiles, Substrait's own semantics,
+a plan checked under Polars's, and the export of a verified plan to any
+Substrait consumer. The inputs are a few rows in memory. Every block runs as written,
 in order: `python/tests/test_readme.py` runs them and checks each printed
 line against the comment under it.
 
@@ -225,14 +226,18 @@ divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty), semantics="duckdb", on_inferred="silent"
 )
 try:
-    divided.run(con, "polars", route="auto")
+    divided.run(con, "polars", route="transfer")
 except RouteError as e:
     print(e)
-# refused on polars: verify with semantics='reference' to run on polars (the plan was verified with semantics='duckdb', whose proof does not carry over to polars); details: ...
+# refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
+divided.run(con, "polars", route="auto")
+print(divided.routes["polars"])
+# recheck: proved again under Profile.polars [exact]
 ```
 
-The same query verified under the reference runs on Polars with a shim
-(example 4). [engine-profiles.md](engine-profiles.md) describes the
+The transfer check fails on the division's options, so `route="auto"` goes on to the
+re-check: the checker proves the plan again under `Profile.polars`, and
+Polars runs it with the shim of example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with
 each profile's choice.
 
@@ -267,7 +272,44 @@ where the two profiles differ, published in
 one, which Substrait could close with an option, are on the
 [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html) as `ST` entries.
 
-## 9. A verified plan for any Substrait consumer
+## 9. A plan checked under Polars's profile
+
+`semantics="polars"` checks a plan under what Polars does: its integer `//`
+and `%` floor, so `-7 % 2` is `1`. The plan states `division_type: FLOOR`,
+which the checker reads as Polars's remainder (`Profile.polars_imod` in
+[PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean)), and Polars runs
+its own `%` with no shim (route `native`). A postcondition that holds only
+of the floored remainder is proved:
+
+```python
+con.put("signed", pa.table({"x": [-7, -2, 3, 8]}))
+s = con.table("signed")
+notnull = {"signed": [_.x.notnull()]}
+parity = sv.verify(
+    s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0], semantics="polars"
+)
+print(parity.proved)
+# True
+print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
+# [1, 0, 1, 0]
+print(parity.routes["polars"])
+# native: verified under Profile.polars [exact]
+print(sv.verify(s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0]).proved)
+# False
+try:
+    parity.run(con, "duckdb", route="auto")
+except RouteError as e:
+    print(e)
+# refused on duckdb: integer // and % with division_type FLOOR (Polars's, semantics='polars') run on polars only; duckdb truncates: verify with semantics='reference' to run on duckdb
+```
+
+Under the reference `-7 % 2` is `-1`, as on DuckDB, so the postcondition
+does not hold there, and DuckDB refuses the plan. A zero divisor and integer
+overflow raise under `Profile.polars` as under the reference, so `verify`
+infers the same preconditions. [core-semantics.md](core-semantics.md#polars-as-a-profile)
+says which choices the profile takes from Polars.
+
+## 10. A verified plan for any Substrait consumer
 
 `report.to_substrait()` returns the plan the checker verified, written for
 any conforming consumer of Substrait 0.106: each call names its YAML's URN,

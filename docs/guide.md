@@ -712,7 +712,13 @@ them. `sv.sql(query, semantics=...)` attaches the choice to the query.
 `sv.verify(..., semantics=...)` and `@sv.transform(..., semantics=...)` make
 it for the SQL they lift themselves: a SQL transformation and SQL conditions.
 An `sv.sql` expression inside an Ibis transformation keeps its own. The report
-says which semantics it used (`Report.semantics`, a `semantics:` line). Until
+says which semantics it used (`Report.semantics`, a `semantics:` line).
+`semantics="polars"` reads an Ibis transformation as Polars computes it:
+integer `//` and `%` floor, so `-7 % 2` is `1`, and the plan states
+`division_type: FLOOR` on each, which Polars runs natively and the other
+engines refuse; a zero divisor and integer overflow still raise, so `verify`
+infers the same preconditions as under the reference
+([core-semantics.md](core-semantics.md#polars-as-a-profile)). Until
 #411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
 joins of every kind, subqueries and CTEs, GROUP BY with grouping sets,
 windows, set operations, ORDER BY, LIMIT, CASE, CAST, and the numeric,
@@ -1140,7 +1146,8 @@ that is going, is in [docs/engine-profiles.md](engine-profiles.md).
 ### Routes, classes and profiles
 
 A proof is about the plan under one semantics, a profile: sverify's
-reference by default, `semantics="duckdb"` for what DuckDB does, or
+reference by default, `semantics="duckdb"` for what DuckDB does,
+`semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
 say nothing. An engine computes its own semantics, so running a verified
 plan raises a question: does the proof hold for what the engine computes?
@@ -1150,7 +1157,7 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB) |
+| `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars) |
 | `reference` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars) |
 | `transfer` | the plan was verified under another profile, and at every option the proof depends on, the engine's choices are within that profile's |
 | `recheck` | the checker proves the plan again under the engine's profile |
@@ -1294,7 +1301,7 @@ and as a Substrait plan of one boolean column, and a manifest:
 sidecar file. `sv.from_substrait(exported)` reads a plan back, in either
 format, and proves its contract again with the checker; the report it
 returns has the same postconditions and verdict.
-[Example 9](examples.md#9-a-verified-plan-for-any-substrait-consumer)
+[Example 10](examples.md#10-a-verified-plan-for-any-substrait-consumer)
 exports a plan and shows the three modes. DataFusion's Substrait consumer
 runs the exports in `tests/test_substrait_export.py` and gives the
 reference's results; it does not know Substrait's `variance` or

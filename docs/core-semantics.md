@@ -624,7 +624,9 @@ is a choice that accepts every value the plan states.
 | `on_division_by_zero` | `fp.div` | `IEEE`, `LIMIT`, `NULL`, `ERROR` | `ERROR`, `IEEE`, `NULL`, `LIMIT`; `ERROR` by default | raise |
 | `on_division_by_zero` | `fp.mod` | `IEEE`, `LIMIT`, `NULL`, `ERROR` | `ERROR`, `NULL`; `ERROR` by default | raise |
 | `division_type` | all others | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
+| `division_type` | `int.div` | `TRUNCATE` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
 | `division_type` | `fp.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
+| `division_type` | `int.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
 | `shift_range` | all others | `ERROR`, `ZERO`, `DROP_BITS` | `DROP_BITS` | raise |
 | `decimal_rescale` | all others | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `TIE_AWAY_FROM_ZERO` | choose |
 | `rounding` | all others | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN` | choose |
@@ -1031,6 +1033,53 @@ part, as `Profile.duckdb` is for DuckDB):
 
 The Polars rows of `--options` name these theorems as their evidence. The
 `clustered` row stays tested, and so do the rows outside the slice.
+
+### Polars as a profile
+
+`Profile.polars` ([PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean))
+is the profile `verify(semantics="polars")` checks under, and the one
+`--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
+as `Profile.duckdb` is, and it takes Polars's choice option by option (D21):
+
+| Option | `Profile.polars` | Polars 2.1.0 | Why |
+|---|---|---|---|
+| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../characterization/polars/facts/polars-int-divide.json), [int-modulus](../characterization/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
+| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
+| `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a verified plan never wraps |
+| `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
+| `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
+| every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
+
+A plan states the choice: under `semantics="polars"` the Ibis producer
+writes integer `//` and `%` as `divide` and `modulus` with
+`division_type: FLOOR`, the parser reads them as `Expr.floorDivOf` and
+`Expr.floorModOf`, templates in the reference's truncating operations that
+cannot overflow on 64-bit operands, and `Write` writes them back as the
+calls. So the checker needs no profile of its own: it checks the plan the
+parser reads, and the report says `"profile": "polars"`. What is proved:
+
+- `Profile.polars_idiv`, `Profile.polars_imod`: on 64-bit integers the
+  templates are Polars's `//` and `%` (`Polars.floorDiv`, `Polars.floorMod`,
+  the trusted model of `PolarsShims.lean`); `Profile.polars_zero_divisor`:
+  a zero divisor raises.
+- `Polars.elaborate_eq`: evaluating an expression under `Profile.polars` is
+  evaluating its elaboration, each `//` and `%` replaced by its template,
+  under the reference. A contract proved of the parsed plan holds of the
+  plan under `Profile.polars`.
+- `Rel.allowed_polars_core`: `Allowed_polars ⊆ Allowed_core`, from the
+  choices table.
+
+On the routes: a plan verified under `Profile.polars` runs on Polars by
+`native`, where `polars_engine` runs Polars's `//` and `%` for the stated
+calls and the translation's shims elsewhere. DuckDB, DataFusion and Spark
+refuse a stated `FLOOR` before they run (`sverify._support`), and the
+transfer check fails on `division_type`. The re-check route targets the
+profile too: `--contract` with `"profile": "polars"` proves the reference
+plan again, its unstated `//` and `%` being the reference's `TRUNCATE`,
+which the translation shims. Tested, and trusted: that Polars computes
+`Polars.floorDiv` and `Polars.floorMod` (`tests/test_polars_profile.py` runs
+it against Python's floor division on random 64-bit values), and that the
+translation writes the stated calls as Polars's operators.
 
 ## The steps of #444
 
