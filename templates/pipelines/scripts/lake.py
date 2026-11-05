@@ -2,7 +2,7 @@
 run the same steps.
 
     python scripts/lake.py check   [--out check.json] [--comment comment.md]
-    python scripts/lake.py refresh [--out refresh.json] [--alert alert.md]
+    python scripts/lake.py refresh [--out refresh.json] [--alert alert.md] [--check check.json]
     python scripts/lake.py catalog --out site [--check check.json] [--refresh refresh.json]
                                    [--data auto|snapshot|none|link:<url>] [--stage production]
                                    [--title …] [--banner …]
@@ -22,14 +22,16 @@ current stage's tables (a closed pull request's).
 Each command exits with the worst exit code of the `sverify` runs: 0
 proved, 1 not proved, 2 refused, 3 budget exceeded, 4 error.
 
-Only sverify's CLI (`sverify` or `python -m sverify.cli`), its public
+Only sverify's CLI (`sverify.cli.main`, in this process), its public
 `sverify.io` and delta-rs are used.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import html
+import io
 import json
 import os
 import re
@@ -52,21 +54,28 @@ def config() -> dict[str, Any]:
 
 
 def sverify(*args: str) -> tuple[int, dict[str, Any]]:
-    """Run the `sverify` CLI with `--json`; its exit code and document."""
-    exe = shutil.which("sverify")
-    argv = [exe] if exe else [sys.executable, "-m", "sverify.cli"]
-    done = subprocess.run(
-        [*argv, *args, "--json"], cwd=ROOT, capture_output=True, text=True, check=False
-    )
-    sys.stderr.write(done.stderr)
+    """Run the `sverify` CLI with `--json` in this process (`sverify.cli.main`):
+    its exit code and document.
+
+    One process for every step: sverify, Ibis and DuckDB load once, and the
+    checker's answers are memoized, so a refresh after a check reuses the
+    check's proofs."""
+    from sverify.cli import main
+
+    out = io.StringIO()
     try:
-        doc = json.loads(done.stdout)
+        with contextlib.redirect_stdout(out):
+            code = main([*args, "--json"])
+    except SystemExit as e:  # argparse
+        code = e.code if isinstance(e.code, int) else 4
+    text = out.getvalue()
+    # The JSON document is the last thing printed; a pipeline may print before it.
+    start = text.find("{\n")
+    try:
+        doc = json.loads(text[start:] if start >= 0 else text)
     except json.JSONDecodeError:
-        doc = {
-            "exit": done.returncode or 4,
-            "error": {"code": "error", "type": "CLI", "message": done.stdout + done.stderr},
-        }
-    return done.returncode, doc
+        doc = {"exit": code or 4, "error": {"code": "error", "type": "CLI", "message": text}}
+    return code, doc
 
 
 def worst(codes: list[int]) -> int:
@@ -222,6 +231,9 @@ def alert(runs: list[dict[str, Any]]) -> str:
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
+    if args.check:
+        # The check first, in this process: the refresh reuses its proofs.
+        cmd_check(argparse.Namespace(out=args.check, comment=None))
     runs, codes = [], []
     for p in config().get("pipeline", []):
         for node in p.get("refresh", []):
@@ -634,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("refresh")
     r.add_argument("--out")
     r.add_argument("--alert")
+    r.add_argument("--check", help="run check first and write its document here")
     r.set_defaults(run=cmd_refresh)
     g = sub.add_parser("catalog")
     g.add_argument("--out", required=True)
@@ -653,6 +666,7 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("drop")
     d.set_defaults(run=cmd_drop)
     args = p.parse_args(argv)
+    os.chdir(ROOT)  # the pipelines' paths are relative to the repository
     return args.run(args)
 
 

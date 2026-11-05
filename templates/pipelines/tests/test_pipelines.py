@@ -62,7 +62,15 @@ def test_check_proves_every_pipeline(env, tmp_path):
 
 
 def test_refresh_then_catalog(env, tmp_path):
-    done = lake("refresh", "--out", str(tmp_path / "refresh.json"), env=env)
+    # The check first, in the same process, as the workflows run it.
+    done = lake(
+        "refresh",
+        "--check",
+        str(tmp_path / "check.json"),
+        "--out",
+        str(tmp_path / "refresh.json"),
+        env=env,
+    )
     assert done.returncode == 0, done.stdout + done.stderr
     doc = json.loads((tmp_path / "refresh.json").read_text())
     writes = {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
@@ -76,7 +84,7 @@ def test_refresh_then_catalog(env, tmp_path):
     writes = {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
     assert (writes["trade_openness"]["inserted"], writes["trade_openness"]["deleted"]) == (0, 0)
 
-    lake("check", "--out", str(tmp_path / "check.json"), env=env)
+    assert json.loads((tmp_path / "check.json").read_text())["exit"] == 0
     site = tmp_path / "site"
     done = lake(
         "catalog",

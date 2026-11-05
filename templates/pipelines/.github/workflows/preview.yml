@@ -28,9 +28,8 @@ jobs:
       stage: staging/pr-${{ github.event.pull_request.number }}
       run: |
         n=${{ github.event.pull_request.number }}
-        python scripts/lake.py check --out check.json > /dev/null || true
         status=0
-        python scripts/lake.py refresh --out refresh.json || status=$?
+        python scripts/lake.py refresh --check check.json --out refresh.json || status=$?
         python scripts/lake.py catalog --out "_data/$STAGE/site" --stage "$STAGE" \
           --check check.json --refresh refresh.json --title "Preview of #$n" \
           --banner "Preview of pull request #$n: staging data, deleted when it closes."

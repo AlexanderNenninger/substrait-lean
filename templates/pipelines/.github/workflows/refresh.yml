@@ -39,11 +39,10 @@ jobs:
       environment: production
       stage: production
       run: |
-        python scripts/lake.py check --out check.json > /dev/null || true
         status=0
         where="${{ (inputs.where != 'default' && inputs.where) || vars.SVERIFY_REFRESH_WHERE || 'actions' }}"
         case "$where" in
-          actions) python scripts/lake.py refresh --out refresh.json --alert alert.md || status=$? ;;
+          actions) python scripts/lake.py refresh --check check.json --out refresh.json --alert alert.md || status=$? ;;
           cloud-job) scripts/cloud-job.sh refresh.json alert.md || status=$? ;;
           *) echo "::error::where must be actions or cloud-job, not $where"; exit 4 ;;
         esac
