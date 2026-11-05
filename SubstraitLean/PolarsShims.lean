@@ -20,7 +20,8 @@ DuckDB.
 
 * Value side (`SHIMS`): `int_div_trunc`, `int_mod_trunc`, `round_half_away`,
   `sum_empty_null`, `avg_int_declared`, `one_zero`, `strpos_chars`,
-  `substring_wrap`, `null_order`, `tie_order`.
+  `substring_wrap`, `null_order`, `tie_order`, `decimal_round_half_away`,
+  `decimal_div_half_away`.
 * Guards (`GUARDS`): each flag holds exactly where the reference's issue
   does, so a guard refuses exactly the batches the precondition rules out
   (A3: `sum_leaves_i64`; A4: `makes_infinite`, `agg_makes_infinite`; B1:
@@ -279,6 +280,73 @@ theorem avg_int_declared (vs : List Int) : avgIntDeclared vs = AggFn.iavg.apply 
       ⟨foldl_min_le_mem v vs x hx, le_foldl_max_mem v vs x hx⟩
     have hm := tdiv_mean_between (s := (v :: vs).sum) (n := (v :: vs).length) (by simp) hb.1 hb.2
     rw [Int.max_eq_left hm.1, Int.min_eq_left hm.2]
+
+/-! ## Decimals: `decimal_rescale` = `TIE_AWAY_FROM_ZERO` -/
+
+/-- Polars's cast of an unscaled decimal to a scale `k` digits smaller, and
+its `×` and `/` past the result's scale, round half to even
+(polars-decimal-arith, polars-decimal-casts). -/
+def rescaleEven (k : Nat) (u : Int) : Int :=
+  let q := u.natAbs / 10 ^ k
+  let r := u.natAbs % 10 ^ k
+  let m : Int := (if 2 * r > 10 ^ k ∨ (2 * r = 10 ^ k ∧ q % 2 = 1) then q + 1 else q : Nat)
+  if u < 0 then -m else m
+
+#guard rescaleEven 1 125 == 12 && rescaleEven 1 135 == 14 && rescaleEven 2 (-250) == -2
+
+/-- `decimal_round_half_away`: `(|u| + 5·10ᵏ⁻¹) // 10ᵏ`, with `u`'s sign. -/
+def decimalRoundHalfAway (k : Nat) (u : Int) : Int :=
+  let q : Int := ((u.natAbs + 5 * 10 ^ (k - 1)) / 10 ^ k : Nat)
+  if u < 0 then -q else q
+
+/-- **`Polars.decimal_round_half_away`**: the shimmed rescale is the
+reference's (`roundDiv10`, `UnFn.dround`), on 128 bits: `|u| < 10³⁸`, so
+`|u| + 5·10ᵏ⁻¹` fits. -/
+theorem decimal_round_half_away {k : Nat} (hk : 0 < k) (u : Int) :
+    decimalRoundHalfAway k u = roundDiv10 k u := by
+  have h : 10 ^ k / 2 = 5 * 10 ^ (k - 1) := by
+    obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
+    rw [Nat.pow_succ, Nat.add_sub_cancel]
+    omega
+  simp only [decimalRoundHalfAway, roundDiv10, h]
+
+/-- `decimal_div_half_away`: with `|x| = a·|n| + b`, `a·10ᵏ + ⌊(2b·10ᵏ + |n|) / 2|n|⌋`,
+negated where `x` and `n` differ in sign. -/
+def decimalDivHalfAway (x n : Int) (k : Nat) : Int :=
+  let an := n.natAbs
+  let ax := x.natAbs
+  let q : Int := ((ax / an) * 10 ^ k + (2 * (ax % an) * 10 ^ k + an) / (2 * an) : Nat)
+  if (x < 0) = (n < 0) then q else -q
+
+/-- **`Polars.decimal_div_half_away`**: the shimmed quotient is the
+reference's (`roundDivInt?`, `BinFn.ddiv`) of the dividend at `k` more
+places, a decimal `AVG` (`decimalAvgs`) or `sverify_decimal_div`. The
+split keeps every step within 128 bits (`_polars_shims.decimal_div_half_away`). -/
+theorem decimal_div_half_away {n : Int} (hn : n ≠ 0) (x : Int) (k : Nat) :
+    roundDivInt? (x * 10 ^ k) n = some (decimalDivHalfAway x n k) := by
+  have hT : (0 : Int) < 10 ^ k := Int.pow_pos (by decide)
+  have han : 0 < n.natAbs := Int.natAbs_pos.2 hn
+  have habs : (x * 10 ^ k).natAbs = x.natAbs * 10 ^ k := by
+    rw [Int.natAbs_mul, Int.natAbs_pow]; rfl
+  have hsign : (x * 10 ^ k < 0) = (x < 0) := by
+    apply propext; constructor
+    · intro h; exact Int.lt_of_not_ge fun h0 => absurd h (Int.not_lt.2 (Int.mul_nonneg h0 (Int.le_of_lt hT)))
+    · intro h; exact Int.mul_neg_of_neg_of_pos h hT
+  have key : (2 * (x.natAbs * 10 ^ k) + n.natAbs) / (2 * n.natAbs)
+      = (x.natAbs / n.natAbs) * 10 ^ k
+        + (2 * (x.natAbs % n.natAbs) * 10 ^ k + n.natAbs) / (2 * n.natAbs) := by
+    generalize x.natAbs = ax, n.natAbs = an at *
+    generalize hA : ax / an = A
+    generalize hR : ax % an = R
+    have hd : an * A + R = ax := by rw [← hA, ← hR]; exact Nat.div_add_mod ax an
+    subst hd
+    have : 2 * ((an * A + R) * 10 ^ k) + an
+        = (2 * R * 10 ^ k + an) + 2 * an * (A * 10 ^ k) := by
+      simp only [Nat.add_mul, Nat.mul_add, Nat.mul_assoc]
+      omega
+    rw [this, Nat.add_mul_div_left _ _ (by omega), Nat.add_comm]
+  unfold roundDivInt? decimalDivHalfAway
+  simp only [hn, ite_false, habs, hsign, key]
 
 /-! ## Strings: `string_positions` -/
 

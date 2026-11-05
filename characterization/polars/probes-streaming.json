@@ -891,6 +891,62 @@
    "streaming": "(1.505, 'Float64')"
   },
   {
+   "construct": "decimal-compare",
+   "area": "decimals",
+   "code": "df(a=['12.35', '1.25', '-0.05'], b=['12.350', '1.300', '-0.051']).select((pl.col('a').cast(pl.Decimal(10, 2)) == pl.col('b').cast(pl.Decimal(7, 3))).alias('eq'), (pl.col('a').cast(pl.Decimal(10, 2)) < pl.col('b').cast(pl.Decimal(7, 3))).alias('lt'), (pl.col('a').cast(pl.Decimal(10, 2)) > 1).alias('gt_int')).rows()",
+   "differ": 0,
+   "in-memory": "[(True, False, True), (False, True, True), (False, False, False)]",
+   "streaming": "[(True, False, True), (False, True, True), (False, False, False)]"
+  },
+  {
+   "construct": "decimal-sum-empty",
+   "area": "decimals",
+   "code": "[df(x=([], pl.Decimal(10, 2))).select(pl.col('x').sum()).item(), df(x=([None], pl.Decimal(10, 2))).select(pl.col('x').sum()).item(), df(x=([None], pl.Decimal(10, 2))).select(pl.col('x').min()).item()]",
+   "differ": 0,
+   "in-memory": "[Decimal('0.00'), Decimal('0.00'), None]",
+   "streaming": "[Decimal('0.00'), Decimal('0.00'), None]"
+  },
+  {
+   "construct": "decimal-from-double",
+   "area": "decimals",
+   "code": "df(x=[0.625, 0.125, -2.675, 0.145, 2.5, -0.375]).select(pl.col('x').cast(pl.Decimal(10, 2))).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[Decimal('0.62'), Decimal('0.12'), Decimal('-2.68'), Decimal('0.14'), Decimal('2.50'), Decimal('-0.38')]",
+   "streaming": "[Decimal('0.62'), Decimal('0.12'), Decimal('-2.68'), Decimal('0.14'), Decimal('2.50'), Decimal('-0.38')]"
+  },
+  {
+   "construct": "decimal-to-double",
+   "area": "decimals",
+   "code": "(lambda xs: [a == float(s) for a, s in zip(df(x=xs).select(pl.col('x').cast(pl.Decimal(38, 20)).cast(pl.Float64)).to_series().to_list(), xs)])(['543007.68781425681384350086', '1288396.15827294170993372848', '-7165545601.899863454715675712', '9549712200552491.230505250722', '0.1'])",
+   "differ": 0,
+   "in-memory": "[True, True, True, True, True]",
+   "streaming": "[True, True, True, True, True]"
+  },
+  {
+   "construct": "decimal-narrow-precision",
+   "area": "decimals",
+   "code": "[df(x=['123.45']).select(pl.col('x').cast(pl.Decimal(10, 2)).cast(pl.Decimal(4, 2), strict=False)).item(), attempt(lambda: df(x=['123.45']).select(pl.col('x').cast(pl.Decimal(10, 2)).cast(pl.Decimal(4, 2))).item())]",
+   "differ": 0,
+   "in-memory": "[None, \"error InvalidOperationError: conversion from `decimal[10,2]` to `decimal[4,2]` failed in column 'x' for 1 out of 1 values: [123.45]\"]",
+   "streaming": "[None, \"error InvalidOperationError: conversion from `decimal[10,2]` to `decimal[4,2]` failed in column 'x' for 1 out of 1 values: [123.45]\"]"
+  },
+  {
+   "construct": "decimal-unscaled",
+   "area": "decimals",
+   "code": "df(x=['1.25', '-1.35', None]).select(pl.col('x').cast(pl.Decimal(10, 2)).to_physical()).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[125, -135, None]",
+   "streaming": "[125, -135, None]"
+  },
+  {
+   "construct": "int128-wrap",
+   "area": "integers",
+   "code": "df(x=([2**126, -(2**126)], pl.Int128)).select(pl.col('x') * 2).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[-170141183460469231731687303715884105728, -170141183460469231731687303715884105728]",
+   "streaming": "[-170141183460469231731687303715884105728, -170141183460469231731687303715884105728]"
+  },
+  {
    "construct": "nan-compare",
    "area": "doubles",
    "code": "df(a=[nan, nan, 1.0, inf, 0.0, None], b=[nan, 1.0, nan, nan, -0.0, None]).select((pl.col('a') == pl.col('b')).alias('eq'), (pl.col('a') < pl.col('b')).alias('lt'), (pl.col('a') > pl.col('b')).alias('gt'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
