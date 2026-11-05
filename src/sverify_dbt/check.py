@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-import ibis
 import sqlglot as sg
 import sverify as sv
 
@@ -67,7 +66,6 @@ class _Checker:
         self.counterexamples = counterexamples
         self.names = _input_names(project.relations.values())
         self.con = duckdb.connect()
-        self.ibis = ibis.duckdb.from_connection(self.con)
         self.results: dict[str, ModelResult] = {}
         self.proved: set[str] = set()
         """Unique ids of the tests proved so far, upstream first."""
@@ -232,8 +230,14 @@ class _Checker:
             res.sql = None
             return res.refuse(f"DuckDB cannot plan the compiled SQL: {_first_line(e)}")
         res.duckdb_types = {row[0]: row[1] for row in out}
+        # sverify reads DuckDB's type names (`verify(tables=...)`).
         tables = {
-            self.names[r.unique_id]: self.ibis.table(self.names[r.unique_id]).schema()
+            self.names[r.unique_id]: {
+                row[0]: row[1]
+                for row in self.con.execute(
+                    f"DESCRIBE SELECT * FROM {_q(self.names[r.unique_id])}"
+                ).fetchall()
+            }
             for r in inputs
         }
         requires, res.not_assumed = self._requires(m, inputs)
@@ -329,7 +333,9 @@ class _Checker:
             return None
 
     def _read(self, report: Any, m: Relation, res: ModelResult, ensures: list) -> None:
-        by_label = {c.label: c for c in report.ensures}
+        # `report.ensures` is in the order of the conditions given, each
+        # with its condition (`CheckedCondition.condition`).
+        results = iter(report.ensures)
         needed = report.needed
         res.needed = _needed(report, self, m)
         res.may_fail = [str(i) for i in report.errors]
@@ -343,10 +349,9 @@ class _Checker:
         for tr, cs in ensures:
             if tr.status == "not checked":
                 continue
-            found = [by_label.get(_label(c)) for c in cs]
-            checked = [c for c in found if c is not None]
-            if len(checked) < len(found):
-                tr.skip("sverify did not report on its condition")
+            checked = [next(results) for _ in cs]
+            if any(r.condition is not c for r, c in zip(checked, cs, strict=True)):
+                tr.skip("sverify reported on another condition")
                 continue
             bad = [c for c in checked if not c.portable]
             if not bad and needed:
@@ -494,21 +499,22 @@ def _refusal(e: BaseException) -> str:
     return f"sverify cannot check it: {msg}"
 
 
+_WHY = {
+    "observation": "proved only for some row orders DuckDB may pick",
+    "not_a_key": "the tests upstream do not make it a key",
+    "ties": "rows may tie in an ORDER BY, so DuckDB picks which rows it keeps",
+    "always_false": "every row fails it",
+    "may_be_false": "sverify cannot rule out a row that fails it, from the tests upstream",
+    "may_be_null": "sverify cannot rule out a row that fails it, from the tests upstream",
+    "not_proved_kind": "sverify checks this kind of condition on data only",
+}
+
+
 def _why(c: Any) -> str:
-    """Why a condition is not proved, in a dbt user's terms: sverify's
-    `CheckedCondition.why` speaks of `sv.unique` and `requires`."""
-    if c.proved and c.ignores:
-        return "proved only for some row orders DuckDB may pick"
-    if c.value == "not shown to be a key":
-        return "the tests upstream do not make it a key"
-    if c.value.startswith("undetermined"):
-        return "rows may tie in an ORDER BY, so DuckDB picks which rows it keeps"
-    parts = set(c.value.replace(" or ", ", ").split(", "))
-    if parts == {"FALSE"}:
-        return "every row fails it"
-    if "FALSE" in parts or "NULL" in parts:
-        return "sverify cannot rule out a row that fails it, from the tests upstream"
-    return f"sverify only knows it is {c.value}"
+    """Why a condition is not proved, in a dbt user's terms
+    (`CheckedCondition.reason`; its `why` speaks of `sv.unique` and
+    `requires`)."""
+    return _WHY.get(c.reason, f"sverify only knows it is {c.value}")
 
 
 def _label(c: Any) -> str:
@@ -528,27 +534,21 @@ def _user_table(name: str, checker: _Checker) -> str:
 
 
 def _needed(report: Any, checker: _Checker, m: Relation) -> list[Needed]:
-    """`Report.needed` as tests to add to the inputs."""
+    """`Report.needs` as tests to add to the inputs."""
     out = []
-    for table, labels in report.needed.items():
-        conds = {getattr(c, "text", None): c for c in report.inferred.get(table, [])}
-        for lab in labels:
-            c = conds.get(lab)
-            issue = report.inferred_from.get(lab)
-            column, yaml = mapping.as_dbt_test(str(c)) if c is not None else (None, lab)
-            out.append(
-                Needed(
-                    on=_user_table(table, checker),
-                    column=column,
-                    test=yaml,
-                    because=(
-                        f"{issue.kind} in `{issue.shown or issue.expr}` otherwise"
-                        if issue
-                        else None
-                    ),
-                    condition=str(c) if c is not None else lab,
-                )
+    for n in report.needs:
+        issue = n.issue
+        out.append(
+            Needed(
+                on=_user_table(n.table, checker),
+                column=n.column,
+                test=mapping.dbt_test(n.column, n.op, n.value, n.sql),
+                because=(
+                    f"{issue.kind} in `{issue.shown or issue.expr}` otherwise" if issue else None
+                ),
+                condition=n.sql,
             )
+        )
     return out
 
 

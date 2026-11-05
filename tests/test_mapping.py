@@ -163,3 +163,14 @@ def test_rewrite_reads_inputs_by_name() -> None:
 def test_rewrite_refuses_unknown_tables() -> None:
     with pytest.raises(_Unreadable, match="no ref or source"):
         _rewrite('select * from "db"."main"."other"', {'"db"."main"."orders"': "orders"})
+
+
+def test_needs_as_dbt_tests() -> None:
+    """`Report.needs` gives the column, comparison and bound directly."""
+    assert mapping.dbt_test("q", "IS NOT NULL", None, '"q" IS NOT NULL') == "not_null"
+    assert mapping.dbt_test("q", ">=", "0", "") == (
+        "dbt_utils.accepted_range: {arguments: {min_value: 0}}"
+    )
+    assert mapping.dbt_test("q", "<>", "0", '"q" IS NULL OR "q" <> 0') == (
+        'dbt_utils.expression_is_true: {arguments: {expression: "\\"q\\" IS NULL OR \\"q\\" <> 0"}}'
+    )

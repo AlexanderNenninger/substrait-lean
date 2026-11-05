@@ -287,13 +287,24 @@ def bound(sql: str) -> Bound | None:
     return Bound(left.name, op, right.sql("duckdb"))
 
 
+def dbt_test(column: str | None, op: str | None, value: str | None, sql: str) -> str:
+    """A precondition on one column (`col <op> <value>`, as `Report.needs`
+    gives it) as the YAML of a dbt test to add to that column."""
+    if op == "IS NOT NULL":
+        return "not_null"
+    if column is not None and op in ("<", "<=", ">", ">=") and value is not None:
+        key = "max_value" if op in ("<", "<=") else "min_value"
+        inclusive = "" if op in ("<=", ">=") else ", inclusive: false"
+        return f"dbt_utils.accepted_range: {{arguments: {{{key}: {value}{inclusive}}}}}"
+    expr = sql.replace("\n", " ").replace('"', '\\"')
+    return f'dbt_utils.expression_is_true: {{arguments: {{expression: "{expr}"}}}}'
+
+
 def as_dbt_test(sql: str) -> tuple[str | None, str]:
-    """A precondition as a dbt test to add: the column it goes on (None for
-    a test on the table) and the test's YAML."""
+    """A precondition as SQL (a suggestion of `CheckedCondition.suggested`)
+    as a dbt test to add: the column it goes on (None for a test on the
+    table) and the test's YAML."""
     b = bound(sql)
     if b is None:
-        expr = sql.replace("\n", " ")
-        return None, f'dbt_utils.expression_is_true: {{arguments: {{expression: "{expr}"}}}}'
-    key = "max_value" if b.op in ("<", "<=") else "min_value"
-    inclusive = "" if b.op in ("<=", ">=") else ", inclusive: false"
-    return b.column, f"dbt_utils.accepted_range: {{arguments: {{{key}: {b.value}{inclusive}}}}}"
+        return None, dbt_test(None, None, None, sql)
+    return b.column, dbt_test(b.column, b.op, b.value, sql)

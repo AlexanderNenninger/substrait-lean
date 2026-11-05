@@ -7,7 +7,7 @@ the models and sources it reads, and reports per model which tests hold on
 every run, which may fail and why, and which source tests would let it prove
 more. A test it proves can be left out of `dbt build`.
 
-It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
+It needs a sverify newer than 0.5.0, and reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
 other engines ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 The design is in [#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177).
 
