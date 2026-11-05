@@ -567,7 +567,7 @@ def test_versions_continue_through_a_stored_node_in_memory(tmp_path):
 
 def test_a_contract_with_fields_it_does_not_know():
     c = Contract("v", "p", {"t": 1}, 1, [], {}, [])
-    text = c.to_json().replace('"view"', '"later": 1, "view"')
+    text = c.to_json().replace('"node"', '"later": 1, "node"')
     assert Contract.from_json(text) == c
 
 

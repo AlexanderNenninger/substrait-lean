@@ -24,18 +24,19 @@ if TYPE_CHECKING:
     from sverify.routes import Route
 
 #: The version of the report's JSON format (`format` in the document).
-FORMAT = 1
+#: Format 1 was on main between #788 and the 1.0 renames, in no release:
+#: `from_json` refuses it.
+FORMAT = 2
 
 Json = dict[str, Any]
 
 
 def _sverify_version() -> str:
-    from importlib.metadata import PackageNotFoundError, version
+    """The installed version, as `sverify` read it at import: reading the
+    package metadata again took 88 % of `to_json`'s time."""
+    import sverify
 
-    try:
-        return version("sverify")
-    except PackageNotFoundError:
-        return "unknown"
+    return sverify.__version__
 
 
 def _value(v: Any) -> Any:
@@ -61,9 +62,9 @@ def _value(v: Any) -> Any:
 # -- the parts ------------------------------------------------------------------
 
 
-def observation_json(obs: Observation) -> Json:
-    """An observation: its text, as `sv.equivalent` prints it, and its
-    components, with a tolerance on doubles as `{"abs", "rel", "ulps"}`."""
+def equivalence_json(obs: Observation) -> Json:
+    """An equivalence (`sv.equivalent`): its text and its components, with
+    a tolerance on doubles as `{"abs", "rel", "ulps"}`."""
     components: Json = {}
     for f in dataclasses.fields(obs):
         if f.name == "bound":
@@ -73,8 +74,8 @@ def observation_json(obs: Observation) -> Json:
     return {"text": str(obs), "components": components}
 
 
-def observation(d: Mapping[str, Any]) -> Observation:
-    """The observation `observation_json` wrote; components this version
+def equivalence(d: Mapping[str, Any]) -> Observation:
+    """The equivalence `equivalence_json` wrote; components this version
     does not know are left out."""
     from sverify.observation import Observation, Within
 
@@ -86,76 +87,182 @@ def observation(d: Mapping[str, Any]) -> Observation:
     return Observation(**comps)
 
 
-def issue_json(i: Issue) -> Json:
+# -- needed preconditions (B1) --------------------------------------------------
+
+
+def needed_json(n: Needed) -> Json:
+    """A precondition the proof needs (`Report.needs`)."""
     return {
-        "kind": i.kind,
-        "expr": i.expr,
-        "shown": i.shown,
-        "column": i.column,
-        "error": i.error,
-        "message": i.message,
-        "hint": i.hint,
-        "constant": i.constant,
-        "under_and_or": i.under_and_or,
-        "needs": list(i.needs),
-        "suggested": {t: list(labs) for t, labs in i.suggested.items()},
+        "table": n.table,
+        "label": n.label,
+        "column": n.column,
+        "op": n.op,
+        "value": n.value,
+        "sql": n.sql,
+        "code": n.code,
+        "issue": None if n.issue is None else issue_json(n.issue),
     }
+
+
+def suggested_json(suggested: Mapping[str, Any]) -> list[Json]:
+    """Suggested preconditions, labels per table, as `needed` objects that
+    carry the table and the label."""
+    from sverify.contracts import label
+
+    return [
+        {"table": t, "label": x if isinstance(x, str) else label(x)}
+        for t, xs in suggested.items()
+        for x in xs
+    ]
+
+
+def suggested(needs: Any) -> dict[str, list[Any]]:
+    """Labels per table, from a list of `needed` objects; those without a
+    table are left out."""
+    out: dict[str, list[Any]] = {}
+    for n in needs or ():
+        if n.get("table") is not None:
+            out.setdefault(n["table"], []).append(n["label"])
+    return out
+
+
+# -- findings: SARIF's result shape (#793) --------------------------------------
+
+#: The issues' kinds, by their rule ids.
+_KINDS = {
+    k.lower().replace(" ", "_"): k
+    for k in (
+        "division by zero",
+        "overflow",
+        "cast out of range",
+        "negative exponent",
+        "domain error",
+        "SUM overflow",
+        "overflow to infinity",
+    )
+}
+
+
+#: The rule ids of the reasons whose Python name differs (B3).
+_REASONS = {"observation": "equivalence"}
+
+
+def rule_id(kind: str) -> str:
+    """An issue's kind as a code: snake_case (`"SUM overflow"` is
+    `sum_overflow`)."""
+    return kind.lower().replace(" ", "_").replace("-", "_")
+
+
+def _finding(rule: str, level: str, kind: str, text: str, properties: Json) -> Json:
+    return {
+        "ruleId": rule,
+        "level": level,
+        "kind": kind,
+        "message": {"text": text},
+        "properties": properties,
+    }
+
+
+def issue_json(i: Issue) -> Json:
+    """A runtime error the checker could not rule out, as a finding:
+    `error` if a proof must rule it out, `warning` otherwise."""
+    return _finding(
+        rule_id(i.kind),
+        "error" if i.error else "warning",
+        "fail",
+        i.message,
+        {
+            "shown": i.shown,
+            "column": i.column,
+            "hint": i.hint,
+            "constant": i.constant,
+            "under_and_or": i.under_and_or,
+            "needs": _issue_needs(i),
+        },
+    )
+
+
+def _issue_needs(i: Issue) -> list[Json]:
+    """The preconditions that rule an issue out: those suggested per table,
+    then those the inference found whose table it does not name
+    (`"table": null`)."""
+    out = suggested_json(i.suggested)
+    seen = {n["label"] for n in out}
+    return out + [{"table": None, "label": x} for x in i.needs if x not in seen]
+
+
+def assumed_json(i: Issue) -> Json:
+    """An issue sverify assumes away and checks on the data while the job
+    runs (a SUM that fits its type): a `note`."""
+    out = issue_json(i)
+    out["level"] = "note"
+    out["kind"] = "informational"
+    out["properties"]["assumption"] = i.assumption
+    return out
 
 
 def issue(d: Mapping[str, Any]) -> Issue:
     from sverify.contracts import Issue
 
+    p = d.get("properties") or {}
+    rule = d["ruleId"]
     return Issue(
-        d["kind"],
-        d["expr"],
-        d["error"],
-        hint=d.get("hint"),
-        column=d.get("column"),
-        constant=d.get("constant", False),
-        under_and_or=d.get("under_and_or", False),
-        needs=tuple(d.get("needs", ())),
-        shown=d.get("shown"),
-        suggested={t: tuple(labs) for t, labs in (d.get("suggested") or {}).items()},
+        _KINDS.get(rule, rule.replace("_", " ")),
+        p.get("shown") or "",
+        d.get("level") == "error",
+        hint=p.get("hint"),
+        column=p.get("column"),
+        constant=p.get("constant", False),
+        under_and_or=p.get("under_and_or", False),
+        needs=tuple(n["label"] for n in p.get("needs") or ()),
+        shown=p.get("shown"),
+        suggested={t: tuple(labs) for t, labs in suggested(p.get("needs")).items()},
     )
 
 
 def checked_json(c: CheckedCondition) -> Json:
-    from sverify.contracts import label
-
+    """A postcondition, as a finding: `pass` where it is proved, `fail`
+    where it is not. Its rule is `reason`, or `proved`."""
     cx = c.counterexample
-    return {
-        "label": c.label,
-        "proved": c.proved,
-        "value": c.value,
-        "reason": c.reason,
-        "message": c.message,
-        "detail": c.detail,
-        "checked": c.checked,
-        "ignores": list(c.ignores),
-        "reads": None if c.reads is None else list(c.reads),
-        "nullable": None if c.nullable is None else list(c.nullable),
-        "approx": c.approx,
-        "suggested": {t: [label(x) for x in cs] for t, cs in c.suggested.items()},
-        "counterexample": None
-        if cx is None
-        else {
-            "text": str(cx),
-            "tables": {t: _value(rows) for t, rows in cx.tables.items()},
-            "output": _value(cx.output),
-            "columns": {k: list(v) for k, v in cx.columns.items()},
+    proved_level = "note" if c.reason else "none"
+    level = proved_level if c.proved else "warning" if c.checked else "error"
+    return _finding(
+        _REASONS.get(c.reason, c.reason) if c.reason else "proved",
+        level,
+        "pass" if c.proved else "fail",
+        c.message,
+        {
+            "label": c.label,
+            "value": c.value,
+            "detail": c.detail,
+            "checked": c.checked,
+            "ignores": list(c.ignores),
+            "reads": None if c.reads is None else list(c.reads),
+            "nullable": None if c.nullable is None else list(c.nullable),
+            "approx": c.approx,
+            "needs": suggested_json(c.suggested),
+            "counterexample": None
+            if cx is None
+            else {
+                "text": str(cx),
+                "tables": {t: _value(rows) for t, rows in cx.tables.items()},
+                "output": _value(cx.output),
+                "columns": {k: list(v) for k, v in cx.columns.items()},
+            },
         },
-    }
+    )
 
 
 def checked(d: Mapping[str, Any]) -> CheckedCondition:
     from sverify.contracts import CheckedCondition
     from sverify.counterexample import Counterexample
 
-    cx = d.get("counterexample")
+    p = d.get("properties") or {}
+    cx = p.get("counterexample")
     return CheckedCondition(
-        d["label"],
-        d["proved"],
-        d["value"],
+        p["label"],
+        d.get("kind") == "pass",
+        p["value"],
         counterexample=None
         if cx is None
         else Counterexample(
@@ -163,27 +270,17 @@ def checked(d: Mapping[str, Any]) -> CheckedCondition:
             [tuple(r) for r in cx["output"]],
             dict(cx["columns"]),
         ),
-        checked=d.get("checked", False),
-        suggested={t: list(labs) for t, labs in (d.get("suggested") or {}).items()},
-        ignores=tuple(d.get("ignores", ())),
-        reads=None if d.get("reads") is None else tuple(d["reads"]),
-        approx=d.get("approx", False),
-        nullable=None if d.get("nullable") is None else tuple(d["nullable"]),
-        detail=d.get("detail"),
+        checked=p.get("checked", False),
+        suggested=suggested(p.get("needs")),
+        ignores=tuple(p.get("ignores", ())),
+        reads=None if p.get("reads") is None else tuple(p["reads"]),
+        approx=p.get("approx", False),
+        nullable=None if p.get("nullable") is None else tuple(p["nullable"]),
+        detail=p.get("detail"),
     )
 
 
-def needed_json(n: Needed) -> Json:
-    return {
-        "table": n.table,
-        "column": n.column,
-        "op": n.op,
-        "value": n.value,
-        "sql": n.sql,
-        "label": n.label,
-        "code": n.code,
-        "issue": None if n.issue is None else issue_json(n.issue),
-    }
+# -- routes ---------------------------------------------------------------------
 
 
 def route_json(r: Route) -> Json:
@@ -192,32 +289,32 @@ def route_json(r: Route) -> Json:
         "kind": r.kind,
         "class": r.cls,
         "evidence": r.evidence,
-        "profile": r.profile,
+        "semantics": r.profile,
         "reason": r.reason,
         "deterministic": r.deterministic,
         "warnings": list(r.warnings),
         "shims": list(r.shims),
         "failures": [dict(f) for f in r.failures],
-        "observation": None if r.observation is None else observation_json(r.observation),
+        "equivalence": None if r.observation is None else equivalence_json(r.observation),
         "bound_proved": r.bound_proved,
-        "reproducible": None if r.reproducible is None else observation_json(r.reproducible),
+        "reproducible": None if r.reproducible is None else equivalence_json(r.reproducible),
         "rerun_evidence": r.rerun_evidence,
         "fallbacks": list(r.fallbacks),
-        "suggested": {t: list(labs) for t, labs in r.suggested.items()},
+        "needs": suggested_json(r.suggested),
     }
 
 
 def route(d: Mapping[str, Any]) -> Route:
     from sverify.routes import Route
 
-    def obs(key: str) -> Observation | None:
+    def eq(key: str) -> Observation | None:
         v = d.get(key)
-        return None if v is None else observation(v)
+        return None if v is None else equivalence(v)
 
     return Route(
         d["engine"],
         d["kind"],
-        d["profile"],
+        d["semantics"],
         d["reason"],
         deterministic=d.get("deterministic", True),
         warnings=tuple(d.get("warnings", ())),
@@ -225,12 +322,12 @@ def route(d: Mapping[str, Any]) -> Route:
         cls=d.get("class"),
         evidence=d.get("evidence"),
         shims=tuple(d.get("shims", ())),
-        reproducible=obs("reproducible"),
+        reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),
         fallbacks=tuple(d.get("fallbacks", ())),
-        observation=obs("observation"),
+        observation=eq("equivalence"),
         bound_proved=d.get("bound_proved"),
-        suggested={t: list(labs) for t, labs in (d.get("suggested") or {}).items()},
+        suggested=suggested(d.get("needs")),
     )
 
 
@@ -249,7 +346,7 @@ def to_json(report: Report) -> Json:
         "semantics": report.semantics,
         "dialect": report.dialect,
         "on_inferred": report.on_inferred,
-        "observation": observation_json(report.observation),
+        "equivalence": equivalence_json(report.observation),
         "deterministic": report.deterministic,
         "rows": report.rows,
         "params": list(report.params),
@@ -262,15 +359,16 @@ def to_json(report: Report) -> Json:
         },
         "ensures": [checked_json(c) for c in report.ensures],
         "issues": [issue_json(i) for i in report.issues],
-        "assumed": [{**issue_json(i), "assumption": i.assumption} for i in report.assumed],
+        "assumed": [assumed_json(i) for i in report.assumed],
         "needs": [needed_json(n) for n in report.needs],
         "facts": dict(report.facts),
         "not_null": list(report.not_null),
         "output": {k: str(v) for k, v in report.output.items()},
         "routes": {e: route_json(r) for e, r in report.routes.items()},
-        "tie_places": [dataclasses.asdict(t) for t in report.tie_places],
-        "ties": {t: list(labs) for t, labs in report.ties.items()},
-        "hints": list(report.hints),
+        "ties": {
+            "places": [dataclasses.asdict(t) for t in report.tie_places],
+            "needs": suggested_json(report.ties),
+        },
         "rewrites": list(report.rewrites),
         "implied": dict(report.implied),
         "transfer": None if report.transfer is None else [dict(f) for f in report.transfer],
@@ -287,7 +385,12 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
     if not isinstance(fmt, int) or fmt > FORMAT:
         raise ValueError(
             f"the report's JSON has format {fmt!r}, and this version of sverify reads "
-            f"format {FORMAT} or older: upgrade sverify"
+            f"format {FORMAT}: upgrade sverify"
+        )
+    if fmt < FORMAT:
+        raise ValueError(
+            f"the report's JSON has format {fmt}, which no release wrote: write it again "
+            f"with this version of sverify (format {FORMAT})"
         )
     inferred: dict[str, list[Any]] = {}
     for t, cs in (d.get("inferred") or {}).items():
@@ -300,6 +403,8 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
     inferred_from = {
         n["label"]: issue(n["issue"]) for n in d.get("needs", []) if n.get("issue") is not None
     }
+    issues = [issue(i) for i in d.get("issues", [])]
+    ties = d.get("ties") or {}
     return Report(
         requires={t: list(labs) for t, labs in (d.get("requires") or {}).items()},
         ensures=[checked(c) for c in d.get("ensures", [])],
@@ -307,23 +412,23 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         not_null=list(d.get("not_null", [])),
         deterministic=d.get("deterministic", True),
         windows_total=d.get("deterministic", True),
-        tie_places=[TiePlace(**t) for t in d.get("tie_places", [])],
-        issues=[issue(i) for i in d.get("issues", [])],
+        tie_places=[TiePlace(**t) for t in ties.get("places", [])],
+        issues=issues,
         inferred=inferred,
         implied=dict(d.get("implied") or {}),
         assumed=[issue(i) for i in d.get("assumed", [])],
         params=list(d.get("params", [])),
-        hints=list(d.get("hints", [])),
+        hints=list(dict.fromkeys(i.hint for i in issues if i.hint)),
         rewrites=list(d.get("rewrites", [])),
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
-        observation=observation(d["observation"]) if d.get("observation") else _plan_bound(),
+        observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
         floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
         transfer=d.get("transfer"),
         output=_output(d.get("output") or {}),
         dialect=d.get("dialect", "ibis"),
-        ties={t: list(labs) for t, labs in (d.get("ties") or {}).items()},
+        ties=suggested(ties.get("needs")),
         # 0.6 wrote "silent" for what is now "ignore".
         on_inferred=_on_inferred(d.get("on_inferred")),
         inferred_from=inferred_from,
@@ -349,7 +454,7 @@ def _output(types: Mapping[str, str]) -> dict[str, Any]:
     return out
 
 
-__all__ = ["FORMAT", "from_json", "to_json"]
+__all__ = ["FORMAT", "from_json", "rule_id", "to_json"]
 
 
 def _on_inferred(value: Any) -> Any:
