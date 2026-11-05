@@ -1305,6 +1305,48 @@ class Report:
     columns `requires` may name, per table, as `output` holds those
     `ensures` may name."""
 
+    def to_json(self, indent: int | None = None) -> str:
+        """The report as a versioned JSON document, for CI jobs and tools
+        (#736), in the format of `sverify/schemas/report.schema.json`:
+        `format` (1), the verdict, each postcondition with its status and
+        `reason`, the runtime errors and assumptions, `needs`, the facts on
+        each output column, the routes engines ran the plan by, and the rest
+        `str(report)` says. Conditions appear as their labels. Within 1.x
+        the format only gains keys (`docs/stability.md`).
+
+        Args:
+            indent: Indent the JSON by this many spaces; None writes one line.
+
+        Returns:
+            The JSON document, keys sorted.
+        """
+        from sverify import report_json
+
+        return json.dumps(report_json.to_json(self), indent=indent, sort_keys=True)
+
+    @staticmethod
+    def from_json(data: str | Mapping[str, Any]) -> Report:
+        """A report from what `to_json` wrote, by this version of sverify or
+        an earlier one. Keys this version does not know are left out.
+
+        The report has the same verdict, postconditions, issues, needs,
+        facts and routes. It holds no plan, and its conditions are their
+        labels, so it does not `run`, `check_inputs` or `to_substrait`.
+
+        Args:
+            data: The JSON, as text or parsed.
+
+        Returns:
+            The report.
+
+        Raises:
+            ValueError: The document's `format` is newer than this version
+                reads.
+        """
+        from sverify import report_json
+
+        return report_json.from_json(data)
+
     @overload
     def to_substrait(
         self,
