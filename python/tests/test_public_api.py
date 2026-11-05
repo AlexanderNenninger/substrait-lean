@@ -45,7 +45,6 @@ def test_the_top_level_is_small():
     import sverify as sv
 
     assert sorted(sv.__all__) == [
-        "Changes",
         "ContractedTransform",  # what @sv.transform returns, for isinstance (#682)
         "Node",
         "Report",
@@ -54,7 +53,6 @@ def test_the_top_level_is_small():
         "asof_join",
         "connect",
         "equivalent",
-        "from_substrait",
         "group",
         "key",
         "max_rows",

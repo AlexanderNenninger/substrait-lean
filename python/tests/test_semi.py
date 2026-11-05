@@ -8,9 +8,8 @@ import random
 import pyarrow as pa
 import pytest
 
-import sverify as sv
 from _pipelines import recomputed, rows
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 ORDERS = pa.schema([("id", pa.int64()), ("cust", pa.string()), ("amount", pa.int64())])
 CUSTOMERS = pa.schema([("cust", pa.string()), ("tier", pa.int64())])
@@ -66,7 +65,7 @@ def run_stream(seed: int, engine: str, anti: bool, steps: int = 40) -> None:
             for d in dels:
                 live[name].remove(d)
             live[name] += ins
-            src.apply(sv.Changes(inserts=table(schema, ins), deletes=table(schema, dels)))
+            src.apply(Changes(inserts=table(schema, ins), deletes=table(schema, dels)))
         out = node.refresh(engine=engine)
         report = out[node.name].report
         assert report is not None and not report.touched and not report.diffed
@@ -97,14 +96,14 @@ def test_a_key_gains_and_loses_its_matches(anti):
     without_a = [(3, None, 2)]
     for batch, matched in [
         # a's first match emits a's old orders (an anti join retracts them).
-        (sv.Changes(inserts=table(CUSTOMERS, [("a", 2)])), True),
+        (Changes(inserts=table(CUSTOMERS, [("a", 2)])), True),
         # A second match changes nothing.
-        (sv.Changes(inserts=table(CUSTOMERS, [("a", 1)])), True),
-        (sv.Changes(deletes=table(CUSTOMERS, [("a", 2)])), True),
+        (Changes(inserts=table(CUSTOMERS, [("a", 1)])), True),
+        (Changes(deletes=table(CUSTOMERS, [("a", 2)])), True),
         # The last one goes: the orders go back.
-        (sv.Changes(deletes=table(CUSTOMERS, [("a", 1)])), False),
+        (Changes(deletes=table(CUSTOMERS, [("a", 1)])), False),
         # A customer that is not gold does not count.
-        (sv.Changes(inserts=table(CUSTOMERS, [("a", 0), (None, 1)])), False),
+        (Changes(inserts=table(CUSTOMERS, [("a", 0), (None, 1)])), False),
     ]:
         customers.apply(batch)
         node.refresh(audit=True)
@@ -120,9 +119,9 @@ def test_both_sides_change_in_one_batch():
     node = orders.pipe(gold_orders, customers=customers)
     node.refresh()
     # a loses its match while a new order of a arrives; b gains one with its order.
-    orders.apply(sv.Changes(inserts=table(ORDERS, [(2, "a", 3), (3, "b", 4)])))
+    orders.apply(Changes(inserts=table(ORDERS, [(2, "a", 3), (3, "b", 4)])))
     customers.apply(
-        sv.Changes(deletes=table(CUSTOMERS, [("a", 1)]), inserts=table(CUSTOMERS, [("b", 2)]))
+        Changes(deletes=table(CUSTOMERS, [("a", 1)]), inserts=table(CUSTOMERS, [("b", 2)]))
     )
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, orders, customers) == [(3, "b", 8)]
@@ -140,11 +139,11 @@ def test_a_composite_key():
     node.refresh()
     assert view(node).strategy == "delta rules"
     for batch in [
-        sv.Changes(inserts=table(schema, [(2, "p", 9), (1, None, 1)])),
-        sv.Changes(deletes=table(schema, [(1, "p", 0)])),
+        Changes(inserts=table(schema, [(2, "p", 9), (1, None, 1)])),
+        Changes(deletes=table(schema, [(1, "p", 0)])),
     ]:
         right.apply(batch)
-        left.apply(sv.Changes(inserts=table(schema, [(1, None, 5)])))
+        left.apply(Changes(inserts=table(schema, [(1, None, 5)])))
         node.refresh(audit=True)
         assert rows(node) == recomputed(node, left, right)
 
@@ -169,6 +168,6 @@ def test_status_says_the_view_is_maintained():
     node.refresh()
     status = node.status().nodes[0]
     assert status.recomputed is None and status.touched is None
-    customers.apply(sv.Changes(inserts=table(CUSTOMERS, [("b", 1)])))
+    customers.apply(Changes(inserts=table(CUSTOMERS, [("b", 1)])))
     out = node.refresh()
     assert "recomputed" not in out[node.name].summary()

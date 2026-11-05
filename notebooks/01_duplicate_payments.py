@@ -245,7 +245,7 @@ def _(mo):
 def _(DeltaSource, duplicate_payments, lake):
     transactions = DeltaSource(str(lake / "transactions"))
     dups = transactions.pipe(duplicate_payments)
-    report = duplicate_payments.last_report
+    report = duplicate_payments.report
     assert report.proved and not report.issues
     first_refresh = dups.refresh()
     return dups, first_refresh, report, transactions
