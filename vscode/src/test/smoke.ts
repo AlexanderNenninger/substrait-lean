@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     assert.strictEqual(byName.doubled.proved, true);
     assert.strictEqual(byName.plus_one.proved, false);
     const needs = orders.diagnostics.filter((d) => d.code === "needs" && d.message.includes("qty != 0"));
-    assert.strictEqual(needs.length, 1, "unit_price needs qty != 0");
+    assert.strictEqual(needs.length, 2, "unit_price and unit_price_sql need qty != 0");
     assert.ok(needs[0].fixes.some((f) => f.title.startsWith("Guard the division")));
     assert.ok(orders.diagnostics.some((d) => d.code === "unknown-column" && d.message.includes("amout")));
     assert.ok(orders.hovers.length > 0 && orders.lenses.length >= 5);
