@@ -1,0 +1,76 @@
+{
+  "name": "sverify-vscode",
+  "displayName": "sverify",
+  "description": "sverify's checks in the editor: diagnostics, quick fixes from inference, hovers with what Lean proved, and contract completion.",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "sverify",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sverify.check",
+        "title": "sverify: Check this file"
+      },
+      {
+        "command": "sverify.restart",
+        "title": "sverify: Restart the checker"
+      },
+      {
+        "command": "sverify.showReport",
+        "title": "sverify: Show the report"
+      }
+    ],
+    "configuration": {
+      "title": "sverify",
+      "properties": {
+        "sverify.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "The Python interpreter with sverify installed. Empty: the workspace's .venv, then python3. ${workspaceFolder} is replaced."
+        },
+        "sverify.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check a Python file that imports sverify when it is saved (and when it is opened)."
+        },
+        "sverify.counterexamples": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null,
+          "description": "Inputs tried per unproved postcondition to find a counterexample. null: sverify's default (200). 0 is faster."
+        },
+        "sverify.previewFixes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a quick fix's edit in the refactor preview before applying it."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run compile && node out/test/smoke.js",
+    "test:vscode": "npm run compile && node out/test/runIntegration.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.5.2",
+    "typescript": "^5.4.0"
+  }
+}
