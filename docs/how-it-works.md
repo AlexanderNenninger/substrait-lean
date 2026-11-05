@@ -2,7 +2,8 @@
 
 How plans are checked, how the engines are made to agree, and exactly what
 is proved. The user-facing side is in [guide.md](guide.md); the map of the
-Lean files is in the [README](../README.md#the-lean-project).
+proofs, with each Lean module's job and the theorems each guarantee rests
+on, is in [proofs.md](proofs.md).
 
 ```python
 import ibis
@@ -575,7 +576,9 @@ one, which sverify infers (#244).
 
 [Contracts.lean](../SubstraitLean/Contracts.lean) is an abstract interpreter
 over `Rel`. Each column gets an `AVal`, a set of possible values: whether it can be NULL, an integer
-interval, possible booleans, and whether it can be a string.
+interval, possible booleans, and whether it can be a string, with the strings
+it can be when they are few: at most `strCap` (64) of them, past that any string
+(#708).
 
 * `Expr.abs_sound`: abstract evaluation of expressions is sound, including SQL's
   three-valued `AND`/`OR`, NULL-propagating arithmetic and comparisons.
@@ -605,6 +608,11 @@ interval, possible booleans, and whether it can be a string.
   `x IS NULL OR x >= 0` gives "NULL or ≥ 0". `p OR q` is evaluated with `q`
   refined where `p` is not TRUE, also when `p` may be NULL (`orSplitNull`),
   which proves `x >= 0 OR x IS NULL` for a nullable `x`.
+  A string constant is that one string, `s = 'k'` and `s IN ('a', 'b')`
+  narrow a column to those strings, `s <> 'k'` and `NOT IN` take them out,
+  and `CASE`, `COALESCE` and `UNION ALL` join the sets (`AVal.strs`, #708),
+  so a filter `status <> 'cancelled'` over a source whose `status` is one of
+  four strings proves `status IN ('placed', 'shipped', 'returned')`.
 * `Rel.keys_sound` ([Keys.lean](../SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)): the
@@ -625,7 +633,10 @@ interval, possible booleans, and whether it can be a string.
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
   integer column can stand in for it in a key; a filter `$i = k` drops `i` from
   keys; join keys drop right-key columns the condition ties to the left side
-  (`a.device = b.device`), for inner and left joins.
+  (`a.device = b.device`), for inner and left joins. A key of each branch of
+  a `UNION ALL`, with a column whose values the branches cannot share (a
+  constant tag, a `GROUPING` level), is a key of the union (`AVal.disjoint_ne`,
+  #436).
 * `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](../SubstraitLean/Keys.lean)):
   when a window's partition and sort columns contain a key of its input, every
   arrangement of the input sorted by the window's keys gives the same rows as

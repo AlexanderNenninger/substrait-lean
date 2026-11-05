@@ -1,0 +1,81 @@
+{
+  "id": "spark-regex",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Regexes are `java.util.regex`: ASCII classes, `$1` references, `''` without a match",
+  "verdict": "Java's syntax; `\\\\d`, `\\\\w` ASCII; no match extracts `''`; bad patterns raise",
+  "area": "strings",
+  "options": [
+    "regex_dialect",
+    "case_sensitivity",
+    "raise_set"
+  ],
+  "constructs": [
+    "RLIKE",
+    "regexp",
+    "regexp_like",
+    "regexp_extract",
+    "regexp_extract_all",
+    "regexp_replace",
+    "regexp_count",
+    "regexp_instr"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Patterns are `java.util.regex.Pattern`s: backreferences and lookaround work; `\\d` and `\\w` are ASCII (`'٣' RLIKE '^\\d$'` and `'é' RLIKE '^\\w$'` are false); `.` does not match `\\n`. `regexp_extract` returns `''` when the pattern does not match, or its group did not take part; a group index past the pattern's raises `INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX`. `regexp_replace` takes `$1` for a group (`\\1` is a literal 1). `regexp_count('aaa', 'aa')` counts non-overlapping matches (1).",
+    "A pattern that does not compile raises in both modes: `INVALID_PARAMETER_VALUE.PATTERN` on the folded path, and a bare `java.util.regex.PatternSyntaxException` with no error class on the codegen path (SP-4). A NULL pattern gives NULL."
+  ],
+  "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`). Java's syntax is a superset of RE2's for the constructs sverify writes; the replacement's syntax differs (`$1`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/regexpExpressions.scala#L826-L838",
+          "note": "`extract`: `EMPTY_UTF8` without a match or for a group that did not take part"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-regex"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-regex-invalid"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-regex-group-out-of-range"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-regex-null-pattern"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-case-sensitivity"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    50
+  ]
+}

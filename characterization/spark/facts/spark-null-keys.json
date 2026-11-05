@@ -1,0 +1,65 @@
+{
+  "id": "spark-null-keys",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Joins on `=` skip NULL keys; `<=>` and `IS NOT DISTINCT FROM` match them; grouping puts NULLs together",
+  "verdict": "`=` skips NULL; `<=>`, `IS NOT DISTINCT FROM` match; one NULL group",
+  "area": "nulls",
+  "options": [
+    "null_join_keys"
+  ],
+  "rows": [
+    {
+      "option": "null_join_keys",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "JOIN ON =",
+    "<=>",
+    "IS NOT DISTINCT FROM",
+    "GROUP BY"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": "An equi-join on `x = y` drops NULL keys (1 match out of `{1, NULL}` × `{1, NULL}`); `x <=> y` and `x IS NOT DISTINCT FROM y` match them (2). `GROUP BY` puts NULLs in one group.",
+  "reference": "Grouping and `DISTINCT` put NULLs together; an equi-join's `=` does not match NULL, and `IS NOT DISTINCT FROM` keys do. Spark is native and spells the null-safe key `<=>` or `IS NOT DISTINCT FROM`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-null-semantics.md#L49-L100",
+          "note": "Comparison operators: `<=>` is null-safe"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "null-join-keys"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "null-group-keys"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

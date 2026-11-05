@@ -419,7 +419,13 @@ except VerificationError as e:
   the report suggests it when an exact claim misses only by rounding, and
   only for an input with a row cap: without `sv.max_rows` in `requires`,
   Lean has no bound on the sum's error and suggests nothing.
-* Not tracked yet: string contents, relations beyond
+* Strings: a column's strings while they are few (up to 64), from constants,
+  `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and `UNION ALL`. That
+  proves dbt's `accepted_values` and keys over `UNION ALL` branches tagged by
+  a constant
+  ([#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708),
+  [#436](https://github.com/AlexanderNenninger/substrait-lean/issues/436)).
+* Not tracked yet: what is inside a string (`LIKE`, lengths), relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
 

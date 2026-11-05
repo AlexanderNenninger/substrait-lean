@@ -1,0 +1,72 @@
+{
+  "id": "spark-strpos",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`instr`, `locate`, `position`: 1-based characters, 0 when absent",
+  "verdict": "`string_positions`: 1-based code points; 0 without a match",
+  "area": "strings",
+  "options": [
+    "string_positions",
+    "negative_start"
+  ],
+  "rows": [
+    {
+      "group": "str.match",
+      "option": "string_positions",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "instr",
+    "locate",
+    "position",
+    "charindex"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`instr('héllo', 'l')`, `locate('l', 'héllo')` and `position('l' IN 'héllo')` are 3: code points from 1. Without a match they are 0. `instr(s, '')` is 1. `locate(t, s, start)` starts at `start` (1-based) and gives 0 for a start below 1."
+  ],
+  "reference": "`strpos(s, t)` is the 1-based character position of the first match, 0 when there is none (#209). Spark is native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/types/UTF8String.java#L1238-L1260",
+          "note": "`indexOf(v, start)`: counts characters"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-positions"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-case-sensitivity"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    209
+  ]
+}
