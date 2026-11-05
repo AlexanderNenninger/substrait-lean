@@ -136,7 +136,7 @@ CASES: list[Case] = [
         V,
         lambda: t.filter(t.ts < ibis.timestamp(2024, 1, 2, 3, 4, 5)),
     ),
-    case("time", "date from columns", R, lambda: t.select(x=ibis.date(t.qty, 1, 1))),
+    case("time", "date from columns", V, lambda: t.select(x=ibis.date(2024, t.qty.clip(1, 12), 1))),
     case("time", "string to timestamp", R, lambda: t.select(x=t.name.as_timestamp("%Y-%m-%d"))),
     case("time", "time + interval", V, lambda: t.select(x=t.ts.time() + ibis.interval(hours=1))),
     case("time", "time truncate", V, lambda: t.select(x=t.ts.time().truncate("h"))),
@@ -156,6 +156,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "rolling sum by time": NO_ROW_ORDER,
     "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
     "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
+    "date from columns": {"polars": "see #271", "snowflake": "see #271", "spark": "see #271"},
 }
 
 TIE_FREE = {"rolling sum by time"}
