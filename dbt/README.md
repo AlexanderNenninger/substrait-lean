@@ -13,23 +13,14 @@ The design is in [#177](https://github.com/AlexanderNenninger/substrait-lean/iss
 
 ## Installation
 
-While sverify's API settles, sverify-dbt tracks substrait-lean's `main`:
-[`scripts/sverify.sh`](scripts/sverify.sh) resolves `main` to its commit
-of today, checks it out under `vendor/`, and builds its checker (it needs
-[elan](https://github.com/leanprover/elan)). Then `uv sync` installs
-sverify from there:
+Sverify-dbt is published with sverify, at the same version, from
+[substrait-lean](https://github.com/AlexanderNenninger/substrait-lean)'s
+releases on
+([#732](https://github.com/AlexanderNenninger/substrait-lean/issues/732)):
 
 ```bash
-eval "export $(scripts/sverify.sh | tail -1)"   # SVERIFY_PREBUILT_CHECK=...
-uv sync
+pip install sverify-dbt dbt-duckdb
 ```
-
-`scripts/sverify.sh <ref>` (or `SVERIFY_REF=<ref>`) builds against another
-branch, tag or commit. CI builds against `main` on every push and pull
-request and daily, and each run's summary names the commit it used, so a
-change on `main` that breaks sverify-dbt shows up within a day. Once the
-API settles, `pyproject.toml` goes back to `sverify>=<that release>`, and
-the `[tool.uv.sources]` entry and the script go.
 
 ## Usage
 
@@ -175,13 +166,16 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 ## Development
 
 ```bash
-eval "export $(scripts/sverify.sh | tail -1)"
+cd dbt
 uv sync
 uv run pytest
 ```
 
+`uv sync` installs the sverify of this checkout (`../python`), with the
+checker its build hook links or builds.
+
 The tests compile the sample project and a few small ones with dbt's own
 runner. CI runs them, then the check of `examples/shop`, and `dbt build`
-without the proved tests
-([ci.yml](.github/workflows/ci.yml)). [API-NOTES.md](API-NOTES.md) lists
+without the proved tests (the `dbt` job of
+[ci.yml](../.github/workflows/ci.yml)). [API-NOTES.md](API-NOTES.md) lists
 what building on sverify's public API showed.

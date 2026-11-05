@@ -7,7 +7,7 @@ says what happened, what sverify-dbt did about it, and a proposed change.
 They were written against `main` at the 0.5.0 release (b87a8963). The
 VS Code extension keeps its own notes in `vscode/UX-NOTES.md`.
 
-The repros run in this repository with `uv run python`, after `import ibis, sverify as sv,
+The repros run in `dbt/` with `uv run python`, after `import ibis, sverify as sv,
 sverify.engines`; they show the behaviour before substrait-lean#685.
 
 ## Public API gaps

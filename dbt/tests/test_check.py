@@ -46,8 +46,24 @@ def test_unproved_key(result: sverify_dbt.CheckResult) -> None:
 
 def test_refused_models_say_why(result: sverify_dbt.CheckResult) -> None:
     assert "WITH RECURSIVE" in (result["org_depth"].refused or "")
-    assert "MD5" in (result["stg_order_items"].refused or "")
     assert all(t.status == "not checked" for t in result["org_depth"].tests)
+
+
+def test_a_surrogate_key_is_never_null(result: sverify_dbt.CheckResult) -> None:
+    """md5 is lifted (#725): the key is never NULL, and not shown unique,
+    since md5 is not injective."""
+    assert statuses(result["stg_order_items"]) == {
+        "not_null(item_key)": "proved",
+        "unique(item_key)": "not proved",
+    }
+
+
+def test_revenue_of_non_negative_products_is_non_negative(
+    result: sverify_dbt.CheckResult,
+) -> None:
+    """Rounding keeps the sign (#441): `sum(qty * price)` is at least 0."""
+    got = statuses(result["customer_revenue_by_category"])
+    assert got == {"dbt_utils.accepted_range(books)": "proved"}
 
 
 def test_the_suggested_source_test_proves_arr(result: sverify_dbt.CheckResult) -> None:

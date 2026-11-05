@@ -1,17 +1,17 @@
 ---
 name: release-sverify
-description: Release a new version of sverify to PyPI, with its docs site and molab notebooks. Use when asked to release, publish or tag a version (e.g. "release 0.3.0", "cut a release", "publish to PyPI"), or to check on or repair a release that's in progress. Covers the readiness check, the version-bump PR, the v* tag that triggers the Wheels and Docs workflows, and the checks afterwards.
+description: Release a new version of sverify and sverify-dbt to PyPI, at one version, with the docs site and molab notebooks. Use when asked to release, publish or tag a version (e.g. "release 0.3.0", "cut a release", "publish to PyPI"), or to check on or repair a release that's in progress. Covers the readiness check, the version-bump PR, the v* tag that triggers the Wheels and Docs workflows, and the checks afterwards.
 argument-hint: "Optional: the version to release (e.g. 0.3.0)"
 ---
 
 # Release sverify
 
-A release is a `v<version>` tag on `main`. The tag triggers two workflows:
+A release is a `v<version>` tag on `main`. It releases two packages at that one version: `sverify` (`python/`) and `sverify-dbt` (`dbt/`, #732), which pins `sverify==<version>`. The tag triggers two workflows:
 
 - **Wheels** (`.github/workflows/wheels.yml`):
-  1. `build` builds the wheels for Linux and macOS and an sdist.
+  1. `build` builds sverify's wheels for Linux and macOS and an sdist; `build-dbt` builds sverify-dbt's sdist and wheel (pure Python) and runs its CLI against the Linux sverify wheel.
   2. `test-pythons` tests the installed wheel on Python 3.12–3.15.
-  3. `publish` uploads to PyPI (`pypi` environment), after checking that the tag matches `python/pyproject.toml`'s version.
+  3. `publish` uploads both packages to PyPI (`pypi` environment), after checking that the tag matches `python/pyproject.toml`'s version, and that `dbt/pyproject.toml` has the same version and pins `sverify==<version>`.
   4. `publish-notebooks` rewrites the notebooks to pin that version from PyPI, runs them, and commits them to the `published` branch, where the README's molab links point.
 - **Docs** (`.github/workflows/docs.yml`): builds the Great Docs site (API reference, agent skills, `llms.txt`) and deploys it to GitHub Pages.
 
@@ -36,6 +36,7 @@ gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deploym
 - **`main`'s CI** must be green on the commit that will be tagged.
 - **`CHANGELOG.md`** gets the release's section from the fragments in `changelog.d/` (one file per PR; see its README), plus anything already under `## Unreleased`. Check them against what's merged since the last tag (`git log v<last>..origin/main --merges --oneline`). If the release breaks the public API, the section lists the moves.
 - **Pages** must be turned on with "GitHub Actions" as the source. If `build_type` isn't `workflow`, ask the user to turn it on. Its `github-pages` environment must also allow `v*` tags to deploy: GitHub's default allows only `main`, and the deploy then fails with "Tag … is not allowed to deploy to github-pages due to environment protection rules". If the `tag v*` policy is missing, ask the user before adding it with `gh api -X POST …/environments/github-pages/deployment-branch-policies -f name='v*' -f type=tag`.
+- **PyPI for sverify-dbt:** its first release needs a trusted publisher for the project `sverify-dbt` on PyPI (this repository, workflow `wheels.yml`, environment `pypi`), as `sverify` has; a pending publisher works before the project exists. Ask the user to add it if `pip index versions sverify-dbt` finds nothing and they haven't.
 - **Version:** if the user gave none, propose one by [semver](https://semver.org) for 0.x: minor for new features or breaking changes, patch for fixes only.
 
 ## 2. Version-bump PR
@@ -44,12 +45,14 @@ gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deploym
 
 ```bash
 git switch -c release-<version> origin/main
-# python/pyproject.toml: version = "<version>"   (the only place the version is written)
+# python/pyproject.toml: version = "<version>"
+# dbt/pyproject.toml: version = "<version>", and the dependency "sverify==<version>"
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
 #   changelog.d/*.md fragments (file-name order) under it, then git rm the fragments
 #   (keep changelog.d/README.md)
 cd python && uv lock && cd ..        # updates only sverify's own version in uv.lock
-git diff --stat                      # these three files, plus the removed fragments
+cd dbt && uv lock && cd ..           # sverify-dbt's and the sverify it pins
+git diff --stat                      # these five files, plus the removed fragments
 git commit -am "Release <version>"
 git push -u origin release-<version>
 gh pr create --base main --title "Release <version>" --body "…"
@@ -72,19 +75,20 @@ git push origin v<version>
 gh run list --branch v<version>                                # Wheels and Docs started
 ```
 
-Tag the release PR's merge commit by its SHA, not whatever `main` is by then. If CI on the merge commit is still running, it's acceptable to tag when the commit before it passed and the merge only changes the three version files. Say so to the user.
+Tag the release PR's merge commit by its SHA, not whatever `main` is by then. If CI on the merge commit is still running, it's acceptable to tag when the commit before it passed and the merge only changes the five version files. Say so to the user.
 
 ## 4. Afterwards
 
 The macOS wheel jobs can wait a long time for runners, so the publish may take a while. Don't poll in a loop. Check when asked, or on the next wake-up.
 
-- **Wheels:** every job green, then `pip index versions sverify` (or <https://pypi.org/project/sverify/>) shows the version.
+- **Wheels:** every job green, then `pip index versions sverify` and `pip index versions sverify-dbt` (or <https://pypi.org/project/sverify/>, <https://pypi.org/project/sverify-dbt/>) show the version.
 - **Notebooks:** the `published` branch has a commit for the version. Ask the user to open one notebook from it on molab and press Run, since CI can't check that molab installs and runs it.
 - **Docs:** <https://alexandernenninger.github.io/substrait-lean/> shows the version, and its Skills page lists the skills.
 - Optionally create the GitHub release from the changelog section: `gh release create v<version> --notes-file <section>`. Ask first, since it notifies watchers.
 
 ## When something fails
 
+- **`publish` says `dbt/` is at another version, or doesn't pin this sverify:** the bump missed `dbt/pyproject.toml`. Nothing was uploaded; handle it as a tag that doesn't match.
 - **`publish` says the tag doesn't match the version:** the bump didn't land in the tagged commit. Nothing was uploaded. Delete the tag (`git push origin :refs/tags/v<version>` and `git tag -d v<version>`), fix it, and tag again. Ask the user first, since deleting a pushed tag is visible.
 - **`build` or `test-pythons` fails:** nothing was uploaded. Fix it on `main` through a PR, then either re-run the workflow, if the fix doesn't change the tagged code, or release the next patch version. Don't move a tag that others may have fetched without asking.
 - **`publish` succeeded but `publish-notebooks` failed:** PyPI already has the version, so don't re-tag. Re-run only the notebook publish with **Actions → Wheels → Run workflow** and `notebooks: <version>` (`dry_run: true` first, to check without pushing).

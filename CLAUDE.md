@@ -16,7 +16,7 @@ On pull requests CI runs what the change can affect; pushes to main, merge
 queue entries and retargets run everything. One job builds `substrait-check`
 and the others download it. The generated proofs are checked only when a
 Lean input changes. Engine jobs, oracle A and the notebooks skip changes in
-areas they cannot read (the table in the `changes` job). A pull request that
+areas they cannot read (the table in the `changes` job), `dbt/` among them. A pull request that
 changes only facts, probes, `upstream/` or `python/tests/lift_backlog.json`
 (and docs) runs `static` and a `ledger` job: the checkers and the tests that
 read those files. A pull request into a branch other than main (a stack)
@@ -139,6 +139,15 @@ partial or several ledgers (`--follow 60` repeats). Signatures with an
 issue go in `tests/chaos/known.json`; their tests report as expected
 failures, and a new signature fails the run. File issues per signature,
 not per test.
+
+## sverify-dbt
+
+`dbt/` holds `sverify-dbt`, a package of its own on sverify's public API: it
+checks a dbt project's tests and contracts (#177). It is released with
+sverify at the same version, pinning `sverify==<version>` (#732; the release
+skill bumps both), and its CI job (`dbt`) runs when `dbt/`, `python/` or the
+Lean sources change. Where it needs something sverify's public API lacks, the
+addition goes into sverify, and `dbt/API-NOTES.md` records it.
 
 ## Notebooks on molab
 
