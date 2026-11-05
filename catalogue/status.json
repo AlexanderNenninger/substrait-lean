@@ -534,9 +534,16 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs (Lean's rows: null_at_extreme, tie_order)",
-   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "duckdb": "runs",
+   "polars": "refused: last() (SQL last) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: last() (SQL last) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "iot-latest-reading": {
@@ -860,7 +867,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "error: Invalid Input Error: sverify: division by zero: 0.0",
+   "duckdb": "runs",
    "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issu",
    "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/i"
   }
@@ -880,7 +887,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs (Lean's rows: tie_order)",
+   "duckdb": "runs",
    "polars": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
    "snowflake": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }

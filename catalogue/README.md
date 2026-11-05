@@ -55,8 +55,9 @@ q = customer_updates.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop
 
 A dataset in `schemas.toml` can list `keys` (columns of distinct values in
 the synthetic data, never NULL), `not_null` and `rows` (a table's number of
-rows, for a table of fixed size such as TPC-H's 25 nations), so that the
-synthetic tables meet the contracts' preconditions.
+rows, for a table of fixed size such as TPC-H's 25 nations) and `unique`
+(column sets of a table that keep only their first row of each combination),
+so that the synthetic tables meet the contracts' preconditions.
 
 ### Verified SQL on DuckDB (#229)
 

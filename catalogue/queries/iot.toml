@@ -121,15 +121,31 @@ intent = "Reduce each device's readings to one row per hour with the minimum, ma
 domain = "iot"
 source = { name = "QuestDB docs: SAMPLE BY", url = "https://questdb.com/docs/query/sql/sample-by/", licence = "Apache-2.0" }
 features = ["date_trunc", "group_by", "min_max", "avg", "count", "arg_max"]
-pitfalls = ["tie_order: 'last' is arbitrary between readings at the same instant", "float_nan: a NaN reading makes MAX NaN in DataFusion", "timezone_dst: hours in local time", "null_at_extreme: a NULL latest reading is skipped by argmax, kept by Ibis's DuckDB SQL"]
+pitfalls = ["tie_order: 'last' is arbitrary between readings at the same instant, unless a device takes one reading per instant", "float_nan: a NaN reading makes MAX NaN in DataFusion", "timezone_dst: hours in local time", "null_at_extreme: argmax keeps a NULL latest reading in Ibis's DuckDB SQL; the last non-NULL reading by time avoids it"]
 ibis = '''
 q = readings.group_by(["device_id", _.ts.truncate("h").name("hour")]).aggregate(
     lo=_.temperature.min(),
     hi=_.temperature.max(),
     mean=_.temperature.mean(),
     n=_.count(),
-    last=_.temperature.argmax(_.ts),
+    last=_.temperature.last(order_by=ibis.asc(_.ts, nulls_first=False)),
 )
+'''
+# A device takes one reading per instant, so the last reading of an hour is determined.
+# Readings are within a sensor's range, so the mean of an hour is finite.
+requires = '''
+{
+    'readings': [
+        sv.unique('device_id', 'ts'),
+        _.ts >= ibis.timestamp('2000-01-01'),
+        _.temperature.isnull() | _.temperature.between(-100, 200),
+    ],
+}
+'''
+ensures = '''
+[
+    _.n >= 1,
+]
 '''
 
 [[query]]

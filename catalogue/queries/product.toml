@@ -159,10 +159,10 @@ intent = "Flag readings more than three standard deviations from their sensor's 
 domain = "iot"
 source = { name = "Polars user guide: window functions over groups", url = "https://docs.pola.rs/user-guide/expressions/window-functions/", licence = "MIT" }
 features = ["window_partition_agg", "avg", "stddev_var", "math_funcs", "filter", "arithmetic_float"]
-pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0", "float_nan: NaN readings"]
+pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0; NULLIF makes its z-scores NULL", "float_nan: NaN readings"]
 ibis = '''
 w = ibis.window(group_by="sensor_id")
-z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w)
+z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w).nullif(0)
 q = readings.mutate(z=z).filter(_.z.abs() > 3)
 '''
 
@@ -189,9 +189,9 @@ intent = "List each order's product names as one comma-separated string."
 domain = "retail"
 source = { name = "modern-sql.com: listagg", url = "https://modern-sql.com/feature/listagg", licence = "all rights reserved (Markus Winand); paraphrased" }
 features = ["inner_join", "group_by", "string_agg"]
-pitfalls = ["tie_order: the order inside the list is unspecified without WITHIN GROUP (ORDER BY …)"]
+pitfalls = ["tie_order: the order inside the list is unspecified without WITHIN GROUP (ORDER BY …); ordered by name, tied names join to the same string"]
 ibis = '''
-q = order_items.join(products, "product_id").group_by("order_id").aggregate(items=_.name.group_concat(","))
+q = order_items.join(products, "product_id").group_by("order_id").aggregate(items=_.name.group_concat(",", order_by=_.name))
 '''
 
 [[query]]
