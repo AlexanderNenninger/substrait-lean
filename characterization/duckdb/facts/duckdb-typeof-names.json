@@ -14,7 +14,8 @@
   "settings": {},
   "description": [
     "DuckDB's `typeof` gives the type's SQL name in upper case: TINYINT, SMALLINT, INTEGER, BIGINT, HUGEINT, UTINYINT, USMALLINT, UINTEGER, UBIGINT, FLOAT, DOUBLE, DECIMAL(p,s), VARCHAR, BOOLEAN, DATE, TIME, TIMESTAMP, TIMESTAMP_S, TIMESTAMP_MS, TIMESTAMP_NS, TIMESTAMP WITH TIME ZONE, INTERVAL, BLOB, UUID; a list is its element's name and `[]` (`BIGINT[]`, `VARCHAR[][]`), a struct `STRUCT(a BIGINT, b VARCHAR)` with its field names quoted where they need it (`STRUCT(\"x y\" INTEGER)`), a map `MAP(VARCHAR, BIGINT)`. A DECIMAL without precision is DECIMAL(18,3).",
-    "An expression's type is DuckDB's own inference: `typeof(1)` is INTEGER, `typeof(1.5)` is DECIMAL(2,1), and an INTEGER plus an INTEGER is an INTEGER. `typeof(NULL)` is `\"NULL\"`, quotes included."
+    "An expression's type is DuckDB's own inference: `typeof(1)` is INTEGER, `typeof(1.5)` is DECIMAL(2,1), and an INTEGER plus an INTEGER is an INTEGER. `typeof(NULL)` is `\"NULL\"`, quotes included.",
+    "The docs are silent on the spelling of nested types and of `\"NULL\"`: a docs gap."
   ],
   "reference": [
     "The type of a column is fixed when the plan is checked, so the Ibis producer folds `typeof(column)` to DuckDB's name as a string constant (`duckdb_type_name`, `ibis_substrait/casts.py`). Lists of these types are folded; structs and maps are refused, and so is `typeof` of an expression, whose type is the engine's inference. The plan holds DuckDB's name whichever engine runs it, so every engine gives the same string (decided by the coordinating session for #508)."
@@ -32,6 +33,33 @@
         {"sql": "SELECT typeof(NULL::DECIMAL)", "observed": "DECIMAL(18,3)"},
         {"sql": "SELECT typeof(1), typeof(1.5), typeof('a'), typeof(NULL), typeof(1::INTEGER + 1::INTEGER)", "observed": "INTEGER, DECIMAL(2,1), VARCHAR, \"NULL\", INTEGER"},
         {"test": "python/tests/test_ibis_semantics.py::test_typeof_names_are_duckdbs"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/generic/type_functions.cpp#L15-L35", "note": "typeof: the argument type's ToString(), folded at bind time"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L532-L615", "note": "LogicalType::ToString: STRUCT(…), child + '[]' for LIST, MAP(k, v)"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/catalog/default/default_types.cpp#L47", "note": "a bare DECIMAL is DECIMAL(18, 3)"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/test_typeof.test#L4-L7", "note": "typeof(1) → INTEGER"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/sql_export/constant_values.test#L5-L49", "note": "typeof(NULL) → \"NULL\"; integer, float, DECIMAL(9,3), SMALLINT[], STRUCT(n INTEGER, items VARCHAR[]) names"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/utility#typeofexpression", "note": "only typeof('abc') → VARCHAR; nested and NULL names not stated (docs gap)"}
       ]
     }
   ],

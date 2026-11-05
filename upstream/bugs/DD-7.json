@@ -1,0 +1,54 @@
+{
+  "id": "DD-7",
+  "project": "duckdb",
+  "version": "2.0.0",
+  "status": "confirmed",
+  "status_note": "confirmed on 2.0.0 (Python, macOS arm64) by the probe observations exec-case-when-folded, exec-case-when-folded-empty and exec-case-when-folded-cast. Fixed in DuckDB's nightly builds (checked 2026-11-04 by the upstream-verify session), not yet in a release: it becomes \"fixed upstream\" once a release has the fix.",
+  "summary": [
+    "A `CASE` whose later `WHEN` is a constant expression that raises fails while planning, even when no row reaches that `WHEN`: on a table where every row takes the first branch, and on an empty table. The optimizer's `CASE` simplification evaluates every foldable `WHEN` with `ExpressionExecutor::EvaluateScalar`, which throws, where constant folding uses `TryEvaluateScalar` and leaves a failing expression to run time.",
+    "At run time `CASE` is lazy (a raising `ELSE` on rows that never reach it does not raise), so the plan-time fold is the one place where a `CASE` branch is evaluated eagerly."
+  ],
+  "repro": [
+    "`CREATE TABLE t AS SELECT 1 x; SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t;` raises `Invalid Input Error: Division by zero in expression (1 // 0)`. The same over `CREATE TABLE t (x INTEGER)` (no rows), and `EXPLAIN` of it, raise too; `WHEN 'a'::INTEGER = 1` raises `Conversion Error: Could not convert string 'a' to INT32`.",
+    "For contrast, `SELECT CASE WHEN x > 0 THEN 1 ELSE 1 // 0 END FROM t` returns 1."
+  ],
+  "handling": [
+    "No workaround yet: duckdb-exec-short-circuit records it for the evaluation-order analysis (#604). The fix upstream would be `TryEvaluateScalar` in `CaseSimplificationRule::Apply`, keeping the `WHEN` when folding fails (https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/case_simplification.cpp#L15-L46).",
+    "Since D21 (docs/core-semantics.md, #609) the reference itself raises on a constant subexpression that raises, in any CASE branch and on an empty table too (`Rel.constIssues`), so DuckDB's plan-time fold (DD-7) no longer breaks a verified plan's no-error guarantee: such a plan is not verified error-free."
+  ],
+  "found_by": "characterization pipeline round 4 probe (#444), from round 2's source reading",
+  "issues": [
+    444,
+    604
+  ],
+  "files": [
+    "python/tools/sverify_dev/probe.py",
+    "characterization/duckdb/probes.json"
+  ],
+  "facts": [
+    "duckdb-exec-short-circuit"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "probe on the pinned release; main not checked"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "nightly"
+      },
+      "note": "upstream-verify session: fixed in the nightly builds; no release has the fix yet"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "reverse pass: case_simplification.cpp#L15-L46 evaluates a foldable WHEN with EvaluateScalar; the CASE docs (https://duckdb.org/docs/2.0/sql/expressions/case) are silent; no upstream test has a raising constant WHEN (test/optimizer/case_simplification.test#L1-L34)"
+    }
+  ]
+}

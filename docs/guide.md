@@ -1,8 +1,23 @@
 # Guide
 
 What sverify does and how to use it, with examples that the test suite
-runs. [python/README.md](../python/README.md) is the short version; how it
+runs. [python/README.md](../python/README.md) is the short version,
+[examples.md](examples.md) shows each feature in a few lines, and how it
 works inside is in [how-it-works.md](how-it-works.md).
+
+## Install and a first contract
+
+```bash
+pip install sverify                 # or: uv add sverify
+pip install 'sverify[delta,iceberg,polars,datafusion,spark]'   # or 'sverify[all]'
+```
+
+The core runs on DuckDB: contracts, incremental maintenance, and SQL for
+DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
+(needs Java 17 or 21), `delta`, `iceberg`, `flight` (`FlightSource`) and
+`testing` (Hypothesis strategies). Wheels bundle the Lean checker
+as a small native binary, so you need no Lean toolchain; they exist for Linux
+(x86_64, aarch64) and macOS (arm64), Python 3.12 and later.
 
 ```python
 import ibis
@@ -15,6 +30,27 @@ orders = StaticSource(
     pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
 )
 orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))  # now orders holds bob and cy
+```
+
+A transform states what it assumes about its inputs (`requires`) and what
+it promises about its output (`ensures`). Applying it to a source proves
+the promise for every input that meets the assumptions, before any data
+runs; `refresh` runs it, here on Polars by a route that says how the proof
+carries over ([Routes](#routes-classes-and-profiles)):
+
+```python
+@sv.transform(
+    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    ensures=[_.doubled >= 22, sv.unique("id")],
+)
+def first_contract(orders):
+    return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
+
+
+first = orders.pipe(first_contract)  # proved here
+first.refresh(engine="polars", route="auto")
+print(first.to_arrow().to_pylist())
+# [{'id': 3, 'doubled': 100}]
 ```
 
 ## What it does for you
@@ -38,7 +74,9 @@ In order of day-to-day value:
    overflow where DuckDB raises; NULLs sort first or last depending on the
    engine). Sverify translates the checked plan for each engine with every
    such choice spelled out, or refuses the plan where an engine can't
-   match, as for windows over a Snowflake table with ties.
+   match, as for windows over a Snowflake table with ties. On DuckDB and
+   Polars a route says how the proof carries over, and its class what you
+   can rely on ([Routes](#routes-classes-and-profiles)).
 3. Results kept up to date from the changes, provably. Instead of a
    watermark job ("process the rows newer than…"), which misses deletes,
    late rows and new join matches, sverify updates a result from the
@@ -56,8 +94,11 @@ In order of day-to-day value:
    goes, a left join on a NOT NULL foreign key becomes an inner join). See
    [docs/optimizations.md](optimizations.md).
 
-What it doesn't do (yet). Correlated scalar subqueries and parameters
-(`ibis.param`) are not in the model. Incremental maintenance covers filters,
+What it doesn't do (yet). Correlated scalar subqueries are not in the
+model. An `ibis.param` is checked with its value bound,
+`sv.verify(expr, params={threshold: 50})`, and the report and `report.run`
+are about that value; an unbound parameter is refused, and so is one in a
+transform or a node. Incremental maintenance covers filters,
 projections, inner, cross, semi and anti joins, `UNION ALL`, `DISTINCT`, and
 `COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group; another aggregate
 recomputes only the groups a batch touches, and a window only the partitions
@@ -171,10 +212,10 @@ The most common, and what sverify does about each:
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data while the job runs |
+| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
-| Guards that don't guard | DataFusion evaluates both branches of some `CASE`s and merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection |
+| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, and DataFusion merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](#guards)); a constant that raises makes the whole plan raise |
 | NULL ordering | DataFusion, PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
@@ -184,19 +225,7 @@ against the model, and its section 8 checks DataFusion as a backend.
 
 ## Using sverify
 
-```bash
-pip install sverify                 # or: uv add sverify
-pip install 'sverify[delta,iceberg,polars,datafusion,spark]'   # or 'sverify[all]'
-```
-
-The core runs on DuckDB: contracts, incremental maintenance, and SQL for
-DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
-(needs Java 17 or 21), `delta`, `iceberg`, `flight` (`FlightSource`) and
-`testing` (Hypothesis strategies). Wheels bundle the Lean checker
-as a small native binary, so you need no Lean toolchain; they exist for Linux
-(x86_64, aarch64) and macOS (arm64), Python 3.12 and later.
-
-Each night, when `main` has changed, the
+[Install](#install-and-a-first-contract) covers the release. Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
 `<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
@@ -378,11 +407,49 @@ or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNen
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
 `requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
-assumes inferred bounds, and the job checks it on the data while it runs
-(`Report.assumed`; an error with `infer=False`). Guards are
-understood where the engine respects them: in a `CASE` branch or
-`NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
-`AND` doesn't count.
+assumes inferred bounds, and the job checks it on the data before the run
+(`Report.assumed`; an error with `infer=False`). The same holds for an
+operation on finite doubles that may overflow to `±∞`, which the reference
+raises on ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
+
+### Guards
+
+Guards are understood where the engine respects them: in a `CASE` branch
+or `NULLIF(n, 0)`, and in a filter below a projection. Filter first, then
+compute, and the division is proved safe with no precondition:
+
+```python
+gcon = sv.connect()
+gcon.put("lines", pa.table({"id": [1, 2, 3], "n": [4, 0, 2], "total": [100, 250, 30]}))
+lines = gcon.table("lines")
+per_line = sv.verify(lines.filter(lines.n != 0).select(lines.id, per=lines.total // lines.n))
+print(per_line.run(gcon).to_pylist())
+# [{'id': 1, 'per': 25}, {'id': 3, 'per': 15}]
+```
+
+A guard inside an `AND` or `OR` protects nothing, since DuckDB and Polars
+evaluate both operands (D19 of [core-semantics.md](core-semantics.md)), and
+neither does a guard in one column of a `SELECT` for a division in another.
+Sverify then infers the precondition `n != 0`, checks it on each batch
+before the run, and says where the error sits:
+
+```python
+mixed = sv.verify(
+    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
+)
+print(mixed)
+# requires lines: (_.total >= -9 * 10**18) (inferred)
+# requires lines: (_.n != 0) (inferred)
+# hint: `($2 / $1)` is inside an AND or OR, which evaluates both operands, ...
+```
+
+`mixed.run(gcon)` refuses this batch, whose second row has `n = 0`, with a
+`PreconditionError`. Guard the operation itself,
+`ibis.cases((_.n != 0, _.total // _.n))`, and no precondition is needed.
+A constant subexpression that raises, such as `1 // 0 = 1` in a later
+`WHEN`, makes the whole plan raise on any data, since DuckDB evaluates it
+while it plans the query
+([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609)).
 
 ### Inferred bounds
 
@@ -1067,33 +1134,57 @@ the following about the warehouse:
 How the engine translations relate to the reference semantics, and where
 that is going, is in [docs/engine-profiles.md](engine-profiles.md).
 
-`report.run(con, engine, route="auto")` first chooses how the proof reaches
-the engine ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444),
-D13 in [core-semantics.md](core-semantics.md#d13-choosing-the-route)):
-natively for a plan verified under the engine's profile
-(`semantics="duckdb"` on DuckDB), through the reference's translation for a
-plan verified under the reference, by the option-wise transfer check for a
-plan verified under another engine's profile, or by checking it again under
-the engine's profile. Otherwise the run raises `sverify.routes.RouteError`
-with the reason, such as the options where the two profiles choose
-differently. `report.routes` records each engine's route, and
-`route="native"` (or another route) takes that one or refuses. Each route
-names the plan's class on the engine (`route.cls`: `refines`,
-`refines_up_to`, `approx`, `shim` or `refused`, from
-[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)).
-Before the plan runs, the preconditions, the inferred bounds and the
-assumed `SUM`s are checked on the data, and a batch that breaks one raises
-`PreconditionError` with the precondition.
+### Routes, classes and profiles
+
+A proof is about the plan under one semantics, a profile: sverify's
+reference by default, `semantics="duckdb"` for what DuckDB does, or
+`semantics="substrait"` for Substrait's extension YAMLs, open wherever they
+say nothing. An engine computes its own semantics, so running a verified
+plan raises a question: does the proof hold for what the engine computes?
+A route answers it. `report.run(con, engine, route="auto")` and
+`node.refresh(engine=..., route="auto")` pick one of four, and run the plan
+only if one applies:
+
+| Route | When |
+|---|---|
+| `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB) |
+| `reference` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars) |
+| `transfer` | the plan was verified under another profile, and at every option the proof depends on, the engine's choices are within that profile's |
+| `recheck` | the checker proves the plan again under the engine's profile |
+
+`report.routes[engine]` records the route, with its class, which says what
+you can rely on:
+
+| Class (`route.cls`) | What it means for you |
+|---|---|
+| `exact` | every result the engine gives is one the proof covers |
+| `observed` | the result equals one the proof covers under an observation that `ensures` states with `sv.equivalent(...)`: rows as a multiset, one zero, or doubles within a tolerance, `floats=sv.within(...)`, at least the plan's proved float bound |
+| `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
+| `refused` | none of the above: the run raises `sverify.routes.RouteError` and nothing runs |
+
+`route.evidence` says whether each step rests on a Lean proof (`proved`)
+or on tests and probes (`tested`). Before the plan runs, its preconditions,
+the inferred bounds and the assumed `SUM`s are checked on the data, and a
+batch that breaks one raises `PreconditionError`.
+
+A refusal names its reason: the options where the engine's choices differ,
+with the facts that record them (the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)
+list every fact). What to do about one:
+
+- Verify under the reference (the default), whose translation shims most
+  differences, in place of an engine's profile.
+- State the observation the difference hides: `sv.equivalent(floats=sv.within(abs=...))`
+  for a sum in another order, `rows="multiset"` for row order.
+- Add the precondition the reference raises on, such as a bound on a
+  column, so the plan never meets the difference.
+- Run on the other engine, or pass `route="reference"` (or another) to see
+  why that one fails.
+
 `deterministic=True` refuses a plan whose result is not determined up to
-row order. `node.refresh(engine=..., route="auto")` chooses a route for
-every node the same way and records it in each entry's `route`. A stored
-node needs a rerun to reproduce its result, since its sink commits each
-epoch once: rows as a multiset with exact values by default, or what the
-sink states, such as
-`DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(rel=1e-12)))`
-for a double `SUM` whose order varies between runs. Each engine profile names the versions its facts were probed at
-(DuckDB 2.0.0, Polars 2.1.0): another version warns, another major version
-is refused.
+row order. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
+shows a transfer and a refusal, and D13 in
+[core-semantics.md](core-semantics.md#d13-choosing-the-route) the rules
+behind them.
 
 A postcondition can name what the result's consumer observes:
 
@@ -1122,6 +1213,87 @@ component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
 `CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
 tolerance.
+
+The bound grows with the row cap and the values: for a `SUM` of `n` values
+of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
+`AVG` that divided by `n` (`2.2e-4` above, with `n = M = 10⁶`). Tighter
+`requires` give a tighter bound ([float-bounds.md](float-bounds.md)).
+
+### Reproducible sinks
+
+A stored node's sink commits each epoch once, so a rerun must give the same
+result. The sink states what "the same" means (`reproducible=`, D20 in
+[core-semantics.md](core-semantics.md)): `sv.equivalent()` asks for exact
+bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
+tolerance. A refresh whose engine may give another result on a rerun is
+refused with a `RouteError`. Polars's streaming `SUM` of doubles may add in
+another order each run, so a double sum on Polars states both: the transform's
+`ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
+sink's `reproducible=sv.equivalent(floats=sv.within(abs=...))` for the
+rerun, each at least the plan's bound. With `x` within ±1000 and
+`max_rows(1000)` that bound is about `2.2e-7`, so `abs=1e-6` passes:
+
+```python
+from sverify.io import DeltaSink
+
+samples = StaticSource(pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}), name="samples")
+
+
+@sv.transform(
+    requires={"samples": [_.x.between(-1000, 1000), sv.max_rows(1000)]},
+    ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
+)
+def sample_sums(samples):
+    return samples.group_by("k").aggregate(total=samples.x.sum())
+
+
+sums = samples.pipe(sample_sums).write(
+    DeltaSink("sample_sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
+)
+print(sums.refresh(engine="polars", route="auto").nodes[0].route.kind)
+# reference
+```
+
+A relative tolerance (`rel=`) fails where the values may cancel, since
+only an absolute bound holds there. A result not determined up to row
+order, such as a `LIMIT` over ties, is refused by every sink.
+
+### Engine settings and versions
+
+A profile's facts were probed under the engine's default settings, at a
+pinned version (DuckDB 2.0.0, Polars 2.1.0). Before a routed run, sverify
+reads the settings the plan will run under and compares them:
+
+- DuckDB: `default_null_order`, `default_order`, `integer_division`,
+  `error_on_division_by_zero`, `ieee_floating_point_ops`,
+  `default_collation`, `scalar_subquery_error_on_multiple_rows`,
+  `enable_optimizer` and `disabled_optimizers` refuse the run with the
+  setting named (`sverify.errors.EngineSettingsError`), since a choice the
+  route relies on depends on each; `preserve_insertion_order` warns
+  (`EngineSettingsWarning`). `TimeZone` and `Calendar` are not checked:
+  the SQL sverify writes never reads them.
+- Polars: an engine affinity that forces another engine than streaming
+  (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
+  sverify runs Polars's streaming engine.
+- Another engine version warns (`EngineVersionWarning`), and another major
+  version is refused (`EngineVersionError`) until the probes are re-run.
+
+`con.ibis` is the connection's Ibis DuckDB backend, for SQL of your own,
+such as `con.ibis.raw_sql("SELECT current_setting('threads')")`. Sverify
+runs plans on a cursor of its own, so a plain `SET` there leaves sverify's
+runs alone, and a `SET GLOBAL` reaches them, which the check sees:
+
+```python
+from sverify.errors import EngineSettingsError
+
+gcon.ibis.raw_sql("SET GLOBAL integer_division = true")
+try:
+    per_line.run(gcon, "duckdb", route="auto")
+except EngineSettingsError as e:
+    print(e)
+# duckdb's integer_division is True, and Profile.duckdb's facts hold under False (duckdb-F1): ...
+gcon.ibis.raw_sql("SET GLOBAL integer_division = false")
+```
 
 ### Sharding and other optimizations
 

@@ -3,9 +3,9 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0",
-  "status": "unverified",
-  "status_note": "Unspecified in substrait-extensions 0.106.0; not yet checked against Substrait's main branch or raised upstream.",
-  "summary": "The `fp32` and `fp64` implementations of `add`, `subtract`, `multiply`, `divide`, `power`, `exp` and the other elementary functions have no option for a result too large for the type: only `rounding` (and `on_domain_error`, `on_division_by_zero` where they apply). Nothing says whether `1e308 * 10` is `+inf`, as IEEE 754 makes it, or an error. `sum` and `avg` of `fp64` take `overflow: SILENT | SATURATE | ERROR`, which the YAML defines for integers only.",
+  "status": "confirmed",
+  "status_note": "Narrower than recorded, still open on main (a4d8e00342d0): the test cases expect IEEE `±inf` on overflow with the default options (`multiply.test` L19-L21, likewise `add`, `subtract`, `divide`, `sum`, `exp`, since [#738](https://github.com/substrait-io/substrait/pull/738)), but no fp implementation offers raising instead ([`functions_arithmetic.yaml` L45-L62](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L45-L62), [`functions_arithmetic.yaml` L401-L412](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L401-L412), [`functions_arithmetic.yaml` L445-L468](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L445-L468)), and `sum`'s `overflow` values ([`functions_arithmetic.yaml` L1092-L1111](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L1092-L1111)) are undefined for floats. No existing issue; [#254](https://github.com/substrait-io/substrait/issues/254) (options undocumented).",
+  "summary": "The `fp32` and `fp64` implementations of `add`, `subtract`, `multiply`, `divide`, `power`, `exp` and the other elementary functions have no option for a result too large for the type: only `rounding` (and `on_domain_error`, `on_division_by_zero` where they apply). The test cases expect IEEE 754's `±inf` with the default options (`multiply.test`, since substrait#738), but nothing lets a plan ask for an error instead. `sum` and `avg` of `fp64` take `overflow: SILENT | SATURATE | ERROR`, which the YAML defines for integers only.",
   "repro": [
     "`multiply(fp64 1e308, fp64 10)`, `exp(fp64 1000)`, `power(fp64 10, fp64 400)`, and `sum` of `1e308` and `1e308`.",
     "DuckDB 2.0 gives `inf` for all of them (fact duckdb-double-overflow); Polars gives `inf` (fact polars-double-arith); sverify's reference raises (#575)."
@@ -35,6 +35,18 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "functions_arithmetic.yaml: the fp implementations of add, subtract, multiply, divide, power and exp have `rounding` only; sum and avg of fp64 have `overflow`"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_arithmetic.yaml fp impls and tests/cases/arithmetic/{add,subtract,multiply,divide,sum,exp}.test on main; the tests answer the default (±inf), the ERROR option and sum's overflow on floats are open"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/issues/254",
+    "https://github.com/substrait-io/substrait/issues/996"
   ]
 }

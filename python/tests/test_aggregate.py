@@ -954,9 +954,11 @@ def test_quantiles_mode_and_arg_min_agree_with_duckdb(rows):
     assert same_rows(got, expected), (got, expected)
 
 
-def test_quantile_cont_between_infinities_stays_between_them():
-    """DuckDB's `lo·(1−d) + hi·d` is NaN between -inf and +inf; the model keeps
-    the result between the neighbours, as the written SQL does."""
+def test_quantile_cont_between_infinities_raises():
+    """DuckDB's `lo·(1−d) + hi·d` is NaN between -inf and +inf, a NaN created
+    from numbers: the reference raises there (#561, D21). `Rel.eval` keeps its
+    clamped `+inf`, a value no verified plan sees, and the written SQL
+    raises."""
     rows = [(1, 1, -math.inf, "a"), (1, 2, math.inf, "b")]
     plan = to_substrait_json(Q.group_by("k").aggregate(q=Q.x.quantile(0.5)))
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
@@ -964,8 +966,8 @@ def test_quantile_cont_between_infinities_stays_between_them():
     con = connect()
     create_table(con, "t", Q.schema(), rows)
     assert math.isnan(duckdb_sql(con, "SELECT quantile_cont(x, 0.5) FROM t").column(0)[0].as_py())
-    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
-    assert [r["q"] for r in got] == [math.inf]
+    with pytest.raises(Exception, match="domain error"):
+        run_plan(con, written_plan(plan), "duckdb")
 
 
 def test_quantiles_lie_between_the_smallest_and_largest_value():

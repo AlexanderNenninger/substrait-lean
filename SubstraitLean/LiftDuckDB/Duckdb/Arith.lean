@@ -243,19 +243,8 @@ theorem Substrait.liftDuckDB.power_agree : ∀ (x y : Substrait.Value),
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.and
               (Substrait.Expr.bin Substrait.BinFn.and
-                (Substrait.Expr.bin Substrait.BinFn.and
-                  (Substrait.Expr.un Substrait.UnFn.not
-                    (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
-                  (Substrait.Expr.un Substrait.UnFn.not
-                    (Substrait.Expr.bin Substrait.BinFn.or
-                      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
-                      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
-                (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.int 0))))
-              (Substrait.Expr.bin Substrait.BinFn.and
+                (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))
                 (Substrait.Expr.bin Substrait.BinFn.and
                   (Substrait.Expr.un Substrait.UnFn.not
                     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
@@ -265,34 +254,58 @@ theorem Substrait.liftDuckDB.power_agree : ∀ (x y : Substrait.Value),
                       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
                         (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
                       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
-                (Substrait.Expr.un Substrait.UnFn.not
-                  (Substrait.Expr.bin Substrait.BinFn.eq
-                    (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
-                    (Substrait.Expr.field 1)))))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
-            (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0)
-              (Substrait.Expr.field 1))))
+                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))))))
+              (Substrait.Expr.un Substrait.UnFn.not
+                (Substrait.Expr.bin Substrait.BinFn.eq
+                  (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
+                  (Substrait.Expr.field 1))))
+            (Substrait.Expr.ifThen
+              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+                (Substrait.Expr.field 1))
+              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
+              (Substrait.Expr.lit (Substrait.Value.int 0)))
+            (Substrait.Expr.ifThen
+              (Substrait.Expr.bin Substrait.BinFn.and
+                (Substrait.Expr.bin Substrait.BinFn.and
+                  (Substrait.Expr.bin Substrait.BinFn.and
+                    (Substrait.Expr.un Substrait.UnFn.not
+                      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                    (Substrait.Expr.un Substrait.UnFn.not
+                      (Substrait.Expr.bin Substrait.BinFn.or
+                        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+                  (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+                    (Substrait.Expr.lit (Substrait.Value.int 0))))
+                (Substrait.Expr.bin Substrait.BinFn.and
+                  (Substrait.Expr.bin Substrait.BinFn.and
+                    (Substrait.Expr.un Substrait.UnFn.not
+                      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                    (Substrait.Expr.un Substrait.UnFn.not
+                      (Substrait.Expr.bin Substrait.BinFn.or
+                        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+                  (Substrait.Expr.un Substrait.UnFn.not
+                    (Substrait.Expr.bin Substrait.BinFn.eq
+                      (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
+                      (Substrait.Expr.field 1)))))
+              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0)
+                (Substrait.Expr.field 1)))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.power [x, y]) := by
   lift_tac2
 
 abbrev Substrait.liftDuckDB.power : Substrait.LiftEntry Substrait.Semantics.duckdb Substrait.DuckFn.power :=
-  ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":8,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":33,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":33,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":28,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
+  ⟨"{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":8,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":33,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":33,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":28,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":33,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":28,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":36,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"ifThen\":{\"else\":{\"literal\":{\"fp64\":0}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"literal\":{\"fp64\":0}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"inf\"}}}]}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.bin Substrait.BinFn.and
-      (Substrait.Expr.bin Substrait.BinFn.and
-        (Substrait.Expr.un Substrait.UnFn.not
-          (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
-        (Substrait.Expr.un Substrait.UnFn.not
-          (Substrait.Expr.bin Substrait.BinFn.or
-            (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
-            (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
-      (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int 0))))
-    (Substrait.Expr.bin Substrait.BinFn.and
+      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))
       (Substrait.Expr.bin Substrait.BinFn.and
         (Substrait.Expr.un Substrait.UnFn.not
           (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
@@ -302,13 +315,48 @@ abbrev Substrait.liftDuckDB.power : Substrait.LiftEntry Substrait.Semantics.duck
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
               (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
-      (Substrait.Expr.un Substrait.UnFn.not
-        (Substrait.Expr.bin Substrait.BinFn.eq
-          (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
-          (Substrait.Expr.field 1)))))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
-  (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0) (Substrait.Expr.field 1)),
+              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))))))
+    (Substrait.Expr.un Substrait.UnFn.not
+      (Substrait.Expr.bin Substrait.BinFn.eq
+        (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
+        (Substrait.Expr.field 1))))
+  (Substrait.Expr.ifThen
+    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+      (Substrait.Expr.field 1))
+    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
+    (Substrait.Expr.lit (Substrait.Value.int 0)))
+  (Substrait.Expr.ifThen
+    (Substrait.Expr.bin Substrait.BinFn.and
+      (Substrait.Expr.bin Substrait.BinFn.and
+        (Substrait.Expr.bin Substrait.BinFn.and
+          (Substrait.Expr.un Substrait.UnFn.not
+            (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+          (Substrait.Expr.un Substrait.UnFn.not
+            (Substrait.Expr.bin Substrait.BinFn.or
+              (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+              (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+        (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+          (Substrait.Expr.lit (Substrait.Value.int 0))))
+      (Substrait.Expr.bin Substrait.BinFn.and
+        (Substrait.Expr.bin Substrait.BinFn.and
+          (Substrait.Expr.un Substrait.UnFn.not
+            (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+          (Substrait.Expr.un Substrait.UnFn.not
+            (Substrait.Expr.bin Substrait.BinFn.or
+              (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+              (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+        (Substrait.Expr.un Substrait.UnFn.not
+          (Substrait.Expr.bin Substrait.BinFn.eq
+            (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
+            (Substrait.Expr.field 1)))))
+    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+    (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0) (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.power_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.power)

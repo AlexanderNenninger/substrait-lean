@@ -20,7 +20,12 @@
     "unique",
     "join"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "`NaN == NaN` is true and `NaN != NaN` false; `is_in([nan])` finds NaN; `group_by`, `unique`, `n_unique` put every NaN in one group, and a join matches NaN keys. NULL compares as NULL (`eq_missing` makes NULL equal NULL).",
   "reference": "`NAN_IS_NAN` (#89, an override of IEEE equality) for `=`, grouping, `DISTINCT` and joins.",
   "status": "no-finding",
@@ -125,6 +130,42 @@
       "notes": [
         "Pins NaN equality for `Float32`: `NaN == NaN` and `-NaN == NaN` are true in comparisons, `is_in` and `index_of`.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "Float64 == Float64"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "nan-compare"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "nan-is-in"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "group-nan-zero"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "unique-nan-zero"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "join-nan-zero-null"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64.",
+        "join-nan-zero-null's recorded differ 1 is a tie order: `sort('y')` ties the rows 0.0 and -0.0 (both y = 2), and the engines list them in different orders. The join results are the same set of rows on both engines; it is no engine difference."
       ]
     }
   ],

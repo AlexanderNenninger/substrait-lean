@@ -17,3 +17,8 @@ public import FloatBounds.CovRel
 public import FloatBounds.CovTwoPass
 public import FloatBounds.CoreKappa
 public import FloatBounds.Shard
+public import FloatBounds.Tree
+public import FloatBounds.Kahan
+public import FloatBounds.Epsilon
+public import FloatBounds.Arith
+public import FloatBounds.Propagate

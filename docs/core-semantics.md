@@ -498,6 +498,10 @@ best first:
    whose threshold lies within `ε` of its argument's range drops the call
    site to a shim
    ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632287946)).
+   Lean proves `ε` for a double `SUM` and `AVG` under every summation order
+   the engines use, and its propagation through `+`, `−`, `×` and `/`;
+   elementary functions stay probed
+   ([float-bounds.md](float-bounds.md#the-engines-orders-and-epsilon-444)).
 4. Each of the three after a shim: a written flag, a rewrite or a guard,
    mostly for the reference's value choices.
 5. Refused.
@@ -646,7 +650,7 @@ is a choice that accepts every value the plan states.
 | `time_interval_months` | all others | `DROP_MONTHS`, `ERROR` | refused | raise |
 | `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
-| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `KAHAN` | `ANY` | leave open |
+| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT` | `ANY` | leave open |
 | `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN` | `GENERIC` | leave open |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
@@ -657,6 +661,45 @@ is a choice that accepts every value the plan states.
 | `distribution` | all others | `SAMPLE`, `POPULATION` | `SAMPLE`, `POPULATION`; `SAMPLE` by default | choose |
 | `float_overflow` | all others | `ERROR`, `INFINITY` | `ERROR` | raise |
 <!-- substrait-diff:end -->
+
+### Substrait's test cases
+
+Substrait keeps test cases for its extension functions in
+`tests/cases/<area>/*.test` of `substrait-io/substrait`: a call, the options
+it states and the expected result, an error, or anything but an error.
+`python -m sverify_dev.substrait_cases` runs every case at v0.106.0, the
+extensions `Profile.substrait` reads, through `substrait-check`: scalar
+calls with `--outcomes` (`Expr.evalP`), aggregates and windows over a
+`VALUES` with `Rel.eval`. A case that leaves an option of its YAML open runs
+once per value the YAML lists, and each run states every option. The parser
+accepts a preference only where the reference's behaviour is that value,
+so an accepted run gives Substrait's outcome; the two profiles differ beyond
+that only at sverify's own options (the table above).
+
+A case agrees when every accepted run gives its result, is refused when
+sverify accepts none (a function, an option value or a type it does not
+model), and disagrees otherwise. A case that states an option or a value its
+YAML does not list disagrees before it runs. The ledger
+[`upstream/substrait-cases.json`](../upstream/substrait-cases.json) keeps the
+totals per area, the refusals' reasons with their counts, and each
+disagreement with its triage: `profile` (the two profiles differ at an
+option; counted as refused), `model` (a bug of sverify's, with its issue),
+`case` (a wrong test case) or `gap` (a spec gap), the last two with their
+`ST` entry. `tests/test_substrait_cases.py` fails on a disagreement the
+ledger does not triage and on a stale ledger.
+
+Of the 1,317 cases, 631 agree, 625 are refused and 61 disagree. Every
+disagreement is a test case at fault, and all are still on Substrait's
+`main`: wrong expected values for `variance`, `std_dev`, `multiply` and
+`shift_left` ([ST-13](../upstream/bugs/ST-13.json)), `logb`'s arguments in
+the order opposite to its YAML ([ST-14](../upstream/bugs/ST-14.json)), and
+options no YAML defines (`lookaround`, `spaces_only`, `full_unicode`) or
+values their option does not list ([ST-15](../upstream/bugs/ST-15.json)).
+The replay found four bugs of sverify's parser, fixed with it: `negate` of
+the least integer of its width folded past the width, a list literal
+argument stopped constant folding with an error, `variance` and `std_dev`
+did not read the `distribution` enum argument of their current signatures,
+and a date minus an interval typed as a coarse timestamp returned a date.
 
 ## Translations between profiles
 
@@ -1003,8 +1046,8 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |  |
 | 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included (`Rel.duckdb_refines`, `Lowering.lowerRel_raises`). | [realizability.md](realizability.md) |
 | 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
-| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. |  |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. |  |
+| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. | [Substrait's test cases](#substraits-test-cases): 631 agree, 625 refused, 61 disagree (test cases at fault: ST-13, ST-14, ST-15) |
+| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. || Done for DuckDB and Polars: `tests/test_profiles_e2e.py` runs rows A1 to H1 on both, and F2 runs a plan checked under DuckDB's profile on Polars by the transfer check. Four rows wait: A4 (#575, finite double products from inferred bounds), C2 (no frontend writes an `UNSPECIFIED` sort direction), D1 (conditions proved over every open pick) and F1 (a contract checked under Polars's own choices). |
 
 Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
 different tables. The Lean side of step 0 and 1a can merge into one PR if
@@ -1380,8 +1423,14 @@ a constant `THEN` or `ELSE` that raises, `ELSE 1 // 0`, and a constant
 `WHERE 1 // 0 = 1` on an empty table do not). A constant subexpression of a
 condition that raises therefore raises whatever the data. The reference's
 `CASE` evaluates a condition only on the rows that reach it, so a plan with
-such a constant could be proved and raise on DuckDB; the model change is
-[#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609).
+such a constant was proved and raised on DuckDB
+([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609)).
+Under D21 the reference now counts every constant subexpression that raises
+as raising for the whole plan, whatever the data and whichever branch a row
+takes (`Rel.constIssues` in `SubstraitLean/Safety.lean`): stricter than
+DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
+raise are rare in real queries. No precondition rules one out; the report
+names the constant.
 
 
 ### D20. Two observations per output
@@ -1425,3 +1474,24 @@ choosing a value.
 Example: `power(-∞, y)` for a non-integer `y` raises in the reference.
 IEEE 754 gives `+∞`, and Polars's `** 0.5` gives NaN through `sqrt`, so
 Polars needs a guard for such plans and no shim.
+
+A second example: a constant subexpression that raises (`1 // 0 = 1`)
+counts as raising for the whole plan (#609, under D19), since DuckDB may
+evaluate it when it plans the query.
+
+### D22. Four route classes, and tolerances are observations
+
+A route's class is one of four: `exact` (every result the engine gives is one
+the reference allows), `observed` (equal to such a result under an
+observation the postcondition states), `shim` (either of those after the
+translation's shim) and `refused`. The classes `refines`, `refines` up to an
+observation and `approx` of [Classes of an engine's functions](#classes-of-an-engines-functions)
+map to `exact`, `observed` and `observed`. User-facing docs say
+"observation", or "observation model" in prose, and never `q`.
+
+Why: a tolerance is an observation of doubles. `sv.within` is already a
+component of `sv.equivalent` (`floats=sv.within(...)`), ordered by
+refinement with the other components (D18, item 4). Tolerances differ from
+the other observations only in how they compose, by adding their `ε`, and
+the checker's propagation of `ε` through a plan handles that. A separate
+`approx` class told the user nothing the observation did not.

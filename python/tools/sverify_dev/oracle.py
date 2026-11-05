@@ -120,7 +120,13 @@ def check_benchmarks(write: bool) -> tuple[list[str], list[str]]:
 
 
 #: Test files the gate leaves out, with why; the full replay keeps them.
-EXCLUDED: dict[str, str] = {}
+EXCLUDED: dict[str, str] = {
+    "storage/compression/rle/rle_select_force_fetch_row.test": (
+        "with debug_force_fetch_row on, mirroring its 100,000-row table to condense "
+        "the query takes 13-17 s against the replay's 10 s DuckDB timeout: it agrees "
+        "on a fast machine and is interrupted (refused) on CI's runners"
+    ),
+}
 
 
 def shard(files: Sequence[str], spec: str | None) -> list[str]:

@@ -12,3 +12,6 @@ __marimo__/
 # Great Docs build output (`poe docs`)
 /python/great-docs/
 /python/.great-docs*/
+# The site's generated pages (`poe docs_pages`, python/scripts/docs_pages.py)
+/python/examples/
+/python/ledgers/

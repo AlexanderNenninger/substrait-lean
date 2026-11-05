@@ -4542,9 +4542,10 @@ class _Writer:
         if op == "fmod":
             return f"({d.is_inf(a)} AND NOT {d.is_nan(b)})"
         if op == "fpow":
-            # A negative base to a finite power that is not a whole number.
+            # A negative base, finite or `-inf` (`negInfPow`, where IEEE gives
+            # `+inf` or `0`), to a finite power that is not a whole number.
             return (
-                f"({d.float_lt(ninf, a)} AND {d.float_lt(a, zero)} AND {d.float_lt(ninf, b)} "
+                f"({d.float_lt(a, zero)} AND {d.float_lt(ninf, b)} "
                 f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
             )
         return d.bool_lit(False)

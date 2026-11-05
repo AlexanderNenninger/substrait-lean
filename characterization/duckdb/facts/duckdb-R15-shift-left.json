@@ -27,7 +27,10 @@
       false
     ]
   },
-  "description": "Raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`).",
+  "description": [
+    "Raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`).",
+    "The docs are silent on negative operands, shifted-out bits and out-of-range shifts: a docs gap."
+  ],
   "reference": "`shift_left` drops the bits shifted out, and raises on shifts below 0 or beyond 63.",
   "status": "shimmed",
   "evidence": "probe",
@@ -79,6 +82,14 @@
         }
       ],
       "notes": "The error is per statement, so the test does not name the expression that raised; `>>` gives 0 out of range (duckdb-R15-shift-right), so it is `<<`, at i8, i16 and i32 as at i64. `shift_right`'s out-of-range result has no test at these widths."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "<< 'Bitwise shift left'; error cases unstated"}
+      ]
     }
   ],
   "issues": [

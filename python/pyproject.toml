@@ -225,6 +225,11 @@ help = "Random queries with Lean as the oracle for $BUDGET seconds (default 600)
 cmd = "python -m sverify_dev.fuzz --budget ${BUDGET}"
 env = { BUDGET.default = "600" }
 
+[tool.poe.tasks.fuzz-duckdb]
+help = "DuckDB's own SQL against Rel.eval, each of $FUZZ_TARGETS for $BUDGET seconds; ledgers to $FUZZ_OUT"
+shell = "for t in ${FUZZ_TARGETS}; do python -m sverify_dev.duckdb_fuzz $t --budget ${BUDGET} --out ${FUZZ_OUT} || exit 1; done"
+env = { BUDGET.default = "600", FUZZ_TARGETS.default = "eval_order float_special", FUZZ_OUT.default = "../characterization/duckdb" }
+
 [tool.poe.tasks.notebooks]
 help = "Check the tour notebooks with marimo and run each one headless"
 shell = """
@@ -238,13 +243,17 @@ rm -rf "$out"
 """
 cwd = "${POE_ROOT}/../notebooks"
 
+[tool.poe.tasks.docs_pages]
+help = "Write the site's generated pages (examples/, ledgers/) from docs/ and the ledgers' JSON"
+cmd = "python scripts/docs_pages.py"
+
 [tool.poe.tasks.docs]
 help = "Build the API reference site into great-docs/_site (needs Quarto and the docs group)"
-cmd = "great-docs build"
+sequence = ["docs_pages", { cmd = "great-docs build" }]
 
 [tool.poe.tasks.docs_preview]
 help = "Build the API reference site and serve it locally"
-cmd = "great-docs preview"
+sequence = ["docs_pages", { cmd = "great-docs preview" }]
 
 [tool.poe.tasks.qa]
 help = "Run everything: prove, build, lint, typecheck, golden, test-all, notebooks"

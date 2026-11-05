@@ -319,11 +319,17 @@ def duckElementary (f : FMath) (x : Int) : Int :=
   | some r => r
   | none => if f.isLog ∧ x = 0 then FloatCode.negInf else FloatCode.nan
 
+/-- DuckDB's `power(-∞, y)` for a finite `y` that is not an integer
+(`negInfPow`): IEEE 754's `+∞` for `y > 0` and `0` for `y < 0`, under any
+`ieee_floating_point_ops` (probed on DuckDB 2.0.0, fact duckdb-R15-power-neginf). -/
+def duckNegInfPow (y : Int) : Int := if 0 < y then FloatCode.posInf else 0
+
 /-- DuckDB's `power` of doubles: NaN where IEEE 754 gives it (a negative
 finite base to a finite power that is not an integer, `nanCase`), else the
 native power (`0 ^ -1` is `∞`). -/
 def duckPower (x y : Int) : Int :=
-  if nanCase .fpow x y then FloatCode.nan else FloatCode.lift₂ Float.pow x y
+  if negInfPow x y then duckNegInfPow y
+  else if nanCase .fpow x y then FloatCode.nan else FloatCode.lift₂ Float.pow x y
 
 /-- A zero divisor under `error_on_division_by_zero` (integers) or with
 `ieeeOps` off (doubles): an error, or NULL. -/
@@ -358,8 +364,11 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
   | .fmod, a, b =>
     if b = 0 then some (if s.ieeeOps then .ok (.int FloatCode.nan) else duckZero s)
     else if nanCase .fmod a b then some (.ok (.int FloatCode.nan)) else none
+  -- `(-∞) ^ y` for a finite `y` that is not an integer: IEEE's `+∞` or `0`,
+  -- under any setting, where the reference raises (`negInfPow`).
   | .fpow, a, b =>
-    if s.ieeeOps then (if nanCase .fpow a b then some (.ok (.int FloatCode.nan)) else none)
+    if negInfPow a b then some (.ok (.int (duckNegInfPow b)))
+    else if s.ieeeOps then (if nanCase .fpow a b then some (.ok (.int FloatCode.nan)) else none)
     -- Without IEEE operations `0 ^ y` raises for a negative `y` (the reference: `∞`).
     else if a = 0 ∧ b < 0 then some (.error .domain) else none
   | .fatan2, a, b => if a = 0 ∧ b = 0 then some (.ok (.int 0)) else none
@@ -489,8 +498,14 @@ catalog that satisfies the preconditions `A`, `F`, evaluating the plan with
 DuckDB's functions gives `Rel.eval`'s rows, under DuckDB's IEEE operations
 (the default), provided the plan's windows read fewer than `2⁶²` rows (the
 size hypothesis, `Rel.Small`). Trusted: that `Profile.duckdb` is DuckDB's
-(probed: `characterization/duckdb/probes.json`), and that the SQL printer is
-faithful, writing out `MIN % -1` and `<<` (`Profile.duckdbWritten`). -/
+(probed: `characterization/duckdb/probes.json`), that the SQL printer is
+faithful, writing out `MIN % -1` and `<<` (`Profile.duckdbWritten`), and that
+DuckDB's aggregates are Lean's (`AggFn.apply`): a profile gives only the
+scalar functions. For a double `SUM` or `AVG` that last part does not hold in
+general: DuckDB merges partial sums in finishing order and adds a constant
+vector as one `fl(k · x)` (#633), so on those the conclusion holds of the
+model, and what DuckDB gives is within #85's bound of it (`Profile.duckdb.table`'s
+`sum_order` row, `approx`, proved in `float-bounds` as `StdModel.epsilon_sum`). -/
 theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
     (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)

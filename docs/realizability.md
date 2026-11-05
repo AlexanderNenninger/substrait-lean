@@ -37,15 +37,15 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | up to `q` | approx | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 25 | 1 | 0 | 4 | 0 | 15 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 24 | 1 | 1 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 11 | 13 | 1 | 2 | 8 | 0 | 16 | 7 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 1 | 7 | 13 | 5 | 1 | 0 | 21 |
-| Polars | 24 | 0 | 13 | 0 | 0 | 0 | 17 |
+| DuckDB | 2 | 12 | 11 | 2 | 0 | 0 | 21 |
+| Polars | 25 | 0 | 12 | 0 | 0 | 0 | 17 |
 
 ## Shims
 
@@ -74,7 +74,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | every | `overflow` | raise | `ERROR` | `ERROR` | native | fuzz | tested: [duckdb-R1](../characterization/duckdb/facts/duckdb-R1.json), [duckdb-R15-int-arith](../characterization/duckdb/facts/duckdb-R15-int-arith.json) |
 | int.arith | `overflow` | raise | `ERROR` | `ERROR` | native; stated `SILENT`, `SATURATE`: not native | fuzz | tested: [duckdb-R1](../characterization/duckdb/facts/duckdb-R1.json), [duckdb-R15-int-arith](../characterization/duckdb/facts/duckdb-R15-int-arith.json) |
-| agg.isum | `overflow` | raise | `ERROR` | `ERROR` | native | engine_test | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
+| agg.isum | `overflow` | raise | `ERROR` | `ERROR` | native | probe | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | fuzz | tested: [duckdb-R2](../characterization/duckdb/facts/duckdb-R2.json) |
 | fp.div | `on_division_by_zero` | raise | `ERROR` | `IEEE` | precondition: no divisor is 0; stated `NULL`, `LIMIT`: not native | fuzz | tested: [duckdb-R5](../characterization/duckdb/facts/duckdb-R5.json) |
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
@@ -85,12 +85,12 @@ Rows per evidence level:
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | missing | proved `Choice.le_sound` |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [duckdb-R15-round](../characterization/duckdb/facts/duckdb-R15-round.json) |
-| every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | probe | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
-| int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | probe | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
-| int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | probe | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
+| every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
+| int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
+| int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
-| every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | probe | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
-| every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | engine_test | tested: [duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json) |
+| every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
+| every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | probe | tested: [duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | missing | proved `Choice.le_sound` |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [duckdb-arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | up to zeros canon | probe | tested: [duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json) |
@@ -103,10 +103,10 @@ Rows per evidence level:
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
-| every | `sum_order` | open | `ANY` | `SEQUENTIAL` | native | source | tested: [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
+| every | `sum_order` | open | `ANY` | `ANY`, `SCALED_CONSTANT` | approx, within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
 | every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | probe | tested: [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
-| every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | engine_test | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
+| every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [duckdb-quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json) |
 | every | `tie_pick` | open | `ANY_ROW` | `FIRST_READ` | native | probe | tested: [duckdb-mode-ties](../characterization/duckdb/facts/duckdb-mode-ties.json), [duckdb-arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | probe | tested: [duckdb-sort-ties](../characterization/duckdb/facts/duckdb-sort-ties.json), [duckdb-mode-ties](../characterization/duckdb/facts/duckdb-mode-ties.json) |
@@ -117,7 +117,7 @@ Rows per evidence level:
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | missing | proved `Choice.le_sound` |
-| every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | probe | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
+| every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | missing | proved `Choice.le_sound` |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | missing | proved `Choice.le_sound` |
 
@@ -162,7 +162,7 @@ Rows per evidence level:
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
-| every | `sum_order` | open | `ANY` | `SEQUENTIAL`, `ANY` | approx, within the plan's bound | probe | tested: [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
+| every | `sum_order` | open | `ANY` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | approx, within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | probe | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../characterization/polars/facts/polars-avg-int.json) |

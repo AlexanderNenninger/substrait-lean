@@ -10,7 +10,14 @@
     "nan_zero_grouping"
   ],
   "rows": [
-    {"group": "fp.div", "option": "zero_sign", "types": ["fp64"]}
+    {
+      "group": "fp.div",
+      "option": "zero_sign",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "engine_test"
+    }
   ],
   "constructs": [
     "ORDER BY",
@@ -20,7 +27,9 @@
   "settings": {},
   "description": [
     "DuckDB keeps `-0.0` through `ORDER BY` and sorts it as a peer of `0.0`: both zeros get the same sort key, so the next key or the input order decides. `1.0 / -0.0 = -inf` natively. (Corrected 2026-11-04: this said `-0.0` sorts before `0.0`; the cited test sorts by `v, id`, so `id` broke the tie.)",
-    "Shim: sverify's SQL normalizes `-0.0` to `0.0` on every read and after every operation that can make it (`Dialect.canon`)."
+    "Shim: sverify's SQL normalizes `-0.0` to `0.0` on every read and after every operation that can make it (`Dialect.canon`).",
+    "Round 4 (probes): `ORDER BY v` alone keeps the zeros in their input order, both signs kept: -0.0, 0.0, -0.0 and 0.0, -0.0, 0.0 come out as they went in, ascending and descending, for DOUBLE and FLOAT. So they are peers.",
+    "The docs are silent on how `ORDER BY` treats `-0.0`, NaN and ties: a docs gap. No upstream test pins that the two zeros are peers; it may change between versions."
   ],
   "reference": [
     "Substrait: `fp64` is IEEE. The spec says nothing about grouping or ordering `-0.0`.",
@@ -28,7 +37,7 @@
   ],
   "status": "decided",
   "ledger_entries": 2,
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-01",
@@ -70,6 +79,46 @@
         }
       ],
       "notes": "Contradicts the earlier reading that -0.0 sorts first; the description is corrected. A probe of ORDER BY v alone, with -0.0 after 0.0 in the input, is on the probe round's list."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-negative-first"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-positive-first"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-desc"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "zero-order-float"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Confirms round 2's correction: `ORDER BY v` alone leaves the zeros in their input order."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/query_syntax/orderby.html", "note": "silent on -0.0, NaN and the order of ties"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/order/order_by_negative_zero.test#L8-L32", "note": "signbit kept through ORDER BY v, id; the peer order of the zeros is not pinned"}
+      ]
     }
   ],
   "issues": [

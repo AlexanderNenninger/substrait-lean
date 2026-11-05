@@ -837,18 +837,20 @@ def _(mo):
 
     | engine | how the plan runs | status |
     |:---|:---|:---|
-    | `"duckdb"` (default) | the SQL generator (`sverify.engines.to_sql`) writes the plan as DuckDB SQL | Tier 1: characterized against the model |
-    | `"polars"` | a translator turns the plan into a Polars `LazyFrame` | Tier 2 |
+    | `"duckdb"` (default) | the SQL generator (`sverify.engines.to_sql`) writes the plan as DuckDB SQL | Tier 1: characterized against the model, translation proved |
+    | `"polars"` | a translator turns the plan into a Polars `LazyFrame`, run on Polars's streaming engine | Tier 2: characterized, shims proved |
     | `"datafusion"` | DataFusion's Substrait consumer (the `sverify[datafusion]` extra) | Tier 2 |
     | `"spark"`, or a Spark session | the SQL generator writes Spark SQL (the `sverify[spark]` extra) | Tier 2 |
     | Snowflake | SQL only, checked on the [fakesnow](https://github.com/tekumara/fakesnow) emulator | Tier 3 |
 
     The tiers are explained in the
     [README](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md).
-    Work on the Tier 2 and 3 backends is paused until the generated
+    Work on DataFusion, Spark and Snowflake is paused until the generated
     lowerings land ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241),
     then [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
-    and the tests use DuckDB as their oracle. DuckDB and Polars run Lean's
+    and the tests use DuckDB as their oracle. DuckDB and Polars are
+    characterized fact by fact, each fact with its evidence
+    ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
     written form of the plan (`sverify.engines.written_plan`), so what runs
     is what was checked, and their translators spell out the model's
     semantics instead of taking engine defaults.
@@ -1020,6 +1022,49 @@ def _(mo):
     mo.md(r"""
     Every engine returns the same rows, and the NULL key matches nothing.
 
+    ### Routes: how a proof reaches an engine
+
+    A proof is about the plan under one semantics, the reference by default.
+    `report.run(con, engine, route="auto")` and
+    `node.refresh(engine=..., route="auto")` choose how it reaches the
+    engine, and refuse the plan with the reason where nothing does (D13 in
+    [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)).
+    The route names the plan's class on the engine: `exact` (every result
+    the engine gives, the reference allows), `observed` (equal under an
+    observation the postcondition states, a float tolerance included),
+    `shim` (after a proved translation) or `refused`. Before the plan runs, its preconditions
+    are checked on the data. We take the join to Polars:
+    """)
+    return
+
+
+@app.cell
+def _(con, mo, sv):
+    _t, _u = con.table("t"), con.table("u")
+    _routed = sv.verify(_t.join(_u, _t.k == _u.k).select(_t.k, _t.qty, _u.label))
+    _routed.run(con, "polars", route="auto")
+    mo.md(f"Route on Polars: {_routed.routes['polars']}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    A stored node also needs a rerun to reproduce its result, since its sink
+    commits each epoch once. The sink states what that means: exact bits
+    (`reproducible=sv.equivalent()`), or doubles within a tolerance,
+    `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`,
+    for a `SUM` of doubles, which Polars's streaming engine may add in
+    another order each run. A refresh whose route cannot meet that is
+    refused. The
+    [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) show both, step by step.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### SQL for DuckDB, Snowflake and Spark
 
     When the data lives in a warehouse, the plan goes to the warehouse.
@@ -1215,7 +1260,11 @@ def _(mo):
     Comparisons with constants are exact, sentinels like `-9999.0` and the
     boundary between `v > 0.5` and `v >= 0.5` included. Arithmetic on
     doubles (`v * 2.5`) is known only to give some double, because rounding
-    isn't modelled. `FLOOR`, `CEIL`, `ROUND` and the cast to an integer are
+    isn't modelled. The reference raises where an operation on finite
+    doubles overflows to ±∞, so the report assumes `v * 2.5` stays finite and
+    the run checks it on the data first: a ±∞ in a result came from the
+    data ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)). For the same reason `power(-inf, 0.5)`
+    and a `MEDIAN` between −∞ and +∞ raise, where engines disagree. `FLOOR`, `CEIL`, `ROUND` and the cast to an integer are
     exact and monotone, so a bounded double rounds to a bounded integer:
     """)
     return

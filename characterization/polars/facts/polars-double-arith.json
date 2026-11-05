@@ -6,11 +6,13 @@
   "verdict": "IEEE: NaN where the reference raises",
   "area": "doubles",
   "options": [
-    "nan_creation"
+    "nan_creation",
+    "float_overflow"
   ],
   "rows": [
     {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "source"}
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.arith", "option": "float_overflow", "types": ["fp32", "fp64"]}
   ],
   "constructs": [
     "+",
@@ -23,7 +25,12 @@
       "streaming"
     ]
   },
-  "description": "Double arithmetic is IEEE 754: `inf - inf`, `inf + (-inf)` and `0 * inf` are NaN. Every other edge case agrees with the reference.",
+  "description": [
+    "Double arithmetic is IEEE 754: `inf - inf`, `inf + (-inf)` and `0 * inf` are NaN. Every other edge case agrees with the reference.",
+    "An operation on finite values whose result overflows gives `±inf` without raising, in `Float64` and in `Float32`: `1e308 + 1e308` and `1e308 * 10` are inf, `-1e308 - 1e308` is -inf; `Float32` overflows at its own range (`3e38 + 3e38` is inf). Same on both engines.",
+    "A literal `±0.0` addend or subtrahend returns the column unchanged, and `0.0 - x` is `-x` (the literal kernels' shortcuts, float.rs#L45-L65): `-0.0 + 0.0` is -0.0 and `0.0 - 0.0` is -0.0, where IEEE gives +0.0. Two columns give +0.0, and so does a one-row morsel of the streaming engine (polars-zero-sign-streaming). The NaN cases above are unaffected.",
+    "No upstream test pins `inf - inf`, `inf + (-inf)`, `0 * inf` or the `±0.0` shortcuts; they may change between versions."
+  ],
   "reference": "`add`, `subtract`, `multiply` raise a domain issue for `inf - inf` and `0 · inf` (`nan_creation`: raise, #257).",
   "status": "open",
   "evidence": "probe",
@@ -82,6 +89,49 @@
       "notes": [
         "`impl_float_arith_kernel!` is one macro instantiated for `pf16`, `f32` and `f64`, so `Float32` and `Float64` run the same operations. The streaming engine evaluates expressions through polars-expr on each morsel (`StreamExpr` in crates/polars-stream/src/expression.rs), so it shares these kernels with the in-memory engine. `+ - *` are the IEEE operations, so `inf - inf` and `0 * inf` are NaN in `Float32` as in `Float64`. The literal shortcuts (`x + 0`, `x * 1`) return `x`, which changes no NaN.",
         "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline session (float_overflow rows), polars 2.1.0",
+      "evidence": [
+        {
+          "note": "lf = pl.LazyFrame({'a': [big, -big], 'b': [big, big], 'c': [10.0, small]}) with all three Float64 (big 1e308, small 1e-10) and Float32 (big 3e38, small 1e-3); select a + b, a - b, a * c, a / c; pl.LazyFrame(...).collect(engine=e) for e in ('in-memory', 'streaming'), polars 2.1.0 → Float64: [(inf, 0.0, inf, 1e+307), (0.0, -inf, -1.0000000000000001e+298, -inf)]; Float32: [(inf, 0.0, inf, 3.000000106909804e+37), (0.0, -inf, -3.0000001227554363e+35, -inf)]; streaming the same"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L45-L65",
+          "note": "a ±0 literal addend or subtrahend returns lhs unchanged, and 0 - x is neg(x): -0.0 + 0.0 and 0.0 - 0.0 give -0.0 (IEEE: +0.0)"
+        }
+      ],
+      "notes": "Added to the description: the ±0 literal shortcuts (`-0.0 + 0.0` is -0.0), which polars-zero-sign-streaming recorded and this fact lacked."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'z': [-0.0, 0.0, -0.0]}).select(a=pl.col('z') + 0.0, b=pl.col('z') - (-0.0), c=0.0 - pl.col('z'), d=pl.col('z') + pl.lit(pl.Series([0.0, 0.0, 0.0])))",
+          "observed": "signs a: -,+,-; b: -,+,-; c: +,-,+; d: +,+,+ (Polars 2.1.0, macOS arm64)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "no upstream test pins inf - inf, inf + (-inf) or 0 * inf (searched py-polars/tests/unit/operations/arithmetic, expr, series, dataframe at py-2.1.0)"
+        }
       ]
     }
   ],

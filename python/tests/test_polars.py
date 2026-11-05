@@ -575,7 +575,18 @@ def test_rounding_matches_datafusion_bit_for_bit():
         "SELECT f, f / 10.0 AS x, CASE WHEN f <> 0 THEN 3.0 / f END AS y FROM r",
     ]:
         df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
-        assert repr(df) == repr(pl_rows), sql
+        if "/" in sql:
+            # Polars divides by a constant through its reciprocal (PL-3): the
+            # reference's division is within 2 ulps there (#444).
+            for a, b in zip(df, pl_rows, strict=True):
+                for x, y in zip(a, b, strict=True):
+                    assert (x is None) == (y is None), sql
+                    if x is not None and math.isfinite(x):
+                        assert abs(x - y) <= 2 * math.ulp(x), sql
+                    elif x is not None:
+                        assert repr(x) == repr(y), sql
+        else:
+            assert repr(df) == repr(pl_rows), sql
         assert [math.copysign(1, v) for r in pl_rows for v in r if v is not None] == [
             math.copysign(1, v) for r in df for v in r if v is not None
         ], sql

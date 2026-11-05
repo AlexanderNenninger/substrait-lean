@@ -122,6 +122,36 @@
         "Pins the bucket spread of polars-sql's `NTILE` against DuckDB on both engines. Both orderings of `test_ntile` are total (ties broken by `id`), so the order of tied rows within `NTILE` stays unpinned and the `win.ntile` `tie_order` row stays at the docs. The ranking functions match DuckDB on ties and NULLs.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/lower_expr.rs#L2784-L2800",
+          "note": "streaming: rank has no lowering of its own; the generic fallback runs the in-memory kernel on the collected column"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/rank.rs#L170-L273",
+          "note": "`test_rank` (crate): ordinal [2, 3, 6, 4, 5, 7, 1], dense [2, 3, 4, 3, 3, 4, 1] for [1, 2, 3, 2, 2, 3, 0]"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/rank.rs#L300-L310",
+          "note": "`test_rank_reverse`: dense descending keeps NULL ranks NULL"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_rank.py#L35-L50",
+          "note": "`test_rank_df`: average Float64 [1.5, 1.5, 3.5, 3.5, 5.0], max index type [2, 2, 4, 4, 5] (eager)"
+        }
+      ]
     }
   ]
 }

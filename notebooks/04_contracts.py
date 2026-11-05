@@ -555,8 +555,10 @@ def _(mo):
     * A filter below a projection guards too, because the projection only
       sees rows that passed. `n != 0` leaves `MIN / -1` open, and `n > 0`
       closes it.
-    * The same `AND` is no guard: DataFusion may evaluate both sides, so
-      `qty % n` runs on the `n = 0` row.
+    * The same `AND` is no guard: DuckDB and Polars evaluate both operands,
+      so `qty % n` runs on the `n = 0` row (D19 in
+      [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md)). The report flags the error inside the
+      `AND` and suggests guarding the operation itself with the `CASE` above.
     * An earlier filter is no guard either. DataFusion's optimizer merges the
       two filters into one `AND`. Lean models that (`Rel.loose`) and reports
       the error.
@@ -570,9 +572,14 @@ def _(mo):
     A contracted transformation has to be proved free of runtime errors, and
     correctness on the inputs that happen to arrive does not count. We pass
     `infer=False` to `ratio` to see the error itself: by default Sverify
-    infers the precondition `(_.n != 0)` and checks it on the data. A `SUM`
-    that may overflow does not block the proof, since it is checked while the
-    job runs.
+    infers the precondition `(_.n != 0)` and checks it on each batch before
+    the run, so `report.run` and `refresh` refuse a batch with `n = 0` with a
+    `PreconditionError` and nothing runs
+    ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+    A `SUM` that may overflow, or an operation on doubles that may overflow
+    to ±∞, does not block the proof: the assumption is listed in
+    `Report.assumed` and checked on the data before the run
+    ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
     """)
     return
 
@@ -609,10 +616,14 @@ def _(mo):
     `Report.errors` lists the issues a proof has to rule out. `Report.proved`
     is true when every postcondition is proved and there are no errors.
 
-    The timing of evaluation is trusted: when DataFusion evaluates an
-    expression (lazy `CASE`, eager `AND`/`OR`, merged filters). The test
-    suite runs plans on random data, extreme values included, and checks that
-    they fail only where Lean reported an error.
+    The timing of evaluation is trusted: when an engine evaluates an
+    expression (lazy `CASE`, eager `AND`/`OR`, merged filters, and the
+    constant conditions DuckDB evaluates while it plans the query). A
+    constant that raises, such as `1 // 0 = 1` in a later `WHEN`, makes
+    Sverify report the whole plan as raising, on any data
+    ([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609),
+    D21). The test suite runs plans on random data, extreme values included,
+    and checks that they fail only where Lean reported an error.
 
     ## Windows and ASOF joins
 

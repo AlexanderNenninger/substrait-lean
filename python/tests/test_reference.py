@@ -22,6 +22,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engine import substrait_json as lift_json
+from sverify.errors import PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.sql_lift import lift
@@ -623,7 +624,8 @@ INFINITE = "overflow to infinity"
     ("sql", "requires", "errors"),
     [
         ("SELECT x + y AS v FROM f", [], ["domain error", INFINITE]),
-        ("SELECT x + y AS v FROM f", FINITE, [INFINITE]),
+        # Within 1e300 each, the sum stays below the largest double (#582).
+        ("SELECT x + y AS v FROM f", FINITE, []),
         ("SELECT x - y AS v FROM f", [], ["domain error", INFINITE]),
         ("SELECT x * y AS v FROM f", [], ["domain error", INFINITE]),
         ("SELECT x * y AS v FROM f", FINITE, [INFINITE]),
@@ -740,8 +742,59 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
-    with pytest.raises(Exception, match="overflow"):
+    # Refused before the run: the assumption is checked on the data first,
+    # on Polars as on DuckDB.
+    with pytest.raises(PreconditionError, match="stays finite.*refused before the run"):
         ref.run(con, engine)
+    with pytest.raises(Exception, match="overflow"):
+        ref.run(con, engine, check_inputs=False)
+
+
+def test_bounds_rule_out_overflow_to_infinity():
+    """#582: a double `+`, `-`, `*`, `/` or `exp` whose inputs' bounds keep
+    the exact result well below the largest double is finite
+    (`FloatCode.add_scaled` …, `FloatCode.exp_fin`, proved in `float-bounds`),
+    so the reference assumes nothing there. Chains are bounded too."""
+    tables = {"f": {"x": "float64", "y": "float64"}}
+    kinds = lambda sql, req: [i.kind for i in verify(sql, tables, req).issues]  # noqa: E731
+    sqls = [
+        "SELECT x * 1.1 AS v FROM f",
+        "SELECT x + y AS v FROM f",
+        "SELECT x - y AS v FROM f",
+        "SELECT (x + y) * x AS v FROM f",
+        "SELECT x / y AS v FROM f",
+        "SELECT exp(x) AS v FROM f",
+    ]
+    for sql in sqls:
+        assert INFINITE in kinds(sql, []), sql
+    req = ["x >= -1000000", "x <= 1000000", "y >= 1", "y <= 10"]
+    for sql in sqls[:-1]:
+        assert INFINITE not in kinds(sql, req), sql
+    # `exp` overflows past about 709.78.
+    assert INFINITE not in kinds("SELECT exp(x) AS v FROM f", ["x <= 709"])
+    assert INFINITE in kinds("SELECT exp(x) AS v FROM f", ["x <= 710"])
+    # A divisor that may be near zero may still overflow.
+    assert INFINITE in kinds("SELECT x / y AS v FROM f", ["x >= 0", "x <= 1000000", "y > 0"])
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_power_of_minus_infinity_to_a_fraction_is_a_domain_error(engine):
+    """`power(-inf, y)` for a finite non-integer `y` raises in the reference
+    (`negInfPow`): IEEE gives +inf or 0, as DuckDB does, and Polars's `** 0.5`
+    NaN (fact duckdb-R15-power-neginf). A bound on the base rules it out; an
+    integer exponent keeps IEEE's value."""
+    tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
+    kinds = lambda sql, req: [i.kind for i in verify(sql, tables, req).issues]  # noqa: E731
+    assert "domain error" in kinds("SELECT power(x, 1.5) AS v FROM f", [])
+    assert "domain error" not in kinds("SELECT power(x, 1.5) AS v FROM f", ["x >= 0"])
+    assert "domain error" not in kinds("SELECT power(x, 2.0) AS v FROM f", [])
+    con = connect()
+    put_table(con, "n", pa.table({"x": [-INF, 4.0]}))
+    plan = written_plan(substrait_json(con, "SELECT power(x, 0.5) AS v FROM n"))
+    with pytest.raises(Exception, match="domain|would make a NaN"):
+        run_plan(con, plan, engine)
+    ok = written_plan(substrait_json(con, "SELECT power(x, 2.0) AS v FROM n"))
+    assert run_plan(con, ok, engine).column("v").to_pylist() == [INF, 16.0]
 
 
 @pytest.mark.parametrize(
@@ -770,3 +823,21 @@ def test_abs_of_the_smallest_integer_raises_at_its_width(dtype, lo):
         run_plan(con, written_plan(plan), "duckdb")
     with pytest.raises(Exception, match="(?i)overflow|out of range"):
         duckdb_sql(con, "SELECT abs(a) AS q FROM i")
+
+
+def test_quantile_cont_between_opposite_infinities_is_a_domain_error():
+    """`QUANTILE_CONT` interpolating between `-inf` and `+inf` creates a NaN
+    (IEEE and DuckDB give NaN, the model's clamp gave `+inf`, #561): the
+    reference raises there (D21), a precondition rules it out, and the
+    written plan raises on DuckDB. Neighbours of one infinity interpolate."""
+    tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
+    sql = "SELECT quantile_cont(x, 0.5) AS m FROM f"
+    assert "domain error" in [i.kind for i in verify(sql, tables).issues]
+    assert "domain error" not in [i.kind for i in verify(sql, tables, ["x < 1e300"]).issues]
+    con = connect()
+    put_table(con, "q", pa.table({"x": [None, INF, -INF]}))
+    plan = written_plan(substrait_json(con, "SELECT quantile_cont(x, 0.5) AS m FROM q"))
+    with pytest.raises(Exception, match="domain error"):
+        run_plan(con, plan, "duckdb")
+    put_table(con, "q", pa.table({"x": [-INF, -INF, 0.0, INF]}))
+    assert run_plan(con, plan, "duckdb").column("m").to_pylist() == [-INF]

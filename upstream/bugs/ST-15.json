@@ -1,0 +1,29 @@
+{
+  "id": "ST-15",
+  "project": "substrait",
+  "kind": "bug",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "confirmed",
+  "status_note": "Still on main (a4d8e00342d0): the options `lookaround`, `spaces_only` and `full_unicode` appear in none of the [extension YAMLs](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/extensions/), and the values below are not in their options' lists. No existing issue found.",
+  "summary": "Forty-five test cases state an option their function's YAML does not have, or a value the option does not list. `lookaround:TRUE` (`regexp_count_substring`, `regexp_match_substring`, `regexp_replace`, `regexp_string_split`, 28 cases), `spaces_only:FALSE` (`ltrim`, `rtrim`, `trim`, 9 cases, three written `False`) and `full_unicode:TRUE` (`upper`, `lower`, 2 cases) are options of no YAML. `on_domain_error:NONE` (`ln`, `log10`, `log2`, `logb`, `acosh`, 5 cases) is not a value of `on_domain_error` (`NAN`, `NULL`, `ERROR`; `acosh` has `NAN`, `ERROR`), and `on_division_by_zero:NAN` on `divide` of `i8` is not one of `NULL`, `ERROR`. The README says a case runs only on dialects that support its options, so a consumer can run none of these. Close by: `ln(0.0::fp64) [on_log_zero:NAN]` and its three siblings expect `null`, where `NAN` names a NaN.",
+  "repro": "For example [regexp_replace.test](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/string/regexp_replace.test), [trim.test](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/string/trim.test), [upper.test](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/string/upper.test), [ln.test L12, L17](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/logarithmic/ln.test#L12-L17), [acosh.test L12](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/arithmetic/acosh.test#L12), [divide.test L11](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/arithmetic/divide.test#L11). `python -m sverify_dev.substrait_cases` lists every case.",
+  "handling": "The replay checks each case's options against the YAML impl its arguments select before it runs the case; a case with an option or a value the YAML does not list is a disagreement triaged `case` in `upstream/substrait-cases.json`.",
+  "found_by": "sverify_dev.substrait_cases, the replay of Substrait's function test cases against Profile.substrait (#444 step 4)",
+  "issues": [
+    444
+  ],
+  "files": [
+    "python/tools/sverify_dev/substrait_cases.py",
+    "upstream/substrait-cases.json"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "the cases are the same on main"
+    }
+  ]
+}

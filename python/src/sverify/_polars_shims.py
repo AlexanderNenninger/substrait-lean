@@ -94,6 +94,8 @@ GUARDS: tuple[Guard, ...] = (
     Guard("domain error", "sum_makes_nan", "NaN from +inf and -inf",
           "polars-nonfinite-aggregates"),
     Guard("overflow to infinity", "makes_infinite", "±inf (IEEE)", "polars-double-arith"),
+    Guard("domain error", "fractional_power_of_negative",
+          "x ** 0.5 is sqrt(x): NaN for -inf, where IEEE pow gives +inf", "polars-double-arith"),
 )  # fmt: skip
 
 
@@ -152,6 +154,15 @@ def makes_infinite(y: pl.Expr, *xs: pl.Expr) -> pl.Expr:
     for x in xs[1:]:
         finite = finite & x.is_finite()
     return finite & y.is_infinite()
+
+
+def fractional_power_of_negative(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """A negative base, `-inf` included, to a finite power that is not a
+    whole number: the reference's domain error for `power`. Polars computes
+    `x ** 0.5` as `sqrt(x)`, NaN for `-inf` (IEEE's `pow` gives `+inf`), so
+    the guard covers that input too (`Polars.fractional_power_of_negative`,
+    `SubstraitLean/PolarsShims.lean`)."""
+    return (x < 0.0) & y.is_finite() & (y.floor() != y)
 
 
 # --- Integers ------------------------------------------------------------------
@@ -233,7 +244,8 @@ def sum_empty_null(total: pl.Expr, values: pl.Expr) -> pl.Expr:
 
 def int_sum(values: pl.Expr) -> pl.Expr:
     """The exact `SUM` of integers, on 128 bits, NULL for no values. Its
-    result fits 64 bits unless `sum_leaves_i64`."""
+    result fits 64 bits unless `sum_leaves_i64`. (A cast of 128-bit values
+    is none: Polars drops it.)"""
     return sum_empty_null(values.cast(pl.Int128).sum(), values)
 
 

@@ -203,6 +203,14 @@ def nanCase : BinFn → Int → Int → Bool
 
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
+/-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
+`+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
+is a square root, NaN. The reference raises (a domain error, as for a finite
+negative base), so a verified plan never meets it and no engine needs a shim. -/
+def negInfPow (a b : Int) : Bool :=
+  decide (a = FloatCode.negInf) && decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) &&
+    FloatCode.floor b != b
+
 def BinFn.issue : BinFn → Value → Value → Option Issue
   | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
   | .add, .int a, .int b => wrapIf (a + b)
@@ -220,7 +228,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .fadd, .int a, .int b => nanIssue .fadd a b
   | .fsub, .int a, .int b => nanIssue .fsub a b
   | .fmul, .int a, .int b => nanIssue .fmul a b
-  | .fpow, .int a, .int b => nanIssue .fpow a b
+  | .fpow, .int a, .int b => if negInfPow a b then some .domain else nanIssue .fpow a b
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
@@ -446,6 +454,27 @@ theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (
       subst this
       simpa using h5
 
+/-- May the inputs be a `negInfPow`? Where the base may be `-∞` and the
+exponent is not a constant integer. -/
+def mayNegInfPow (aa ab : AVal) : Bool :=
+  aa.has FloatCode.negInf && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
+
+theorem mayNegInfPow_sound {aa ab : AVal} {a b : Int} (ha : aa.Mem (.int a))
+    (hb : ab.Mem (.int b)) (h : negInfPow a b = true) : mayNegInfPow aa ab = true := by
+  simp only [negInfPow, Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨⟨h1, _⟩, _⟩, h4⟩ := h
+  subst h1
+  simp only [mayNegInfPow, AVal.has_of_mem ha, Bool.true_and, Bool.not_eq_true']
+  obtain ⟨bd, hbd, hm⟩ := hb
+  rw [hbd]
+  simp only [Option.any_some]
+  cases hp : bd.point with
+  | none => rfl
+  | some k =>
+    have := Bound.point_mem hp hm
+    subst this
+    simpa using h4
+
 /-- `nz`: the divisor is never the integer 0; `sz`: the first argument's
 size, if it is a constant string. -/
 def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat → List Issue
@@ -462,7 +491,8 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .fadd, aa, ab, _, _, _ => if BinFn.mayNan .fadd aa ab then [.domain] else []
   | .fsub, aa, ab, _, _, _ => if BinFn.mayNan .fsub aa ab then [.domain] else []
   | .fmul, aa, ab, _, _, _ => if BinFn.mayNan .fmul aa ab then [.domain] else []
-  | .fpow, aa, ab, _, _, _ => if BinFn.mayNan .fpow aa ab then [.domain] else []
+  | .fpow, aa, ab, _, _, _ =>
+    if BinFn.mayNan .fpow aa ab || mayNegInfPow aa ab then [.domain] else []
   | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
@@ -505,28 +535,112 @@ theorem AVal.mayFinite_of_mem {a : AVal} {i : Int} (h : a.Mem (.int i))
     decide_eq_true_eq]
   exact ⟨fun l hl => by have := hm.1 l hl; omega, fun u hu => by have := hm.2 u hu; omega⟩
 
-/-- May the call overflow to `±∞` (`UnFn.infIssue`)? Only where its argument
-may be finite: the checker has no bound on what `exp` gives. -/
+set_option exponentiation.threshold 1100 in
+/-- `exp` of a finite double at most `709` is finite (#582): `709 < 1023 · ln 2`,
+and `exp` is the platform's `libm`, within one ulp. Trusted, as the facts of
+`FloatCode.add_scaled` …; proved for native doubles as `NativeLink.core_exp`
+in `float-bounds/FloatBounds/Arith.lean`, from `NativeLink.exp`. -/
+axiom FloatCode.exp_fin {a r : Int} (ha : FloatCode.IsFin a)
+    (h : FloatCode.scaled a ≤ 709 * 2 ^ 1074) (hr : FMath.apply .exp a = some r) : FloatCode.IsFin r
+
+set_option exponentiation.threshold 1100 in
+/-- Do the argument's bounds keep it at most `709`, so that `exp` of a finite
+one is finite? -/
+def expFinite (aa : AVal) : Bool :=
+  match aa.int with
+  | some ⟨_, some h⟩ => decide (FloatCode.scaled h ≤ 709 * 2 ^ 1074)
+  | _ => false
+
+/-- May the call overflow to `±∞` (`UnFn.infIssue`)? Where its argument may
+be finite and its bounds do not keep `exp` below the largest double. -/
 def UnFn.mayInf (f : UnFn) (aa : AVal) : List Issue :=
   match f with
-  | .fmath .exp => if aa.mayFinite then [.infinite] else []
+  | .fmath .exp => if aa.mayFinite && !expFinite aa then [.infinite] else []
   | _ => []
 
+/-- The bound of a double operation's result (`faddBound` …), `top` for the
+others. -/
+def BinFn.fBound : BinFn → Bound → Bound → Bound
+  | .fadd, x, y => faddBound false x y
+  | .fsub, x, y => faddBound true x y
+  | .fmul, x, y => fmulBound x y
+  | .fdiv, x, y => fdivBound x y
+  | _, _, _ => Bound.top
+
+/-- Do the arguments' bounds show the result finite (#582)? -/
+def BinFn.finiteResult (f : BinFn) (aa ab : AVal) : Bool :=
+  match aa.int, ab.int with
+  | some x, some y => match f.fBound x y with
+    | ⟨some l, some h⟩ => decide (FloatCode.negInf < l) && decide (h < FloatCode.posInf)
+    | _ => false
+  | _, _ => false
+
 /-- May the call overflow to `±∞` (`BinFn.infIssue`)? Where both arguments
-may be finite: the checker has no bound on a double operation's result. -/
+may be finite and their bounds do not show the result finite. -/
 def BinFn.mayInf (f : BinFn) (aa ab : AVal) : List Issue :=
-  if f.makesInf && aa.mayFinite && ab.mayFinite then [.infinite] else []
+  if f.makesInf && aa.mayFinite && ab.mayFinite && !f.finiteResult aa ab then [.infinite] else []
+
+theorem BinFn.fBound_mem (f : BinFn) {x y : Bound} {a b r : Int} (hx : x.Mem a) (hy : y.Mem b)
+    (hr : f.apply (.int a) (.int b) = .int r) : (f.fBound x y).Mem r := by
+  cases f <;> simp only [BinFn.fBound] <;> try exact Bound.mem_top _
+  all_goals simp only [BinFn.apply, Value.int.injEq] at hr; subst hr
+  · exact faddBound_mem' false hx hy (fun _ => rfl) (fun h => by cases h)
+  · exact faddBound_mem' true hx hy (fun h => by cases h) (fun _ => rfl)
+  · exact fmulBound_mem hx hy
+  · exact fdivBound_mem hx hy
+
+theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
+    (ha : aa.Mem (.int a)) (hb : ab.Mem (.int b)) (hr : f.apply (.int a) (.int b) = .int r)
+    (hinf : isInfCode r = true) : f.finiteResult aa ab = false := by
+  obtain ⟨x, hx, hxm⟩ := ha
+  obtain ⟨y, hy, hym⟩ := hb
+  have hm := f.fBound_mem hxm hym hr
+  unfold BinFn.finiteResult
+  rw [hx, hy]
+  dsimp only
+  split
+  · rename_i l h heq
+    rw [heq] at hm
+    have h1 := hm.1 l rfl
+    have h2 := hm.2 h rfl
+    simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at hinf
+    simp only [Bool.and_eq_false_iff, decide_eq_false_iff_not]
+    rcases hinf with rfl | rfl <;> omega
+  · rfl
+
+set_option exponentiation.threshold 1100 in
+theorem expFinite_false {aa : AVal} {a r : Int} (ha : aa.Mem (.int a))
+    (hfin : isFiniteCode a = true) (hr : FMath.apply .exp a = some r) (hinf : isInfCode r = true) :
+    expFinite aa = false := by
+  obtain ⟨x, hx, hxm⟩ := ha
+  unfold expFinite
+  rw [hx]
+  split
+  · rename_i l h heq
+    cases heq
+    have h2 := hxm.2 h rfl
+    simp only [decide_eq_false_iff_not]
+    intro c3
+    simp only [isFiniteCode, Bool.and_eq_true, decide_eq_true_eq] at hfin
+    have hf := FloatCode.exp_fin (a := a) ⟨hfin.1, hfin.2⟩
+      (Int.le_trans (FloatCode.scaled_mono h2) c3) hr
+    simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at hinf
+    obtain ⟨f1, f2⟩ := hf
+    rcases hinf with rfl | rfl <;> omega
+  · rfl
 
 theorem UnFn.mayInf_sound (f : UnFn) {aa : AVal} {v : Value} {k : Issue} (ha : aa.Mem v)
     (hk : f.infIssue v = some k) : k ∈ f.mayInf aa := by
   have := UnFn.infIssue_eq hk; subst this
   unfold UnFn.infIssue at hk
   split at hk
-  · rename_i a r _
+  · rename_i a r heq
     split at hk
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
-      simp [UnFn.mayInf, AVal.mayFinite_of_mem ha hc.1]
+      have hr : FMath.apply .exp a = some r := by
+        simp only [UnFn.apply] at heq; split at heq <;> simp_all
+      simp [UnFn.mayInf, AVal.mayFinite_of_mem ha hc.1, expFinite_false ha hc.1 hr hc.2]
     · simp at hk
   · simp at hk
 
@@ -535,11 +649,12 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
   have := BinFn.infIssue_eq hk; subst this
   unfold BinFn.infIssue at hk
   split at hk
-  · rename_i a b r _
+  · rename_i a b r heq
     split at hk
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
-      simp [BinFn.mayInf, hc.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.2, AVal.mayFinite_of_mem hb hc.1.2]
+      simp [BinFn.mayInf, hc.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.2, AVal.mayFinite_of_mem hb hc.1.2,
+        BinFn.finiteResult_false f ha hb heq hc.2]
     · simp at hk
   · simp at hk
 
@@ -873,13 +988,25 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       subst hk
       rename_i hn
       right; simp [BinFn.mayNan_sound ha hb hn]
-  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j | fpow.int.int i j =>
+  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j =>
     simp only [BinFn.mayIssue]
     simp only [nanIssue] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     subst hk
     rename_i hn
     simp [BinFn.mayNan_sound ha hb hn]
+  case fpow.int.int i j =>
+    simp only [BinFn.mayIssue]
+    split at hk
+    · simp only [Option.some.injEq] at hk
+      subst hk
+      rename_i hn
+      simp [mayNegInfPow_sound ha hb hn]
+    · simp only [nanIssue] at hk
+      split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk
+      rename_i _ hn
+      simp [BinFn.mayNan_sound ha hb hn]
   case ipow.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     obtain ⟨x, hx, hi⟩ := ha
@@ -1093,6 +1220,13 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
 /-- Is the value a double's `±∞`? -/
 def isInfValue (v : Value) : Bool := v == .int FloatCode.posInf || v == .int FloatCode.negInf
 
+/-- Are `QUANTILE_CONT`'s neighbours among the values in order `-∞` and
+`+∞` (`contNeighbours`)? Its interpolation between them is NaN. -/
+def quantileOpposite (num scale : Nat) (vs : List Value) : Bool :=
+  match contNeighbours num scale (sortVals vs) with
+  | some (l, h, _) => l == FloatCode.negInf && h == FloatCode.posInf
+  | none => false
+
 /-- Would IEEE make the aggregate of these values NaN, from numbers (#257)?
 A double `SUM` or `AVG` of `+∞` and `-∞`, and a variance of an infinity
 (`∞ - ∞` in its deviations). A black box that raises on them (#326) is
@@ -1104,6 +1238,11 @@ def AggFn.makesNan : AggFn → List Value → Bool
   | .cov _, vs | .corr, vs => vs.any fun
     | .list [a, b] => isInfValue a || isInfValue b
     | _ => false
+  -- `QUANTILE_CONT` between `-∞` and `+∞`: IEEE's interpolation is NaN
+  -- (DuckDB gives it), the model's clamp `+∞`; the reference raises (D21).
+  | .quantile true num scale, vs =>
+    vs.contains (.int FloatCode.posInf) && vs.contains (.int FloatCode.negInf) &&
+      quantileOpposite num scale vs
   -- A black box that raises on these values (#326).
   | .bbox n, vs => BlackBox.aggRaisesOn n vs
   | _, _ => false
@@ -1112,6 +1251,7 @@ def AggFn.makesNan : AggFn → List Value → Bool
 def AggFn.mayNan : AggFn → AVal → Bool
   | .fsum, a | .avg, a => a.has FloatCode.posInf && a.has FloatCode.negInf
   | .var _ _, a => a.has FloatCode.posInf || a.has FloatCode.negInf
+  | .quantile true _ _, a => a.has FloatCode.posInf && a.has FloatCode.negInf
   -- A pair's sides are what may be infinite (`Measure.mayNan`).
   | .cov _, _ | .corr, _ => true
   | .bbox n, _ => BlackBox.aggMayRaise n
@@ -1119,10 +1259,18 @@ def AggFn.mayNan : AggFn → AVal → Bool
 
 theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
     (has : ∀ c, .int c ∈ vs → a.has c = true) (h : f.makesNan vs = true) : f.mayNan a = true := by
-  cases f <;> simp only [makesNan, mayNan, Bool.and_eq_true, Bool.or_eq_true,
+  cases f
+  case quantile c _ _ =>
+    cases c <;> simp only [makesNan, mayNan, Bool.and_eq_true, List.contains_iff_mem,
+      reduceCtorEq] at h ⊢
+    all_goals first
+      | exact ⟨has _ h.1.1, has _ h.1.2⟩
+      | simp at h
+  all_goals simp only [makesNan, mayNan, Bool.and_eq_true, Bool.or_eq_true,
     List.contains_iff_mem] at h ⊢
   all_goals first
     | exact ⟨has _ h.1, has _ h.2⟩
+    | exact ⟨has _ h.1.1, has _ h.1.2⟩
     | exact h.imp (has _) (has _)
     | exact BlackBox.aggMayRaise_of_aggRaisesOn h
     | simp at h
@@ -1664,5 +1812,60 @@ theorem Rel.noIssue_of_assumedHold {cat : Catalog} (hcat : cat.WF) {A : String �
   have := hok p hp
   rw [List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)] at this
   cases this
+
+/-! ## Constant subexpressions that raise (#609)
+
+DuckDB folds a `CASE`'s constant conditions when it plans a query, with the
+evaluator that raises: `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END`
+raises on any data, an empty table included (DD-7). The reference counts every
+constant subexpression that raises as raising for the whole plan, whatever
+the data and whichever branch a row takes (D21: strict, and constants that
+raise are rare). No precondition rules one out. -/
+
+/-- Does `e` read no column? A lambda's body reads its parameter. -/
+def Expr.isConst : Expr → Bool
+  | .lit _ => true
+  | .field _ => false
+  | .un _ a => a.isConst
+  | .bin _ a b => a.isConst && b.isConst
+  | .ifThen c t e => c.isConst && t.isConst && e.isConst
+  | .hof _ _ _ => false
+
+/-- The errors of `e` itself if it is constant, on no row. -/
+def Expr.selfConstIssues (e : Expr) : List (Issue × Expr) :=
+  if e.isConst then (e.issues []).filter (·.1.isError) else []
+
+/-- The errors of every constant subexpression of `e`, every branch of a
+constant `CASE` included. -/
+def Expr.constIssues : Expr → List (Issue × Expr)
+  | .lit _ | .field _ => []
+  | e@(.un _ a) => e.selfConstIssues ++ a.constIssues
+  | e@(.bin _ a b) => e.selfConstIssues ++ a.constIssues ++ b.constIssues
+  | e@(.ifThen c t x) => e.selfConstIssues ++ c.constIssues ++ t.constIssues ++ x.constIssues
+  | .hof _ l _ => l.constIssues
+
+/-- Every expression of a plan: conditions, projections, grouping keys and
+the measures' arguments and filters. -/
+def Rel.planExprs : Rel → List Expr
+  | .read _ | .values _ _ => []
+  | .filter r c => c :: r.planExprs
+  | .project r es => es ++ r.planExprs
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.planExprs
+  | .window r _ _ fns => (WinFn.aggs fns).flatMap Measure.exprs ++ r.planExprs
+  | .cross a b | .unionAll a b => a.planExprs ++ b.planExprs
+  | .join a b _ on | .semi a b _ on => on :: a.planExprs ++ b.planExprs
+  | .aggregate r gs ms => gs ++ ms.flatMap Measure.exprs ++ r.planExprs
+
+/-- **The plan's constant errors** (#609, D21): each raises when the plan
+runs, on any data. -/
+def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
+  (r.planExprs.flatMap Expr.constIssues).eraseDups
+
+-- `1 // 0 = 1` in a later `WHEN` raises whatever the first condition says;
+-- a constant without an error is nothing.
+#guard (Expr.ifThen (.bin .lt (.lit (.int 0)) (.field 0)) (.lit (.int 1))
+  (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
+    (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
+#guard (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
 
 end Substrait

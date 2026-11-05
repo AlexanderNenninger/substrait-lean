@@ -6,10 +6,12 @@
   "verdict": "fixed (#209): `WRAP_FROM_END`",
   "area": "strings",
   "options": [
-    "negative_start"
+    "negative_start",
+    "string_positions"
   ],
   "rows": [
-    {"group": "str.sub", "option": "negative_start", "types": ["string"]}
+    {"group": "str.sub", "option": "negative_start", "types": ["string"]},
+    {"group": "str.sub", "option": "string_positions", "types": ["string"], "evidence": "engine_test"}
   ],
   "constructs": [
     "substring"
@@ -17,7 +19,8 @@
   "settings": {},
   "description": [
     "`WRAP_FROM_END` is native, but sverify's SQL normalizes the start for every engine (`CASE WHEN a < 0 THEN a + length + 1`, then the `LEFT_OF_BEGINNING` normalization it already had).",
-    "DataFusion's own `substring` is `LEFT_OF_BEGINNING`, so a wrapping one whose start is not a constant ≥ 0 is refused there."
+    "DataFusion's own `substring` is `LEFT_OF_BEGINNING`, so a wrapping one whose start is not a constant ≥ 0 is refused there.",
+    "`substring` counts code points from 1 (`ONE_BASED_CHARS`): DuckDB's tests take `substring(s, 1, 1)` and `substring(s, 2, 1)` of emoji strings, `substring('A3🦤u🦆f', -3, 3)` = `u🦆f` and `substring('🦤🦆f', -3, 2)` = `🦤🦆`, and the replay agrees with the reference on each."
   ],
   "reference": [
     "Substrait: `negative_start: [WRAP_FROM_END, LEFT_OF_BEGINNING, ERROR]`.",
@@ -50,6 +53,29 @@
       "method": "source-reading",
       "checked_by": "commit 5b168e0 (#209)",
       "notes": "substring counts a negative start from the end."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "replay",
+      "checked_by": "characterization pipeline session (string_positions rows)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/string/test_unicode.test#L20-L41",
+          "note": "substring of emoji strings, positive and negative starts: code points"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_substring.test#L14",
+          "note": "substring('🦆ab', 1, 0) is ''"
+        },
+        {
+          "file": "characterization/duckdb/types__string.json",
+          "note": "test_unicode.test lines 20, 31, 36, 41: agree"
+        },
+        {
+          "file": "characterization/duckdb/function__string.json",
+          "note": "test_substring.test line 14: agree"
+        }
+      ]
     }
   ],
   "issues": [

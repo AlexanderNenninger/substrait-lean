@@ -71,10 +71,12 @@ In sverify, "may raise" is `verify`'s error issues (`Rel.mayIssues`,
 `verify` reports the error that the reference raises.
 
 A few points are not covered by the decisions and stay open:
-`modulus`'s `division_type`, the rounding of casts to integers, `substring`'s
-`negative_start`, `-0.0`, the order of lists, and `avg`'s output type. For
-each, the finding says what Lean and DuckDB do; most of them make no
-difference between the two.
+`modulus`'s `division_type` (duckdb-R3) and `avg`'s output type
+(duckdb-avg-int). For each, the finding says what Lean and DuckDB do. Others
+have been decided since: the rounding of casts to integers truncates
+(duckdb-R9, #209), `substring`'s `negative_start` is `WRAP_FROM_END`
+(duckdb-R13, #209), the reference has one zero (duckdb-R14, #209), and lists
+order lexicographically (duckdb-R11, #207).
 
 For each finding, the DuckDB diff says whether DuckDB, under its default
 settings, gives the reference result natively, needs a shim, or must be
@@ -153,6 +155,14 @@ without Lean.
 | windows | default frame, ranks | SQL's; NULLs by the key's direction | native, NULLs last both ways | [window-frame](facts/duckdb-window-frame.json) |
 | sort | `clustered` | equal keys adjacent | no such SQL; `ORDER BY` | [clustered](facts/duckdb-clustered.json) |
 | `UNION`, `INTERSECT`, `EXCEPT` (`ALL`) | set operations | bags; NULLs equal; `min(m, n)`, `max(m − n, 0)` | native | [set-operations](facts/duckdb-set-operations.json) |
+| `ORDER BY`, grouping, `least`, `greatest` (`fp32`, `fp64`) | `zero_sign` | one zero | keeps `-0.0` and sorts the zeros as peers; `FLOAT` `least` and `greatest` return `+0.0` and the positive NaN ([DD-6](../../upstream/bugs/DD-6.json)); the SQL normalizes `-0.0` to `0.0` | [R14](facts/duckdb-R14.json) |
+| `CASE`, `COALESCE`, `AND`, `OR` | `evaluation_order` | `CASE` lazy, `AND` and `OR` on both operands | `CASE` and `COALESCE` lazy at run time, but a raising constant `WHEN` raises while planning ([DD-7](../../upstream/bugs/DD-7.json), fixed in the nightly builds); `AND` and `OR` eager as a value, in order in a filter | [exec-short-circuit](facts/duckdb-exec-short-circuit.json) |
+| filters over joins | `evaluation_order` | conditions on the loose input | pushed into a join's input, where they raise even when the other input is empty | [exec-filter-pushdown](facts/duckdb-exec-filter-pushdown.json) |
+| `TRY_CAST`, `TRY` | `try_variants` | `RETURN_NULL` for a double or an integer to an integer, other try-casts refused (#58); no `TRY` | `TRY_CAST` nulls conversion failures, except casts of extension types; `TRY` nulls invalid-input, out-of-range and conversion errors | [exec-try](facts/duckdb-exec-try.json) |
+| decimals, strings, lists | `size_limits` | decimals to 38 digits; no length limit | decimals to 38 digits; a string over 2^32 − 1 bytes or a vector over 128 GB raises | [exec-size-limits](facts/duckdb-exec-size-limits.json) |
+| row order, double `sum` | `parallel_nondeterminism` | bags; `sum_order` open | insertion order kept for scans, `WHERE`, `LIMIT` and `UNION ALL`, not for joins and `GROUP BY`; a double `sum` depends on the threads | [exec-row-order](facts/duckdb-exec-row-order.json) |
+| settings | `settings` | none: options of the plan | eleven documented settings change values or order; five are checked | [exec-settings](facts/duckdb-exec-settings.json) |
+| `sin`, `exp`, `pow`, … (`fp64`) | `platform` | black boxes with laws; a NaN's sign not observable | the platform's libm; a NaN an operation creates is negative on Linux x86_64, positive on macOS arm64 | [exec-platform](facts/duckdb-exec-platform.json) |
 
 ## sverify: written plans and the harness
 

@@ -3,10 +3,11 @@
   "project": "sqlglot",
   "version": "30.18.0–30.29.0",
   "status": "filed",
-  "status_note": "filed [ibis#12124](https://github.com/ibis-project/ibis/issues/12124); fixed on Ibis main by [#12104](https://github.com/ibis-project/ibis/pull/12104), not released",
+  "status_note": "filed [ibis#12124](https://github.com/ibis-project/ibis/issues/12124) (open); fixed on Ibis main by [#12104](https://github.com/ibis-project/ibis/pull/12104) (f73d329, 2026-11-02), not released. Reproduces with sqlglot 30.29.0 and Ibis 12.0.0.",
   "upstream": [
     "https://github.com/ibis-project/ibis/issues/12124",
-    "https://github.com/ibis-project/ibis/pull/12104"
+    "https://github.com/ibis-project/ibis/pull/12104",
+    "https://github.com/ibis-project/ibis/issues/12101"
   ],
   "summary": "From 30.18, `Drop` reads its names from `expressions`, and one given as `this` is not written. Ibis 12.0.0 passes `this`, so its DuckDB `create_table`, which drops a temporary view, fails. Ibis 12 allows any `sqlglot>=23.4`.",
   "repro": "`sge.Drop(kind=\"VIEW\", this=\"t\", exists=True).sql(\"duckdb\")` is `DROP VIEW IF EXISTS` (30.17: `DROP VIEW IF EXISTS t`); `ibis.duckdb.connect().create_table(\"x\", pa.table({\"a\": [1]}))` fails with DuckDB's \"syntax error at or near EXISTS\".",
@@ -26,6 +27,17 @@
         "ibis-framework": "12.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "sqlglot": "30.29.0",
+        "ibis-framework": "12.0.0",
+        "ibis main": "main f73d329",
+        "sqlglot main": "main bdaf7d1",
+        "duckdb": "1.5.6"
+      },
+      "note": "Ibis 12.0.0 with sqlglot 30.17.0/30.18.0/30.29.0/main; Ibis main with sqlglot 30.29.0"
     }
   ]
 }

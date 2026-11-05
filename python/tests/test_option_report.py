@@ -208,7 +208,25 @@ def test_contract_epsilon_per_double_aggregate(monkeypatch):
     assert 200 < eps["total"]["abs"] < 250
     assert 2e-4 < eps["mean"]["abs"] < 2.5e-4
     assert "rel" not in eps["total"]  # ±10⁶ can cancel
-    assert eps["total"]["proved"] == {"abs": False}
+    # float-bounds proves both for every engine's order (`StdModel.epsilon_sum`).
+    assert eps["total"]["proved"] == {"abs": True}
+    assert eps["mean"]["proved"] == {"abs": True}
+    # Values of one sign: a relative bound too, proved for the sum; the mean's
+    # needs values away from the subnormals (`epsilon_avg_rel`).
+    sv.verify(
+        t.group_by("k").aggregate(total=t.x.sum(), mean=t.x.mean()),
+        requires={"t": [ibis._.x.between(0, 1e6), sv.max_rows(1_000_000)]},
+    )
+    eps = json.loads(seen["out"])["epsilon"]
+    assert 2e-10 < eps["total"]["rel"] < 2.5e-10  # 2γ(10⁶)
+    assert eps["total"]["proved"] == {"abs": True, "rel": True}
+    assert eps["mean"]["proved"] == {"abs": True, "rel": False}
+    sv.verify(
+        t.group_by("k").aggregate(mean=t.x.mean()),
+        requires={"t": [ibis._.x.between(1, 1e6), sv.max_rows(1_000_000)]},
+    )
+    eps = json.loads(seen["out"])["epsilon"]
+    assert eps["mean"]["proved"] == {"abs": True, "rel": True}
     out = subprocess.run(
         [str(checker_path()), "--options"], capture_output=True, text=True, check=True
     )
@@ -227,10 +245,10 @@ def test_rerun_variation():
     duck = {(r["group"], r["option"]): r for r in choices["duckdb"]}
     assert polars[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
     assert polars[(None, "sum_order")]["deterministic"] is False
-    assert polars[(None, "sum_order")]["rerun_evidence"] == "tested"
+    assert polars[(None, "sum_order")]["rerun_evidence"] == "proved"
     assert polars[(None, "tie_order")]["rerun"] == {"rows": "ties permuted"}
     assert duck[(None, "sum_order")]["rerun"] == {"floats": {"bound": "plan"}}
-    assert duck[(None, "sum_order")]["rerun_evidence"] == "probe"
+    assert duck[(None, "sum_order")]["rerun_evidence"] == "proved"
     assert duck[(None, "tie_order")]["rerun"] == {"rows": "ties permuted", "elements": "multiset"}
     # Known exact: written as {}, with its own evidence.
     for row in (
@@ -248,3 +266,75 @@ def test_rerun_variation():
         for r in choices[engine]:
             if "rerun" in r:
                 assert r.get("rerun_evidence") in ("tested", "probe", "proved"), (engine, r)
+
+
+def test_depends_leave_out_what_reaches_no_output(tmp_path):
+    """A projected column nothing reads meets its error-side options (an
+    engine may still compute it and raise), not its value-side ones."""
+    t = ibis.table({"a": "float64", "b": "float64"}, name="t")
+    used = t.mutate(dead=t.a / t.b).select(c=t.a + t.b)
+    contract = {"transform": json.loads(to_substrait_json(used)), "ensures": []}
+    path = tmp_path / "contract.json"
+    path.write_text(json.dumps(contract))
+    out = subprocess.run(
+        [str(checker_path()), "--contract", str(path)], capture_output=True, text=True
+    )
+    depends = {(d["group"], d["option"]) for d in json.loads(out.stdout)["depends"]}
+    assert ("fp.arith", "rounding") in depends
+    assert ("fp.div", "rounding") not in depends
+
+
+def test_transfer_up_to_the_behaviour_order():
+    """`SEQUENTIAL ⊑ ANY`: a proof that holds for any order of a double SUM
+    holds where the engine adds them in one; Kahan's (`COMPENSATED`) is not
+    below `ANY` (#633)."""
+    depends = [{"group": "agg.fsum", "option": "sum_order", "behaviours": ["ANY"]}]
+    polars = transfer({"from": "reference", "to": "polars", "depends": depends})
+    [failure] = polars["failures"]
+    assert failure["option"] == "sum_order" and "COMPENSATED" in failure["to"]
+    duck = transfer({"from": "reference", "to": "duckdb", "depends": depends})
+    assert duck["ok"] is False  # SCALED_CONSTANT
+
+
+def test_epsilon_per_engine(monkeypatch):
+    """`epsilon_by_engine`: the summation order's share, and each engine's own
+    per-operation error, carried through the arithmetic. Polars divides by a
+    literal through the reciprocal (3u of the quotient), DuckDB as IEEE does."""
+    import sverify as sv
+    from sverify import contracts
+
+    seen: dict[str, str] = {}
+    run = contracts.run_checker
+
+    def spy(args, stdin):
+        out = run(args, stdin)
+        seen["out"] = out[1]
+        return out
+
+    monkeypatch.setattr(contracts, "run_checker", spy)
+    t = ibis.table({"k": "int64", "x": "float64", "y": "float64"}, name="t")
+    req = {"t": [ibis._.x.between(-1e6, 1e6), ibis._.y.between(1.0, 10.0), sv.max_rows(1_000_000)]}
+    sv.verify(t.select(q=t.x / 3.0, p=t.x * t.y), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    assert eps["duckdb"]["q"]["abs"] == 0 and eps["duckdb"]["p"]["abs"] == 0
+    assert 1e-10 < eps["polars"]["q"]["abs"] < 1.2e-10  # 3u · 10⁶ / 3
+    assert eps["polars"]["p"]["abs"] == 0
+    # `+ - * /` are proved rules (`float-bounds/FloatBounds/Propagate.lean`).
+    assert all(eps[e][c]["proved"] == {"abs": True} for e in eps for c in ("q", "p"))
+    sv.verify(t.group_by("k").aggregate(s=t.x.sum()).mutate(h=ibis._.s / 2.0), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    for engine in ("duckdb", "polars"):
+        s, h = eps[engine]["s"]["abs"], eps[engine]["h"]["abs"]
+        assert 200 < s < 250 and s / 2 < h < s / 2 + 1e-3, (engine, s, h)
+        assert eps[engine]["s"]["proved"] == {"abs": True}
+        assert eps[engine]["h"]["proved"] == {"abs": True}
+    # An elementary function is the platform's `libm`: bounded where probed, not proved.
+    sv.verify(t.select(r=t.y.ln()), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    assert eps["duckdb"]["r"]["proved"] == {"abs": False}
+    # `exp` is `libm` within one ulp on both sides (`rule_exp`): bounded and proved.
+    sv.verify(t.select(r=t.y.exp()), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    for engine in ("duckdb", "polars"):
+        assert 0 < eps[engine]["r"]["abs"] < 1e-10  # 4u · e¹⁰
+        assert eps[engine]["r"]["proved"] == {"abs": True}

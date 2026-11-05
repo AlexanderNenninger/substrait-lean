@@ -1,0 +1,63 @@
+{
+ "duckdb": "2.0.0",
+ "source": "sverify_dev.duckdb_fuzz (generated queries, no DuckDB tests)",
+ "area": "fuzz/float_special",
+ "summary": {
+  "agree": 16810,
+  "disagree": 0,
+  "refused": 0,
+  "skipped": 0
+ },
+ "agree_oracle_a_only": 0,
+ "disagree_sides": {},
+ "skipped_files": {},
+ "checked": 16810,
+ "results": [],
+ "rescored": {
+  "at": "2026-11-04",
+  "note": "Re-scored with duckdb_fuzz.check counting an input whose error verify cannot rule out (infer=False) as an expected refusal (#619, #638): every one of the former disagreements agrees.",
+  "former": [
+   {
+    "sql": "SELECT DISTINCT (i // i) AS c0, b AS c1, b AS c2 FROM t AS q ORDER BY c0, c1, c2",
+    "tables": {
+     "t": [
+      [
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL"
+      ],
+      [
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL"
+      ],
+      [
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL"
+      ],
+      [
+       "0",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL",
+       "NULL"
+      ]
+     ]
+    },
+    "lean": "[[\"NULL\", \"NULL\", \"NULL\"]]",
+    "duckdb": "error: Invalid Input Error: Division by zero in expression (i // i). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+   }
+  ]
+ }
+}

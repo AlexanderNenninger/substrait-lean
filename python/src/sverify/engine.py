@@ -224,6 +224,7 @@ class Connection:
             if table.readable():
                 self._views[name] = table.attach(self.ibis.con, name)
             return
+        _check_times(table.schema)
         table = canonical(table.cast(plain_schema(table.schema)))
         self._tables[name] = table
         self.ibis.con.register(name, table)
@@ -837,6 +838,32 @@ def put_table(con: Connection, name: str, table: pa.Table | Native) -> None:
     """Register (or replace) an in-memory table, or one DuckDB reads where
     it is (`Scan`, `Resident`)."""
     con.put(name, table)
+
+
+def _check_times(schema: pa.Schema) -> None:
+    """Refuse a column of times in nanoseconds (`time64[ns]`, DuckDB's
+    `TIME_NS`): the model's times are microseconds, and Ibis's time type has
+    no unit, so the plan would read it as microseconds and the engine keep
+    the nanoseconds (#627)."""
+    from sverify.plan_json import Unsupported
+
+    def walk(t: pa.DataType) -> bool:
+        if pa.types.is_time64(t):
+            return t.unit == "ns"
+        if pa.types.is_struct(t):
+            return any(walk(t.field(i).type) for i in range(t.num_fields))
+        if pa.types.is_list(t) or pa.types.is_large_list(t) or pa.types.is_fixed_size_list(t):
+            return walk(t.value_type)
+        if pa.types.is_map(t):
+            return walk(t.key_type) or walk(t.item_type)
+        return False
+
+    for f in schema:
+        if walk(f.type):
+            raise Unsupported(
+                f"column {f.name}: times in nanoseconds ({f.type}) are not supported; "
+                "cast them to microseconds (time64[us])"
+            )
 
 
 def plain_schema(schema: pa.Schema) -> pa.Schema:

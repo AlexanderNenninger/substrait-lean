@@ -166,4 +166,16 @@ skill:
     - name: sverify-engines
       file: src/sverify/skills/sverify-engines/SKILL.md
 
+# Pages beyond the API reference, written before each build by
+# `scripts/docs_pages.py` (`poe docs` runs it) into `examples/` and `ledgers/`,
+# which git ignores: the usage examples (`docs/examples.md`), and the ledgers,
+# rendered from their JSON (`upstream/bugs/`, `characterization/<engine>/facts/`,
+# `characterization/areas.json`, `docs/realizability.md`). Quarto's search
+# indexes every entry by its heading.
+sections:
+  - title: Examples
+    dir: examples
+  - title: Ledgers
+    dir: ledgers
+
 jupyter: python3

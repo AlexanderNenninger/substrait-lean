@@ -23,10 +23,7 @@
     "sqrt"
   ],
   "settings": {
-    "engine": [
-      "in-memory",
-      "streaming"
-    ]
+    "engine": "in-memory"
   },
   "description": [
     "Arithmetic keeps the sign of zero: `1.0 / -0.0` is -inf, `-(0.0)` and `0.0 * -1` are -0.0, `sqrt(-0.0)` is -0.0. Comparison, grouping and sorting are in polars-zero-order.",
@@ -135,9 +132,24 @@
         "Adds the second paragraph of the description: the literal shortcuts for `x + 0`, `x - 0` and `0 - x`, read in the source and seen in the manual repro of this round.",
         "Read at tag py-2.1.0 (commit 7f902bd3)."
       ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-zero-sign-literal"
+        }
+      ],
+      "notes": [
+        "In memory, s-zero-sign-literal shows the shortcuts on 4 rows and on 6000. Streaming takes them only in morsels of two rows or more: polars-zero-sign-streaming, which supersedes this fact for the streaming engine."
+      ]
     }
   ],
   "issues": [
     89
-  ]
+  ],
+  "superseded_by": "polars-zero-sign-streaming"
 }

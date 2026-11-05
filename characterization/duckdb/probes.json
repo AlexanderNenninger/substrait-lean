@@ -640,7 +640,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 6,
+     "differ": 9,
      "examples": [
       {
        "row": "[-1.0, 0.5]",
@@ -2376,7 +2376,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 9,
+     "differ": 12,
      "examples": [
       {
        "row": "[0.0, -1.0]",
@@ -3976,7 +3976,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 6,
+     "differ": 9,
      "examples": [
       {
        "row": "[-1.0, 0.5]",
@@ -5712,7 +5712,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 9,
+     "differ": 12,
      "examples": [
       {
        "row": "[0.0, -1.0]",
@@ -7084,6 +7084,441 @@
    "setup": [],
    "sql": "SELECT typeof(x) FROM (SELECT 1 x UNION SELECT 1.5) LIMIT 1",
    "observed": "'DECIMAL(11,1)'"
+  },
+  {
+   "construct": "exec-case-when-folded",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT 1 x"
+   ],
+   "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (1 // 0). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-case-when-folded-empty",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t (x INTEGER)"
+   ],
+   "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (1 // 0). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-case-when-folded-cast",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT 1 x"
+   ],
+   "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 'a'::INTEGER = 1 THEN 2 END FROM t",
+   "observed": "error ConversionException: Conversion Error: Could not convert string 'a' to INT32"
+  },
+  {
+   "construct": "exec-case-else-lazy",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT 1 x"
+   ],
+   "sql": "SELECT CASE WHEN x > 0 THEN 1 ELSE 1 // 0 END FROM t",
+   "observed": "1"
+  },
+  {
+   "construct": "exec-pushdown-empty-join",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1, 0), (2, 5)) t(k, x)",
+    "CREATE TABLE b (k INTEGER)"
+   ],
+   "sql": "SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-pushdown-empty-join-cast",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1, 'z'), (2, '5')) t(k, s)",
+    "CREATE TABLE b (k INTEGER)"
+   ],
+   "sql": "SELECT * FROM a JOIN b ON a.k = b.k WHERE a.s::INTEGER > 1",
+   "observed": "error ConversionException: Conversion Error: Could not convert string 'z' to INT32 when casting from source column s"
+  },
+  {
+   "construct": "exec-pushdown-empty-left-join",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1, 0), (2, 5)) t(k, x)",
+    "CREATE TABLE b (k INTEGER)"
+   ],
+   "sql": "SELECT * FROM b LEFT JOIN a ON a.k = b.k WHERE 10 // a.x > 1",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-pushdown-join",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1, 0), (2, 5)) t(k, x)",
+    "CREATE TABLE b AS SELECT 2 k"
+   ],
+   "sql": "SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
+   "observed": "2, 5, 2"
+  },
+  {
+   "construct": "exec-pushdown-join-no-join-filter",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE a AS SELECT * FROM (VALUES (1, 0), (2, 5)) t(k, x)",
+    "CREATE TABLE b AS SELECT 2 k",
+    "SET disabled_optimizers = 'join_filter_pushdown'"
+   ],
+   "sql": "SELECT * FROM a JOIN b ON a.k = b.k WHERE 10 // a.x > 1",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-and-value",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT (x <> 0) AND (10 // x > 1) FROM t",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-and-value-one-row",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT 0 x"
+   ],
+   "sql": "SELECT (x <> 0) AND (10 // x > 1) FROM t",
+   "observed": "false"
+  },
+  {
+   "construct": "exec-or-value",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT (x = 0) OR (10 // x > 1) FROM t",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-and-where",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT x FROM t WHERE (x <> 0) AND (10 // x > 1)",
+   "observed": "5"
+  },
+  {
+   "construct": "exec-and-where-raising-first",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT x FROM t WHERE (10 // x > 1) AND (x <> 0)",
+   "observed": "5"
+  },
+  {
+   "construct": "exec-and-where-raising-first-expr",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT x FROM t WHERE (10 // x > 1) AND (x * x <> 0)",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "exec-or-where",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT x FROM t WHERE (x = 0) OR (10 // x > 1) ORDER BY x",
+   "observed": "0; 5"
+  },
+  {
+   "construct": "exec-and-case-when",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT CASE WHEN (x <> 0) AND (10 // x > 1) THEN 1 ELSE 0 END FROM t ORDER BY x",
+   "observed": "0; 1"
+  },
+  {
+   "construct": "exec-and-aggregate-filter",
+   "area": "execution",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (0), (5)) v(x)"
+   ],
+   "sql": "SELECT count(*) FILTER (WHERE (x <> 0) AND (10 // x > 1)) FROM t",
+   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (10 // x). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+  },
+  {
+   "construct": "zero-order-negative-first",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT v::VARCHAR, signbit(v) FROM (VALUES (-0.0::DOUBLE), (0.0::DOUBLE), (-0.0::DOUBLE)) t(v) ORDER BY v",
+   "observed": "'-0.0', true; '0.0', false; '-0.0', true"
+  },
+  {
+   "construct": "zero-order-positive-first",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT v::VARCHAR, signbit(v) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE), (0.0::DOUBLE)) t(v) ORDER BY v",
+   "observed": "'0.0', false; '-0.0', true; '0.0', false"
+  },
+  {
+   "construct": "zero-order-desc",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT v::VARCHAR FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE)) t(v) ORDER BY v DESC",
+   "observed": "'0.0'; '-0.0'"
+  },
+  {
+   "construct": "zero-order-float",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT v::VARCHAR, signbit(v) FROM (VALUES (0.0::FLOAT), (-0.0::FLOAT), (0.0::FLOAT)) t(v) ORDER BY v",
+   "observed": "'0.0', false; '-0.0', true; '0.0', false"
+  },
+  {
+   "construct": "least-greatest-zero",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT least(-0.0::FLOAT, 0.0::FLOAT)::VARCHAR, least(0.0::FLOAT, -0.0::FLOAT)::VARCHAR, greatest(-0.0::FLOAT, 0.0::FLOAT)::VARCHAR, signbit(least(-0.0::FLOAT, -0.0::FLOAT)), signbit(greatest(-0.0::FLOAT, -0.0::FLOAT)), least(-0.0::DOUBLE, 0.0::DOUBLE)::VARCHAR, least(0.0::DOUBLE, -0.0::DOUBLE)::VARCHAR, greatest(-0.0::DOUBLE, 0.0::DOUBLE)::VARCHAR, signbit(least(-0.0::DOUBLE, -0.0::DOUBLE))",
+   "observed": "'0.0', '0.0', '0.0', false, false, '-0.0', '0.0', '-0.0', true"
+  },
+  {
+   "construct": "least-greatest-zero-columns",
+   "area": "doubles",
+   "setup": [
+    "CREATE TABLE t AS SELECT -0.0::FLOAT f, -0.0::FLOAT g, -'nan'::FLOAT n, -'nan'::FLOAT m, -0.0::DOUBLE d, -0.0::DOUBLE e"
+   ],
+   "sql": "SELECT signbit(least(f, g)), signbit(greatest(f, g)), signbit(least(n, m)), signbit(least(d, e)), signbit(greatest(d, e)), signbit(least(f, f)) FROM t",
+   "observed": "false, false, false, true, true, true"
+  },
+  {
+   "construct": "least-greatest-nan-sign",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT signbit(-'nan'::FLOAT), signbit(least(-'nan'::FLOAT, -'nan'::FLOAT)), signbit(greatest(-'nan'::FLOAT, 1::FLOAT)), signbit(-'nan'::DOUBLE), signbit(least(-'nan'::DOUBLE, -'nan'::DOUBLE)), signbit(greatest(-'nan'::DOUBLE, 1::DOUBLE))",
+   "observed": "true, false, false, true, true, true"
+  },
+  {
+   "construct": "zero-sign-arith",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT signbit(-0.0::FLOAT + -0.0::FLOAT), signbit(-0.0::FLOAT + 0.0::FLOAT), signbit(0.0::FLOAT - 0.0::FLOAT), signbit(-1::FLOAT * 0::FLOAT), signbit(-0.0::FLOAT / 1::FLOAT), signbit(-0.0::DOUBLE + -0.0::DOUBLE), signbit(-0.0::DOUBLE + 0.0::DOUBLE), signbit(0.0::DOUBLE - 0.0::DOUBLE), signbit(-1::DOUBLE * 0::DOUBLE), signbit(1::DOUBLE - 1::DOUBLE)",
+   "observed": "true, false, false, true, true, true, false, false, true, false"
+  },
+  {
+   "construct": "zero-sign-arith-columns",
+   "area": "doubles",
+   "setup": [
+    "CREATE TABLE t AS SELECT -0.0::DOUBLE d, -0.0::FLOAT f"
+   ],
+   "sql": "SELECT signbit(d + d), signbit(f + f), signbit(d * 1), signbit(f * 1), signbit(d - d), signbit(-d), signbit(-f) FROM t",
+   "observed": "true, true, true, true, false, false, false"
+  },
+  {
+   "construct": "zero-sign-mod",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT signbit(-4::FLOAT % 2::FLOAT), signbit(4::FLOAT % -2::FLOAT), signbit(-0.0::FLOAT % 1::FLOAT), signbit(-4::DOUBLE % 2::DOUBLE), signbit(4::DOUBLE % -2::DOUBLE), signbit(-0.0::DOUBLE % 1::DOUBLE)",
+   "observed": "true, false, true, true, false, true"
+  },
+  {
+   "construct": "float-div-nonfinite",
+   "area": "doubles",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END"
+   ],
+   "sql": "SELECT typeof('inf'::FLOAT / 'inf'::FLOAT), nan_text('inf'::FLOAT / 'inf'::FLOAT), nan_text(0::FLOAT * 'inf'::FLOAT), nan_text('inf'::FLOAT - 'inf'::FLOAT), nan_text(1::FLOAT / 0::FLOAT), nan_text(0::FLOAT / 0::FLOAT), nan_text(-1::FLOAT / 0::FLOAT)",
+   "observed": "'FLOAT', 'nan', 'nan', 'nan', 'inf', 'nan', '-inf'"
+  },
+  {
+   "construct": "float-mod",
+   "area": "doubles",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END"
+   ],
+   "sql": "SELECT typeof(-7::FLOAT % 3::FLOAT), nan_text(-7::FLOAT % 3::FLOAT), nan_text(7::FLOAT % -3::FLOAT), nan_text(-7.5::FLOAT % 2::FLOAT), nan_text(1::FLOAT % 0::FLOAT), nan_text('inf'::FLOAT % 1::FLOAT)",
+   "observed": "'FLOAT', '-1.0', '1.0', '-1.5', 'nan', 'nan'"
+  },
+  {
+   "construct": "int-mod-narrow",
+   "area": "integers",
+   "setup": [],
+   "sql": "SELECT -7::TINYINT % 3::TINYINT, 7::TINYINT % -3::TINYINT, typeof(-7::TINYINT % 3::TINYINT), (-128)::TINYINT % 1::TINYINT, -7::SMALLINT % 3::SMALLINT, 7::SMALLINT % -3::SMALLINT, typeof(-7::SMALLINT % 3::SMALLINT), (-32768)::SMALLINT % 1::SMALLINT",
+   "observed": "-1, 1, 'TINYINT', 0, -1, 1, 'SMALLINT', 0"
+  },
+  {
+   "construct": "int-mod-min-i8",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT (-128)::TINYINT a, -1::TINYINT b"
+   ],
+   "sql": "SELECT a % b FROM t",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -128 / -1"
+  },
+  {
+   "construct": "int-mod-min-i16",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT (-32768)::SMALLINT a, -1::SMALLINT b"
+   ],
+   "sql": "SELECT a % b FROM t",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -32768 / -1"
+  },
+  {
+   "construct": "int-mod-min-i32",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT (-2147483648)::INTEGER a, -1::INTEGER b"
+   ],
+   "sql": "SELECT a % b FROM t",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -2147483648 / -1"
+  },
+  {
+   "construct": "int-mod-min-i64",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT (-9223372036854775808)::BIGINT a, -1::BIGINT b"
+   ],
+   "sql": "SELECT a % b FROM t",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -9223372036854775808 / -1"
+  },
+  {
+   "construct": "int-pow-narrow",
+   "area": "integers",
+   "setup": [],
+   "sql": "SELECT typeof(2::TINYINT ** 3::TINYINT), 2::TINYINT ** 7::TINYINT, 2::TINYINT ** -1::TINYINT, 0::TINYINT ** -1::TINYINT, typeof(2::SMALLINT ** 3::SMALLINT), 2::SMALLINT ** 15::SMALLINT, 2::SMALLINT ** -1::SMALLINT, 0::SMALLINT ** -1::SMALLINT",
+   "observed": "'DOUBLE', 128.0, 0.5, inf, 'DOUBLE', 32768.0, 0.5, inf"
+  },
+  {
+   "construct": "sum-narrow-int",
+   "area": "aggregates",
+   "setup": [
+    "CREATE TABLE t AS SELECT * FROM (VALUES (127::TINYINT, 32767::SMALLINT), (126::TINYINT, 32766::SMALLINT)) v(a, b)"
+   ],
+   "sql": "SELECT typeof(sum(a)), sum(a), typeof(sum(b)), sum(b), typeof(avg(a)), avg(a), typeof(avg(b)), avg(b) FROM t",
+   "observed": "'HUGEINT', 253, 'HUGEINT', 65533, 'DOUBLE', 126.5, 'DOUBLE', 32766.5"
+  },
+  {
+   "construct": "avg-bigint-large",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT avg(x)::VARCHAR FROM (VALUES (9223372036854775807), (9223372036854775806), (9223372036854775805)) t(x) UNION ALL SELECT avg(x)::VARCHAR FROM (VALUES (9007199254740993), (9007199254740994)) t(x)",
+   "observed": "'9.223372036854776e+18'; '9007199254740994.0'"
+  },
+  {
+   "construct": "sum-float-accumulates-double",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT typeof(sum(x)), sum(x)::VARCHAR FROM (VALUES (1e8::FLOAT), (1::FLOAT), (-1e8::FLOAT)) t(x)",
+   "observed": "'DOUBLE', '1.0'"
+  },
+  {
+   "construct": "sum-double-rounding",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT sum(x)::VARCHAR, fsum(x)::VARCHAR FROM (VALUES (1e16::DOUBLE), (1::DOUBLE), (1::DOUBLE)) t(x)",
+   "observed": "'1e+16', '1.0000000000000002e+16'"
+  },
+  {
+   "construct": "sum-infinities",
+   "area": "aggregates",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END"
+   ],
+   "sql": "SELECT nan_text(sum(d)), nan_text(sum(f)), typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE, 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)",
+   "observed": "'nan', 'nan', 'DOUBLE'"
+  },
+  {
+   "construct": "sum-empty",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f, 1::TINYINT AS i WHERE false) t",
+   "observed": "NULL, NULL, NULL, NULL, NULL, NULL, NULL"
+  },
+  {
+   "construct": "var-bigint-decimal",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT typeof(var_samp(x)), round(var_samp(x), 12), round(var_pop(x), 12), typeof(var_samp(y)), round(var_samp(y), 12), round(stddev_samp(y), 12) FROM (VALUES (1::BIGINT, 1.5::DECIMAL(4,1)), (2, 2.5), (4, 4.0)) t(x, y)",
+   "observed": "'DOUBLE', 2.333333333333, 1.555555555556, 'DOUBLE', 1.583333333333, 1.258305739212"
+  },
+  {
+   "construct": "stat-decimal-degenerate",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT 'one', var_samp(y), var_pop(y), stddev_samp(y), corr(y, y), covar_samp(y, y), covar_pop(y, y) FROM (VALUES (1.5::DECIMAL(4,1))) t(y) UNION ALL SELECT 'constant', var_samp(x), var_pop(x), stddev_samp(x), corr(x, y), covar_samp(x, y), covar_pop(x, y) FROM (VALUES (1.5::DECIMAL(4,1), 2.0::DECIMAL(4,1)), (1.5, 3.0)) t(x, y) UNION ALL SELECT 'empty', var_samp(x), var_pop(x), stddev_samp(x), corr(x, x), covar_samp(x, x), covar_pop(x, x) FROM (SELECT 1.5::DECIMAL(4,1) x WHERE false) ORDER BY 1",
+   "observed": "'constant', 0.0, 0.0, 0.0, nan, 0.0, 0.0; 'empty', NULL, NULL, NULL, NULL, NULL, NULL; 'one', NULL, 0.0, NULL, nan, NULL, 0.0"
+  },
+  {
+   "construct": "stat-bigint-degenerate",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT 'one', var_samp(x), var_pop(x), stddev_samp(x), corr(x, x), covar_samp(x, x), covar_pop(x, x) FROM (VALUES (7::BIGINT)) t(x) UNION ALL SELECT 'constant', var_samp(x), var_pop(x), stddev_samp(x), corr(x, y), covar_samp(x, y), covar_pop(x, y) FROM (VALUES (7::BIGINT, 1::BIGINT), (7, 2)) t(x, y) UNION ALL SELECT 'empty', var_samp(x), var_pop(x), stddev_samp(x), corr(x, x), covar_samp(x, x), covar_pop(x, x) FROM (SELECT 7::BIGINT x WHERE false) ORDER BY 1",
+   "observed": "'constant', 0.0, 0.0, 0.0, nan, 0.0, 0.0; 'empty', NULL, NULL, NULL, NULL, NULL, NULL; 'one', NULL, 0.0, NULL, nan, NULL, 0.0"
+  },
+  {
+   "construct": "minmax-zero-last-negative",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM (VALUES (0.0::DOUBLE, 0.0::FLOAT), (-0.0::DOUBLE, -0.0::FLOAT)) t(d, f)",
+   "observed": "true, true, true, true"
+  },
+  {
+   "construct": "minmax-zero-last-positive",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM (VALUES (-0.0::DOUBLE, -0.0::FLOAT), (0.0::DOUBLE, 0.0::FLOAT)) t(d, f)",
+   "observed": "false, false, false, false"
+  },
+  {
+   "construct": "quantile-nan",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR, quantile_cont(x, 0.75)::VARCHAR, quantile_disc(x, 0.75)::VARCHAR, quantile_cont(x, 1.0)::VARCHAR FROM (VALUES (1.0::DOUBLE), (2.0::DOUBLE), ('nan'::DOUBLE), (3.0::DOUBLE)) t(x) UNION ALL SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR, NULL, NULL, NULL FROM (VALUES (1.0::DOUBLE), ('nan'::DOUBLE)) t(x)",
+   "observed": "'2.5', '2.5', 'nan', '3.0', 'nan'; 'nan', 'nan', NULL, NULL, NULL"
+  },
+  {
+   "construct": "default-collation-nocase",
+   "area": "strings",
+   "setup": [
+    "SET default_collation = 'nocase'",
+    "CREATE TABLE s AS SELECT 'Hello' v"
+   ],
+   "sql": "SELECT v = 'hello', v LIKE 'h%', v ILIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'), strpos(v, 'EL'), ends_with(v, 'LO'), prefix(v, 'he'), replace(v, 'h', 'J') FROM s",
+   "observed": "true, false, true, false, false, 0, false, false, 'Hello'"
+  },
+  {
+   "construct": "default-collation-nocase-literals",
+   "area": "strings",
+   "setup": [
+    "SET default_collation = 'nocase'"
+   ],
+   "sql": "SELECT 'Hello' = 'hello', 'Hello' LIKE 'h%', contains('Hello', 'ELL'), starts_with('Hello', 'he'), strpos('Hello', 'EL')",
+   "observed": "true, false, false, false, 0"
+  },
+  {
+   "construct": "default-collation-nocase-sort",
+   "area": "strings",
+   "setup": [
+    "SET default_collation = 'nocase'"
+   ],
+   "sql": "SELECT list(w ORDER BY w), count(DISTINCT w) FROM (VALUES ('b'), ('A'), ('a'), ('B')) t(w)",
+   "observed": "['A', 'a', 'b', 'B'], 2"
+  },
+  {
+   "construct": "default-collation-binary",
+   "area": "strings",
+   "setup": [
+    "CREATE TABLE s AS SELECT 'Hello' v"
+   ],
+   "sql": "SELECT v = 'hello', v LIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'), strpos(v, 'EL') FROM s",
+   "observed": "false, false, false, false, 0"
   }
  ]
 }

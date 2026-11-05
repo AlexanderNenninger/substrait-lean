@@ -12,12 +12,43 @@
     "overflow"
   ],
   "rows": [
-    {"group": "int.mod", "option": "min_mod_neg_one", "types": ["i64"]},
-    {"group": "int.mod", "option": "division_type", "types": ["i64"]},
-    {"group": "int.mod", "option": "min_mod_neg_one", "types": ["i8", "i16", "i32"], "evidence": "source"},
-    {"group": "int.mod", "option": "division_type", "types": ["i32"], "evidence": "engine_test"},
-    {"group": "int.mod", "option": "division_type", "types": ["i8", "i16"], "evidence": "source"},
-    {"group": "int.mod", "option": "overflow", "types": ["i8", "i16", "i32", "i64"], "evidence": "source"}
+    {
+      "group": "int.mod",
+      "option": "min_mod_neg_one",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.mod",
+      "option": "division_type",
+      "types": [
+        "i8",
+        "i16",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.mod",
+      "option": "division_type",
+      "types": [
+        "i32"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "int.mod",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
   ],
   "constructs": [
     "%"
@@ -32,7 +63,11 @@
       false
     ]
   },
-  "description": "`MIN % -1` raises `Overflow in division` (duckdb-R3); the SQL writes that case out.",
+  "description": [
+    "`MIN % -1` raises `Overflow in division` (duckdb-R3); the SQL writes that case out.",
+    "Round 4 (probes): at TINYINT and SMALLINT `%` keeps the type and truncates (`-7 % 3 = -1`, `7 % -3 = 1`, `MIN % 1 = 0`), and `MIN % -1` raises `Out of Range Error: Overflow in division of MIN / -1` at all four widths, from table columns.",
+    "The docs are silent on the sign of `%` and on `MIN % -1`: a docs gap. No upstream test pins `MIN % -1` below HUGEINT; it may change between versions."
+  ],
   "reference": "`modulus`: `MIN % -1` is 0.",
   "status": "shimmed",
   "evidence": "probe",
@@ -92,6 +127,42 @@
         }
       ],
       "notes": "No test takes a remainder of a negative TINYINT, SMALLINT or BIGINT, or `MIN % -1` at i8 … i64, so `division_type` at i8 and i16, and `min_mod_neg_one` and `overflow` at i8 … i32, stay at the source reading (i64 at the probe). The HUGEINT test raises as the shared wrapper does."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "int-mod-narrow"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "int-mod-min-i8"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "int-mod-min-i16"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "int-mod-min-i32"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "int-mod-min-i64"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "% 'Modulo (remainder)'; zero divisor raises; silent on the sign and on MIN % -1"}
+      ]
     }
   ],
   "issues": [

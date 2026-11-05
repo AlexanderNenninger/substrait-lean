@@ -161,12 +161,19 @@ class DuckDBDialect(Dialect):
 
     def quantile(self, cont: bool, v: str, q: str) -> str:
         # DuckDB reads a decimal fraction exactly (#53). Its interpolation
-        # `lo·(1−d) + hi·d` may round past the values, and gives NaN between
-        # -inf and +inf; the model keeps it between them, and so does the
-        # clamp (`duckdb-quantile-cont-interpolation`).
+        # `lo·(1−d) + hi·d` may round past the values: the model keeps it
+        # between them, and so does the clamp. Between -inf and +inf it is
+        # NaN, which no operation creates (#561): raise where it is NaN and
+        # no value is (NaN sorts above every number, so `MAX` is NaN exactly
+        # then) (`duckdb-quantile-cont-interpolation`).
         if not cont:
             return f"quantile_disc({v}, {q})"
-        return f"LEAST(GREATEST(quantile_cont({v}, {q}), MIN({v})), MAX({v}))"
+        qc = f"quantile_cont({v}, {q})"
+        value = f"LEAST(GREATEST({qc}, MIN({v})), MAX({v}))"
+        if not self.guards:
+            return value
+        made = f"({self.is_nan(qc)} AND NOT {self.is_nan(f'MAX({v})')})"
+        return self.case_when(made, self.raise_("domain error", f"MIN({v})", "float"), value)
 
     def mode(self, v: str, order: Sequence[str]) -> str:
         # Its input in this order, DuckDB keeps the value seen first of those

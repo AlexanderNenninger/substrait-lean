@@ -1,0 +1,33 @@
+{
+  "id": "DD-9",
+  "project": "duckdb",
+  "kind": "bug",
+  "version": "2.0.0",
+  "status": "confirmed",
+  "status_note": "A minor bug in the documentation, confirmed on 2.0.0 (Python, macOS arm64) against https://duckdb.org/docs/2.0/sql/functions/numeric.html; not filed.",
+  "summary": [
+    "The documentation, not the engine: the numeric functions page (https://duckdb.org/docs/2.0/sql/functions/numeric.html, the operator table and the `pow`/`power` entries) shows `3 ** 4` → `81`, `3 ^ 4` → `81`, `pow(2, 3)` → `8` and `power(2, 3)` → `8`, and never states the result type. The result is always DOUBLE: the function has one signature, `(DOUBLE, DOUBLE) -> DOUBLE` (https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1402-L1408). The same page prints DOUBLE results as `1.0` (`fmod(5, 2)`), so the integer-looking examples suggest an integer power.",
+    "Suggested fix: show `81.0` and `8.0`, and say the result is DOUBLE: integer arguments convert, so a BIGINT above 2^53 loses digits and nothing checks integer overflow."
+  ],
+  "repro": "`SELECT 3 ** 4, typeof(3 ** 4), pow(2, 3), typeof(pow(2, 3))` gives `81.0, DOUBLE, 8.0, DOUBLE`.",
+  "handling": "No effect on sverify's results: its DuckDB SQL never calls `POWER` for an integer power and writes it out as checked BIGINT multiplication (duckdb-int-pow).",
+  "found_by": "characterization pipeline reverse pass (#444): the docs read against duckdb-int-pow",
+  "issues": [
+    444
+  ],
+  "files": [
+    "python/src/sverify/sql/duckdb.py"
+  ],
+  "facts": [
+    "duckdb-int-pow"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "probe on the pinned release and the 2.0 docs; main and the nightly docs not checked"
+    }
+  ]
+}

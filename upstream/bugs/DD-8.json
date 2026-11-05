@@ -1,0 +1,34 @@
+{
+  "id": "DD-8",
+  "project": "duckdb",
+  "kind": "bug",
+  "version": "2.0.0",
+  "status": "confirmed",
+  "status_note": "A bug in the documentation, confirmed on 2.0.0 (Python, macOS arm64) against https://duckdb.org/docs/2.0/sql/functions/numeric.html; not filed. The engine's NaN is pinned by its own test (test/sql/types/float/ieee_floating_points.test#L23-L31), so the page is what is wrong.",
+  "summary": [
+    "The documentation, not the engine: the numeric functions page (https://duckdb.org/docs/2.0/sql/functions/numeric.html, \"Division and Modulo Operators\") says \"Integer division (`//`), modulo (`%`), and `INTERVAL / 0` throw an `Invalid Input Error` on division by zero instead of returning `NULL`.\" For FLOAT and DOUBLE, `%` by zero is NaN under the default `ieee_floating_point_ops`: `%` of floats binds `BindBinaryFloatingPoint<ModuloOperator>` (https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469), which runs `std::fmod` without a zero check.",
+    "On the same page, the function `fmod` is documented as floored (true: `fmod(-7.5, 2)` is 0.5), while `%` on doubles is C's truncating `fmod` (`-7.5::DOUBLE % 2` is -1.5), and the page never says so: the C name and the operator behave oppositely without a word.",
+    "Suggested fix: \"modulo (`%`) of integers and decimals\", and a sentence that `%` on FLOAT and DOUBLE truncates (C's `fmod`) while the function `fmod` floors."
+  ],
+  "repro": [
+    "`SELECT 1.0::DOUBLE % 0, 0.0::DOUBLE % 0, 1.0::FLOAT % 0` gives `nan, nan, nan`; `SELECT 1::INTEGER % 0` raises `Invalid Input Error`.",
+    "`SELECT -7.5::DOUBLE % 2, fmod(-7.5, 2)` gives `-1.5, 0.5`."
+  ],
+  "handling": "No effect on sverify's results: its DuckDB SQL guards a zero divisor of `%` on doubles and writes NaN and ±inf out (duckdb-R15-double-modulus).",
+  "found_by": "characterization pipeline reverse pass (#444): the docs read against duckdb-R15-double-modulus",
+  "issues": [
+    444
+  ],
+  "facts": [
+    "duckdb-R15-double-modulus"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "probe on the pinned release and the 2.0 docs; main and the nightly docs not checked"
+    }
+  ]
+}

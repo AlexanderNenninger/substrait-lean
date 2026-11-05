@@ -38,7 +38,8 @@
   "settings": {},
   "description": [
     "Any ±inf input makes `var_*`, `stddev_*` and `corr` NaN: the update computes `inf - inf`. `fsum` and `favg` of `[inf, 1]` are NaN, while `sum` and `avg` are `inf`.",
-    "One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN."
+    "One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN.",
+    "The docs are silent on NaN and infinity in every aggregate: a docs gap. No upstream test pins `fsum` and `favg` of `[inf, 1]`; it may change between versions."
   ],
   "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.",
   "status": "open",
@@ -100,6 +101,14 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. Confirms the probes: ±inf makes the variance NaN, a variance past `DBL_MAX` is `inf`, and `corr` of one pair or a constant side is NaN."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "no aggregate's entry mentions NaN or infinity; fsum/favg of [inf, 1] has no upstream test"}
+      ]
     }
   ],
   "issues": [

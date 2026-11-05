@@ -7,10 +7,12 @@
   "area": "integers",
   "options": [
     "on_division_by_zero",
-    "overflow"
+    "overflow",
+    "division_type"
   ],
   "rows": [
-    {"group": "int.div", "option": "on_division_by_zero", "types": ["i64"]}
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i64"]},
+    {"group": "int.div", "option": "division_type", "types": ["i64"]}
   ],
   "constructs": [
     "//"

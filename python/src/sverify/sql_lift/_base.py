@@ -322,6 +322,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             a column or table of the inputs.
     """
     _check_numbers(query)
+    _check_intervals(query)
     query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
@@ -1771,6 +1772,25 @@ def _check_numbers(query: str) -> None:
                 f"the number {m.group()!r}: an underscore not between two digits is read "
                 "differently by DuckDB and SQLGlot"
             )
+
+
+def _check_intervals(query: str) -> None:
+    """Refuse `INTERVAL '… ago'`, which negates the interval in DuckDB.
+    SQLGlot drops the `ago` of a single unit (`'1 day ago'` reads as
+    `INTERVAL '1' DAY`), so the tree cannot tell (#626, upstream/bugs/SG-8.json)."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return  # the parser reports it
+    for before, tok in zip(tokens, tokens[1:], strict=False):
+        if (
+            before.token_type == TokenType.INTERVAL
+            and tok.token_type == TokenType.STRING
+            and re.search(r"\bago\b", tok.text, re.I)
+        ):
+            raise Unsupported(f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet")
 
 
 def _check_using_stars(tree: Any) -> None:

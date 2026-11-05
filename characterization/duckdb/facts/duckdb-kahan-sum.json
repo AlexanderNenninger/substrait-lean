@@ -18,11 +18,13 @@
   "settings": {},
   "description": [
     "`kahan_sum` (also `fsum`, `sumkahan`) is classic Kahan summation, not Neumaier's. Merging a partial state Kahan-adds `other.value`, then `-other.err`. `favg` divides the Kahan sum by the count.",
-    "An infinite input makes the compensation `inf - inf`, so `fsum` and `favg` of `[inf, 1]` are NaN, where `sum` is `inf` (duckdb-nonfinite-aggregates)."
+    "An infinite input makes the compensation `inf - inf`, so `fsum` and `favg` of `[inf, 1]` are NaN, where `sum` is `inf` (duckdb-nonfinite-aggregates).",
+    "Order class: (a) Kahan's compensated summation per state, in the order values reach it; a constant run enters as one term fl(k·x) (`KahanAdd::AddConstant`, its product not compensated); partial states merge by two compensated steps (the other's sum, then its negated error), in the order threads finish. `favg` returns value/count − err/count. (b) Kahan: |ŝ − s| ≤ (2u + O(nu²)) Σ|x_i| (Higham §4.3); the merges are compensated steps over the partials' sums and errors, which keeps that form with n counting every step (not proved here); each constant run adds up to u·k|x|, so at most (3u + O(nu²)) Σ|x_i| in all, within #85's bound for n ≥ 3. (c) The source below; duckdb-float-sum-order round 4 (`fsum` gave one result at 1, 2 and 8 threads where `sum` varied), test_kahan_sum.test (9007199254740994). (d) No order the Lean side names: a Kahan result need not be any tree sum. Four doubles −554628673.5322614, −5523426119.001462, 2.685058088631258, 34728.84084343375 give −6078020061.007821 by Kahan, while every tree sum of them is −6078020061.007822 or −6078020061.007823. Refining it needs a behaviour such as COMPENSATED or a bound-only order (any double within #85's bound). `kahan_sum`, `fsum` and `favg` are DuckDB's own functions, so no `agg.fsum` row rests on this fact.",
+    "The docs are silent on the NaN of an infinite input: a docs gap. No upstream test pins it; it may change between versions."
   ],
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -40,6 +42,59 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73",
+          "note": "KahanAddInternal"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L95-L104",
+          "note": "KahanSumState::Combine"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L143-L153",
+          "note": "KahanAdd: AddConstant adds `input * count` as one term"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L40-L53",
+          "note": "KahanAvgState::Combine"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L200-L209",
+          "note": "favg: value/count − err/count"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": [
+        "Read at tag v2.0.0 (commit d54cbbe3).",
+        "The counterexample is a scratch Python search over IEEE doubles (Kahan's loop against every bracketing of every order of the four values), outside the repository."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "fsum, favg: Kahan Sum, affected by ordering; silent on the NaN of an infinite input"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_sum.test#L5-L25", "note": "fsum, sumKahan, kahan_sum of 9007199254740992, 1, 1, 0 → 9007199254740994"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_avg.test#L5-L15", "note": "favg of the same → 2251799813685248.5"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L1-L50", "note": "state combines keep the compensation's sign: fsum(2^53, 1, 1) → 9007199254740994, favg → 3002399751580331.5; grouped and exported states; no test of an infinite input"}
+      ]
     }
   ],
   "issues": [

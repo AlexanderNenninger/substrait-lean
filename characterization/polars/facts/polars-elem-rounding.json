@@ -31,7 +31,9 @@
   },
   "description": [
     "`sqrt`, `exp`, `sin`, `cos`, `tan`, `arcsin`, `arccos`, `arctan`, `arctan2` and `**` are generic over the float type and call Rust's `f32` or `f64` method: `Float32` computes in single precision and returns `Float32`, `Float64` in double. `sqrt` is IEEE's correctly rounded square root; the others go to the platform's libm (`sinf`, `exp`, `pow`, …), which promises no correct rounding, so their last bits can differ between macOS and Linux. Integer inputs are cast to `Float64` first.",
-    "`x ** y` with a literal exponent takes shortcuts: 1 returns `x`, 0.5 is `sqrt(x)`, and an integer from 2 to 9 multiplies `x` by itself that many times, rounding after each product, where `powf` rounds once. With a column exponent it is `powf`, except that a one-row exponent of 2 is `x * x`."
+    "`x ** y` with a literal exponent takes shortcuts: 1 returns `x`, 0.5 is `sqrt(x)`, and an integer from 2 to 9 multiplies `x` by itself that many times, rounding after each product, where `powf` rounds once. With a column exponent it is `powf`, except that a one-row exponent of 2 is `x * x`.",
+    "The docs are silent on the rounding of these functions and on `Float32` staying single precision: a docs gap.",
+    "No upstream test pins their last bits or `Float32`'s precision; they may change between versions."
   ],
   "reference": "The reference computes these with Lean's `Float` (the platform's libm); only NULL, the sign and the domain are exact, the last bits are each engine's (#54).",
   "status": "open",
@@ -94,6 +96,36 @@
         }
       ],
       "notes": "`Float32` stays in single precision."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers",
+          "note": "no error bound promised; silent on libm and Float32 precision"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L6963-L7000",
+          "note": "Expr.pow: the result dtype rule only"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/expr/test_exprs.py#L270-L297",
+          "note": "`test_exp_log1p`: Float32 → Float32, integers → Float64 (lazy, both engines); values compared with tolerance"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/series/test_series.py#L1872-L1900",
+          "note": "`test_trigonometric` against numpy with tolerance (eager)"
+        }
+      ]
     }
   ]
 }

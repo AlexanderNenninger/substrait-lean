@@ -96,9 +96,14 @@ def options : List OptionSpec := [
   { id := "list_null_order", substrait := none, core := ["NULL", "GREATEST", "LEAST"],
     extra := [("GREATEST", "duckdb-R11")] },
   -- Aggregates, windows and relations
-  { id := "sum_order", substrait := none, core := ["ANY", "SEQUENTIAL", "PAIRWISE", "KAHAN"],
-    extra := [("SEQUENTIAL", "duckdb-sum-double"), ("PAIRWISE", "polars-sum-float"),
-      ("KAHAN", "polars-sum-float")] },
+  -- `ANY`: a tree of additions in any order (`FloatSums`); `SEQUENTIAL` and
+  -- `PAIRWISE` are such trees. `COMPENSATED` (Kahan's) and `SCALED_CONSTANT`
+  -- (a constant vector added as one `fl(k · x)`) are not known to be (#633):
+  -- they are within #85's bound only.
+  { id := "sum_order", substrait := none,
+    core := ["ANY", "SEQUENTIAL", "PAIRWISE", "COMPENSATED", "SCALED_CONSTANT"],
+    extra := [("SEQUENTIAL", "polars-sum-float"), ("PAIRWISE", "polars-sum-float"),
+      ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
   { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN"],
     extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
   { id := "stat_degenerate", substrait := none, core := ["NULL", "NAN", "ERROR"],

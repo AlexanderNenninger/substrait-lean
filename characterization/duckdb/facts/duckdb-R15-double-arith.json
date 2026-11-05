@@ -11,14 +11,66 @@
     "on_domain_error"
   ],
   "rows": [
-    {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp64"]},
-    {"group": "fp.div", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
-    {"group": "fp.div", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.div", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
-    {"group": "fp.div", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
+    {
+      "group": "fp.arith",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.arith",
+      "option": "nan_creation",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "nan_creation",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "on_division_by_zero",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "on_division_by_zero",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "on_domain_error",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "on_domain_error",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    }
   ],
   "constructs": [
     "+",
@@ -39,11 +91,12 @@
   "description": [
     "Operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (duckdb-R5).",
     "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged.",
-    "`FLOAT` behaves the same by the docs (2.0, PostgreSQL Compatibility): `'Infinity'::FLOAT / 'Infinity'::FLOAT` and `'Infinity'::FLOAT - 'Infinity'::FLOAT` are NaN, and DuckDB follows IEEE 754 for division by zero and operations on infinities. `inf / inf` is the reference's domain error of `divide` (`on_domain_error`), which DuckDB answers with NaN."
+    "`FLOAT` behaves the same by the docs (2.0, PostgreSQL Compatibility): `'Infinity'::FLOAT / 'Infinity'::FLOAT` and `'Infinity'::FLOAT - 'Infinity'::FLOAT` are NaN, and DuckDB follows IEEE 754 for division by zero and operations on infinities. `inf / inf` is the reference's domain error of `divide` (`on_domain_error`), which DuckDB answers with NaN.",
+    "Round 4 (probes): on FLOAT, `inf / inf`, `0 * inf`, `inf - inf` and `0 / 0` are NaN, `1 / 0` is `inf` and `-1 / 0` is `-inf`, with a FLOAT result: as on DOUBLE."
   ],
   "reference": "`add` … `divide`: no operation creates a NaN (#257); a zero divisor raises unless the plan asks otherwise.",
   "status": "shimmed",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-02",
@@ -136,6 +189,29 @@
         }
       ],
       "notes": "These settle `fp.arith` `nan_creation` and `fp.div` `on_division_by_zero` at fp32. No test divides an infinity by an infinity or multiplies 0 by an infinity, at either width, so `fp.div` `nan_creation` and `on_domain_error` at fp32 stay at the source reading. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "float-div-nonfinite"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "fuzz",
+      "checked_by": "characterization pipeline round 5 (sverify_dev.duckdb_fuzz on homelab, Linux x86_64, budget 900 s per target)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/fuzz__float_special.json"
+        }
+      ],
+      "notes": "float_special: 16810 random DuckDB queries over DOUBLE columns and literals holding ±0, NaN, ±inf, 1.7e308, 0.1 and a subnormal, with + - * / %, negation, abs, CASE, COALESCE and comparisons; Rel.eval under DuckDB's semantics agreed with DuckDB on every one (doubles compared to six decimals, so zero and NaN signs are not seen). The one disagreement is integer `i // i` at 0 (DuckDB raises)."
     }
   ],
   "issues": [

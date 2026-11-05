@@ -287,9 +287,78 @@ theorem Rel.allowedI_congr {t : ProfileTable} {I J : Impl} {cat : Catalog} :
 
 /-! ## Choices that agree on a plan's options -/
 
-/-- `t` allows no more than `u` at the read `p`. -/
+/-! ### An order on behaviours
+
+At the options `AggFn.AllowedP` interprets, one behaviour may allow fewer
+results than another: a sequential sum is a tree of additions in some order
+(`SEQUENTIAL ⊑ ANY`), and Welford's update meets the generic properties
+(`WELFORD_CHAN ⊑ GENERIC`). A profile that allows the smaller one transfers
+to one that allows the larger. `COMPENSATED` and `SCALED_CONSTANT` are not
+below `ANY` (#633), and at every other option the order is equality. -/
+
+/-- The pairs `b ⊑ b'` at an option, each with its lemma below. -/
+def orderPairs : List (String × Behaviour × Behaviour) :=
+  [("sum_order", "SEQUENTIAL", "ANY"), ("sum_order", "PAIRWISE", "ANY"),
+   ("stat_algo", "WELFORD_CHAN", "GENERIC"), ("quantile_interp", "LINEAR", "BETWEEN")]
+
+/-- `b ⊑ b'` at the option `o`. -/
+def behaviourLe (o b b' : String) : Bool := b == b' || orderPairs.contains (o, b, b')
+
+theorem behaviourLe_eq {o b b' : String} (ho : o ∉ aggInterpreted) (h : behaviourLe o b b' = true) :
+    b = b' := by
+  simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem] at h
+  rcases h with h | h
+  · exact h
+  · exfalso; apply ho
+    simp only [orderPairs, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
+    simp only [aggInterpreted, List.mem_cons, List.not_mem_nil, or_false]
+    rcases h with ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ <;> simp
+
+theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = true) {vs : List Value}
+    {c : Int} (hs : SumOrder b vs c) : SumOrder b' vs c := by
+  simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
+    List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
+  rcases h with rfl | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩ | ⟨h, -⟩
+  · exact hs
+  · simp only [SumOrder] at hs ⊢
+    obtain ⟨ws, hp, rfl⟩ := hs
+    exact .seq hp
+  · simpa [SumOrder] using hs
+  all_goals simp at h
+
+theorem StatAlgo.mono {b b' : Behaviour} (h : behaviourLe "stat_algo" b b' = true) {f : AggFn}
+    {vs : List Value} {v : Value} (hs : StatAlgo b f vs v) : StatAlgo b' f vs v := by
+  simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
+    List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
+  rcases h with rfl | ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩
+  · exact hs
+  all_goals first | simp at h | simpa [StatAlgo] using hs
+
+theorem QuantInterp.mono {b b' : Behaviour} (h : behaviourLe "quantile_interp" b b' = true)
+    {num scale : Nat} {vs : List Value} {v : Value} (hs : QuantInterp b num scale vs v) :
+    QuantInterp b' num scale vs v := by
+  simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
+    List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
+  rcases h with rfl | ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, rfl, rfl⟩
+  · exact hs
+  all_goals first | simp at h | simpa [QuantInterp] using hs
+
+example : behaviourLe "sum_order" "SEQUENTIAL" "ANY" = true := by decide
+example : behaviourLe "sum_order" "COMPENSATED" "ANY" = false := by decide
+example : behaviourLe "sum_order" "SCALED_CONSTANT" "ANY" = false := by decide
+example : behaviourLe "null_order" "NULLS_FIRST" "NULLS_LAST" = false := by decide
+
+/-- `t` allows no more than `u` at the read `p`, up to the order: each
+behaviour `t` allows is below one `u` allows. -/
 def ProfileTable.LeAt (t u : ProfileTable) (p : Read) : Prop :=
-  ∀ b, b ∈ t.allows p.1 p.2.1 p.2.2 → b ∈ u.allows p.1 p.2.1 p.2.2
+  ∀ b, b ∈ t.allows p.1 p.2.1 p.2.2 → ∃ b' ∈ u.allows p.1 p.2.1 p.2.2, behaviourLe p.2.1 b b' = true
+
+/-- At an option `AllowedP` does not interpret, `LeAt` is inclusion. -/
+theorem ProfileTable.LeAt.mem {t u : ProfileTable} {p : Read} (h : t.LeAt u p)
+    (ho : p.2.1 ∉ aggInterpreted) {b : Behaviour} (hb : b ∈ t.allows p.1 p.2.1 p.2.2) :
+    b ∈ u.allows p.1 p.2.1 p.2.2 := by
+  obtain ⟨b', hb', hle⟩ := h b hb
+  rwa [behaviourLe_eq ho hle]
 
 section MonoOn
 variable {t u : ProfileTable}
@@ -297,8 +366,11 @@ variable {t u : ProfileTable}
 theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {vs : List Value}
     {v : Value} : f.AllowedP t vs v → f.AllowedP u vs v := by
   have hlit : ∀ {g o : String} {P : Behaviour → Prop}, (g, o, []) ∈ f.reads →
+      (∀ b b', behaviourLe o b b' = true → P b → P b') →
       (∃ b ∈ t.allows g o [], P b) → ∃ b ∈ u.allows g o [], P b :=
-    fun hp ⟨b, hb, rest⟩ => ⟨b, h _ hp b hb, rest⟩
+    fun hp hP ⟨b, hb, rest⟩ =>
+      let ⟨b', hb', hle⟩ := h _ hp b hb
+      ⟨b', hb', hP b b' hle rest⟩
   rintro (hc | ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩)
   · left
     cases f
@@ -309,20 +381,22 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
         split at hc
         · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hc
         · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
-          exact hlit (by simp [AggFn.reads]) hc
+          exact hlit (by simp [AggFn.reads]) (fun _ _ hle => QuantInterp.mono hle) hc
     case fsum | avg =>
       simp only [AggFn.AllowedChoice] at hc ⊢
       split at hc
       · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hc
       · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
-        exact hlit (by simp [AggFn.reads]) hc
-    case var | cov | corr => exact hlit (by simp [AggFn.reads]) hc
+        exact hlit (by simp [AggFn.reads])
+          (fun _ _ hle ⟨c, hs, hv⟩ => ⟨c, SumOrder.mono hle hs, hv⟩) hc
+    case var | cov | corr =>
+      exact hlit (by simp [AggFn.reads]) (fun _ _ hle => StatAlgo.mono hle) hc
     all_goals exact hc
   · right
     have hp : (r.group, o, []) ∈ f.reads := by
       simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map]
       exact .inl ⟨o, ho, rfl⟩
-    exact ⟨r, hr, os, hos, o, ho, hi, b, h _ hp b hb, hn⟩
+    exact ⟨r, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩
 
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
     {rows : Relation} {v : Value} : m.AllowedP t I rows v → m.AllowedP u I rows v :=
@@ -344,13 +418,12 @@ theorem aggAllowedP.monoOn {I : Impl} {gs : List Expr} {ms : List Measure}
 theorem SortedP.monoOn {keys : List SortKey} (h : ∀ p ∈ sortReads keys, t.LeAt u p)
     {out : Relation} : SortedP t keys out → SortedP u keys out := fun ⟨cmp, hc, nfs, hn, hcl, hs⟩ =>
   ⟨cmp, hc, nfs,
-    Forall2.imp_mem (fun k hk _ hn => h ("rel.sort", "null_order", k.nullPrefs)
-      (List.mem_append_left _ (List.mem_map.mpr ⟨k, hk, rfl⟩)) _ hn) hn,
-    fun k hk hck => h ("rel.sort", "clustered", [])
+    Forall2.imp_mem (fun k hk _ hn => ProfileTable.LeAt.mem (h ("rel.sort", "null_order", k.nullPrefs)
+      (List.mem_append_left _ (List.mem_map.mpr ⟨k, hk, rfl⟩))) (by simp [aggInterpreted]) hn) hn,
+    fun k hk hck => ProfileTable.LeAt.mem (h ("rel.sort", "clustered", [])
       (List.mem_append_right _ (by
         rw [ite_eq_left_of_eq_true _ _ (eq_true (List.any_eq_true.mpr ⟨k, hk, hck⟩))]
-        exact List.mem_singleton_self _))
-      _ (hcl k hk hck), hs⟩
+        exact List.mem_singleton_self _))) (by simp [aggInterpreted]) (hcl k hk hck), hs⟩
 
 /-- **`AllowedI` reads the choices only at the plan's options.** -/
 theorem Rel.AllowedI.monoOn {I : Impl} {cat : Catalog} :
@@ -399,9 +472,9 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
   have hag : Impl.AgreeOn r.ctors I J :=
     ⟨fun f hf v => by simp [J, Impl.restrict, hf], fun f hf v w => by simp [J, Impl.restrict, hf]⟩
   have hx : ∀ c ∈ r.ctors, CallExtra t c → CallExtra u c :=
-    fun c hc ⟨row, hr, os, hos, o, ho, b, hb, hn⟩ =>
-      ⟨row, hr, os, hos, o, ho, b, h _ (Rel.ctorReads_sub hc _ (by
-        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩)) b hb, hn⟩
+    fun c hc ⟨row, hr, os, hos, o, ho, hi, b, hb, hn⟩ =>
+      ⟨row, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
+        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb, hn⟩
   refine ⟨J, ⟨fun f v => ?_, fun f v w => ?_⟩, ?_⟩
   · by_cases hf : Ctor.un f ∈ r.ctors
     · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf)
@@ -415,12 +488,12 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
 
 /-- A decidable test of `LeAt`. -/
 def ProfileTable.leAtB (t u : ProfileTable) (p : Read) : Bool :=
-  (t.allows p.1 p.2.1 p.2.2).all (u.allows p.1 p.2.1 p.2.2).contains
+  (t.allows p.1 p.2.1 p.2.2).all fun b => (u.allows p.1 p.2.1 p.2.2).any (behaviourLe p.2.1 b ·)
 
 theorem ProfileTable.leAt_of_leAtB {t u : ProfileTable} {p : Read}
     (h : t.leAtB u p = true) : t.LeAt u p := fun b hb => by
-  simp only [leAtB, List.all_eq_true, List.contains_iff_mem] at h
-  simpa using h b hb
+  simp only [leAtB, List.all_eq_true, List.any_eq_true] at h
+  exact h b hb
 
 /-- The transfer check for `r`, from the profile `t` to `u`. -/
 def transferB (r : Rel) (t u : ProfileTable) : Bool := r.reads.all (u.leAtB t ·)
@@ -525,8 +598,8 @@ open Lean (Json toJson) in
 /-- `substrait-check --transfer`, on stdin `{"from": P, "to": E, "depends":
 [{"group", "option", "preferences"?, "behaviours"?}], "functions"?: [...]}`:
 whether a proof under `P` that uses only `depends` holds under `E`. Each row
-fails where `E` allows a behaviour outside what the proof used (`behaviours`,
-or else all `P` allows there), and each function `E` lacks fails. With
+fails where `E` allows a behaviour not below one the proof used (`behaviourLe`;
+`behaviours`, or else all `P` allows there), and each function `E` lacks fails. With
 `depends` = `Rel.reads` and no `behaviours`, this is `transferB`, which
 `Rel.transfer_of_transferB` proves sound. -/
 def transferJson (input : Json) : Except String Json := do
@@ -545,7 +618,7 @@ def transferJson (input : Json) : Except String Json := do
     let ps := (row.getObjValAs? (List String) "preferences").toOption.getD []
     let used := (row.getObjValAs? (List String) "behaviours").toOption.getD (P.allowsAt group option ps)
     let target := E.allowsAt group option ps
-    unless target.all used.contains do
+    unless target.all (fun b => used.any (behaviourLe option b ·)) do
       failures := failures.push (Json.mkObj [("group", toJson group), ("option", toJson option),
         ("from", toJson used), ("to", toJson target), ("facts", toJson (obsE.factsAt group option))])
   let fns := (input.getObjValAs? (List String) "functions").toOption.getD []

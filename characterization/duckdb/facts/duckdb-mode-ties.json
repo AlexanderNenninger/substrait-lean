@@ -17,7 +17,8 @@
   ],
   "settings": {},
   "description": [
-    "`MODE(x)` counts each non-NULL value and keeps, of the most frequent, the one whose first row came first (`first_row`). Without an `ORDER BY` that is the order in which threads read and merge the rows, so ties depend on parallelism: on 3,000,000 rows alternating 5 and 3, starting with 5, `MODE(x)` gave 3. With `MODE(x ORDER BY …)` the rows arrive sorted, and the first of the tied values in that order wins: `MODE(x ORDER BY x)` is the smallest, `ORDER BY x DESC` the largest. `mode() WITHIN GROUP (ORDER BY x)` is the same. NULLs are skipped; no values give NULL. `-0.0` and `0.0` count as one value."
+    "`MODE(x)` counts each non-NULL value and keeps, of the most frequent, the one whose first row came first (`first_row`). Without an `ORDER BY` that is the order in which threads read and merge the rows, so ties depend on parallelism: on 3,000,000 rows alternating 5 and 3, starting with 5, `MODE(x)` gave 3. With `MODE(x ORDER BY …)` the rows arrive sorted, and the first of the tied values in that order wins: `MODE(x ORDER BY x)` is the smallest, `ORDER BY x DESC` the largest. `mode() WITHIN GROUP (ORDER BY x)` is the same. NULLs are skipped; no values give NULL. `-0.0` and `0.0` count as one value.",
+    "The docs are silent on the first-occurrence tie rule: a docs gap."
   ],
   "reference": [
     "`AggFn.mode` (`modeOf`, #53): the most frequent value, and of the values that tie, the first in the measure's sort order (rows that tie on it in list order). The parser refuses `MODE` without an order; Ibis's `mode()` becomes `MODE(x ORDER BY x)`. `Rel.windowsTotal` reports a mode as the engine's choice unless the sort includes its argument's column or the group's and the order's columns contain a key."
@@ -64,6 +65,32 @@
         {
           "test": "python/tests/test_aggregate.py::test_quantiles_mode_and_arg_min_agree_with_duckdb"
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/holistic/mode.cpp#L377-L405", "note": "Execute records first_row as the state's own count; Combine keeps the min of two states' local positions, so parallel ties follow thread order"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "mode: affected by ordering; tie rule not stated"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/mode_rewrite.test#L26-L35", "note": "threads=4: mode(v ORDER BY ord) of tied 'z' (1), 'y' (2) → z; DESC → y"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/mode_rewrite.test#L48-L54", "note": "an unordered tie may return either candidate"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/mode_rewrite.test#L64-L74", "note": "ordered ties keep the first value under the full order (NULLS FIRST/LAST) → b, a, b"}
       ]
     }
   ],

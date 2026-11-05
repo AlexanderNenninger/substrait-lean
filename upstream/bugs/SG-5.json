@@ -2,8 +2,8 @@
   "id": "SG-5",
   "project": "sqlglot",
   "version": "30.22.0",
-  "status": "confirmed",
-  "status_note": "confirmed on 30.29.0; with `LEFT JOIN` it also writes `COALESCE(a.i, b.i)` for `b.i`",
+  "status": "filed",
+  "status_note": "filed [#8890](https://github.com/tobymao/sqlglot/issues/8890); fixed on main by [#8893](https://github.com/tobymao/sqlglot/pull/8893) (bdaf7d1, 2026-11-04), not released. Reproduces on 30.29.0.",
   "summary": "`qualify` expands `t.*` of the right table of a `JOIN … USING` without the `USING` columns; DuckDB keeps them in `t.*` (only `*` shows them once).",
   "repro": "`SELECT a.*, b.* FROM a JOIN b USING (i)`: DuckDB gives 4 columns, the qualified tree 3.",
   "handling": "The lift refuses `t.*` with `USING` (`_check_using_stars`).",
@@ -18,6 +18,19 @@
         "sqlglot": "30.29.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "sqlglot": "30.29.0",
+        "sqlglot main": "main bdaf7d1",
+        "duckdb": "2.0.0"
+      },
+      "note": "repro on 30.22.0, 30.29.0 and main"
     }
+  ],
+  "upstream": [
+    "https://github.com/tobymao/sqlglot/issues/8890",
+    "https://github.com/tobymao/sqlglot/pull/8893"
   ]
 }

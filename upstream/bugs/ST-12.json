@@ -3,9 +3,9 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
-  "summary": "Substrait does not say whether `IfThen`, `coalesce`, `and` and `or` evaluate operands that do not decide the result, or whether a filter may be evaluated on rows that a relation below it (a join, another filter) removes. Both decide whether a function that raises (an integer division by zero, a failing cast, an overflow) raises for a plan. DuckDB's `CASE` and `COALESCE` are lazy, and its `AND`/`OR` are lazy as conditions and eager as values; Polars's `when/then/otherwise` masks elementwise branches (eager under `group_by().agg` and `over()`), and its `&`, `|` and `coalesce` evaluate every operand (#604).",
+  "status": "confirmed",
+  "status_note": "Partly specified on main (a4d8e00342d0): `IfThen` and `Switch` short-circuit, so a branch not taken cannot raise ([`specialized_record_expressions.md` L30-L53](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/site/docs/expressions/specialized_record_expressions.md#L30-L53)), and `coalesce` does not evaluate the arguments after the first non-null ([`functions_comparison.yaml` L262-L267](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_comparison.yaml#L262-L267)). Still open: `and`/`or` give Kleene truth tables only ([`functions_boolean.yaml` L8-L66](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_boolean.yaml#L8-L66)), and nothing says whether a filter or join condition may be evaluated on rows a relation below removes ([`logical_relations.md` L124-L142](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/site/docs/relations/logical_relations.md#L124-L142)). No existing issue.",
+  "summary": "`IfThen` and `Switch` short-circuit and `coalesce` stops at the first non-null argument, so the spec makes those lazy. It does not say whether `and` and `or` evaluate an operand that does not decide the result (it gives Kleene truth tables only), or whether a filter or join condition may be evaluated on rows that a relation below it removes. Both decide whether a function that raises (an integer division by zero, a failing cast, an overflow) raises for a plan. DuckDB's `AND`/`OR` are lazy as conditions and eager as values; Polars's `&` and `|` evaluate every operand (#604). Polars's eager `when/then/otherwise` (under `group_by().agg` and `over()`) and `coalesce` depart from the spec's lazy `IfThen` and `coalesce`.",
   "repro": "`and(x <> 0, 10 / x > 1)` over `x = 0` with `on_division_by_zero: ERROR`, as a projected value: DuckDB 2.0.0's `SELECT (x <> 0) AND (10 // x > 1)` raises at `x = 0`, and Polars 2.1.0's `(pl.col('x') != 0) & (10 // pl.col('x') > 1)` with a strict cast in place of the division raises too; a reference that evaluates `and` lazily returns `false` (#604).",
   "handling": [
     "sverify's guards look for raises on the rows of `Rel.loose`, the plan without the filters an engine may reorder (`Rel.HasIssue`, `SubstraitLean/Guards.lean`), so a filter pushed below a join is covered; whether a raise inside an `IfThen` branch counts on rows its condition excludes is for the round-2 source check. The `execution` area's `evaluation_order` item records what each engine does (duckdb-exec-short-circuit, duckdb-exec-filter-pushdown, polars-exec-when-eager, polars-exec-predicate-pushdown).",
@@ -34,6 +34,14 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "Not checked against the spec text yet; to confirm in round 2 (expressions/conditionals, functions_boolean.yaml)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "specialized_record_expressions.md (IfThen, Switch), functions_comparison.yaml (coalesce), functions_boolean.yaml, relations/logical_relations.md (Filter, Join) on main; IfThen/Switch/coalesce are specified lazy, and/or and relation evaluation order are open"
     }
   ]
 }

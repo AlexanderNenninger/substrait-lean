@@ -14,18 +14,18 @@
       "group": "agg.isum",
       "option": "overflow",
       "types": [
-        "i32",
-        "i64"
+        "i8",
+        "i16"
       ]
     },
     {
       "group": "agg.isum",
       "option": "overflow",
       "types": [
-        "i8",
-        "i16"
+        "i32",
+        "i64"
       ],
-      "evidence": "source"
+      "evidence": "engine_test"
     }
   ],
   "constructs": [
@@ -35,7 +35,9 @@
   "settings": {},
   "description": [
     "Shim. `SUM(BIGINT)` returns `HUGEINT` and never overflows at 64 bits, so DuckDB alone answers where the reference raises. `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan already guards this and raises (`test_sum.test:68`).",
-    "`avg` of integers returns `DOUBLE` in DuckDB (duckdb-avg-int). sverify's written SQL computes an `i64` average as the exact `HUGEINT` sum `//` the count (`int_avg` in `python/src/sverify/sql/duckdb.py`). DataFusion's `avg` is a double, so it refuses an integer one."
+    "`avg` of integers returns `DOUBLE` in DuckDB (duckdb-avg-int). sverify's written SQL computes an `i64` average as the exact `HUGEINT` sum `//` the count (`int_avg` in `python/src/sverify/sql/duckdb.py`). DataFusion's `avg` is a double, so it refuses an integer one.",
+    "Round 4 (probes): `sum` of TINYINT and SMALLINT is a HUGEINT, so 127 + 126 = 253 and 32767 + 32766 = 65533 without an error.",
+    "The docs are silent on `sum`'s result type, a HUGEINT for integers, and on overflow: a docs gap."
   ],
   "reference": [
     "Substrait and the reference: `sum` of `i8`…`i64` returns `i64?`; with `overflow` omitted, a sum outside `i64` raises.",
@@ -44,7 +46,7 @@
   ],
   "status": "deviation",
   "ledger_entries": 5,
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-01",
@@ -137,6 +139,26 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `sum` of `INTEGER` returns `HUGEINT` (three tests), and `sum` of `BIGINT` returns values past 2^63 (test_sum.test, aggregate_results.test), so neither overflows at 64 bits. No test at v2.0.0 sums `TINYINT` or `SMALLINT` and checks the type or a large result; those stay at the source reading. The replay ledgers (written at commit 18e34e66, before this round) show the shim at work: test_sum.test:68 and aggregate_results.test:84 disagree on the engine side because the written SQL raises."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "sum-narrow-int"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates.html", "note": "sum: no result type, HUGEINT or overflow stated (docs gap)"}
+      ]
     }
   ],
   "issues": [

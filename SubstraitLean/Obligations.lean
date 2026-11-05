@@ -386,7 +386,9 @@ theorem Rel.duckdb_shim_allowed {cat : Catalog} {r : Rel}
 /-- **`(duckdb, T r) ⊑ (reference, r)`**, for `T = Lowering.duckdb.lowerRel`
 (`docs/core-semantics.md`, "Soundness"): unless the translated plan raises,
 DuckDB's result is one the reference allows (`Rel.duckdb_shim_allowed`), and
-it raises only where the reference may (`Rel.lowerRel_raises`). -/
+it raises only where the reference may (`Rel.lowerRel_raises`). Its trusted
+base is `Rel.duckdb_sound`'s, aggregates included: DuckDB's double `SUM` and
+`AVG` are taken to be Lean's, which holds only within #85's bound (#633). -/
 theorem Rel.duckdb_refines {cat : Catalog} (r : Rel) :
     (¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat →
       r.AllowedP Profile.reference.table cat
@@ -402,7 +404,8 @@ open Lean Elab Command in
 run_cmd do
   let env ← getEnv
   let known (thm : String) : Bool :=
-    env.contains (`Substrait ++ thm.toName) || env.contains thm.toName
+    env.contains (`Substrait ++ thm.toName) || env.contains thm.toName ||
+      floatBoundsTheorems.contains thm
   for (t, obs) in engineTables do
     unless known (translationTheorem t.name) do
       throwError "{t.name}: no translation theorem {translationTheorem t.name}"

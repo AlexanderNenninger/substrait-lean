@@ -4,7 +4,7 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "Reproduces on Polars 2.1.0 (Python, macOS arm64). `Expr.log` and `LogSeries::log` are unchanged on main (35a2cb73, 2026-11-04), read in the source; not run there. No matching issue found; pola-rs/polars#23741 (closed) is the related ulp discussion for division.",
+  "status_note": "Reproduces on Polars 2.1.0, the latest release; `LogSeries::log` and `Expr.log` are unchanged on main (35a2cb73, 2026-11-04), read in the source. No matching issue found; [pola-rs/polars#23741](https://github.com/pola-rs/polars/issues/23741) (closed as not planned) is the related ulp discussion for division. Not a bug by Polars's own terms (2026-11-04): Polars's user guide says it \"does not provide guarantees on the error unless mentioned otherwise\" for floating point ([data types, floating point](https://docs.pola.rs/user-guide/concepts/data-types/overview/#floating-point)), and a maintainer quoted that passage to close [pola-rs/polars#14596](https://github.com/pola-rs/polars/issues/14596), so a one-ulp error is within what Polars documents. To be filed as a feature request: `log` with base e, 2 or 10 could call `ln`, `log2` or `log10`, which is also faster.",
   "upstream": [
     "https://github.com/pola-rs/polars/issues/23741"
   ],
@@ -36,6 +36,15 @@
         "polars": "main 35a2cb73fdf81d89b2117bec152c3530eb3e4146"
       },
       "note": "source only: log.rs and Expr.log unchanged. Duplicate search (float32 log, log precision, natural log float32, log ulp, log base e) found nothing matching."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0",
+        "numpy": "2.5.4",
+        "polars main": "35a2cb73fdf81d89b2117bec152c3530eb3e4146"
+      },
+      "note": "repros/PL-4.py on 2.1.0 (macOS arm64); main source only: crates/polars-ops/src/series/ops/log.rs, py-polars/src/polars/expr/expr.py."
     }
   ]
 }

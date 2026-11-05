@@ -25,11 +25,12 @@
   "description": [
     "The order preservation page guarantees the input order for a single-table `FROM`, `SELECT`, `WHERE`, `LIMIT`, `OFFSET`, `UNION ALL`, `COPY` and an empty `OVER ()`, and for the CSV, JSON and Parquet readers, while `preserve_insertion_order` is true. Joins, `UNION`, `GROUP BY`, whole-table aggregates, `USING SAMPLE` and scalar subqueries guarantee no order. With the setting off, any query without `ORDER BY` may reorder rows.",
     "The aggregates page marks the double versions of `sum`, `fsum` and `favg`, and `first`, `last`, `any_value`, `list` and `string_agg`, as affected by ordering, with non-deterministic results without an `ORDER BY` in the aggregate. Neither page names threads; the dependence on the thread count is implied by the parallel hash aggregate and goes to a probe (sum of doubles at threads 1 and N; existing facts duckdb-sum-double and duckdb-mode-ties).",
-    "Round 2 (source): `sum` of doubles is a plain running sum (`NumericSumOperation` with `RegularAdd`, `state.value += input`), and combining two states adds their sums. A grouped aggregate builds one hash table per thread, appends each thread's partitions to the global data in the order the threads finish (under a lock), and combines each partition's chunks in that order; an ungrouped aggregate combines each thread's state into the global one as the thread finishes. So with more than one thread the order of the double additions follows scheduling, and the last bits of a double `SUM` may change between runs. `fsum`/`kahan_sum` use Kahan summation, which narrows the difference. A probe at threads 1 and N goes to the next round."
+    "Round 2 (source): `sum` of doubles is a plain running sum (`NumericSumOperation` with `RegularAdd`, `state.value += input`), and combining two states adds their sums. A grouped aggregate builds one hash table per thread, appends each thread's partitions to the global data in the order the threads finish (under a lock), and combines each partition's chunks in that order; an ungrouped aggregate combines each thread's state into the global one as the thread finishes. So with more than one thread the order of the double additions follows scheduling, and the last bits of a double `SUM` may change between runs. `fsum`/`kahan_sum` use Kahan summation, which narrows the difference. A probe at threads 1 and N goes to the next round.",
+    "Round 4 (probes): at 2 and 8 threads a double `sum` over 1M rows changes its last digits between runs and connections, and a sort with ties (`ORDER BY k` with 10 distinct keys over 1M rows) returns the peers in a different order in every run at 4 threads; at 1 thread both repeat (duckdb-float-sum-order, duckdb-sort-ties)."
   ],
   "reference": "The reference compares results as bags (`List.Perm`), so row order outside `ORDER BY` is free. `sum_order` is an open option every route allows within the plan's bound; `first`/`any_value` without ordering and `tie_order` allow every order.",
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -118,6 +119,26 @@
         }
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests document that `first`, `list`, `string_agg` and `approx_top_k` without an ordering, and the order of grouped output, change with the thread count; they pin single-threaded runs or sort the output. No test pins the last bits of a double `SUM` across thread counts."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "sql": "CREATE TABLE s AS SELECT ((hash(i) % 2000000)::DOUBLE / 7.0) * (CASE WHEN i % 3 = 0 THEN 1e10 ELSE 1 END) v FROM range(1000000) r(i); SELECT sum(v)::VARCHAR, fsum(v)::VARCHAR FROM s  -- five runs per SET threads = 1, 2, 8",
+          "observed": "threads = 1: sum 4.765632474221446e+20 every run; threads = 2: three distinct sums (4.7656324742237205e+20, 4.765632474223721e+20, 4.7656324742237245e+20); threads = 8: four (4.765632474224197e+20 … 4.7656324742242796e+20), and three more over five fresh connections; fsum 4.765632474224275e+20 in every run"
+        },
+        {
+          "sql": "CREATE TABLE s AS SELECT ((hash(i) % 2000000)::DOUBLE / 7.0) * (CASE WHEN i % 3 = 0 THEN 1e10 ELSE 1 END) v FROM range(1000000) r(i); SELECT sum(v::FLOAT)::VARCHAR FROM s  -- five runs per SET threads = 1, 8",
+          "observed": "threads = 1: 4.76563247446436e+20 every run; threads = 8: five distinct sums (4.7656324744670446e+20 … 4.765632474467199e+20)"
+        },
+        {
+          "sql": "CREATE TABLE w AS SELECT i, i % 10 k FROM range(1000000) r(i); SELECT i FROM w ORDER BY k  -- and row_number, ntile(7), lag OVER (ORDER BY k), list(i ORDER BY k); five runs per SET threads = 1, 4",
+          "observed": "threads = 1: one result in five runs for each; threads = 4: five distinct results in five runs for each"
+        }
+      ],
+      "notes": "Scratch scripts outside the harness, since their results vary run to run."
     }
   ]
 }

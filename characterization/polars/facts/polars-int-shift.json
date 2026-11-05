@@ -12,7 +12,12 @@
     "shift_left",
     "shift_right"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": "Polars's Python expressions have no bit shift: `pl.Expr` has no `__lshift__` or `__rshift__`, and its `bitwise_*` methods are `and`, `or`, `xor` and bit counts. `shift` moves rows.",
   "reference": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`), with the range open (ST-1). A plan with them is refused on Polars or written as a multiplication or floor division by a power of two.",
   "status": "open",
@@ -45,6 +50,33 @@
         }
       ],
       "notes": "The API reference's expression operators list `&`, `|`, `^` and `~` as the bitwise operators, with no shift; the `bitwise_*` methods are `and`, `or`, `xor` and bit counts, and `Expr.shift` moves rows. The same holds for every integer type, so the shift rows are settled: Polars has no shift to characterize."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "int-shift"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observation reads the Python API (`dir(pl.Expr)`), which both engines share.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-plan/src/dsl/expr/mod.rs#L747-L773",
+          "note": "Operator: no shift; polars-sql has none either"
+        }
+      ]
     }
   ],
   "rows": [

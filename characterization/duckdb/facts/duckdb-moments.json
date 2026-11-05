@@ -18,8 +18,9 @@
   "settings": {},
   "description": [
     "`kurtosis`, `kurtosis_pop` and `skewness` of DOUBLEs (integers convert) raise an Out of Range Error (`Kurtosis is out of range!`, `SKEW is out of range!`) for a group with an infinity or NaN, or a value whose fourth power (third, for `skewness`) overflows: from about 1e77 for the kurtoses (1e76 passes, 1e77 raises) and later for `skewness` (1e100 passes, 1e300 raises).",
-    "`kurtosis` (of a sample) is NULL for fewer than 4 values, `kurtosis_pop` and `skewness` for fewer than 3, and all three for values that are all equal. `kurtosis_pop` of 3 values can be -1.5.",
-    "`sem` does not raise: it is NaN for an infinity or NaN, `inf` where the variance overflows, and `0.0` for one value or equal values."
+    "`kurtosis` (of a sample) is NULL for fewer than 4 values, `skewness` for fewer than 3, `kurtosis_pop` for fewer than 2, and all three for values that are all equal. `kurtosis_pop` of 2 values can be -2.0 (1.0 and 2.0), of 3 values -1.5. (Corrected 2026-11-04: this said `kurtosis_pop` is NULL for fewer than 3 values.)",
+    "`sem` does not raise: it is NaN for an infinity or NaN, `inf` where the variance overflows, and `0.0` for one value or equal values.",
+    "The docs are silent on the raises, the NULL thresholds and zero variance: a docs gap. No upstream test pins the raise on a NaN or infinite input; it may change between versions."
   ],
   "reference": [
     "Each is a black box (#326). Aggregates in the table may raise now (`Aggregate.raises`): `verify` reports a domain error for the three moments, on the groups `rawAggRaises` decides, as it does for a variance of an infinity (`AggFn.makesNan`). `sem` is not NULL over values and at least `+0.0`."
@@ -40,6 +41,42 @@
         {"sql": "SELECT kurtosis(x), kurtosis_pop(x), skewness(x), sem(x) FROM (VALUES (1), (1), (1), (1), (1)) t(x)", "observed": "NULL, NULL, NULL, 0.0"},
         {"sql": "SELECT sem(x) FROM (VALUES (1.0::DOUBLE), ('inf'::DOUBLE), (2), (3), (4)) t(x); SELECT sem(x) FROM (VALUES (1e300::DOUBLE), (-1e300), (2)) t(x)", "observed": "NaN; inf"},
         {"test": "python/tests/test_black_box.py::test_statistics_keep_their_laws_on_random_data"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/kurtosis.cpp#L88-L114", "note": "NULL for n <= 1 (kurtosis_pop) or n <= 3 (kurtosis) or M2 <= 0; raises 'Kurtosis is out of range!' on a non-finite result"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/skew.cpp#L73-L90", "note": "NULL for n <= 2 or M2 <= 0; raises 'SKEW is out of range!' on a non-finite result"}
+      ],
+      "notes": "Corrected the description: `kurtosis_pop` is NULL for fewer than 2 values (n ≤ 1), not fewer than 3."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "kurtosis, kurtosis_pop, skewness, sem: definitions only; silent on raises and NULL thresholds"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kurtosis.test#L24-L38", "note": "constant input → NULL; 2e304 … 2e307 → error"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kurtosis.test#L73-L76", "note": "kurtosis_pop of 1.0, 2.0 → -2.0: two values are enough"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_skewness.test#L24-L39", "note": "constant → NULL; -2e307, 0, 2e307 → error"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "select kurtosis_pop(x), skewness(x), kurtosis(x) from (values (1.0::double),(2.0)) t(x)", "observed": "(-2.0, None, None) on duckdb 2.0.0 (Python, macOS arm64)"}
       ]
     }
   ],

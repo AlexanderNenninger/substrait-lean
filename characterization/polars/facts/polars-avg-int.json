@@ -6,11 +6,14 @@
   "verdict": "a double: the `Float64` sum over the count",
   "area": "aggregates",
   "options": [
-    "avg_int_result"
+    "avg_int_result",
+    "empty_group_aggregates"
   ],
   "rows": [
     {"group": "agg.isum", "option": "avg_int_result", "types": ["i64"]},
-    {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i32"], "evidence": "engine_test"}
+    {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i32"], "evidence": "engine_test"},
+    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i64"]},
+    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i8", "i16", "i32"], "evidence": "source"}
   ],
   "constructs": [
     "mean",
@@ -24,7 +27,9 @@
   },
   "description": [
     "`mean` of integers is a `Float64` (the values cast to doubles and summed, polars-sum-float), so it rounds above 2⁵³ (`mean(2⁶², 2⁶², 1)` is 3.0744573456182584e18). `median` of integers is a `Float64` too. Both are NULL for no values.",
-    "Every integer width takes one generic path (`with_match_physical_numeric_polars_type`, `T: PolarsIntegerType`): each value becomes an `f64`, exactly for 8 to 32 bits, and the sum is an `f64`: pairwise ungrouped, Kahan per group in memory, value by value per group when streaming. A sum below 2⁵³ is exact in any order, so for `Int8` to `Int32` the mean is the exact quotient rounded once on either engine. Above 2⁵³ (`Int64`) the engines can round the sum differently."
+    "Every integer width takes one generic path (`with_match_physical_numeric_polars_type`, `T: PolarsIntegerType`): each value becomes an `f64`, exactly for 8 to 32 bits, and the sum is an `f64`: pairwise ungrouped, Kahan per group in memory, value by value per group when streaming. A sum below 2⁵³ is exact in any order, so for `Int8` to `Int32` the mean is the exact quotient rounded once on either engine. Above 2⁵³ (`Int64`) the engines can round the sum differently.",
+    "The docs are silent on the rounding above 2⁵³: a docs gap.",
+    "No upstream test pins the rounding above 2⁵³; it may change between versions."
   ],
   "reference": "`avg` of `i64` returns `i64` in Substrait; the reference follows the declared output type (`avg_int_result`, #209).",
   "status": "open",
@@ -91,6 +96,20 @@
       "notes": [
         "Pins that the mean of `Int8` to `Int32` is a `Float64` with the exact quotient on these inputs, on both engines, and that the sum does not overflow the input width.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.mean.html",
+          "note": "the example shows mean of an integer column as f64; silent on rounding above 2^53"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L3801-L3820"
+        }
       ]
     }
   ],

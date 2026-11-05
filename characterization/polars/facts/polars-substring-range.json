@@ -3,7 +3,7 @@
   "engine": "polars",
   "engine_version": "py-2.1.0",
   "title": "`str.slice` takes any 64-bit offset",
-  "verdict": "computes for offsets past 32 bits",
+  "verdict": "computes for offsets past 32 bits; a negative length raises",
   "area": "strings",
   "options": [
     "substring_range"
@@ -14,8 +14,17 @@
   "constructs": [
     "str.slice"
   ],
-  "settings": {"engine": "in-memory"},
-  "description": "No offset or length makes `str.slice` raise: an offset of 2⁴⁰ gives `''`, and `slice(-2⁴⁰, 2⁴¹)` the whole string.",
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "No offset makes `str.slice` raise: an offset of 2⁴⁰ gives `''`, and `slice(-2⁴⁰, 2⁴¹)` the whole string. A negative length raises (`InvalidOperationError`): the length is cast to `UInt64` strictly.",
+    "The docs are silent on out-of-range offsets and a negative length raising: a docs gap.",
+    "No upstream test pins offsets as large as 2⁴⁰; it may change between versions."
+  ],
   "reference": "`substring_range`: offsets outside `[-2³², 2³²)` raise (#336), as DuckDB does (duckdb-substring-range).",
   "status": "open",
   "evidence": "probe",
@@ -31,6 +40,63 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "substring-huge"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/namespace.rs#L915-L922",
+          "note": "offset cast to Int64; length strict-cast to UInt64, so a negative length raises"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/substring.rs#L172-L206",
+          "note": "offset >= len gives ''; a negative offset before the start is clamped with saturating arithmetic; never raises"
+        }
+      ],
+      "notes": "Corrected the description: it said no offset or length makes `str.slice` raise. A negative length raises (namespace.rs#L915-L922, pinned by test_string.py#L59-L61); the claim holds for offsets."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/string/test_string.py#L30-L61",
+          "note": "test_str_slice_expr: negative offsets; str.slice(0, -1) raises InvalidOperationError (in-memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/string/test_string.py#L225-L238",
+          "note": "test_str_slice_multibyte: offsets outside the string clip (in-memory)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "LazyFrame({'s':['abc']}).select(str.slice(0, -1)) raises InvalidOperationError (conversion from i32 to u64 failed) on in-memory and streaming"
+        }
+      ]
     }
   ],
   "issues": [

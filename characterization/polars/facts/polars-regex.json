@@ -15,11 +15,17 @@
     "str.replace",
     "str.replace_all"
   ],
-  "settings": {"engine": "in-memory"},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "Patterns are the Rust `regex` crate's: no lookaround and no backreferences (both raise `ComputeError` when the query runs), `\\d` and `\\w` are Unicode (`\\d` matches `٣`), POSIX classes are ASCII. An invalid pattern raises.",
     "`str.extract(p, g)` is NULL where the pattern does not match or the group did not take part; DuckDB's `regexp_extract` gives `''` there. `replace_all` replaces every match, including empty ones (`b*` in `aaa` gives `-a-a-a-`), and its replacement names groups as `$1` or `${1}`; `\\1` is literal. `replace` replaces the first match.",
-    "On ASCII, `replace_all` agrees with `regexp_replace(…, 'g')` on the probe's patterns, and `extract` with `regexp_extract` wherever the pattern matches."
+    "On ASCII, `replace_all` agrees with `regexp_replace(…, 'g')` on the probe's patterns, and `extract` with `regexp_extract` wherever the pattern matches.",
+    "No upstream test pins the refusal of lookaround and backreferences, Unicode `\\d` or empty-match replacement; they may change between versions."
   ],
   "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround either; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`).",
   "status": "open",
@@ -84,6 +90,118 @@
         }
       ],
       "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.extract('^(a+)(b)?', 2)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.extract('(a|ab)(c|bcd)?', 0)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.extract('(a*)*', 1)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.extract('x(?:a)(y)', 1)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.extract('.$', 0)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.extract('(b)', 1)"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.replace_all('a+', '-')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.replace_all('b*', '-')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "String.str.replace_all('$', '!')"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "regex-syntax"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "regex-invalid"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "regex-replace-refs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "regex-extract-nomatch"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/regex_cache.rs#L39-L51",
+          "note": "patterns compile with regex::RegexBuilder (regex 1.13.1)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/extract.rs#L72-L92",
+          "note": "extract: NULL on no match or a group that did not take part"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/namespace.rs#L652-L654",
+          "note": "replace_all: regex_replacen with n=0 ($1 / ${1} groups, empty matches replaced)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.str.extract.html",
+          "note": "regex crate syntax; null if the regex captures nothing"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.str.replace_all.html",
+          "note": "$ names a capture group; $$ for a literal $"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/string/test_string.py#L1039-L1071",
+          "note": "extract: no match → None (in-memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/string/test_string.py#L1328-L1384",
+          "note": "replace_all: $1 substitution; invalid regex raises ComputeError (in-memory)"
+        }
+      ]
     }
   ],
   "issues": [

@@ -40,7 +40,8 @@ namespace Substrait
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
   else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
-  -- Not modelled (Kahan's compensated sum): any double.
+  -- Not modelled here (Kahan's compensated sum, a constant run's product):
+  -- any double. `float-bounds` bounds both (`StdModel.Summed`).
   else True
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour. An
@@ -129,7 +130,8 @@ def SortedP (t : ProfileTable) (keys : List SortKey) (out : Relation) : Prop :=
 call may give another value than the reference's. -/
 def CallExtra (t : ProfileTable) (c : Functions.Ctor) : Prop :=
   ∃ r, Functions.rowOf c = some r ∧ ∃ os, Functions.groups.lookup r.group = some os ∧
-    ∃ o ∈ os, ∃ b ∈ t.allows r.group o [], b ∉ Profile.reference.table.allows r.group o []
+    ∃ o ∈ os, o ∉ aggInterpreted ∧ ∃ b ∈ t.allows r.group o [],
+      b ∉ Profile.reference.table.allows r.group o []
 
 /-- The functions `I` are ones `t` allows: each call gives the reference's
 value, unless `t` allows it another behaviour. -/
@@ -233,8 +235,8 @@ theorem SortedP.mono {keys : List SortKey} {out : Relation} :
     fun k hk hck => h _ _ _ _ (hcl k hk hck), hs⟩
 
 theorem Impl.Within.mono {I : Impl} : I.Within t → I.Within u := by
-  have hx : ∀ c, CallExtra t c → CallExtra u c := fun _ ⟨r, hr, os, hos, o, ho, b, hb, hn⟩ =>
-    ⟨r, hr, os, hos, o, ho, b, h _ _ _ _ hb, hn⟩
+  have hx : ∀ c, CallExtra t c → CallExtra u c := fun _ ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩ =>
+    ⟨r, hr, os, hos, o, ho, hi, b, h _ _ _ _ hb, hn⟩
   exact fun ⟨hu, hb⟩ => ⟨fun f v => (hu f v).imp_right (hx _),
     fun f v w => (hb f v w).imp_right (hx _)⟩
 
@@ -400,7 +402,7 @@ theorem Rel.allowedI_reference (cat : Catalog) :
   | .unnest r _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
 
 theorem CallExtra.not_reference (c : Functions.Ctor) : ¬CallExtra Profile.reference.table c :=
-  fun ⟨_, _, _, _, _, _, _, hb, hn⟩ => hn hb
+  fun ⟨_, _, _, _, _, _, _, _, hb, hn⟩ => hn hb
 
 theorem Impl.within_reference {I : Impl} : I.Within Profile.reference.table ↔ I = Impl.lean := by
   constructor

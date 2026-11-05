@@ -9,7 +9,15 @@
     "quantile_interp"
   ],
   "rows": [
-    {"group": "agg.quant", "option": "quantile_interp", "types": ["i64", "fp64", "decimal"]}
+    {
+      "group": "agg.quant",
+      "option": "quantile_interp",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
   ],
   "constructs": [
     "quantile_cont",
@@ -17,12 +25,13 @@
   ],
   "settings": {},
   "description": [
-    "`QUANTILE_CONT(x, q)` of `n` values computes `RN = (n − 1)·q` in doubles, takes the values `lo` and `hi` at positions `⌊RN⌋` and `⌈RN⌉` in order, and gives `lo` where they are one position, else `lo·(1 − d) + hi·d` with `d = RN − ⌊RN⌋`. Integers are cast to DOUBLE first and the result is a DOUBLE; DECIMAL gives a DECIMAL and DATE a TIMESTAMP, each interpolated in its own type; FLOAT stays FLOAT. `MEDIAN` of a number is `QUANTILE_CONT(x, 0.5)`.",
-    "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction such as `0.1` may land just off a whole position; the result then differs from the exact one by rounding only."
+    "`QUANTILE_CONT(x, q)` of `n` values computes `RN = (n − 1)·q` in doubles, takes the values `lo` and `hi` at positions `⌊RN⌋` and `⌈RN⌉` in order, and gives `lo` where they are one position, else, for a DOUBLE, `lo·(1 − d) + hi·d` with `d = RN − ⌊RN⌋`. Integers are cast to DOUBLE first and the result is a DOUBLE; DATE gives a TIMESTAMP. FLOAT and DECIMAL take DuckDB's generic interpolation, `lo + (hi − lo)·d` in doubles, cast back to the argument's type with a `static_cast`: FLOAT stays FLOAT, with another formula than DOUBLE's (and `hi − lo` can overflow), and a DECIMAL result truncates toward zero, where DuckDB's DECIMAL casts round half away from zero: `median` of 1.5 and 1.6 as DECIMAL(2,1) is 1.5, `quantile_cont` of -0.05 and 0.00 as DECIMAL(4,2) at 0.5 is -0.02, and DuckDB's own test gives 24.7 for 24.75. (Corrected 2026-11-04: this said each type is interpolated in its own type by DOUBLE's formula.) `MEDIAN` of a number is `QUANTILE_CONT(x, 0.5)`.",
+    "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction such as `0.1` may land just off a whole position; the result then differs from the exact one by rounding only.",
+    "The docs are silent on the formula per type and on the DECIMAL truncation: a docs gap. No upstream test pins the overshoot between equal neighbours, ±inf neighbours or large neighbours; it may change between versions."
   ],
   "reference": [
     "`AggFn.quantile true num scale` (`contValue`, #53): for the exact `q = num / 10^scale`, the doubles at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` in order; the one value where they coincide, else DuckDB's `lo·(1 − d) + hi·d` kept between `lo` and `hi` (`interpolate`). The reference allows any double between the two neighbours (`contAllowed`, `AggFn.Allowed`), so contracts know the result lies within the argument's range. Integers are converted to doubles first; DECIMAL, DATE and TIMESTAMP arguments are refused.",
-    "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf (NaN, where the reference keeps +inf). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]`, which gives the model's +inf there."
+    "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf: there DuckDB gives NaN and the reference raises (a NaN created from numbers, `AggFn.makesNan`, D21; before, the reference kept +inf, #561). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]` and raises where the interpolation is NaN and no value is."
   ],
   "status": "shimmed",
   "evidence": "probe",
@@ -84,6 +93,41 @@
         {
           "test": "python/tests/test_aggregate.py::test_quantile_cont_between_infinities_stays_between_them"
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/operator/interpolate.hpp#L18-L39", "note": "generic interpolation lo + (hi - lo) * d in double, LossyNumericCast back; only double, time, timestamp, hugeint, uhugeint and interval are specialised, so FLOAT and DECIMAL take the generic one"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/numeric_utils.hpp#L142-L144", "note": "LossyNumericCast is static_cast: a DECIMAL's interpolated unscaled value truncates toward zero"}
+      ],
+      "notes": "Corrected the description: only DOUBLE interpolates as `lo·(1 − d) + hi·d`; FLOAT and DECIMAL use `lo + (hi − lo)·d` and a cast back, so a DECIMAL result truncates toward zero."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "quantile_cont: Hyndman & Fan type 7; median: even counts averaged; silent on rounding and DECIMAL truncation"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_quantile_cont.test#L68-L76", "note": "DECIMAL(p,1) quantiles of 0..99 at 0.25, 0.5, 0.75 → 24.7, 49.5, 74.2: truncation of 24.75 and 74.25"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_median.test#L22-L40", "note": "median of 0..9999 (BIGINT, FLOAT, DOUBLE) → 4999.5"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "select quantile_cont(x, 0.5) from (values (-0.05::decimal(4,2)),(0.0::decimal(4,2))) t(x); select median(x) from (values (1.5::decimal(2,1)),(1.6::decimal(2,1))) t(x)", "observed": "-0.02; 1.5 (duckdb 2.0.0, macOS arm64)"}
       ]
     }
   ],

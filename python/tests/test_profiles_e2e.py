@@ -309,7 +309,10 @@ def test_c1_explicit_nulls_first(con) -> None:
         assert route_of(report, e).cls == "refines"
 
 
-@waits_for("step 1c: the lift writes UNSPECIFIED sort keys, read as the reference's NULLS LAST")
+@waits_for(
+    "the lift cannot tell `ORDER BY k` from `ORDER BY k NULLS LAST`: SQLGlot reads both as "
+    "nulls_first=False, so it states NULLS_LAST, which Polars then takes natively"
+)
 def test_c2_unspecified_null_order(con) -> None:
     """`ORDER BY k` without a NULL placement: the reference puts NULLs last
     (D8), as DuckDB does; Polars puts them first, so its translation states
@@ -329,7 +332,6 @@ def test_c2_unspecified_null_order(con) -> None:
     assert route_of(report, "polars").cls == "shim"
 
 
-@waits_for("D10 in Lean: a LIMIT over a sort with ties reported as undetermined")
 def test_c3_limit_over_ties_is_reported_and_refused_where_required(con) -> None:
     """A sort with ties, then `LIMIT`: which tied rows survive is open.
     The report says so, the route warns, and a run that must be repeatable
@@ -358,7 +360,10 @@ def test_c4_join_on_keys_with_nulls(con) -> None:
 # -- D: open options ---------------------------------------------------------
 
 
-@waits_for("step 1c: conditions on open picks and element orders proved over every choice")
+@waits_for(
+    "the contract checker reports every condition over an open pick or element order as "
+    "undetermined; it proves none over every choice yet"
+)
 def test_d1_open_picks_and_element_order(con) -> None:
     """`collect` and `first` without an order leave the elements' order and
     the pick open. Under `elements="multiset"` the plan runs on both
@@ -412,7 +417,10 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
 # -- F: routes between profiles ----------------------------------------------
 
 
-@waits_for("Profile.polars contracts: `--contract` with profile 'polars' (#444 3a)")
+@waits_for(
+    "a contract checked under Polars's own choices: `--contract` transfers the reference's "
+    "proof to Substrait only, and Polars's `%` floors where the reference truncates"
+)
 def test_f1_verified_under_polars_runs_natively(con) -> None:
     """Route (a): a plan verified under `Profile.polars` runs natively."""
     t = con.table("t")

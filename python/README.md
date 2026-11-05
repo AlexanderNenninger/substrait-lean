@@ -1,10 +1,11 @@
 # sverify
 
-Sverify proves a data pipeline's contracts before it runs, gets the same result on
-[DuckDB](https://duckdb.org), [Polars](https://pola.rs),
+Sverify proves a data pipeline's contracts before it runs, takes the proof to
+[DuckDB](https://duckdb.org) and [Polars](https://pola.rs) by a route that
+says what carries over, also runs it on
 [DataFusion](https://datafusion.apache.org) and
-[Spark](https://spark.apache.org), and keeps it up to date from Delta Lake and
-Iceberg change feeds.
+[Spark](https://spark.apache.org), and keeps the result up to date from Delta
+Lake and Iceberg change feeds.
 
 In sverify you write a data transformation as usual, in
 [Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
@@ -15,16 +16,31 @@ every possible input, or says why it can't ([what is proved](https://github.com/
 * Contracts are proved before the job runs. `not_null`, `unique`, ranges and
   relations between columns hold on every input that meets the
   preconditions, and division by zero, overflow and bad casts are ruled out
-  before the job runs. Preconditions are checked on the data, or proved from
-  Delta and Iceberg metadata. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#runtime-errors) list what is ruled out.
-* One plan gives the same answer on every engine. The checked plan runs
-  on DuckDB, Polars or DataFusion, or is written as Spark SQL, with NULLs,
-  integer division, NaN, ties and overflow spelled out. Where an engine can't
-  match, sverify refuses the plan. Differential tests against the Lean model
-  run in CI ([engine profiles](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md)).
+  before the job runs. The preconditions you state, and those Sverify
+  infers, are checked on each batch before the run, or proved from Delta
+  and Iceberg metadata, and a batch that breaks one is refused before
+  anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#runtime-errors) list what is ruled out.
+* A route takes the proof to the engine. `route="auto"` runs the plan on
+  DuckDB or Polars natively, through the reference's proved translation, or
+  by a check that the engine's choices are within the proof's, and names
+  the plan's class there: exact, equal under an observation the
+  postcondition states (a float tolerance is one), or exact or observed
+  after a proved shim. Where no route
+  applies, the plan is refused with the reason
+  ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB and
+  Polars are characterized fact by fact, with the evidence for each
+  ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
+* Postconditions say what the result's consumer observes:
+  `sv.equivalent(floats=sv.within(abs=1e-6))` accepts doubles within a
+  tolerance, rows as a sequence or a multiset, one zero. A sink states what a
+  rerun must reproduce (`reproducible=`), and a refresh whose engine can't
+  promise it is refused.
 * Results are kept up to date from the changes, by delta plans proved
   equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
+
+Eight [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md), from a first contract to
+Substrait's own semantics, show each of these in a few lines.
 
 We aim to make sverify an assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
@@ -42,15 +58,26 @@ decide what it does ([reference-semantics.md](https://github.com/AlexanderNennin
 3. Every engine can follow it with reasonable effort.
 4. Optimizations stay provable: an error means "may raise".
 
+The reference raises where engines disagree on an answer, so a verified plan
+runs alike on each: an operation on finite doubles that overflows to `±∞`,
+`power(-inf, 0.5)`, a `MEDIAN` between `-inf` and `+inf`, a constant
+subexpression that raises. `AND` and `OR` evaluate both operands, as DuckDB
+and Polars do. A plan verified under the reference creates no NaN and no
+`±∞` its inputs did not hold. `semantics="duckdb"` checks a plan under what
+DuckDB does, and `semantics="substrait"` under Substrait's extension
+YAMLs, open wherever they say nothing
+([the Substrait profile](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#the-substrait-profile)).
+
 Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
 
 | Tier | Engines | What it means today |
 |---|---|---|
 | 1 | DuckDB | Characterized as a diff against the reference model, with proved shims. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
-| 2 | Polars, Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. Polars and Spark aim for Tier 1. |
+| 2 | Polars | Characterized as a diff against the reference model on its streaming engine, with shims proved in Lean. Aims for Tier 1. |
+| 2 | Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. |
 | 3 | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), with no real account yet ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
-Work on the Tier 2 and 3 backends is paused until the generated lowerings land
+Work on DataFusion, Spark and Snowflake is paused until the generated lowerings land
 ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
 [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 
@@ -91,7 +118,11 @@ pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/rele
 ```
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
-documents every public function and class of the released version. For
+documents every public function and class of the released version, with the
+[examples](https://alexandernenninger.github.io/substrait-lean/examples/examples.html)
+and the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/):
+the upstream bugs and Substrait spec gaps sverify found, and each engine's
+characterization, searchable by id, engine, function and option. For
 coding agents, the site also publishes
 [skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for
 writing contracts, pipelines and engine code with sverify
@@ -122,7 +153,7 @@ def big_orders(orders):
 big = orders.pipe(big_orders)  # proved here, before any data runs
 big.refresh()  # computed, on DuckDB by default
 orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
-big.refresh(engine="polars")  # updated from the changes alone, on another engine
+big.refresh(engine="polars", route="auto")  # updated from the changes alone, on Polars
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 print(big_orders.last_report)
 # requires orders: (_.amount >= 0)
@@ -146,6 +177,10 @@ except VerificationError as e:
     print(e)
 # could not prove: (_.total > 5) (it may be FALSE on some rows)
 ```
+
+The [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) go on from here: SQL, inferred
+preconditions, routes and their classes, tolerances for doubles,
+reproducible sinks, engine profiles and Substrait's own semantics.
 
 ## Testing with pytest
 
@@ -273,15 +308,21 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
 * `sverify.testing` has `assert_contract`, `assert_engines_agree` and the
   Hypothesis strategy `cases` for pytest, with the plugin's `sv_engine` and
   `sv_source` fixtures.
+* `report.run(con, engine, route="auto")` runs a verified plan on an
+  engine by a route (`report.routes` records it, with its class), and
+  `refresh(engine=..., route="auto")` does the same for each node.
+  `sv.equivalent(...)` in `ensures` names the observation, and
+  `reproducible=` on a sink what a rerun must reproduce.
 * `sverify.engines` has the engines, SQL dialects and plans
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.
 
-Not supported yet: rolling means, `MIN` over a sliding frame, correlated
-scalar subqueries and parameters (`ibis.param`), among the operations
+Not supported yet: correlated scalar subqueries, unbound parameters
+(`sv.verify(expr, params={p: 10})` checks an `ibis.param` with its value),
+`sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
-[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md),
+[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md), [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 

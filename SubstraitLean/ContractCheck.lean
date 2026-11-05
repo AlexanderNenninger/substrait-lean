@@ -171,12 +171,20 @@ structure Report where
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
-  /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
+  /-- Does every window order its partitions totally (`Rel.windowsTotal`), and
+  every `FETCH` take rows an `ORDER BY` on a key fixes (`Rel.fetchesTotal`)? -/
   deterministic : Bool := true
+  /-- Does every window order its partitions totally? A `FETCH` over ties
+  keeps every proof (it takes some rows of an allowed order) and the written
+  SQL breaks its ties by input order; only a rerun may differ. -/
+  windowsTotal : Bool := true
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
   issues : List (Issue × Expr) := []
+  /-- The plan's constant errors (`Rel.constIssues`, #609, D21), also in
+  `issues`: they raise on any data, so no precondition rules them out. -/
+  constant : List (Issue × Expr) := []
   /-- The issues' expressions that sit inside an operand of an `AND` or `OR`
   (`Expr.underAndOr`): untrusted, for the report's suggestion (#604). -/
   underAndOr : List Expr := []
@@ -276,6 +284,7 @@ def Report.json (r : Report) : Json :=
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
+    ("windows_total", Lean.toJson r.windowsTotal),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
     ("relations", Json.arr (r.relations.map fun (op, d, n, g) =>
       Json.mkObj [("op", Lean.toJson op), ("depth", Lean.toJson d),
@@ -284,6 +293,7 @@ def Report.json (r : Report) : Json :=
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
         ("expr", Lean.toJson e.render),
+        ("constant", Lean.toJson (r.constant.contains (i, e))),
         ("under_and_or", Lean.toJson (r.underAndOr.contains e)),
         ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
           | some (_, _, b) => b.json
@@ -451,20 +461,29 @@ def check (input : Json) : Except String Report := do
           (a.render d, a.json d))
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
-  let deterministic := transform.all (·.root.windowsTotal cat A F inputKeys)
+  -- Windows that order their partitions totally, and `FETCH`es below an
+  -- `ORDER BY` on a key: otherwise a rerun may give other rows (D10).
+  let windowsDet := transform.all (·.root.windowsTotal cat A F inputKeys)
+  let deterministic := windowsDet && transform.all (·.root.fetchesTotal cat A F inputKeys)
   let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
   let keys ← match transform with
     | some p =>
       if !p.root.checkWF cat then throw "the transformation plan is not well-formed"
       let derived := p.root.keys cat A F inputKeys
-      pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
+      -- A key holds on whichever rows a `FETCH` takes: windows decide it.
+      pure (wanted.map fun k => (k, windowsDet && derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
   let raw := match transform with
     | some p => if p.root.checkWF cat then p.root.mayIssues cat A F T false else []
     | none => []
+  let constant := match transform with
+    | some p => if p.root.checkWF cat then p.root.constIssues else []
+    | none => []
   let issues := match transform with
     | some p =>
-      if p.root.checkWF cat then (p.root.issuesCapped cat A F T inputKeys caps perKey).eraseDups else []
+      if p.root.checkWF cat then
+        ((p.root.issuesCapped cat A F T inputKeys caps perKey) ++ constant).eraseDups
+      else []
     | none => []
   let rows := match transform with
     | some p => if p.root.checkWF cat then (p.root.capped cat A F inputKeys caps).maxRows else none
@@ -480,7 +499,7 @@ def check (input : Json) : Except String Report := do
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
   let guardFree := match transform with
-    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1.assumed)
+    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1.assumed) && constant.isEmpty
     | none => false
   let unchecked := match transform with
     | some p =>
@@ -505,6 +524,7 @@ def check (input : Json) : Except String Report := do
     facts
     keys
     deterministic
+    windowsTotal := windowsDet
     issues
     rows
     relations
@@ -514,6 +534,7 @@ def check (input : Json) : Except String Report := do
     inferredNes :=
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
+    constant
     underAndOr := issuesUnderAndOr transform issues
     unchecked }
 
