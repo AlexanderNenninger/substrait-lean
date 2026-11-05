@@ -925,7 +925,7 @@ class Field:
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
     "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
-    "black_box",
+    "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
@@ -1442,6 +1442,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "bool"
         case If(then=Lit(value=v), orelse=o):
             return _lean_lit_kind(v) if isinstance(o, Lit) else lean_expr_kind(o, cols)
+        case If(then=Un(op="raise"), orelse=o):
+            return lean_expr_kind(o, cols)
         case If(then=t):
             return lean_expr_kind(t, cols)
 
@@ -1463,6 +1465,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="list_elem", arg=a):
             k = expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else None
+        case Un(op="raise"):
+            return None
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
@@ -3201,6 +3205,9 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", a)
         case "is_null", [a]:
             return Un("is_null", a)
+        case "sverify_raise", [a, Lit(value=str() as message)]:
+            # A guard's failure (`UnFn.raise`): the lift's RANGE frame bounds.
+            return Un("raise", a, param=message)
         case "is_not_null", [a]:
             return Un("not", Un("is_null", a))
         case (("negate" | "subtract"), [a]):
@@ -4237,6 +4244,10 @@ class _Writer:
                 return d.not3(go(a, "bool"))
             case Un(op="is_null", arg=a):
                 return d.is_null(go(a))
+            case Un(op="raise", arg=a, param=message):
+                if ctx is None:
+                    raise Unsupported("a guard's failure of an unknown type")
+                return d.raise_(message, go(a), ctx)
             case Un(op="neg", arg=a):
                 if kind(a) == "interval":
                     return d.interval_sub(d.interval_lit(0), go(a))

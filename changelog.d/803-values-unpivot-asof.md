@@ -20,3 +20,14 @@ SQL and verify:
 
 The lift no longer runs SQLGlot's type annotation, which nothing read, and
 resolves each column type once: a lift takes a fifth less time.
+
+Three fixes the replay of the new queries turned up:
+
+- A RANGE frame's bounds overflow as in DuckDB: it computes `key ± offset`
+  in an integer key's type and raises where a bound leaves it; the plan
+  raises there too.
+- A GROUP BY key that is the alias of a constant (`7 AS k … GROUPING SETS
+  ((k), ())`) is that select column; the lift read the position `qualify`
+  writes for it as the constant 1.
+- `arg_min(x, y, n)` and `arg_max(x, y, n)`, which return lists of the `n`
+  best, are refused; the lift dropped `n`.
