@@ -374,6 +374,7 @@ def blackBoxJson : Lean.Json :=
   let obj := Lean.Json.mkObj
   let ty : BlackBox.Ty → Lean.Json
     | .int => "int" | .double => "double" | .str => "str" | .bool => "bool" | .date => "date"
+    | .timestamp => "timestamp"
     | .atom => "atom" | .doubles => "doubles" | .ints => "ints" | .any => "any"
   let law : BlackBox.Law → Lean.Json
     | .nonNull => Lean.Json.arr #["non_null"]

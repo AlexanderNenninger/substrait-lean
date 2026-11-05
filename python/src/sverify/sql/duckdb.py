@@ -85,8 +85,11 @@ class DuckDBDialect(Dialect):
         return f"CAST(trunc({x}) AS BIGINT)"
 
     def float_to_int_or_null(self, x: str) -> str:
-        # NULL where `float_to_int` raises.
-        return f"TRY_CAST(trunc({x}) AS BIGINT)"
+        # NULL where `float_to_int` raises: NaN (above every number in
+        # DuckDB), ±inf and outside [-2⁶³, 2⁶³), where no double lies within
+        # 2048 below -2⁶³. A range test, twice as fast as TRY_CAST.
+        lo, hi = "-9223372036854775808.0", "9223372036854775808.0"
+        return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST(trunc({x}) AS BIGINT) END)"
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)

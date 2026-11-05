@@ -47,7 +47,7 @@ class BlackBoxAgg(sge.Expression, sge.AggFunc):
 
 #: The type of each `black_box.Ty`.
 _TYPES: dict[str, Any] = {"int": dt.int64, "double": dt.float64, "str": dt.string,
-                          "bool": dt.boolean, "date": dt.date,
+                          "bool": dt.boolean, "date": dt.date, "timestamp": dt.timestamp(scale=6),
                           "doubles": dt.Array(value_type=dt.float64),
                           "ints": dt.Array(value_type=dt.int64)}  # fmt: skip
 
