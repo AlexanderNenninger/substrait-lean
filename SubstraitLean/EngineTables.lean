@@ -42,11 +42,13 @@ def prototypeSlice : List String :=
 
 /-- The theorems of the package `float-bounds` (Mathlib, kept out of the core)
 that rows name as evidence. The core cannot see them: the `run_cmd` at the
-end of `float-bounds/FloatBounds/Epsilon.lean` checks each of these names
-there, and `tests/test_float_bounds.py` that the two lists agree. -/
+ends of `float-bounds/FloatBounds/Epsilon.lean` and `ChanCorr.lean` check
+these names there, and `tests/test_float_bounds.py` that the two lists agree. -/
 def floatBoundsTheorems : List String :=
   ["FloatBounds.StdModel.epsilon_sum", "FloatBounds.StdModel.epsilon_avg",
-   "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel"]
+   "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel",
+   "FloatBounds.StdModel.core_var_chan", "FloatBounds.StdModel.core_cov_chan",
+   "FloatBounds.StdModel.core_corr_chan"]
 
 /-- Evidence from the facts or tests `ids`, none where empty. -/
 def Evidence.ofIds (ids : List String) : Evidence := if ids.isEmpty then .none else .tested ids
@@ -168,9 +170,12 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "case_sensitivity", .native []),
   (none, "string_positions", .native []),
   (none, "null_join_keys", .native []),
-  -- Welford with Chan's merge meets the generic properties the reference allows.
-  (none, "stat_algo", { ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
-    rerun := some { floats := .within "plan" } }),
+  -- Welford with Chan's merge meets the generic properties the reference allows:
+  -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
+  -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
+  -- by `core_stddev` of the variance), for IEEE rounding (`Mono`, `Grid`).
+  (none, "stat_algo", ({ ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
+    rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
