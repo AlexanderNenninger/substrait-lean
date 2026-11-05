@@ -496,8 +496,9 @@ def _size_limits() -> list[Target]:
     def model(row: tuple, ansi: bool) -> Any:
         x, s = row
         v = Decimal(x)
-        if len(v.as_tuple().digits) > 38:
-            # The text does not fit any Spark decimal.
+        if v.adjusted() + 1 > 38:
+            # More than 38 integer digits: no Spark decimal holds it
+            # (`Decimal.stringBigDecimalToDecimal`).
             return Raise("NUMERIC_OUT_OF_SUPPORTED_RANGE") if ansi else None
         # CAST(x AS DECIMAL(38, 2)): rounds half up to 2 places, then fits 38 digits or not.
         y = v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP, context=Context(prec=100))
