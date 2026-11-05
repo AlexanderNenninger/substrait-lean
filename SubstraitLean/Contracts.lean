@@ -4968,22 +4968,29 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .read t => useFacts (F t) (fit (cat t).arity (A t))
   | .values n _ => List.replicate n AVal.top
   | .filter r c => useFacts (r.facts cat F T ++ c.factsOf) (c.refine (r.aeval cat A F T sz))
-  | .project r es => r.aeval cat A F T sz ++
-      es.map (·.absF (r.aeval cat A F T sz) (r.facts cat F T ++ r.ratioPart cat A F T sz))
+  -- The input's description is bound once: inside the lambda it would be
+  -- recomputed per expression, exponentially in the depth of projections (#825).
+  | .project r es =>
+      let env := r.aeval cat A F T sz
+      let fs := r.facts cat F T ++ r.ratioPart cat A F T sz
+      env ++ es.map (·.absF env fs)
   | .emit r m => m.map ((r.aeval cat A F T sz).getD · AVal.top)
   | .cross a b => a.aeval cat A F T sz ++ b.aeval cat A F T sz
   | .join a b .inner on => on.refine (a.aeval cat A F T sz ++ b.aeval cat A F T sz)
   | .join a b .left _ => a.aeval cat A F T sz ++ (b.aeval cat A F T sz).map AVal.nullable
   | .fetch r _ _ => r.aeval cat A F T sz
   | .unionAll a b => List.zipWith AVal.join (a.aeval cat A F T sz) (b.aeval cat A F T sz)
-  | .window r _ _ fns => r.aeval cat A F T sz ++ fns.map (WinFn.abs sz (r.aeval cat A F T sz))
+  | .window r _ _ fns =>
+      let env := r.aeval cat A F T sz
+      env ++ fns.map (WinFn.abs sz env)
   | .semi a _ _ _ => a.aeval cat A F T sz
   | .orderBy r _ | .distinct r => r.aeval cat A F T sz
   | .unnest r c => (r.aeval cat A F T sz).set c AVal.top
   | .aggregate r gs ms =>
-      gs.map (·.absD (r.aeval cat A F T sz) (r.facts cat F T)) ++
-        ms.map fun m => Measure.abs (r.aeval cat A F T sz) (r.facts cat F T) m (!gs.isEmpty)
-          r.maxRows
+      let env := r.aeval cat A F T sz
+      let fs := r.facts cat F T
+      let n := r.maxRows
+      gs.map (·.absD env fs) ++ ms.map fun m => Measure.abs env fs m (!gs.isEmpty) n
 
 /-- Facts about an aggregate's rows that need its input's description: the
 `ratio` facts of its sums and counts, for the decimal `AVG`s a projection

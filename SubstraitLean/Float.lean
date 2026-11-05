@@ -108,6 +108,28 @@ def bitLen : Nat → Nat → Nat
   | 0, _ => 0
   | f + 1, n => if n = 0 then 0 else bitLen f (n / 2) + 1
 
+/-- `bitLen` through `Nat.log2`, which the runtime computes natively. The
+checker runs this one (`bitLen_csimp`); halving bit by bit took most of a
+decimal `CAST`'s abstract evaluation (#825). -/
+def bitLenFast (f n : Nat) : Nat := if n = 0 then 0 else min f (n.log2 + 1)
+
+theorem bitLen_eq_fast : ∀ f n, bitLen f n = bitLenFast f n
+  | 0, n => by by_cases hn : n = 0 <;> simp [bitLen, bitLenFast, hn]
+  | f + 1, n => by
+    by_cases hn : n = 0
+    · simp [bitLen, bitLenFast, hn]
+    · simp only [bitLen, hn, ↓reduceIte, bitLen_eq_fast f (n / 2), bitLenFast]
+      by_cases h2 : n / 2 = 0
+      · have h1 : n = 1 := by omega
+        subst h1
+        simp [Nat.log2_def]
+      · rw [Nat.log2_def n]
+        simp only [h2, show 2 ≤ n by omega, ↓reduceIte]
+        omega
+
+@[csimp] theorem bitLen_csimp : @bitLen = @bitLenFast := by
+  funext f n; exact bitLen_eq_fast f n
+
 /-- `n` rounded to 53 significant bits, as IEEE rounds an integer to a
 double (before the exponent's range is applied). From `2¹¹⁰⁰` on, far above
 every double, it is `2¹¹⁰⁰`. The fuel `min 1100 n` keeps the kernel from
