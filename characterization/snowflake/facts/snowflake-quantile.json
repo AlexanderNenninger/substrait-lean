@@ -1,0 +1,61 @@
+{
+  "id": "snowflake-quantile",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`PERCENTILE_CONT` interpolates at (n - 1)·p",
+  "verdict": "linear at (n - 1)·p; `PERCENTILE_DISC` keeps the type",
+  "area": "aggregates",
+  "options": [
+    "quantile_interp"
+  ],
+  "rows": [
+    {
+      "group": "agg.quant",
+      "option": "quantile_interp",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "MEDIAN",
+    "PERCENTILE_CONT",
+    "PERCENTILE_DISC"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`PERCENTILE_CONT(0.25)` of 1, 2, 4, 10 is 1.75 and `MEDIAN` 3: linear at position (n - 1)·p. `PERCENTILE_DISC(0.25)` is 1 and `(0.5)` 2, the first value whose cumulative share reaches p, of the input's type (`NUMBER(2,0)`). `MEDIAN` of integers is a `NUMBER` with 3 more places, of doubles a double.",
+  "reference": "`quantile_interp`: any value between the neighbours; the YAML's `quantile_disc`: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT median(x), percentile_cont(0.25) WITHIN GROUP (ORDER BY x), percentile_disc(0.25) WITHIN GROUP (ORDER BY x), percentile_cont(0.5) WITHIN GROUP (ORDER BY x), percentile_disc(0.5) WITHIN GROUP (ORDER BY x), SYSTEM$TYPEOF(median(x)), SYSTEM$TYPEOF(percentile_disc(0.5) WITHIN GROUP (ORDER BY x)) FROM (VALUES (1), (2), (4), (10)) AS s(x)",
+          "observed": "(3.000, 1.750, 1, 3.000, 2, NUMBER(5,3)[SB4], NUMBER(2,0)[SB1])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-quantiles"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-quantiles-double"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-agg-order-nan"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

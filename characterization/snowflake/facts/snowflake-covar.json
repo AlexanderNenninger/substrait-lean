@@ -1,0 +1,64 @@
+{
+  "id": "snowflake-covar",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`COVAR_*` of doubles cancel as the variances do",
+  "verdict": "`COVAR_SAMP(x, x)` 0 for 1e9-shifted data (SF-4)",
+  "area": "aggregates",
+  "options": [
+    "stat_algo"
+  ],
+  "rows": [
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "COVAR_SAMP",
+    "COVAR_POP"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`COVAR_SAMP(x, x)` of `1e9 + {4, 7, 13, 16}` is 0.0 where it is 30, and of `4, 7, 13, 16` 30. A single pair gives NULL (sample) and 0.0 (population).",
+  "reference": "`stat_algo` within `StatProps`. sverify's SQL does not write `COVAR_*`.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), covar_samp(x, x), corr(x, y), var_samp(x - 1000000000) FROM (VALUES ('1000000004'::FLOAT, '1000000009'::FLOAT), ('1000000007'::FLOAT, '1000000015'::FLOAT), ('1000000013'::FLOAT, '1000000027'::FLOAT), ('1000000016'::FLOAT, '1000000033'::FLOAT)) AS s(x, y)",
+          "observed": "(0.0, 0.0, 0.0, 0.0, NULL, 30.0)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-shifted"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-small"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-degenerate"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-corr-constant"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

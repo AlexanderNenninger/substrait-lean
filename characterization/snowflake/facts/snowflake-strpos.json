@@ -1,0 +1,59 @@
+{
+  "id": "snowflake-strpos",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`POSITION` is 1-based in characters, 0 without a match",
+  "verdict": "native; `''` is found at 1",
+  "area": "strings",
+  "options": [
+    "string_positions",
+    "negative_start"
+  ],
+  "rows": [
+    {
+      "group": "str.match",
+      "option": "string_positions",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "POSITION",
+    "CHARINDEX"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`POSITION('l' IN 'héllo')` is 3, `POSITION('z' IN 'abc')` 0, `POSITION('' IN 'abc')` and `POSITION('' IN '')` 1, and a NULL on either side gives NULL. A start argument from 2^31 on raises `out of range` (raise-set).",
+  "reference": "`strpos`: 1-based characters, 0 when absent, 1 for an empty needle: native. sverify's SQL writes `POSITION` as it is; it wrote the empty needle and the NULLs out in a `CASE` before this PR, as the docs do not say, which wrote both arguments three times.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT POSITION(n IN h) AS p FROM (VALUES (NULL, 'a'), ('a', NULL), (NULL, ''), ('', NULL), ('', ''), ('abc', ''), ('héllo', 'l'), ('abc', 'z')) AS s(h, n)",
+          "observed": "(NULL); (NULL); (NULL); (NULL); (1); (1); (3); (0)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-position-null-empty"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-position"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-position-wrap"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

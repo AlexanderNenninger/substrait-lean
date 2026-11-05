@@ -1,0 +1,62 @@
+{
+  "id": "snowflake-try-variants",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`TRY_CAST` takes text only",
+  "verdict": "`TRY_CAST` of a string; `TRY_TO_*`; `DIV0`; no `TRY` for arithmetic",
+  "area": "execution",
+  "options": [
+    "try_variants"
+  ],
+  "constructs": [
+    "TRY_CAST",
+    "TRY_TO_NUMBER",
+    "TRY_TO_DOUBLE",
+    "TRY_TO_DATE",
+    "TRY_TO_BOOLEAN",
+    "DIV0",
+    "DIV0NULL"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`TRY_CAST('abc' AS NUMBER)` is NULL, and so is a value that does not fit (`'1000'` to `NUMBER(3,0)`). `TRY_CAST` of a non-string is a compile error (`TRY_CAST(1.5::FLOAT AS NUMBER)`). `TRY_TO_NUMBER`, `TRY_TO_DOUBLE`, `TRY_TO_DATE`, `TRY_TO_BOOLEAN` give NULL on failure; `DIV0` and `DIV0NULL` give 0 for a zero divisor. Arithmetic has no non-raising form.",
+  "reference": "`cast` with `failure_behavior: RETURN_NULL` gives NULL. sverify's SQL writes a failing cast of a double as a `CASE` (`float_to_int_or_null`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT try_cast(x AS NUMBER(38,0)) FROM (VALUES (1.5::FLOAT)) AS s(x)",
+          "observed": "error 001065 (22023): SQL compilation error: Function TRY_CAST cannot be used with arguments of types FLOAT and NUMBER(38,0)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-try-non-string"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-try-functions"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-try-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-int"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-div0"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

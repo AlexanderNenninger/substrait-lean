@@ -1,0 +1,39 @@
+{
+  "id": "snowflake-bit-aggregates",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`BITAND_AGG` and friends skip NULLs",
+  "verdict": "two's complement; NULLs skipped",
+  "area": "aggregates",
+  "constructs": [
+    "BITAND_AGG",
+    "BITOR_AGG",
+    "BITXOR_AGG"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`BITAND_AGG`, `BITOR_AGG` and `BITXOR_AGG` of -8, 5, NULL are 0, -3, -3.",
+  "reference": "`bit_and`, `bit_or`, `bit_xor` skip NULLs: native (`bit_agg`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT bitand_agg(x), bitor_agg(x), bitxor_agg(x), SYSTEM$TYPEOF(bitand_agg(x)) FROM (VALUES (-8), (5), (NULL)) AS s(x)",
+          "observed": "(0, -3, -3, NUMBER(2,0)[SB1])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-bit"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

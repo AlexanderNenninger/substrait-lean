@@ -1,0 +1,31 @@
+{
+  "id": "SF-4",
+  "project": "snowflake",
+  "kind": "bug",
+  "version": "10.40.102",
+  "status": "confirmed",
+  "status_note": "Reproduces on Snowflake 10.40.102, grouped and ungrouped, on `VALUES` and on TPC-H's LINEITEM. The docs do not name the algorithm (https://docs.snowflake.com/en/sql-reference/functions/var_samp); the results are those of the one-pass textbook formula. Not searched in Snowflake's community forum yet.",
+  "summary": "`VAR_SAMP`, `VAR_POP`, `STDDEV_*`, `COVAR_*` and `CORR` of `FLOAT` values cancel catastrophically: for `1e9 + {4, 7, 13, 16}` the sample variance is 0.0 where it is 30, and `CORR` with a correlated column is NULL, as if a side were constant. Shifting the data changes the variance (LINEITEM's `l_quantity` gives 208.1, plus 1e9 gives 250.1, plus 1e12 gives 0.0). Welford's update, or a shift by any value of the group, keeps it exact.",
+  "repro": "SELECT VAR_SAMP(x), VAR_SAMP(x - 1e9), CORR(x, x * 2) FROM (VALUES ('1000000004'::FLOAT), ('1000000007'::FLOAT), ('1000000013'::FLOAT), ('1000000016'::FLOAT)) AS s(x);\n-- 0.0, 30.0, NULL\nSELECT VAR_SAMP(l_quantity::FLOAT), VAR_SAMP(l_quantity::FLOAT + 1e9), VAR_SAMP(l_quantity::FLOAT + 1e12) FROM snowflake_sample_data.tpch_sf1.lineitem;\n-- 208.11705078693723, 250.09872075240645, 0.0",
+  "handling": "sverify's SQL refuses `VAR_*` and `STDDEV_*` of doubles on Snowflake (`SnowflakeDialect.float_var`); it does not write `COVAR_*` or `CORR`. Of `NUMBER` values Snowflake computes exactly to six places.",
+  "found_by": "the Snowflake characterization: sverify_dev.probe_snowflake, probes agg-var-double, double-var-shifted, sample-var-shifted",
+  "files": [
+    "python/src/sverify/sql/snowflake.py",
+    "python/tests/test_sql_snowflake.py",
+    "characterization/snowflake/probes.json"
+  ],
+  "facts": [
+    "snowflake-var-stddev",
+    "snowflake-covar",
+    "snowflake-corr"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "snowflake": "10.40.102 (Snowflake CLI 3.32.1, X-Small warehouse)"
+      },
+      "note": "probes agg-var-double, agg-var-shifted, double-var-shifted, double-var-small, double-var-1e6, double-var-grouped, sample-var-shifted."
+    }
+  ]
+}

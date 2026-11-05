@@ -1,0 +1,107 @@
+{
+  "id": "snowflake-exec-evaluation-order",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`CASE`, `IFF` and `COALESCE` are lazy; untaken errors never raise",
+  "verdict": "branches see only their rows; constant errors in untaken branches do not raise",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "CASE",
+    "IFF",
+    "COALESCE",
+    "AND",
+    "WHERE"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`CASE WHEN b = 0 THEN NULL ELSE a / b END` and `IFF(b = 0, NULL, a / b)` never divide by zero; `WHERE b <> 0 AND a / b > 1` and `COALESCE(a, 1 / b)` do not either. A constant error in an untaken branch (`CASE WHEN 1 = 1 THEN 1 ELSE 1 / 0 END`) does not raise at compile time.",
+    "sverify's SQL raises with a cast of a message to the result's type, which Snowflake reports with the message (`Numeric value 'sverify: integer overflow: …' is not recognized`); it raises only in its branch, and is NULL on a NULL dependency. Casts to `NUMBER`, `FLOAT`, `BOOLEAN`, `DATE`, `TIMESTAMP_NTZ` and `TIME` raise; to `VARCHAR` it does not, so a string's raise goes through `NUMBER` (this PR)."
+  ],
+  "reference": "A branch's expression is evaluated only on its rows: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT CASE WHEN b = 0 THEN NULL ELSE a / b END FROM (VALUES (1, 0), (4, 2)) AS s(a, b)",
+          "observed": "(NULL); (2.000000)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-case-guard"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-iff-guard"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-where-guard"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-and-guard"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-coalesce-guard"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-constant-branch"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-branch"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-branch-taken"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-branch-null"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-float"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-bool"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-date"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-timestamp"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-time"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-varchar"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-raise-varchar-via-number"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

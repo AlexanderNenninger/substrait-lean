@@ -1,0 +1,112 @@
+{
+  "id": "snowflake-math-domain",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Math functions raise outside their domain, but trigonometry of inf is NaN",
+  "verdict": "`sqrt(-1)`, `ln(0)`, `asin(2)`, `pow(-8, 1/3)` raise; `sin(inf)` NaN; `atan2(0, 0)` 0",
+  "area": "doubles",
+  "options": [
+    "on_domain_error",
+    "on_log_zero"
+  ],
+  "rows": [
+    {
+      "group": "fp.elem",
+      "option": "on_domain_error",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.log",
+      "option": "on_domain_error",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.log",
+      "option": "on_log_zero",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "SQRT",
+    "LN",
+    "LOG",
+    "ASIN",
+    "ACOS",
+    "POWER",
+    "SIN",
+    "COS",
+    "TAN",
+    "ATAN2",
+    "EXP"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`SQRT(-1)`, `ASIN(2)`, `LN(-1)`, `POWER(-8, 0.333…)` raise `Invalid floating point operation`, and so does `LN(0)` (`log(e,0)`): no NaN, no NULL, no `-inf`.",
+    "`SIN(inf)`, `COS(inf)`, `TAN(inf)` are NaN. `POWER(10, 400)` and `EXP(1000)` are inf. `ATAN2(0, 0)` is 0, `ATAN2(-0.0, 0)` -0.0 and `ATAN2(0, -0.0)` π."
+  ],
+  "reference": "`on_domain_error: ERROR` and `on_log_zero: ERROR`: native for the roots, logs, `asin`, `acos` and `power`. The trigonometric functions of inf give NaN where the reference raises, and `atan2(0, 0)` is 0 where it raises (ST-2): sverify refuses Snowflake's elementary functions anyway (elem-rounding).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sqrt(a), asin(b), acos(b), power(a, 0.5), power(0::FLOAT, a) FROM (VALUES (-1::FLOAT, 2::FLOAT)) AS s(a, b)",
+          "observed": "error 100044 (22P01): Invalid floating point operation: sqrt(-1)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-math-domain"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-sqrt-neg"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-asin-out"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-ln-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-ln-neg"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-power-neg-frac"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-power-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-trig-inf"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-atan2-zero"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

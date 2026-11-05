@@ -1,0 +1,87 @@
+{
+  "id": "snowflake-raise-set",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Where Snowflake raises beyond the reference",
+  "verdict": "negative shifts and indexes, `POSITION` past 2^31, `TRY_CAST` of non-text, regex syntax, strings past 128 MiB",
+  "area": "errors",
+  "options": [
+    "raise_set"
+  ],
+  "constructs": [
+    "BITSHIFTLEFT",
+    "[]",
+    "POSITION",
+    "TRY_CAST",
+    "REGEXP_*",
+    "REPEAT",
+    "LAG",
+    "INTERSECT ALL"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "Snowflake raises where the reference gives a value: `BITSHIFTLEFT` by a negative count, an array index below 0, `POSITION` with a start from 2^31, a string past 128 MiB (`REPEAT('a', 134217729)`). Compile errors: `TRY_CAST` of a non-string, `ROUND` of a double with a mode, `DATE_PART(MILLISECOND …)`, `LAG` without `ORDER BY`, `INTERSECT ALL`, lookahead and inline flags in a pattern, `INTERVAL '1 day 2 hours'` without a comma. Every runtime error has a code and SQLSTATE; none is a crash.",
+  "reference": "The reference raises only where its options say (D2). sverify's SQL avoids each of these constructs or guards it.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT bitshiftleft(-8, -1)",
+          "observed": "error 100050 (22023): Invalid parameter value: -1. Reason: shift parameter must be greater or equal to zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-shift-negative"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-index-negative"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-position-wrap"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-size-limit-over"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-try-non-string"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-round-half-even"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-parts-millisecond"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-lag-no-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-intersect-all"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-regex-lookahead"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-interval-compound"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

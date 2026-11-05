@@ -1,0 +1,74 @@
+{
+  "id": "snowflake-corr",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`CORR` is NULL for one pair, a constant side, or data it cancels",
+  "verdict": "NULL for degenerate input, and for 1e9-shifted data (SF-4)",
+  "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "CORR",
+    "REGR_SLOPE"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`CORR` of one pair is NULL, and of a constant side. Of `x = 1e9 + {4, 7, 13, 16}` with a correlated `y`, it is NULL too: the cancelled variance is 0. `CORR(x, x)` of small integers is `1.0000000000000004`. `REGR_SLOPE` with a constant `y` is 0.",
+  "reference": "`stat_degenerate`: NULL for one pair or a constant side; `stat_algo` within `StatProps`. sverify's SQL does not write `CORR`.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), covar_samp(x, y), covar_pop(x, y), corr(x, y) FROM (VALUES (1::FLOAT, 2::FLOAT)) AS s(x, y)",
+          "observed": "(NULL, 0.0, NULL, NULL, 0.0, NULL)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-degenerate"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-corr-constant"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-shifted"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-int-type"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

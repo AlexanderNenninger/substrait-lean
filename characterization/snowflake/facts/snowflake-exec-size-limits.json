@@ -1,0 +1,58 @@
+{
+  "id": "snowflake-exec-size-limits",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Strings to 128 MiB; `NUMBER` to 38 digits, with values to 2^127",
+  "verdict": "`VARCHAR` 134,217,728; precision 38, values past it to 128 bits (SF-1)",
+  "area": "execution",
+  "options": [
+    "size_limits"
+  ],
+  "constructs": [
+    "VARCHAR",
+    "NUMBER",
+    "REPEAT"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "A string can be 134,217,728 characters (`REPEAT('a', 134217728)`); one more raises `String … is too long`. `VARCHAR`'s type is `VARCHAR(134217728)`. `NUMBER(39,0)` is a compile error, but a `NUMBER(38,0)` holds values to 2^127 (decimal-arith).",
+  "reference": "Decimals to 38 digits; strings without a limit in the model. sverify's SQL clamps substring positions below 2^31 by this limit.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT length(repeat('a', 16777216)), length(repeat('a', 134217728))",
+          "observed": "(16777216, 134217728)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-size-limit"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-size-limit-over"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "limits-number"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "limits-number-39"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "number-past-38-digits"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

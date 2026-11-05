@@ -1,0 +1,44 @@
+{
+  "id": "snowflake-literal-types",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Literals are exact numbers, trailing zeros dropped",
+  "verdict": "`1.50` is `NUMBER(2,1)`, `1e3` `NUMBER(4,0)`, `-0.0` 0",
+  "area": "frontend",
+  "options": [
+    "literal_types"
+  ],
+  "constructs": [
+    "literals"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`1` is `NUMBER(1,0)`, `2^63 - 1` `NUMBER(19,0)`, `1.5` and `1.50` `NUMBER(2,1)`, `1e3` `NUMBER(4,0)` and `1E-3` `NUMBER(4,3)`: exponent literals are exact numbers, not doubles. `-0.0` is `NUMBER(1,0)` 0. `'a'` is `VARCHAR(1)`, `TIMESTAMP '…'` `TIMESTAMP_NTZ(9)`.",
+  "reference": "Literals are typed in the plan. sverify's SQL casts double literals from text (`CAST('0.1' AS FLOAT)`) and writes temporal ones with their types.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT SYSTEM$TYPEOF(1), SYSTEM$TYPEOF(-1), SYSTEM$TYPEOF(9223372036854775807), SYSTEM$TYPEOF(18446744073709551616), SYSTEM$TYPEOF(99999999999999999999999999999999999999), SYSTEM$TYPEOF(1.5), SYSTEM$TYPEOF(1.50), SYSTEM$TYPEOF(1e3), SYSTEM$TYPEOF(1E-3), SYSTEM$TYPEOF('a'), SYSTEM$TYPEOF(TRUE), SYSTEM$TYPEOF(NULL), SYSTEM$TYPEOF(DATE '2024-01-05'), SYSTEM$TYPEOF(TIMESTAMP '2024-01-05 10:00:00'), SYSTEM$TYPEOF(X'AB'), SYSTEM$TYPEOF(-0.0)",
+          "observed": "(NUMBER(1,0)[SB1], NUMBER(1,0)[SB1], NUMBER(19,0)[SB8], NUMBER(20,0)[SB16], NUMBER(38,0)[SB16], NUMBER(2,1)[SB1], NUMBER(2,1)[SB1], NUMBER(4,0)[SB2], NUMBER(4,3)[SB1], VARCHAR(1)[LOB], BOOLEAN[SB1], NULL[LOB], DATE[SB4], TIMESTAMP_NTZ(9)[SB16], BINARY(1)[LOB], NUMBER(1,0)[SB1])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "literal-types"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-literals"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

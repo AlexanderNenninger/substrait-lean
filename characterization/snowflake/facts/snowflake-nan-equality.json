@@ -1,0 +1,71 @@
+{
+  "id": "snowflake-nan-equality",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "NaN equals NaN, in comparisons, keys and joins",
+  "verdict": "`NAN_IS_NAN` everywhere: one group, joins match",
+  "area": "doubles",
+  "options": [
+    "nan_equality",
+    "nan_zero_grouping"
+  ],
+  "rows": [
+    {
+      "group": "cmp",
+      "option": "nan_equality",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "=",
+    "GROUP BY",
+    "DISTINCT",
+    "JOIN",
+    "EQUAL_NULL"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`'NaN'::FLOAT = 'NaN'::FLOAT` is TRUE and `<>` FALSE. Every NaN (`'NaN'`, `'nan'`, `'-NaN'`, `inf - inf`) is one group, `COUNT(DISTINCT …)` counts one, a join on NaN keys matches, and `INTERSECT` keeps it.",
+  "reference": "`nan_equality: NAN_IS_NAN`: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a = b, a < c, a > c, a = a, a <> a, equal_null(a, b), greatest(a, c), least(a, c), SYSTEM$TYPEOF(greatest(a, c)) FROM (VALUES ('NaN'::FLOAT, 'NaN'::FLOAT, 'inf'::FLOAT)) AS s(a, b, c)",
+          "observed": "(True, False, True, True, False, True, NaN, inf, FLOAT[DOUBLE])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-nan-equality"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-nan-group-safe"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-count-distinct-nan-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "join-nan-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-nan-zero-values"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

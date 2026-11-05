@@ -1,0 +1,53 @@
+{
+  "id": "snowflake-kleene",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`AND`, `OR`, `NOT` are Kleene",
+  "verdict": "three-valued logic; `BOOLAND_AGG` skips NULLs",
+  "area": "nulls",
+  "options": [
+    "three_valued_logic"
+  ],
+  "constructs": [
+    "AND",
+    "OR",
+    "NOT",
+    "IS DISTINCT FROM",
+    "BOOLAND_AGG",
+    "BOOLOR_AGG"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "All nine pairs give Kleene's tables (`NULL AND FALSE` FALSE, `NULL OR TRUE` TRUE). `BOOLAND_AGG` and `BOOLOR_AGG` skip NULLs and are NULL over NULLs only. There is no `IS TRUE`; `COALESCE(x, FALSE)` stands for it.",
+  "reference": "Kleene logic; `bool_and`, `bool_or` skip NULLs: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a, b, a AND b, a OR b, NOT a, a = b, a IS DISTINCT FROM b, equal_null(a, b), coalesce(a, FALSE) FROM (VALUES (TRUE, TRUE), (TRUE, FALSE), (TRUE, NULL::BOOLEAN), (FALSE, TRUE), (FALSE, FALSE), (FALSE, NULL::BOOLEAN), (NULL::BOOLEAN, TRUE), (NULL::BOOLEAN, FALSE), (NULL::BOOLEAN, NULL::BOOLEAN)) AS s(a, b)",
+          "observed": "(True, True, True, True, False, True, False, True, True); (True, False, False, True, False, False, True, False, True); (True, NULL, NULL, True, False, NULL, True, False, True); (False, True, False, True, True, False, True, False, False); (False, False, False, False, True, True, False, True, False); (False, NULL, False, NULL, True, NULL, True, False, False); (NULL, True, NULL, True, NULL, NULL, True, False, False); (NULL, False, False, NULL, NULL, NULL, True, False, False); (NULL, NULL, NULL, NULL, NULL, NULL, False, True, False)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "kleene"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bool-aggregates-nulls"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bool-aggregates-only-nulls"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

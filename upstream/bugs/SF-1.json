@@ -1,0 +1,29 @@
+{
+  "id": "SF-1",
+  "project": "snowflake",
+  "kind": "bug",
+  "version": "10.40.102",
+  "status": "confirmed",
+  "status_note": "Reproduces on Snowflake 10.40.102. The docs give `NUMBER` a precision of at most 38 digits (https://docs.snowflake.com/en/sql-reference/data-types-numeric), and `NUMBER(39,0)` is a compile error, but arithmetic results, and casts of them, hold values to 2^127 with 39 digits. Not searched in Snowflake's community forum yet.",
+  "summary": "Arithmetic on `NUMBER(38,0)` returns values past 38 digits without an error: `10^38 - 1 + 1` is `10^38`, typed `NUMBER(38,0)`, and a cast of it to `NUMBER(38,0)` succeeds. Only results past 128 bits (2^127) raise. A column of a declared precision can so hold a value it cannot represent, and the error that should come at 38 digits comes later or not at all.",
+  "repro": "SELECT a + b, SYSTEM$TYPEOF(a + b), (a + b)::NUMBER(38,0), LENGTH(TO_VARCHAR(a + b))\nFROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0), 1::NUMBER(38,0))) AS s(a, b);\n-- 100000000000000000000000000000000000000, NUMBER(38,0)[SB16], 100000000000000000000000000000000000000, 39\nSELECT 2::NUMBER(39,0);\n-- SQL compilation error: Invalid number precision: 39. Must be between 0 and 38.\nSELECT a * b FROM (VALUES (18446744073709551616::NUMBER(38,0), 18446744073709551616::NUMBER(38,0))) AS s(a, b);\n-- Number out of representable range: type FIXED[SB16](38,0), value 3.40282e+38",
+  "handling": "sverify's SQL checks every integer result against the 64-bit range, far inside 38 digits, and does not write decimals for Snowflake yet (#27). When it does, each result needs a check against its declared precision.",
+  "found_by": "the Snowflake characterization: sverify_dev.probe_snowflake, probes number-past-38-digits, number-past-38-digits-cast, number-past-128-bits, decimal-add-overflow",
+  "files": [
+    "characterization/snowflake/probes.json",
+    "characterization/snowflake/facts/snowflake-decimal-arith.json"
+  ],
+  "facts": [
+    "snowflake-decimal-arith",
+    "snowflake-exec-size-limits"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "snowflake": "10.40.102 (Snowflake CLI 3.32.1, X-Small warehouse)"
+      },
+      "note": "probes number-past-38-digits, number-past-38-digits-cast, number-past-38-digits-compare, number-past-128-bits, number-past-38-digits-sum, decimal-add-overflow, number38-multiply-overflow, limits-number-39."
+    }
+  ]
+}

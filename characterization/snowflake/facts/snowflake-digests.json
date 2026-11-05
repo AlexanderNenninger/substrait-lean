@@ -1,0 +1,43 @@
+{
+  "id": "snowflake-digests",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Digests are hex of the UTF-8 bytes",
+  "verdict": "`MD5`, `SHA1`, `SHA2(…, 256 | 512)`, lower-case hex",
+  "area": "strings",
+  "options": [
+    "digests"
+  ],
+  "constructs": [
+    "MD5",
+    "SHA1",
+    "SHA2",
+    "MD5_BINARY"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`MD5('abc')` is `900150983cd24fb0d6963f7d28e17f72`; `MD5('é')` `66ddcd97…`, the digest of its UTF-8 bytes `C3 A9`; `SHA2('abc', 256)` and `SHA2('abc', 512)` are the standard values, in lower-case hex. NULL gives NULL.",
+  "reference": "`md5`, `sha256`: lower-case hex of the UTF-8 bytes: native (`SHA2(s, 256)`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT md5('abc'), md5('é'), sha1('abc'), sha2('abc', 256), sha2('é', 256), sha2('abc', 512), md5(NULL), md5_binary('abc')",
+          "observed": "(900150983cd24fb0d6963f7d28e17f72, 66ddcd97cfdeabb2f6fb8a999b4bc76f, a9993e364706816aba3e25717850c26c9cd0d89d, ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad, 4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c, ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f, NULL, 900150983cd24fb0d6963f7d28e17f72)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-digests"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

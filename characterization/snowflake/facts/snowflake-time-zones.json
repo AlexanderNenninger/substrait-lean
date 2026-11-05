@@ -1,0 +1,61 @@
+{
+  "id": "snowflake-time-zones",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Time zones follow the session; gaps and overlaps resolve inconsistently",
+  "verdict": "`CONVERT_TIMEZONE` moves a gap forward, a `TIMESTAMP_LTZ` cast backward; overlaps take the earlier instant",
+  "area": "temporal",
+  "options": [
+    "time_zones",
+    "settings"
+  ],
+  "constructs": [
+    "CONVERT_TIMEZONE",
+    "TIMESTAMP_LTZ",
+    "TIMESTAMP_TZ"
+  ],
+  "settings": {
+    "TIMEZONE": [
+      "UTC",
+      "America/New_York"
+    ],
+    "TIMESTAMP_DAY_IS_ALWAYS_24H": false
+  },
+  "description": [
+    "`TIMESTAMP_LTZ` reads and prints in the session's `TIMEZONE`. In New York's gap, `CONVERT_TIMEZONE('America/New_York', 'UTC', '2024-03-10 02:30:00')` is `07:30` UTC (03:30 EDT, forward), but `'2024-03-10 02:30:00'::TIMESTAMP_LTZ` under that session zone is `01:30 -05:00` (backward). In the overlap, both take the earlier instant (`01:30 -04:00`, `05:30` UTC).",
+    "`TIMESTAMP_TZ` values compare as instants. `DATEADD(DAY, 1, …)` keeps the wall-clock time across a DST change (`TIMESTAMP_DAY_IS_ALWAYS_24H` is false)."
+  ],
+  "reference": "Time zones are outside the model: sverify's SQL writes `TIMESTAMP_NTZ` only, which no session parameter changes.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT convert_timezone('America/New_York', 'UTC', '2024-03-10 02:30:00'::TIMESTAMP_NTZ), convert_timezone('America/New_York', 'UTC', '2024-11-03 01:30:00'::TIMESTAMP_NTZ), convert_timezone('UTC', 'America/New_York', '2024-03-10 07:30:00'::TIMESTAMP_NTZ), convert_timezone('Europe/Berlin', '2024-03-31 01:30:00 +00:00'::TIMESTAMP_TZ)",
+          "observed": "(2024-03-10T07:30:00, 2024-11-03T05:30:00, 2024-03-10T03:30:00, 2024-03-31T03:30:00+02:00)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-time-zones"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-ltz-session"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-tz-compare"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-day-is-24h"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

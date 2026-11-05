@@ -1,0 +1,78 @@
+{
+  "id": "snowflake-window-values",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`FIRST_VALUE` and `LAST_VALUE` default to the whole partition",
+  "verdict": "aggregates take SQL's default frame; value functions the partition; `LAG` needs `ORDER BY`",
+  "area": "windows",
+  "options": [
+    "default_window_frame",
+    "tie_order",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "group": "win.value",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "SUM OVER",
+    "FIRST_VALUE",
+    "LAST_VALUE",
+    "LAG",
+    "LEAD"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "With an `ORDER BY` and no frame, `SUM` and `COUNT` take `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, peers included. `FIRST_VALUE` and `LAST_VALUE` instead take the whole partition: `LAST_VALUE(x) OVER (PARTITION BY p ORDER BY x)` is the partition's last value on every row, where SQL's default frame gives the current peer group's.",
+    "`LAG` and `LEAD` need an `ORDER BY`, take the default past the partition, and `IGNORE NULLS`. `RANGE` frames with offsets work on numbers."
+  ],
+  "reference": "Window functions over the frame the plan states. sverify's SQL writes every frame out (`over_frame`) and every `LAG`, `LEAD` with an `ORDER BY`.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT p, x, sum(x) OVER (PARTITION BY p ORDER BY x), count(*) OVER (PARTITION BY p ORDER BY x), sum(x) OVER (PARTITION BY p), first_value(x) OVER (PARTITION BY p ORDER BY x), last_value(x) OVER (PARTITION BY p ORDER BY x) FROM (VALUES (1, 1), (1, 1), (1, 2), (1, NULL), (2, 5)) AS s(p, x) ORDER BY p, x NULLS LAST",
+          "observed": "(1, 1, 2, 2, 4, 1, NULL); (1, 1, 2, 2, 4, 1, NULL); (1, 2, 4, 3, 4, 1, NULL); (1, NULL, 4, 4, 4, 1, NULL); (2, 5, 5, 1, 5, 5, 5)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-default-frame"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-lag-lead"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-lag-no-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-ignore-nulls"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-range-frame"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-sum-int-type"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

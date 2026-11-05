@@ -1,0 +1,124 @@
+{
+  "id": "snowflake-var-stddev",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`VAR_*` and `STDDEV_*` of doubles cancel catastrophically",
+  "verdict": "the textbook formula: 0 for 1e9 + {4, 7, 13, 16}; NUMBER inputs exact (SF-4)",
+  "area": "aggregates",
+  "options": [
+    "stat_algo",
+    "stat_degenerate",
+    "rounding"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "VAR_SAMP",
+    "VAR_POP",
+    "VARIANCE",
+    "STDDEV",
+    "STDDEV_SAMP",
+    "STDDEV_POP"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Of the doubles `1e9 + 4`, `1e9 + 7`, `1e9 + 13`, `1e9 + 16`, `VAR_SAMP` and `VAR_POP` are 0.0 and so is `STDDEV_SAMP`; the sample variance is 30, which `VAR_SAMP(x - 1e9)` gives. The same values near `1e6` give 30. Over LINEITEM, `VAR_SAMP(l_quantity::FLOAT)` is `208.117…`, plus 1e9 `250.098…`, plus 1e12 `0.0`. That is the one-pass `Σx² − (Σx)²/n`, grouped or not. See [SF-4](../../../upstream/bugs/SF-4.json).",
+    "Of `NUMBER` values the result is a `NUMBER(38,6)`, exact to its scale (30.000000); `STDDEV` of integers is a double. A sample of one value is NULL, its population variance 0."
+  ],
+  "reference": "`stat_algo`: any algorithm within `StatProps`' bounds, which the textbook formula is not (the bound here is about 5·10⁻⁴). sverify's SQL refuses `VAR_*` and `STDDEV_*` of doubles on Snowflake (`SnowflakeDialect.float_var`, this PR).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), stddev_pop(x), variance(x), stddev(x), SYSTEM$TYPEOF(var_samp(x)) FROM (VALUES (1e9 + 4), (1e9 + 7), (1e9 + 13), (1e9 + 16)) AS s(x)",
+          "observed": "(30.000000, 22.500000, 5.477225575051661, 4.743416490252569, 30.000000, 5.477225575051661, NUMBER(38,6)[SB16])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-double"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-shifted"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-shifted"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-small"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-1e6"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-var-grouped"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-var-shifted"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-degenerate"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-var-int-type"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "id": "snowflake-null-keys",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "NULL keys: one group; `=` does not match them",
+  "verdict": "`=` skips NULLs; `IS NOT DISTINCT FROM`, `EQUAL_NULL` match",
+  "area": "nulls",
+  "options": [
+    "null_join_keys"
+  ],
+  "rows": [
+    {
+      "option": "null_join_keys",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "JOIN",
+    "GROUP BY",
+    "IS NOT DISTINCT FROM",
+    "EQUAL_NULL",
+    "IN"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "A join on `=` leaves NULL keys out; `IS NOT DISTINCT FROM` and `EQUAL_NULL` match them. `GROUP BY` makes one NULL group. `x NOT IN (2, NULL)` is NULL.",
+  "reference": "NULL keys form one group; `equal` does not match NULLs: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT l.k, r.k FROM (VALUES (1), (NULL)) AS l(k) JOIN (VALUES (1), (NULL)) AS r(k) ON l.k = r.k",
+          "observed": "(1, 1)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "null-join-keys"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "null-join-keys-not-distinct"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "null-join-equal-null"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "null-group"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "null-in-list"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

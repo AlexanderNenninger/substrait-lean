@@ -1,0 +1,64 @@
+{
+  "id": "snowflake-regex",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Regular expressions are POSIX with Perl's classes, ASCII only",
+  "verdict": "no lookaround or inline flags; `\\d`, `\\w`, `\\s` ASCII; NULL without a match",
+  "area": "strings",
+  "options": [
+    "regex_dialect",
+    "case_sensitivity",
+    "raise_set"
+  ],
+  "constructs": [
+    "REGEXP_LIKE",
+    "REGEXP_INSTR",
+    "REGEXP_SUBSTR",
+    "REGEXP_REPLACE"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Patterns are POSIX extended with `\\d`, `\\w`, `\\s`, `\\b` and `[[:alpha:]]`; `\\d` does not match `٣`, `\\w` not `é`, `\\s` not a no-break space. Lookahead (`(?=…)`) and inline flags (`(?i)`) are invalid and raise; flags go in the parameter argument. An invalid pattern raises.",
+    "`REGEXP_LIKE` matches the whole string, `REGEXP_INSTR` searches. `REGEXP_SUBSTR` without a match is NULL. `REGEXP_REPLACE` takes `\\\\1` for a group; `$0` is literal."
+  ],
+  "reference": "`regex_dialect`: RE2, `''` without a match. sverify's SQL writes only searches (`REGEXP_INSTR(…) > 0`) and raises on non-ASCII text for patterns with `\\d`, `\\w` or `\\s`; extraction and replacement are refused.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT regexp_instr('aé1', '\\\\d'), regexp_instr('é', '\\\\w'), regexp_instr('\\u00a0', '\\\\s'), regexp_instr('٣', '\\\\d'), regexp_like('abc', 'b'), regexp_like('abc', '.*b.*'), regexp_replace('abc', '(b)', '[\\\\1]'), regexp_replace('abc', 'b', '$0'), regexp_substr('abc', 'z')",
+          "observed": "(3, 0, 0, 0, False, True, a[b]c, a$0c, NULL)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-regex"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-regex-dialect"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-regex-lookahead"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-regex-invalid"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-match-case"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "id": "snowflake-frontend-syntax",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Snowflake's SQL text: escapes, comments, intervals",
+  "verdict": "backslash escapes in literals; `//` comments; interval strings need commas",
+  "area": "frontend",
+  "options": [
+    "literal_types"
+  ],
+  "constructs": [
+    "string literals",
+    "//",
+    "INTERVAL"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "A backslash escapes in a quoted literal (`'a\\\\b'` has 3 characters, `'\\n'` is a newline, `'\\u00e9'` `é`); `$$…$$` is raw. `//` starts a comment, like `--`. Unquoted identifiers fold to upper case.",
+    "`INTERVAL '1 day 2 hours'` is a syntax error, `INTERVAL '1 day, 2 hours'` works. `INTERVAL '1.5 seconds'` adds 2 seconds, rounded, where `'1500 milliseconds'` adds 1.5. `TIMESTAMP - TIMESTAMP` is an `INTERVAL DAY TO SECOND`, which the Python connector does not serialise to JSON."
+  ],
+  "reference": "Not in the model. sverify's SQL doubles backslashes and writes control characters as escapes (`str_lit`), quotes every identifier, writes no `//` and no intervals (`DATEADD` instead).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT length('a\\\\b'), length('a\\nb'), 'a\\tb', length('\\u00e9'), length('it''s'), $$a\\nb$$",
+          "observed": "(3, 3, a\tb, 1, 4, a\\nb)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-literal-escapes"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "comment-slashes"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "identifiers-case"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-interval-units"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-interval-compound"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-interval-fraction"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-minus-ts"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-str-lit"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "id": "snowflake-first-last",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Picks among ties take the first arrival, but arrival varies",
+  "verdict": "`MODE`, `MIN_BY`, `ANY_VALUE`, `ARRAY_AGG` follow arrival order; not stable on tables",
+  "area": "aggregates",
+  "options": [
+    "tie_pick",
+    "tie_order",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "group": "agg.pick",
+      "option": "tie_pick",
+      "types": [
+        "any"
+      ]
+    },
+    {
+      "group": "agg.seq",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "MODE",
+    "ANY_VALUE",
+    "MIN_BY",
+    "MAX_BY",
+    "ARRAY_AGG",
+    "LISTAGG"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Over a small `VALUES`, `MODE` of a tie takes the first value, `MIN_BY` and `MAX_BY` the first row of a tie, `ANY_VALUE` the first row, and `ARRAY_AGG` without an order, or with `WITHIN GROUP (ORDER BY …)` over ties, the input order. Over a table, arrival follows the parallel scan (sort-stability).",
+    "`LISTAGG` of no rows is `''` and `ARRAY_AGG` `[]`, not NULL."
+  ],
+  "reference": "`tie_pick`, `tie_order`: any row, any order; `string_agg` of no values is NULL. sverify's SQL does not write `first`, `last` or `string_agg` for Snowflake.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT mode(x), any_value(y), min_by(y, x), max_by(y, x), array_agg(y) FROM (VALUES (1, 'a'), (2, 'b'), (1, 'c'), (2, 'd')) AS s(x, y)",
+          "observed": "(1, a, a, b, [\n  \"a\",\n  \"b\",\n  \"c\",\n  \"d\"\n])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-tie-pick"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-array-agg-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-empty"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-only-nulls"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-tie-order"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

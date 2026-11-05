@@ -1,0 +1,66 @@
+{
+  "id": "snowflake-list-order",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "A NULL element sorts lowest in an array",
+  "verdict": "`[1, NULL] < [1, 2]`; refused",
+  "area": "nested",
+  "options": [
+    "list_null_order"
+  ],
+  "rows": [
+    {
+      "group": "list.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    }
+  ],
+  "constructs": [
+    "ARRAY",
+    "<",
+    "ORDER BY"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "Arrays compare element by element; a NULL element sorts below any value: `[1, NULL] < [1, 2]` is TRUE, and `ORDER BY` puts `[1, NULL]` before `[1, 2]`; a shorter prefix comes first.",
+  "reference": "`list_null_order`: NULL in `<`, greatest in sorts. sverify refuses lists on Snowflake.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a FROM (SELECT array_construct(1, 2) AS a UNION ALL SELECT array_construct(1, NULL) UNION ALL SELECT array_construct(1) UNION ALL SELECT array_construct(0, 5) UNION ALL SELECT NULL) ORDER BY a",
+          "observed": "([\n  0,\n  5\n]); ([\n  1\n]); ([\n  1,\n  undefined\n]); ([\n  1,\n  2\n]); (NULL)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-null-element-compare"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-compare"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

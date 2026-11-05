@@ -1,0 +1,64 @@
+{
+  "id": "snowflake-case",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`UPPER` and `LOWER` use full Unicode mappings",
+  "verdict": "full mappings (`ß` to `SS`, final sigma); sverify raises on non-ASCII",
+  "area": "strings",
+  "options": [
+    "char_set",
+    "settings"
+  ],
+  "rows": [
+    {
+      "group": "str.case",
+      "option": "char_set",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "UPPER",
+    "LOWER",
+    "INITCAP"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`UPPER('straße')` is `STRASSE`, `UPPER('ﬁ')` `FI`, `LOWER('İ')` `i̇` (two code points), `LOWER('ΣΑΣ')` `σας` with a final sigma, `UPPER('ǆ')` `Ǆ`. A collation (`COLLATE 'en-ci'`) changes comparisons, not these functions.",
+  "reference": "`upper`, `lower` with `char_set: UTF8` and full mappings. Whether Snowflake's tables match Rust's in every case is not documented, so sverify's SQL raises on non-ASCII text (#70). Before this PR that raise was a cast to `VARCHAR`, which never fails, so the SQL returned the message as the value (`eval-cast-raise-varchar`); it now raises (`writer-raise-str`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT upper('straße'), lower('İ'), upper('ǆ'), initcap('ǆa'), lower('ΣΑΣ'), upper('ﬁ'), upper('é')",
+          "observed": "(STRASSE, i̇, Ǆ, Ǆa, σας, FI, É)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-case"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-collation"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "eval-cast-raise-varchar"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-raise-str"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

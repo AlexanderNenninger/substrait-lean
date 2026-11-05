@@ -1,0 +1,40 @@
+{
+  "id": "snowflake-io",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Snowflake reads its tables and stages",
+  "verdict": "tables, stages on S3, GCS, Azure; Iceberg tables; not written by sverify",
+  "area": "io",
+  "options": [
+    "io_formats",
+    "object_stores",
+    "catalogs"
+  ],
+  "layer": "io",
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "Snowflake reads and writes its own tables, and files on stages (internal, or S3, GCS and Azure through storage integrations) in CSV, JSON, Parquet, Avro, ORC and XML, and Iceberg tables through catalog integrations. The probes read only literal `VALUES` and the shared SNOWFLAKE_SAMPLE_DATA.",
+  "reference": "I/O is outside the plan. sverify does not read or write Snowflake's storage: a caller runs the SQL `to_sql` writes on tables it has.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sum(l_extendedprice * l_discount), sum(l_extendedprice::FLOAT * l_discount::FLOAT) FROM snowflake_sample_data.tpch_sf1.lineitem",
+          "observed": "(11475087016.1999, 11475087016.1999)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-sum-double-exact"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

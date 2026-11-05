@@ -1,0 +1,96 @@
+{
+  "id": "snowflake-cast-string",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Text casts parse leniently; doubles and timestamps print short",
+  "verdict": "trims, rounds `'1.5'` to 2, reads `'1e400'` as inf and hex floats; prints 15 digits and milliseconds",
+  "area": "casts",
+  "options": [
+    "cast_parsing",
+    "cast_formatting",
+    "cast_failure"
+  ],
+  "rows": [
+    {
+      "option": "cast_failure",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "CAST",
+    "TO_VARCHAR",
+    "TRY_CAST"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Parsing: `' 12 '`, `'+12'` and `'1e3'` cast to integers (1000), `'1.5'` rounds to 2 and `'-2.5'` to -3; `'0x10'`, `'1_000'` and `''` fail. Doubles accept spaces, `'.5'`, `'5.'`, `'NaN'`, `'nan'`, `'inf'`, `'Infinity'`, `'0x1p3'` (8), and `'1e400'` becomes inf. Booleans accept `'t'`, `'yes'`, `'y'`, `'on'`, `'1'` and their opposites, and spaces; a number is TRUE when non-zero. Dates accept `'2024-1-5'`, spaces, `'05/01/2024'` (May 1), `'2024-01-05T10:00:00'`, an epoch number, and years 0 to 10000 and negative ones.",
+    "Formatting: a double prints with at most 15 significant digits (`2^53 + 1` as `9.00719925474099e+15`, `1/3` as `0.3333333333`), so text does not round-trip; `-0.0` prints `-0`, `1e20` `1e+20`. A timestamp prints with `TIMESTAMP_NTZ_OUTPUT_FORMAT`, milliseconds by default, dropping microseconds. A decimal keeps its scale (`1.50`).",
+    "A cast that fails raises (`Numeric value 'abc' is not recognized`); `TRY_CAST` gives NULL (try-variants)."
+  ],
+  "reference": "Casts follow the reference's parsing and formatting rules. sverify's SQL writes only integers as text (`int_to_str`), which prints exactly; it never parses text.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT try_cast('12' AS NUMBER(38,0)), try_cast(' 12 ' AS NUMBER(38,0)), try_cast('+12' AS NUMBER(38,0)), try_cast('-0' AS NUMBER(38,0)), try_cast('1e3' AS NUMBER(38,0)), try_cast('1.5' AS NUMBER(38,0)), try_cast('2.5' AS NUMBER(38,0)), try_cast('-2.5' AS NUMBER(38,0)), try_cast('0x10' AS NUMBER(38,0)), try_cast('1_000' AS NUMBER(38,0)), try_cast('' AS NUMBER(38,0)), try_cast('12a' AS NUMBER(38,0)), try_cast('9223372036854775808' AS NUMBER(38,0)), try_cast('999999999999999999999999999999999999999' AS NUMBER(38,0))",
+          "observed": "(12, 12, 12, 0, 1000, 2, 3, -3, NULL, NULL, NULL, NULL, 9223372036854775808, NULL)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-int"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-int-strict"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-int-strict-row"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-double"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-bool"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-number-to-bool"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-date"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-timestamp"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-to-text"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-output-digits"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-int-to-double-precision"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

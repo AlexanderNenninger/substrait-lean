@@ -1,0 +1,28 @@
+{
+  "id": "SF-3",
+  "project": "snowflake",
+  "kind": "bug",
+  "version": "10.40.102",
+  "status": "confirmed",
+  "status_note": "Reproduces on Snowflake 10.40.102 (https://docs.snowflake.com/en/sql-reference/functions/dateadd gives no range for the amount). Not searched in Snowflake's community forum yet.",
+  "summary": "`DATEADD(DAY, n, d)` wraps the day count at 32 bits: `DATEADD(DAY, 2147483647, '2024-01-01')` is `-5877587-06-21`, a date in the past, with no error. Smaller amounts compute dates far past year 9999 (`DATEADD(DAY, 10000000, …)` is year 29403).",
+  "repro": "SELECT TO_VARCHAR(DATEADD(DAY, 2147483647, '2024-01-01'::DATE)), TO_VARCHAR(DATEADD(DAY, 10000000, '2024-01-01'::DATE));\n-- -5877587-06-21, 29403-01-27",
+  "handling": "sverify's SQL range-checks computed dates against the years the reference represents, so both the wrapped and the far result raise.",
+  "found_by": "the Snowflake characterization: sverify_dev.probe_snowflake, probes date-range-overflow, date-range-far",
+  "files": [
+    "characterization/snowflake/probes.json",
+    "characterization/snowflake/facts/snowflake-date-range.json"
+  ],
+  "facts": [
+    "snowflake-date-range"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "snowflake": "10.40.102 (Snowflake CLI 3.32.1, X-Small warehouse)"
+      },
+      "note": "probes date-range, date-range-far, date-range-overflow, ts-range."
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "id": "snowflake-int-arith",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Integer arithmetic is exact in `NUMBER(38,0)`",
+  "verdict": "never wraps; exact past 64 bits; the writer checks the 64-bit range",
+  "area": "integers",
+  "options": [
+    "overflow"
+  ],
+  "rows": [
+    {
+      "group": "int.arith",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "unary -"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Every integer type (`TINYINT` … `BIGINT`, `INT`, `BYTEINT`) is `NUMBER(38,0)` (`int-type-names`), so `BIGINT` arithmetic has no 64-bit range: `9223372036854775807 + 1` is `9223372036854775808`, `-(-2^63)` is `2^63`, and `127::TINYINT + 1` is 128. Nothing wraps.",
+    "Past 38 digits a result is still kept up to 2^127 (see [decimal-arith](snowflake-decimal-arith.json), SF-1); past 128 bits it raises `Number out of representable range`."
+  ],
+  "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR` at the declared width. sverify's SQL (`SnowflakeDialect.checked`) tests each result against the 64-bit range and raises outside it; literal operands fold at write time (`writer-int-fold`, `writer-int-fold-values`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a + b AS r, SYSTEM$TYPEOF(a + b) AS t FROM (VALUES (9223372036854775807::BIGINT, 1::BIGINT)) AS s(a, b)",
+          "observed": "(9223372036854775808, NUMBER(38,0)[SB16])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-add"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-subtract"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-multiply"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-negate"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "tinyint-no-range"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-type-names"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "number38-multiply-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-int-add-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-int-mul-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-int-fold"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-int-fold-values"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

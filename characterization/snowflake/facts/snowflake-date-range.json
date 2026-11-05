@@ -1,0 +1,77 @@
+{
+  "id": "snowflake-date-range",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Dates go past 9999 and before 0001; `DATEADD` wraps at 2^31 days",
+  "verdict": "computes years 0 to 302024 and negative ones; `DATEADD(DAY, 2^31 - 1, …)` wraps (SF-3)",
+  "area": "temporal",
+  "options": [
+    "date_range",
+    "raise_set"
+  ],
+  "rows": [
+    {
+      "group": "time.arith",
+      "option": "date_range",
+      "types": [
+        "date",
+        "timestamp",
+        "timestamp_tz"
+      ]
+    }
+  ],
+  "constructs": [
+    "DATEADD",
+    "ADD_MONTHS",
+    "CAST"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`DATEADD(DAY, 1, '9999-12-31')` is `10000-01-01` and `DATEADD(DAY, -1, '0001-01-01')` `0000-12-31`; `DATEADD(YEAR, 300000, '2024-01-01')` is year 302024; text casts accept `'10000-01-01'` and `'-0001-01-01'`. Timestamps go past both ends too. Such values break clients: the Python connector cannot convert them, so the probes print them with `TO_VARCHAR`.",
+    "`DATEADD(DAY, 2147483647, '2024-01-01')` is `-5877587-06-21`: the day count wraps at 32 bits, silently. See [SF-3](../../../upstream/bugs/SF-3.json)."
+  ],
+  "reference": "`date_range`: arithmetic raises outside 0001-01-01 … 9999-12-31. sverify refuses literals outside years 1 to 9999 and its SQL range-checks computed dates and timestamps (the shared lowering's checks of the years chrono represents), so a wrapped result raises too.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT to_varchar(dateadd(DAY, -1, a)), to_varchar(dateadd(DAY, 1, b)), to_varchar(dateadd(YEAR, 1, b)), SYSTEM$TYPEOF(dateadd(DAY, 1, b)) FROM (VALUES ('0001-01-01'::DATE, '9999-12-31'::DATE)) AS s(a, b)",
+          "observed": "(0000-12-31, 10000-01-01, 10000-12-31, DATE[SB4])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "date-range"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "date-range-far"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "date-range-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-range"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-text-to-date"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-to-timestamp-scale"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "id": "snowflake-set-operations",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Set operations treat NULLs as equal; there is no `INTERSECT ALL`",
+  "verdict": "`UNION`, `INTERSECT`, `EXCEPT`/`MINUS`; the `ALL` forms are unsupported but `UNION ALL`",
+  "area": "relations",
+  "options": [
+    "set_operations",
+    "null_join_keys"
+  ],
+  "constructs": [
+    "UNION",
+    "UNION ALL",
+    "INTERSECT",
+    "EXCEPT",
+    "MINUS"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`UNION` keeps one NULL; `INTERSECT` keeps a NULL both sides have; `EXCEPT` and `MINUS` are one. `INTERSECT ALL` and `EXCEPT ALL` raise `Unsupported feature`. NaN and -0.0 meet their equals (`INTERSECT` keeps the left side's -0.0). A `UNION ALL` of `NUMBER`s and a `FLOAT` is `FLOAT`.",
+  "reference": "Set operations with NULLs equal, `ALL` forms by multiplicity. sverify's SQL writes `UNION ALL` and grouping, never `INTERSECT` or `EXCEPT`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) UNION SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x) ORDER BY x",
+          "observed": "(1); (2); (3); (NULL)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-union"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-union-all"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-intersect"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-except"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-minus"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-intersect-all"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-except-all"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-nan-zero-values"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-union-types"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "limit-null-offset"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

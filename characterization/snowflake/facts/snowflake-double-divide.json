@@ -1,0 +1,108 @@
+{
+  "id": "snowflake-double-divide",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Dividing a double by zero raises",
+  "verdict": "`x / 0.0` raises, also by -0.0; `DIV0` gives 0",
+  "area": "doubles",
+  "options": [
+    "on_division_by_zero",
+    "nan_creation",
+    "on_domain_error",
+    "float_overflow",
+    "rounding"
+  ],
+  "rows": [
+    {
+      "group": "fp.div",
+      "option": "on_division_by_zero",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "nan_creation",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "on_domain_error",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "float_overflow",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "/",
+    "DIV0",
+    "DIV0NULL"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`1.0 / 0.0` raises `Division by zero`, and so does `1.0 / -0.0`: there is no `±inf` from a zero divisor. `inf / 2` is inf, `2 / inf` and `1 / inf` are 0. `DIV0(1.0, 0.0)` and `DIV0NULL` are 0, `DIV0(NaN, 0.0)` is 0 too. Quotients are IEEE (`double-ieee-ops`).",
+  "reference": "`divide` of doubles with `on_division_by_zero: ERROR`, `rounding: TIE_TO_EVEN`: native. `inf / inf` is NaN, which the reference raises on; sverify's SQL checks.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a / b FROM (VALUES (1::FLOAT, 0::FLOAT)) AS s(a, b)",
+          "observed": "error 100051 (22012): Division by zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-div-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-div-negzero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-div-inf"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-div-zero-cases"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-ieee-ops"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-arith-nan-creation"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

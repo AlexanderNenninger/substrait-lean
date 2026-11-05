@@ -1,0 +1,85 @@
+{
+  "id": "snowflake-zero-sign",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Arithmetic keeps -0.0; a `-0.0` literal is a decimal 0",
+  "verdict": "two zeros in arithmetic; `-0.0` literal is `NUMBER` 0",
+  "area": "doubles",
+  "options": [
+    "zero_sign"
+  ],
+  "rows": [
+    {
+      "group": "fp.arith",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.neg",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "unary -",
+    "*",
+    "+",
+    "TO_VARCHAR"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`'-0.0'::FLOAT` prints `-0`, `-(0.0::FLOAT)` and `0.0 * -1` are `-0`, `-0.0 + 0.0` is `0`. A literal `-0.0` is `NUMBER(1,0)` 0, not a double. `ATAN2(-0.0, 0)` keeps the sign.",
+  "reference": "`zero_sign: ONE_ZERO`. sverify's SQL normalises with `canon` (`x + 0.0`) wherever a `-0.0` could arise, and writes its double literals from text without a sign on zero (`writer-float-lit`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT to_varchar(a), to_varchar(-b), to_varchar(b * -1), to_varchar(a + b), a = b, a < b, to_varchar(1 / NULLIF(1, 0) * a), sign(a), atan2(a, -1) FROM (VALUES ('-0.0'::FLOAT, 0::FLOAT)) AS s(a, b)",
+          "observed": "(-0, -0, -0, 0, True, False, -0, 0.0, -3.141592653589793)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-zero-sign"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-literals"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-atan2-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-float-lit"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-is-nan"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "id": "snowflake-avg-int",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`AVG` of integers is a decimal",
+  "verdict": "`NUMBER(p, 6)`, rounded half up; sverify computes the truncated mean",
+  "area": "aggregates",
+  "options": [
+    "avg_int_result",
+    "empty_group_aggregates"
+  ],
+  "rows": [
+    {
+      "group": "agg.isum",
+      "option": "avg_int_result",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "AVG"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`AVG` of 1, 2, 2 is `1.666667`, a `NUMBER(19,6)`: the exact sum divided at 6 more places of scale, rounded half away from zero. It is NULL without values.",
+  "reference": "`avg` of integers has the declared type (`avg_int_result`): the mean truncated. sverify's SQL subtracts the remainder and divides exactly (`int_avg`; `writer-int-avg` gives -3 for -7, 0).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT avg(x), SYSTEM$TYPEOF(avg(x)), avg(x::BIGINT) FROM (VALUES (1), (2), (2)) AS s(x)",
+          "observed": "(1.666667, NUMBER(19,6)[SB16], 1.666667)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-avg-int"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-avg-int-neg"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-empty"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-int-avg"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

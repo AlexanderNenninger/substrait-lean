@@ -1,0 +1,55 @@
+{
+  "id": "snowflake-decimal-negate",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Negating and `ABS` of 38-digit decimals are exact",
+  "verdict": "exact at 38 digits",
+  "area": "decimals",
+  "options": [
+    "overflow",
+    "raise_set"
+  ],
+  "rows": [
+    {
+      "group": "dec.arith",
+      "option": "overflow",
+      "types": [
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "unary -",
+    "ABS"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`-x` and `ABS(x)` of `-99999999999999999999999999999999999999` and of `-9999999999999999999999999999999999999.9` are exact and keep the type (`NUMBER(38,0)`, `NUMBER(38,1)`).",
+  "reference": "`negate` and `abs` of decimals are exact: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT -x, abs(x), SYSTEM$TYPEOF(-x) FROM (VALUES (-99999999999999999999999999999999999999::NUMBER(38,0))) AS s(x)",
+          "observed": "(99999999999999999999999999999999999999, 99999999999999999999999999999999999999, NUMBER(38,0)[SB16])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "decimal-negate-wide"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "decimal-negate-wide-scaled"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}
