@@ -836,7 +836,30 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
       cases cnt with
       | none => exact this.sublist (List.drop_sublist _ _)
       | some _ => exact this.sublist ((List.take_sublist _ _).trans (List.drop_sublist _ _))
-  | .unionAll _ _, _, k, hk, _, _ => by simp [Rel.keys] at hk
+  | .unionAll a b, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
+      simp only [Rel.keys, unionKeys] at hk
+      split at hk
+      · rename_i c hc
+        have hdis := List.find?_some hc
+        obtain ⟨ka, hka, kb, hkb, rfl⟩ : ∃ ka ∈ a.keys cat A F K, ∃ kb ∈ b.keys cat A F K,
+            k = ka ++ kb ++ [c] := by
+          have := List.mem_of_mem_take hk
+          simp only [List.mem_flatMap, List.mem_map] at this
+          obtain ⟨ka, hka, kb, hkb, rfl⟩ := this
+          exact ⟨ka, hka, kb, hkb, rfl⟩
+        refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+        show KeyOn _ _
+        unfold KeyOn
+        rw [List.pairwise_append]
+        refine ⟨(keys_sound_all hcat hA hF hK hwf.1 ka hka hx).superset (by simp_all),
+          (keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy).superset (by simp_all), ?_⟩
+        intro u hu v hv heq
+        have hum := aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.1 hx u hu c
+        have hvm := aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.2.1 hy v hv c
+        apply AVal.disjoint_ne hdis hum hvm
+        simp only [keyOf, List.map_inj_left] at heq
+        exact heq c (by simp)
+      · simp at hk
   | .semi a _ _ _, hwf, k, hk, _, ⟨x, _, hx, _, h⟩ =>
       ((keys_sound_all hcat hA hF hK hwf.1 k hk hx).sublist List.filter_sublist).perm h.symm
         fun h => Ne.symm h

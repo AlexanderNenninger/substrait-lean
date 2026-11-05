@@ -336,6 +336,73 @@ def joinEqKeys : JoinType → Expr → List (List Nat) → List (List Nat)
 def crossKeys (n : Nat) (ka kb : List (List Nat)) : List (List Nat) :=
   (ka.filter (·.all (· < n))).flatMap fun k => kb.map fun k' => k ++ k'.map (n + ·)
 
+/-! ## Keys through `UNION ALL` (#436)
+
+Rows of different branches differ where a column's values cannot meet: a
+constant tag (`'events'` and `'orders'`, the `GROUPING` level of a rollup),
+or ranges apart. With a key of each branch, those columns and that column
+are a key of the union. -/
+
+/-- The intervals have no integer in common. -/
+def Bound.disjoint (x y : Bound) : Bool :=
+  (match x.hi, y.lo with | some h, some l => decide (h < l) | _, _ => false) ||
+  (match y.hi, x.lo with | some h, some l => decide (h < l) | _, _ => false)
+
+theorem Bound.disjoint_ne {x y : Bound} {i j : Int} (h : x.disjoint y = true) (hi : x.Mem i)
+    (hj : y.Mem j) : i ≠ j := by
+  obtain ⟨xl, xh⟩ := x
+  obtain ⟨yl, yh⟩ := y
+  simp only [Bound.Mem] at hi hj
+  cases xl <;> cases xh <;> cases yl <;> cases yh <;> simp_all [Bound.disjoint] <;> omega
+
+/-- The string sets have no string in common. -/
+def strsDisjoint (a b : AVal) : Bool :=
+  match a.strs, b.strs with
+  | some l, some m => !l.any m.contains
+  | _, _ => false
+
+theorem strsDisjoint_false {a b : AVal} {s : String} (h : strsDisjoint a b = true)
+    (ha : a.strs.all (·.contains s) = true) (hb : b.strs.all (·.contains s) = true) : False := by
+  unfold strsDisjoint at h
+  cases hA : a.strs <;> cases hB : b.strs <;> simp_all
+
+/-- No value is in both `a` and `b`. -/
+def AVal.disjoint (a b : AVal) : Bool :=
+  !(a.null && b.null) && !(a.tt && b.tt) && !(a.ff && b.ff) &&
+  (match a.int, b.int with | some x, some y => x.disjoint y | _, _ => true) &&
+  (!(a.str && b.str) || strsDisjoint a b)
+
+theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (ha : a.Mem v)
+    (hb : b.Mem w) : v ≠ w := by
+  rintro rfl
+  simp only [AVal.disjoint, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true] at hd
+  obtain ⟨⟨⟨⟨hn, ht⟩, hf⟩, hi⟩, hs⟩ := hd
+  cases v with
+  | null => simp_all [AVal.Mem]
+  | bool x => cases x <;> simp_all [AVal.Mem]
+  | list _ => simp_all [AVal.Mem]
+  | int i =>
+      obtain ⟨x, hx, hxi⟩ := ha
+      obtain ⟨y, hy, hyi⟩ := hb
+      rw [hx, hy] at hi
+      exact Bound.disjoint_ne hi hxi hyi rfl
+  | str s =>
+      simp only [AVal.Mem, Bool.and_eq_true] at ha hb
+      rcases hs with hs | hs
+      · simp_all
+      · exact strsDisjoint_false hs ha.2 hb.2
+
+/-- The first column on which the descriptions `ea` and `eb` share no value. -/
+def apartCol (ea eb : List AVal) : Option Nat :=
+  (List.range ea.length).find? fun c => (ea.getD c AVal.top).disjoint (eb.getD c AVal.top)
+
+/-- Keys of `UNION ALL`: a key of each branch and a column the branches
+cannot share a value in. At most 16 of them. -/
+def unionKeys (ea eb : List AVal) (ka kb : List (List Nat)) : List (List Nat) :=
+  match apartCol ea eb with
+  | some c => (ka.flatMap fun k => kb.map fun k' => k ++ k' ++ [c]).take 16
+  | none => []
+
 def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → List (List Nat)
   | .read t => K t
@@ -353,7 +420,8 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .join a b ty on =>
       joinEqKeys ty on (joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K))
   | .fetch r _ cnt => (if cnt.any (· ≤ 1) then [[]] else []) ++ r.keys cat A F K
-  | .unionAll _ _ => []
+  | .unionAll a b =>
+      unionKeys (a.aeval cat A F .none) (b.aeval cat A F .none) (a.keys cat A F K) (b.keys cat A F K)
   | .window r part _ fns =>
       (r.keys cat A F K).filter (·.all (· < r.arity cat)) ++ windowKeys part (r.arity cat) fns
   | .semi a _ _ _ => a.keys cat A F K
@@ -654,7 +722,30 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       split
       · exact this.sublist (List.drop_sublist _ _)
       · exact this.sublist ((List.take_sublist _ _).trans (List.drop_sublist _ _))
-  | .unionAll _ _, _, k, hk => by simp [Rel.keys] at hk
+  | .unionAll a b, hwf, k, hk => by
+      simp only [Rel.keys, unionKeys] at hk
+      split at hk
+      · rename_i c hc
+        have hdis := List.find?_some hc
+        obtain ⟨ka, hka, kb, hkb, rfl⟩ : ∃ ka ∈ a.keys cat A F K, ∃ kb ∈ b.keys cat A F K,
+            k = ka ++ kb ++ [c] := by
+          have := List.mem_of_mem_take hk
+          simp only [List.mem_flatMap, List.mem_map] at this
+          obtain ⟨ka, hka, kb, hkb, rfl⟩ := this
+          exact ⟨ka, hka, kb, hkb, rfl⟩
+        simp only [eval]
+        unfold KeyOn
+        rw [List.pairwise_append]
+        refine ⟨(keys_sound hcat hA hF hK hwf.1 ka hka).superset (by simp_all),
+          (keys_sound hcat hA hF hK hwf.2.1 kb hkb).superset (by simp_all), ?_⟩
+        intro x hx y hy heq
+        have hxm := aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.1 nofun x hx c
+        have hym := aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.2.1 nofun
+          y hy c
+        apply AVal.disjoint_ne hdis hxm hym
+        simp only [keyOf, List.map_inj_left] at heq
+        exact heq c (by simp)
+      · simp at hk
   | .semi a _ _ _, hwf, k, hk =>
       (keys_sound hcat hA hF hK hwf.1 k hk).sublist List.filter_sublist
   | .orderBy r _, hwf, k, hk =>
