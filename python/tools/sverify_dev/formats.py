@@ -97,9 +97,10 @@ def _write_sink(out: Path) -> None:
         shutil.copy(meta, sink / "iceberg" / "doubled.metadata.json")
         text = table.properties["sverify.contract"]
     (sink / "contract.json").write_text(_pretty(text))
-    # The Delta log's commits must hold the same record.
+    # The Delta log's commits must hold the record: under `sverify.contract`
+    # from 1.0 on, under `sverify` before.
     history = DeltaTable(str(sink / "delta" / "doubled")).history()
-    assert any("sverify" in c for c in history), history
+    assert any("sverify.contract" in c or "sverify" in c for c in history), history
 
 
 def _write_substrait(out: Path) -> None:

@@ -2,21 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/substrait-manifest.schema.json",
   "title": "sverify Substrait contract manifest",
-  "description": "The `manifest` of the `io.sverify.substrait.v1.Contract` message that Report.to_substrait attaches to an exported plan (substrait_contract.proto), as protobuf's JSON form of its google.protobuf.Struct: every number is a double. Format 1. Within 1.x the manifest only gains optional keys, and readers ignore keys they do not know (docs/stability.md). docs/guide.md, \"Exporting to Substrait\", says what each key holds.",
+  "description": "The `manifest` of the `io.sverify.substrait.v1.Contract` message that Report.to_substrait attaches to an exported plan (substrait_contract.proto), as protobuf's JSON form of its google.protobuf.Struct: every number is a double. Format 2: format 1 (before 1.0) said profile, observation and observation_components, which a reader maps. Within 1.x the manifest only gains optional keys, and readers ignore keys they do not know (docs/stability.md). docs/guide.md, \"Exporting to Substrait\", says what each key holds.",
   "type": "object",
-  "required": ["format", "sverify", "substrait", "extension_urns", "profile", "class", "observation"],
+  "required": ["format", "sverify", "substrait", "extension_urns", "semantics", "class", "equivalence"],
   "properties": {
-    "format": {"description": "The version of this format.", "const": 1},
+    "format": {"description": "The version of this format.", "const": 2},
     "sverify": {"description": "The version of sverify that exported the plan.", "type": "string"},
     "substrait": {"description": "The Substrait version the plan is written for, as `major.minor.patch`.", "type": "string"},
     "extension_urns": {"type": "array", "items": {"type": "string"}},
-    "profile": {
-      "description": "The profile the plan was verified under. 1.x may add values.",
+    "semantics": {
+      "description": "The semantics the plan was verified under. 1.x may add values.",
       "type": "string",
       "examples": ["reference", "substrait"]
     },
     "class": {
-      "description": "exact, observed (equal up to `observation`) or assumed (with annotated choices). 1.x may add values.",
+      "description": "exact, observed (equal up to `equivalence`) or assumed (with annotated choices). 1.x may add values.",
       "type": "string",
       "examples": ["exact", "observed", "assumed"]
     },
@@ -26,9 +26,9 @@
       "examples": ["proved", "tested"]
     },
     "shims_mode": {"type": "string", "examples": ["apply", "annotate", "refuse"]},
-    "observation": {"description": "What the postconditions observe, as sv.equivalent prints it.", "type": "string"},
-    "observation_components": {
-      "description": "The observation's components (rows, floats, ...), each as text.",
+    "equivalence": {"description": "What the postconditions can tell apart, as sv.equivalent prints it.", "type": "string"},
+    "equivalence_components": {
+      "description": "The equivalence's components (rows, floats, ...), each as text.",
       "type": "object",
       "additionalProperties": {"type": "string"}
     },
@@ -38,7 +38,7 @@
     "shims": {"$ref": "#/$defs/rows"},
     "assumptions": {"$ref": "#/$defs/rows"},
     "deterministic": {"type": "boolean"},
-    "rows": {"description": "At most this many output rows, or null.", "type": ["number", "null"]},
+    "rows": {"description": "At most this many output rows, or null. An integer (protobuf's JSON may write it as 1000.0).", "type": ["integer", "null"]},
     "params": {"type": "array", "items": {"type": "string"}},
     "output": {
       "description": "The output's columns with their Ibis types.",

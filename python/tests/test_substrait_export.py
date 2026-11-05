@@ -87,12 +87,12 @@ def test_pins_the_options_the_proof_uses() -> None:
 
 
 def test_manifest() -> None:
-    """The manifest names the profile, the versions, the URNs and the class."""
+    """The manifest names the semantics, the versions, the URNs and the class."""
     report = _verify(orders.select(t=_.amount + 1), BOUNDED, ensures=[_.t >= 1])
     m = read(report.to_substrait()).manifest
     assert m["format"] == se.FORMAT
     assert m["substrait"] == "0.106.0"
-    assert m["profile"] == "reference"
+    assert m["semantics"] == "reference"
     assert m["class"] == "exact"
     assert m["shims_mode"] == "apply"
     assert m["extension_urns"] == ["extension:io.substrait:functions_arithmetic"]

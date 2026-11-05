@@ -748,6 +748,8 @@ The report's parts come as data and as the lines `str(report)` prints:
   jobs and tools: the verdict, each postcondition with its reason and
   counterexample, the issues, the needs, the facts and the routes, in the
   format of [`report.schema.json`](../python/src/sverify/schemas/report.schema.json).
+  Postconditions, issues and assumptions are findings in the shape of a
+  SARIF result, with a `ruleId`, a `level` and a `message`.
   `sv.Report.from_json(text)` reads it back into a `Report` with the same
   verdict ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736),
   [stability](stability.md)).
@@ -1090,7 +1092,8 @@ tables. A table format plays four roles:
   states (`_.id.notnull()`) and those the proved report shows are never NULL
   (`report.not_null`, [#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
   The commit records the plan hash, the
-  source versions and the contract (`sverify.io.Contract`, in the format of
+  source versions and the contract (`sverify.io.Contract`, under the key
+  `sverify.contract`, in the format of
   [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json),
   which every 1.x release reads: [stability.md](stability.md#the-formats)).
   A job that reads the table gets its preconditions from them. After the first write, `DeltaSink` MERGEs each
@@ -1553,10 +1556,10 @@ Within 1.x the message and the manifest only gain fields, and
 |---|---|
 | `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
 | `extension_urns` | the YAMLs the plan's calls come from |
-| `profile` | the profile the plan was verified under |
-| `class` | `exact`, `observed` (equal up to `observation`) or `assumed` (with annotated choices) |
+| `semantics` | the semantics the plan was verified under |
+| `class` | `exact`, `observed` (equal up to `equivalence`) or `assumed` (with annotated choices) |
 | `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
-| `observation` | what the postconditions observe (`sv.equivalent`) |
+| `equivalence`, `equivalence_components` | what the postconditions tell apart (`sv.equivalent`) |
 | `pinned` | each pinned option, its values and the calls that state it |
 | `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
 | `deterministic`, `rows`, `params`, `output` | as in the report |

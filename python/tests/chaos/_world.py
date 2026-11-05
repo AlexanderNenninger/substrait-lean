@@ -349,7 +349,7 @@ def check_recorded(world: World) -> None:
 def quiet(job: Job) -> None:
     """With no new input, a refresh writes nothing."""
     out = job.refresh()
-    modes = {w.contract.view: w.mode for w in out.writes}
+    modes = {w.contract.node: w.mode for w in out.writes}
     _holds(
         set(modes.values()) == {"skipped"}, "wrong-result", "a quiet refresh writes nothing", modes
     )
