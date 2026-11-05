@@ -15,8 +15,9 @@ string. A transformation states it in its `ensures`:
 
 An engine's result then counts as correct when it is equal, up to the
 observation, to a
-result the reference allows. Without `equivalent`, rows are a multiset and
-every value is exact.
+result the reference allows. Without `equivalent`, rows are a multiset,
+doubles are within the plan's bound (`floats="plan"`) and every other value
+is exact.
 
 An observation is a product of components, each a short chain from exact
 to coarse. One refines another (`a.refines(b)`) when it is at least as fine
@@ -32,7 +33,7 @@ import math
 import struct
 import unicodedata
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import pyarrow as pa
@@ -151,10 +152,12 @@ class Observation:
     `"ties permuted"`: the order counts up to permutations of rows that tie
     in the sort (an engine's run-to-run variation, `tie_order`)."""
     floats: Floats = "exact"
-    """`"exact"`, a tolerance (`within`), or `"plan"`: within the bound the
-    checker computes for the plan (`Report.epsilon`, its `ε` per double
-    column), whatever it is. `"plan"` is the default of a sink's
-    `reproducible`, and of a run whose postconditions name no observation."""
+    """`"exact"`: the same bits; a tolerance (`within`); or `"plan"`: within
+    the bound the checker computes for the plan (`Report.epsilon`, its `ε`
+    per double column), whatever it is. `"plan"` is what `ensures` observes
+    when it names no observation, and the default of a sink's
+    `reproducible`. A double column a postcondition reads is held to its
+    exact value under `"plan"` (`sv.approx` allows for the bound)."""
     zeros: Exactness = "exact"
     """`"canon"`: `-0.0` equals `0.0`, and every NaN equals every other."""
     timestamps: Precision = "ns"
@@ -169,6 +172,11 @@ class Observation:
     elements: Elements = "sequence"
     """`"multiset"`: the order of a list's elements is ignored (a `collect`
     or `string_agg` without an order); `"sequence"`: it counts."""
+    bound: Within | None = field(default=None, compare=False)
+    """With `floats="plan"`, the plan's bound as a tolerance, where the
+    report knows it (`Report.observation`): printed beside `floats=plan`,
+    and used by `equal`. Equality of observations ignores it. Without it,
+    `equal` compares doubles under `"plan"` exactly."""
 
     def __post_init__(self) -> None:
         for name, allowed in _COMPONENTS:
@@ -294,6 +302,8 @@ class Observation:
         if isinstance(x, float) and isinstance(y, float):
             if isinstance(self.floats, Within):
                 return self.floats.close(x, y)
+            if self.floats == "plan" and self.bound is not None:
+                return self.bound.close(x, y)
             if math.isnan(x) or math.isnan(y):
                 return math.isnan(x) and math.isnan(y)
             return x == y and (self.zeros == "canon" or math.copysign(1, x) == math.copysign(1, y))
@@ -304,18 +314,34 @@ class Observation:
         return x == y
 
     def __str__(self) -> str:
-        parts = [
-            f"{f}={getattr(self, f)!r}"
-            if not isinstance(getattr(self, f), Within)
-            else f"{f}={getattr(self, f)}"
-            for f, _levels in _COMPONENTS
-            if getattr(self, f) != getattr(EXACT_MULTISET, f)
-        ]
+        parts = []
+        for f, _levels in _COMPONENTS:
+            v = getattr(self, f)
+            if f == "floats" and v == "plan":
+                parts.append("floats=plan")
+                if self.bound is not None:
+                    parts.append(f"≤ {_bound_text(self.bound)}")
+            elif isinstance(v, Within):
+                parts.append(f"{f}={v}")
+            elif v != getattr(EXACT_MULTISET, f):
+                parts.append(f"{f}={v!r}")
         return f"equivalent({', '.join(parts)})"
+
+    def __repr__(self) -> str:
+        return str(self)
 
     @property
     def label(self) -> str:
         return str(self)
+
+
+def _bound_text(w: Within) -> str:
+    """A plan's bound as `observes:` prints it: `2.0e-07` where it has only
+    an absolute bound, the kinds otherwise."""
+    kinds = [(n, getattr(w, n)) for n in ("abs", "rel", "ulps") if getattr(w, n) is not None]
+    if [n for n, _ in kinds] == ["abs"]:
+        return f"{w.abs:.1e}"
+    return ", ".join(f"{n}={v:.1e}" if n != "ulps" else f"{n}={v}" for n, v in kinds)
 
 
 def _order_key(v: Any) -> tuple:
@@ -353,9 +379,9 @@ EXACT = Observation(rows="sequence")
 #: The default when `ensures` names none: rows as a multiset, values exact.
 EXACT_MULTISET = Observation()
 #: Rows as a multiset, doubles within the plan's bound (`Report.epsilon`),
-#: other values exact: what a sink's rerun must reproduce by default, and
-#: what a run checks the engine against where `ensures` names no
-#: observation and no postcondition reads such a double.
+#: other values exact: what `ensures` observes where it names no
+#: observation (`Report.observation`), and what a sink's rerun must
+#: reproduce by default.
 PLAN_BOUND = Observation(floats="plan")
 
 
@@ -374,16 +400,20 @@ def equivalent(
 
     Put it in a transformation's `ensures` (or `sv.verify`'s). An engine's
     result is then correct when it equals, up to this observation, a result
-    the reference allows. Without it, rows are a multiset and every value is
-    exact.
+    the reference allows. Without it, rows are a multiset, doubles are
+    within the plan's bound (`floats="plan"`) and every other value is
+    exact. With it, each component you leave out is exact: `floats="exact"`
+    asks for the same bits, which `verify` says which engines give.
 
     Args:
         rows: `"multiset"` (the default) ignores the order of the rows;
             `"sequence"` observes it, and needs a plan whose result is
             sorted on a total order.
-        floats: `"exact"` (the default), a tolerance, `sv.within(abs=…,
-            rel=…, ulps=…)`, or `"plan"`: within the bound the checker
-            computes for the plan (`Report.epsilon`), the default of a
+        floats: `"exact"` (the default here), the same bits; a tolerance,
+            `sv.within(abs=…, rel=…, ulps=…)`, which `verify` checks
+            against the plan's bound; or `"plan"`: within the bound the
+            checker computes for the plan (`Report.epsilon`), what
+            `ensures` observes without `equivalent`, and the default of a
             sink's `reproducible`.
         zeros: `"canon"` makes `-0.0` equal `0.0` and every NaN equal.
         timestamps: The finest precision observed: `"ms"` ignores
@@ -485,7 +515,9 @@ def dependencies(
         comp = _component(columns[n])
         if comp is None or comp not in ignored or comp in out:
             continue
-        if comp == "floats" and isinstance(cond, Approx):
+        if comp == "floats" and (isinstance(cond, Approx) or observation.floats == "plan"):
+            # Under the plan's bound, a run holds the columns a condition
+            # reads to their exact value (`sverify.routes.observed`).
             continue
         out.append(comp)
     return out

@@ -1335,8 +1335,10 @@ open choice.
 
 Each output can carry a postcondition that names the equivalence its
 consumer expects: rows as a multiset (the default) or as a sequence; floats
-exact (the default) or within a stated tolerance, absolute, relative or in
-ulps; timestamps up to a precision; strings up to NFC. Verification then
+within the plan's proved bound `ε` (`floats="plan"`, the default, #689),
+exact, or within a stated tolerance, absolute, relative or in ulps, which
+`verify` checks against `ε` on each engine; timestamps up to a precision;
+strings up to NFC. Verification then
 means that every engine result the route allows is equivalent, under the
 stated relation, to a result the reference allows. `approx` is "verified
 within the stated tolerance", with #568's propagation of `ε` checking that
@@ -1494,7 +1496,8 @@ Each output has two observations, checked independently.
 
 - `q_post`, for correctness, is stated by the postcondition
   (`sv.equivalent`, [D11](#d11-postconditions-name-the-equivalence)), by
-  default the multiset of rows with exact values. Every engine result must
+  default the multiset of rows with doubles within the plan's `ε` and other
+  values exact. Every engine result must
   equal, up to `q_post`, some result the reference allows. The check is
   D18's: the class `q` of each engine row must refine `q_post`.
 - `q_det`, for reproducibility, is stated by whoever consumes the output.

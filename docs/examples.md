@@ -156,33 +156,52 @@ every semantics, and its `%` truncates under the reference
 The [realizability table](realizability.md) lists every option's class on
 each engine.
 
-## 5. Doubles within a tolerance
+## 5. Doubles within the plan's bound
 
 DuckDB and Polars add doubles in different orders, so a mean's last bits may
-differ. `sv.equivalent(floats=sv.within(...))` in `ensures` states what the
-result's consumer observes, and the route checks that the engine's sum is
-within the plan's proved bound
-([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)).
+differ. The checker proves how far: a bound on each double the plan computes
+(`report.epsilon`,
+[#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)). With
+no observation in `ensures`, a run accepts doubles within that bound, the
+same as `sv.equivalent(floats="plan")`, and the report prints the bound.
 
 ```python
 con.put("readings", pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}))
 r = con.table("readings")
-means = sv.verify(
-    r.group_by("k").aggregate(mean_x=r.x.mean()),
-    requires={"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]},
-    ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
-)
+mean_x = r.group_by("k").aggregate(mean_x=r.x.mean())
+bounded = {"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]}
+means = sv.verify(mean_x, requires=bounded)
+print(means.observation)
+# equivalent(floats=plan, ≤ 2.2e-10)
 on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")
 print(means.observation.equal(on_duckdb, on_polars))
 # True
 ```
 
-The route to Polars is `observed`: equal under the observation, here a
-tolerance of `1e-6` on doubles.
+Both routes are `observed`: equal to a result the reference allows, up to
+the plan's bound on doubles. A column a postcondition reads keeps its exact
+value; `sv.approx(...)` allows for the bound.
 
-Without the observation, the run accepts doubles within the plan's proved
-bound, except in a column a postcondition reads, which keeps its exact value.
+A tolerance of your own goes in `ensures`:
+`sv.equivalent(floats=sv.within(abs=..., rel=..., ulps=...))`. `verify`
+checks it against the plan's bound on each engine, and one that no engine
+meets leaves the plan unproved, with the reason and a tolerance that would
+do.
+
+```python
+tight = sv.verify(
+    mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.within(abs=1e-12))]
+)
+print(tight.proved)
+# False
+print(tight)
+# observes: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 2.2e-10; NOT met: no engine meets the tolerance
+#   on duckdb: agg.fsum's sum_order: mean_x is within abs=2.22933e-10 of the reference, and the postcondition asks within(abs=1e-12): state sv.equivalent(floats=sv.within(abs=3e-10)) or looser in ensures, ...
+```
+
+`floats="exact"` asks for the same bits, and the report lists the engines
+that give them (`report.floats_on`): for this mean, none.
 
 ## 6. A reproducible sink, kept up to date
 

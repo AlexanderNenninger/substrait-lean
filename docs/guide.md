@@ -1277,7 +1277,7 @@ you can rely on:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers under an observation that `ensures` states with `sv.equivalent(...)`: rows as a multiset, one zero, or doubles within a tolerance, `floats=sv.within(...)`, at least the plan's proved float bound |
+| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.routes.RouteError` and nothing runs |
 
@@ -1292,8 +1292,9 @@ list every fact). What to do about one:
 
 - Verify under the reference (the default), whose translation shims most
   differences, in place of an engine's profile.
-- State the observation the difference hides: `sv.equivalent(floats=sv.within(abs=...))`
-  for a sum in another order, `rows="multiset"` for row order.
+- State the observation the difference hides: `rows="multiset"` for row
+  order, `zeros="canon"` for the sign of a zero. A sum in another order is
+  within the plan's bound, which a run accepts by default.
 - Add the precondition the reference raises on, such as a bound on a
   column, so the plan never meets the difference.
 - Run on the other engine, or pass `route="reference"` (or another) to see
@@ -1331,13 +1332,28 @@ Polars sums doubles in its own order, so its mean is within the plan's
 bound of the reference's: here about `2.2e-4`, from the bounds on `x` and the
 row cap (#85; `--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
 values may cancel, so only an absolute bound holds, and the tolerance is
-absolute. Rows are a multiset and values exact by default. `sv.equivalent` also takes
-`elements="multiset"`, `zeros="canon"`, `timestamps="ms"`, `strings="nfc"`,
-`decimals="value"` and `errors="kind"`; `Observation.refines` orders observations component by
+absolute.
+
+Doubles follow one model. Without `sv.equivalent` in `ensures`, rows are a
+multiset, doubles are within the plan's bound and other values are exact:
+the same observation as `sv.equivalent(floats="plan")`, which
+`report.observation` prints with its bound, `equivalent(floats=plan, ≤
+2.2e-04)` here. `sv.equivalent(...)` states each component, and one you
+leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
+tolerance, and `floats="exact"` asks for the same bits. `verify` checks
+either against the plan's bound on each engine (`report.floats_on`); where
+no engine meets it, the plan is not proved, and the report's `observes:`
+line gives the plan's bound, the reason per engine and a tolerance that
+would do ([example 5](examples.md#5-doubles-within-the-plans-bound)).
+
+`sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
+`timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
+`errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
 `CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
-tolerance.
+tolerance. Under the plan's bound, a run holds a column a postcondition
+reads to its exact value, and `sv.approx` again allows for the bound.
 
 The bound grows with the row cap and the values: for a `SUM` of `n` values
 of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an

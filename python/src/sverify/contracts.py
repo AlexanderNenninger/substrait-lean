@@ -1195,13 +1195,22 @@ class Report:
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it (#461)."""
-    observation: Observation = field(default_factory=Observation)
+    observation: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
     """What the result's consumer observes (`sv.equivalent` in `ensures`,
-    #444): rows as a multiset and exact values when `ensures` names none."""
+    #444). When `ensures` names none: rows as a multiset, doubles within the
+    plan's bound (`floats="plan"`, printed with the bound, `epsilon`) and
+    other values exact, the same as `sv.equivalent(floats="plan")`. Under
+    the plan's bound a run holds the double columns a postcondition reads
+    to their exact value (`sverify.routes.observed`)."""
     stated: bool = field(default=False, repr=False, compare=False)
-    """Whether `ensures` names the observation (`sv.equivalent`). Where it
-    does not, a run accepts doubles within the plan's bound (`epsilon`) on
-    the columns no postcondition reads (`sverify.routes.observed`)."""
+    """Whether `ensures` names the observation (`sv.equivalent`)."""
+    floats_on: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
+    """Where the observation asks for exact doubles or a tolerance: per
+    engine the reference translates to, why that engine's doubles may not
+    meet it (empty where they do), checked against the plan's bound
+    (`epsilon`) at `verify`. Empty under `floats="plan"`, which every
+    engine meets. Where no engine meets it, the plan is not proved
+    (`floats_unmet`)."""
     depends: list[dict] | None = field(default=None, repr=False, compare=False)
     """The options of the profile the proof depends on (`docs/core-semantics.md`,
     step 3c), as the checker reports them: `{"group", "option",
@@ -1554,14 +1563,51 @@ class Report:
     def proved(self) -> bool:
         """Every postcondition holds and no runtime error is possible. With
         an observation (`sv.equivalent`), no postcondition depends on what
-        it ignores. Under `semantics="substrait"`, the reference's proof
-        also carries over (`transfer` is empty)."""
+        it ignores, and some engine's doubles meet it (`floats_unmet`).
+        Under `semantics="substrait"`, the reference's proof also carries
+        over (`transfer` is empty)."""
         return (
             all(c.portable for c in self.ensures)
             and not self.errors
             and not self.transfer
             and not self.needed
+            and not self.floats_unmet
         )
+
+    @property
+    def floats_unmet(self) -> str | None:
+        """Why no engine's doubles meet the observation's `floats` (exact
+        doubles, or a tolerance below the plan's bound), in words; None
+        where one does (`floats_on`)."""
+        if not self.floats_on or not all(self.floats_on.values()):
+            return None
+        return "; ".join(f"on {e}: {'; '.join(ps)}" for e, ps in self.floats_on.items())
+
+    def _observes_lines(self) -> list[str]:
+        """The `observes:` line: the observation, the plan's bound beside a
+        stated tolerance, and which engines' doubles meet it."""
+        from sverify import routes as _routes
+
+        obs = self.observation
+        bound = _routes.plan_bound(self.epsilon)
+        if obs == _observation.PLAN_BOUND and bound is None:
+            return []
+        line = f"observes: {obs}"
+        if obs.floats != "plan" and bound is not None:
+            line += f"; the plan's bound on its doubles is {_observation._bound_text(bound)}"
+        if not self.floats_on:
+            return [line]
+        met = [e for e, ps in self.floats_on.items() if not ps]
+        missed = [e for e, ps in self.floats_on.items() if ps]
+        want = "exact doubles" if obs.floats == "exact" else "the tolerance"
+        if not missed:
+            line += f"; {', '.join(met)} meet {want}"
+        elif not met:
+            line += f"; NOT met: no engine meets {want}"
+            line += _routes._cap_text(_routes.max_rows_fix(self, "", obs))
+        else:
+            line += f"; {', '.join(met)} meet {want}, {', '.join(missed)} do not"
+        return [line] + [f"  on {e}: {p}" for e in missed for p in self.floats_on[e]]
 
     @property
     def needed(self) -> dict[str, list[str]]:
@@ -1732,8 +1778,7 @@ class Report:
         lines += [f"note: {n}" for n in self.notes]
         lines.append(f"semantics: {self.semantics}")
         lines += [f"  {_transfer_failure(f)}" for f in self.transfer or ()]
-        if self.observation != Observation():
-            lines.append(f"observes: {self.observation}")
+        lines += self._observes_lines()
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
         if self.facts or self.rows is not None:
             lines.append("known about the output:")
@@ -2732,8 +2777,14 @@ def infer_bounds(
     _merge(conditions, report.inferred)
     report.conditions = conditions
     opened = {} if report.windows_total or isinstance(transform, str) else _open_columns(transform)
-    out = _observed(report, observed or Observation(), ensures, opened)
+    out = _observed(report, observed or _observation.PLAN_BOUND, ensures, opened)
     out.stated = observed is not None
+    from sverify import routes as _routes
+
+    if out.observation.floats == "plan":
+        out.observation = replace(out.observation, bound=_routes.plan_bound(out.epsilon))
+    else:
+        out.floats_on = _routes.floats_on(out)
     out.on_inferred = _checked_on_inferred(on_inferred)
     if not out.deterministic and not isinstance(transform, str):
         out.ties = tie_keys(transform)
