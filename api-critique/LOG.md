@@ -355,3 +355,73 @@ From the public docstrings and signatures:
 - `on_unproved=`, `on_inferred=`, `infer=`, `strict=`, `unverified=`: five
   knobs for "what happens when something isn't proved".
 - `sv.__all__` exports `Report`, a dataclass with ~25 constructor fields.
+
+## Second pass, on main at 7af9267d
+
+Rebuilt the checker for main after #681 and installed sverify editable from
+it, with `testing`.
+
+### RANK, rechecked
+
+`t4_sql_model.py` with the `rank()` column: `n_orders >= 1`, `revenue >= 0`
+and `revenue_rank >= 1` now prove (#681). `unique(customer_id)` still fails,
+the join-key gap (#694).
+
+### Task 9: pytest (2 attempts)
+
+1. `assert_contract`, `assert_engines_agree` and the `sv_engine`/`sv_source`
+   fixtures work as the README shows. The failure messages are the best in
+   sverify: `big_orders on duckdb does not give the expected rows: missing (1
+   expected row(s) not produced): {'id': 1, 'doubled': 61} unexpected …`, and
+   `the test data does not meet what big_orders requires: 1 row(s) of orders
+   violate (_.amount >= 0): {'id': 1, 'customer': 'ada', 'amount': -5}`, with
+   the rows. A refresh's `PreconditionError` (task 3) shows no rows.
+2. `cases(node)` yields `{"orders": pyarrow.Table}`, while `assert_contract(data=)`
+   takes `{"orders": [tuple, ...]}`. My property test indexed rows and failed
+   with `'>=' not supported between instances of 'pyarrow.lib.Int64Scalar' and
+   'int'`. One shape for test data in both places, or `data=` accepting
+   tables, would avoid it.
+3. `assert_contract(big_orders(ibis_table))`: `TypeError: expected a
+   sverify.Node (a source piped into a transform), got Table`. A transform
+   works on Ibis tables, so a contract test on one is the natural first step.
+
+### Task 10: a custom source into Iceberg (3 attempts)
+
+1. `pip install 'sverify[iceberg]'` gives no catalog to try it with:
+   `SqlCatalog` needs `sqlalchemy` (`pyiceberg[sql-sqlite]`). Notebook 2's
+   header has it; the README's extras list doesn't say so.
+2. `from_query(fetch, cursor_on="ts", name="events")` into an `IcebergSink`,
+   then an append, a restart (`resumed from analytics.per_user@v2`): all
+   worked first time.
+3. A late event (older than the cursor): `refresh()` says `events@v2
+   unchanged, already committed` and drops it, as the docstring warns.
+   `refresh(audit=True)` raises `AuditError: events@v2 differs from the table
+   read again in full: its batches missed rows; nothing was applied`. The
+   error names neither the rows nor a fix. The usual fix, re-reading a window
+   behind the cursor and deduplicating by key, has no parameter:
+   `from_query(..., lookback=timedelta(minutes=15), key="event_id")` would
+   pair with `sv.arrives_within`.
+4. The sink's table property `sverify.contract` holds the contract as JSON,
+   with `"not_null": []` again (task 3, #691).
+5. `AuditError` is raised from `sverify.incremental` (also in `sverify.errors`).
+
+### Task 11: SQL for the warehouse (3 attempts)
+
+1. `to_sql(json.loads(node.plan), SNOWFLAKE)` works, for DuckDB, Snowflake
+   and Spark. The SQL is three nested subqueries with positional aliases
+   (`s3."g0"`, `"m0"`, `"c1"`) and an overflow guard on every `SUM`
+   (`CAST('sverify: integer overflow: ' || … AS NUMBER(38,0))` on
+   Snowflake). It runs, but no one would paste it into a dbt model or review
+   it in a PR.
+2. There is no `report.to_sql(dialect)` beside `report.to_substrait()`.
+3. `node.table` before a refresh: `RuntimeError: per_customer has no state
+   yet: call refresh() first`. After it, `node.table` is the stored state,
+   so `sv.verify(node.table…, requires={"orders": …})` fails with `unknown
+   table 'orders'; the inputs are: per_customer`, and the node's proved
+   contract doesn't come along (#692 has "facts as chainable conditions").
+4. A top-1 by `total` on Snowflake: `Snowflake tables have no row order, so
+   FETCH and windows over a named table cannot follow the Lean model's list
+   order (windows run with tie_free=True)`. It mentions windows for a
+   `LIMIT`, and Lean; and doesn't say the fix: break the tie with a key
+   (`order_by([_.total.desc(), _.customer])`), which makes
+   `report.deterministic` True, then pass `tie_free=True`.
