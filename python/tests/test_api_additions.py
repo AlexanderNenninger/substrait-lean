@@ -315,3 +315,13 @@ def test_errors_keep_their_builtin_bases_and_old_names():
     assert sverify.engines.Unsupported is Unsupported
     with pytest.raises(SverifyError):
         sv.verify("SELECT nope(x) FROM t", tables={"t": ibis.schema({"x": "int64"})})
+
+
+def test_needs_follow_the_fields_they_are_built_from():
+    t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
+    r = sv.verify(t.select(u=t.total // t.qty))
+    first = r.needs
+    first.clear()  # the caller's copy
+    assert r.needs and r.needs == r.needs
+    r._inferred = {}
+    assert r.needs == []

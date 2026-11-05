@@ -1795,7 +1795,25 @@ class Report:
         return self._inferred_needs()
 
     def _inferred_needs(self) -> list[Needed]:
-        """Every inferred bound (`inferred`) as a `Needed`, assumed or not."""
+        """Every inferred bound (`inferred`) as a `Needed`, assumed or not.
+
+        Building them (an Ibis deferred and a text each) is most of the cost
+        of `str(report)` and `to_json`, which read `needs` several times,
+        so they are kept until what they are built from changes; `verify`
+        sets those fields after constructing the report."""
+        key = (
+            self._dialect,
+            tuple((t, tuple(map(str, cs))) for t, cs in self._inferred.items()),
+            tuple((lab, id(i)) for lab, i in self._inferred_from.items()),
+        )
+        cached = self.__dict__.get("_needs_cache")
+        if cached is not None and cached[0] == key:
+            return list(cached[1])
+        out = self._build_inferred_needs()
+        self.__dict__["_needs_cache"] = (key, tuple(out))
+        return out
+
+    def _build_inferred_needs(self) -> list[Needed]:
         return [
             _needed(
                 t,
