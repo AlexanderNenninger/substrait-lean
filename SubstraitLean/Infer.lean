@@ -121,6 +121,8 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
   | .lit _ => pure {}
   | .un .neg a => need env fs (-hi) (-lo) a
   | .un (.wrap _) a | .un .widen a => need env fs lo hi a
+  -- A decimal's check keeps its value (its digits are another issue).
+  | .un (.decimal _ _) a | .un (.dkind _ _) a => need env fs lo hi a
   -- `trunc u x ∈ (x - span u, x]`.
   | .un (.dateTrunc u) a => need env fs (lo + span u) hi a
   | .un (.dayTrunc u) a => need env fs (lo + spanDays u) hi a
@@ -217,7 +219,8 @@ def finiteD (env : List AVal) (fs : List Fact) : Expr → Except String Found :=
 
 /-- A divisor that must not be 0: `$j + c` needs `$j ≠ -c`. -/
 def nonZero : Expr → Except String Found
-  | .un .itof x => nonZero x
+  -- A conversion to a double is 0 exactly where its integer or decimal is.
+  | .un .itof x | .un (.dtof _) x => nonZero x
   | x => match x.linTerm with
     | some (j, c) => pure { nes := [(j, -c)] }
     | none => throw s!"it divides by {x.render}, which the inference does not look into"

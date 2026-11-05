@@ -100,8 +100,13 @@ G = T.group_by("s")
         # A grouped COUNT of a column that is never NULL is at least 1.
         (G.aggregate(r=T.x.sum() / T.b.count()), ["_.b.notnull()"]),
         (G.aggregate(r=T.x.sum() / T.b.nunique()), ["_.b.notnull()"]),
+        # A decimal SUM, converted to a double: each value at least 0.01.
+        (
+            G.aggregate(r=T.x.sum() / T.big.sum().cast("float64")),
+            ["(_.big >= 0.01)", "(_.big < 9 * 10**16)"],
+        ),
     ],
-    ids=["sum", "count", "count distinct"],
+    ids=["sum", "count", "count distinct", "decimal sum"],
 )
 def test_a_divisor_that_is_an_aggregate(expr, conds):
     """The inference looks through a divisor's `SUM` or `COUNT`
