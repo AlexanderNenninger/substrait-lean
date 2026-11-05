@@ -24,6 +24,7 @@ CUSTOMERS = {"name": "!string", "city": "string"}
         "orders": [
             sv.unique("id"),
             _.amount >= 0,
+            _.amount < 1_000_000_000,
             _.ts < dt.datetime(2100, 1, 1),
         ]
     },

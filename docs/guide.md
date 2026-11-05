@@ -40,7 +40,7 @@ carries over ([Routes](#routes-classes-and-profiles)):
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, sv.unique("id")],
 )
 def first_contract(orders):
@@ -269,6 +269,7 @@ Ibis expression). Each call proves the postconditions before it returns:
 @sv.transform(
     requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
+    on_inferred="silent",  # by default ("error"), it reports the bound under `needs:`
 )
 def doubled(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
@@ -277,7 +278,7 @@ expr = doubled(orders)
 print(doubled.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: _.id.notnull()
-# requires orders: (_.amount < 2**62) (inferred)
+# requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 # ensures id IS NOT NULL: proved
@@ -393,7 +394,7 @@ try:
     share(orders)
 except VerificationError as e:
     print(str(e).splitlines()[0])
-# could not prove: no runtime error (division by zero: (($2 - 1) / ($2 - 30))), ...
+# could not prove: no runtime error (division by zero: (amount - 1) // (amount - 30)), ...
 ```
 
 Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
@@ -422,7 +423,8 @@ compute, and the division is proved safe with no precondition:
 gcon = sv.connect()
 gcon.put("lines", pa.table({"id": [1, 2, 3], "n": [4, 0, 2], "total": [100, 250, 30]}))
 lines = gcon.table("lines")
-per_line = sv.verify(lines.filter(lines.n != 0).select(lines.id, per=lines.total // lines.n))
+kept = lines.filter(lines.n != 0)
+per_line = sv.verify(kept.select(kept.id, per=kept.total // kept.n), requires={"lines": [_.total >= 0]})
 print(per_line.run(gcon).to_pylist())
 # [{'id': 1, 'per': 25}, {'id': 3, 'per': 15}]
 ```
@@ -435,12 +437,13 @@ before the run, and says where the error sits:
 
 ```python
 mixed = sv.verify(
-    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
+    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n),
+    on_inferred="silent",
 )
 print(mixed)
-# requires lines: (_.total >= -9 * 10**18) (inferred)
-# requires lines: (_.n != 0) (inferred)
-# hint: `($2 / $1)` is inside an AND or OR, which evaluates both operands, ...
+# requires lines: (_.total >= -9 * 10**18) (inferred from total // n)
+# requires lines: (_.n != 0) (inferred from total // n)
+# hint: `total // n` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both operands ...
 ```
 
 `mixed.run(gcon)` refuses this batch, whose second row has `n = 0`, with a
@@ -460,14 +463,14 @@ leave its range, it works out the range each input column must stay in, and
 adds it to `requires` as if you had written it:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
 def twice(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
 twice(orders)
 print(twice.last_report)
 # requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 2**62) (inferred)
+# requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.twice >= 0): proved
 # ...
 ```
@@ -520,8 +523,8 @@ samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name
 per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
     cpu=samples.cpu.sum()
 )
-print(sv.verify(per_minute))
-# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred)
+print(sv.verify(per_minute, on_inferred="silent"))
+# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred from ts.truncate('minute'))
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
@@ -782,7 +785,7 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.last_report)
-# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where a column
+# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows
 # ...
 print(n.refresh())
 # capped:

@@ -273,6 +273,7 @@ def test_rollup_contract_is_proved():
         g,
         requires={"s": [_.cpu >= 0, _.cpu <= 1000]},
         ensures=[_.mx.notnull(), _.mx <= 1000, _.lo <= _.mx, _.avg.notnull()],
+        on_inferred="silent",  # the truncated ts's bound
     )
     assert report.proved, str(report)
     assert report.facts["mx"] == "an integer in [0, 1000]"
@@ -319,11 +320,11 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     # pinned in test_datafusion_quirks.py).
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
     assert report.proved
-    assert [str(i) for i in report.assumed] == ["SUM overflow: $2"]
+    assert [str(i) for i in report.assumed] == ["SUM overflow: sum(amount)"]
     assert "assumes: SUM of amount fits 64 bits in every group" in str(report)
     # Without inference it is an error like any other.
     strict = sv.verify(orders.aggregate(total=orders.amount.sum()), infer=False)
-    assert [str(i) for i in strict.errors] == ["SUM overflow: $2"]
+    assert [str(i) for i in strict.errors] == ["SUM overflow: sum(amount)"]
     assert not strict.proved and not strict.assumed
     assert "checks it while it runs" in str(strict)
 
@@ -372,11 +373,11 @@ def test_an_assumed_sum_names_its_column():
     assert "assumes: SUM of amount_cents fits 64 bits in every group" in str(report)
     assert assumed in report._repr_markdown_()
     assert "$" not in str(report) + report._repr_markdown_()
-    # A SUM of an expression keeps Lean's notation.
+    # A SUM of an expression names it in the user's terms (#655).
     t = ibis.table({"k": "!int64", "b": "int64"}, name="t")
     report = sv.verify(t.group_by("k").aggregate(s=(t.b * 2).sum()))
     assert [(i.expr, i.column) for i in report.assumed] == [("($1 * 2)", None)]
-    assert "assumes: SUM of ($1 * 2) fits" in str(report)
+    assert "assumes: SUM of b * 2 fits" in str(report)
 
 
 def test_a_bounded_sum_over_bounded_rows_is_proved_outright():

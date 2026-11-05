@@ -90,12 +90,17 @@ class Exprs:
             return field_ref(self.windows[op])
         rule = _RULES.get(type(op))
         if rule is None:
-            reason = _REFUSED.get(type(op).__name__)
+            name = type(op).__name__
+            reason = _REFUSED.get(name)
             raise Unsupported(
-                f"{type(op).__name__} is not supported" + (f": {reason}" if reason else "")
+                f"{_OP_LABELS.get(name, name)} is not supported" + (f": {reason}" if reason else "")
             )
         return rule(self, op)
 
+
+#: What a refusal calls an Ibis operation, where its class name is not what
+#: users write (#655).
+_OP_LABELS = {"TimestampNow": "ibis.now()", "DateNow": "ibis.today()"}
 
 #: Why some operations are refused (#58).
 _REFUSED: dict[str, str] = {}

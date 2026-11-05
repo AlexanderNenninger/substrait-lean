@@ -147,7 +147,8 @@ def Profile.substrait.obs : ObsTable := [
 behaviours the core allows. -/
 example : options.all fun o => Profile.substrait.table.choices.any (·.2.1 == o.id) := by
   decide +kernel
-example : (Profile.substrait.table.choices.map fun (g, o, _) => (g, o)).Nodup := by decide +kernel
+example : (Profile.substrait.table.choices.map fun (g, o, _) => (g, o)).Nodup :=
+  nodup_of_nodupB (by decide +kernel)
 example : Profile.substrait.table.choices.all fun (g, o, c) =>
     g.all (Functions.groups.lookup · |>.any (·.contains o)) &&
     ((OptionSpec.find? o).map (c.within ·.core)).getD false := by
