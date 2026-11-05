@@ -1,0 +1,4 @@
+{
+  "sverify.pythonPath": "${workspaceFolder}/../../python/.venv/bin/python",
+  "sverify.counterexamples": 200
+}

@@ -115,16 +115,19 @@ def test_asof_guarantees_are_proved(how):
 
 
 @pytest.mark.slow
-def test_ties_on_the_right_are_refused():
+def test_ties_on_the_right_keep_the_guarantees():
     """Two gyroscope readings at the same instant: which one is "the latest"
-    is up to DataFusion, so nothing is claimed."""
+    is up to the engine. The guarantees hold for either pick (D24), and the
+    report names the ranking window as the place a rerun may differ."""
     report = sv.verify(
         sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL),
         requires={"acc": KEYS["acc"]},
-        ensures=GUARANTEES[:1],
+        ensures=GUARANTEES,
+        on_inferred="silent",
     )
+    assert report.proved, str(report)
     assert not report.deterministic
-    assert not report.proved
+    assert [p.op for p in report.tie_places] == ["window"]
 
 
 def test_aligning_100hz_with_130hz():

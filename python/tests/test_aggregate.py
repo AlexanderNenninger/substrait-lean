@@ -831,15 +831,17 @@ def test_group_concat_is_determined_by_a_key():
     assert sv.verify(unordered, requires={"t": [sv.unique("k")]}).deterministic
 
 
-def test_unordered_group_concat_proves_nothing_about_the_order():
-    """Without `order_by` the order of the strings is open: no postcondition
-    is proved until conditions are proved over every order (D1), the report
-    names the open elements, and DuckDB joins the strings of each group in
-    the input's order."""
+def test_unordered_group_concat_proves_only_what_holds_for_every_order():
+    """Without `order_by` the order of the strings is open: a postcondition
+    is proved only where it holds for every order (D24), the report names the
+    open elements and the aggregate, and DuckDB joins the strings of each
+    group in the input's order."""
     expr = P.group_by("k").aggregate(s=P.x.group_concat(","))
     report = sv.verify(expr, ensures=[_.s == "a,b"])
     assert not report.proved
-    assert "undetermined" in report.ensures[0].value
+    assert report.ensures[0].ignores == ("elements",)
+    assert [p.op for p in report.tie_places] == ["aggregate"]
+    assert "STRING_AGG" in report.tie_places[0].what
     rows = [(1, "a", 1), (1, "b", 2), (2, None, 3), (1, None, 4)]
     con = connect()
     create_table(con, "t", P.schema(), rows)
