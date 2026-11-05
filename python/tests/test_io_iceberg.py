@@ -82,7 +82,7 @@ def test_appends_are_a_change_feed(catalog):
         ("orders", "_.id.notnull()"): SCHEMA,
         ("orders", "(_.amount >= 0)"): "file stats @v1",
         ("orders", "(_.amount < 1000000000)"): "file stats @v1",
-        ("orders", f"(_.ts >= {datetime(2024, 1, 1)!r})"): "file stats @v1",
+        ("orders", "(_.ts >= datetime(2024, 1, 1))"): "file stats @v1",
         ("orders", "(_.customer != 'eve')"): ON_DATA,
         ("orders", "unique(id)"): ON_DATA,
     }

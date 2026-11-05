@@ -280,7 +280,7 @@ def _check(expr: ir.Table) -> None:
     code, out, err = run_checker((), to_substrait_json(expr))
     if code != 0:
         lines = (err or out).strip().splitlines() or ["(no message)"]
-        raise Unsupported(f"Lean refuses the SQL: {lines[-1].removeprefix('error: ')}")
+        raise Unsupported(f"the checker refuses the SQL: {lines[-1].removeprefix('error: ')}")
 
 
 def _visit_sql_model(self, op, *, query, inputs, names, schema, dialect, semantics):  # noqa: ANN001, ANN202, ARG001

@@ -133,3 +133,58 @@ def test_a_sink_that_must_reproduce_refuses_open_ties() -> None:
     with pytest.raises(RouteError, match="ties stay open at the window"):
         report.run(con, "duckdb", reproducible=sv.equivalent())
     assert report.run(con, "duckdb").num_rows == len(ROWS)
+
+
+# -- Tie-free ranks and keys through joins (the API critique, #686) ----------
+
+
+@pytest.mark.parametrize(
+    "fn", [ibis.rank, ibis.dense_rank, ibis.percent_rank, ibis.cume_dist], ids=lambda f: f.__name__
+)
+def test_ranks_over_the_window_order_are_tie_free(fn) -> None:
+    """Tied rows get the same rank whatever their arrangement (`window_tieFree`),
+    so the result is determined without a key; `ROW_NUMBER` is not."""
+    ranked = T.mutate(r=fn().over(ibis.window(group_by="k", order_by="o")))
+    report = sv.verify(ranked)
+    assert report.deterministic and report.tie_places == []
+    assert not routes.choose(report, "duckdb", deterministic=True).refused
+    numbered = T.mutate(r=ibis.row_number().over(ibis.window(group_by="k", order_by="o")))
+    assert not sv.verify(numbered).deterministic
+
+
+SQL_TABLES = {
+    "orders": ibis.table({"customer_id": "int64", "amount": "float64"}, name="orders"),
+    "customers": ibis.table({"customer_id": "int64", "name": "string"}, name="customers"),
+}
+SQL_REQUIRES = {
+    "orders": ["customer_id IS NOT NULL"],
+    "customers": ["customer_id IS NOT NULL", sv.unique("customer_id")],
+}
+
+
+@pytest.mark.parametrize("side", ["p", "c"])
+def test_a_key_is_seen_through_the_columns_a_join_equates(side) -> None:
+    """`p.customer_id = c.customer_id`: a key on either column is a key on the
+    other (`KeyOn.eqVariants`)."""
+    q = (
+        f"SELECT {side}.customer_id, c.name FROM (SELECT customer_id, count(*) n FROM orders "
+        "GROUP BY customer_id) p JOIN customers c ON c.customer_id = p.customer_id"
+    )
+    report = sv.verify(
+        q, tables=SQL_TABLES, requires=SQL_REQUIRES, ensures=[sv.unique("customer_id")]
+    )
+    assert report.proved, str(report)
+
+
+def test_a_key_through_a_join_breaks_the_ties_of_a_window() -> None:
+    """The critique's mart: ROW_NUMBER over revenue, ties broken by the
+    dimension's customer_id, is determined once the key is seen through the
+    join."""
+    q = """
+    SELECT c.customer_id, p.revenue,
+           row_number() OVER (ORDER BY p.revenue DESC, c.customer_id) AS rn
+    FROM (SELECT customer_id, sum(amount) AS revenue FROM orders GROUP BY customer_id) p
+    JOIN customers c ON c.customer_id = p.customer_id
+    """
+    report = sv.verify(q, tables=SQL_TABLES, requires=SQL_REQUIRES, ensures=["rn >= 1"])
+    assert report.deterministic and report.tie_places == []

@@ -470,6 +470,40 @@ def _check_protocol(path: str) -> None:
         )
 
 
+def stale_checker(path: Path | None = None) -> str | None:
+    """Why the checker at `path` is older than this sverify, where it is a
+    build in a source checkout (`.lake/build/bin/substrait-check`, an
+    editable install or `SVERIFY_CHECK`) and a Lean source of that checkout
+    is newer than it; None otherwise. A checker that speaks this sverify's
+    protocol may still lack a feature the Python side asks for (#687)."""
+    try:
+        path = (path or checker_path()).resolve()
+        root = path.parents[3]
+        if path.parent.parts[-3:] != (".lake", "build", "bin"):
+            return None
+        sources = [root / "SubstraitLean.lean", *(root / "SubstraitLean").rglob("*.lean")]
+        built = path.stat().st_mtime
+        newer = [f for f in sources if f.exists() and f.stat().st_mtime > built]
+    except (OSError, IndexError):
+        return None
+    if not newer:
+        return None
+    return (
+        f"the checker at {path} is older than this sverify: {len(newer)} Lean source(s) "
+        f"changed since it was built (e.g. {newer[0].relative_to(root)}); {_REBUILD}, "
+        "or unset SVERIFY_CHECK"
+    )
+
+
+def checker_failed(mode: str, err: str) -> Exception:
+    """The error for a checker request that failed: `CheckerVersionError`
+    where the checker is a stale build (`stale_checker`), else a
+    `ValueError` with the checker's message."""
+    if (why := stale_checker()) is not None:
+        return CheckerVersionError(f"{why}. The checker said: {err.strip()}")
+    return ValueError(f"substrait-check {mode} failed: {err.strip()}")
+
+
 def checker_path() -> Path:
     """`$SVERIFY_CHECK` if set, else the `substrait-check` the wheel ships with
     (a symlink to the lake build in an editable install). The first call for a
