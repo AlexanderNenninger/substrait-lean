@@ -748,6 +748,8 @@ The report's parts come as data and as the lines `str(report)` prints:
   jobs and tools: the verdict, each postcondition with its reason and
   counterexample, the issues, the needs, the facts and the routes, in the
   format of [`report.schema.json`](../python/src/sverify/schemas/report.schema.json).
+  Postconditions, issues and assumptions are findings in the shape of a
+  SARIF result, with a `ruleId`, a `level` and a `message`.
   `sv.Report.from_json(text)` reads it back into a `Report` with the same
   verdict ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736),
   [stability](stability.md)).
@@ -1248,7 +1250,8 @@ tables. A table format plays four roles:
   states (`_.id.notnull()`) and those the proved report shows are never NULL
   (`report.not_null`, [#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
   The commit records the plan hash, the
-  source versions and the contract (`sverify.io.Contract`, in the format of
+  source versions and the contract (`sverify.io.Contract`, under the key
+  `sverify.contract`, in the format of
   [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json),
   which every 1.x release reads: [stability.md](stability.md#the-formats)).
   A job that reads the table gets its preconditions from them. After the first write, `DeltaSink` MERGEs each
@@ -1378,6 +1381,124 @@ correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
 deletion vectors the statistics cover deleted rows too, which still bounds
 the live ones). Iceberg tables with equality deletes can't be read. What is
 proved is listed under [Table formats](how-it-works.md#table-formats).
+
+### OpenLineage
+
+[OpenLineage](https://openlineage.io) is the standard for lineage and run
+events: Airflow, Spark and dbt emit it, and Marquez, DataHub, OpenMetadata
+and the cloud catalogs read it. A refresh emits a run per node, and
+`sverify.openlineage` reads what upstream jobs emitted
+([#792](https://github.com/AlexanderNenninger/substrait-lean/issues/792)).
+The events follow spec 2-0-2, the spec of `openlineage-python` 1.55.0, and
+the tests validate every event and facet against it
+([tests/standards/](../python/tests/standards/openlineage-1.55.0/),
+[test_openlineage.py](../python/tests/test_openlineage.py)).
+
+```python
+import tempfile
+
+import pyarrow as pa
+import sverify as sv
+from ibis import _
+from sverify import openlineage
+from sverify.io import DeltaSink, StaticSource
+
+lake = tempfile.mkdtemp()
+shop_orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1000, sv.key("id")]},
+    ensures=[_.amount > 10, _.amount < 1000, sv.key("id")],
+)
+def paid_orders(orders):
+    return orders.filter(orders.amount > 10)
+
+paid_sink = DeltaSink(f"{lake}/paid")
+stored = shop_orders.pipe(paid_orders).write(paid_sink)
+stored.refresh(lineage=openlineage.Lineage("events.jsonl", namespace="shop"))
+```
+
+The target is a file (JSON lines), `"console"`, a URL such as
+`"http://marquez:5000"`, or `True` for the OpenLineage client's
+configuration (`openlineage.yml`, `OPENLINEAGE_*`).
+
+```bash
+sverify refresh pipelines/orders.py:paid --lineage http://marquez:5000
+```
+
+Sverify sends nothing and opens no connection unless a refresh gets
+`lineage=` (`--lineage` on the command line). `OPENLINEAGE_DISABLED=true`
+turns it off again, `OPENLINEAGE_NAMESPACE` sets the jobs' namespace and
+`OPENLINEAGE_API_KEY` a bearer token. A target that fails warns with
+`openlineage.LineageWarning`, and the refresh goes on. The file, console
+and HTTP targets need nothing; `lineage=True` reads the OpenLineage
+client's configuration (any of its transports, Kafka included) and needs
+`pip install 'sverify[openlineage]'`.
+
+Each node is a job named after the node, and each refresh of it a run:
+START, then COMPLETE, or FAIL with the error (a node held by a failed
+precondition, or an exception), or ABORT for the nodes an earlier failure
+kept from running. The run's inputs are the node's sources and the stored
+nodes it reads, at their versions, with the `schema`, `dataSource` and
+`version` facets, and the preconditions checked on their rows as
+`dataQualityAssertions`. Its output is the node's sink, with `schema`,
+`dataSource`, `version`, `outputStatistics`, the postconditions checked on
+the data as `dataQualityAssertions`, and two more facets:
+
+- `columnLineage`, from the plan Lean checked: each output column with the
+  input columns it is copied (`IDENTITY`), computed (`TRANSFORMATION`) or
+  aggregated (`AGGREGATION`) from, and the columns that pick the rows
+  (`FILTER`, `JOIN`, `GROUP_BY`, `SORT`, `WINDOW`);
+- `sverify_contract`, a custom facet with a JSON schema
+  ([openlineage-contract-facet.schema.json](../python/src/sverify/schemas/openlineage-contract-facet.schema.json),
+  format 1): the node, the sha256 of its plan, each postcondition with its
+  status (`proved`, `checked`, `not_proved`), the preconditions, the route
+  and class, the outcome, quarantined rows, and the verified plan exported
+  to Substrait ([Exporting to Substrait](#exporting-to-substrait);
+  `Lineage(plan=False)` leaves it out).
+
+Datasets are named by OpenLineage's conventions: a Delta table in object
+storage is `s3://bucket` and its path, a local one `file` and its absolute
+path, an Iceberg table `iceberg://<catalog>` and its identifier, and other
+sources `sverify` and their name.
+
+`openlineage.read(path)` reads events from a JSON lines file (or a list of
+events), and `openlineage.marquez(url, namespace, name)` reads a dataset
+from Marquez's API. `dataset(source)` gives what upstream jobs said of a
+source: its `schema` as an Ibis schema, its `version`, the job that wrote
+it (`producer`), and
+
+- `requires`: the postconditions of its `sverify_contract` facet that
+  sverify proves again, for a downstream transform's `requires`. The facet
+  counts as proved only where it carries its exported plan and the checker
+  proves that plan's postconditions (`sv.Report.from_substrait`): a contract
+  chains across pipelines, repositories and teams, and each link is proved
+  where it is used.
+- `evidence`: everything else, as checked evidence: other
+  tools' `dataQualityAssertions` (a dbt test, a Great Expectations suite),
+  and the claims of a facet sverify could not prove again
+  (`why_unverified` says why).
+
+```python
+# Another pipeline, in another repository, reads what `shop` wrote.
+upstream = openlineage.read("events.jsonl").dataset(paid_sink)
+
+@sv.transform(requires={"paid": upstream.requires}, ensures=[_.doubled > 20])
+def doubled_paid(paid):
+    return paid.select(paid.id, doubled=paid.amount * 2)
+
+print(upstream.verified, doubled_paid.check(paid=upstream.schema).proved)
+# True True
+```
+
+To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
+0.51.1 and its Postgres in containers, with the API on port 5000;
+`test_marquez_round_trip` runs against it when
+`SVERIFY_MARQUEZ_URL` is set. DataHub takes OpenLineage events at
+`/openapi/openlineage/api/v1/lineage` on its GMS, so its target is the
+GMS's URL with that prefix, such as
+`Lineage("http://datahub-gms:8080/openapi/openlineage", api_key=token)` with a
+personal access token.
 
 ### Time buckets: bounded state
 
@@ -1712,10 +1833,10 @@ Within 1.x the message and the manifest only gain fields, and
 |---|---|
 | `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
 | `extension_urns` | the YAMLs the plan's calls come from |
-| `profile` | the profile the plan was verified under |
-| `class` | `exact`, `observed` (equal up to `observation`) or `assumed` (with annotated choices) |
+| `semantics` | the semantics the plan was verified under |
+| `class` | `exact`, `observed` (equal up to `equivalence`) or `assumed` (with annotated choices) |
 | `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
-| `observation` | what the postconditions observe (`sv.equivalent`) |
+| `equivalence`, `equivalence_components` | what the postconditions tell apart (`sv.equivalent`) |
 | `pinned` | each pinned option, its values and the calls that state it |
 | `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
 | `deterministic`, `rows`, `params`, `output` | as in the report |

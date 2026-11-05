@@ -58,7 +58,7 @@ def test_a_native_change_logs_what_it_rewrote(tmp_path):
     entry = last(out)
     assert entry["operation"] == "WRITE"
     assert entry["operationParameters"]["sverify"] == "merge"
-    assert "sverify" in entry  # the contract
+    assert "sverify.contract" in entry  # the contract
     m = entry["operationMetrics"]
     assert (m["num_target_rows_inserted"], m["num_target_rows_deleted"]) == (2, 3)
     assert m["num_target_rows_copied"] == 7

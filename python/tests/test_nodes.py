@@ -185,7 +185,7 @@ def test_a_shared_stored_node_is_refreshed_once(tmp_path):
     b = big(p).write(DeltaSink(str(tmp_path / "big")))
     report = sv.group(a, b).refresh()
     assert [s.node for s in report.nodes] == ["paid", "doubled", "big"]
-    assert [w.contract.view for w in report.writes] == ["paid", "big"]
+    assert [w.contract.node for w in report.writes] == ["paid", "big"]
     write_deltalake(orders.uri, orders_table([(3, "cy", 9)]), mode="append")
     report = sv.group(a, b).refresh()
     assert [s.node for s in report.nodes] == ["paid", "doubled", "big"]

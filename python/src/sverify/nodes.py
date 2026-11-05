@@ -394,6 +394,7 @@ class Node:
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
         reproducible: Observation | None = None,
+        lineage: Any = None,
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
         stored ones. `engine` runs the plans: `"duckdb"` (in memory, the
@@ -440,6 +441,11 @@ class Node:
             reproducible: What a rerun must reproduce for every node
                 (`sv.equivalent(...)`, D20), over each sink's own. Default
                 None: a stored node needs its sink's, another node nothing.
+            lineage: Where to send OpenLineage run events, one run per node
+                (`sverify.openlineage.Lineage`, #792): a `Lineage`, or what
+                `Lineage(...)` takes (a file, `"console"`, a URL), or True
+                for the OpenLineage client's own configuration. Default
+                None: no events, and no connection.
 
         Returns:
             A `Refresh`: what was done to each node, upstream first.
@@ -477,6 +483,7 @@ class Node:
             route=route,
             unverified=unverified,
             reproducible=reproducible,
+            lineage=lineage,
         )
 
     def status(self) -> Status:
@@ -1237,6 +1244,7 @@ class Group:
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
         reproducible: Observation | None = None,
+        lineage: Any = None,
     ) -> Refresh:
         """Refresh every node against the same source versions (each
         source's latest when the refresh starts), sharing the stored nodes
@@ -1253,6 +1261,8 @@ class Group:
             unverified: Refresh nodes whose contract is not proved anyway;
                 see `Node.refresh`.
             reproducible: What a rerun must reproduce; see `Node.refresh`.
+            lineage: Where to send OpenLineage run events; see
+                `Node.refresh`.
 
         Returns:
             A `Refresh` with an entry for every node refreshed: the nodes and
@@ -1282,32 +1292,50 @@ class Group:
         if engine is None:
             engine = "duckdb"
         order = self._order()
-        chosen = _routes(order, engine, route, reproducible, unverified)
-        if (planned := PLANNED.get()) is not None:
-            planned()
-        for n in order:
-            if isinstance(n, _Stored) and n._stage is None:
-                _continue_versions(n)
-        pins: dict[int, int] = {}
-        for n in order:
-            for leaf in n._leaves():
-                if isinstance(leaf, _Source) and id(leaf) not in pins:
-                    pins[id(leaf)] = leaf.source.latest()
-        done: list[StageRefresh] = []
-        waiting: dict[int, str] = {}
-        for n in order:
-            blocked = [leaf.name for leaf in n._leaves() if id(leaf) in waiting]
-            if blocked:
-                # A stored node it reads has no state yet: it was held.
-                entry = StageRefresh(n.name, None, held=f"waiting for {', '.join(blocked)}")
-                waiting[id(n)] = n.name
+        # OpenLineage run events (#792): off unless `lineage` is given.
+        runs = None
+        if lineage is not None and lineage is not False:
+            from sverify.openlineage import runs as lineage_runs
+
+            runs = lineage_runs(lineage, order)
+        try:
+            chosen = _routes(order, engine, route, reproducible, unverified)
+            if (planned := PLANNED.get()) is not None:
+                planned()
+            for n in order:
+                if isinstance(n, _Stored) and n._stage is None:
+                    _continue_versions(n)
+            pins: dict[int, int] = {}
+            for n in order:
+                for leaf in n._leaves():
+                    if isinstance(leaf, _Source) and id(leaf) not in pins:
+                        pins[id(leaf)] = leaf.source.latest()
+            done: list[StageRefresh] = []
+            waiting: dict[int, str] = {}
+            for n in order:
+                blocked = [leaf.name for leaf in n._leaves() if id(leaf) in waiting]
+                if blocked:
+                    # A stored node it reads has no state yet: it was held.
+                    entry = StageRefresh(n.name, None, held=f"waiting for {', '.join(blocked)}")
+                    waiting[id(n)] = n.name
+                    done.append(entry)
+                    if runs is not None:
+                        runs.start(n)
+                        runs.complete(n, entry)
+                    continue
+                if runs is not None:
+                    runs.start(n)
+                entry = n._refresh(pins, engine, audit, chosen.get(id(n)))
+                if runs is not None:
+                    runs.complete(n, entry)
+                if entry.held is not None and n._stage is None:
+                    waiting[id(n)] = n.name
                 done.append(entry)
-                continue
-            entry = n._refresh(pins, engine, audit, chosen.get(id(n)))
-            if entry.held is not None and n._stage is None:
-                waiting[id(n)] = n.name
-            done.append(entry)
-        return Refresh(done)
+            return Refresh(done)
+        except BaseException as e:
+            if runs is not None:
+                runs.fail(e)
+            raise
 
     def status(self) -> Status:
         """Where each node stands (`Node.status`).

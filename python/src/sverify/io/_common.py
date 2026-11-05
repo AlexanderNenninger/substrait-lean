@@ -308,7 +308,8 @@ def not_null_column(sql: str) -> str | None:
 
 
 #: The version of the sink's contract record's format (`Contract.format`).
-CONTRACT_FORMAT = 1
+#: Format 2 (1.0) names the node `node`; format 1 called it `view`.
+CONTRACT_FORMAT = 2
 
 
 @dataclass
@@ -319,7 +320,7 @@ class Contract:
     `DeltaSource.contract()` and `IcebergSource.contract()` read it back.
 
     Attributes:
-        view: The stored node's name.
+        node: The stored node's name.
         sources: The version of every source table the state was computed
             from.
         not_null: Columns the node proves NOT NULL: stated in `ensures`
@@ -332,7 +333,7 @@ class Contract:
             table's `metaData.id`), at its version in `sources`.
     """
 
-    view: str
+    node: str
     plan: str
     """sha256 of the plan as Lean wrote it."""
     sources: dict[str, int]
@@ -358,8 +359,8 @@ class Contract:
     """The version of the record's format (`CONTRACT_FORMAT`,
     `sverify/schemas/sink-contract.schema.json`). It changes only with a
     record a reader of the previous format cannot read, which 1.x never
-    writes (`docs/stability.md`); a record without it was written before
-    0.5 and reads as format 1."""
+    writes (`docs/stability.md`). A record without it was written before
+    0.5 and reads as format 1; format 1 named the node `view`."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
@@ -384,7 +385,7 @@ class Contract:
 
         Raises:
             ValueError: The record's `format` is newer than this version
-                reads.
+                reads. A record of an earlier format reads as this one.
         """
         data = json.loads(text)
         fmt = data.get("format", 1)
@@ -393,8 +394,10 @@ class Contract:
                 f"the sink's contract record has format {fmt!r}, and this version of "
                 f"sverify reads format {CONTRACT_FORMAT} or older: upgrade sverify"
             )
+        if fmt < 2 and "view" in data:
+            data = {**data, "node": data["view"]}
         known = Contract.__dataclass_fields__
-        return Contract(**{k: v for k, v in data.items() if k in known})
+        return Contract(**{k: v for k, v in data.items() if k in known and k != "format"})
 
 
 class ConcurrentWriteError(SverifyError, RuntimeError):
@@ -448,10 +451,10 @@ class SinkWrite:
         src = ", ".join(f"{t}@v{n}" for t, n in self.contract.sources.items())
         if self.mode == "skipped":
             at = "" if self.version is None else f" (v{self.version})"
-            return f"{self.contract.view} from {src}: already committed{at}"
+            return f"{self.contract.node} from {src}: already committed{at}"
         at = "" if self.version is None else f" v{self.version}"
         return (
-            f"{self.contract.view} from {src}: {self.mode.replace('_', ' ')}{at}, "
+            f"{self.contract.node} from {src}: {self.mode.replace('_', ' ')}{at}, "
             f"{self.inserted} row(s) written, {self.deleted} deleted"
         )
 
@@ -485,7 +488,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
     names = set(view.schema.names)
     not_null += [c for c in view.not_null if c in names and c not in not_null]
     return Contract(
-        view=view.name,
+        node=view.name,
         plan=plan_digest(view.plan),
         sources=versions,
         epoch=sum(versions.values()),

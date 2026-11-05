@@ -40,7 +40,7 @@ def main(spec: dict) -> int:
     except Exception:  # noqa: BLE001
         traceback.print_exc()
         return 3
-    print(json.dumps({w.contract.view: w.mode for w in out.writes}))
+    print(json.dumps({w.contract.node: w.mode for w in out.writes}))
     return 0
 
 

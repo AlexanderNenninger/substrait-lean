@@ -1,0 +1,65 @@
+{
+  "assumed": [
+    {
+      "kind": "informational",
+      "level": "note",
+      "message": {
+        "text": "SUM overflow: sum(total) (the job also checks it while it runs and raises if it happens; a bound on the column and on the rows of a group rules it out)"
+      },
+      "properties": {
+        "assumption": "SUM of total fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)",
+        "column": "total",
+        "constant": false,
+        "hint": null,
+        "needs": [],
+        "shown": "sum(total)",
+        "under_and_or": false
+      },
+      "ruleId": "sum_overflow"
+    }
+  ],
+  "deterministic": true,
+  "dialect": "ibis",
+  "ensures": [],
+  "equivalence": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "facts": {
+    "s": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 2,
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "needs": [],
+  "not_null": [],
+  "on_inferred": "error",
+  "output": {
+    "s": "int64"
+  },
+  "params": [],
+  "proved": true,
+  "requires": {},
+  "rewrites": [],
+  "routes": {},
+  "rows": 1,
+  "semantics": "reference",
+  "sverify": "0.5.0",
+  "ties": {
+    "needs": [],
+    "places": []
+  },
+  "transfer": null,
+  "verdict": "proved"
+}
