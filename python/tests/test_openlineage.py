@@ -203,6 +203,25 @@ def test_a_failure_fails_the_run_and_aborts_the_rest(tmp_path):
     assert "PreconditionError" in fail["run"]["facets"]["errorMessage"]["message"]
 
 
+def test_the_plan_parts_are_built_once_per_node(tmp_path, monkeypatch):
+    """The contract, its Substrait export and the column lineage change only
+    with the plan: later refreshes reuse them."""
+    calls = []
+    export = ol._export
+    monkeypatch.setattr(ol, "_export", lambda r: calls.append(r) or export(r))
+    src = orders()
+    p = src.pipe(paid).write(DeltaSink(str(tmp_path / "paid")))
+    log = tmp_path / "events.jsonl"
+    lineage = ol.Lineage(log)
+    p.refresh(lineage=lineage)
+    src.apply(sv.Changes(inserts=[(4, 10, 70)]))
+    p.refresh(lineage=lineage)
+    assert len(calls) == 1
+    first, second = (e for e in events(log) if e["eventType"] == "COMPLETE")
+    c1, c2 = (e["outputs"][0]["facets"]["sverify_contract"] for e in (first, second))
+    assert c1["substrait"] == c2["substrait"] and c1["ensures"] == c2["ensures"]
+
+
 def test_a_dead_target_warns_and_the_refresh_goes_on(tmp_path):
     p = orders().pipe(paid).write(DeltaSink(str(tmp_path / "paid")))
     with pytest.warns(ol.LineageWarning, match="not sent"):

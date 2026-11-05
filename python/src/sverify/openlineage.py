@@ -381,19 +381,25 @@ def contract_facet(
         "ensures": ensures,
         "not_null": list(report.not_null),
     }
-    if entry is not None:
-        if entry.route is not None:
-            r = entry.route
-            facet["route"] = {"engine": r.engine, "kind": r.kind, "class": r.cls}
-        facet["outcome"] = entry.outcome
-        facet["quarantined"] = entry.quarantined
-        if entry.held is not None:
-            facet["held"] = entry.held
     if plan:
         export = _export(report)
         if export is not None:
             facet["substrait"] = export
-    return facet
+    return facet if entry is None else _with_refresh(facet, entry)
+
+
+def _with_refresh(facet: Mapping[str, Any], entry: StageRefresh) -> dict[str, Any]:
+    """`facet` with what the refresh `entry` did: route, outcome,
+    quarantined rows."""
+    out = dict(facet)
+    if entry.route is not None:
+        r = entry.route
+        out["route"] = {"engine": r.engine, "kind": r.kind, "class": r.cls}
+    out["outcome"] = entry.outcome
+    out["quarantined"] = entry.quarantined
+    if entry.held is not None:
+        out["held"] = entry.held
+    return out
 
 
 def _export(report: Report) -> dict[str, Any] | None:
@@ -497,6 +503,10 @@ class Lineage:
         self.plan = plan
         self.disabled = os.environ.get("OPENLINEAGE_DISABLED", "").lower() in ("1", "true")
         self.target = target
+        # Per node: the parts of its events that only change with its plan
+        # (the contract, the Substrait export, the column lineage), built
+        # on its first refresh and kept for the next ones.
+        self._static: dict[int, tuple[Any, Any, dict[str, Any]]] = {}
         if self.disabled:
             self._transport: Any = None
         elif target is None:
@@ -526,6 +536,20 @@ class Lineage:
                 LineageWarning,
                 stacklevel=2,
             )
+
+    def _plan_parts(self, n: Node, datasets: Mapping[str, tuple[str, str]]) -> dict[str, Any]:
+        """The contract facet (without the refresh's fields) and the column
+        lineage of `n`, built once per node and report."""
+        report = n.report
+        hit = self._static.get(id(n))
+        if hit is not None and hit[0] is n and hit[1] is report:
+            return hit[2]
+        parts = {
+            "contract": contract_facet(n, None, plan=self.plan),
+            "columnLineage": column_lineage(n._query()._expr, datasets),
+        }
+        self._static[id(n)] = (n, report, parts)
+        return parts
 
     def _runs(self, order: Sequence[Node]) -> _Runs:
         return _Runs(self, order)
@@ -645,7 +669,8 @@ class _Runs:
             if w is not None and w.version is not None:
                 facets["version"] = _facet("version", datasetVersion=str(w.version))
             datasets = {leaf.name: (ns, name) for leaf, ns, name in leaves}
-            lineage = column_lineage(n._query()._expr, datasets)
+            parts = self.lineage._plan_parts(n, datasets)
+            lineage = parts["columnLineage"]
             if lineage is not None:
                 facets["columnLineage"] = lineage
             post = list(entry.postconditions) + (
@@ -656,9 +681,8 @@ class _Runs:
                     "dataQualityAssertions",
                     assertions=[{"assertion": p.condition, "success": ok} for p in post],
                 )
-            contract = contract_facet(n, entry, plan=self.lineage.plan)
-            if contract is not None:
-                facets[_FACET] = contract
+            if parts["contract"] is not None:
+                facets[_FACET] = _with_refresh(parts["contract"], entry)
             d = {"namespace": out[0], "name": out[1], "facets": facets}
             if w is not None and w.mode != "skipped":
                 d["outputFacets"] = {
