@@ -141,10 +141,11 @@ theorem mem_unnestRow {c : Nat} {x row : Row} :
 def hasMatch (on : Expr) (ys : Relation) (x : Row) : Bool :=
   ys.any fun y => (on.eval (x ++ y)).isTrue
 
-/-- Denotational semantics. `FetchRel` takes rows in list order; real engines
-only promise this after a `SortRel`, so theorems about `fetch` hold for one
-particular (deterministic) choice. Likewise `SortRel` is stable here, while
-engines may order ties either way. -/
+/-- Denotational semantics. `FetchRel` takes rows in list order and
+`SortRel` sorts stably: the order of the deterministic profile (D24). The
+reference leaves both open, and `Rel.OrderAllowed` (`SubstraitLean/Ties.lean`)
+holds the results of every order, with the contract theorems over all of
+them (`contract_sound_all`). -/
 def Rel.eval (cat : Catalog) : Rel → Relation
   | .read t => (cat t).rows
   | .values _ rows => rows

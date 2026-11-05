@@ -1043,6 +1043,34 @@ theorem window_allColumns {part : List Nat} {sort : List SortKey} {fns : List Wi
     windowRows_eq_occurrences hS [] _ fun x hx => hm.subset (by simpa using hx)]
   exact (occurrences_perm (hp.trans hm.symm) []).map _
 
+/-- Does the measure `m` of an aggregate over `r` grouped by `gs` take its
+rows in an order the plan fixes? `FIRST`/`LAST` (#55) pick a row by their
+order, `STRING_AGG` joins the rows in it, and `MODE` (#53) breaks ties by it:
+unless the group's and the order's columns contain a key, ties make the
+result the engine's. `MODE` ordered by its argument's column is total: rows
+that tie have one value. -/
+def Measure.totalIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+  !(m.fn matches .pick _ || m.fn matches .concat _ || m.fn matches .mode) ||
+    (m.fn matches .mode && m.sort.any (m.arg == .field ·.col)) ||
+    (r.keys cat A F K).any fun k =>
+      k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
+
+/-- Does the window over `r` order its partitions totally: do its partition
+and sort columns contain a derived key of its input, are its functions
+order-free, or does its partition cover every column? -/
+def Rel.windowTotalAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (part : List Nat) (sort : List SortKey)
+    (fns : List WinFn) : Bool :=
+  (r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
+    fns.all WinFn.orderFree || (List.range (r.arity cat)).all (· ∈ part)
+
+/-- Does the `FETCH` over an `ORDER BY` on `keys` of `i` take rows the plan
+fixes: do the sort's columns contain a key of its input? -/
+def Rel.fetchTotalAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (i : Rel) (keys : List SortKey) : Bool :=
+  (i.keys cat A F K).any fun k => k.all fun c => keys.any (·.col == c)
+
 /-- Is every window deterministic: do its partition and sort columns contain
 a derived key of its input (`Rel.window_deterministic`), or are its functions
 order-free (`window_orderFree`), or does its partition cover every column
@@ -1052,20 +1080,11 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ => r.windowsTotal cat A F K
-  -- `FIRST`/`LAST` (#55) pick a row by their order, `STRING_AGG` joins the
-  -- rows in it, and `MODE` (#53) breaks ties by it: unless the group's and the
-  -- order's columns contain a key, ties make the result the engine's. `MODE`
-  -- ordered by its argument's column is total: rows that tie have one value.
-  | .aggregate r gs ms => r.windowsTotal cat A F K && ms.all fun m =>
-      !(m.fn matches .pick _ || m.fn matches .concat _ || m.fn matches .mode) ||
-        (m.fn matches .mode && m.sort.any (m.arg == .field ·.col)) ||
-        (r.keys cat A F K).any fun k =>
-          k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
+  | .aggregate r gs ms => r.windowsTotal cat A F K && ms.all (Measure.totalIn cat A F K r gs)
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort fns =>
-      r.windowsTotal cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all WinFn.orderFree || (List.range (r.arity cat)).all (· ∈ part))
+      r.windowsTotal cat A F K && Rel.windowTotalAt cat A F K r part sort fns
 
 /-- Does every `FETCH` (a `LIMIT` or `OFFSET`) take rows whose choice the
 plan fixes? Only below an `ORDER BY` whose keys contain a key of its input:
@@ -1074,8 +1093,7 @@ first, and the engine picks them (D10, `Rel.detPlan`). -/
 def Rel.fetchesTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
-  | .fetch (.orderBy i keys) _ _ => i.fetchesTotal cat A F K &&
-      (i.keys cat A F K).any fun k => k.all fun c => keys.any (·.col == c)
+  | .fetch (.orderBy i keys) _ _ => i.fetchesTotal cat A F K && Rel.fetchTotalAt cat A F K i keys
   | .fetch _ _ _ => false
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r | .unnest r _
   | .window r _ _ _ | .aggregate r _ _ => r.fetchesTotal cat A F K

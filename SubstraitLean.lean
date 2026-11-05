@@ -40,6 +40,7 @@ import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
 import SubstraitLean.Allowed
+import SubstraitLean.Ties
 import SubstraitLean.DuckDBSQL
 import SubstraitLean.LiftHint
 import SubstraitLean.LiftCache

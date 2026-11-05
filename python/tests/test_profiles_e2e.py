@@ -362,8 +362,9 @@ def test_c4_join_on_keys_with_nulls(con) -> None:
 
 
 @waits_for(
-    "the contract checker reports every condition over an open pick or element order as "
-    "undetermined; it proves none over every choice yet"
+    "the checker proves conditions over every pick and element order (D24), but its "
+    "abstract values relate no FIRST to its group's MAX, nor a collected list's length to "
+    "its group's rows"
 )
 def test_d1_open_picks_and_element_order(con) -> None:
     """`collect` and `first` without an order leave the elements' order and

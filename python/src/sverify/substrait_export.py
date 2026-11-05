@@ -1567,7 +1567,7 @@ def from_substrait(data: str | bytes | Mapping[str, Any]) -> Report:
 
 def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """`from_substrait`, under its internal name."""
-    from sverify.contracts import CheckedCondition, Issue, Report
+    from sverify.contracts import CheckedCondition, Issue, Report, tie_places
     from sverify.engine import run_checker
     from sverify.observation import Observation
 
@@ -1625,6 +1625,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         facts={f["name"]: f["value"] for f in out["facts"]},
         deterministic=out["deterministic"],
         windows_total=out.get("windows_total", out["deterministic"]),
+        tie_places=tie_places(out),
         issues=[
             Issue(i["kind"], i["expr"], i["error"])
             for i in out["issues"]
