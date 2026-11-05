@@ -54,7 +54,9 @@ FACTS = REPO / "characterization" / "spark" / "facts"
 TAG = "v4.3.0"
 COMMIT = "98bc0212c94705434471627068f41e374ccab143"
 TESTS = "sql/core/src/test/resources/sql-tests"
-CACHE = Path(os.environ.get("SVERIFY_SPARK_TESTS", Path.home() / ".cache" / "sverify" / "spark-tests"))
+CACHE = Path(
+    os.environ.get("SVERIFY_SPARK_TESTS", Path.home() / ".cache" / "sverify" / "spark-tests")
+)
 URL = f"https://github.com/apache/spark/blob/{TAG}/{TESTS}/"
 _LINK = re.compile(
     rf"^https://github\.com/apache/spark/blob/{re.escape(TAG)}/{re.escape(TESTS)}/"
@@ -148,7 +150,9 @@ def golden(root: Path) -> Iterator[Case]:
         yield from parse(path, str(path.relative_to(root)))
 
 
-def search(root: Path, pattern: str, file: str | None = None, output: str | None = None) -> list[Case]:
+def search(
+    root: Path, pattern: str, file: str | None = None, output: str | None = None
+) -> list[Case]:
     """The cases whose query matches `pattern` (a regex, case-insensitive), in
     the golden files whose path contains `file`, whose output matches `output`."""
     q = re.compile(pattern, re.I | re.S)
@@ -233,9 +237,16 @@ def _output(spark: Any, sql: str) -> str:
         df = spark.sql(sql)
         plan = df._jdf.queryExecution().executedPlan()
         rows = spark._jvm.org.apache.spark.sql.execution.HiveResult.hiveResultString(plan)
-        return "\n".join(sorted(rows.toList().mkString("\u0000").split("\u0000"))) if rows.size() else ""
+        return (
+            "\n".join(sorted(rows.toList().mkString("\u0000").split("\u0000")))
+            if rows.size()
+            else ""
+        )
     except Exception as e:  # noqa: BLE001 - every error is a result here
-        cond = getattr(e, "getCondition", lambda: None)() or getattr(e, "getErrorClass", lambda: None)()
+        cond = (
+            getattr(e, "getCondition", lambda: None)()
+            or getattr(e, "getErrorClass", lambda: None)()
+        )
         return f"error: {cond or type(e).__name__}"
 
 
@@ -279,7 +290,9 @@ def replay(root: Path, names: Sequence[str], only: str | None = None) -> tuple[i
                     compared += 1
                     want = _expected(c)
                     if got != want:
-                        bad.append(f"{c.url}\n  {c.query}\n  golden: {want[:200]}\n  local:  {got[:200]}")
+                        bad.append(
+                            f"{c.url}\n  {c.query}\n  golden: {want[:200]}\n  local:  {got[:200]}"
+                        )
             finally:
                 spark.stop()
     return compared, bad
@@ -304,7 +317,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         for c in found[: args.limit]:
             out = c.output if len(c.output) < 300 else c.output[:300] + " …"
             print(f"{c.url}\n  {c.query}\n  -> {c.schema}\n     {out}\n")
-        print(f"{len(found)} case(s)" + (f", {args.limit} shown" if len(found) > args.limit else ""))
+        print(
+            f"{len(found)} case(s)" + (f", {args.limit} shown" if len(found) > args.limit else "")
+        )
     elif args.cmd == "check":
         problems = check(root)
         print("\n".join(problems) or f"{sum(1 for _ in citations())} engine-test link(s) hold")

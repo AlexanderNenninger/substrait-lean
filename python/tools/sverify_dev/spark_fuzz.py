@@ -36,6 +36,7 @@ import argparse
 import copy
 import datetime as dt
 import json
+import logging
 import math
 import random
 import re
@@ -45,7 +46,7 @@ import time
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,7 @@ CONF: dict[str, str] = {
     "spark.master": "local[2]",
     "spark.driver.memory": "2g",
     "spark.ui.enabled": "false",
+    "spark.ui.showConsoleProgress": "false",
     "spark.sql.shuffle.partitions": "2",
     "spark.sql.session.timeZone": "UTC",
     "spark.sql.timestampType": "TIMESTAMP_NTZ",
@@ -122,7 +124,9 @@ class Target:
 # --- Values -----------------------------------------------------------------
 
 
-def pick(r: random.Random, edges: Sequence[Any], rand: Callable[[random.Random], Any], p: float = 0.5) -> Any:
+def pick(
+    r: random.Random, edges: Sequence[Any], rand: Callable[[random.Random], Any], p: float = 0.5
+) -> Any:
     return r.choice(edges) if r.random() < p else rand(r)
 
 
@@ -312,7 +316,13 @@ def _int_shift() -> list[Target]:
 
         def rows(r: random.Random, t: str = t) -> tuple:
             a = None if r.random() < 0.05 else pick(r, INT_EDGES[t], rand_int(WIDTH[t]))
-            n = None if r.random() < 0.05 else pick(r, [0, 1, -1, 31, 32, 33, 63, 64, 65, -33, -65], lambda r: r.randint(-200, 200))
+            n = (
+                None
+                if r.random() < 0.05
+                else pick(
+                    r, [0, 1, -1, 31, 32, 33, 63, 64, 65, -33, -65], lambda r: r.randint(-200, 200)
+                )
+            )
             return (a, n)
 
         def model(op: str, w: int = w) -> Callable[[tuple, bool], Any]:
@@ -331,7 +341,12 @@ def _int_shift() -> list[Target]:
                 [
                     Expr(f"{t.lower()} shiftleft", "shiftleft(a, n)", model("<<"), rt),
                     Expr(f"{t.lower()} shiftright", "shiftright(a, n)", model(">>"), rt),
-                    Expr(f"{t.lower()} shiftrightunsigned", "shiftrightunsigned(a, n)", model(">>>"), rt),
+                    Expr(
+                        f"{t.lower()} shiftrightunsigned",
+                        "shiftrightunsigned(a, n)",
+                        model(">>>"),
+                        rt,
+                    ),
                 ],
             )
         )
@@ -344,8 +359,16 @@ def _pow(a: float, b: float) -> float:
 
 def _int_pow() -> list[Target]:
     def rows(r: random.Random) -> tuple:
-        a = None if r.random() < 0.05 else pick(r, INT_EDGES["BIGINT"] + [3, -3, 10], lambda r: r.randint(-20, 20))
-        b = None if r.random() < 0.05 else pick(r, [0, 1, -1, 2, 63, 64, 1024, -1024, -2], lambda r: r.randint(-70, 70))
+        a = (
+            None
+            if r.random() < 0.05
+            else pick(r, INT_EDGES["BIGINT"] + [3, -3, 10], lambda r: r.randint(-20, 20))
+        )
+        b = (
+            None
+            if r.random() < 0.05
+            else pick(r, [0, 1, -1, 2, 63, 64, 1024, -1024, -2], lambda r: r.randint(-70, 70))
+        )
         return (a, b)
 
     def model(row: tuple, ansi: bool) -> Any:
@@ -404,9 +427,18 @@ def _decimal_negate() -> list[Target]:
                 f"x DECIMAL(38,{s})",
                 rows,
                 [
-                    Expr(f"-x decimal(38,{s})", "-x", model(lambda x: -x), f"decimal(38,{s})", "-x"),
-                    Expr(f"abs decimal(38,{s})", "abs(x)", model(abs), f"decimal(38,{s})", "abs(x)"),
-                    Expr(f"0 - x decimal(38,{s})", "0 - x", lambda row, ansi: None if row[0] is None else -row[0], None),
+                    Expr(
+                        f"-x decimal(38,{s})", "-x", model(lambda x: -x), f"decimal(38,{s})", "-x"
+                    ),
+                    Expr(
+                        f"abs decimal(38,{s})", "abs(x)", model(abs), f"decimal(38,{s})", "abs(x)"
+                    ),
+                    Expr(
+                        f"0 - x decimal(38,{s})",
+                        "0 - x",
+                        lambda row, ansi: None if row[0] is None else -row[0],
+                        None,
+                    ),
                 ],
                 ibis={"x": f"decimal(38,{s})"},
                 note="The model rounds to 34 significant digits half up (MathContext.DECIMAL128 as the fact states).",
@@ -500,7 +532,16 @@ def _double_divide_mod() -> list[Target]:
             "spark-double-divide",
             "a DOUBLE, b DOUBLE",
             _two_doubles,
-            [Expr("/", "a / b", _zero_divisor(np.divide, "DIVIDE_BY_ZERO"), "double", "a / b", same_double)],
+            [
+                Expr(
+                    "/",
+                    "a / b",
+                    _zero_divisor(np.divide, "DIVIDE_BY_ZERO"),
+                    "double",
+                    "a / b",
+                    same_double,
+                )
+            ],
             ibis={"a": "float64", "b": "float64"},
         ),
         Target(
@@ -508,7 +549,14 @@ def _double_divide_mod() -> list[Target]:
             "a DOUBLE, b DOUBLE",
             _two_doubles,
             [
-                Expr("%", "a % b", _zero_divisor(np.fmod, "REMAINDER_BY_ZERO"), "double", "fmod(a, b)", same_double),
+                Expr(
+                    "%",
+                    "a % b",
+                    _zero_divisor(np.fmod, "REMAINDER_BY_ZERO"),
+                    "double",
+                    "fmod(a, b)",
+                    same_double,
+                ),
                 Expr("pmod", "pmod(a, b)", _pmod, "double", None, same_double),
             ],
             ibis={"a": "float64", "b": "float64"},
@@ -520,7 +568,9 @@ def _one_double(r: random.Random) -> tuple:
     return (dbl(r, 0.5),)
 
 
-def _elem(f: Callable[[float], float], domain: Callable[[float], bool] | None = None) -> Callable[[tuple, bool], Any]:
+def _elem(
+    f: Callable[[float], float], domain: Callable[[float], bool] | None = None
+) -> Callable[[tuple, bool], Any]:
     def m(row: tuple, ansi: bool) -> Any:
         (x,) = row
         if x is None:
@@ -598,15 +648,64 @@ def _math_domain() -> list[Target]:
             "a DOUBLE, b DOUBLE",
             rows,
             [
-                Expr("sqrt", "sqrt(a)", lambda row, ansi: nd(np.sqrt, row[0]), "double", None, same_double),
-                Expr("asin", "asin(a)", lambda row, ansi: nd(np.arcsin, row[0]), "double", None, within_ulp(1)),
-                Expr("acos", "acos(a)", lambda row, ansi: nd(np.arccos, row[0]), "double", None, within_ulp(1)),
-                Expr("ln", "ln(a)", lambda row, ansi: _elem(np.log, le0)((row[0],), ansi), "double", None, within_ulp(1)),
-                Expr("log10", "log10(a)", lambda row, ansi: _elem(np.log10, le0)((row[0],), ansi), "double", None, within_ulp(1)),
+                Expr(
+                    "sqrt",
+                    "sqrt(a)",
+                    lambda row, ansi: nd(np.sqrt, row[0]),
+                    "double",
+                    None,
+                    same_double,
+                ),
+                Expr(
+                    "asin",
+                    "asin(a)",
+                    lambda row, ansi: nd(np.arcsin, row[0]),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
+                Expr(
+                    "acos",
+                    "acos(a)",
+                    lambda row, ansi: nd(np.arccos, row[0]),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
+                Expr(
+                    "ln",
+                    "ln(a)",
+                    lambda row, ansi: _elem(np.log, le0)((row[0],), ansi),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
+                Expr(
+                    "log10",
+                    "log10(a)",
+                    lambda row, ansi: _elem(np.log10, le0)((row[0],), ansi),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
                 Expr("log", "log(a, b)", log_b, "double", None, within_ulp(1)),
-                Expr("power", "power(a, b)", lambda row, ansi: _pow(*row), "double", None, within_ulp(1)),
+                Expr(
+                    "power",
+                    "power(a, b)",
+                    lambda row, ansi: _pow(*row),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
                 Expr("atan2", "atan2(a, b)", atan2, "double", None, within_ulp(1)),
-                Expr("sin", "sin(a)", lambda row, ansi: nd(np.sin, row[0]), "double", None, within_ulp(1)),
+                Expr(
+                    "sin",
+                    "sin(a)",
+                    lambda row, ansi: nd(np.sin, row[0]),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
             ],
             note="NaN and the signs of zero in the model are IEEE's; logs NULL for x <= 0; atan2 adds 0.0 to both arguments.",
         )
@@ -615,10 +714,15 @@ def _math_domain() -> list[Target]:
 
 def _nan_sign() -> list[Target]:
     def rows(r: random.Random) -> tuple:
-        return (r.choice([math.nan, neg_nan(), 1.0, -0.0, math.inf]), r.choice([math.inf, -math.inf, 0.0, 1.0]))
+        return (
+            r.choice([math.nan, neg_nan(), 1.0, -0.0, math.inf]),
+            r.choice([math.inf, -math.inf, 0.0, 1.0]),
+        )
 
     def flip(x: float) -> float:
-        return struct.unpack("<d", struct.pack("<Q", struct.unpack("<Q", struct.pack("<d", x))[0] ^ (1 << 63)))[0]
+        return struct.unpack(
+            "<d", struct.pack("<Q", struct.unpack("<Q", struct.pack("<d", x))[0] ^ (1 << 63))
+        )[0]
 
     def created(row: tuple, ansi: bool) -> Any:
         a, b = row
@@ -633,7 +737,18 @@ def _nan_sign() -> list[Target]:
             [
                 Expr("-x", "-a", lambda row, ansi: flip(row[0]), "double", None, same_bits),
                 Expr("abs", "abs(a)", lambda row, ansi: abs(row[0]), "double", None, same_bits),
-                Expr("x * -1", "a * -1.0D", lambda row, ansi: neg_nan() if math.isnan(row[0]) and math.copysign(1, row[0]) < 0 else (math.nan if math.isnan(row[0]) else row[0] * -1.0), "double", None, same_bits),
+                Expr(
+                    "x * -1",
+                    "a * -1.0D",
+                    lambda row, ansi: (
+                        neg_nan()
+                        if math.isnan(row[0]) and math.copysign(1, row[0]) < 0
+                        else (math.nan if math.isnan(row[0]) else row[0] * -1.0)
+                    ),
+                    "double",
+                    None,
+                    same_bits,
+                ),
                 Expr("b - b", "b - b", created, "double", None, same_bits),
             ],
             note="Bit for bit; the created NaN modelled negative, as on x86-64 (spark-exec-platform).",
@@ -657,10 +772,19 @@ def _zero_sign() -> list[Target]:
             [
                 Expr("+", "a + b", _ieee(np.add), "double", None, same_bits),
                 Expr("*", "a * b", _ieee(np.multiply), "double", None, same_bits),
-                Expr("/", "a / b", _zero_divisor(np.divide, "DIVIDE_BY_ZERO"), "double", None, same_bits),
+                Expr(
+                    "/",
+                    "a / b",
+                    _zero_divisor(np.divide, "DIVIDE_BY_ZERO"),
+                    "double",
+                    None,
+                    same_bits,
+                ),
                 Expr("-x", "-a", lambda row, ansi: -row[0], "double", None, same_bits),
                 Expr("abs", "abs(a)", lambda row, ansi: abs(row[0]), "double", None, same_bits),
-                Expr("cast string", "CAST(a AS STRING)", lambda row, ansi: java_str(row[0]), "string"),
+                Expr(
+                    "cast string", "CAST(a AS STRING)", lambda row, ansi: java_str(row[0]), "string"
+                ),
             ],
         )
     ]
@@ -692,7 +816,12 @@ def _zero_order() -> list[Target]:
             [
                 Expr("min", "min(x)", minmax(min), "double", None, _one_of_zeros),
                 Expr("max", "max(x)", minmax(max), "double", None, _one_of_zeros),
-                Expr("group key", "first(x) = 0.0 AND count(*) > 0", lambda vals, ansi: None if first(vals) is None else first(vals)[0] == 0.0, "boolean"),
+                Expr(
+                    "group key",
+                    "first(x) = 0.0 AND count(*) > 0",
+                    lambda vals, ansi: None if first(vals) is None else first(vals)[0] == 0.0,
+                    "boolean",
+                ),
             ],
             group=True,
             note="min and max may return any of the equal zeros they saw, by task order; checked that the zero is one of the group's.",
@@ -705,7 +834,14 @@ def _zero_order() -> list[Target]:
                 Expr("=", "a = b", lambda row, ansi: row[0] == row[1], "boolean"),
                 Expr("<", "a < b", lambda row, ansi: row[0] < row[1], "boolean"),
                 Expr("<=>", "a <=> b", lambda row, ansi: row[0] == row[1], "boolean"),
-                Expr("greatest", "greatest(a, b)", lambda row, ansi: [row[0]] if row[0] >= row[1] else [row[1]], "double", None, _one_of_zeros),
+                Expr(
+                    "greatest",
+                    "greatest(a, b)",
+                    lambda row, ansi: [row[0]] if row[0] >= row[1] else [row[1]],
+                    "double",
+                    None,
+                    _one_of_zeros,
+                ),
             ],
         ),
     ]
@@ -742,8 +878,12 @@ def _java_double(x: float) -> str:
         if point >= len(digits):
             return f"{sign}{digits}{'0' * (point - len(digits))}.0"
         return f"{sign}{digits[:point]}.{digits[point:]}"
-    frac = digits[1:] or "0"
-    return f"{sign}{digits[0]}.{frac}E{point - 1}"
+    if len(digits) == 1:
+        # At least two digits: the two-digit decimal nearest the value
+        # (`Double.MIN_VALUE` prints as 4.9E-324, 1e20 as 1.0E20).
+        m2, _, e2 = f"{Decimal(abs(x)):.1e}".partition("e")
+        return f"{sign}{m2}E{int(e2)}"
+    return f"{sign}{digits[0]}.{digits[1:]}E{point - 1}"
 
 
 def _round() -> list[Target]:
@@ -790,8 +930,26 @@ def _round() -> list[Target]:
 
     exprs = []
     for d in (0, 1, 2, -2):
-        exprs.append(Expr(f"round(x, {d})", f"round(x, {d})", rnd(d, ROUND_HALF_UP), "double", f"round(x, {d})", same_double))
-        exprs.append(Expr(f"bround(x, {d})", f"bround(x, {d})", rnd(d, ROUND_HALF_EVEN), "double", None, same_double))
+        exprs.append(
+            Expr(
+                f"round(x, {d})",
+                f"round(x, {d})",
+                rnd(d, ROUND_HALF_UP),
+                "double",
+                f"round(x, {d})",
+                same_double,
+            )
+        )
+        exprs.append(
+            Expr(
+                f"bround(x, {d})",
+                f"bround(x, {d})",
+                rnd(d, ROUND_HALF_EVEN),
+                "double",
+                None,
+                same_double,
+            )
+        )
     exprs.append(Expr("floor", "floor(x)", floor_ceil(math.floor), "bigint"))
     exprs.append(Expr("ceil", "ceil(x)", floor_ceil(math.ceil), "bigint"))
     return [Target("spark-round", "x DOUBLE", rows, exprs, ibis={"x": "float64"},
@@ -807,7 +965,11 @@ def _fp32() -> list[Target]:
         def f() -> float:
             return float(f32(pick(r, e, rand_double, 0.4)))
 
-        return (f(), f(), r.randint(-(2**31), 2**31 - 1) if r.random() < 0.5 else r.randint(-100, 100))
+        return (
+            f(),
+            f(),
+            r.randint(-(2**31), 2**31 - 1) if r.random() < 0.5 else r.randint(-100, 100),
+        )
 
     def op(fn: Callable) -> Callable[[tuple, bool], Any]:
         def m(row: tuple, ansi: bool) -> Any:
@@ -836,8 +998,22 @@ def _fp32() -> list[Target]:
                 Expr("float +", "a + b", op(np.add), "float", None, same_double),
                 Expr("float *", "a * b", op(np.multiply), "float", None, same_double),
                 Expr("float /", "a / b", div, "double", None, same_double),
-                Expr("float + int", "a + i", plus_int, lambda ansi: "double" if ansi else "float", None, same_double),
-                Expr("sqrt float", "sqrt(a)", lambda row, ansi: nd(np.sqrt, row[0]), "double", None, same_double),
+                Expr(
+                    "float + int",
+                    "a + i",
+                    plus_int,
+                    lambda ansi: "double" if ansi else "float",
+                    None,
+                    same_double,
+                ),
+                Expr(
+                    "sqrt float",
+                    "sqrt(a)",
+                    lambda row, ansi: nd(np.sqrt, row[0]),
+                    "double",
+                    None,
+                    same_double,
+                ),
             ],
             note="`a / b` of two FLOATs divides in DOUBLE (Spark's `Divide` casts both sides).",
         )
@@ -875,17 +1051,43 @@ def _substring() -> list[Target]:
             "spark-substring",
             "s STRING, p INT, l INT",
             rows,
-            [Expr("substring", "substring(s, p, l)", lambda row, ansi: _substr_model(*row), "string", "substring(s, p, l)")],
+            [
+                Expr(
+                    "substring",
+                    "substring(s, p, l)",
+                    lambda row, ansi: _substr_model(*row),
+                    "string",
+                    "substring(s, p, l)",
+                )
+            ],
             ibis={"s": "string", "p": "int32", "l": "int32"},
         )
     ]
 
 
 def _substring_range() -> list[Target]:
-    big = [2**31 - 1, 2**31, 2**31 + 1, 2**32 - 1, 2**32, 2**32 + 1, 2**32 + 3, -(2**31), -(2**31) - 1, -(2**32) - 1, 1, 2, -2]
+    big = [
+        2**31 - 1,
+        2**31,
+        2**31 + 1,
+        2**32 - 1,
+        2**32,
+        2**32 + 1,
+        2**32 + 3,
+        -(2**31),
+        -(2**31) - 1,
+        -(2**32) - 1,
+        1,
+        2,
+        -2,
+    ]
 
     def rows(r: random.Random) -> tuple:
-        return (_rand_str(r), pick(r, big, lambda r: r.randint(-(2**34), 2**34), 0.7), pick(r, big, lambda r: r.randint(-5, 10), 0.4))
+        return (
+            _rand_str(r),
+            pick(r, big, lambda r: r.randint(-(2**34), 2**34), 0.7),
+            pick(r, big, lambda r: r.randint(-5, 10), 0.4),
+        )
 
     def model(row: tuple, ansi: bool) -> Any:
         s, p, ln = row
@@ -906,13 +1108,26 @@ def _substring_range() -> list[Target]:
     ]
 
 
-_PATTERNS = [r"(\d+)", r"(\w)(\w)", r"a(b)?c", r"(.)\1", r"^(\s*)x", r"(é+)", r"([a-c]+)-(\d)", r"(?<=a)b"]
+_PATTERNS = [
+    r"(\d+)",
+    r"(\w)(\w)",
+    r"a(b)?c",
+    r"(.)\1",
+    r"^(\s*)x",
+    r"(é+)",
+    r"([a-c]+)-(\d)",
+    r"(?<=a)b",
+]
 
 
 def _regex() -> list[Target]:
     def rows(r: random.Random) -> tuple:
         alphabet = "ab c1-é٣\nx"
-        s = None if r.random() < 0.05 else "".join(r.choice(alphabet) for _ in range(r.randint(0, 8)))
+        s = (
+            None
+            if r.random() < 0.05
+            else "".join(r.choice(alphabet) for _ in range(r.randint(0, 8)))
+        )
         return (s, r.randrange(len(_PATTERNS)))
 
     def pat(i: int) -> re.Pattern:
@@ -935,7 +1150,13 @@ def _regex() -> list[Target]:
             return None
         return pat(i).sub(lambda m: "<" + (m.group(1) or "") + ">", s)
 
-    case = "CASE i " + " ".join(f"WHEN {k} THEN '{p.replace(chr(92), chr(92) * 2)}'" for k, p in enumerate(_PATTERNS)) + " END"
+    case = (
+        "CASE i "
+        + " ".join(
+            f"WHEN {k} THEN '{p.replace(chr(92), chr(92) * 2)}'" for k, p in enumerate(_PATTERNS)
+        )
+        + " END"
+    )
     return [
         Target(
             "spark-regex",
@@ -953,7 +1174,11 @@ def _regex() -> list[Target]:
 
 def _list_index() -> list[Target]:
     def rows(r: random.Random) -> tuple:
-        a = None if r.random() < 0.08 else [None if r.random() < 0.15 else r.randint(-9, 9) for _ in range(r.randint(0, 4))]
+        a = (
+            None
+            if r.random() < 0.08
+            else [None if r.random() < 0.15 else r.randint(-9, 9) for _ in range(r.randint(0, 4))]
+        )
         return (a, r.randint(-6, 6))
 
     def element_at(row: tuple, ansi: bool) -> Any:
@@ -1003,7 +1228,12 @@ def _list_index() -> list[Target]:
                 Expr("get", "get(a, i)", get, "int"),
                 Expr("try_element_at", "try_element_at(a, i)", try_at, "int"),
                 Expr("size", "size(a)", size, "int"),
-                Expr("array_size", "array_size(a)", lambda row, ansi: None if row[0] is None else len(row[0]), "int"),
+                Expr(
+                    "array_size",
+                    "array_size(a)",
+                    lambda row, ansi: None if row[0] is None else len(row[0]),
+                    "int",
+                ),
             ],
             ibis={"a": "array<int32>", "i": "int32"},
         )
@@ -1048,7 +1278,11 @@ def _list_order() -> list[Target]:
 
     def array_sort(row: tuple, ansi: bool) -> Any:
         a = row[0]
-        return None if a is None else sorted(x for x in a if x is not None) + [x for x in a if x is None]
+        return (
+            None
+            if a is None
+            else sorted(x for x in a if x is not None) + [x for x in a if x is None]
+        )
 
     return [
         Target(
@@ -1059,7 +1293,22 @@ def _list_order() -> list[Target]:
                 Expr("<", "a < b", cmp(lambda c: c < 0), "boolean"),
                 Expr("=", "a = b", cmp(lambda c: c == 0), "boolean"),
                 Expr(">", "a > b", cmp(lambda c: c > 0), "boolean"),
-                Expr("greatest", "greatest(a, b)", lambda row, ansi: None if row[0] is None and row[1] is None else (row[1] if row[0] is None else row[0] if row[1] is None else (row[0] if _list_cmp(row[0], row[1]) >= 0 else row[1])), "array<int>"),
+                Expr(
+                    "greatest",
+                    "greatest(a, b)",
+                    lambda row, ansi: (
+                        None
+                        if row[0] is None and row[1] is None
+                        else (
+                            row[1]
+                            if row[0] is None
+                            else row[0]
+                            if row[1] is None
+                            else (row[0] if _list_cmp(row[0], row[1]) >= 0 else row[1])
+                        )
+                    ),
+                    "array<int>",
+                ),
                 Expr("sort_array asc", "sort_array(a)", sort_array(True), "array<int>"),
                 Expr("sort_array desc", "sort_array(a, false)", sort_array(False), "array<int>"),
                 Expr("array_sort", "array_sort(a)", array_sort, "array<int>"),
@@ -1069,7 +1318,11 @@ def _list_order() -> list[Target]:
 
 
 _INT_TEXT = re.compile(r"^[+-]?\d+$")
-_JAVA_DOUBLE = re.compile(r"^[+-]?(NaN|Infinity|((\d+\.?\d*|\.\d+)([eE][+-]?\d+)?)|(0[xX](\p{XDigit}+\.?|\p{XDigit}*\.\p{XDigit}+)[pP][+-]?\d+))[fFdD]?$".replace(r"\p{XDigit}", "[0-9a-fA-F]"))
+_JAVA_DOUBLE = re.compile(
+    r"^[+-]?(NaN|Infinity|((\d+\.?\d*|\.\d+)([eE][+-]?\d+)?)|(0[xX](\p{XDigit}+\.?|\p{XDigit}*\.\p{XDigit}+)[pP][+-]?\d+))[fFdD]?$".replace(
+        r"\p{XDigit}", "[0-9a-fA-F]"
+    )
+)
 _WS = "".join(chr(c) for c in range(33))
 
 
@@ -1098,7 +1351,15 @@ def _cast_string() -> list[Target]:
     def to_double(row: tuple, ansi: bool) -> Any:
         s = row[0].strip(_WS)
         low = s.lower()
-        special = {"nan": math.nan, "inf": math.inf, "+inf": math.inf, "infinity": math.inf, "+infinity": math.inf, "-inf": -math.inf, "-infinity": -math.inf}
+        special = {
+            "nan": math.nan,
+            "inf": math.inf,
+            "+inf": math.inf,
+            "infinity": math.inf,
+            "+infinity": math.inf,
+            "-inf": -math.inf,
+            "-infinity": -math.inf,
+        }
         if low in special:
             return special[low]
         if not _JAVA_DOUBLE.match(s):
@@ -1125,7 +1386,14 @@ def _cast_string() -> list[Target]:
                 Expr("to int", "CAST(s AS INT)", to_int, "int"),
                 Expr("to double", "CAST(s AS DOUBLE)", to_double, "double", None, same_double),
                 Expr("to boolean", "CAST(s AS BOOLEAN)", to_bool, "boolean"),
-                Expr("try_cast int", "try_cast(s AS INT)", lambda row, ansi: (lambda v: None if isinstance(v, Raise) else v)(to_int(row, True)), "int"),
+                Expr(
+                    "try_cast int",
+                    "try_cast(s AS INT)",
+                    lambda row, ansi: (lambda v: None if isinstance(v, Raise) else v)(
+                        to_int(row, True)
+                    ),
+                    "int",
+                ),
             ],
             note="Strings from the fact's examples, with whitespace around them.",
         ),
@@ -1133,7 +1401,14 @@ def _cast_string() -> list[Target]:
             "spark-cast-string",
             "x DOUBLE",
             lambda r: (dbl(r, 0.3),),
-            [Expr("double to string", "CAST(x AS STRING)", lambda row, ansi: None if row[0] is None else _java_double(row[0]), "string")],
+            [
+                Expr(
+                    "double to string",
+                    "CAST(x AS STRING)",
+                    lambda row, ansi: None if row[0] is None else _java_double(row[0]),
+                    "string",
+                )
+            ],
             note="Formatting modelled as JDK 19's Double.toString: the shortest decimal, scientific outside [1e-3, 1e7).",
         ),
     ]
@@ -1170,8 +1445,24 @@ def _try_variants() -> list[Target]:
                 Expr("try_add", "try_add(a, b)", t(lambda a, b: a + b), "bigint"),
                 Expr("try_subtract", "try_subtract(a, b)", t(lambda a, b: a - b), "bigint"),
                 Expr("try_multiply", "try_multiply(a, b)", t(lambda a, b: a * b), "bigint"),
-                Expr("try_mod", "try_mod(a, b)", t(lambda a, b: None if b == 0 else tmod(a, b)), "bigint"),
-                Expr("try_divide", "try_divide(a, b)", lambda row, ansi: None if row[0] is None or row[1] is None or row[1] == 0 else float(row[0]) / float(row[1]), "double", None, same_double),
+                Expr(
+                    "try_mod",
+                    "try_mod(a, b)",
+                    t(lambda a, b: None if b == 0 else tmod(a, b)),
+                    "bigint",
+                ),
+                Expr(
+                    "try_divide",
+                    "try_divide(a, b)",
+                    lambda row, ansi: (
+                        None
+                        if row[0] is None or row[1] is None or row[1] == 0
+                        else float(row[0]) / float(row[1])
+                    ),
+                    "double",
+                    None,
+                    same_double,
+                ),
                 Expr("try_cast", "try_cast(s AS INT)", tcast, "int"),
             ],
         )
@@ -1180,7 +1471,12 @@ def _try_variants() -> list[Target]:
 
 def _raise_set() -> list[Target]:
     def rows(r: random.Random) -> tuple:
-        return (r.randint(-5, 5), r.choice(["1", "1.5", "x", " 2 ", "", "1e2"]), [1, 2, 3], r.randint(-4, 4))
+        return (
+            r.randint(-5, 5),
+            r.choice(["1", "1.5", "x", " 2 ", "", "1e2"]),
+            [1, 2, 3],
+            r.randint(-4, 4),
+        )
 
     def plus_str(row: tuple, ansi: bool) -> Any:
         n, s, _, _ = row
@@ -1197,7 +1493,11 @@ def _raise_set() -> list[Target]:
         if i == 0:
             return Raise("INVALID_INDEX_OF_ZERO")
         k = i - 1 if i > 0 else len(a) + i
-        return a[k] if 0 <= k < len(a) else (Raise("INVALID_ARRAY_INDEX_IN_ELEMENT_AT") if ansi else None)
+        return (
+            a[k]
+            if 0 <= k < len(a)
+            else (Raise("INVALID_ARRAY_INDEX_IN_ELEMENT_AT") if ansi else None)
+        )
 
     return [
         Target(
@@ -1205,7 +1505,14 @@ def _raise_set() -> list[Target]:
             "n INT, s STRING, a ARRAY<INT>, i INT",
             rows,
             [
-                Expr("int + string", "n + s", plus_str, lambda ansi: "bigint" if ansi else "double", None, same_double),
+                Expr(
+                    "int + string",
+                    "n + s",
+                    plus_str,
+                    lambda ansi: "bigint" if ansi else "double",
+                    None,
+                    same_double,
+                ),
                 Expr("element_at", "element_at(a, i)", at, "int"),
             ],
             note="Also the raising rows of spark-substring-range, spark-list-index, spark-decimal-negate, spark-round and spark-date-range.",
@@ -1214,16 +1521,30 @@ def _raise_set() -> list[Target]:
 
 
 def _date_range() -> list[Target]:
-    days = [2932896, 2932897, -719162, -719163, 0, 19723]  # 9999-12-31, +1, 0001-01-01, -1, 1970, 2024
+    days = [
+        2932896,
+        2932897,
+        -719162,
+        -719163,
+        0,
+        19723,
+    ]  # 9999-12-31, +1, 0001-01-01, -1, 1970, 2024
     adds = [1, -1, 2**31 - 1, -(2**31), 2**31 - 19723, 365, 0]
 
     def rows(r: random.Random) -> tuple:
-        return (pick(r, days, lambda r: r.randint(-800000, 3000000)), pick(r, adds, lambda r: r.randint(-(2**31), 2**31 - 1)))
+        return (
+            pick(r, days, lambda r: r.randint(-800000, 3000000)),
+            pick(r, adds, lambda r: r.randint(-(2**31), 2**31 - 1)),
+        )
 
     micros_max = 2**63 - 1
 
     def ts_rows(r: random.Random) -> tuple:
-        us = pick(r, [micros_max - 86400 * 10**6 + 1, micros_max - 86400 * 10**6, 253402300799 * 10**6, 0], lambda r: r.randint(-(2**62), 2**62))
+        us = pick(
+            r,
+            [micros_max - 86400 * 10**6 + 1, micros_max - 86400 * 10**6, 253402300799 * 10**6, 0],
+            lambda r: r.randint(-(2**62), 2**62),
+        )
         return (us, r.choice([1, -1, 10, 100000, 106751991]))
 
     def ts_add(row: tuple, ansi: bool) -> Any:
@@ -1237,8 +1558,18 @@ def _date_range() -> list[Target]:
             "k INT, n INT",
             rows,
             [
-                Expr("date_add", "unix_date(date_add(date_from_unix_date(k), n))", lambda row, ansi: wrap(row[0] + row[1], 32), "int"),
-                Expr("date + 1", "unix_date(date_from_unix_date(k) + 1)", lambda row, ansi: wrap(row[0] + 1, 32), "int"),
+                Expr(
+                    "date_add",
+                    "unix_date(date_add(date_from_unix_date(k), n))",
+                    lambda row, ansi: wrap(row[0] + row[1], 32),
+                    "int",
+                ),
+                Expr(
+                    "date + 1",
+                    "unix_date(date_from_unix_date(k) + 1)",
+                    lambda row, ansi: wrap(row[0] + 1, 32),
+                    "int",
+                ),
             ],
             note="Day counts compared through unix_date: past 9999-12-31 and before 0001-01-01 computed, past 2^31 days wrapped.",
         ),
@@ -1246,7 +1577,14 @@ def _date_range() -> list[Target]:
             "spark-date-range",
             "us BIGINT, n INT",
             ts_rows,
-            [Expr("ts + interval days", "unix_micros(CAST(timestamp_micros(us) AS TIMESTAMP_NTZ) + make_dt_interval(n, 0, 0, 0))", ts_add, "bigint")],
+            [
+                Expr(
+                    "ts + interval days",
+                    "unix_micros(CAST(timestamp_micros(us) AS TIMESTAMP_NTZ) + make_dt_interval(n, 0, 0, 0))",
+                    ts_add,
+                    "bigint",
+                )
+            ],
             note="TIMESTAMP_NTZ + days past the microsecond range: a bare ArithmeticException (SP-3).",
         ),
     ]
@@ -1365,7 +1703,13 @@ def _aggregates() -> list[Target]:
             if not xs:
                 return [None]
             if any(math.isnan(x) for x in xs):
-                return [math.nan] if f is max else [min(x for x in xs if not math.isnan(x))] if any(not math.isnan(x) for x in xs) else [math.nan]
+                return (
+                    [math.nan]
+                    if f is max
+                    else [min(x for x in xs if not math.isnan(x))]
+                    if any(not math.isnan(x) for x in xs)
+                    else [math.nan]
+                )
             return [f(xs)]
 
         return m
@@ -1388,7 +1732,11 @@ def _aggregates() -> list[Target]:
                 Expr("min", "min(x)", mm(min), "double", None, _any_of),
             ],
             group=True,
-            conf=[{"spark.sql.leafNodeDefaultParallelism": "1"}, {"spark.sql.leafNodeDefaultParallelism": "2"}, {"spark.sql.leafNodeDefaultParallelism": "3"}],
+            conf=[
+                {"spark.sql.leafNodeDefaultParallelism": "1"},
+                {"spark.sql.leafNodeDefaultParallelism": "2"},
+                {"spark.sql.leafNodeDefaultParallelism": "3"},
+            ],
             note="Bit for bit against the fact's order: each scan slice summed in input order, the partials merged in any order; avg the same sum over the count.",
         ),
         Target(
@@ -1396,13 +1744,42 @@ def _aggregates() -> list[Target]:
             "g INT, x DOUBLE",
             rows,
             [
-                Expr("var_samp", "var_samp(x)", var(True, False, lambda: state["legacy"]), "double", None, tol),
-                Expr("var_pop", "var_pop(x)", var(False, False, lambda: state["legacy"]), "double", None, tol),
-                Expr("stddev_samp", "stddev_samp(x)", var(True, True, lambda: state["legacy"]), "double", None, tol),
+                Expr(
+                    "var_samp",
+                    "var_samp(x)",
+                    var(True, False, lambda: state["legacy"]),
+                    "double",
+                    None,
+                    tol,
+                ),
+                Expr(
+                    "var_pop",
+                    "var_pop(x)",
+                    var(False, False, lambda: state["legacy"]),
+                    "double",
+                    None,
+                    tol,
+                ),
+                Expr(
+                    "stddev_samp",
+                    "stddev_samp(x)",
+                    var(True, True, lambda: state["legacy"]),
+                    "double",
+                    None,
+                    tol,
+                ),
             ],
             group=True,
-            conf=[{"spark.sql.legacy.statisticalAggregate": "false", "spark.sql.leafNodeDefaultParallelism": "2"},
-                  {"spark.sql.legacy.statisticalAggregate": "true", "spark.sql.leafNodeDefaultParallelism": "3"}],  # fmt: skip
+            conf=[
+                {
+                    "spark.sql.legacy.statisticalAggregate": "false",
+                    "spark.sql.leafNodeDefaultParallelism": "2",
+                },
+                {
+                    "spark.sql.legacy.statisticalAggregate": "true",
+                    "spark.sql.leafNodeDefaultParallelism": "3",
+                },
+            ],  # fmt: skip
             note="Welford per slice and Chan's merge, within 1e-12 relative.",
         ),
     ]
@@ -1461,17 +1838,48 @@ def _int_sums() -> list[Target]:
             rows,
             [
                 Expr("sum", "sum(x)", sum_m, "bigint", None, _any_of),
-                Expr("try_sum", "try_sum(x)", lambda parts, ansi: [None if isinstance(v, Raise) else v for v in sum_m(parts, True)] + ([wrap(sum(x for p in parts for x in p if x is not None), 64)] if False else []), "bigint", None, _any_of),
+                Expr(
+                    "try_sum",
+                    "try_sum(x)",
+                    lambda parts, ansi: (
+                        [None if isinstance(v, Raise) else v for v in sum_m(parts, True)]
+                        + (
+                            [wrap(sum(x for p in parts for x in p if x is not None), 64)]
+                            if False
+                            else []
+                        )
+                    ),
+                    "bigint",
+                    None,
+                    _any_of,
+                ),
             ],
             group=True,
-            conf=[{"spark.sql.leafNodeDefaultParallelism": "1"}, {"spark.sql.leafNodeDefaultParallelism": "2"}, {"spark.sql.leafNodeDefaultParallelism": "3"}],
+            conf=[
+                {"spark.sql.leafNodeDefaultParallelism": "1"},
+                {"spark.sql.leafNodeDefaultParallelism": "2"},
+                {"spark.sql.leafNodeDefaultParallelism": "3"},
+            ],
             note="ANSI: raises when a partial sum of a slice, in input order, or of the merge passes 64 bits; off: the wrapped total.",
         ),
         Target(
             "spark-sum-int",
             "g INT, x INT",
             narrow,
-            [Expr("sum int", "sum(x)", lambda parts, ansi: [None] if all(x is None for p in parts for x in p) else [sum(x for p in parts for x in p if x is not None)], "bigint", None, _any_of)],
+            [
+                Expr(
+                    "sum int",
+                    "sum(x)",
+                    lambda parts, ansi: (
+                        [None]
+                        if all(x is None for p in parts for x in p)
+                        else [sum(x for p in parts for x in p if x is not None)]
+                    ),
+                    "bigint",
+                    None,
+                    _any_of,
+                )
+            ],
             group=True,
         ),
         Target(
@@ -1590,7 +1998,10 @@ def _covar_corr() -> list[Target]:
 
 def _quantile() -> list[Target]:
     def rows(r: random.Random) -> tuple:
-        return (r.randint(0, 50), None if r.random() < 0.08 else r.choice([r.randint(-5, 5), r.randint(-1000, 1000)]))
+        return (
+            r.randint(0, 50),
+            None if r.random() < 0.08 else r.choice([r.randint(-5, 5), r.randint(-1000, 1000)]),
+        )
 
     def cont(p: float) -> Callable[[list, bool], Any]:
         def m(parts: list, ansi: bool) -> Any:
@@ -1621,15 +2032,38 @@ def _quantile() -> list[Target]:
     c = close(1e-15)
     exprs = []
     for p in (0.0, 0.25, 0.5, 0.9, 1.0):
-        exprs.append(Expr(f"percentile_cont {p}", f"percentile_cont({p}) WITHIN GROUP (ORDER BY x)", cont(p), "double", None, lambda g, a: any(c(g, x) for x in a)))
-        exprs.append(Expr(f"percentile_disc {p}", f"percentile_disc({p}) WITHIN GROUP (ORDER BY x)", disc(p), "double", None, _any_of))
-    exprs.append(Expr("median", "median(x)", cont(0.5), "double", None, lambda g, a: any(c(g, x) for x in a)))
+        exprs.append(
+            Expr(
+                f"percentile_cont {p}",
+                f"percentile_cont({p}) WITHIN GROUP (ORDER BY x)",
+                cont(p),
+                "double",
+                None,
+                lambda g, a: any(c(g, x) for x in a),
+            )
+        )
+        exprs.append(
+            Expr(
+                f"percentile_disc {p}",
+                f"percentile_disc({p}) WITHIN GROUP (ORDER BY x)",
+                disc(p),
+                "double",
+                None,
+                _any_of,
+            )
+        )
+    exprs.append(
+        Expr("median", "median(x)", cont(0.5), "double", None, lambda g, a: any(c(g, x) for x in a))
+    )
     return [Target("spark-quantile", "g INT, x INT", rows, exprs, group=True)]
 
 
 def _nonfinite() -> list[Target]:
     def rows(r: random.Random) -> tuple:
-        return (r.randint(0, 40), r.choice([math.inf, -math.inf, math.nan, 1e308, 1.0, -1.0, 0.0, None]))
+        return (
+            r.randint(0, 40),
+            r.choice([math.inf, -math.inf, math.nan, 1e308, 1.0, -1.0, 0.0, None]),
+        )
 
     t = _aggregates()
     sum_e, avg_e, max_e, min_e = t[0].exprs
@@ -1639,7 +2073,20 @@ def _nonfinite() -> list[Target]:
             "spark-nonfinite-aggregates",
             "g INT, x DOUBLE",
             rows,
-            [sum_e, avg_e, max_e, min_e, Expr("var_samp", "var_samp(x)", var_e.model, "double", None, lambda g, a: any(same_double(g, x) or close(1e-12)(g, x) for x in a))],
+            [
+                sum_e,
+                avg_e,
+                max_e,
+                min_e,
+                Expr(
+                    "var_samp",
+                    "var_samp(x)",
+                    var_e.model,
+                    "double",
+                    None,
+                    lambda g, a: any(same_double(g, x) or close(1e-12)(g, x) for x in a),
+                ),
+            ],
             group=True,
             conf=[{"spark.sql.leafNodeDefaultParallelism": "2"}],
             note="Values only ±inf, NaN, 1e308, ±1, 0 and NULL.",
@@ -1722,6 +2169,9 @@ class Spark:
             b = b.config(k, v)
         self.spark = b.getOrCreate()
         self.spark.sparkContext.setLogLevel("OFF")
+        # pyspark logs every query error it raises; they are results here.
+        logging.getLogger("pyspark").setLevel(logging.CRITICAL)
+        logging.getLogger("SQLQueryContextLogger").setLevel(logging.CRITICAL)
 
     def settings(self, ansi: bool, path: str, extra: dict[str, str]) -> None:
         c = self.spark.conf
@@ -1790,7 +2240,9 @@ def _lean(t: Target, e: Expr, rows: list[tuple]) -> list[Any] | None:
 
     try:
         names = list(t.ibis)
-        lifted = lift(f"SELECT {e.duckdb} AS r FROM t", {"t": ibis.schema(t.ibis)}, semantics="reference")
+        lifted = lift(
+            f"SELECT {e.duckdb} AS r FROM t", {"t": ibis.schema(t.ibis)}, semantics="reference"
+        )
         plan = inline_tables(copy.deepcopy(lifted.plan), {"t": [r[: len(names)] for r in rows]})
         return [v[0] for v in lean_values(json.dumps(plan))]
     except Exception as ex:  # noqa: BLE001 - outside the lift or the model
@@ -1815,7 +2267,10 @@ def _finding(stats: Stats, t: Target, e: Expr, setting: str, row: Any, got: Any,
         "expr": e.name, "sql": e.spark, "setting": setting, "input": _show(row),
         "spark": _show(got), "fact": _show(want),
     })  # fmt: skip
-    print(f"  FINDING {e.name} [{setting}] {_show(row)}: spark {_show(got)}, fact {_show(want)}", flush=True)
+    print(
+        f"  FINDING {e.name} [{setting}] {_show(row)}: spark {_show(got)}, fact {_show(want)}",
+        flush=True,
+    )
 
 
 def _show(v: Any) -> Any:
@@ -1834,7 +2289,9 @@ def _show(v: Any) -> Any:
     return v
 
 
-def run_scalar(sp: Spark, t: Target, rows: list[tuple], stats: Stats, sample: int, rng: random.Random) -> None:
+def run_scalar(
+    sp: Spark, t: Target, rows: list[tuple], stats: Stats, sample: int, rng: random.Random
+) -> None:
     table = [(i, *r) for i, r in enumerate(rows)]
     sp.view(t.columns, table)
     try:
@@ -1844,7 +2301,9 @@ def run_scalar(sp: Spark, t: Target, rows: list[tuple], stats: Stats, sample: in
                 for ansi in (True, False):
                     want = [e.model(r, ansi) for r in rows]
                     for path in PATHS:
-                        setting = f"ansi={str(ansi).lower()} {path}" + "".join(f" {k.split('.')[-1]}={v}" for k, v in extra.items())
+                        setting = f"ansi={str(ansi).lower()} {path}" + "".join(
+                            f" {k.split('.')[-1]}={v}" for k, v in extra.items()
+                        )
                         sp.settings(ansi, path, extra)
                         stats.runs += 1
                         ok = [i for i, w in enumerate(want) if not isinstance(w, Raise)]
@@ -1908,14 +2367,18 @@ def run_grouped(sp: Spark, t: Target, rows: list[tuple], stats: Stats) -> None:
                     groups.setdefault(g, Group([[] for _ in range(k)]))
                 for i in s:
                     vals = rows[i][1:]
-                    groups[rows[i][0]].parts[_slices(len(rows), k).index(s)].append(vals[0] if len(vals) == 1 else vals)
+                    groups[rows[i][0]].parts[_slices(len(rows), k).index(s)].append(
+                        vals[0] if len(vals) == 1 else vals
+                    )
             for e in t.exprs:
                 for ansi in (True, False):
                     legacy = extra.get("spark.sql.legacy.statisticalAggregate") == "true"
                     _set_legacy(t, legacy)
                     want = {g: e.model(grp.parts, ansi) for g, grp in groups.items()}
                     for path in PATHS:
-                        setting = f"ansi={str(ansi).lower()} {path}" + "".join(f" {k2.split('.')[-1]}={v}" for k2, v in extra.items())
+                        setting = f"ansi={str(ansi).lower()} {path}" + "".join(
+                            f" {k2.split('.')[-1]}={v}" for k2, v in extra.items()
+                        )
                         sp.settings(ansi, path, extra)
                         stats.runs += 1
                         _group_batch(sp, t, e, sorted(groups), groups, want, stats, setting, ansi)
@@ -1932,7 +2395,14 @@ def _set_legacy(t: Target, legacy: bool) -> None:
             except ValueError:
                 continue
             if callable(v) and getattr(v, "__name__", "") == "<lambda>":
-                st = next((cc.cell_contents for cc in (v.__closure__ or ()) if isinstance(cc.cell_contents, dict) and "legacy" in cc.cell_contents), None)
+                st = next(
+                    (
+                        cc.cell_contents
+                        for cc in (v.__closure__ or ())
+                        if isinstance(cc.cell_contents, dict) and "legacy" in cc.cell_contents
+                    ),
+                    None,
+                )
                 if st is not None:
                     st["legacy"] = legacy
 
@@ -2000,7 +2470,10 @@ def run(names: Sequence[str], n_rows: int, seed: int, sample: int) -> dict[str, 
                     "seed": seed,
                     "columns": t.columns,
                     "constructs": [e.spark for e in t.exprs],
-                    "settings": sorted({tuple(sorted(c.items())) for c in t.conf} and [" ".join(f"{k2}={v}" for k2, v in c.items()) for c in t.conf]),
+                    "settings": sorted(
+                        {tuple(sorted(c.items())) for c in t.conf}
+                        and [" ".join(f"{k2}={v}" for k2, v in c.items()) for c in t.conf]
+                    ),
                     "input_rows": len(rows),
                     "runs": stats.runs,
                     "results": stats.rows,
@@ -2030,9 +2503,16 @@ def run(names: Sequence[str], n_rows: int, seed: int, sample: int) -> dict[str, 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("targets", nargs="*", help="target names (default: all)")
-    parser.add_argument("--rows", type=int, default=300, help="random input rows per target (default 300)")
+    parser.add_argument(
+        "--rows", type=int, default=300, help="random input rows per target (default 300)"
+    )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--sample", type=int, default=15, help="raising rows run one by one, per construct and setting")
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=15,
+        help="raising rows run one by one, per construct and setting",
+    )
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args(argv)
