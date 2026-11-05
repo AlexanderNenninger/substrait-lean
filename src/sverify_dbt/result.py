@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from sverify_dbt.manifest import Test
+from sverify_dbt.manifest import Relation, Test
 
 
 @dataclass
@@ -112,6 +112,45 @@ class CheckResult:
     models: list[ModelResult]
     tests: dict[str, Test] = field(repr=False)
     unit_tests: list[str] = field(default_factory=list)
+    relations: dict[str, Relation] = field(default_factory=dict, repr=False)
+
+    def suggestions(self) -> list[Suggestion]:
+        """The tests sverify suggests adding, so that it proves more: what
+        each model needs (`Report.needs`), and the tests on the inputs under
+        which an unproved test would hold (`CheckedCondition.suggested`).
+        One per relation, column and test."""
+        by_ref = {r.ref: r for r in self.relations.values()}
+        out: dict[tuple, Suggestion] = {}
+
+        def add(ref: str, column: str | None, test: str, why: str) -> None:
+            r = by_ref.get(ref)
+            if r is None:
+                return
+            key = (r.unique_id, column, test)
+            if key in out:
+                out[key].because.append(why)
+            else:
+                out[key] = Suggestion(r, column, test, [why])
+
+        for m in self.models:
+            for n in m.needed:
+                add(
+                    n.on,
+                    n.column,
+                    n.test,
+                    f"{m.name}: {n.because}" if n.because else f"{m.name} needs it",
+                )
+            for t in m.tests + m.constraints:
+                for ref, tests in t.would_hold.items():
+                    for column, test in tests:
+                        add(ref, column, test, f"{m.name}: proves {t.label}")
+        return list(out.values())
+
+    def suggestions_yaml(self) -> str:
+        """`suggestions` as a dbt properties file, with each test's reason as
+        a comment: merge it into the project's YAML (dbt rejects a second
+        entry for a relation another file describes)."""
+        return suggestions_yaml(self.suggestions())
 
     def __getitem__(self, name: str) -> ModelResult:
         for m in self.models:
@@ -260,4 +299,76 @@ def _unproved(t: TestResult, status: str = "") -> list[str]:
         for col, yaml in tests:
             where = f"{on}, column {col}" if col else on
             out.append(f"      would hold with, on {where}: {yaml}")
+    return out
+
+
+@dataclass
+class Suggestion:
+    """A test to add to a relation (`CheckResult.suggestions`)."""
+
+    relation: Relation
+    column: str | None
+    """The column it goes on; None for a test on the relation."""
+    test: str
+    """The test as YAML: `dbt_utils.accepted_range: {arguments: {...}}`."""
+    because: list[str]
+    """What it lets sverify prove, or which runtime error it rules out."""
+
+
+def suggestions_yaml(suggestions: list[Suggestion]) -> str:
+    """Suggestions as dbt YAML, grouped by relation and column."""
+    if not suggestions:
+        return "# sverify-dbt suggests no tests: nothing more is provable by adding one\n"
+    groups: dict[str, dict[str, Any]] = {}
+    for s in suggestions:
+        r = s.relation
+        g = groups.setdefault(r.unique_id, {"rel": r, "cols": {}})
+        g["cols"].setdefault(s.column, []).append(s)
+    lines = [
+        "# Tests sverify-dbt suggests (sverify-dbt suggest): merge them into the",
+        "# YAML that describes each relation.",
+        "version: 2",
+    ]
+    sections = {"sources": [], "models": [], "seeds": [], "snapshots": []}
+    for g in groups.values():
+        r = g["rel"]
+        kind = "sources" if r.resource_type == "source" else r.resource_type + "s"
+        sections[kind].append(g)
+    for kind, gs in sections.items():
+        if not gs:
+            continue
+        lines.append(f"{kind}:")
+        if kind == "sources":
+            by_source: dict[str, list] = {}
+            for g in gs:
+                by_source.setdefault(g["rel"].source_name, []).append(g)
+            for name, tables in by_source.items():
+                lines += [f"  - name: {name}", "    tables:"]
+                for g in tables:
+                    lines += _relation_lines(g, "      ")
+        else:
+            for g in gs:
+                lines += _relation_lines(g, "  ")
+    return "\n".join(lines) + "\n"
+
+
+def _relation_lines(g: dict[str, Any], pad: str) -> list[str]:
+    lines = [f"{pad}- name: {g['rel'].name}"]
+    table = g["cols"].pop(None, [])
+    if table:
+        lines.append(f"{pad}  data_tests:")
+        lines += _test_lines(table, pad + "    ")
+    if g["cols"]:
+        lines.append(f"{pad}  columns:")
+        for col, tests in g["cols"].items():
+            lines += [f"{pad}    - name: {col}", f"{pad}      data_tests:"]
+            lines += _test_lines(tests, pad + "        ")
+    return lines
+
+
+def _test_lines(tests: list[Suggestion], pad: str) -> list[str]:
+    out = []
+    for s in tests:
+        out += [f"{pad}# {why}" for why in s.because]
+        out.append(f"{pad}- {s.test}")
     return out

@@ -78,7 +78,18 @@ sverify-dbt check . --selectors
 dbt build --exclude selector:sverify_proved
 ```
 
-The other options:
+`sverify-dbt suggest` prints the tests that would let sverify prove more,
+as a dbt properties file to merge into the project's YAML: what each model
+needs, and the tests on its inputs under which an unproved test would hold,
+each with its reason as a comment (`--output FILE` writes it). Merge them
+by hand, and tighten a bound where your data allows:
+[`examples/shop/PROOF-STATUS.md`](examples/shop/PROOF-STATUS.md) shows one.
+
+```bash
+sverify-dbt suggest .
+```
+
+The other options of `check`:
 
 | Option | What it does |
 |---|---|

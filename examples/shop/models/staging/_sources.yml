@@ -123,9 +123,12 @@ sources:
           - name: mrr
             data_type: bigint
             data_tests:
+              # max_value added from sverify's suggestion (sverify-dbt suggest):
+              # subscription_arr's `mrr * 12` overflows otherwise.
               - dbt_utils.accepted_range:
                   arguments:
                     min_value: 0
+                    max_value: 1000000
 
       - name: employees
         columns:

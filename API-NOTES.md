@@ -392,3 +392,25 @@ not closed. Proposed: close them in the `atexit` handler.
 
 Closed in substrait-lean#685: `_Checker.close` closes the pipes.
 
+
+## From `sverify-dbt suggest`
+
+### 23. Suggestions for unproved postconditions are rare and unstructured
+
+`sverify-dbt suggest` turns `Report.needs` and `CheckedCondition.suggested`
+into dbt tests. On the sample project, `needs` gave the one test that
+mattered (`mrr`'s upper bound), and `suggested` was empty for all nine
+tests left unproved. Their blockers are string value sets, keys through
+`UNION ALL`, signs of double products and range joins, where sverify
+suggests nothing (`examples/shop/PROOF-STATUS.md`). Where it does suggest
+something, `suggested` holds conditions, so sverify-dbt parses their SQL
+(`mapping.as_dbt_test`). Each `Needed` is also one side of a bound, so a
+column with both sides gets two `accepted_range` tests where a user writes
+one.
+
+Proposed: `CheckedCondition.suggested` as `Needed` records, as
+[substrait-lean#688](https://github.com/AlexanderNenninger/substrait-lean/issues/688)
+asks, and a `Needed` per column carrying both sides (`lower`, `upper`).
+The weakest-precondition search of
+[substrait-lean#663](https://github.com/AlexanderNenninger/substrait-lean/issues/663)
+would give suggestions for more kinds of postcondition.

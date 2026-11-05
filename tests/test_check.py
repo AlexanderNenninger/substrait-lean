@@ -50,14 +50,12 @@ def test_refused_models_say_why(result: sverify_dbt.CheckResult) -> None:
     assert all(t.status == "not checked" for t in result["org_depth"].tests)
 
 
-def test_needed_becomes_a_source_test(result: sverify_dbt.CheckResult) -> None:
+def test_the_suggested_source_test_proves_arr(result: sverify_dbt.CheckResult) -> None:
+    """`mrr`'s max_value came from `sverify-dbt suggest` (PROOF-STATUS.md)."""
     m = result["subscription_arr"]
-    [n] = m.needed
-    assert (n.on, n.column) == ("source('app', 'subscriptions')", "mrr")
-    assert n.test.startswith("dbt_utils.accepted_range: {arguments: {max_value: ")
-    assert "mrr * 12" in (n.because or "")
-    [t] = m.tests
-    assert t.status == "not proved" and "needs" in (t.why or "")
+    assert m.needed == []
+    assert statuses(m) == {"dbt_utils.accepted_range(arr)": "proved"}
+    assert result.suggestions() == []
 
 
 def test_contracts(result: sverify_dbt.CheckResult) -> None:
@@ -71,7 +69,6 @@ def test_report_text(result: sverify_dbt.CheckResult) -> None:
     text = str(result)
     assert "proved before the model runs" in text
     assert "refused: sverify cannot read WITH RECURSIVE yet" in text
-    assert "on source('app', 'subscriptions'), column mrr: dbt_utils.accepted_range" in text
     assert text.endswith(result.summary())
     json.dumps(result.to_dict())
 
@@ -244,3 +241,54 @@ def test_not_a_duckdb_project(tmp_path: Path) -> None:
         sverify_dbt.check(tmp_path)
     with pytest.raises(sverify_dbt.ProjectError, match="dbt compile"):
         sverify_dbt.check(tmp_path / "nowhere")
+
+
+def test_needs_become_suggested_source_tests(make_project, capsys) -> None:
+    root = make_project(
+        {
+            "models/_sources.yml": """\
+            version: 2
+            sources:
+              - name: raw
+                schema: main
+                tables:
+                  - name: subs
+                    columns:
+                      - name: mrr
+                        data_type: bigint
+                        data_tests:
+                          - not_null
+        """,
+            "models/arr.sql": "select mrr * 12 as arr from {{ source('raw', 'subs') }}\n",
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: arr
+                columns:
+                  - name: arr
+                    data_tests: [not_null]
+        """,
+        }
+    )
+    res = sverify_dbt.check(root, counterexamples=0)
+    m = res["arr"]
+    assert [(n.on, n.column) for n in m.needed] == [
+        ("source('raw', 'subs')", "mrr"),
+        ("source('raw', 'subs')", "mrr"),
+    ]
+    assert "mrr * 12" in (m.needed[0].because or "")
+    assert statuses(m) == {"not_null(arr)": "not proved"}
+    assert "on source('raw', 'subs'), column mrr: dbt_utils.accepted_range" in str(res)
+    [a, b] = res.suggestions()
+    assert (a.relation.name, a.column) == ("subs", "mrr")
+    text = res.suggestions_yaml()
+    data = yaml.safe_load(text)
+    [source] = data["sources"]
+    [table] = source["tables"]
+    [col] = table["columns"]
+    assert (source["name"], table["name"], col["name"]) == ("raw", "subs", "mrr")
+    ranges = [t["dbt_utils.accepted_range"]["arguments"] for t in col["data_tests"]]
+    assert {k for r in ranges for k in r} == {"min_value", "max_value", "inclusive"}
+    assert "# arr: overflow in `mrr * 12` otherwise" in text
+    assert main(["suggest", str(root)]) == 0
+    assert capsys.readouterr().out == text

@@ -51,7 +51,20 @@ def main(argv: list[str] | None = None) -> int:
         "proved (contract, the default), also on any test not proved or model refused "
         "(unproved), or never",
     )
+    g = sub.add_parser(
+        "suggest",
+        help="print the tests sverify suggests adding, as dbt YAML",
+        description="Check the project, then print the tests that would let sverify prove "
+        "more, as a dbt properties file to merge into the project's YAML: what each model "
+        "needs, and the input tests under which an unproved test would hold.",
+    )
+    g.add_argument("project", nargs="?", default=".", help="the dbt project's directory")
+    g.add_argument("--target-path", default="target", help="the target directory (default target)")
+    g.add_argument("--select", "-s", nargs="+", metavar="MODEL", help="models to check")
+    g.add_argument("--output", "-o", metavar="FILE", help="write the YAML to FILE")
     args = parser.parse_args(argv)
+    if args.command == "suggest":
+        return _suggest(args)
     try:
         result = check(
             args.project,
@@ -78,6 +91,24 @@ def main(argv: list[str] | None = None) -> int:
             for m in result.models
         )
     return 1 if failed and args.fail_on != "never" else 0
+
+
+def _suggest(args: argparse.Namespace) -> int:
+    try:
+        result = check(
+            args.project, target_path=args.target_path, select=args.select, counterexamples=0
+        )
+    except (ProjectError, ValueError) as e:
+        print(f"sverify-dbt: {e}", file=sys.stderr)
+        return 2
+    text = result.suggestions_yaml()
+    if args.output:
+        Path(args.output).write_text(text)
+        n = len(result.suggestions())
+        print(f"wrote {n} suggested test(s) to {args.output}", file=sys.stderr)
+    else:
+        print(text, end="")
+    return 0
 
 
 if __name__ == "__main__":
