@@ -26,7 +26,7 @@ def doubled(orders):
 
 def test_postconditions_are_proved():
     doubled(orders)
-    report = doubled.last_report
+    report = doubled.report
     assert report is not None
     assert report.proved
     assert report.facts["doubled"] == "an integer ≥ 22"
@@ -329,7 +329,7 @@ def test_unique_precondition_is_checked_on_data():
     with pytest.raises(PreconditionError, match="unique"):
         big(bound_orders([(1, "ada", 30), (1, "bob", 40)]))
     big(bound_orders([(1, "ada", 30), (2, "bob", 40)]))
-    assert big.last_report is not None and big.last_report.proved
+    assert big.report is not None and big.report.proved
 
 
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])

@@ -29,6 +29,7 @@ import pyarrow as pa
 import sverify as sv
 from sverify.engine import put_table
 from sverify.incremental import Pipeline
+from sverify.io import Changes
 
 CUSTOMERS = 10_000
 
@@ -78,7 +79,7 @@ def case(view: str, engine: str, n: int, out: mp.Queue) -> None:
     build = time.perf_counter() - t
     k = max(1, n // 100)
     gone = np.random.default_rng(1).choice(n, k, replace=False)
-    changes = sv.Changes(
+    changes = Changes(
         inserts=rows(orders_table(k, start=n, seed=2)), deletes=rows(orders.take(gone))
     )
     t = time.perf_counter()

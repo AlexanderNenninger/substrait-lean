@@ -30,6 +30,7 @@ class NoDataFusion(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoDataFusion())
 
 import sverify as sv
+from sverify.io import Changes
 from sverify.errors import PreconditionError
 from sverify.incremental import IncrementalView, Pipeline
 
@@ -63,8 +64,8 @@ def test_views_and_pipelines(engine):
         view = IncrementalView(con, big, "big_orders")
         view.apply(
             {
-                "orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 30)]),
-                "customers": sv.Changes(inserts=[("bob", "Rome")]),
+                "orders": Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 30)]),
+                "customers": Changes(inserts=[("bob", "Rome")]),
             }
         )
         assert view.rows() == view.recompute() == [(3, "Rome", 50)]
@@ -72,7 +73,7 @@ def test_views_and_pipelines(engine):
 
         pipe = Pipeline(con)
         totals = pipe.view("totals", orders.group_by("customer").aggregate(s=_.amount.sum()))
-        pipe.apply({"orders": sv.Changes(inserts=[(4, "ada", 1)])})
+        pipe.apply({"orders": Changes(inserts=[(4, "ada", 1)])})
         assert totals.rows() == totals.recompute()
         assert "datafusion" not in sys.modules
         """,

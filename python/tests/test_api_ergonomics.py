@@ -52,7 +52,7 @@ def test_transform_takes_a_list_of_requires_for_one_parameter():
 
     assert set(plus.requires) == {"t"}
     plus(S)
-    assert plus.last_report is not None and plus.last_report.proved
+    assert plus.report is not None and plus.report.proved
 
 
 # #412: references

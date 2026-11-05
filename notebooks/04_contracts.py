@@ -82,7 +82,7 @@ def _():
         return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
     doubled(orders)  # proves the postconditions, or raises VerificationError
-    doubled.last_report
+    doubled.report
     return (
         CompositionError,
         PostconditionError,
@@ -107,7 +107,7 @@ def _(mo):
     * Calling `doubled(orders)` builds the Ibis expression as usual. Before
       returning it, sverify sends the plan and the conditions to the Lean
       checker (`substrait-check --contract`), which tries to prove every
-      postcondition. The verdicts are in `.last_report`.
+      postcondition. The verdicts are in `.report`.
     * The first table of the report holds the verdicts. The second holds
       everything Lean established about each output column, asked for or not.
     * `amount < 1_000_000_000` is there for `amount * 2`. Doubling the
@@ -794,7 +794,7 @@ def _(con_w, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
         return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=tol, how=how.value)
 
     aligned(con_w.table("acc"), con_w.table("gyr")).order_by("ts").to_pyarrow()
-    aligned.last_report
+    aligned.report
     return
 
 
@@ -854,7 +854,7 @@ def _(ibis, sv):
 
     _orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
     doubled_paid(paid(_orders))
-    doubled_paid.last_report
+    doubled_paid.report
     return doubled_paid, paid
 
 
@@ -913,7 +913,7 @@ def _(CompositionError, VerificationError, doubled_paid, ibis, mo, paid, sv, ups
     try:
         doubled_paid(_inputs[upstream.value]())
         _out = mo.vstack(
-            [mo.callout(mo.md("Every link holds ✓"), kind="success"), doubled_paid.last_report]
+            [mo.callout(mo.md("Every link holds ✓"), kind="success"), doubled_paid.report]
         )
     except CompositionError as _e:
         _out = mo.callout(mo.md(f"CompositionError: {str(_e).splitlines()[0]}"), kind="danger")

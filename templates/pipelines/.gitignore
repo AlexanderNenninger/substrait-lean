@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+# Local runs: tables, the data branch's checkout, the catalog, the steps' output.
+lake/
+_data/
+site/
+check.json
+refresh.json
+comment.md
+alert.md
+preview.md

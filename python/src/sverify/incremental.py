@@ -55,6 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
@@ -277,7 +278,7 @@ class SourceBatch:
         changes: The change, or None with `snapshot`.
         facts: What the metadata says about the inserted rows.
         trusted: What the change rests on, for the refresh report.
-        kind: `"change feed"` (trusted) or `"snapshot diff"` (exact).
+        kind: `"change_feed"` (trusted) or `"snapshot_diff"` (exact).
         snapshot: The table at `end`, when there is no change.
         fallback: Why there is no change, with `snapshot`.
         schema: The table's schema at `end`; None: the one recorded.
@@ -292,7 +293,7 @@ class SourceBatch:
     facts: list[Fact] = field(default_factory=list)
     trusted: str = ""
     """E.g. "Δ trusted as coming from Delta CDF v3→v5"."""
-    kind: Literal["change feed", "snapshot diff"] = "change feed"
+    kind: Literal["change_feed", "snapshot_diff"] = "change_feed"
     """A snapshot diff is exact (`ChangeFeed.of_diff`): only the snapshots
     are trusted."""
     snapshot: pa.Table | None = None
@@ -328,7 +329,7 @@ class SourceBatch:
         trusted: str,
         facts: Sequence[Fact] = (),
         snapshot_facts: Sequence[Fact] = (),
-        kind: Literal["change feed", "snapshot diff"] = "change feed",
+        kind: Literal["change_feed", "snapshot_diff"] = "change_feed",
         schema: pa.Schema | None = None,
     ) -> SourceBatch:
         """The change from `since` to `until`, as rows inserted and deleted.
@@ -344,8 +345,8 @@ class SourceBatch:
                 Default: none (preconditions are checked on the rows).
             snapshot_facts: What the metadata says about every row at
                 `until`. Default: none.
-            kind: `"change feed"` (the change is trusted) or `"snapshot
-                diff"` (it was computed from two snapshots, so it is exact).
+            kind: `"change_feed"` (the change is trusted) or `"snapshot_diff"`
+                (it was computed from two snapshots, so it is exact).
             schema: The table's schema at `until`, which the rows have.
                 Default: the one recorded.
 
@@ -620,9 +621,11 @@ class StaticSource(Pipeable):
 
     Args:
         table: The table's contents.
-        version: The version of these contents. Default: 0.
-        name: The table's name in the plans that read it. Default:
-            `"table"`.
+        name: The table's name in the plans that read it. Required: two
+            sources of one name in a pipeline would collide. (Before 1.0 it
+            defaulted to `"table"`, which warns for one release.)
+        version: The version of these contents, by keyword (positional
+            warns for one release). Default: 0.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
             `on_violation` of their own: `"error"`, `"quarantine"` or
@@ -639,11 +642,27 @@ class StaticSource(Pipeable):
     def __init__(
         self,
         table: pa.Table,
+        *args: int,
+        name: str | None = None,
         version: int = 0,
-        *,
-        name: str = "table",
         on_violation: Policy | None = None,
-    ):
+    ) -> None:
+        if args:
+            warnings.warn(
+                "StaticSource(table, version) is deprecated; write "
+                "StaticSource(table, name=..., version=...)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            (version,) = args
+        if name is None:
+            warnings.warn(
+                'StaticSource without name= is deprecated (it defaulted to "table"); '
+                "name the table as the plans read it",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            name = "table"
         self.name = name
         self.on_violation = _quarantine.check_policy(on_violation)
         self._log: ChangeLog[pa.Table] = ChangeLog()
@@ -692,7 +711,7 @@ class StaticSource(Pipeable):
             ```python
             import pyarrow as pa
             import sverify as sv
-            from sverify.io import StaticSource
+            from sverify.io import Changes, StaticSource
 
             orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
 
@@ -704,7 +723,7 @@ class StaticSource(Pipeable):
 
             big = big_orders(orders)
             big.refresh()
-            orders.apply(sv.Changes(inserts=[(3, 50)], deletes=[(1, 30)]))  # version 1
+            orders.apply(Changes(inserts=[(3, 50)], deletes=[(1, 30)]))  # version 1
             print(big.refresh())
             # big_orders:
             #   orders@v0→v1: 1 insert(s), 1 delete(s); Δ as applied to orders v0→v1
@@ -784,7 +803,7 @@ class SourceRefresh:
     table: str
     start: int
     end: int
-    mode: Literal["unchanged", "change feed", "snapshot diff", "recomputed"]
+    mode: Literal["unchanged", "change_feed", "snapshot_diff", "recomputed"]
     detail: str = ""
     inserts: int = 0
     deletes: int = 0

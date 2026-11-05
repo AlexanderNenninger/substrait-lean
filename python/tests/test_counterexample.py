@@ -109,6 +109,6 @@ def test_verification_errors_show_the_counterexample():
 
     with pytest.raises(VerificationError, match="counterexample: orders"):
         plus_one(orders)
-    report = plus_one.last_report
+    report = plus_one.report
     assert report is not None
     assert "fails on `orders(id, customer, amount)" in report._repr_markdown_()
