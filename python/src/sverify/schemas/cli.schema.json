@@ -19,7 +19,7 @@
       "items": {"$ref": "#/$defs/item"}
     },
     "findings": {
-      "description": "check: what the check found wrong, one per postcondition not proved, needed precondition, possible runtime error, broken link or unchecked transform: the view the text, github, sarif and junit outputs print.",
+      "description": "check: what the check found wrong, one per postcondition not proved, needed precondition, possible runtime error, broken link or unchecked transform: the view the text, github and sarif outputs print.",
       "type": "array",
       "items": {"$ref": "#/$defs/finding"}
     },
