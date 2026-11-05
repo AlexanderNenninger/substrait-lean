@@ -187,6 +187,10 @@ inductive UnFn where
   /-- `cardinality(l)`: the number of elements, NULL ones included
   (`functions_list.yaml`). -/
   | cardinality
+  /-- `flatten(l)`: the elements of `l`'s lists, in order; a `NULL` inner
+  list adds none, and a `NULL` `l` is `NULL` (DuckDB, #810). `list(x)` keeps
+  `x`'s NULLs as `flatten(array_agg([x]))`. -/
+  | flatten
   /-- A shim's guard (#185): always raises (`Issue.raised` in `Safety.lean`),
   with the message `msg` and the value of its argument; DuckDB's `error()`.
   Its value, which nobody sees, is `NULL`. -/
@@ -253,6 +257,20 @@ inductive BinFn where
   | greatest | least
   /-- A scalar black box of two arguments (`SubstraitLean/BlackBox.lean`, #325). -/
   | bbox2 (name : String)
+  /-- `list_prepend(x, l)`: `x` before the list's elements, NULL elements
+  included; a `NULL` list is empty (DuckDB, #812). A list of computed
+  elements `[a, b]` is `list_prepend(a, list_prepend(b, []))`. -/
+  | listPrepend
+  /-- `list_concat(l, m)`: the elements of both; a `NULL` list is empty, so
+  two `NULL`s give `[]` (DuckDB 2.0, #812). -/
+  | listConcat
+  /-- `list_contains(l, x)`: whether an element equals `x`, NULL elements
+  equal to nothing; `NULL` for a `NULL` list or a `NULL` `x` (#812). -/
+  | listContains
+  /-- `list_position(l, x)`: the position, from 1, of the first element
+  equal to `x`, a `NULL` `x` finding the first `NULL` element; `NULL` when
+  none is, and for a `NULL` list (DuckDB 2.0, #812). -/
+  | listPosition
   deriving Repr, DecidableEq
 
 /-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
@@ -388,6 +406,7 @@ def UnFn.apply : UnFn → Value → Value
   | .structField i, .list vs => vs.getD i .null
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
+  | .flatten, .list vs => .list (vs.flatMap fun | .list ws => ws | _ => [])
   | .isNum, .int _ => .bool true
   | .isNum, _ => .bool false
   | .fit m w, .int i => .int (w.fit m i)
@@ -568,7 +587,30 @@ def BinFn.apply : BinFn → Value → Value → Value
     | none => .null
   | .pair, .null, _ | .pair, _, .null => .null
   | .pair, a, b => .list [a, b]
+  | .listPrepend, x, .list vs => .list (x :: vs)
+  | .listPrepend, x, .null => .list [x]
+  | .listConcat, a, b => match a, b with
+    | .list vs, .list ws => .list (vs ++ ws)
+    | .list vs, .null => .list vs
+    | .null, .list ws => .list ws
+    | .null, .null => .list []
+    | _, _ => .null
+  | .listContains, .list vs, x => if x = .null then .null else .bool (vs.contains x)
+  | .listPosition, .list vs, x => match vs.findIdx? (· == x) with
+    | some i => .int (i + 1)
+    | none => .null
   | _, _, _ => .null
+
+#guard BinFn.apply .listPrepend (.int 1) .null == .list [.int 1]
+#guard BinFn.apply .listPrepend .null (.list [.int 2]) == .list [.null, .int 2]
+#guard BinFn.apply .listConcat .null .null == .list []
+#guard BinFn.apply .listConcat (.list [.int 1]) .null == .list [.int 1]
+#guard BinFn.apply .listContains (.list [.int 1, .null]) (.int 2) == .bool false
+#guard BinFn.apply .listContains (.list [.int 1]) .null == .null
+#guard BinFn.apply .listContains .null (.int 1) == .null
+#guard BinFn.apply .listPosition (.list [.int 1, .null, .int 1]) (.int 1) == .int 1
+#guard BinFn.apply .listPosition (.list [.int 1, .null]) .null == .int 2
+#guard BinFn.apply .listPosition (.list [.int 1]) (.int 2) == .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules
 them out for well-formed plans. -/

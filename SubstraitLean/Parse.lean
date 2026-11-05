@@ -334,6 +334,9 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
     | .list k => k
     | _ => .other
   | .un .cardinality _ => .int
+  | .un .flatten a => match a.kind cols with
+    | .list k => k
+    | _ => .other
   | .un (.raise _) _ => .other
   | .un (.bbox n) _ => bbScalarKind n
   | .un _ _ => .bool
@@ -350,6 +353,14 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
   | .bin .pair _ _ => .other
   | .bin (.bbox2 n) _ _ => bbScalarKind n
+  -- An empty or `NULL` list says nothing of its elements' kind.
+  | .bin .listPrepend x l => match l.kind cols with
+    | .list .other | .other => .list (x.kind cols)
+    | k => k
+  | .bin .listConcat a b => match a.kind cols with
+    | .list .other | .other => b.kind cols
+    | k => k
+  | .bin .listPosition _ _ => .int
   -- One of the two values; a literal (`GREATEST(x, 0)`'s `0`) says less than
   -- the other one.
   | .bin .greatest a b | .bin .least a b =>
@@ -2392,7 +2403,11 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       pure (.nthValue (← parseColumn fns cols "function arguments" c) (← positive n) sort
         (← parseFrame cols sort w), none)
     | n, _ =>
-      if !["count", "sum", "avg", "min", "max", "variance", "std_dev"].contains n then
+      -- `first`/`last` over a frame take its first (last) non-NULL value in
+      -- the window's order (the frame's rows are in it, and the measure has
+      -- no sort of its own): `FIRST_VALUE(x IGNORE NULLS)` (#811).
+      if !["count", "sum", "avg", "min", "max", "variance", "std_dev", "first", "last"].contains n
+      then
         throw s!"unsupported window function: {n}"
       -- The window's own sort keys order the frame, not the aggregate.
       let (m, decAvg) ← parseMeasure fns cols bits (Json.mkObj [("measure", Json.mkObj [

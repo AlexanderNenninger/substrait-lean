@@ -624,6 +624,13 @@ class Dialect:
         """`UnFn.cardinality`: the number of elements, NULL ones included."""
         raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
 
+    def list_fn(self, name: str, args: list[str]) -> str:
+        """DuckDB's list functions (#810, #812): `list_prepend`,
+        `list_concat`, `list_contains`, `list_position` (`BinFn` of the same
+        names) and `flatten` (`UnFn.flatten`). New functions run on DuckDB
+        only (#271)."""
+        raise Unsupported(f"{name} is not supported on {self.name}; " + DUCKDB_ONLY)
+
     def list_lt(self, a: str, b: str) -> str:
         """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
         prefix is smaller, two NULL elements are equal, and a NULL element
@@ -730,6 +737,12 @@ class Dialect:
         """`AggFn.pick` (#55): the first or last value of the column `v`, NULLs
         skipped, in the order `order`; NULL without values."""
         raise self.refused(fn)
+
+    def window_pick(self, fn: str, v: str, w: str) -> str:
+        """`AggFn.pick` over the frame `w` (#811): the frame's first or last
+        non-NULL value of `v` in the window's order, NULL without one
+        (`FIRST_VALUE(v IGNORE NULLS)`). New on DuckDB only (#271)."""
+        raise Unsupported(f"{fn} over a window is not supported on {self.name}; " + DUCKDB_ONLY)
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
@@ -951,8 +964,8 @@ TemporalUnOp = Literal[
 TemporalBinOp = Literal["date_add", "date_diff"]
 
 #: Lists (`nested.py`).
-NestedUnOp = Literal["list_elem", "cardinality"]
-NestedBinOp = Literal["list_lt"]
+NestedUnOp = Literal["list_elem", "cardinality", "flatten"]
+NestedBinOp = Literal["list_lt", "list_prepend", "list_concat", "list_contains", "list_position"]
 
 
 @dataclass(frozen=True)
@@ -1426,6 +1439,19 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
         case Un(op="list_elem", arg=a):
             k = lean_expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else "other"
+        # DuckDB's list functions (#810, #812), as `Expr.kind` has them: an
+        # empty or NULL list says nothing of its elements.
+        case Un(op="flatten", arg=a):
+            k = lean_expr_kind(a, cols)
+            return k.elem if isinstance(k, Lst) else "other"
+        case Bin(op="list_prepend", left=x, right=lst):
+            k = lean_expr_kind(lst, cols)
+            known = isinstance(k, Lst) and k.elem != "other"
+            return k if known else Lst(lean_expr_kind(x, cols))
+        case Bin(op="list_concat", left=a, right=b):
+            k = lean_expr_kind(a, cols)
+            known = isinstance(k, Lst) and k.elem != "other"
+            return k if known else lean_expr_kind(b, cols)
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
@@ -1463,6 +1489,15 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="list_elem", arg=a):
             k = expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else None
+        case Un(op="flatten", arg=a):
+            k = expr_kind(a, cols)
+            return k.elem if isinstance(k, Lst) else None
+        case Bin(op="list_prepend", left=x, right=lst):
+            k = expr_kind(lst, cols)
+            return k if isinstance(k, Lst) and k.elem is not None else Lst(expr_kind(x, cols))
+        case Bin(op="list_concat", left=a, right=b):
+            k = expr_kind(a, cols)
+            return k if isinstance(k, Lst) and k.elem is not None else expr_kind(b, cols)
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
@@ -2476,8 +2511,12 @@ class _Parser:
                 c = self.column(args[0], cols, "function arguments")
                 n = self.positive(args, 1, name) if name == "nth_value" else 0
                 return part, sort, WinFn(name, c, n, frame=self.frame(w, cols, sort))
-            case "count" | "sum" | "avg" | "min" | "max" | "variance" | "std_dev":
-                # The window's sort keys order the frame, not the aggregate.
+            case (
+                "count" | "sum" | "avg" | "min" | "max" | "variance" | "std_dev" | "first" | "last"
+            ):
+                # The window's sort keys order the frame, not the aggregate;
+                # `first`/`last` take the frame's first (last) non-NULL value
+                # in that order (#811).
                 keys = ("functionReference", "arguments", "outputType", "options")
                 m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
                 if m.distinct:
@@ -4120,6 +4159,8 @@ class _Writer:
                 return d.decimal_window_sum(v, w, dsum_kind(a))
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 return self.window_var(m.fn, v, w)
+            case "first" | "last":
+                return d.window_pick(m.fn, v, w)
             case "fsum" | "avg":
                 total = d.window_float_sum(v, w)
                 if m.fn == "avg":

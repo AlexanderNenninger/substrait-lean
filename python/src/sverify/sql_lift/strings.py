@@ -47,7 +47,11 @@ def _length(lf: _Lift, node: sge.Length, sub: Sub, scope: list[Column]) -> E:
     # Characters (code points), a BIGINT; `strlen` (bytes) is another node.
     if node.args.get("binary"):
         raise Unsupported("the length of a BLOB is not supported")
-    (s_,) = _strings(lf, [sub(node.this)], "length")
+    x = sub(node.this)
+    if x.type.is_array():
+        # DuckDB's `len(l)` of a list (#812): `UnFn.cardinality`.
+        return E(_fn("cardinality", [x.json], dt.int64), dt.int64)
+    (s_,) = _strings(lf, [x], "length")
     return E(_fn("character_length", [s_], dt.int64), dt.int64)
 
 

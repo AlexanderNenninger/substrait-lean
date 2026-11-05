@@ -290,7 +290,18 @@ def nested : List FnRow := [
   { name := "transform", anchor := 404, group := "list.plain", ctor := some (.hof .transform),
     pretty := "TRANSFORM" },
   { name := "filter", anchor := 405, group := "list.plain", ctor := some (.hof .filter),
-    pretty := "FILTER" }]
+    pretty := "FILTER" },
+  -- DuckDB's list functions (#812), new functions run on DuckDB only (#271).
+  { name := "list_prepend", anchor := 406, group := "list.plain", ctor := some (.bin .listPrepend),
+    reads := .plain, pretty := "LIST_PREPEND" },
+  { name := "list_concat", anchor := 407, group := "list.plain", ctor := some (.bin .listConcat),
+    reads := .plain, pretty := "LIST_CONCAT" },
+  { name := "list_contains", anchor := 408, group := "list.plain",
+    ctor := some (.bin .listContains), reads := .plain, pretty := "LIST_CONTAINS" },
+  { name := "list_position", anchor := 409, group := "list.plain",
+    ctor := some (.bin .listPosition), reads := .plain, pretty := "LIST_POSITION" },
+  { name := "flatten", anchor := 410, group := "list.plain", ctor := some (.un .flatten),
+    reads := .plain, pretty := "FLATTEN" }]
 
 /-- Aggregate functions: new anchors 500–599. -/
 def aggregates : List FnRow := [

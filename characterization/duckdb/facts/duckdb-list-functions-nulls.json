@@ -1,0 +1,74 @@
+{
+  "id": "duckdb-list-functions-nulls",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "List functions, `list`, `first` and `last`: how they treat NULLs",
+  "verdict": "a NULL list is empty to list_prepend and list_concat; list_contains ignores NULL elements; list_position finds NULL; list, first and last keep NULLs",
+  "area": "nested",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "list_prepend",
+    "list_concat",
+    "list_contains",
+    "list_position",
+    "len",
+    "flatten",
+    "list",
+    "first",
+    "last",
+    "last_value IGNORE NULLS"
+  ],
+  "settings": {},
+  "description": [
+    "`list_prepend(x, l)` puts `x` before `l`, a NULL `x` too, and treats a NULL `l` as empty. `list_concat(l, m)` treats a NULL list as empty, so two NULL lists give `[]`, an empty list and not NULL.",
+    "`list_contains(l, x)` is TRUE when an element equals `x` and FALSE otherwise, NULL elements equal to nothing (`list_contains([1, NULL], 2)` is FALSE); it is NULL for a NULL `l` or a NULL `x`. `list_position(l, x)` is the position from 1 of the first equal element, an `INTEGER`; a NULL `x` finds the first NULL element, and it is NULL when nothing is found or `l` is NULL.",
+    "`len(l)` counts NULL elements and is NULL for a NULL list. `[x, y]` keeps NULL elements.",
+    "The aggregates `list(x)` (`array_agg`), `first(x)` and `last(x)` keep the rows where `x` is NULL; `string_agg` skips them. `last_value(x IGNORE NULLS) OVER (…)` takes the frame's last non-NULL value in the window's order."
+  ],
+  "reference": [
+    "`BinFn.listPrepend`, `listConcat`, `listContains`, `listPosition` and `UnFn.flatten` (SubstraitLean/Expr.lean) state exactly this, with `#guard`s, and the DuckDB lowering runs them natively (#812). The model's `array_agg`, `first` and `last` skip NULLs (`Measure.inputs`), so the SQL lift aggregates `[x]`, which is never NULL: `flatten(array_agg([x]))` and `first([x])[1]` (#810). The window measures `first` and `last` over a frame are `FIRST_VALUE`/`LAST_VALUE(x IGNORE NULLS)` (#811). The lift refuses `list_contains` and `list_position` on lists of doubles, decimals and nested values, which DuckDB compares otherwise (`-0.0 = 0.0`, NaN equal to NaN)."
+  ],
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "session for #810-#812 (coverage targets), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT list_prepend(1, [2]), list_prepend(NULL, [2]), list_prepend(1, NULL::INT[]), list_concat([1], NULL), list_concat(NULL::INT[], NULL::INT[]) IS NULL",
+          "observed": "[1, 2], [NULL, 2], [1], [1], false"
+        },
+        {
+          "sql": "SELECT list_contains([1, NULL], 1), list_contains([1, NULL], 2), list_contains([], 1), list_contains(NULL::INT[], 1), list_contains([1], NULL)",
+          "observed": "true, false, false, NULL, NULL"
+        },
+        {
+          "sql": "SELECT list_position([1, NULL, 1], 1), list_position([1], 2), list_position([1, NULL], NULL), list_position([1], NULL), typeof(list_position([1], 1))",
+          "observed": "1, NULL, 2, NULL, INTEGER"
+        },
+        {
+          "sql": "SELECT list_contains([0.0], -0.0), list_contains(['nan'::DOUBLE], 'nan'::DOUBLE)",
+          "observed": "true, true"
+        },
+        {
+          "sql": "SELECT first(name ORDER BY id), last(name ORDER BY id DESC), list(name ORDER BY id), string_agg(name, ',' ORDER BY id) FROM (VALUES (1, NULL), (2, 'b'), (3, 'c')) t(id, name)",
+          "observed": "NULL, NULL, [NULL, b, c], b,c"
+        },
+        {
+          "test": "python/tests/test_sql_lift_nested.py::test_lists_lift_as_duckdb_reads_them"
+        },
+        {
+          "test": "python/tests/test_sql_lift_aggregates.py::test_oracles_a_and_c"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    810,
+    811,
+    812
+  ]
+}

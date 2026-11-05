@@ -93,6 +93,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.structField a0 => some (Substrait.duckdbOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.duckdbOn.listElement a0)
     | Substrait.UnFn.cardinality  => some (Substrait.duckdbOn.cardinality )
+    | Substrait.UnFn.flatten  => some (Substrait.duckdbOn.flatten )
     | Substrait.UnFn.raise a0 => some (Substrait.duckdbOn.raise a0)
     | Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i8 => some Substrait.duckdbOn.fit_silent_i8
     | Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i16 => some Substrait.duckdbOn.fit_silent_i16
@@ -147,7 +148,11 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.BinFn.pair  => some (Substrait.duckdbOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.duckdbOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.duckdbOn.least )
-    | Substrait.BinFn.bbox2 a0 => some (Substrait.duckdbOn.bbox2 a0)⟩
+    | Substrait.BinFn.bbox2 a0 => some (Substrait.duckdbOn.bbox2 a0)
+    | Substrait.BinFn.listPrepend  => some (Substrait.duckdbOn.listPrepend )
+    | Substrait.BinFn.listConcat  => some (Substrait.duckdbOn.listConcat )
+    | Substrait.BinFn.listContains  => some (Substrait.duckdbOn.listContains )
+    | Substrait.BinFn.listPosition  => some (Substrait.duckdbOn.listPosition )⟩
 
 /-- How each construct is lowered (`--lowering-coverage`). -/
 def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
@@ -208,6 +213,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),
   ("UnFn.cardinality", "native", 0),
+  ("UnFn.flatten", "native", 0),
   ("UnFn.raise", "native", 0),
   ("UnFn.fit .silent .i8", "hand-written schema: CASE WHEN #0 IS NOT NULL THEN dsub(imod(dadd(imod(dadd(#0, 128), 256), 256), 256), 128) ELSE #0 END", 0),
   ("UnFn.fit .silent .i16", "hand-written schema: CASE WHEN #0 IS NOT NULL THEN dsub(imod(dadd(imod(dadd(#0, 32768), 65536), 65536), 65536), 32768) ELSE #0 END", 0),
@@ -261,7 +267,11 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),
-  ("BinFn.bbox2", "native", 0)]
+  ("BinFn.bbox2", "native", 0),
+  ("BinFn.listPrepend", "native", 0),
+  ("BinFn.listConcat", "native", 0),
+  ("BinFn.listContains", "native", 0),
+  ("BinFn.listPosition", "native", 0)]
 
 theorem Substrait.duckdbOn.total : (Substrait.duckdbOn).Total :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),

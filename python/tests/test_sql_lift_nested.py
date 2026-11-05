@@ -36,6 +36,14 @@ LIST_QUERIES = [
     "SELECT a, UNNEST(l) + 1 AS e FROM t WHERE a > 1",
     # The same UNNEST twice is one (DuckDB zips equal lists).
     "SELECT UNNEST(l) AS x, UNNEST(l) * 10 AS y FROM t",
+    # #812: lengths, membership, positions, concatenation and lists of
+    # computed elements, NULLs as DuckDB has them.
+    "SELECT a, len(l) AS n, array_length(l) AS m, list_contains(l, 5) AS c,"
+    " list_contains(l, a) AS ca, list_has(l, NULL) AS h, list_position(l, 2) AS p,"
+    " list_position(l, NULL) AS pn, array_position(l, a + 1) AS pa FROM t",
+    "SELECT a, [a, 1] AS x, [a, NULL, a + 1] AS y, list_concat(l, [a]) AS z,"
+    " list_concat(l, NULL) AS w, array_cat(NULL, l) AS v FROM t",
+    "SELECT a FROM t WHERE list_contains(l, 2) OR len(l) > 1",
 ]
 
 
@@ -67,7 +75,9 @@ def test_lists_lift_as_duckdb_reads_them(sql):
     ("sql", "why"),
     [
         ("SELECT [] AS x", "empty list literal"),
-        ("SELECT [a, 1] AS x FROM t", "computed elements"),
+        ("SELECT list_contains([1.5::DOUBLE], 1.5::DOUBLE) AS x", "list of float64"),
+        ("SELECT list_contains(l, 'x') AS x FROM t", "list_contains of"),
+        ("SELECT array_length(l, 1) AS x FROM t", "dimension"),
         ("SELECT l[1:2] AS x FROM t", "slices"),
         ("SELECT l[a] AS x FROM t", "constant index"),
         ("SELECT [1, 2.5] AS x", "decimal"),

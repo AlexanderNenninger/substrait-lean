@@ -627,6 +627,25 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ | .ilike | .levenshtein =>
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
+    -- DuckDB's list functions (#812): a constant list or element takes its
+    -- kind from the other operand.
+    | .listPrepend | .listConcat =>
+      let kl := match wkind cols (.bin f a b), ctx with
+        | .list .other, .list k => .list k
+        | k, _ => k
+      let ke := match f, kl with
+        | .listPrepend, .list k => if isConst a then k else wkind cols a
+        | .listPrepend, _ => wkind cols a
+        | _, _ => kl
+      call (BinFn.anchor f) [writeExpr cols ke a, writeExpr cols kl b]
+    | .listContains | .listPosition =>
+      let kl := match wkind cols a with
+        | .list .other => .list (wkind cols b)
+        | k => if isConst a then .list (wkind cols b) else k
+      let ke := match kl with
+        | .list k => if isConst b then k else wkind cols b
+        | _ => wkind cols b
+      call (BinFn.anchor f) [writeExpr cols kl a, writeExpr cols ke b]
     -- Lists are written as the conditional they equal (`Expr.eval_greatest`):
     -- the engines order lists otherwise than `lt` (`listLt3`'s undecided).
     | .greatest | .least => match ka, kb with
@@ -793,9 +812,12 @@ so it gets no plans with these. -/
 def _root_.Substrait.Expr.nestedAccess : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
-    (match f with | .structField _ | .listElement _ | .cardinality => true | _ => false) ||
+    (match f with | .structField _ | .listElement _ | .cardinality | .flatten => true | _ => false) ||
       a.nestedAccess
-  | .bin _ a b => a.nestedAccess || b.nestedAccess
+  | .bin f a b =>
+    (match f with
+      | .listPrepend | .listConcat | .listContains | .listPosition => true
+      | _ => false) || a.nestedAccess || b.nestedAccess
   | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
   | .hof _ _ _ => true
 
