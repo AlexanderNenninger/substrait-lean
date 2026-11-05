@@ -2352,6 +2352,12 @@ def _batch(sp: Spark, t: Target, e: Expr, ids: list[int], rows: list[tuple], wan
             stats.raised[got.cls] += 1
             _finding(stats, t, e, setting, rows[ids[0]], got, want[ids[0]])
             return
+        if sum(1 for f in stats.findings if f.get("expr") == e.name) >= 5:
+            # Enough rows of this construct shown: count the rest as
+            # disagreeing without narrowing each down.
+            stats.rows += len(ids)
+            stats.raised[got.cls] += len(ids)
+            return
         mid = len(ids) // 2
         _batch(sp, t, e, ids[:mid], rows, want, stats, setting, ansi, lean)
         _batch(sp, t, e, ids[mid:], rows, want, stats, setting, ansi, lean)
