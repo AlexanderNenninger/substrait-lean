@@ -41,6 +41,22 @@ runs `static` only and its `qa` fails; retargeting it to main starts the full
 run (`.github/workflows/retarget.yml`). The header of
 `.github/workflows/ci.yml` has the details.
 
+### Runner slots
+
+GitHub runs at most 20 jobs at once for this repository, and a full CI run
+is about 25. Every push to a pull request queues a new run, so many open
+pull requests wait on each other.
+
+- Merge main into your branch only when the pull request conflicts, or when
+  the coordinator asks before merging it. Merging main after every push
+  restarts the whole run for nothing.
+- Push finished work in one push, not a commit at a time while CI runs.
+- The coordinator merges through batches: green pull requests merged into
+  one branch, one CI run, then merged into main. A push to main whose tree
+  a passing pull request run already tested runs `static` only (the header
+  of `ci.yml`). Docs builds on a pull request only when it changes a file
+  the site reads.
+
 ### Check capacity before expensive tasks
 
 Several agents often work at once, and together they have crashed the
