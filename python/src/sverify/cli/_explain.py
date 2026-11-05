@@ -1,26 +1,26 @@
-"""`sverify explain <code>`: what a problem's code in `sverify check`'s
+"""`sverify explain <code>`: what a finding's code in `sverify check`'s
 output means and how to fix it, so the default output stays short (#744)."""
 
 from __future__ import annotations
 
 CODES: dict[str, str] = {
-    "may-be-false": (
+    "may_be_false": (
         "A postcondition may be FALSE on some output rows that the preconditions allow. "
         "The counterexample, where sverify found one, is such an input. Fix it by stating "
         "in `requires` what the inputs meet (the report's `would hold` line names "
         "preconditions under which it holds), by filtering the rows that break it, or by "
         "relaxing the postcondition."
     ),
-    "may-be-null": (
+    "may_be_null": (
         "A postcondition is never FALSE but may be NULL, where a column it reads is NULL. "
         "State `_.col.notnull()` in `requires` for the columns the report names, or write "
         "the postcondition so NULL passes (`_.x.isnull() | (_.x > 0)`)."
     ),
-    "always-false": (
+    "always_false": (
         "A postcondition is FALSE on every row the transform can output. The transform or "
         "the postcondition is wrong: check the comparison's direction and the column."
     ),
-    "not-a-key": (
+    "not_a_key": (
         "A `unique(...)` postcondition: the preconditions do not make those columns a key "
         "of the output. Declare a key of the inputs (`sv.unique(...)` in `requires`) that "
         "the transform keeps, or deduplicate."
@@ -30,7 +30,7 @@ CODES: dict[str, str] = {
         "determined by the inputs. Order by columns that are unique there; the report's "
         "note names a key of an input that would make the order total."
     ),
-    "not-proved-kind": (
+    "not_proved_kind": (
         "A condition sverify checks on the data only (`references`, `rows_per`, "
         '`arrives_within`): no proof covers it. With `on_unproved="check"` each refresh '
         "checks it on the rows it writes."
@@ -46,7 +46,7 @@ CODES: dict[str, str] = {
     "needs": (
         "sverify inferred a precondition the proof needs, a bound that rules out a runtime "
         'error (an overflow, a division by zero), and `on_inferred="error"` (the default) '
-        "does not assume it. `sverify suggest <file> --apply` writes it into `requires=`, "
+        "does not assume it. `sverify check <file> --fix` writes it into `requires=`, "
         "after which each refresh checks it on the data; or rewrite the transform so no "
         "row needs it."
     ),
@@ -55,24 +55,24 @@ CODES: dict[str, str] = {
         "the inputs in `requires` (the report's hint names it), or cast to a wider type "
         "first."
     ),
-    "sum-overflow": (
+    "sum_overflow": (
         "A SUM may leave its type. sverify assumes it fits and checks that on the data "
         'while the job runs; with `on_inferred="off"`, state the bound yourself.'
     ),
-    "division-by-zero": (
+    "division_by_zero": (
         "A divisor may be 0. State `_.d != 0` in `requires`, or guard the division "
         "(`ibis.ifelse(d == 0, None, n / d)`)."
     ),
-    "cast-out-of-range": (
+    "cast_out_of_range": (
         "A cast may receive a value its target type cannot hold. Bound the value in "
         "`requires`, or cast to a wider type."
     ),
-    "negative-exponent": "An integer power may get a negative exponent: bound it in `requires`.",
-    "domain-error": (
+    "negative_exponent": "An integer power may get a negative exponent: bound it in `requires`.",
+    "domain_error": (
         "A math function may get an argument outside its domain (the logarithm of 0, the "
         "square root of a negative number): bound it in `requires`, or guard the call."
     ),
-    "overflow-to-infinity": (
+    "overflow_to_infinity": (
         "An operation on finite doubles, or their SUM or AVG, may give ±infinity. Bound "
         "the inputs in `requires`."
     ),
@@ -94,7 +94,7 @@ CODES: dict[str, str] = {
         "schemas to be proved on. Pipe a source into it (`orders.pipe(paid)`), or test it "
         "with `paid.check(orders={...})`."
     ),
-    "refused": (
+    "unsupported": (
         "sverify refuses a construct of the file: a function, type or operator outside "
         "its model (`sverify.errors.UnsupportedError`). The message names it. Rewrite it in "
         "what sverify reads, or open an issue."
@@ -109,14 +109,31 @@ CODES: dict[str, str] = {
         "query, after spilling what it could to disk. Nothing was written to a sink. Raise "
         "the limit, or refresh in smaller batches."
     ),
+    "refused": (
+        "The node is proved, but no route takes its proof to the engine, or its sink "
+        "refuses it: a stored node whose result is not determined up to row order, or an "
+        "engine whose behaviour differs from the proof's semantics. The message names "
+        "the reason; `sverify check --full` prints the routes."
+    ),
+    "usage": "The command line is wrong: a flag, a missing file, or a node the file lacks.",
     "error": "The file raised an error of its own while sverify imported it: see the message.",
 }
 
 
+#: Each code's level, as SARIF names them; "error" where it is not listed.
+LEVELS: dict[str, str] = {"observation": "note", "unchecked": "warning", "sum_overflow": "warning"}
+
+
 def code_of(kind: str) -> str:
-    """A report's reason or issue kind as a code: `may_be_false` is
-    `may-be-false`, "division by zero" `division-by-zero`."""
-    return kind.strip().lower().replace("_", "-").replace(" ", "-")
+    """A report's reason or issue kind as a code, in snake case:
+    "division by zero" is `division_by_zero`; `may-be-false` (kebab case)
+    is `may_be_false`."""
+    return kind.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def level_of(code: str) -> str:
+    """The level of a finding with `code`: "error", "warning" or "note"."""
+    return LEVELS.get(code_of(code), "error")
 
 
 def explain(code: str) -> str | None:

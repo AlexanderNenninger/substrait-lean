@@ -150,18 +150,31 @@ jobs:
       # Test the installed wheel, not the source tree: copy the tests out so
       # `sverify` can only come from the wheel. The tests also need the
       # maintainer tooling, which the wheel leaves out (`python/tools`).
+      #
+      # A pull request runs the fast set (`poe test`'s: no `slow` tests, a
+      # tenth of the Hypothesis examples): it checks the packaging, and CI's
+      # `test` jobs run the whole suite on the same code from source. A
+      # release, the nightly and the weekly run test the whole suite here.
       - name: Test installed wheel
+        env:
+          FAST: ${{ github.event_name == 'pull_request' }}
         run: |
           cp -r python/tests "$RUNNER_TEMP/tests"
           cp -r python/tools "$RUNNER_TEMP/tools"
           export PYTHONPATH="$RUNNER_TEMP/tools"
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
+          select=()
+          if [ "$FAST" = true ]; then
+            export SVERIFY_PROFILE=dev
+            select=(-m "not slow")
+          fi
           uv run --isolated --no-project \
             --with "sverify[all,datafusion] @ file://$wheel" \
             --with pytest --with hypothesis --with pyyaml \
             --with "pyiceberg[sql-sqlite]" \
-            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
+            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
+            "${select[@]}" tests
 
       # Without extras: no optional package is installed or imported, a node
       # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
@@ -251,8 +264,14 @@ jobs:
 
           pythons = sorted(json.loads(os.environ["PYTHONS"]), key=lambda v: tuple(map(int, v.split("."))))
           edges = sorted({pythons[0], pythons[-1]}, key=pythons.index)
-          include = [{"os": os_, "python": p} for os_ in ("ubuntu-latest", "ubuntu-24.04-arm") for p in pythons]
-          include += [{"os": "macos-15", "python": p} for p in edges]
+          # The whole suite on the newest Python (`build` runs it on the
+          # oldest, 3.12), the fast set on those between: the code is pure
+          # Python apart from the checker, so a middle version rarely fails
+          # alone.
+          newest = pythons[-1]
+          include = [{"os": os_, "python": p, "full": p == newest}
+                     for os_ in ("ubuntu-latest", "ubuntu-24.04-arm") for p in pythons]
+          include += [{"os": "macos-15", "python": p, "full": p == newest} for p in edges]
           print("include=" + json.dumps(include))
           PY
 
@@ -280,17 +299,25 @@ jobs:
           path: wheelhouse
 
       - name: Test installed wheel
+        env:
+          FULL: ${{ matrix.full }}
         run: |
           cp -r python/tests "$RUNNER_TEMP/tests"
           cp -r python/tools "$RUNNER_TEMP/tools"
           export PYTHONPATH="$RUNNER_TEMP/tools"
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
+          select=()
+          if [ "$FULL" != true ]; then
+            export SVERIFY_PROFILE=dev
+            select=(-m "not slow")
+          fi
           uv run --isolated --no-project --python ${{ matrix.python }} \
             --with "sverify[all,datafusion] @ file://$wheel" \
             --with pytest --with hypothesis --with pyyaml \
             --with "pyiceberg[sql-sqlite]" \
-            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
+            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
+            "${select[@]}" tests
 
       # Without extras: no optional package is installed or imported, a node
       # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays

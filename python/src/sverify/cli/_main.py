@@ -9,11 +9,12 @@ import difflib
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
-from sverify.cli import _contract, _explain, _text
+from sverify.cli import _contract, _explain, _findings, _formats, _text
 from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
@@ -24,19 +25,33 @@ from sverify.cli._limits import (
 )
 from sverify.cli._suggest import place
 
-PROVED, NOT_PROVED, REFUSED, BUDGET, ERROR, ATTENTION = 0, 1, 2, 3, 4, 5
+#: The exit codes (API review I1).
+OK, NOT_PROVED, USAGE, UNSUPPORTED, BUDGET, QUARANTINED, ERROR = 0, 1, 2, 3, 4, 5, 6
+EXIT_CODES = """\
+exit codes:
+  0  proved; a refresh committed every row
+  1  not proved
+  2  usage error: a flag, a missing file, a node the file lacks
+  3  unsupported or refused: a construct outside sverify's model, or no route
+  4  time or memory budget exceeded
+  5  a refresh committed with rows quarantined, or held a node
+  6  error: the file raised, I/O, a crash"""
 STATUS = {
-    PROVED: "proved",
+    OK: "proved",
     NOT_PROVED: "not_proved",
-    REFUSED: "refused",
+    USAGE: "usage",
+    UNSUPPORTED: "unsupported",
     BUDGET: "budget_exceeded",
+    QUARANTINED: "quarantined",
     ERROR: "error",
-    ATTENTION: "quarantined",
 }
-#: A refresh that completed, by `Refresh.outcome` (#184): rows quarantined
-#: and a node held both need attention, and exit 5; the JSON's `status` says
-#: which.
-OUTCOME_EXIT = {"ok": PROVED, "quarantined": ATTENTION, "held": ATTENTION}
+#: The version of the JSON document every command prints (`schemas/cli.schema.json`).
+FORMAT = 1
+FORMATS = ("text", "json", "github", "sarif", "junit")
+
+
+class UsageError(Exception):
+    """The command line asks for something that is not there."""
 
 
 def _version() -> str:
@@ -54,60 +69,7 @@ def split_target(target: str) -> tuple[Path, str | None]:
     return Path(target), None
 
 
-# What each command's output carries.
-
-
-def _problems(c: Checked) -> list[dict[str, Any]]:
-    """The problems of one application, each with its `explain` code."""
-    out: list[dict[str, Any]] = []
-    r = c.report
-    if r is None:
-        return [{"code": "timeout", "message": "the time budget ran out while proving it"}]
-    for cond in r.ensures:
-        if cond.portable or cond.checked:
-            continue
-        p: dict[str, Any] = {
-            "code": _explain.code_of(cond.reason or "unknown"),
-            "message": f"ensures {cond.label}: {cond.why}",
-            "condition": cond.label,
-        }
-        if cond.counterexample is not None:
-            p["counterexample"] = str(cond.counterexample)
-        out.append(p)
-    for n in r.needs:
-        p = {"code": "needs", "message": f"needs {n.code} on {n.table}", "table": n.table}
-        if n.issue is not None:
-            p["message"] += f" (else {n.issue.kind} in {n.issue.what})"
-        out.append(p)
-    for i in r.errors:
-        p = {"code": _explain.code_of(i.kind), "message": f"may fail: {i.message}"}
-        if i.hint:
-            p["hint"] = i.hint
-        out.append(p)
-    if r.transfer:
-        n_opts = len(r.transfer)
-        out.append({"code": "transfer", "message": f"Substrait allows more at {n_opts} option(s)"})
-    if r.floats_unmet:
-        out.append({"code": "floats", "message": r.floats_unmet})
-    out += [{"code": "composition", "message": m} for m in c.links]
-    return out
-
-
-def _needs(c: Checked) -> list[dict[str, Any]]:
-    if c.report is None:
-        return []
-    return [
-        {
-            "table": n.table,
-            "parameter": c.params.get(n.table, n.table),
-            "column": n.column,
-            "op": n.op,
-            "value": n.value,
-            "sql": n.sql,
-            "code": n.code,
-        }
-        for n in c.report.needs
-    ]
+# What the commands report.
 
 
 def _item(c: Checked) -> dict[str, Any]:
@@ -116,29 +78,23 @@ def _item(c: Checked) -> dict[str, Any]:
         "name": c.name,
         "nodes": c.nodes,
         "status": c.status,
-        "verdict": r.verdict if r is not None else "unfinished: the time budget ran out",
         "summary": _text.summary(r, c.params) if r is not None else None,
-        "problems": _problems(c),
-        "needs": _needs(c),
-        "facts": dict(r.facts) if r is not None else {},
+        "links": c.links,
+        "report": json.loads(r.to_json()) if r is not None else None,
     }
 
 
-def _exception(e: BaseException) -> dict[str, Any]:
-    from sverify.errors import UnsupportedError
-
-    if isinstance(e, BudgetExceeded):
-        code = "memory" if e.what == "memory" else "timeout"
-    elif isinstance(e, UnsupportedError):
-        code = "refused"
-    elif is_out_of_memory(e):
-        code = "memory"
-    else:
-        code = "error"
-    return {"code": code, "type": type(e).__name__, "message": str(e)}
+def _error(code: str, e: BaseException | str, kind: str | None = None) -> dict[str, Any]:
+    message = e if isinstance(e, str) else str(e)
+    return {
+        "code": code,
+        "type": kind or (type(e).__name__ if not isinstance(e, str) else "Error"),
+        "message": message,
+    }
 
 
-def _exit_for_error(e: BaseException) -> int:
+def _classify(e: BaseException) -> tuple[int, str]:
+    """The exit code and the error's code for an exception."""
     from sverify.errors import (
         AuditError,
         PostconditionError,
@@ -147,138 +103,172 @@ def _exit_for_error(e: BaseException) -> int:
         VerificationError,
     )
 
-    if isinstance(e, BudgetExceeded) or is_out_of_memory(e):
-        return BUDGET
+    if isinstance(e, BudgetExceeded):
+        return BUDGET, "memory" if e.what == "memory" else "timeout"
+    if is_out_of_memory(e):
+        return BUDGET, "memory"
+    if isinstance(e, UsageError | FileNotFoundError):
+        return USAGE, "usage"
     if isinstance(e, UnsupportedError):
-        return REFUSED
+        return UNSUPPORTED, "unsupported"
     if isinstance(e, VerificationError | PreconditionError | PostconditionError | AuditError):
-        return NOT_PROVED
-    return ERROR
+        return NOT_PROVED, "not_proved"
+    return ERROR, "error"
 
 
-def _check_result(d: Discovery, target: str | None, budget: Budget) -> tuple[int, dict]:
-    checked = d.checked if target is None else d.select(target)
-    unchecked = d.unchecked if target is None else [t for t in d.unchecked if t == target]
-    result: dict[str, Any] = {
-        "file": str(d.path),
-        "target": target,
-        "items": [_item(c) for c in checked],
-        "unchecked": unchecked,
-        "error": _exception(d.error) if d.error is not None else None,
-    }
-    if d.error is not None:
-        code = _exit_for_error(d.error)
-    elif target is not None and not checked and not unchecked:
-        found = sorted({*d.nodes, *(c.name for c in d.checked), *d.unchecked})
-        result["error"] = {
-            "code": "error",
-            "type": "LookupError",
-            "message": f"{d.path} has no node or transform {target!r}"
-            + (f"; it has {', '.join(found)}" if found else ""),
+class Check:
+    """A check of a file: what `check` prints in every format."""
+
+    def __init__(self, d: Discovery, target: str | None, budget: Budget):
+        self.d, self.target, self.budget = d, target, budget
+        self.checked = d.checked if target is None else d.select(target)
+        unchecked = d.unchecked if target is None else [t for t in d.unchecked if t == target]
+        self.unchecked = unchecked
+        self.error: dict[str, Any] | None = None
+        if d.error is not None:
+            self.code, kind = _classify(d.error)
+            self.error = _error(kind, d.error)
+        elif target is not None and not self.checked and not unchecked:
+            found = sorted({*d.nodes, *(c.name for c in d.checked), *d.unchecked})
+            text = f"{d.path} has no node or transform {target!r}"
+            self.error = _error(
+                "usage", text + (f"; it has {', '.join(found)}" if found else ""), "UsageError"
+            )
+            self.code = USAGE
+        elif not self.checked and not unchecked:
+            text = f"{d.path} defines no contracted transform (@sverify.transform)"
+            self.error = _error("usage", text, "UsageError")
+            self.code = USAGE
+        elif any(c.status == "unfinished" for c in self.checked):
+            self.code = BUDGET
+        elif unchecked or any(c.status == "not_proved" for c in self.checked):
+            self.code = NOT_PROVED
+        else:
+            self.code = OK
+        if budget.exceeded and self.code != BUDGET:
+            self.code = BUDGET
+            self.error = self.error or _error(
+                "timeout", f"time budget exceeded ({budget.seconds:g} s)", "BudgetExceeded"
+            )
+
+    @property
+    def file(self) -> str:
+        return str(self.d.path)
+
+    def findings(self) -> list[dict[str, Any]]:
+        out = [f for c in self.checked for f in _findings.of(c)]
+        return out + [_findings.unchecked(t, self.d) for t in self.unchecked]
+
+    def document(self) -> dict[str, Any]:
+        return {
+            "file": self.file,
+            "target": self.target,
+            "items": [_item(c) for c in self.checked],
+            "findings": self.findings(),
+            "unchecked": self.unchecked,
+            "error": self.error,
+            "budget": {"timeout": self.budget.seconds, "elapsed": round(self.budget.elapsed, 3)},
         }
-        code = ERROR
-    elif not checked and not unchecked:
-        result["error"] = {
-            "code": "error",
-            "type": "LookupError",
-            "message": f"{d.path} defines no contracted transform (@sverify.transform)",
-        }
-        code = ERROR
-    elif any(c.status == "unfinished" for c in checked):
-        code = BUDGET
-    elif unchecked or any(c.status == "not_proved" for c in checked):
-        code = NOT_PROVED
-    else:
-        code = PROVED
-    if budget.exceeded and code != BUDGET:
-        code = BUDGET
-    return code, result
+
+    def text(self, full: bool = False) -> str:
+        lines: list[str] = []
+        where = self.file + (f":{self.target}" if self.target else "")
+        findings = self.findings()
+        guarantees: dict[str, list[str]] = {}
+        checks: dict[str, list[str]] = {}
+        for c in self.checked:
+            if c.report is None:
+                continue
+            s = _text.summary(c.report, c.params)
+            if s["guarantees"]:
+                guarantees[_label(c.name, c.nodes)] = s["guarantees"]
+            if s["checks"]:
+                checks[_label(c.name, c.nodes)] = s["checks"]
+        if self.checked:
+            lines.append(f"Contract of {where}")
+            if guarantees:
+                lines.append("  The output guarantees:")
+                lines += [f"    {k}: {'; '.join(v)}" for k, v in guarantees.items()]
+            if checks:
+                lines.append("  Each refresh checks on the data:")
+                lines += [f"    {k}: {'; '.join(v)}" for k, v in checks.items()]
+            shown = [f for f in findings if f["code"] != "unchecked"]
+            if shown:
+                lines.append("  Not proved:")
+                for f in shown:
+                    lines.append(
+                        f"    {_label(f['item'], f['nodes'])}: {f['message']}  [{f['code']}]"
+                    )
+                    if "counterexample" in f:
+                        lines.append(f"      counterexample: {f['counterexample']}")
+            lines.append("")
+        for c in self.checked:
+            r = c.report
+            verdict = r.verdict if r is not None else "unfinished: the time budget ran out"
+            lines.append(f"{_label(c.name, c.nodes)}: {verdict}")
+            if full and r is not None:
+                lines += [f"  {line}" for line in str(r).splitlines()[1:]]
+                lines += [f"  composition: {m}" for m in c.links]
+        lines += [
+            f"{t}: not checked, the file never applies it  [unchecked]" for t in self.unchecked
+        ]
+        if self.error is not None:
+            lines.append(f"{self.error['code']}: {self.error['message']}  [{self.error['code']}]")
+        codes = sorted(
+            {f["code"] for f in findings} | ({self.error["code"]} if self.error else set())
+        )
+        if codes:
+            more = (
+                ""
+                if full
+                else f"; `sverify check --full {self.file}:<node>` prints a node's report"
+            )
+            lines.append(
+                f"`sverify explain <code>` says what a [code] means ({', '.join(codes)}){more}."
+            )
+        lines.append(STATUS[self.code].replace("_", " "))
+        return "\n".join(lines)
+
+    def render(self, fmt: str, full: bool) -> str:
+        error = self.error
+        if fmt == "github":
+            return _formats.github(self.file, self.findings(), error)
+        if fmt == "sarif":
+            return _formats.sarif(self.file, _version(), self.findings(), error)
+        if fmt == "junit":
+            items = [(c.name, _findings.passed(c), _findings.of(c)) for c in self.checked]
+            unchecked = [_findings.unchecked(t, self.d) for t in self.unchecked]
+            return _formats.junit(self.file, items, unchecked, error)
+        return self.text(full)
 
 
-# Output.
+def _label(name: str, nodes: list[str]) -> str:
+    return name + (f" ({', '.join(nodes)})" if nodes and nodes != [name] else "")
 
 
-def _emit(
-    args: argparse.Namespace, command: str, code: int, result: dict, human: Callable[[], str]
-) -> int:
-    if args.json:
+def _emit(args: argparse.Namespace, code: int, result: dict, text: Callable[[], str]) -> int:
+    """Print the outcome in `args.format`, and return the exit code."""
+    if args.format == "json":
         doc = {
-            "format": "provisional",
+            "format": FORMAT,
             "sverify": _version(),
-            "command": command,
+            "command": args.command,
             "exit": code,
-            "status": result.pop("status", None) or STATUS[code],
+            "status": result.pop("status", STATUS[code]),
             **result,
         }
         print(json.dumps(doc, indent=2, default=str))
     else:
-        text = human()
-        if text:
-            print(text)
+        out = text()
+        if out:
+            print(out)
     return code
-
-
-def _human_check(code: int, result: dict) -> str:
-    items = result["items"]
-    lines: list[str] = []
-    where = result["file"] + (f":{result['target']}" if result["target"] else "")
-    guarantees = [(i, g) for i in items if i["summary"] for g in i["summary"]["guarantees"]]
-    checks = [(i, g) for i in items if i["summary"] for g in i["summary"]["checks"]]
-    refused = [(i, p) for i in items for p in i["problems"]]
-    if items:
-        lines.append(f"Contract of {where}")
-        if guarantees:
-            lines.append("  The output guarantees:")
-            lines += _grouped(guarantees)
-        if checks:
-            lines.append("  Each refresh checks on the data:")
-            lines += _grouped(checks)
-        if refused:
-            lines.append("  Not proved:")
-            for i, p in refused:
-                lines.append(f"    {_label(i)}: {p['message']}  [{p['code']}]")
-                if "counterexample" in p:
-                    lines.append(f"      counterexample: {p['counterexample']}")
-        lines.append("")
-    for i in items:
-        lines.append(f"{_label(i)}: {i['verdict']}")
-    lines += [
-        f"{t}: not checked, the file never applies it  [unchecked]" for t in result["unchecked"]
-    ]
-    if err := result.get("error"):
-        lines.append(f"{err['code']}: {err['message']}  [{err['code']}]")
-    codes = sorted(
-        {p["code"] for i in items for p in i["problems"]}
-        | ({"unchecked"} if result["unchecked"] else set())
-        | ({err["code"]} if err else set())
-    )
-    if codes:
-        lines.append(
-            f"`sverify explain <code>` says what each [code] means ({', '.join(codes)}); "
-            f"`sverify explain {result['file']}:<node>` prints a node's full report."
-        )
-    lines.append(STATUS[code].replace("_", " "))
-    return "\n".join(lines)
-
-
-def _grouped(pairs: list[tuple[dict, str]]) -> list[str]:
-    """One line per item: its label, then its entries."""
-    out: dict[str, list[str]] = {}
-    for item, text in pairs:
-        out.setdefault(_label(item), []).append(text)
-    return [f"    {k}: {'; '.join(v)}" for k, v in out.items()]
-
-
-def _label(item: dict) -> str:
-    nodes = item["nodes"]
-    return item["name"] + (f" ({', '.join(nodes)})" if nodes and nodes != [item["name"]] else "")
 
 
 # Commands.
 
 
-def _discover(args: argparse.Namespace, path: Path, budget: Budget) -> Discovery:
-    d = Discovery(path)
+def _load(path: Path, budget: Budget, d: Discovery) -> Discovery:
     try:
         with budget.armed():
             load(path, d)
@@ -287,71 +277,52 @@ def _discover(args: argparse.Namespace, path: Path, budget: Budget) -> Discovery
     return d
 
 
-def _partial(
-    args: argparse.Namespace, command: str, d: Discovery, target: str | None, budget: Budget
-):
+def _on_hard_stop(args: argparse.Namespace, d: Discovery, target: str | None, budget: Budget):
     """What the watchdog prints when the main thread does not stop."""
 
     def emit() -> None:
         d.error = BudgetExceeded("time", f"{budget.seconds:g} s")
         with contextlib.suppress(Exception):  # print what there is
             d._finish()
-        _, result = _check_result(d, target, budget)
-        _emit(args, command, BUDGET, result, lambda: _human_check(BUDGET, result))
+        _show(args, Check(d, target, budget))
 
     return emit
+
+
+def _show(
+    args: argparse.Namespace, check: Check, extra: dict | None = None, text: str | None = None
+) -> int:
+    if args.format in ("text", "json"):
+        result = {**check.document(), **(extra or {})}
+        return _emit(args, check.code, result, lambda: text or check.render("text", args.full))
+    print(check.render(args.format, args.full))
+    return check.code
+
+
+def _check_file(
+    args: argparse.Namespace, path: Path, target: str | None
+) -> tuple[Discovery, Check]:
+    budget = Budget(timeout_from(args.timeout), lambda: None)
+    d = Discovery(path)
+    budget.on_hard_stop = _on_hard_stop(args, d, target, budget)
+    if not path.is_file():
+        raise UsageError(f"{path}: no such file")
+    _load(path, budget, d)
+    return d, Check(d, target, budget)
 
 
 def cmd_check(args: argparse.Namespace) -> int:
     path, target = split_target(args.target)
     if path.is_dir() or path.name == "dbt_project.yml":
         return _dbt(args, path)
-    budget = Budget(timeout_from(args.timeout), lambda: None)
-    d = Discovery(path)
-    budget.on_hard_stop = _partial(args, "check", d, target, budget)
-    try:
-        with budget.armed():
-            load(path, d)
-    except BudgetExceeded as e:
-        d.error = e
-    code, result = _check_result(d, target, budget)
-    result["budget"] = {"timeout": budget.seconds, "elapsed": round(budget.elapsed, 3)}
-    return _emit(args, "check", code, result, lambda: _human_check(code, result))
-
-
-def _dbt(args: argparse.Namespace, path: Path) -> int:
-    """A dbt project: `sverify-dbt check`, its exit status passed through."""
-    exe = shutil.which("sverify-dbt")
-    if exe is None:
-        result = {
-            "file": str(path),
-            "error": {
-                "code": "error",
-                "type": "FileNotFoundError",
-                "message": "a dbt project: install sverify-dbt to check it "
-                "(pip install sverify-dbt)",
-            },
-        }
-        return _emit(args, "check", ERROR, result, lambda: result["error"]["message"])
-    project = path if path.is_dir() else path.parent
-    return subprocess.call([exe, "check", str(project), *(["--json"] if args.json else [])])
-
-
-def cmd_suggest(args: argparse.Namespace) -> int:
-    path, target = split_target(args.target)
-    budget = Budget(timeout_from(args.timeout), lambda: None)
-    d = Discovery(path)
-    budget.on_hard_stop = _partial(args, "suggest", d, target, budget)
-    try:
-        with budget.armed():
-            load(path, d)
-    except BudgetExceeded as e:
-        d.error = e
-    checked = d.checked if target is None else d.select(target)
-    plan = place(path, checked)
+    d, check = _check_file(args, path, target)
+    if not (args.fix or args.diff):
+        return _show(args, check)
+    plan = place(path, check.checked)
     before = path.read_text()
-    diff = (
-        "".join(
+    diff = ""
+    if plan.text is not None:
+        diff = "".join(
             difflib.unified_diff(
                 before.splitlines(keepends=True),
                 plan.text.splitlines(keepends=True),
@@ -359,62 +330,72 @@ def cmd_suggest(args: argparse.Namespace) -> int:
                 f"b/{path}".replace("//", "/"),
             )
         )
-        if plan.text is not None
-        else ""
-    )
-    applied = False
-    recheck: tuple[int, dict] | None = None
-    if args.apply and plan.text is not None:
+    applied = bool(args.fix and plan.text is not None)
+    if applied:
+        assert plan.text is not None
         path.write_text(plan.text)
-        applied = True
-        again = _discover(args, path, Budget(timeout_from(args.timeout), lambda: None))
-        recheck = _check_result(again, target, budget)
-    code, result = recheck if recheck is not None else _check_result(d, target, budget)
-    result["fixes"] = [
-        {"transform": f.transform, "requires": f.conditions, "placed": f.placed, "reason": f.reason}
-        for f in plan.fixes
-    ]
-    result["diff"] = diff
-    result["applied"] = applied
+        _, check = _check_file(args, path, target)
+    extra = {
+        "fixes": [
+            {
+                "transform": f.transform,
+                "requires": f.conditions,
+                "placed": f.placed,
+                "reason": f.reason,
+            }
+            for f in plan.fixes
+        ],
+        "diff": diff,
+        "applied": applied,
+    }
+    lines = []
+    if not plan.fixes:
+        lines.append("No preconditions to add: no proof in the file needs one.")
+    for f in plan.fixes:
+        lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
+        if f.reason:
+            lines.append(f"  not placed: {f.reason}")
+    if diff:
+        lines.append(diff.rstrip("\n"))
+    if applied:
+        lines += [f"wrote {path}; checked again:", check.text(args.full)]
+    elif diff:
+        lines.append("`sverify check --fix` writes this.")
+    else:
+        lines.append(check.text(args.full))
+    return _show(args, check, extra, "\n".join(lines))
 
-    def human() -> str:
-        lines = []
-        if not plan.fixes:
-            lines.append("No preconditions to add: no proof in the file needs one.")
-        for f in plan.fixes:
-            for p, cs in f.conditions.items():
-                lines.append(f"{f.transform}: requires {p}: {', '.join(cs)}")
-            if f.reason:
-                lines.append(f"  not placed: {f.reason}")
-        if diff:
-            lines.append(diff.rstrip("\n"))
-        if applied:
-            lines.append(f"wrote {path}; checked again:")
-            lines.append(_human_check(code, result))
-        elif diff:
-            lines.append("`sverify suggest --apply` writes this.")
-        return "\n".join(lines)
 
-    return _emit(args, "suggest", code, result, human)
+def _dbt(args: argparse.Namespace, path: Path) -> int:
+    """A dbt project: `sverify-dbt check`, its exit status passed through."""
+    exe = shutil.which("sverify-dbt")
+    if exe is None:
+        message = "a dbt project: install sverify-dbt to check it (pip install sverify-dbt)"
+        result = {"file": str(path), "error": _error("usage", message, "UsageError")}
+        return _emit(args, USAGE, result, lambda: message)
+    project = path if path.is_dir() else path.parent
+    flags = [] if args.format == "text" else ["--format", args.format]
+    return subprocess.call([exe, "check", str(project), *flags])
+
+
+def _outcome_code(outcome: str) -> int:
+    return QUARANTINED if outcome in ("quarantined", "held") else OK
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
     from sverify._hooks import planned
+    from sverify.errors import RouteError
 
+    if args.format not in ("text", "json"):
+        raise UsageError(f"refresh prints text or json, not {args.format}")
     path, target = split_target(args.target)
     if target is None:
-        result = {
-            "file": str(path),
-            "error": {
-                "code": "error",
-                "type": "ValueError",
-                "message": "refresh takes <file>:<node>",
-            },
-        }
-        return _emit(args, "refresh", ERROR, result, lambda: result["error"]["message"])
+        raise UsageError("refresh takes <file>:<node>")
+    if not path.is_file():
+        raise UsageError(f"{path}: no such file")
     budget = Budget(timeout_from(args.timeout), lambda: None)
     d = Discovery(path)
-    budget.on_hard_stop = _partial(args, "refresh", d, target, budget)
+    budget.on_hard_stop = _on_hard_stop(args, d, target, budget)
     result: dict[str, Any] = {"file": str(path), "target": target, "nodes": [], "error": None}
     try:
         with planned(budget.disarm), budget.armed():
@@ -424,31 +405,22 @@ def cmd_refresh(args: argparse.Namespace) -> int:
             node = d.nodes.get(target)
             if node is None:
                 have = ", ".join(sorted(d.nodes)) or "none"
-                raise LookupError(f"{path} has no node {target!r}; it has {have}")
+                raise UsageError(f"{path} has no node {target!r}; it has {have}")
             # Proofs and planning end where `Group.refresh` has chosen its
             # routes (`sverify._hooks.planned`): the data moves unbounded.
             done = node.refresh(engine=args.engine, audit=args.audit)
     except BaseException as e:  # noqa: BLE001 - every outcome has an exit code
         if isinstance(e, KeyboardInterrupt | SystemExit):
             raise
-        from sverify.errors import RouteError
-
-        code = _exit_for_error(e)
-        result["error"] = _exception(e)
+        code, kind = _classify(e)
         if isinstance(e, RouteError):
-            # Not proved, or proved with no route to the engine (a refusal).
+            # Not proved, or proved with no route to the engine (refused).
             unproved = any(c.status == "not_proved" for c in d.select(target))
-            code = NOT_PROVED if unproved else REFUSED
-            result["error"]["code"] = "not-proved" if unproved else "refused"
-        if code in (NOT_PROVED, REFUSED):
-            result["items"] = [_item(c) for c in d.select(target)]
-        return _emit(
-            args,
-            "refresh",
-            code,
-            result,
-            lambda: f"{result['error']['code']}: {result['error']['message']}",
-        )
+            code, kind = (NOT_PROVED, "not_proved") if unproved else (UNSUPPORTED, "refused")
+        result["error"] = _error(kind, e)
+        result["items"] = [_item(c) for c in d.select(target)]
+        message = f"{kind}: {e}  [{kind}]"
+        return _emit(args, code, result, lambda: message)
     for s in done.nodes:
         w = s.write
         result["nodes"].append(
@@ -472,64 +444,50 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 },
             }
         )
+    outcome = done.outcome
+    code = _outcome_code(outcome)
+    result["outcome"] = outcome
     result["memory_limit"] = args.memory_limit
-    result["outcome"] = done.outcome
+    if code != OK:
+        result["status"] = outcome
     result["alert"] = done.alert()
 
     def human() -> str:
         alert = done.alert()
         return done.summary() + ("" if alert is None else "\n\n" + alert)
 
-    if done.outcome != "ok":
-        result["status"] = done.outcome
-    return _emit(args, "refresh", OUTCOME_EXIT[done.outcome], result, human)
+    return _emit(args, code, result, human)
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
-    text = _explain.explain(args.what)
-    if text is not None:
-        code = _explain.code_of(args.what)
-        return _emit(
-            args, "explain", PROVED, {"code": code, "text": text}, lambda: f"[{code}] {text}"
-        )
-    path, target = split_target(args.what)
-    if path.suffix != ".py" and not path.is_file():
+    text = _explain.explain(args.code)
+    if text is None:
         known = ", ".join(sorted(_explain.CODES))
-        result = {
-            "error": {
-                "code": "error",
-                "type": "LookupError",
-                "message": f"{args.what!r} is no code and no file; the codes are {known}",
-            }
-        }
-        return _emit(args, "explain", ERROR, result, lambda: result["error"]["message"])
-    budget = Budget(timeout_from(args.timeout), lambda: None)
-    d = _discover(args, path, budget)
-    code, result = _check_result(d, target, budget)
-    checked = d.checked if target is None else d.select(target)
-    for item, c in zip(result["items"], checked, strict=True):
-        item["report"] = str(c.report) if c.report is not None else None
+        raise UsageError(f"{args.code!r} is no code of sverify's; the codes are {known}")
+    code = _explain.code_of(args.code)
+    result = {"code": code, "level": _explain.level_of(code), "text": text}
+    return _emit(args, OK, result, lambda: f"[{code}] {text}")
 
-    def human() -> str:
-        lines = []
-        for item in result["items"]:
-            lines.append(f"{_label(item)}:")
-            lines += [f"  {line}" for line in (item["report"] or item["verdict"]).splitlines()]
-            lines += [
-                f"  composition: {p['message']}"
-                for p in item["problems"]
-                if p["code"] == "composition"
-            ]
-        if err := result.get("error"):
-            lines.append(f"{err['code']}: {err['message']}")
-        return "\n".join(lines)
 
-    return _emit(args, "explain", code, result, human)
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(USAGE, f"{self.prog}: error: {message}\n")
 
 
 def parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--json", action="store_true", help="print a JSON document for tools")
+    common = _Parser(add_help=False)
+    common.add_argument(
+        "--format",
+        "--output-format",
+        dest="format",
+        choices=FORMATS,
+        default="text",
+        help="text (the default), json, or for check: github (annotations), sarif, junit",
+    )
+    common.add_argument(
+        "--json", dest="format", action="store_const", const="json", help="--format json"
+    )
     common.add_argument(
         "--timeout",
         type=float,
@@ -543,50 +501,66 @@ def parser() -> argparse.ArgumentParser:
         help="DuckDB's memory limit, such as 2GB, past which it spills to disk "
         "(default: $SVERIFY_MEMORY_LIMIT, else DuckDB's own)",
     )
-    p = argparse.ArgumentParser(
+    p = _Parser(
         prog="sverify",
-        description="Check, fix and run sverify pipelines. Exit codes: 0 proved, "
-        "1 not proved, 2 refused, 3 budget exceeded (time or memory), 4 error.",
+        description="Check, fix and run sverify pipelines.",
+        epilog=EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", action="version", version=f"sverify {_version()}")
-    sub = p.add_subparsers(dest="command", required=True)
-    c = sub.add_parser("check", parents=[common], help="prove every transform and node of a file")
+    sub = p.add_subparsers(dest="command", required=True, parser_class=_Parser)
+    c = sub.add_parser(
+        "check",
+        parents=[common],
+        help="prove every transform and node of a file",
+        epilog=EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     c.add_argument("target", help="file.py, file.py:<node or transform>, or a dbt project")
+    c.add_argument("--full", action="store_true", help="print each node's full report")
+    fix = c.add_mutually_exclusive_group()
+    fix.add_argument(
+        "--fix",
+        action="store_true",
+        help="write the preconditions the proofs need into requires=, then check again",
+    )
+    fix.add_argument("--diff", action="store_true", help="show what --fix would write")
     c.set_defaults(run=cmd_check)
-    s = sub.add_parser(
-        "suggest", parents=[common], help="write the preconditions proofs need into requires="
+    r = sub.add_parser(
+        "refresh",
+        parents=[common],
+        help="run a node and report what changed",
+        epilog=EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    s.add_argument("target", help="file.py or file.py:<node or transform>")
-    s.add_argument(
-        "--apply", action="store_true", help="write the fixes into the file, then check it again"
-    )
-    s.set_defaults(run=cmd_suggest)
-    r = sub.add_parser("refresh", parents=[common], help="run a node and report what changed")
     r.add_argument("target", help="file.py:<node>")
-    r.add_argument("--engine", default="duckdb", help="duckdb (default), polars or spark")
+    r.add_argument("--engine", default="duckdb", help="duckdb (the default), polars or spark")
     r.add_argument("--audit", action="store_true", help="compare every batch with recomputation")
-    r.set_defaults(run=cmd_refresh)
-    e = sub.add_parser(
-        "explain", parents=[common], help="explain a [code], or print a node's full report"
-    )
-    e.add_argument("what", help="a code from check's output, or file.py[:<node>]")
-    e.set_defaults(run=cmd_explain)
+    r.set_defaults(run=cmd_refresh, full=False)
+    e = sub.add_parser("explain", parents=[common], help="what a [code] of check's output means")
+    e.add_argument("code", help="a code from check's output, such as may_be_false")
+    e.set_defaults(run=cmd_explain, full=False)
     _contract.add_parser(sub)
     return p
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
-    return its exit code: 0 proved, 1 not proved, 2 refused, 3 budget
-    exceeded (time or memory), 4 error; for `refresh`, 5 completed with rows
-    quarantined or a node held (#184)."""
-    args = parser().parse_args(argv)
+    return its exit code: 0 proved (a refresh committed every row), 1 not
+    proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget
+    exceeded, 5 a refresh quarantined rows or held a node, 6 error."""
+    try:
+        args = parser().parse_args(argv)
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else USAGE
     try:
         memory_limit_from(args.memory_limit)
         return args.run(args)
-    except BudgetExceeded as e:
-        message = str(e)
-        return _emit(args, args.command, BUDGET, {"error": _exception(e)}, lambda: message)
-    except Exception as e:  # noqa: BLE001 - every outcome has an exit code
-        code, message = _exit_for_error(e), f"{type(e).__name__}: {e}"
-        return _emit(args, args.command, code, {"error": _exception(e)}, lambda: message)
+    except BaseException as e:  # noqa: BLE001 - every outcome has an exit code
+        if isinstance(e, KeyboardInterrupt | SystemExit):
+            raise
+        code, kind = _classify(e)
+        message = f"{kind}: {e}"
+        if isinstance(e, ValueError) and "memory limit" in str(e):
+            code, kind = USAGE, "usage"
+        return _emit(args, code, {"error": _error(kind, e)}, lambda: message)

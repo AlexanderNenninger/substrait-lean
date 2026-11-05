@@ -1,5 +1,6 @@
-"""The `sverify` command (#744): discovery, exit codes, the `--json` shape,
-`suggest --apply`, `refresh`, `explain`, the time budget and DuckDB's memory
+"""The `sverify` command (#744, API review I1–I5): discovery, exit codes, the
+JSON document and its schema, the github, sarif and junit formats,
+`check --fix`, `refresh`, `explain`, the time budget and DuckDB's memory
 limit."""
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import sverify as sv
 from sverify.cli import discover, main, summary
 from sverify.cli._main import split_target
 
@@ -70,9 +72,22 @@ def run(capsys, *argv: str) -> tuple[int, str]:
     return code, capsys.readouterr().out
 
 
+SCHEMAS = Path(sv.__file__).resolve().parent / "schemas"
+
+
 def run_json(capsys, *argv: str) -> tuple[int, dict]:
+    """The command's JSON document, checked against the CLI's schema, and
+    each embedded report against the report's."""
     code, out = run(capsys, *argv, "--json")
-    return code, json.loads(out)
+    doc = json.loads(out)
+    jsonschema = pytest.importorskip("jsonschema")
+    jsonschema.validate(doc, json.loads((SCHEMAS / "cli.schema.json").read_text()))
+    report = json.loads((SCHEMAS / "report.schema.json").read_text())
+    for item in doc.get("items", []):
+        if item["report"] is not None:
+            jsonschema.validate(item["report"], report)
+    assert doc["exit"] == code
+    return code, doc
 
 
 def test_a_proved_file_exits_0_with_its_contract_in_words(tmp_path, capsys):
@@ -92,7 +107,7 @@ def test_a_file_that_is_not_proved_exits_1_with_codes(tmp_path, capsys):
     code, out = run(capsys, "check", str(write(tmp_path, NOT_PROVED)))
     assert code == 1
     assert "  Not proved:" in out
-    assert "[may-be-false]" in out
+    assert "[may_be_false]" in out
     assert "counterexample:" in out
     assert out.splitlines()[-1] == "not proved"
 
@@ -101,7 +116,7 @@ def test_the_json_document(tmp_path, capsys):
     path = write(tmp_path, NOT_PROVED)
     code, doc = run_json(capsys, "check", str(path))
     assert code == 1
-    assert doc["format"] == "provisional"
+    assert doc["format"] == 1
     assert doc["command"] == "check"
     assert (doc["exit"], doc["status"]) == (1, "not_proved")
     assert doc["file"] == str(path)
@@ -109,22 +124,10 @@ def test_the_json_document(tmp_path, capsys):
     assert doc["unchecked"] == []
     assert set(doc["budget"]) == {"timeout", "elapsed"}
     [item] = doc["items"]
-    assert set(item) == {
-        "name",
-        "nodes",
-        "status",
-        "verdict",
-        "summary",
-        "problems",
-        "needs",
-        "facts",
-    }
+    assert set(item) == {"name", "nodes", "status", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
-    assert set(item["summary"]) == {"guarantees", "checks", "refused"}
-    [problem] = item["problems"]
-    assert problem["code"] == "may-be-false"
-    assert problem["condition"] == "(_.amount > 20)"
-    assert "counterexample" in problem
+    assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
+    assert item["report"]["format"] == 1 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):
@@ -147,7 +150,7 @@ def test_every_node_is_checked_though_one_fails(tmp_path, capsys):
     assert d.checked[1].nodes == ["q"]
 
 
-def test_a_refused_construct_exits_2(tmp_path, capsys):
+def test_an_unsupported_construct_exits_3(tmp_path, capsys):
     body = """
     import ibis
 
@@ -159,30 +162,32 @@ def test_a_refused_construct_exits_2(tmp_path, capsys):
     n = orders.pipe(noisy)
     """
     code, doc = run_json(capsys, "check", str(write(tmp_path, body)))
-    assert code == 2
-    assert doc["error"]["code"] == "refused"
+    assert code == 3
+    assert (doc["status"], doc["error"]["code"]) == ("unsupported", "unsupported")
     assert "RandomScalar" in doc["error"]["message"]
 
 
 def test_needed_preconditions_have_a_code(tmp_path, capsys):
-    code, doc = run_json(capsys, "check", str(write(tmp_path, NEEDS)))
+    path = write(tmp_path, NEEDS)
+    code, out = run(capsys, "check", str(path))
     assert code == 1
+    assert out.count("[needs]") == 2
+    code, doc = run_json(capsys, "check", str(path))
     [item] = doc["items"]
-    assert {p["code"] for p in item["problems"]} == {"needs"}
-    assert {(n["parameter"], n["column"], n["op"]) for n in item["needs"]} == {
+    assert {(n["table"], n["column"], n["op"]) for n in item["report"]["needs"]} == {
         ("orders", "amount", ">="),
         ("orders", "amount", "<"),
     }
 
 
-def test_suggest_shows_the_fix_and_apply_writes_it(tmp_path, capsys):
+def test_diff_shows_the_fix_and_fix_writes_it(tmp_path, capsys):
     path = write(tmp_path, NEEDS)
     before = path.read_text()
-    code, out = run(capsys, "suggest", str(path))
+    code, out = run(capsys, "check", str(path), "--diff")
     assert code == 1
     assert '+@sv.transform(requires={"orders": [' in out
     assert path.read_text() == before
-    code, doc = run_json(capsys, "suggest", str(path), "--apply")
+    code, doc = run_json(capsys, "check", str(path), "--fix")
     assert code == 0, doc
     assert doc["applied"] is True
     [fix] = doc["fixes"]
@@ -203,9 +208,9 @@ def test_suggest_shows_the_fix_and_apply_writes_it(tmp_path, capsys):
         '@sv.transform(requires={"other": []} if False else {})',
     ],
 )
-def test_suggest_extends_requires(tmp_path, capsys, decorator):
+def test_fix_extends_requires(tmp_path, capsys, decorator):
     path = write(tmp_path, NEEDS.replace("@sv.transform()", decorator))
-    code, doc = run_json(capsys, "suggest", str(path), "--apply")
+    code, doc = run_json(capsys, "check", str(path), "--fix")
     [fix] = doc["fixes"]
     if "if False" in decorator:
         assert not fix["placed"] and "not a literal" in fix["reason"]
@@ -250,34 +255,42 @@ def test_a_broken_link_is_reported(tmp_path, capsys):
     assert second.links and "amount" in second.links[0]
 
 
-def test_errors_and_missing_targets_exit_4(tmp_path, capsys):
+def test_usage_errors_exit_2_and_errors_6(tmp_path, capsys):
     code, doc = run_json(capsys, "check", str(tmp_path / "missing.py"))
-    assert code == 4 and doc["status"] == "error"
+    assert code == 2 and doc["status"] == "usage"
     path = write(tmp_path, PROVED)
+    assert main(["check", str(path), "--no-such-flag"]) == 2
+    assert main(["check", str(path), "--fix", "--diff"]) == 2
+    assert main(["refresh", f"{path}:p", "--format", "sarif"]) == 2
+    capsys.readouterr()
+    code, doc = run_json(capsys, "refresh", str(path))
+    assert code == 2 and "<file>:<node>" in doc["error"]["message"]
     code, doc = run_json(capsys, "check", f"{path}:nope")
-    assert code == 4
+    assert code == 2
     assert "has no node or transform 'nope'" in doc["error"]["message"]
     code, doc = run_json(
         capsys, "check", str(write(tmp_path, "raise RuntimeError('boom')\n", "b.py"))
     )
-    assert code == 4 and doc["error"]["message"] == "boom"
+    assert code == 6 and doc["error"]["message"] == "boom"
 
 
 def test_a_refresh_at_import_is_refused_while_checking(tmp_path, capsys):
     code, doc = run_json(capsys, "check", str(write(tmp_path, PROVED + "p.refresh()\n")))
-    assert code == 4
+    assert code == 6
     assert "__name__" in doc["error"]["message"]
 
 
-def test_explain(tmp_path, capsys):
+def test_explain_and_the_full_report(tmp_path, capsys):
     code, out = run(capsys, "explain", "may_be_false")
-    assert code == 0 and out.startswith("[may-be-false] ")
+    assert code == 0 and out.startswith("[may_be_false] ")
+    code, doc = run_json(capsys, "explain", "may-be-false")  # kebab case reads too
+    assert (code, doc["code"], doc["level"]) == (0, "may_be_false", "error")
     code, doc = run_json(capsys, "explain", "no-such-code")
-    assert code == 4
+    assert code == 2
     path = write(tmp_path, NOT_PROVED)
-    code, out = run(capsys, "explain", f"{path}:p")
+    code, out = run(capsys, "check", f"{path}:p", "--full")
     assert code == 1
-    assert "ensures (_.amount > 20): NOT proved" in out
+    assert "  ensures (_.amount > 20): NOT proved" in out
 
 
 def test_every_code_check_prints_is_explained():
@@ -310,20 +323,20 @@ s = orders.pipe(slow)
 """
     )
     code, doc = run_json(capsys, "check", str(write(tmp_path, body)), "--timeout", "3")
-    assert code == 3
+    assert code == 4
     assert doc["error"]["code"] == "timeout"
     assert [(i["name"], i["status"]) for i in doc["items"]] == [
         ("paid", "proved"),
         ("slow", "unfinished"),
     ]
-    assert doc["items"][1]["problems"][0]["code"] == "timeout"
+    assert doc["items"][1]["report"] is None
 
 
 def test_the_time_budget_comes_from_the_environment(tmp_path, capsys, monkeypatch):
     path = write(tmp_path, PROVED)
     monkeypatch.setenv("SVERIFY_TIMEOUT", "0.000001")
     code, _ = run(capsys, "check", str(path))
-    assert code == 3
+    assert code == 4
     monkeypatch.setenv("SVERIFY_TIMEOUT", "0")  # off
     code, doc = run_json(capsys, "check", str(path))
     assert code == 0 and doc["budget"]["timeout"] == 0
@@ -339,16 +352,14 @@ def test_refresh_runs_a_node(tmp_path, capsys):
     assert node["node"] == "paid"
     assert node["write"]["inserted"] == 2
     code, out = run(capsys, "refresh", f"{path}:stored", "--timeout", "0.000001")
-    assert code == 3 and "budget exceeded" in out
+    assert code == 4 and "budget exceeded" in out
 
 
 def test_refresh_refuses_an_unproved_node(tmp_path, capsys):
     code, doc = run_json(capsys, "refresh", f"{write(tmp_path, NOT_PROVED)}:p")
     assert code == 1
     assert doc["error"]["type"] == "UnverifiedRunError"
-    assert doc["error"]["code"] == "not-proved"
-    code, doc = run_json(capsys, "refresh", str(write(tmp_path, NOT_PROVED)))
-    assert code == 4
+    assert doc["error"]["code"] == "not_proved"
 
 
 MEMORY = """
@@ -373,7 +384,7 @@ stored = orders.pipe(ids).write(DeltaSink(SINK))
 """
 
 
-def test_a_duckdb_memory_breach_exits_3_and_writes_nothing(tmp_path):
+def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     """In a process of its own: the limit is the process's DuckDB's."""
     sink = tmp_path / "lake" / "ids"
     path = tmp_path / "big.py"
@@ -383,7 +394,7 @@ def test_a_duckdb_memory_breach_exits_3_and_writes_nothing(tmp_path):
     done = subprocess.run(
         [*argv, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )
-    assert done.returncode == 3, done.stderr
+    assert done.returncode == 4, done.stderr
     doc = json.loads(done.stdout)
     assert doc["error"]["code"] == "memory"
     assert not sink.exists()
@@ -397,7 +408,7 @@ def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):
     (tmp_path / "dbt_project.yml").write_text("name: x\n")
     monkeypatch.setattr("shutil.which", lambda _: None)
     code, doc = run_json(capsys, "check", str(tmp_path))
-    assert code == 4
+    assert code == 2
     assert "sverify-dbt" in doc["error"]["message"]
 
 
@@ -422,7 +433,7 @@ def test_summary_of_a_report():
     s = summary(report)
     assert s["guarantees"] == ["amount > 10"]
     assert s["checks"] == ["orders: amount ≥ 0", "orders: amount < 100"]
-    assert s["refused"][0].startswith("id is never NULL: not proved")
+    assert s["not_proved"][0].startswith("id is never NULL: not proved")
 
 
 def test_the_entry_point():
@@ -430,6 +441,63 @@ def test_the_entry_point():
         [sys.executable, "-m", "sverify.cli", "--version"], capture_output=True, text=True
     )
     assert done.returncode == 0 and done.stdout.startswith("sverify ")
+
+
+def test_github_annotations(tmp_path, capsys):
+    path = write(tmp_path, NOT_PROVED)
+    code, out = run(capsys, "check", str(path), "--format", "github")
+    assert code == 1
+    [line] = out.splitlines()
+    line_no = HEAD.count("\n") + 2  # the decorator, after the blank line
+    assert line.startswith(
+        f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
+    )
+    assert "ensures (_.amount > 20)" in line and "%0Acounterexample: " in line
+
+
+def test_sarif(tmp_path, capsys):
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    code, out = run(capsys, "check", str(path), "--output-format", "sarif")
+    assert code == 1
+    log = json.loads(out)
+    assert log["version"] == "2.1.0"
+    [run_] = log["runs"]
+    rules = run_["tool"]["driver"]["rules"]
+    assert [r["id"] for r in rules] == ["may_be_false", "needs"]
+    assert all(r["fullDescription"]["text"] for r in rules)
+    results = run_["results"]
+    assert [r["ruleId"] for r in results] == ["needs", "needs", "may_be_false"]
+    for r in results:
+        assert rules[r["ruleIndex"]]["id"] == r["ruleId"]
+        assert r["level"] == "error"
+        loc = r["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == str(path) and loc["region"]["startLine"] > 0
+    assert "counterexample" in results[2]["properties"]
+
+
+def test_junit(tmp_path, capsys):
+    import xml.etree.ElementTree as ET
+
+    body = PROVED + NOT_PROVED.replace("paid", "late").replace("p =", "q =")
+    body += "\n\n@sv.transform()\ndef unused(t):\n    return t\n"
+    path = write(tmp_path, body)
+    code, out = run(capsys, "check", str(path), "--format", "junit")
+    assert code == 1
+    root = ET.fromstring(out)
+    [suite] = root.findall("testsuite")
+    assert (suite.get("tests"), suite.get("failures"), suite.get("skipped")) == ("4", "1", "1")
+    cases = {(str(c.get("classname")).rsplit("::", 1)[1], c.get("name")): c for c in suite}
+    assert cases[("paid", "ensures (_.amount > 10)")].find("failure") is None
+    failure = cases[("late", "(_.amount > 20)")].find("failure")
+    assert failure is not None and failure.get("type") == "may_be_false"
+    assert "counterexample" in (failure.text or "")
+    assert cases[("unused", "unchecked")].find("skipped") is not None
+
+
+def test_help_lists_the_exit_codes(capsys):
+    assert main(["--help"]) == 0
+    out = capsys.readouterr().out
+    assert "  5  a refresh committed with rows quarantined, or held a node" in out
 
 
 QUARANTINE = """
