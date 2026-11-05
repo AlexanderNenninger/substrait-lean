@@ -993,6 +993,70 @@ def fdivBound (x y : Bound) : Bound :=
     else Bound.top
   | _, _ => Bound.top
 
+/-! #### Signs (#441)
+
+Rounding keeps a result's sign (`FloatCode.add_nonneg` …), so a sum or
+product of non-negative doubles, or a quotient of one by a positive one,
+stays at least `0`; the absolute error of `faddBound` … alone would let its
+bound dip below. -/
+
+/-- Does every value of the bound sit at or above code `0` (`+0.0`)? -/
+def Bound.nonneg (b : Bound) : Bool := b.lo.any (0 ≤ ·)
+
+/-- `b`, raised to start at code `0`. -/
+def Bound.atLeast0 (b : Bound) : Bound := ⟨some (b.lo.elim 0 (max 0)), b.hi⟩
+
+theorem Bound.mem_atLeast0 {b : Bound} {r : Int} (h : b.Mem r) (h0 : 0 ≤ r) :
+    b.atLeast0.Mem r := by
+  obtain ⟨hl, hh⟩ := h
+  refine ⟨fun l hl' => ?_, hh⟩
+  simp only [Bound.atLeast0, Option.some.injEq] at hl'
+  subst hl'
+  cases hlo : b.lo with
+  | none => simpa using h0
+  | some l => have := hl l hlo; simp only [Option.elim]; omega
+
+theorem Bound.nonneg_mem {b : Bound} {r : Int} (h : b.Mem r) (hn : b.nonneg = true) : 0 ≤ r := by
+  unfold Bound.nonneg at hn
+  cases hlo : b.lo with
+  | none => simp [hlo] at hn
+  | some l => simp only [hlo, Option.any_some, decide_eq_true_eq] at hn; have := h.1 l hlo; omega
+
+set_option exponentiation.threshold 3200 in
+/-- Do `faddBound`'s guards hold? -/
+def faddOk (x y : Bound) : Bool :=
+  match finEnds x, finEnds y with
+  | some (la, ha), some (lb, hb) => decide (endsMag la ha + endsMag lb hb ≤ 2 ^ 2097)
+  | _, _ => false
+
+set_option exponentiation.threshold 3200 in
+/-- Do `fmulBound`'s guards hold? -/
+def fmulOk (x y : Bound) : Bool :=
+  match finEnds x, finEnds y with
+  | some (la, ha), some (lb, hb) => decide (endsMag la ha * endsMag lb hb ≤ 2 ^ 3171)
+  | _, _ => false
+
+set_option exponentiation.threshold 3200 in
+/-- Do `fdivBound`'s guards hold? -/
+def fdivOk (x y : Bound) : Bool :=
+  match finEnds x, finEnds y with
+  | some (la, ha), some (lb, hb) =>
+    decide (0 < endsMin lb hb ∧ endsMag la ha * 2 ^ 1074 ≤ 2 ^ 2097 * endsMin lb hb)
+  | _, _ => false
+
+/-- `faddBound`, at least `0` for non-negative inputs. -/
+def faddBoundS (sub : Bool) (x y : Bound) : Bound :=
+  if !sub && x.nonneg && y.nonneg && faddOk x y then (faddBound sub x y).atLeast0
+  else faddBound sub x y
+
+/-- `fmulBound`, at least `0` for non-negative inputs. -/
+def fmulBoundS (x y : Bound) : Bound :=
+  if x.nonneg && y.nonneg && fmulOk x y then (fmulBound x y).atLeast0 else fmulBound x y
+
+/-- `fdivBound`, at least `0` for a non-negative dividend and a positive divisor. -/
+def fdivBoundS (x y : Bound) : Bound :=
+  if x.nonneg && y.nonneg && fdivOk x y then (fdivBound x y).atLeast0 else fdivBound x y
+
 def BinFn.abs : BinFn → AVal → AVal → AVal
   | .bbox2 n, a, b => BlackBox.scalarAbs n (!a.null && !b.null)
   | .greatest, a, b => pickAbs Bound.greatest a b
@@ -1011,10 +1075,10 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .dmul, a, b => arith Bound.mul a b
   | .ddiv, a, b => divAbs ddivBound a b
   | .dateAdd, a, b => arith Bound.add a b
-  | .fadd, a, b => arith (faddBound false) a b
-  | .fsub, a, b => arith (faddBound true) a b
-  | .fmul, a, b => arith fmulBound a b
-  | .fdiv, a, b => arith fdivBound a b
+  | .fadd, a, b => arith (faddBoundS false) a b
+  | .fsub, a, b => arith (faddBoundS true) a b
+  | .fmul, a, b => arith fmulBoundS a b
+  | .fdiv, a, b => arith fdivBoundS a b
   | .fmod, a, b | .fpow, a, b => arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
@@ -1794,6 +1858,90 @@ theorem fdivBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
     · exact Bound.mem_top _
   · exact Bound.mem_top _
 
+set_option exponentiation.threshold 3200 in
+theorem faddOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
+    (hok : faddOk x y = true) : FloatCode.IsFin i ∧ FloatCode.IsFin j ∧
+      (FloatCode.scaled i).natAbs + (FloatCode.scaled j).natAbs ≤ 2 ^ 2097 := by
+  unfold faddOk at hok
+  split at hok
+  · rename_i la ha lb hb hfa hfb
+    obtain ⟨fi, -, -, mi⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, -, -, mj⟩ := finEnds_mem hy hfb
+    exact ⟨fi, fj, Nat.le_trans (Nat.add_le_add mi mj) (of_decide_eq_true hok)⟩
+  · simp at hok
+
+set_option exponentiation.threshold 3200 in
+theorem fmulOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
+    (hok : fmulOk x y = true) : FloatCode.IsFin i ∧ FloatCode.IsFin j ∧
+      (FloatCode.scaled i).natAbs * (FloatCode.scaled j).natAbs ≤ 2 ^ 3171 := by
+  unfold fmulOk at hok
+  split at hok
+  · rename_i la ha lb hb hfa hfb
+    obtain ⟨fi, -, -, mi⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, -, -, mj⟩ := finEnds_mem hy hfb
+    exact ⟨fi, fj, Nat.le_trans (Nat.mul_le_mul mi mj) (of_decide_eq_true hok)⟩
+  · simp at hok
+
+set_option exponentiation.threshold 3200 in
+theorem fdivOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
+    (hok : fdivOk x y = true) : FloatCode.IsFin i ∧ FloatCode.IsFin j ∧ FloatCode.scaled j ≠ 0 ∧
+      (FloatCode.scaled i).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (FloatCode.scaled j).natAbs := by
+  unfold fdivOk at hok
+  split at hok
+  · rename_i la ha lb hb hfa hfb
+    obtain ⟨fi, -, -, mi⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, lj, hj, -⟩ := finEnds_mem hy hfb
+    obtain ⟨hmb, hM⟩ := of_decide_eq_true hok
+    have hmin := endsMin_le lj hj
+    have hj0 : FloatCode.scaled j ≠ 0 := by
+      intro h0; rw [h0] at hmin; simp at hmin; omega
+    exact ⟨fi, fj, hj0,
+      Nat.le_trans (Nat.mul_le_mul_right _ mi) (Nat.le_trans hM (Nat.mul_le_mul_left _ hmin))⟩
+  · simp at hok
+
+theorem faddBoundS_mem (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
+    {r : Int} (hr : sub = false → r = FloatCode.lift₂ (· + ·) i j)
+    (hr' : sub = true → r = FloatCode.lift₂ (· - ·) i j) :
+    (faddBoundS sub x y).Mem r := by
+  have hm := faddBound_mem' sub hx hy hr hr'
+  unfold faddBoundS
+  split
+  · rename_i hc
+    simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
+    obtain ⟨⟨⟨hs, hxn⟩, hyn⟩, hok⟩ := hc
+    obtain ⟨fi, fj, hg⟩ := faddOk_guard hx hy hok
+    have h0 : 0 ≤ r := by
+      rw [hr hs]
+      exact FloatCode.add_nonneg fi fj hg (Bound.nonneg_mem hx hxn) (Bound.nonneg_mem hy hyn)
+    exact Bound.mem_atLeast0 hm h0
+  · exact hm
+
+theorem fmulBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
+    (fmulBoundS x y).Mem (FloatCode.lift₂ (· * ·) i j) := by
+  have hm := fmulBound_mem hx hy
+  unfold fmulBoundS
+  split
+  · rename_i hc
+    simp only [Bool.and_eq_true] at hc
+    obtain ⟨⟨hxn, hyn⟩, hok⟩ := hc
+    obtain ⟨fi, fj, hg⟩ := fmulOk_guard hx hy hok
+    exact Bound.mem_atLeast0 hm
+      (FloatCode.mul_nonneg fi fj hg (Bound.nonneg_mem hx hxn) (Bound.nonneg_mem hy hyn))
+  · exact hm
+
+theorem fdivBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
+    (fdivBoundS x y).Mem (FloatCode.lift₂ (· / ·) i j) := by
+  have hm := fdivBound_mem hx hy
+  unfold fdivBoundS
+  split
+  · rename_i hc
+    simp only [Bool.and_eq_true] at hc
+    obtain ⟨⟨hxn, hyn⟩, hok⟩ := hc
+    obtain ⟨fi, fj, hj0, hg⟩ := fdivOk_guard hx hy hok
+    exact Bound.mem_atLeast0 hm
+      (FloatCode.div_nonneg fi fj hj0 hg (Bound.nonneg_mem hx hxn) (Bound.nonneg_mem hy hyn))
+  · exact hm
+
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
@@ -1826,14 +1974,14 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     · simp [BinFn.apply, roundDiv, roundDivInt?, hj]
   case fadd =>
     exact arith_sound (f := FloatCode.lift₂ (· + ·))
-      (fun hx hy => faddBound_mem' false hx hy (fun _ => rfl) (fun h => by cases h))
+      (fun hx hy => faddBoundS_mem false hx hy (fun _ => rfl) (fun h => by cases h))
       (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub =>
     exact arith_sound (f := FloatCode.lift₂ (· - ·))
-      (fun hx hy => faddBound_mem' true hx hy (fun h => by cases h) (fun _ => rfl))
+      (fun hx hy => faddBoundS_mem true hx hy (fun h => by cases h) (fun _ => rfl))
       (fun v w => by cases v <;> cases w <;> rfl) ha hb
-  case fmul => exact arith_sound fmulBound_mem (fun v w => by cases v <;> cases w <;> rfl) ha hb
-  case fdiv => exact arith_sound fdivBound_mem (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fmul => exact arith_sound fmulBoundS_mem (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fdiv => exact arith_sound fdivBoundS_mem (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmod => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
@@ -2397,6 +2545,109 @@ theorem KsHold.cons_cstrs {pos : Bool} {c : Expr} {ks : Assumptions} {row : Row}
     | some sk => simp only [hc, Option.toList_some, List.mem_singleton] at hp; subst hp;
                  exact Expr.cstr_sound hc (by rwa [Expr.eval_normConst])
   · exact hks p hp
+
+/-! ### Alternatives (#702)
+
+`AND` that is not TRUE says one of its sides is not TRUE, which no single
+constraint states. `Expr.cstrAlts` keeps such a condition as alternatives:
+on every row where it is (not) TRUE, every assumption of one alternative
+holds. The DuckDB lift guards `a * b` on doubles with
+`CASE WHEN (a = ∞ OR a = -∞) AND b = 0 THEN NaN …`, and the `ELSE` branch
+then knows `a ≠ ±∞` or `b ≠ 0`, which rules out the NaN of `0 · ∞`. -/
+
+/-- One alternative of each list, together. -/
+def altsProd (xs ys : List Assumptions) : List Assumptions :=
+  xs.flatMap fun x => ys.map (x ++ ·)
+
+/-- At most eight alternatives; beyond that, none of them (`[[]]`, which
+always holds). -/
+def altsCapped (as : List Assumptions) : List Assumptions :=
+  if as.length ≤ 8 then as else [[]]
+
+/-- Does one alternative hold on the row? -/
+def AltsHold (as : List Assumptions) (row : Row) : Prop := ∃ ks ∈ as, KsHold ks row
+
+theorem KsHold.append {ks ks' : Assumptions} {row : Row} (h : KsHold ks row)
+    (h' : KsHold ks' row) : KsHold (ks ++ ks') row := by
+  intro p hp
+  rcases List.mem_append.mp hp with hp | hp
+  · exact h p hp
+  · exact h' p hp
+
+theorem KsHold.of_append_left {ks ks' : Assumptions} {row : Row} (h : KsHold (ks ++ ks') row) :
+    KsHold ks row := fun p hp => h p (List.mem_append_left _ hp)
+
+theorem KsHold.of_append_right {ks ks' : Assumptions} {row : Row} (h : KsHold (ks ++ ks') row) :
+    KsHold ks' row := fun p hp => h p (List.mem_append_right _ hp)
+
+theorem AltsHold.prod {xs ys : List Assumptions} {row : Row} (hx : AltsHold xs row)
+    (hy : AltsHold ys row) : AltsHold (altsProd xs ys) row := by
+  obtain ⟨x, hx, hkx⟩ := hx
+  obtain ⟨y, hy, hky⟩ := hy
+  exact ⟨x ++ y, List.mem_flatMap.mpr ⟨x, hx, List.mem_map.mpr ⟨y, hy, rfl⟩⟩, hkx.append hky⟩
+
+theorem AltsHold.capped {as : List Assumptions} {row : Row} (h : AltsHold as row) :
+    AltsHold (altsCapped as) row := by
+  unfold altsCapped
+  split
+  · exact h
+  · exact ⟨[], by simp, fun _ hp => by simp at hp⟩
+
+/-- What `c` being TRUE (`pos`) or not TRUE says, as alternatives. -/
+def Expr.cstrAltsL (pos : Bool) : Expr → List Assumptions
+  | .bin .and p q => altsCapped (if pos then altsProd (p.cstrAltsL true) (q.cstrAltsL true)
+      else p.cstrAltsL false ++ q.cstrAltsL false)
+  | .bin .or p q => altsCapped (if pos then p.cstrAltsL true ++ q.cstrAltsL true
+      else altsProd (p.cstrAltsL false) (q.cstrAltsL false))
+  | e => [(e.cstr pos).toList]
+
+theorem Expr.cstrAltsL_sound {row : Row} (pos : Bool) (c : Expr)
+    (ht : (c.eval row).isTrue = pos) : AltsHold (c.cstrAltsL pos) row := by
+  fun_induction Expr.cstrAltsL pos c
+  case case1 pos p q ihpt ihqt ihpf ihqf =>
+    refine AltsHold.capped ?_
+    simp only [eval, BinFn.apply, isTrue_and3] at ht
+    cases pos
+    · simp only [Bool.and_eq_false_iff] at ht
+      simp only [Bool.false_eq_true, ite_false]
+      rcases ht with ht | ht
+      · obtain ⟨k, hk, h⟩ := ihpf ht
+        exact ⟨k, List.mem_append_left _ hk, h⟩
+      · obtain ⟨k, hk, h⟩ := ihqf ht
+        exact ⟨k, List.mem_append_right _ hk, h⟩
+    · simp only [Bool.and_eq_true] at ht
+      simp only [ite_true]
+      exact (ihpt ht.1).prod (ihqt ht.2)
+  case case2 pos p q ihpt ihqt ihpf ihqf =>
+    refine AltsHold.capped ?_
+    simp only [eval, BinFn.apply, isTrue_or3] at ht
+    cases pos
+    · simp only [Bool.or_eq_false_iff] at ht
+      simp only [Bool.false_eq_true, ite_false]
+      exact (ihpf ht.1).prod (ihqf ht.2)
+    · simp only [Bool.or_eq_true] at ht
+      simp only [ite_true]
+      rcases ht with ht | ht
+      · obtain ⟨k, hk, h⟩ := ihpt ht
+        exact ⟨k, List.mem_append_left _ hk, h⟩
+      · obtain ⟨k, hk, h⟩ := ihqt ht
+        exact ⟨k, List.mem_append_right _ hk, h⟩
+  case case3 pos e _ _ =>
+    refine ⟨(e.cstr pos).toList, by simp, ?_⟩
+    intro p hp
+    cases hc : e.cstr pos with
+    | none => simp [hc] at hp
+    | some sk =>
+      simp only [hc, Option.toList_some, List.mem_singleton] at hp
+      subst hp
+      exact Expr.cstr_sound hc ht
+
+/-- `cstrAltsL`, with constant decimals folded first (as `cstrs`). -/
+def Expr.cstrAlts (pos : Bool) (c : Expr) : List Assumptions := c.normConst.cstrAltsL pos
+
+theorem Expr.cstrAlts_sound {row : Row} {pos : Bool} {c : Expr}
+    (ht : (c.eval row).isTrue = pos) : AltsHold (c.cstrAlts pos) row :=
+  Expr.cstrAltsL_sound pos _ (by rwa [Expr.eval_normConst])
 
 /-- Narrow the abstract value `a` of `e` by an assumption about `e`, or about
 `x` when `e` is `-x`. -/

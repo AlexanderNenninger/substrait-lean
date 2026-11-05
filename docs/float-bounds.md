@@ -288,9 +288,16 @@ doubles decoded within `2u` of the codes' values:
 | `FloatCode.mul_scaled` | `core_mul` | `\|A B\| ≤ 2¹⁰²³` | finite, within `\|A B\| / 2⁵⁰ + u · tiny` |
 | `FloatCode.div_scaled` | `core_div` | `B ≠ 0`, `\|A / B\| ≤ 2¹⁰²³` | finite, within `\|A / B\| / 2⁵⁰ + u · tiny` |
 | `FloatCode.exp_fin` | `core_exp` | `A ≤ 709` | finite (`709 < 1023 · ln 2`) |
+| `FloatCode.add_nonneg`, `mul_nonneg`, `div_nonneg` | `core_add_nonneg`, `core_mul_nonneg`, `core_div_nonneg` | as `add_scaled` …, and both inputs at least `0` (the divisor not `0`) | at least `0` |
 
 Scaled by `2¹⁰⁷⁴`, `u · tiny` is `1/2`, which the core's integer forms round
 up to `1`.
+
+The error term alone would let the bound of `x * y`, `x + y` or `x / y` of
+non-negative doubles dip below `0`. Rounding keeps the sign
+(`StdModel.nonneg`), so the last row raises those bounds to `0`
+(`faddBoundS` …, #441): a revenue `SUM(qty * price)` of non-negative factors
+is proved at least `0`.
 
 ## The generic properties of statistical aggregates
 

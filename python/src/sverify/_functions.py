@@ -327,7 +327,8 @@ FUNCTIONS: tuple[Fn, ...] = (
     _str("regexp_extract", 206, "str.opaque", 1, "str", "regex_extract", call=False),
     _str("regexp_replace", 207, "str.opaque", 1, "str", "regex_replace", call=False),
     # Lowercase hex of the UTF-8 bytes (#50).
-    _str("md5", 208, "str.opaque", 1, "str", expr=True, sql={"duckdb": "md5({0})"}),
+    _str("md5", 208, "str.opaque", 1, "str", expr=True, sql={"duckdb": "md5({0})"},
+         lift=("MD5",)),
     _str("sha256", 209, "str.opaque", 1, "str", expr=True, sql={"duckdb": "sha256({0})"}),
 )  # fmt: skip
 
