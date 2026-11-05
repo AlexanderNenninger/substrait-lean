@@ -1188,6 +1188,25 @@ such as `x > float("-inf")` on the base. Integer exponents keep IEEE's value
 (fact `duckdb-R15-power-neginf`). Per D17, this changes the reference and
 ships in a minor version bump.
 
+### DuckDB's statistical aggregates are proved
+
+DuckDB's `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` (Welford's update with
+Chan's merge) are proved to have the properties the reference allows, so
+their `stat_algo` row rests on a proof
+([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444),
+[docs/float-bounds.md](docs/float-bounds.md)). Polars's stay tested.
+
+### Tie order is open in the reference
+
+The reference that plans are verified under leaves the order of ties open
+(`tie_order`, `tie_pick`); the deterministic profile fixes it (D24,
+[#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)).
+`verify` proves postconditions and keys over every order of the ties: a
+postcondition over a window, `first()`, `group_concat()` or a `LIMIT` over
+ties is proved when it holds for every order, where the report used to say
+`undetermined`. `Report.tie_places` names each window, ordered aggregate and
+`LIMIT` whose order is not total.
+
 ## 0.4.0 (2026-11-03)
 
 ### Breaking changes
