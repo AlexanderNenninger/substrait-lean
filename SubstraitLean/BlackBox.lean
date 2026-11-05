@@ -1,6 +1,7 @@
 import SubstraitLean.Value
 import SubstraitLean.Float
 import SubstraitLean.Time
+import SubstraitLean.Reflect
 
 /-!
 # Black-box functions (#325)
@@ -30,7 +31,7 @@ knows nothing of it. The model's value is that function **where it keeps the
 declared laws**, and the row's `sample` elsewhere (`Scalar.call`,
 `Aggregate.call`), as `varOf` keeps a variance at `0` or above. So every law
 is a theorem of the model (`Scalar.call_ok`, `Aggregate.call_ok`), proved
-from the table (`scalars_wf`, `aggregates_wf`, by `decide`), and there is no
+from the table (`scalars_wf`, `aggregates_wf`, by reflection: `Reflect.lean`), and there is no
 `axiom`.
 
 What is assumed is that an engine computes the model's function: that
@@ -251,14 +252,19 @@ def aggregates : List Aggregate := [
     sample := .int 0 }]
 
 /-- Each name once, a scalar's or an aggregate's. -/
-example : (scalars.map (·.name) ++ aggregates.map (·.name)).Nodup := by decide
+example : (scalars.map (·.name) ++ aggregates.map (·.name)).Nodup :=
+  nodup_of_nodupB (by decide +kernel)
 
 /-- **The laws are consistent**: each row's sample keeps them. -/
-theorem scalars_wf : ∀ f ∈ scalars, ok f.result f.laws true f.sample = true := by
-  decide +kernel
+theorem scalars_wf : ∀ f ∈ scalars, ok f.result f.laws true f.sample = true :=
+  forall_of_all (p := fun (f : Scalar) => ok f.result f.laws true f.sample) (by decide +kernel)
 
 theorem aggregates_wf : ∀ f ∈ aggregates,
-    ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := by decide +kernel
+    ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := fun f hf => by
+  have h := forall_of_all
+    (p := fun (g : Aggregate) => ok g.result g.laws true g.sample && g.result.has g.empty)
+    (by decide +kernel) f hf
+  simpa only [Bool.and_eq_true] using h
 
 def scalar? (name : String) : Option Scalar := scalars.find? (·.name == name)
 def aggregate? (name : String) : Option Aggregate := aggregates.find? (·.name == name)

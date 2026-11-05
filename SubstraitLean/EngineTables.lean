@@ -343,7 +343,7 @@ theorem Rel.allowed_polars_core {cat : Catalog} {r : Rel} {out : Relation}
 one per group and option. -/
 def ObsTable.wf (t : ObsTable) : Bool :=
   t.all (fun (_, o, r) => r.wf && (OptionSpec.find? o).isSome) &&
-    (t.map fun (g, o, _) => (g, o)).Nodup
+    nodupB (t.map fun (g, o, _) => (g, o))
 
 example : engineTables.all (·.2.wf) := by decide +kernel
 /-- Each observation row is at an option the slice characterizes. -/
