@@ -646,7 +646,7 @@ def _rows_per(query: str, cols: set[str]) -> Any | None:
         or not isinstance(cond.expression, sg.exp.Literal)
     ):
         return None
-    return rows_per(keys, int(cond.expression.this))
+    return rows_per(*keys, at_most=int(cond.expression.this))
 
 
 class _Reader:
