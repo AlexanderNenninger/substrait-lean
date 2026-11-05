@@ -115,6 +115,39 @@ Vault works the same way as OpenBao (same API), and so does a cloud secret
 manager with OIDC login. Another zero-trust network or VPN takes
 Tailscale's place if its client can join from a runner.
 
+## Coming next: the cloud variants
+
+On a cloud provider the story stays the same: GitHub is the control plane
+(pull requests, checks, approvals, alerts), and the cloud supplies the rest
+([#787](https://github.com/AlexanderNenninger/substrait-lean/issues/787)).
+
+| Slot | AWS | Google Cloud | Azure |
+|---|---|---|---|
+| Storage | S3 (S3 Tables) | GCS | ADLS Gen2 |
+| Catalog | Glue, S3 Tables, Databricks UC | BigLake metastore, Databricks UC | Databricks UC, Fabric/OneLake |
+| Secrets | Secrets Manager | Secret Manager | Key Vault |
+| CI identity | Actions OIDC to an IAM role | Actions OIDC to Workload Identity Federation | Actions OIDC to a federated credential |
+| In-cloud job | ECS Fargate, AWS Batch | Cloud Run Jobs | Container Apps Jobs |
+| Monitoring (OTel) | CloudWatch | Cloud Monitoring | Azure Monitor |
+
+The storage and identity rows work today (the sections above). The
+in-cloud job is next:
+
+- A refresh in GitHub Actions pays egress for every byte it reads from the
+  bucket and has about 7 GB of RAM. Large data runs as a job in the
+  bucket's region from the sverify container image, which `refresh.yml`
+  starts and waits for: set the repository variable
+  `SVERIFY_REFRESH_WHERE` to `cloud-job`, or pick `where` when you run the
+  workflow by hand. [`scripts/cloud-job.sh`](../scripts/cloud-job.sh) holds
+  that step; it waits for the image
+  ([#770](https://github.com/AlexanderNenninger/substrait-lean/issues/770)).
+- A bucket or catalog reachable only through private endpoints needs the
+  in-cloud job, or a self-hosted runner inside the network.
+- The job's container size is its memory limit, which sverify reads from
+  the cgroup ([#783](https://github.com/AlexanderNenninger/substrait-lean/issues/783)).
+- The catalog's export targets become Glue, Dataplex, Purview or Unity
+  Catalog ([#772](https://github.com/AlexanderNenninger/substrait-lean/issues/772)).
+
 ## The catalog
 
 GitHub Pages publishes the catalog, and Pages sites can be public even for

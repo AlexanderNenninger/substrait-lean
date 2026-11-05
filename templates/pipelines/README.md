@@ -79,10 +79,16 @@ datasets. Its limits:
 - the tables are as public as the repository. A public repository's
   catalog reads the `data` branch's files; a private one's carries a copy.
 
-For enterprise: your bucket on S3, R2, GCS, Azure or MinIO, reached through
-OIDC with short-lived credentials, switched by the repository variables
+For enterprise: your store, your catalog, your orchestrator, with GitHub
+as the control plane for pull requests, checks, approvals and alerts. Your
+bucket on S3, R2, GCS, Azure or MinIO is reached through OIDC with
+short-lived credentials, switched by the repository variables
 `SVERIFY_STORE` and `SVERIFY_BUCKET`. Same workflows, same catalog.
-[`docs/for-enterprise.md`](docs/for-enterprise.md) has the setup.
+[`docs/for-enterprise.md`](docs/for-enterprise.md) has the setup, and the
+variants coming next: AWS, Google Cloud and Azure end to end, and the
+refresh as a job in your cloud next to the bucket (`where: cloud-job` in
+[`refresh.yml`](.github/workflows/refresh.yml), once the sverify container
+image exists, [#770](https://github.com/AlexanderNenninger/substrait-lean/issues/770)).
 
 ## Stages and credentials
 
