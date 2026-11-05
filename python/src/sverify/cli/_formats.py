@@ -1,11 +1,10 @@
 """`check`'s output for CI systems (#793): GitHub's workflow commands
-(annotations on a pull request's lines), SARIF 2.1.0 (code scanning) and
-JUnit XML (test reports). Each is a view of the same findings."""
+(annotations on a pull request's lines) and SARIF 2.1.0 (code scanning).
+Each is a view of the same findings."""
 
 from __future__ import annotations
 
 import json
-import xml.etree.ElementTree as ET
 from typing import Any
 
 from sverify.cli import _explain
@@ -106,52 +105,3 @@ def sarif(file: str, version: str, findings: list[dict[str, Any]], error: dict |
         ],
     }
     return json.dumps(log, indent=2)
-
-
-def junit(
-    file: str,
-    items: list[tuple[str, list[str], list[dict[str, Any]]]],
-    unchecked: list[dict[str, Any]],
-    error: dict | None,
-) -> str:
-    """JUnit XML: one test suite per file, one test case per postcondition
-    proved (passing) and per finding (failing); an import error is an
-    errored test case."""
-    suite = ET.Element("testsuite", name=file)
-    tests = failures = errors = skipped = 0
-    for name, passed, found in items:
-        for label in passed:
-            ET.SubElement(suite, "testcase", classname=f"{file}::{name}", name=f"ensures {label}")
-            tests += 1
-        for f in found:
-            case = ET.SubElement(
-                suite, "testcase", classname=f"{file}::{name}", name=f.get("condition") or f["code"]
-            )
-            text = f["message"] + (
-                f"\ncounterexample: {f['counterexample']}" if "counterexample" in f else ""
-            )
-            ET.SubElement(case, "failure", message=f["message"], type=f["code"]).text = text
-            tests += 1
-            failures += 1
-    for f in unchecked:
-        case = ET.SubElement(suite, "testcase", classname=f"{file}::{f['item']}", name="unchecked")
-        ET.SubElement(case, "skipped", message=f["message"])
-        tests += 1
-        skipped += 1
-    if error is not None:
-        case = ET.SubElement(suite, "testcase", classname=file, name=error["code"])
-        ET.SubElement(
-            case, "error", message=error["message"], type=error.get("type", error["code"])
-        )
-        tests += 1
-        errors += 1
-    suite.set("tests", str(tests))
-    suite.set("failures", str(failures))
-    suite.set("errors", str(errors))
-    suite.set("skipped", str(skipped))
-    root = ET.Element("testsuites", name="sverify")
-    root.append(suite)
-    for k in ("tests", "failures", "errors", "skipped"):
-        root.set(k, suite.get(k) or "0")
-    ET.indent(root)
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")

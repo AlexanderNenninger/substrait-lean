@@ -47,7 +47,7 @@ STATUS = {
 }
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
 FORMAT = 1
-FORMATS = ("text", "json", "github", "sarif", "junit")
+FORMATS = ("text", "json", "github", "sarif")
 
 
 class UsageError(Exception):
@@ -235,10 +235,6 @@ class Check:
             return _formats.github(self.file, self.findings(), error)
         if fmt == "sarif":
             return _formats.sarif(self.file, _version(), self.findings(), error)
-        if fmt == "junit":
-            items = [(c.name, _findings.passed(c), _findings.of(c)) for c in self.checked]
-            unchecked = [_findings.unchecked(t, self.d) for t in self.unchecked]
-            return _formats.junit(self.file, items, unchecked, error)
         return self.text(full)
 
 
@@ -483,7 +479,7 @@ def parser() -> argparse.ArgumentParser:
         dest="format",
         choices=FORMATS,
         default="text",
-        help="text (the default), json, or for check: github (annotations), sarif, junit",
+        help="text (the default), json, or for check: github (annotations), sarif",
     )
     common.add_argument(
         "--json", dest="format", action="store_const", const="json", help="--format json"

@@ -56,7 +56,7 @@ def fixes(checked: list[Checked]) -> list[Fix]:
         fix = out.setdefault(id(c.transform), Fix(c.name, {}))
         for n in c.report.needs:
             param = c.params.get(n.table, n.table)
-            code = condition_code(n, c.report.dialect)
+            code = condition_code(n, c.report._dialect)
             codes = fix.conditions.setdefault(param, [])
             if code not in codes:
                 codes.append(code)
