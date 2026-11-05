@@ -1,0 +1,75 @@
+{
+  "id": "spark-exec-parallel",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Results that change with partitioning and timing",
+  "verdict": "double `SUM`/`AVG`, `BIGINT` sum overflow, `first`/`last`, `collect_list`, sort and window ties",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "sum",
+    "avg",
+    "first",
+    "last",
+    "collect_list",
+    "string_agg",
+    "ORDER BY",
+    "row_number"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Spark runs each partition's partial aggregate in a task and merges them in the order the tasks finish, so these depend on the partitioning and can change from run to run: the order of a double `sum` and `avg` (spark-sum-double), whether a `BIGINT` partial sum overflows (spark-sum-int), the row `first`, `last`, `any_value` take and the order `collect_list` and `string_agg` keep (spark-first-last), and the order of ties in sorts and windows (spark-sort-stability, spark-window-values). The probes caught a sort's ties in a different order on two runs."
+  ],
+  "reference": "The reference compares results as bags, so row order outside a sort is free; `sum_order` is open and allowed within the plan's bound; `tie_pick` and `tie_order` allow any choice. Every Spark behaviour here is allowed but for the `BIGINT` sum, which `sverify.sql.spark` computes in decimals.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-1"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-3"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "first-partitions"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "collect-partitions"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sort-ties"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "window-tie-order"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "bigint-sum-order"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "bigint-sum-order-reversed"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

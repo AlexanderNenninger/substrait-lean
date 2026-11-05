@@ -1,0 +1,70 @@
+{
+  "id": "spark-window-values",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Window frames: `RANGE … CURRENT ROW` with an order, the whole partition without",
+  "verdict": "`default_window_frame`: SQL's; `lag`, `lead`, `nth_value` as SQL; ties in arrival order",
+  "area": "windows",
+  "options": [
+    "default_window_frame",
+    "tie_order",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "group": "win.value",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "sum OVER",
+    "count OVER",
+    "first_value",
+    "last_value",
+    "lag",
+    "lead",
+    "nth_value"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Without a frame, a window with `ORDER BY` uses `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, so peers are included (`sum` over keys 1, 2, 2, 3 gives 10, 60, 60, 100, and `last_value` is the last peer); without `ORDER BY` the frame is the whole partition. `lag`, `lead` take a default; `nth_value(x, 2)` is NULL until the frame has two rows and takes `IGNORE NULLS`. A `RANGE` frame over doubles treats NaN as a peer of NaN only.",
+    "Ties in the window order get the order the rows arrive in: `row_number() OVER (ORDER BY g)` after a 3-way shuffle numbered ids 2, 10, 4, 8, 6, 0 for `g = 0`."
+  ],
+  "reference": "`lag`, `lead`, `first_value` and windowed aggregates over the window's order and frame; ties in any order (`tie_order`). Spark is native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "default-frame"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "window-values"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "window-tie-order"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "window-range-double"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

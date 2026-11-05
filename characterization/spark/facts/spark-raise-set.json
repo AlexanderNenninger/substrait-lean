@@ -1,0 +1,101 @@
+{
+  "id": "spark-raise-set",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Where Spark raises beyond the reference, and where it errors without an error class",
+  "verdict": "extra raises: `INT` positions, ANSI string casts, `element_at(…, 0)`, regexes, week patterns; bare Java exceptions (SP-3, SP-4)",
+  "area": "errors",
+  "options": [
+    "raise_set"
+  ],
+  "constructs": [
+    "substring",
+    "element_at",
+    "a[i]",
+    "CAST",
+    "+",
+    "=",
+    "RLIKE",
+    "regexp_extract",
+    "date_format",
+    "make_date",
+    "ntile",
+    "-x"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Under ANSI Spark raises where the reference computes in these places: a `substring` position or length from 2³¹ to 2³² (`CAST_OVERFLOW`, spark-substring-range); an implicit cast of a string in arithmetic or a comparison (`1 + '1.5'`, `1 = '1.0'`: `CAST_INVALID_INPUT`, spark-implicit-casts); `a[i]` out of range. In both modes: `element_at(a, 0)`, an invalid regex or group index, `date_format` week letters, `ntile(0)`, a `DECIMAL(39,…)` type, and `-x` of a 38-digit decimal (SP-1).",
+    "Most errors carry an error class and SQLSTATE. Two do not: timestamp arithmetic past the microsecond range raises `java.lang.ArithmeticException: long overflow` (SP-3), and an invalid constant regex on the codegen path raises `java.util.regex.PatternSyntaxException` (SP-4). Planning errors (`DATATYPE_MISMATCH`, `UNSUPPORTED_TIME_TYPE`) come when the query is analysed, before any row is read.",
+    "Silent wrong results, the opposite case: `date_add` wraps (SP-2), decimal negation rounds (SP-1), `floor(NaN)` is 0 under ANSI (SP-5)."
+  ],
+  "reference": "The reference raises only where its options say (D2); an engine's extra raises are allowed where they happen only on rows the reference would also reject, and otherwise make a plan that verifies fail at run time. A writer avoids each listed form or guards it.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-substring-bigint"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "implicit-cast-string-fraction"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "implicit-cast-int-equals-fraction"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-subscript-out"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-index-zero"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-regex-invalid"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "string-regex-group-out-of-range"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "date-format-legacy-pattern"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "ntile-zero"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "decimal-too-wide"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "decimal-negate-max"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "timestamp-overflow"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "time-type"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

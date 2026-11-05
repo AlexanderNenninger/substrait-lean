@@ -1,0 +1,66 @@
+{
+  "id": "spark-literal-types",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Literals: `INT`, then `BIGINT`, then `DECIMAL`; `1.5` is a decimal, `1e0` a double",
+  "verdict": "`1` int; `2147483648` bigint; `1.5` decimal(2,1); `1e0`, `1.5D` double; suffixes `Y S L F D BD`",
+  "area": "frontend",
+  "options": [
+    "literal_types"
+  ],
+  "layer": "frontend",
+  "constructs": [
+    "literals"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "An integer literal is the narrowest of `INT`, `BIGINT` and `DECIMAL(p,0)` that holds it (`2147483648` is `bigint`, `9223372036854775808` `decimal(19,0)`). A literal with a point is a decimal (`1.5` is `decimal(2,1)`, `-0.0` `decimal(1,1)`), one with an exponent a `double` (`1e0`). Suffixes pick the type: `1Y` tinyint, `1S` smallint, `1L` bigint, `1.5F` float, `1.5D` double, `1BD` decimal. `NULL` is `void`; `array(1, 2L)` is `array<bigint>`.",
+    "So `2147483647 + 1` is `INT` arithmetic and raises under ANSI."
+  ],
+  "reference": "Substrait literals carry their type; the frontends (the SQL lift, the Ibis producer) choose it, and the Spark writer casts each literal to its declared type.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-literals.md",
+          "note": "numeric literals and their suffixes"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "literal-types"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "integer-literal-overflow"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-zero-literal"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-literal"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}
