@@ -84,6 +84,42 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_arithmetic.sql.out#L58-L79",
+          "note": "`try_add(1, (2147483647 + 1))`: the inner `+` raises `ARITHMETIC_OVERFLOW` with ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/try_arithmetic.sql.out#L58-L63",
+          "note": "the same query with ANSI off: the inner `+` wraps, result -2147483647"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/array.sql.out#L510-L515",
+          "note": "`size(arrays_zip(..., null, ...))` is NULL with ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/array.sql.out#L368-L373",
+          "note": "the same query with ANSI off is -1 (`spark.sql.legacy.sizeOfNull` follows ANSI)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L304-L309",
+          "note": "`12345678912345.123456789123 / 0.000000012345678` is a `decimal(38,9)` with `allowPrecisionLoss` on (default), ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L673-L695",
+          "note": "the same division after `set spark.sql.decimalOperations.allowPrecisionLoss=false` is typed `decimal(38,18)` and raises `NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION` with ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/decimalArithmeticOperations.sql.out#L396-L401",
+          "note": "with precision loss off and ANSI off it is NULL, a `decimal(38,18)`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

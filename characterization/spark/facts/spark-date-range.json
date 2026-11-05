@@ -102,6 +102,46 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-special.sql.out#L2-L7",
+          "note": "`date'999999-03-18'` and `date'-0001-1-28'` are valid dates, `+999999-03-18` and `-0001-01-28`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/datetime-special.sql.out#L2-L7",
+          "note": "the same dates with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-special.sql.out#L18-L23",
+          "note": "`timestamp'99999-03-18T12:03:17'` is `+99999-03-18 12:03:17` and `timestamp'-000001'` `-0001-01-01 00:00:00`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/date.sql.out#L675-L680",
+          "note": "`make_date(-44, 3, 15)` is `-0044-03-15`: the proleptic calendar goes on before year 1"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/date.sql.out#L683-L695",
+          "note": "`make_date(2013, 2, 30)` raises `DATETIME_FIELD_OUT_OF_BOUNDS.WITHOUT_SUGGESTION`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/date.sql.out#L64-L76",
+          "note": "`make_date(2000, 1, 33)` raises `DATETIME_FIELD_OUT_OF_BOUNDS.WITHOUT_SUGGESTION`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/date.sql.out#L57-L62",
+          "note": "`make_date(2000, 1, 33)` is NULL with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp-ntz-nanos.sql.out#L631-L636",
+          "note": "`TIMESTAMP_NTZ '1960-01-31 03:04:05.123456789' + INTERVAL '1' MONTH` is `1960-02-29 …`: the month's last day (file sets `spark.sql.timestampNanosTypes.enabled=true`)"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

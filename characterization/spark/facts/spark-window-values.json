@@ -65,6 +65,42 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L470-L497",
+          "note": "with `ORDER BY` and no frame the plan shows `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`; running `sum` and `last` per partition"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L284-L298",
+          "note": "`last(four) OVER (ORDER BY ten)` gives 2 on all three rows with ten = 0: the frame includes peers"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L10-L35",
+          "note": "without `ORDER BY` the frame is `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`, the whole partition"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L250-L264",
+          "note": "`lead(ten * 2, 1, -1)` gives the default -1 past the partition's end"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/window.sql.out#L781-L811",
+          "note": "`nth_value(employee_name, 2)` is NULL on the first row, then the second-highest"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/window.sql.out#L1186-L1212",
+          "note": "`nth_value(v, n) IGNORE NULLS` over a `RANGE` frame skips NULLs: NULL until n non-NULL values"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/window.sql.out#L519-L568",
+          "note": "two tied rows (cate a, val 1) both get count 2 and sum 2 under the default frame"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

@@ -78,6 +78,38 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L2-L7",
+          "note": "`avg` of an `INT` column is the `double` 1.5"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/group-by.sql.out#L167-L173",
+          "note": "`AVG(a)` of an `INT` column with NULLs is 2.142857142857143, a `double`; NULLs skipped"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L186-L191",
+          "note": "`avg` of `INT` NULLs only is NULL, typed `double`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L194-L199",
+          "note": "`avg` of `BIGINT` NULLs only is NULL, typed `double`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_aggregates.sql.out#L242-L247",
+          "note": "`try_avg` of the `BIGINT` maximum and 1 is 4.6116860184273879E18, a `double`, with no overflow under ANSI: the running sum is a double"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/try_aggregates.sql.out#L184-L189",
+          "note": "the same with ANSI off"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

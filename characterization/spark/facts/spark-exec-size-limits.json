@@ -68,6 +68,26 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/literals.sql.out#L173-L186",
+          "note": "a 40-digit integer literal raises `DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION` (`maxPrecision` 38)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L163-L185",
+          "note": "`(5e36BD + 0.1) + 5e36BD` past `decimal(38,1)` raises `NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION` with ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/decimalArithmeticOperations.sql.out#L121-L126",
+          "note": "the same query with ANSI off is NULL, a `decimal(38,1)`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

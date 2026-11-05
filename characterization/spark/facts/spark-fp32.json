@@ -2,8 +2,8 @@
   "id": "spark-fp32",
   "engine": "spark",
   "engine_version": "4.3.0",
-  "title": "`FLOAT` arithmetic in single precision; ANSI widens `FLOAT + INT` to `DOUBLE`",
-  "verdict": "`FLOAT op FLOAT` is `FLOAT`; `FLOAT + INT`: `DOUBLE` (ANSI) or `FLOAT`; math functions return `DOUBLE`",
+  "title": "`FLOAT` `+`, `-`, `*` in single precision; `/` and ANSI `FLOAT + INT` are `DOUBLE`",
+  "verdict": "`FLOAT + - * FLOAT` is `FLOAT`; `FLOAT / FLOAT` `DOUBLE`; `FLOAT + INT`: `DOUBLE` (ANSI) or `FLOAT`; math functions return `DOUBLE`",
   "area": "doubles",
   "options": [
     "fp32",
@@ -36,7 +36,7 @@
     ]
   },
   "description": [
-    "`FLOAT op FLOAT` stays `FLOAT`, rounded to single precision: `0.1f + 0.2f` is 0.30000001192092896, `16777216f + 1f` 16777216. `FLOAT + DOUBLE` is `DOUBLE`. `FLOAT + INT` is `DOUBLE` under ANSI and `FLOAT` without it, and `BIGINT + FLOAT` the same.",
+    "`FLOAT + FLOAT`, `-` and `*` stay `FLOAT`, rounded to single precision: `0.1f + 0.2f` is 0.30000001192092896, `16777216f + 1f` 16777216. `FLOAT + DOUBLE` is `DOUBLE`. `FLOAT + INT` is `DOUBLE` under ANSI and `FLOAT` without it, and `BIGINT + FLOAT` the same. `/` casts both sides to `DOUBLE` and divides in double precision, so `FLOAT / FLOAT` is a `DOUBLE`.",
     "`sqrt` and the other math functions return `DOUBLE`; `round` keeps `FLOAT`, `floor` gives `BIGINT`. `sum` and `avg` of `FLOAT` return `DOUBLE` (`sum(0.1f, 0.2f)` is 0.30000000447034836); `max` keeps `FLOAT`. A double past the float range casts to ±inf, in both modes (`CAST(1e40D AS FLOAT)`); a `1.5F` literal is a `FLOAT`."
   ],
   "reference": "`fp32` arithmetic is refused in every profile until #417's stage 3. Spark has native single precision; its aggregates and math functions widen to double.",
@@ -74,6 +74,38 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/literals.sql.out#L205-L210",
+          "note": "`1F`, `1.2F`, `.10f` are `float` literals"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float4.sql.out#L214-L223",
+          "note": "a `float` column stores `1.2345678901234e+20` as 1.2345679E20, single precision"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float4.sql.out#L301-L309",
+          "note": "`f1 + '-10'` on a `float` column is a `double` (the string reads as a double): 1004.3 gives 994.2999877929688"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/literals.sql.out#L221-L243",
+          "note": "`-3.4028235E39f` is a parse error, `INVALID_NUMERIC_LITERAL_RANGE`: a float literal past the range does not become -inf"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/typeCoercion/native/division.sql.out#L682-L687",
+          "note": "`cast(1 as float) / cast(1 as float)` is a `double`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float4.sql.out#L173-L178",
+          "note": "`float('Infinity') / float('Infinity')` is NaN, a `double`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

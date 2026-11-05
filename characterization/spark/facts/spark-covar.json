@@ -79,6 +79,22 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L344-L349",
+          "note": "`covar_pop(b, a)` and `covar_samp(b, a)` of `FLOAT` and `INT` columns return `double`s 653.6289553875104 and 871.5052738500139"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/window.sql.out#L519-L568",
+          "note": "windowed `covar_pop(val, val_long)` of `INT` and `BIGINT`: a `double`, 0.0 for one pair or a constant side, NULL with no complete pair (cate b, val 1)"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off. No input file sets spark.sql.legacy.statisticalAggregate, so every case runs with it off."
     }
   ],
   "issues": [

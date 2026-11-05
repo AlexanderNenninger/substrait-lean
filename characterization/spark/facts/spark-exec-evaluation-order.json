@@ -91,6 +91,34 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L43-L50",
+          "note": "`if(c2 >= 0, 1-0, 1/0)` over a table with `c2 = 0` rows runs under ANSI: the `1/0` branch is never evaluated"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L70-L78",
+          "note": "`coalesce(c2, 1/0)` with non-NULL `c2` runs under ANSI: `1/0` is never evaluated"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L89-L94",
+          "note": "`coalesce(null, 1, 1/0)` is 1.0 under ANSI: evaluation stops at the first non-NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L97-L105",
+          "note": "`CASE WHEN c2 >= 0 THEN 1 ELSE 1/0 END` over the table runs under ANSI"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/case.sql.out#L189-L197",
+          "note": "`CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl` is 0.0 on every row under ANSI"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

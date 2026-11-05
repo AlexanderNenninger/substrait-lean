@@ -55,6 +55,38 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp.sql.out#L684-L689",
+          "note": "`TIMESTAMP_SECONDS(0.1234567d)` is `1969-12-31 16:00:00.123456`: the seventh digit is dropped"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp.sql.out#L1221-L1231",
+          "note": "`timestamp'2011-11-11 11:11:11' - interval '12:12:12.123456789' hour to second`: the interval parses as `12:12:12.123456`, the result is `2011-11-10 22:58:58.876544`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp.sql.out#L615-L627",
+          "note": "`TIMESTAMP_SECONDS(1230219000123123)` raises `DATETIME_OVERFLOW`: past the 64-bit microsecond range, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/timestamp.sql.out#L587-L599",
+          "note": "the same `DATETIME_OVERFLOW` with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp.sql.out#L675-L681",
+          "note": "`TIMESTAMP_SECONDS(0.1234567)` (a decimal) raises `java.lang.ArithmeticException: Rounding necessary` with no error class, where a double truncates"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L1485-L1490",
+          "note": "`cast(cast('2020-01-01 00:00:00.123456789' as timestamp_ntz(9)) as timestamp_ntz)` is `….123456` (the nanosecond preview types are on under tests)"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

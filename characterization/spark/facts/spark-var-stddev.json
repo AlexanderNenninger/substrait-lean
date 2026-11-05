@@ -120,6 +120,38 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L138-L143",
+          "note": "`var_pop(1.0)` is 0.0 and `var_samp(2.0)` NULL: one value"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L146-L151",
+          "note": "`stddev_pop` and `stddev_samp` of one `DECIMAL(38,0)` value: 0.0 and NULL, as `double`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L270-L276",
+          "note": "`var_pop` of 100000003, 100000004, 100000006, 100000007 as doubles is exactly 2.5"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L279-L285",
+          "note": "`var_pop` of 7000000000005 and 7000000000007 as doubles is exactly 1.0"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/group-by.sql.out#L167-L173",
+          "note": "`VARIANCE` and `STDDEV` of an `INT` column return `double` (sample: 0.8095238095238094, 0.8997354108424372)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/window.sql.out#L519-L568",
+          "note": "windowed `var_samp` and `stddev_samp` over one value are NULL, `var_pop` and `stddev_pop` 0.0"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off. No input file sets spark.sql.legacy.statisticalAggregate, so every case runs with it off."
     }
   ],
   "issues": [

@@ -126,6 +126,58 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L2-L24",
+          "note": "`CAST('1.23' AS int)` raises `CAST_INVALID_INPUT` (ANSI on)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/cast.sql.out#L2-L7",
+          "note": "The same with ANSI off is 1: truncated"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L252-L274",
+          "note": "`CAST('' AS int)` raises `CAST_INVALID_INPUT` (ANSI on)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/cast.sql.out#L82-L87",
+          "note": "The same with ANSI off is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_cast.sql.out#L2-L7",
+          "note": "`TRY_CAST('1.23' AS int)` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L910-L915",
+          "note": "`cast(' 1\\t' as tinyint)` is 1: spaces and tabs trimmed"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L1091-L1098",
+          "note": "`cast('\\t\\t true \\n\\r ' as boolean)` is true"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L50-L55",
+          "note": "`double('10e400')` is `Infinity`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L66-L71",
+          "note": "`double('10e-400')` is 0.0"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L114-L119",
+          "note": "`double('          -INFINiTY   ')` is `-Infinity`: any case, trimmed"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/cast.sql.out#L1437-L1442",
+          "note": "An array with a NULL cast to string prints as `[2020-01-01 00:00:00.123456789, null]`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }
