@@ -1,6 +1,0 @@
-src/**
-demo/**
-node_modules/**
-**/__pycache__/**
-**/*.map
-tsconfig.json
