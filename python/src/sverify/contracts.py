@@ -2050,6 +2050,13 @@ def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
     return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
 
 
+def _not_null_condition(col: str) -> Inferred:
+    """`col IS NOT NULL` (a divisor's `COUNT` of the column)."""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    sql = '"' + col.replace('"', '""') + '"'
+    return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
+
+
 def _suggested(
     bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
 ) -> dict[str, list[Condition]]:
@@ -2064,8 +2071,9 @@ def _suggested(
 def _render_needs(
     needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
 ) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}` or `{table, col,
-    ne}` (column positions, integer codes as strings), per table."""
+    """The conditions of a list of `{table, col, lo, hi}`, `{table, col,
+    ne}` or `{table, col, not_null}` (column positions, integer codes as
+    strings), per table."""
     out: dict[str, list[Inferred]] = {}
     for n in needs:
         schema = schemas.get(n["table"])
@@ -2073,7 +2081,9 @@ def _render_needs(
             continue
         col = list(schema)[n["col"]]
         have = out.setdefault(n["table"], [])
-        if "ne" in n:
+        if n.get("not_null"):
+            new = [_not_null_condition(col)] if schema[col].nullable else []
+        elif "ne" in n:
             c = _ne_condition(col, schema[col], int(n["ne"]))
             new = [] if c is None else [c]
         else:
@@ -2505,7 +2515,7 @@ def _observed(
 def _open_columns(expr: ir.Table) -> dict[str, str]:
     """The output columns of aggregates whose value the reference leaves
     open: `"picks"` for `first`, `last` or `arbitrary` without an order,
-    `"elements"` for `collect` without one."""
+    `"elements"` for `collect` or `group_concat` without one."""
     out: dict[str, str] = {}
     for agg in expr.op().find(ops.Aggregate):
         if not isinstance(agg, ops.Aggregate):
@@ -2517,7 +2527,7 @@ def _open_columns(expr: ir.Table) -> dict[str, str]:
                 or isinstance(metric, ops.Arbitrary)
             ):
                 out[name] = "picks"
-            elif isinstance(metric, ops.ArrayCollect) and not metric.order_by:
+            elif isinstance(metric, ops.ArrayCollect | ops.GroupConcat) and not metric.order_by:
                 out[name] = "elements"
     names = set(expr.columns)
     return {n: why for n, why in out.items() if n in names}

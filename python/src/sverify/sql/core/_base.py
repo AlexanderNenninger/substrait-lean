@@ -838,6 +838,16 @@ class Dialect:
             f"{self.name} does not add a frame's doubles in order, and the rounding depends on it"
         )
 
+    def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
+        """`varOf` of the frame's doubles (at least one, two for a sample):
+        their mean as `floatSum` over the count, then the squared deviations
+        added left to right from 0.0, over `n - 1` or `n`, at least 0, and
+        its square root for `STDDEV`."""
+        raise Unsupported(
+            f"{self.name} does not compute a frame's variance in the reference's order, "
+            "and the rounding depends on it"
+        )
+
     def lag(self, x: str, offset: int, default: str, over: str) -> str:
         return f"LAG({x}, {offset}, {default}) {over}"
 
@@ -2460,9 +2470,9 @@ class _Parser:
                 c = self.column(args[0], cols, "function arguments")
                 n = self.positive(args, 1, name) if name == "nth_value" else 0
                 return part, sort, WinFn(name, c, n, frame=self.frame(w, cols, sort))
-            case "count" | "sum" | "avg" | "min" | "max":
+            case "count" | "sum" | "avg" | "min" | "max" | "variance" | "std_dev":
                 # The window's sort keys order the frame, not the aggregate.
-                keys = ("functionReference", "arguments", "outputType")
+                keys = ("functionReference", "arguments", "outputType", "options")
                 m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
                 if m.distinct:
                     raise Unsupported("DISTINCT window aggregates are not supported")
@@ -2863,7 +2873,7 @@ class _Parser:
         if _arr(m, "sorts") and name not in ("first", "last", "string_agg", "array_agg", "mode"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
-        if name in ("string_agg", "mode") and not sort:
+        if name == "mode" and not sort:
             raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
@@ -3758,7 +3768,9 @@ class _Writer:
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
         # Without sort keys too: the ordinal is Lean's list order.
-        picks = any(orders) or any(ms.fn in ("first", "last", "collect", "mode") for ms in measures)
+        picks = any(orders) or any(
+            ms.fn in ("first", "last", "string_agg", "collect", "mode") for ms in measures
+        )
         if picks and any(ms.distinct for ms in measures):
             raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
         needs = needs or picks
@@ -4100,6 +4112,8 @@ class _Writer:
                 if not isinstance(a, Dec):
                     raise Unsupported("dsum of a non-decimal")
                 return d.decimal_window_sum(v, w, dsum_kind(a))
+            case "var_samp" | "var_pop" | "std_samp" | "std_pop":
+                return self.window_var(m.fn, v, w)
             case "fsum" | "avg":
                 total = d.window_float_sum(v, w)
                 if m.fn == "avg":
@@ -4116,6 +4130,25 @@ class _Writer:
         if expr_kind(m.arg, ks) == "float":
             return d.float_extreme(f, v, w)
         return f"{f}({v}) {w}"
+
+    def window_var(self, fn: str, v: str, w: str) -> str:
+        """`varOf` over the frame `w` (`VARIANCE` or `STDDEV`, #54): the
+        reference's own two passes over the frame's doubles, NULL for no
+        values or a sample of one, NaN for a NaN, and raising for an infinity
+        as the aggregate does (`Rel.window`'s rows are `Rel.eval`'s)."""
+        d = self.d
+        sample = fn.endswith("_samp")
+        n = f"COUNT({v}) {w}"
+        body = d.canon(d.window_float_var(sample, fn.startswith("std"), v, w))
+        none = f"{n} <= {d.int_lit(1 if sample else 0)}"
+        value = self.agg_finite(d.case_when(none, d.null("float"), body))
+        if not d.guards:
+            return value
+        # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
+        # creates (#257); NaN sorts above `+∞`, so leave it out.
+        top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
+        bad = d.float_eq(top, d.float_lit(math.inf))
+        return d.case_when(bad, d.raise_("domain error", f"MIN({v}) {w}", "float"), value)
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,

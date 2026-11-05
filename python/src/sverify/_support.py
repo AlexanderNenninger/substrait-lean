@@ -47,6 +47,14 @@ SUPPORT: dict[str, frozenset[str]] = {
     **{name: _DUCKDB for name in sorted(black_box.NAMES)},
 }
 
+#: Functions that run on fewer engines over a window than as aggregates:
+#: the variance over a frame is the reference's own two passes (`varOf`),
+#: which only DuckDB's writer computes so far.
+WINDOW_SUPPORT: dict[str, frozenset[str]] = {
+    "variance": _DUCKDB,
+    "std_dev": _DUCKDB,
+}
+
 #: Why an engine refuses a function, where the reason is not #271.
 _REASONS = {
     ("ntile", "datafusion"): "DataFusion's NTILE does not deal out buckets as SQL does",
@@ -75,6 +83,8 @@ _LABELS = {
     "covar_samp": "cov() (SQL covar_samp)",
     "covar_pop": "cov(how='pop') (SQL covar_pop)",
     "md5": "hexdigest('md5') (SQL md5)",
+    "variance OVER": "var() over a window (SQL var_samp, var_pop OVER)",
+    "std_dev OVER": "std() over a window (SQL stddev_samp, stddev_pop OVER)",
     "sha256": "hexdigest('sha256') (SQL sha256)",
 }
 
@@ -85,12 +95,27 @@ def supported(name: str, engine: str) -> bool:
     return engines is None or engine.lower() in engines
 
 
-def refusal(name: str, engine: str) -> str:
-    """Why `engine` refuses the function `name`."""
+def window_supported(name: str, engine: str) -> bool:
+    """Does `engine` run the function `name` over a window?"""
+    base = _plan_read.base_name(name)
+    engines = WINDOW_SUPPORT.get(base)
+    return supported(name, engine) and (engines is None or engine.lower() in engines)
+
+
+def refusal(name: str, engine: str, window: bool = False) -> str:
+    """Why `engine` refuses the function `name` (over a window, `window`)."""
     if name in black_box.NAMES:
         return black_box.refusal(name, engine)
     if reason := _REASONS.get((name, engine.lower())):
         return reason
+    if window and name in WINDOW_SUPPORT and supported(name, engine):
+        label = _LABELS.get(f"{name} OVER", name)
+        runs = sorted(WINDOW_SUPPORT[name])
+        where = " and ".join(runs)
+        return (
+            f"{label} runs on {where} only: run it with engine={runs[0]!r} "
+            f"({engine} does not run it yet; {ISSUE_271})"
+        )
     label = _LABELS.get(name, name)
     runs = sorted(SUPPORT.get(name, ENGINES))
     where = " and ".join(runs)
@@ -135,8 +160,10 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                 if isinstance(call, dict):
                     # Protobuf JSON leaves out anchor 0.
                     name = fns.get(call.get("functionReference", 0))
-                    if name is not None and not supported(name, engine):
-                        raise err(refusal(_plan_read.base_name(name), engine))
+                    window = key == "windowFunction"
+                    ok = window_supported if window else supported
+                    if name is not None and not ok(name, engine):
+                        raise err(refusal(_plan_read.base_name(name), engine, window))
                     if engine.lower() != "polars" and floors(call):
                         raise err(floor_refusal(engine))
             for v in node.values():

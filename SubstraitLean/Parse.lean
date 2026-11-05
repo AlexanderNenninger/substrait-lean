@@ -2084,12 +2084,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   if sort.isEmpty && name == "mode" then
     throw ("mode without ORDER BY breaks ties in the engine's order, which is not supported; " ++
       "give it an order (mode(x ORDER BY x) takes the smallest of the most frequent values)")
-  -- Without an order, `FIRST` is any row's value: the model takes them in list
-  -- order, and `Rel.windowsTotal` reports the result as the engine's choice
-  -- unless the group's columns contain a key (Ibis's `distinct(on=)`, #55).
-  if sort.isEmpty && name == "string_agg" then
-    throw ("string_agg without ORDER BY joins the values in the engine's order, which is not " ++
-      "supported; give it an order")
+  -- Without an order, `FIRST` is any row's value and `STRING_AGG` joins the
+  -- values in any order: the model takes them in list order, `Measure.Allowed`
+  -- allows every order, contracts see only "a string" (`Measure.abs`), and
+  -- `Rel.windowsTotal` reports the result as the engine's choice unless the
+  -- group's columns contain a key (Ibis's `distinct(on=)`, #55).
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
@@ -2325,7 +2324,8 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
     | throw s!"function reference {anchor} is not declared in extensions"
   let part ← (← arrD w "partitions").mapM (parseColumn fns cols "partitions")
   let sort ← (← arrD w "sorts").mapM (parseSortKey fns cols)
-  let args ← (← arrD w "arguments").mapM fun a => field a "value"
+  -- A variance's distribution may be a leading enum argument (`parseMeasure`).
+  let args := (← arrD w "arguments").filterMap (field? · "value")
   -- `LAG(c [, offset [, default]])`; a double column's default is a code.
   let shifted (args : List Json) : J (Nat × Nat × Value) := do
     let some c := args.head? | throw s!"{name} needs a column"
@@ -2370,13 +2370,14 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       pure (.nthValue (← parseColumn fns cols "function arguments" c) (← positive n) sort
         (← parseFrame cols sort w), none)
     | n, _ =>
-      if !["count", "sum", "avg", "min", "max"].contains n then
+      if !["count", "sum", "avg", "min", "max", "variance", "std_dev"].contains n then
         throw s!"unsupported window function: {n}"
       -- The window's own sort keys order the frame, not the aggregate.
       let (m, decAvg) ← parseMeasure fns cols bits (Json.mkObj [("measure", Json.mkObj [
         ("functionReference", (field? w "functionReference").getD .null),
         ("arguments", (field? w "arguments").getD (.arr #[])),
-        ("outputType", (field? w "outputType").getD .null)])])
+        ("outputType", (field? w "outputType").getD .null),
+        ("options", (field? w "options").getD (.arr #[]))])])
       if m.distinct then throw "DISTINCT window aggregates are not supported"
       -- A decimal `SUM` (and the `SUM` of a decimal `AVG`) takes its column
       -- bare: the sum of the unscaled values is the decimal's (#27).
@@ -2388,7 +2389,9 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       let fr ← parseFrame cols sort w
       -- A sliding frame (one not from UNBOUNDED PRECEDING) is refused on
       -- DataFusion only (`Rel.slidingFrames`).
-      if m.fn matches .var _ _ || m.fn matches .cov _ || m.fn matches .corr then
+      -- `VARIANCE` and `STDDEV` over a frame are the reference's own two
+      -- passes (`varOf`) over the frame's rows; writers compute them so.
+      if m.fn matches .cov _ || m.fn matches .corr then
         throw s!"{n} over a window is not supported"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).

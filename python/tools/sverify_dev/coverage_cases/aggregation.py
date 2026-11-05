@@ -50,7 +50,7 @@ CASES: list[Case] = [
     case(
         "aggregation",
         "group_concat",
-        R,
+        V,
         lambda: t.group_by("qty").aggregate(s=t.name.group_concat(", ")),
     ),
     case(
@@ -147,6 +147,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "first, last ordered": DUCKDB_ONLY,
     "distinct(on=)": DUCKDB_ONLY,
     "group_concat ordered": DUCKDB_ONLY,
+    "group_concat": DUCKDB_ONLY,
     "median, quantile": DUCKDB_ONLY,
     "mode": DUCKDB_ONLY,
     "argmin, argmax": DUCKDB_ONLY,
@@ -173,6 +174,7 @@ NO_DUCKDB_SQL = {
     # Without an order, Ibis's own FIRST takes any row's value.
     "distinct(on=)": "FIRST without ORDER BY is any row's value",
     "group_concat ordered": "ties in ORDER BY are the engine's",
+    "group_concat": "without ORDER BY the order is the engine's",
     # Ibis writes MODE(x), whose ties DuckDB breaks in its own order; the
     # plan takes the smallest of them (#53).
     "mode": "DuckDB's MODE breaks ties in its own order",

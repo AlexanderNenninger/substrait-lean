@@ -55,8 +55,13 @@ def _frame_offset(op: Any, b: Any) -> int:
         return micros
     if isinstance(v, ops.Cast):
         v = v.arg
-    if not isinstance(v, ops.Literal) or not isinstance(v.value, int) or v.value < 0:
-        raise Unsupported("frame offsets must be non-negative integer constants")
+    if isinstance(v, ops.Negate) and isinstance(v.arg, ops.Literal):
+        v = ops.Literal(-v.arg.value, v.arg.dtype) if isinstance(v.arg.value, int) else v
+    if not isinstance(v, ops.Literal) or not isinstance(v.value, int) or isinstance(v.value, bool):
+        raise Unsupported(
+            "frame offsets must be integer constants (a column or expression offset "
+            "makes each row's frame its own)"
+        )
     return v.value
 
 
@@ -84,8 +89,11 @@ def _bound(op: Any, b: Any) -> Json:
     k = _frame_offset(op, b)
     if k == 0:
         return {"currentRow": {}}
-    side = "preceding" if b.preceding else "following"
-    return {side: {"offset": str(k)}}
+    # A negative offset counts the other way, as Ibis's signed offsets mean
+    # (`following=-1` is `1 PRECEDING`); Ibis's own SQL writes it as given,
+    # which DuckDB refuses (upstream/bugs/IB-4.json).
+    side = "preceding" if b.preceding == (k > 0) else "following"
+    return {side: {"offset": str(abs(k))}}
 
 
 #: Ibis's ranking functions, by Substrait name.
@@ -143,6 +151,8 @@ def window(x: Exprs, op: Any) -> Json:
                 "partitions": [x(g) for g in op.group_by],
                 "sorts": [_sort_key(x, k) for k in op.order_by],
                 "arguments": fn["arguments"],
+                # A variance's distribution (`Parse.parseWindow`).
+                **({"options": fn["options"]} if "options" in fn else {}),
                 **_frame(op),
             }
         }

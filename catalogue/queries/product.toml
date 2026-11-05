@@ -64,6 +64,18 @@ q = j.group_by("signup_day").aggregate(
     d7=j.user_id.nunique(where=j.day == j.signup_day + ibis.interval(days=7)),
 ).mutate(d1_rate=_.d1.cast("float64") / _.users, d7_rate=_.d7.cast("float64") / _.users)
 '''
+# Every user has an id, so each signup day counts at least one user and the rates'
+# divisions cannot be by zero (D21).
+requires = '''
+{
+    'users': [_.user_id.notnull(), _.signup_ts.between(ibis.timestamp('2000-01-01'), ibis.timestamp('2100-01-01'))],
+}
+'''
+ensures = '''
+[
+    _.users >= 1,
+]
+'''
 
 [[query]]
 id = "pa-first-touch"
