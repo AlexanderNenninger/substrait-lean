@@ -27,7 +27,7 @@ that embeds each node's `Report.to_json()`; `check` also writes `github`
 0 turns it off) bounds proof, planning and checking, never a refresh moving
 data; `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`) is DuckDB's
 `memory_limit`, past which it spills to a temporary directory
-(`SVERIFY_SPILL_DIRECTORY`). A breach of either stops the call before any
+(`SVERIFY_TEMP_DIRECTORY`). A breach of either stops the call before any
 sink commits.
 
 Exit codes: 0 proved (a refresh committed every row), 1 not proved, 2 usage

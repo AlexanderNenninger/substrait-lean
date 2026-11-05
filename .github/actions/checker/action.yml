@@ -1,8 +1,8 @@
 name: Use the run's substrait-check
 description: >-
   Download the substrait-check the `checker` job built to .lake/build/bin, and
-  have sverify use it: the editable install links it (SVERIFY_PREBUILT_CHECK,
-  python/hatch_build.py) without running lake, and SVERIFY_CHECK names it.
+  have sverify use it: the editable install links it (SVERIFY_PREBUILT_CHECKER,
+  python/hatch_build.py) without running lake, and SVERIFY_CHECKER names it.
 runs:
   using: composite
   steps:
@@ -14,5 +14,5 @@ runs:
       run: |
         bin="$PWD/.lake/build/bin/substrait-check"
         chmod +x "$bin"
-        echo "SVERIFY_PREBUILT_CHECK=$bin" >> "$GITHUB_ENV"
-        echo "SVERIFY_CHECK=$bin" >> "$GITHUB_ENV"
+        echo "SVERIFY_PREBUILT_CHECKER=$bin" >> "$GITHUB_ENV"
+        echo "SVERIFY_CHECKER=$bin" >> "$GITHUB_ENV"

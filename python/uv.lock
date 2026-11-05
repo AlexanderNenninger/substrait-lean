@@ -3981,14 +3981,13 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "datafusion" },
     { name = "deltalake" },
     { name = "hypothesis" },
     { name = "numpy" },
     { name = "openlineage-python" },
     { name = "polars" },
     { name = "pyarrow" },
-    { name = "pyiceberg", extra = ["pyarrow"] },
+    { name = "pyiceberg", extra = ["pyarrow", "sql-sqlite"] },
     { name = "pyspark" },
     { name = "pytest" },
     { name = "pyyaml" },
@@ -4003,7 +4002,7 @@ flight = [
     { name = "pyarrow" },
 ]
 iceberg = [
-    { name = "pyiceberg", extra = ["pyarrow"] },
+    { name = "pyiceberg", extra = ["pyarrow", "sql-sqlite"] },
 ]
 odcs = [
     { name = "pyyaml" },
@@ -4039,7 +4038,7 @@ dev = [
     { name = "ruff" },
     { name = "snowflake-connector-python" },
     { name = "sqlglot" },
-    { name = "sverify", extra = ["all"] },
+    { name = "sverify", extra = ["all", "datafusion"] },
 ]
 docs = [
     { name = "great-docs" },
@@ -4057,13 +4056,13 @@ requires-dist = [
     { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
-    { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
+    { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
     { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
+    { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
 ]
 provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "all"]
 
@@ -4083,7 +4082,7 @@ dev = [
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "snowflake-connector-python", specifier = "<5" },
     { name = "sqlglot", specifier = ">=30.17.0" },
-    { name = "sverify", extras = ["all"] },
+    { name = "sverify", extras = ["all", "datafusion"] },
 ]
 docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 

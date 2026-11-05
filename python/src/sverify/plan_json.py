@@ -37,7 +37,7 @@ REQUIRED = {"nullability": "NULLABILITY_REQUIRED"}
 
 class Unsupported(_Unsupported):
     """The expression uses something the Lean model does not cover
-    (`sverify.errors.Unsupported`)."""
+    (`sverify.errors.UnsupportedError`)."""
 
 
 # --------------------------------------------------------------------------

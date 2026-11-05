@@ -1,5 +1,5 @@
 """What a tool built on sverify reads from it as data (#177's API notes):
-one `Unsupported` for every refusal, each postcondition's condition and
+one `UnsupportedError` for every refusal, each postcondition's condition and
 reason, the needed preconditions as `Needed`, and DuckDB type names in
 `verify(tables=...)`."""
 
@@ -15,15 +15,15 @@ T = {"t": {"k": "BIGINT", "q": "BIGINT", "s": "VARCHAR"}}
 
 
 def test_one_unsupported_for_every_refusal() -> None:
-    assert sverify.engines.Unsupported is sverify.errors.Unsupported
-    assert issubclass(sverify.errors.Unsupported, ValueError)
-    # The SQL lift's refusal, which used to escape `except engines.Unsupported`.
-    with pytest.raises(sverify.errors.Unsupported, match="WITH RECURSIVE"):
+    assert sverify.engines.UnsupportedError is sverify.errors.UnsupportedError
+    assert issubclass(sverify.errors.UnsupportedError, ValueError)
+    # The SQL lift's refusal, which used to escape `except engines.UnsupportedError`.
+    with pytest.raises(sverify.errors.UnsupportedError, match="WITH RECURSIVE"):
         sv.verify("with recursive c as (select 1 as x) select * from c", tables=T)
     # The SQL writer's.
     from sverify.sql import Unsupported as WriterRefused
 
-    assert issubclass(WriterRefused, sverify.errors.Unsupported)
+    assert issubclass(WriterRefused, sverify.errors.UnsupportedError)
 
 
 def test_a_postcondition_keeps_its_condition_and_reason() -> None:

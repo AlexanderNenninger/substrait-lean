@@ -3,7 +3,6 @@
 Sverify proves a data pipeline's contracts before it runs, takes the proof to
 [DuckDB](https://duckdb.org) and [Polars](https://pola.rs) by a route that
 says what carries over, also runs it on
-[DataFusion](https://datafusion.apache.org) and
 [Spark](https://spark.apache.org), and keeps the result up to date from Delta
 Lake and Iceberg change feeds.
 
@@ -82,7 +81,7 @@ Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substr
 Work on DataFusion, Spark and Snowflake is paused until the generated lowerings land
 ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
 [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
-DataFusion is not installed by default (the `datafusion` extra adds it).
+DataFusion is experimental, outside the 1.x promise ([stability](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md)): the `datafusion` extra adds it, and `all` leaves it out.
 
 Polars refuses what only DuckDB runs so far, with "see #271": the functions
 that [`SUPPORT` and `WINDOW_SUPPORT`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/_support.py)
@@ -102,7 +101,7 @@ The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
 builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
 starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
-Contributors with a built checker set `SVERIFY_PREBUILT_CHECK=<path to substrait-check>`, and an editable install links it instead.
+Contributors with a built checker set `SVERIFY_PREBUILT_CHECKER=<path to substrait-check>`, and an editable install links it instead.
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
@@ -290,7 +289,7 @@ sv.verify(
     tables={"orders": ibis.table({"id": "int64", "amount": "int64"}, name="orders")},
     ensures=["amount > 0"],
 )  # SQL, checked; returns the report
-to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Unsupported
+to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.UnsupportedError
 
 # p = DeltaSource("s3://.../orders").pipe(paid).write(DeltaSink("s3://.../paid"))  # stored
 # r = p.pipe(revenue, regions=regions).write(DeltaSink("s3://.../revenue"))
@@ -342,9 +341,11 @@ the Ibis coverage table in its README, and
 
 ## Configuration
 
-* `SVERIFY_CHECK`: path to a `substrait-check` binary that replaces the
-  bundled one, for example your own `lake build`.
-* DataFusion is pinned to 51, because Ibis 12's DataFusion backend doesn't
+* `SVERIFY_CHECKER`: path to a `substrait-check` binary that replaces the
+  bundled one, for example your own `lake build`. The guide lists every
+  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#environment-variables)).
+* DataFusion is experimental, outside the 1.x promise, and not in the `all`
+  extra. It is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.
 
 ## Development

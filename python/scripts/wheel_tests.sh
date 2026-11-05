@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the tests as the Wheels workflow does: from a copy of python/tests and
 # python/tools outside the repository, against an install with the wheel's
-# runtime extras and the test dependencies listed here, nothing else. Tests
+# runtime extras (`all` and the experimental `datafusion`) and the test
+# dependencies listed here, nothing else. Tests
 # that read repository files must carry `needs_repo` (tests/_repo.py); a
 # test that imports a package missing below fails here.
 #
@@ -18,8 +19,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 install=() python=() select=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wheel) install=(--with "sverify[all] @ file://$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
-    --editable) install=(--with-editable "$(cd "$2" && pwd)[all]"); shift 2 ;;
+    --wheel) install=(--with "sverify[all,datafusion] @ file://$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
+    --editable) install=(--with-editable "$(cd "$2" && pwd)[all,datafusion]"); shift 2 ;;
     --fast) export SVERIFY_PROFILE=dev; select=(-m "not slow"); shift ;;
     --python) python=(--python "$2"); shift 2 ;;
     *) break ;;

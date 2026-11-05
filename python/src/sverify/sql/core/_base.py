@@ -56,7 +56,7 @@ class Unsupported(_Unsupported):
     DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
-    `ValueError`, and of `sverify.errors.Unsupported`, which every refusal
+    `ValueError`, and of `sverify.errors.UnsupportedError`, which every refusal
     raises.
     """
 
@@ -4718,7 +4718,6 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    tie_free: bool | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -4758,7 +4757,6 @@ def to_sql(
             `±∞` (`Dialect.finite`), the reference's precondition (#575).
             Default: True; False for a plan verified with
             `semantics="duckdb"`.
-        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4792,15 +4790,6 @@ def to_sql(
         # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
-    if tie_free is not None:
-        import warnings
-
-        warnings.warn(
-            "to_sql(tie_free=...) is deprecated; write deterministic=... (as Report.run takes it)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        deterministic = tie_free
     if isinstance(plan, str):
         plan = json.loads(plan)
     if not guards:

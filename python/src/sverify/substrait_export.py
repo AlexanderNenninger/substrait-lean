@@ -89,6 +89,8 @@ class ExportError(SverifyError, ValueError):
     """The plan has no conforming Substrait form that keeps its proof: the
     message names the reason, and the spec gap where there is one."""
 
+    code = "export_refused"
+
 
 # -- the YAML table -----------------------------------------------------------
 
