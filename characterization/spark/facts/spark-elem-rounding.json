@@ -1,0 +1,114 @@
+{
+  "id": "spark-elem-rounding",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Elementary functions: `StrictMath` (fdlibm) for exp, logs, pow; `java.lang.Math` for the rest",
+  "verdict": "exp, ln, log10, pow: fdlibm, the same everywhere; sqrt, trig: `Math`, within 1 ulp, may vary",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "platform"
+  ],
+  "rows": [
+    {
+      "group": "fp.elem",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.log",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "exp",
+    "ln",
+    "log10",
+    "log2",
+    "log",
+    "power",
+    "sqrt",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "cbrt"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`exp`, `expm1`, `ln`, `log10`, `log1p`, `log(b, x)` and `power` call `java.lang.StrictMath`, whose results are fdlibm's bit for bit on every JVM. `log2(x)` is `StrictMath.log(x) / StrictMath.log(2)`, two roundings: it can be an ulp off the correctly rounded log₂. `sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `cbrt` and the hyperbolic functions call `java.lang.Math`, which the JIT may replace with intrinsics within 1 ulp of the exact result (Java's spec), so the last bit can differ between platforms and JVMs. `sqrt` is correctly rounded on every JVM.",
+    "A `FLOAT` argument is widened to `DOUBLE` and the result is a `DOUBLE` (spark-fp32)."
+  ],
+  "reference": "The reference computes these with Lean's `Float` (the platform's libm, in double) and fixes `rounding: TIE_TO_EVEN`; the last bits are each engine's (#54). sverify's ε (#85) per function and platform comes from these facts.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/mathExpressions.scala#L66-L87",
+          "note": "`UnaryMathExpression`: codegen calls `java.lang.Math.<name>`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/mathExpressions.scala#L571-L573",
+          "note": "`Exp`: `StrictMath.exp`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/mathExpressions.scala#L779-L846",
+          "note": "`Log`, `Log2` (`StrictMath.log(x) / StrictMath.log(2)`), `Log10`, `Log1p`: `StrictMath`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/mathExpressions.scala#L1428-L1431",
+          "note": "`Pow`: `StrictMath.pow`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/mathExpressions.scala#L1000",
+          "note": "`Sqrt`: `math.sqrt`"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-math-domain"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-power"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-edges"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

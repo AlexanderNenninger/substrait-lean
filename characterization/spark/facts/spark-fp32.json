@@ -1,0 +1,82 @@
+{
+  "id": "spark-fp32",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`FLOAT` arithmetic in single precision; ANSI widens `FLOAT + INT` to `DOUBLE`",
+  "verdict": "`FLOAT op FLOAT` is `FLOAT`; `FLOAT + INT`: `DOUBLE` (ANSI) or `FLOAT`; math functions return `DOUBLE`",
+  "area": "doubles",
+  "options": [
+    "fp32",
+    "implicit_casts"
+  ],
+  "rows": [
+    {
+      "option": "fp32",
+      "types": [
+        "fp32"
+      ]
+    }
+  ],
+  "constructs": [
+    "FLOAT",
+    "REAL",
+    "+",
+    "*",
+    "/",
+    "sqrt",
+    "sum",
+    "avg",
+    "max",
+    "CAST AS FLOAT"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`FLOAT op FLOAT` stays `FLOAT`, rounded to single precision: `0.1f + 0.2f` is 0.30000001192092896, `16777216f + 1f` 16777216. `FLOAT + DOUBLE` is `DOUBLE`. `FLOAT + INT` is `DOUBLE` under ANSI and `FLOAT` without it, and `BIGINT + FLOAT` the same.",
+    "`sqrt` and the other math functions return `DOUBLE`; `round` keeps `FLOAT`, `floor` gives `BIGINT`. `sum` and `avg` of `FLOAT` return `DOUBLE` (`sum(0.1f, 0.2f)` is 0.30000000447034836); `max` keeps `FLOAT`. A double past the float range casts to ±inf, in both modes (`CAST(1e40D AS FLOAT)`); a `1.5F` literal is a `FLOAT`."
+  ],
+  "reference": "`fp32` arithmetic is refused in every profile until #417's stage 3. Spark has native single precision; its aggregates and math functions widen to double.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-arith"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-edges"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-literal"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-cast-overflow"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-float"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "implicit-casts-numeric"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    417
+  ]
+}

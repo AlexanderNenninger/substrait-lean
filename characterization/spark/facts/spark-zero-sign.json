@@ -1,0 +1,88 @@
+{
+  "id": "spark-zero-sign",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Two zeros in double arithmetic; a `-0.0` literal is a decimal",
+  "verdict": "IEEE zeros: `-0.0 * 1` is -0.0, `-(0.0)` is -0.0; `-0.0` without `D` is 0.0",
+  "area": "doubles",
+  "options": [
+    "zero_sign"
+  ],
+  "rows": [
+    {
+      "group": "fp.arith",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.neg",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/",
+    "unary -",
+    "abs"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Arithmetic keeps IEEE's two zeros: `-0.0 + 0.0` is 0.0, `-0.0 + -0.0` -0.0, `-0.0 * 0.0` -0.0, `-(0.0)` -0.0, `0.0 / -1.0` -0.0; `abs(-0.0)` is 0.0. Casting `-0.0` to `STRING` gives `-0.0`.",
+    "A literal `-0.0` without a suffix is `DECIMAL(1,1)`, so `CAST(-0.0 AS DOUBLE)` is 0.0; `-0.0D` and `CAST('-0.0' AS DOUBLE)` are -0.0.",
+    "Comparisons, grouping and joins treat the zeros as equal (spark-zero-order)."
+  ],
+  "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere. Spark shows -0.0 where IEEE gives it, so a writer canonicalises where a result's zeros are observed.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-zero-sign"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-zero-literal"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-modulus"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-edges"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    89
+  ]
+}
