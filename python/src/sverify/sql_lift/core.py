@@ -257,8 +257,16 @@ def _not(lf: _Lift, node: sge.Not, sub: Sub, scope: list[Column]) -> E:
 
 
 def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
+    if isinstance(node.expression, sge.Boolean):
+        # `x IS TRUE` is `COALESCE(x, FALSE)` and `x IS FALSE` is
+        # `COALESCE(NOT x, FALSE)`, never NULL; `IS NOT` is their NOT.
+        x = node.this.copy()
+        test = x if node.expression.this else sge.Not(this=sge.Paren(this=x))
+        return sub(sge.Coalesce(this=test, expressions=[sge.false()]))
     if not isinstance(node.expression, sge.Null):
-        raise Unsupported(f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL is")
+        raise Unsupported(
+            f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL, TRUE or FALSE is"
+        )
     return E(_fn("is_null", [sub(node.this).json], dt.boolean), dt.boolean)
 
 

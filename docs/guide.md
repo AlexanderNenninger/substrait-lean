@@ -491,7 +491,12 @@ except VerificationError as e:
 ```
 
 Declare `_.amount < 2**62`, or a tighter bound your data keeps, or filter
-the rows out first. `on_inferred="warn"` assumes the bound with an
+the rows out first. A tool that phrases the fix in its own terms (a dbt
+test, an editor's quick fix) reads `Report.needs`: one `Needed` per
+precondition, with its table, column, comparison, bound, SQL and the
+runtime error it rules out. Each postcondition's
+`CheckedCondition.reason` says the same of an unproved postcondition, as a
+code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …). `on_inferred="warn"` assumes the bound with an
 `InferredPreconditionWarning`, and `"silent"` assumes it without one:
 
 ```python

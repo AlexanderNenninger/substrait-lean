@@ -6,7 +6,9 @@ readme = "README.md"
 license = "MPL-2.0"
 requires-python = ">=3.12"
 dependencies = [
-    "sverify>=0.5",
+    # Report.needs, CheckedCondition.reason and .condition, DuckDB type
+    # names in verify(tables=...): the release after 0.5.0.
+    "sverify>0.5.0",
     # Rewrites the relations of each model's compiled SQL to its inputs' names.
     "sqlglot>=30.17.0",
     # Writes the selectors file (dbt depends on it too).

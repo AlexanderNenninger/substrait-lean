@@ -3,13 +3,50 @@
 Sverify-dbt uses only what `sverify` exports, as an outside user would: in
 practice `sv.verify` on a SQL string with `tables=`, `requires=`, `ensures=`,
 `semantics="duckdb"` and `on_inferred="error"`, then the `Report`. Each note
-says what happened, what sverify-dbt does about it, and a proposed change.
-They are written against `main` at the 0.5.0 release (b87a8963) and are not
-filed yet. The VS Code extension keeps its own notes in
-`vscode/UX-NOTES.md`.
+says what happened, what sverify-dbt did about it, and a proposed change.
+They were written against `main` at the 0.5.0 release (b87a8963). The
+VS Code extension keeps its own notes in `vscode/UX-NOTES.md`.
 
 The repros run in `dbt/` with `uv run python`, after `import ibis, sverify as sv,
-sverify.engines`.
+sverify.engines`; they show the behaviour before this PR.
+
+## Public API gaps
+
+Gaps in what sverify exports, with the signature sverify-dbt wanted. The
+first group is closed in the PR that adds sverify-dbt (#177), each a small
+documented addition with tests (`python/tests/test_report_data.py`,
+`test_sql_lift_core.py`) and sverify-dbt now uses it. The second group is
+larger, for an issue each.
+
+Closed in this PR:
+
+| Note | Addition |
+|---|---|
+| 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` is the same class |
+| 4 | `CheckedCondition.reason -> Literal["observation", "not_a_key", "ties", "always_false", "may_be_false", "may_be_null", "not_proved_kind", "unknown"] \| None` |
+| 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.contracts.Needed`) |
+| 13 | `verify(tables={"t": {"id": "BIGINT", "s": "VARCHAR NOT NULL"}})`: DuckDB's type names beside Ibis's (`sverify.contracts.input_schema`) |
+| 16 | The SQL lift reads `x IS [NOT] TRUE` and `x IS [NOT] FALSE` |
+| 19 | `CheckedCondition.condition`: the condition as given in `ensures` |
+| 22 | The checker's pipes close when it stops |
+
+To file (larger than this PR):
+
+| Note | Wanted |
+|---|---|
+| 2 | `class ConditionError(Unsupported)` with `.condition` and `.reason`, raised before the proof; or `CheckedCondition.status == "unreadable"` and the rest proved |
+| 3 | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
+| 6 | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
+| 7, 8, 9 | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
+| 10, 11 | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
+| 12 | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
+| 14 | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
+| 15 | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
+| 17 | A finite value set per string column in the range analysis (Lean) |
+| 18 | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
+| 20 | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
+| 21 | `Report.engine_version`, and a warning from `run` when the installed engine is another |
+| — | `CheckedCondition.suggested` as `Needed`-like records too: sverify-dbt still parses their SQL to write a dbt test (`mapping.as_dbt_test`) |
 
 ## Errors
 
@@ -25,7 +62,7 @@ t = ibis.schema({"x": "int64"})
 try:
     sv.verify("with recursive c as (select 1 as x) select * from c", tables={"t": t})
 except sverify.engines.Unsupported:
-    print("caught")   # never: sverify.plan_json.Unsupported escapes
+    print("caught")  # never: sverify.plan_json.Unsupported escapes
 ```
 
 Sverify-dbt catches `ValueError`, the base of both
@@ -34,6 +71,8 @@ Sverify-dbt catches `ValueError`, the base of both
 Proposed: one `Unsupported`, exported from `sverify.errors`, that every
 refusal raises (the lift, the producer, the checker), with the others as
 aliases of it.
+
+Closed in this PR: `sverify.errors.Unsupported`. Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
 
 ### 2. A bad condition and an unreadable query raise the same error
 
@@ -84,6 +123,8 @@ Proposed: `CheckedCondition.reason`, an enum (`not_a_key`, `may_be_false`,
 `may_be_null`, `ties`, `observation`, `needs_precondition`), with `why` the
 current text built from it, so that a frontend phrases it in its own terms.
 
+Closed in this PR: `CheckedCondition.reason`; sverify-dbt words each reason from it (`_WHY`).
+
 ### 5. `Report.needed` gives Ibis code; the SQL and the column are hidden
 
 With `on_inferred="error"`, `report.needed` is `{"subscriptions":
@@ -102,6 +143,8 @@ the SQL with SQLGlot to get the column and bound, and writes a
 Proposed: `Report.needed` (or a new `Report.needs`) as a list of
 `Needed(table, column, op, bound, sql, label, issue)`, with `issue` the
 `Issue` it rules out (today `inferred_from[label]`).
+
+Closed in this PR: `Report.needs`; sverify-dbt writes the dbt test from its column, `op` and `value` (`mapping.dbt_test`).
 
 ### 6. A condition proved with a needed precondition reads as proved
 
@@ -226,6 +269,8 @@ schema through Ibis's DuckDB backend (`ibis.duckdb.from_connection(...)`).
 Proposed: `tables=` accepts DuckDB type names (`{"orders": {"id": "BIGINT"}}`,
 or a `CREATE TABLE` column list), parsed with the query's `dialect`.
 
+Closed in this PR: `tables=` takes DuckDB's type names; sverify-dbt passes DuckDB's `DESCRIBE` of each input.
+
 ### 14. Inputs must be bare names
 
 dbt's compiled SQL reads `"shop"."main"."orders"`; `verify` refuses it
@@ -263,18 +308,23 @@ Sverify-dbt writes `coalesce((expr), TRUE)`.
 
 Proposed: read `IS [NOT] TRUE/FALSE` (it is `coalesce` with a constant).
 
+Closed in this PR: the lift reads `IS [NOT] TRUE/FALSE`.
+
 ### 17. Strings are known only by the exact condition
 
 On a string column, sverify proves a condition only from the same condition:
 
 ```python
 t = ibis.schema({"s": "string"})
-v = lambda q, req, ens: sv.verify(q, tables={"t": t}, semantics="duckdb",
-                                  requires={"t": req}, ensures=ens).ensures[0].proved
-v("select 'a' as s from t", [], ["s = 'a'"])                                   # False
+v = lambda q, req, ens: (
+    sv.verify(q, tables={"t": t}, semantics="duckdb", requires={"t": req}, ensures=ens)
+    .ensures[0]
+    .proved
+)
+v("select 'a' as s from t", [], ["s = 'a'"])  # False
 v("select s from t where s <> 'c'", ["s IN ('a', 'b', 'c')"], ["s IN ('a', 'b')"])  # False
-v("select s from t", ["s IN ('a', 'b')"], ["s IS NULL OR s IN ('a', 'b')"])        # False
-v("select s from t", ["s IN ('a', 'b')"], ["s IN ('a', 'b')"])                     # True
+v("select s from t", ["s IN ('a', 'b')"], ["s IS NULL OR s IN ('a', 'b')"])  # False
+v("select s from t", ["s IN ('a', 'b')"], ["s IN ('a', 'b')"])  # True
 ```
 
 `accepted_values` is dbt's most common test after `not_null` and `unique`,
@@ -292,9 +342,13 @@ branches differ in a constant column follows from it too (the sample's
 
 ```python
 t = ibis.schema({"q": "int64", "x": "float64"})
-sv.verify("select q * x as y from t", tables={"t": t}, semantics="duckdb",
-          requires={"t": ["q >= 1 AND q <= 10", "x >= 0 AND x <= 10"]},
-          ensures=["y >= 0"]).facts["y"]
+sv.verify(
+    "select q * x as y from t",
+    tables={"t": t},
+    semantics="duckdb",
+    requires={"t": ["q >= 1 AND q <= 10", "x >= 0 AND x <= 10"]},
+    ensures=["y >= 0"],
+).facts["y"]
 # 'a double > -8.881784197001252e-14 and < 100.00000000000009'
 ```
 
@@ -312,6 +366,8 @@ product or quotient, 0 as a bound of a sum of non-negatives).
 To pair a result with the condition passed, sverify-dbt matches
 `CheckedCondition.label` against the SQL string or `Unique.label`. Proposed:
 `CheckedCondition.condition`, the object as given.
+
+Closed in this PR: `CheckedCondition.condition`; sverify-dbt pairs results with its conditions by it.
 
 ### 20. No schema of a query without a proof
 
@@ -333,3 +389,6 @@ A script that calls `verify` and exits with warnings on prints
 `ResourceWarning: unclosed file <_io.BufferedWriter name=4>` from
 `sverify/engine.py:522`: the `substrait-check --serve` process's pipes are
 not closed. Proposed: close them in the `atexit` handler.
+
+Closed in this PR: `_Checker.close` closes the pipes.
+

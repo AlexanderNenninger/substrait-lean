@@ -36,6 +36,9 @@ QUERIES = [
     " CASE qty WHEN 3 THEN 1.5 ELSE 2 END AS c, coalesce(qty, 0) AS z FROM orders",
     "SELECT id, cost * cost AS c2, cost + 1 AS c1, cost * 2 AS cd, cost > 3.5 AS big FROM orders",
     "SELECT 1 + 1 AS two, 7 // 2 AS q, 1 // 1 AS one",
+    # IS [NOT] TRUE/FALSE, never NULL: COALESCE of the test (#177).
+    "SELECT id, (qty > 2) IS TRUE AS t, (qty > 2) IS NOT TRUE AS nt,"
+    " (price > 1.5) IS FALSE AS f, (price > 1.5) IS NOT FALSE AS nf FROM orders",
     # Numbers: DuckDB's `power` and elementary functions are of doubles; its
     # `greatest`/`least` leave NULLs out; `log(x)` is base 10.
     "SELECT id, power(amount, 2) AS p, amount ** 2 AS q, abs(qty) AS a, abs(price) AS af,"
