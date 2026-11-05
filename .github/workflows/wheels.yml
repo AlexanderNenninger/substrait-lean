@@ -174,7 +174,7 @@ jobs:
           import importlib.util
           import pyarrow as pa
           import sverify as sv
-          from sverify.io import StaticSource
+          from sverify.io import Changes, StaticSource
 
           assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
           t = StaticSource(pa.table({"a": [1, 5]}), name="t")
@@ -319,7 +319,7 @@ jobs:
           import importlib.util
           import pyarrow as pa
           import sverify as sv
-          from sverify.io import StaticSource
+          from sverify.io import Changes, StaticSource
 
           assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
           t = StaticSource(pa.table({"a": [1, 5]}), name="t")
