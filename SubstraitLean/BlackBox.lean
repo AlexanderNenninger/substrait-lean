@@ -257,13 +257,14 @@ example : (scalars.map (·.name) ++ aggregates.map (·.name)).Nodup :=
 
 /-- **The laws are consistent**: each row's sample keeps them. -/
 theorem scalars_wf : ∀ f ∈ scalars, ok f.result f.laws true f.sample = true :=
-  forall_of_all (p := fun f => ok f.result f.laws true f.sample) (by decide +kernel)
+  forall_of_all (p := fun (f : Scalar) => ok f.result f.laws true f.sample) (by decide +kernel)
 
 theorem aggregates_wf : ∀ f ∈ aggregates,
-    ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := fun f hf =>
-  Bool.and_eq_true _ _ |>.mp <|
-    forall_of_all (p := fun f => ok f.result f.laws true f.sample && f.result.has f.empty)
-      (by decide +kernel) f hf
+    ok f.result f.laws true f.sample = true ∧ f.result.has f.empty = true := fun f hf => by
+  have h := forall_of_all
+    (p := fun (g : Aggregate) => ok g.result g.laws true g.sample && g.result.has g.empty)
+    (by decide +kernel) f hf
+  simpa only [Bool.and_eq_true] using h
 
 def scalar? (name : String) : Option Scalar := scalars.find? (·.name == name)
 def aggregate? (name : String) : Option Aggregate := aggregates.find? (·.name == name)
