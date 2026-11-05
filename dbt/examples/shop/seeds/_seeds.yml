@@ -1,0 +1,29 @@
+version: 2
+
+# The raw tables, loaded as seeds so that `dbt build` has data. The models
+# read them as the `app` source (models/staging/_sources.yml).
+seeds:
+  - name: orders
+    config:
+      column_types: {order_id: bigint, customer_id: bigint, order_ts: timestamp, status: varchar, amount: double}
+  - name: order_items
+    config:
+      column_types: {order_id: bigint, product_id: bigint, qty: bigint, price: double}
+  - name: products
+    config:
+      column_types: {product_id: bigint, name: varchar, category: varchar}
+  - name: customer_updates
+    config:
+      column_types: {customer_id: bigint, city: varchar, plan: varchar, updated_at: timestamp}
+  - name: events
+    config:
+      column_types: {user_id: bigint, event_ts: timestamp, event_name: varchar, page: varchar, channel: varchar}
+  - name: sales_wide
+    config:
+      column_types: {region: varchar, q1: bigint, q2: bigint, q3: bigint, q4: bigint}
+  - name: subscriptions
+    config:
+      column_types: {customer_id: bigint, start_date: date, end_date: date, mrr: bigint}
+  - name: employees
+    config:
+      column_types: {emp_id: bigint, manager_id: bigint, name: varchar, dept: varchar, salary: bigint}
