@@ -38,6 +38,8 @@ from datetime import timedelta
 from importlib import resources
 from typing import TYPE_CHECKING, Any, Literal
 
+from sverify._unsupported import SverifyError
+
 if TYPE_CHECKING:
     from sverify.contracts import Report
 
@@ -81,7 +83,7 @@ ALIASES: Mapping[str, str] = {
 }
 
 
-class ExportError(ValueError):
+class ExportError(SverifyError, ValueError):
     """The plan has no conforming Substrait form that keeps its proof: the
     message names the reason, and the spec gap where there is one."""
 
@@ -1283,12 +1285,9 @@ def _version() -> str:
 
 
 def _sverify_version() -> str:
-    from importlib.metadata import PackageNotFoundError, version
+    import sverify
 
-    try:
-        return version("sverify")
-    except PackageNotFoundError:
-        return "unknown"
+    return sverify.__version__
 
 
 def _table_condition_json(c: Any) -> Json:

@@ -454,7 +454,8 @@ def test_sink_writes_contract_and_changes(tmp_path):
     assert delta_rows(uri) == sorted(rows(stored), key=repr)
     out = DeltaTable(uri)
     fields = {f.name: f.nullable for f in pa.schema(out.schema().to_arrow())}
-    assert fields == {"id": True, "customer": True, "doubled": False}
+    # `id` is NOT NULL in the source, so the report shows it never NULL (#691).
+    assert fields == {"id": False, "customer": True, "doubled": False}
     assert out.metadata().configuration["delta.constraints.sverify_1"] == "doubled >= 0"
     assert out.transaction_version("sverify:big") == 1
     contract = DeltaSource(uri).contract()

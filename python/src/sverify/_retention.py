@@ -284,6 +284,15 @@ def _before(rows: pa.Table, col: str, t: Any) -> int:
     return _call("sum", _call("less", c, _scalar(t, c.type))).as_py() or 0
 
 
+def late_rows(change: pa.Table, col: str, watermark: Any, limit: int) -> pa.Table:
+    """Up to `limit` rows a batch (a weighted table) inserts with `col` NULL
+    (`watermark` None) or before `watermark`."""
+    inserted = rows_of(positive(change))
+    c = inserted.column(col)
+    bad = _call("is_null", c) if watermark is None else _call("less", c, _scalar(watermark, c.type))
+    return inserted.filter(bad).slice(0, limit)
+
+
 def check_batch(
     change: pa.Table, cond: ArrivesWithin, latest: Any, final_before: Any = None
 ) -> tuple[Late | None, int, Any]:

@@ -59,6 +59,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify import _plan_read
+from sverify._unsupported import SverifyError
 from sverify.observation import Observation, Within
 
 if TYPE_CHECKING:
@@ -208,7 +209,7 @@ class EngineVersionWarning(UserWarning):
     but the major version is the same (D14)."""
 
 
-class EngineVersionError(RuntimeError):
+class EngineVersionError(SverifyError, RuntimeError):
     """The engine's major version differs from the one its profile's facts
     were probed at: re-run the probes (`characterization/<engine>/`) first
     (D14)."""
@@ -219,13 +220,13 @@ class EngineSettingsWarning(UserWarning):
     sverify does not rely on changes."""
 
 
-class EngineSettingsError(RuntimeError):
+class EngineSettingsError(SverifyError, RuntimeError):
     """An engine setting a profile's choices depend on differs from the
     value its facts were probed under, and the plan relies on it: restore it
     (the message says how), or re-run the probes under it."""
 
 
-class RouteError(ValueError):
+class RouteError(SverifyError, ValueError):
     """No route takes the plan to the engine; `route` says why."""
 
     def __init__(self, route: Route):
