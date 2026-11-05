@@ -228,13 +228,13 @@ try:
     divided.run(con, "polars", route="transfer")
 except RouteError as e:
     print(e)
-# refused on polars: verify with semantics='reference' to run on polars (the plan was verified with semantics='duckdb', whose proof does not carry over to polars); details: ...
+# refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
 divided.run(con, "polars", route="auto")
 print(divided.routes["polars"])
 # recheck: proved again under Profile.polars [exact]
 ```
 
-The transfer check fails on the division, so `route="auto"` goes on to the
+The transfer check fails on the division's options, so `route="auto"` goes on to the
 re-check: the checker proves the plan again under `Profile.polars`, and
 Polars runs it with the shim of example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with

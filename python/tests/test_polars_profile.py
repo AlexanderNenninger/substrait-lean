@@ -17,14 +17,15 @@ import pyarrow as pa
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from ibis import _
 
 import sverify as sv
 from sverify import _support, routes
 from sverify.engine import written_plan
 
 MIN, MAX = -(2**63), 2**63 - 1
-#: `verify` infers `i >= -9 * 10**18` (so `MIN // -1` cannot overflow) and
-#: `j != 0`.
+#: The preconditions `verify` infers: `i >= -9 * 10**18` (so `MIN // -1`
+#: cannot overflow) and `j != 0`.
 LOW = -9 * 10**18
 
 dividends = st.one_of(st.integers(LOW, MAX), st.sampled_from([LOW, -1, 0, 1, MAX]))
@@ -38,7 +39,11 @@ def report() -> sv.Report:
     con = sv.connect()
     con.put("t", pa.table({"i": pa.array([1], pa.int64()), "j": pa.array([1], pa.int64())}))
     t = con.table("t")
-    r = sv.verify(t.select(m=t.i % t.j, q=t.i // t.j), semantics="polars")
+    r = sv.verify(
+        t.select(m=t.i % t.j, q=t.i // t.j),
+        requires={"t": [_.i >= LOW, _.j != 0]},
+        semantics="polars",
+    )
     assert r.proved, str(r)
     return r
 

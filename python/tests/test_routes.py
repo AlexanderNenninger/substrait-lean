@@ -97,7 +97,10 @@ def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
         },
     )
     assert "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR" in r.reason
-    # #655: under "auto", the refusal leads with what to do.
+    # #655: under "auto", the refusal leads with what to do. The re-check
+    # under `Profile.polars` proves this plan, so it is made to fail here.
+    assert routes.choose(duck, "polars").kind == "recheck"
+    monkeypatch.setattr(routes, "recheck", lambda report, e: (False, "not proved"))
     auto = routes.choose(duck, "polars")
     assert auto.reason.startswith("verify with semantics='reference' to run on polars")
     assert routes.choose(duck, "datafusion", "transfer").kind == "transfer"
