@@ -70,15 +70,15 @@ def typeEnv (ty : Json) : AVal :=
   let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
   -- `BIGINT` and timestamps (microseconds) are 64-bit: what makes `a / 2` safe.
   let i64 := ["i64", "precisionTimestamp", "timestamp"]
-  if i64.contains kind then ⟨nullable, some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, false, false, false⟩
-  else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false⟩
-  else if ["string", "varchar", "fixedChar"].contains kind then ⟨nullable, none, false, false, true⟩
-  else if kind == "bool" then ⟨nullable, none, true, true, false⟩
+  if i64.contains kind then ⟨nullable, some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, false, false, false, none⟩
+  else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false, none⟩
+  else if ["string", "varchar", "fixedChar"].contains kind then ⟨nullable, none, false, false, true, none⟩
+  else if kind == "bool" then ⟨nullable, none, true, true, false, none⟩
   -- A decimal is its unscaled integer, of at most `p` digits (#27): what makes
   -- `a + b` of two columns fit its precision.
   else if kind == "decimal" then
     let p := (body.getObjValAs? Nat "precision").toOption.getD 38
-    ⟨nullable, some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, false, false, false⟩
+    ⟨nullable, some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, false, false, false, none⟩
   else AVal.top
 
 def schemaEnv (schema : Json) : List AVal :=
@@ -123,12 +123,22 @@ def _root_.Substrait.Bound.renderDecimal (p s : Nat) (b : Bound) : String :=
   | some l, none => s!"a {ty} ≥ {txt l}"
   | none, some h => s!"a {ty} ≤ {txt h}"
 
+/-- A string literal as SQL writes it. -/
+def sqlString (s : String) : String := "'" ++ s.replace "'" "''" ++ "'"
+
+/-- The strings a column may hold (#708). -/
+def _root_.Substrait.AVal.renderStrs (a : AVal) : String :=
+  match a.strs with
+  | some [s] => s!"the string {sqlString s}"
+  | some l => s!"one of the strings {", ".intercalate (l.map sqlString)}"
+  | none => "a string"
+
 def _root_.Substrait.AVal.render (a : AVal) (dec : Option (Nat × Nat) := none) : String :=
   let bound (b : Bound) := match dec with
     | some (p, s) => b.renderDecimal p s
     | none => b.render
   let parts := (if a.tt then ["TRUE"] else []) ++ (if a.ff then ["FALSE"] else []) ++
-    (a.int.map fun b => [bound b]).getD [] ++ (if a.str then ["a string"] else []) ++
+    (a.int.map fun b => [bound b]).getD [] ++ (if a.str then [a.renderStrs] else []) ++
     (if a.null then ["NULL"] else [])
   match parts with
   | [] => "nothing (no rows)"
@@ -141,6 +151,10 @@ def _root_.Substrait.AVal.json (a : AVal) (dec : Option (Nat × Nat) := none) : 
   let bound (o : Option Int) : Json := (o.map fun i => Json.str (toString i)).getD .null
   Json.mkObj ([("null", Lean.toJson a.null), ("true", Lean.toJson a.tt), ("false", Lean.toJson a.ff),
     ("string", Lean.toJson a.str),
+    -- Every string is one of these (#708), or any string may be.
+    ("strings", match a.strs with
+      | some l => if a.str then Lean.toJson l else .null
+      | none => .null),
     ("int", match a.int with
       | some b => Json.mkObj [("lo", bound b.lo), ("hi", bound b.hi)]
       | none => .null)] ++

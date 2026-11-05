@@ -335,6 +335,16 @@ def column_of(e: Json) -> int | None:
     return int(sf.get("field", 0))
 
 
+def int_range(values: Any) -> tuple[int, int] | None:
+    """The bounds of `values` if they are two or more integers that fill a
+    range without gaps, as `[0, 1]` or `[3, 1, 2]` do; else None."""
+    ints = set(values)
+    if len(ints) < 2 or not all(type(v) is int for v in ints):
+        return None
+    lo, hi = min(ints), max(ints)
+    return (lo, hi) if hi - lo + 1 == len(ints) else None
+
+
 def if_then(ifs: list[tuple[Json, Json]], default: Json) -> Json:
     return {"ifThen": {"ifs": [{"if": c, "then": t} for c, t in ifs], "else": default}}
 

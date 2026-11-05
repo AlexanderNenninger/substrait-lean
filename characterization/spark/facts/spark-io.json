@@ -1,0 +1,54 @@
+{
+  "id": "spark-io",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "I/O: Parquet, ORC, CSV, JSON, text and Avro; Hadoop file systems; catalogs by configuration",
+  "verdict": "data sources by `format`; `s3a://`, `abfss://`, `gs://` through Hadoop connectors; `spark.sql.catalog.*`",
+  "area": "io",
+  "options": [
+    "io_formats",
+    "object_stores",
+    "catalogs"
+  ],
+  "layer": "io",
+  "constructs": [
+    "spark.read",
+    "DataFrameWriter",
+    "CREATE TABLE USING",
+    "spark.sql.catalog"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Spark reads and writes Parquet, ORC, CSV, JSON, text and binary files with its built-in sources, and Avro with the bundled `spark-avro` module. Object stores go through Hadoop's file system connectors (`s3a://`, `abfss://`, `gs://`), which need their jars and credentials in the Hadoop configuration (`spark.hadoop.*`). Catalogs other than the session's are plugins named by `spark.sql.catalog.<name>` (Iceberg's `SparkCatalog`, Delta's `DeltaCatalog`, Unity Catalog's), each from its own package. Parquet keeps `TIMESTAMP_NTZ` and `TIMESTAMP_LTZ` apart and stores decimals by precision."
+  ],
+  "reference": "I/O is outside what a plan computes; sverify's `io` modules read and write the formats, and `sverify.spark_engine` hands Spark tables as temporary views.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-data-sources.md",
+          "note": "the built-in data sources"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/cloud-integration.md",
+          "note": "object stores through Hadoop connectors"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-syntax-ddl-create-table-datasource.md",
+          "note": "`CREATE TABLE … USING`"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    }
+  ]
+}

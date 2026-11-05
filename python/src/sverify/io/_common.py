@@ -24,6 +24,7 @@ import ibis
 import pyarrow as pa
 import sqlglot as sg
 
+from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.steps import Pipeable
@@ -306,6 +307,10 @@ def not_null_column(sql: str) -> str | None:
     return None
 
 
+#: The version of the sink's contract record's format (`Contract.format`).
+CONTRACT_FORMAT = 1
+
+
 @dataclass
 class Contract:
     """What a sink records with each commit: which plan produced the data,
@@ -317,7 +322,9 @@ class Contract:
         view: The stored node's name.
         sources: The version of every source table the state was computed
             from.
-        not_null: Columns the node proves NOT NULL.
+        not_null: Columns the node proves NOT NULL: stated in `ensures`
+            (`_.col.notnull()`), or shown never NULL by its proved report
+            (`Report.not_null`).
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.
@@ -347,30 +354,50 @@ class Contract:
     `metaData.id`), at its version in `sources`. A table dropped and created
     again at the same location has a new id, and versions that start over:
     a state recorded from the old table is not one of the new table's."""
+    format: int = CONTRACT_FORMAT
+    """The version of the record's format (`CONTRACT_FORMAT`,
+    `sverify/schemas/sink-contract.schema.json`). It changes only with a
+    record a reader of the previous format cannot read, which 1.x never
+    writes (`docs/stability.md`); a record without it was written before
+    0.5 and reads as format 1."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
 
         Returns:
-            A JSON object with the contract's fields, keys sorted.
+            A JSON object with the contract's fields, keys sorted, in the
+            format of `sverify/schemas/sink-contract.schema.json`.
         """
         return json.dumps(self.__dict__, sort_keys=True)
 
     @staticmethod
     def from_json(text: str) -> Contract:
-        """A contract from what `to_json` wrote.
+        """A contract from what `to_json` wrote, by this version of sverify
+        or an earlier one. Keys this version does not know, which a later
+        1.x version may add, are left out.
 
         Args:
             text: The JSON `to_json` wrote.
 
         Returns:
             The contract.
+
+        Raises:
+            ValueError: The record's `format` is newer than this version
+                reads.
         """
+        data = json.loads(text)
+        fmt = data.get("format", 1)
+        if not isinstance(fmt, int) or fmt > CONTRACT_FORMAT:
+            raise ValueError(
+                f"the sink's contract record has format {fmt!r}, and this version of "
+                f"sverify reads format {CONTRACT_FORMAT} or older: upgrade sverify"
+            )
         known = Contract.__dataclass_fields__
-        return Contract(**{k: v for k, v in json.loads(text).items() if k in known})
+        return Contract(**{k: v for k, v in data.items() if k in known})
 
 
-class ConcurrentWriteError(RuntimeError):
+class ConcurrentWriteError(SverifyError, RuntimeError):
     """Another writer committed to a sink between the moment this refresh
     read what the sink holds (`Sink.committed`) and its own commit: two
     processes refreshing the same sink (#517). This refresh's write was not
@@ -453,6 +480,8 @@ def view_contract_record(view: IncrementalView) -> Contract:
             not_null.append(col)
         else:
             checks[f"sverify_{len(checks) + 1}"] = sql
+    names = set(view.schema.names)
+    not_null += [c for c in view.not_null if c in names and c not in not_null]
     return Contract(
         view=view.name,
         plan=plan_digest(view.plan),

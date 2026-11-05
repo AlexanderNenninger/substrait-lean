@@ -1,0 +1,32 @@
+{
+  "id": "SP-5",
+  "project": "spark",
+  "kind": "bug",
+  "version": "4.3.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Spark 4.3.0 with ANSI on, interpreted and codegen. No matching issue found; SPARK-28135 (in progress since 2019) is about large values of `floor`, `ceil` and `power`, not NaN.",
+  "summary": "`floor` and `ceil` of a double return `BIGINT`. Under ANSI they raise `ARITHMETIC_OVERFLOW` for ±inf and values past 64 bits, but return 0 for NaN, where `CAST(NaN AS BIGINT)` raises `CAST_OVERFLOW`. So ANSI mode turns a NaN into a plausible integer silently.",
+  "repro": "SET spark.sql.ansi.enabled=true;\nSELECT floor(CAST('NaN' AS DOUBLE)), ceil(CAST('NaN' AS DOUBLE));\n-- 0, 0\nSELECT floor(CAST('Infinity' AS DOUBLE));\n-- [ARITHMETIC_OVERFLOW]\nSELECT CAST(CAST('NaN' AS DOUBLE) AS BIGINT);\n-- [CAST_OVERFLOW]",
+  "handling": "Substrait's `floor` and `ceil` return the double, so the Spark profile writes them as `CAST(floor(x) AS DOUBLE)` only for finite `x` below 2⁶³ in magnitude, and passes NaN and ±inf through (`CASE WHEN isnan(x) OR abs(x) >= 9.2e18 THEN x ELSE …`). The fix upstream is to raise for NaN under ANSI as the cast does.",
+  "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, probes double-floor-nan and double-floor-inf",
+  "issues": [
+    738,
+    739
+  ],
+  "files": [
+    "characterization/spark/probes.json",
+    "characterization/spark/facts/spark-round.json"
+  ],
+  "facts": [
+    "spark-round"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
+      },
+      "note": "probes double-floor-nan, double-floor-inf, double-floor-ceil, both ANSI modes, folded and codegen. Source at v4.3.0: mathExpressions.scala#L599-L660 (`Floor`, `LongType`). JIRA search for \"floor NaN\", \"floor NaN ansi\", \"ceil NaN returns 0\": no match."
+    }
+  ]
+}

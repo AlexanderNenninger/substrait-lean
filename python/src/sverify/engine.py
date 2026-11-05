@@ -23,7 +23,6 @@ import json
 import os
 import subprocess
 import threading
-import warnings
 from collections.abc import Iterator, MutableMapping
 from dataclasses import replace
 from pathlib import Path
@@ -42,6 +41,7 @@ from sverify import _duckdb, _support
 from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
 
@@ -244,18 +244,6 @@ class Connection:
             self._datafusion.deregister_table(name)
 
     @property
-    def datafusion(self) -> Any:
-        """Deprecated: the DataFusion session the DataFusion engine runs on, an
-        internal that will become private (#413)."""
-        warnings.warn(
-            "Connection.datafusion is deprecated: it is an internal of the DataFusion "
-            "engine. Run plans with sverify.engines.run(con, plan, 'datafusion').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._datafusion_session
-
-    @property
     def _datafusion_session(self) -> Any:
         """A `datafusion.SessionContext` with the connection's tables.
 
@@ -351,7 +339,7 @@ def quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-class SqlError(ValueError):
+class SqlError(SverifyError, ValueError):
     """A SQL producer refused a query."""
 
 
@@ -431,7 +419,7 @@ def canonical(table: pa.Table) -> pa.Table:
 PROTOCOL = 1
 
 
-class CheckerVersionError(RuntimeError):
+class CheckerVersionError(SverifyError, RuntimeError):
     """The `substrait-check` binary speaks another protocol than this sverify:
     a stale build of the checker, or a checker newer than the package."""
 
@@ -820,7 +808,7 @@ def run_plan(
             return orders.filter(orders.amount > 10)
 
 
-        plan = big_orders(orders).plan  # the plan Lean checked
+        plan = big_orders(orders).internal_plan  # the plan Lean checked
 
         con = sv.connect()
         create_table(con, "orders", ibis.schema({"id": "int64", "amount": "int64"}),

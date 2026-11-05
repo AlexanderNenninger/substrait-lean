@@ -208,7 +208,7 @@ The most common, and what sverify does about each:
 
 | Pitfall | What the engines do | sverify |
 |---|---|---|
-| Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `tie_free=True` |
+| Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `deterministic=True` |
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
@@ -324,7 +324,7 @@ except VerificationError as e:
   ones included, and refuses a batch that breaks one with a
   `PreconditionError` that names it, before anything runs
   ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
-  `check_inputs=False` skips the check for a caller that has made it
+  `check_requires=False` skips the check for a caller that has made it
   already; the report's guarantee then holds only on data that meets them:
 
   ```python
@@ -338,17 +338,37 @@ except VerificationError as e:
 * Preconditions describe data that comes from outside. On a source, they
   are checked on the data when the node is first refreshed and then on each
   batch (`PreconditionError`), or proved from the table's metadata; on Ibis
-  tables bound to data (`sv.connect()`), at call time.
+  tables bound to data (`sv.connect()`), at call time. The error carries
+  the table (`e.source`), the condition as stated or inferred
+  (`e.condition`) and up to ten of the rows that break it, as an Arrow
+  table (`e.rows`; None for `max_rows` and `rows_per`)
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)):
+
+  ```python
+  try:
+      node.refresh()
+  except PreconditionError as e:
+      log.error("%s breaks %s", e.source, e.condition)
+      quarantine.write(e.rows)
+  ```
 * Unproved postconditions raise `VerificationError`. With
   `on_unproved="runtime"` they are checked on the output data instead
   (`PostconditionError`): on bound tables at call time, on a node at every
   refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
   `on_unproved="warn"` you get a warning.
+* Every exception sverify raises on purpose derives from
+  `sverify.errors.SverifyError`, and keeps its built-in base (`ValueError`,
+  `RuntimeError`); import the exceptions from `sverify.errors`
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
   those facts; arithmetic, `CASE`, `COALESCE`, joins and `UNION ALL` carry
   them through. Schemas count: a non-nullable column is never NULL.
+  `x IN (0, 1)`, and `isin([0, 1])`, of integers that fill a range is
+  read as `x BETWEEN 0 AND 1`, so a column known to lie in `[0, 1]` meets
+  it ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  `report.not_null` lists the output columns the checker shows are never NULL.
 * Relations between columns: join and filter conditions such as
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
@@ -371,8 +391,9 @@ except VerificationError as e:
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key). Every Arrow column is nullable, so
-  `sv.unique("id")` leaves `id` able to be NULL: a postcondition or sink that
-  needs `id` NOT NULL also states `_.id.notnull()` in `requires`.
+  `sv.unique("id")` leaves `id` able to be NULL. `sv.key("id")` is a
+  primary key: `sv.unique("id")` and `'"id" IS NOT NULL'`, which the report
+  lists in its place ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 * Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
@@ -398,7 +419,13 @@ except VerificationError as e:
   the report suggests it when an exact claim misses only by rounding, and
   only for an input with a row cap: without `sv.max_rows` in `requires`,
   Lean has no bound on the sum's error and suggests nothing.
-* Not tracked yet: string contents, relations beyond
+* Strings: a column's strings while they are few (up to 64), from constants,
+  `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and `UNION ALL`. That
+  proves dbt's `accepted_values` and keys over `UNION ALL` branches tagged by
+  a constant
+  ([#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708),
+  [#436](https://github.com/AlexanderNenninger/substrait-lean/issues/436)).
+* Not tracked yet: what is inside a string (`LIKE`, lengths), relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
 
@@ -409,7 +436,7 @@ meets the preconditions, and `@sv.transform` refuses the transformation
 while there is one:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, infer=False)
+@sv.transform(requires={"orders": [_.amount >= 0]}, on_inferred="off")
 def share(orders):
     return orders.select(orders.id, per_unit=orders.amount // (orders.amount - 30))
 
@@ -422,7 +449,7 @@ except VerificationError as e:
 #     hint: state `(_.amount != 30)` in the requires of 'orders'
 ```
 
-Without `infer=False`, the report names the precondition the plan needs,
+Without `on_inferred="off"`, the report names the precondition the plan needs,
 `(_.amount != 30)`; declare it in `requires`, and `share` is proved
 ([Inferred bounds](#inferred-bounds)).
 
@@ -434,8 +461,8 @@ or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNen
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
 `requires` bounds the column. Elsewhere sverify assumes the sum fits, and
-the job checks it on the data before the run
-(`Report.assumed`; an error with `infer=False`). The same holds for an
+the job checks it at run time, on the data before the run
+(`Report.assumed`; an error with `on_inferred="off"`). The same holds for an
 operation on finite doubles that may overflow to `±∞`, which the reference
 raises on ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
 
@@ -508,8 +535,11 @@ test, an editor's quick fix) reads `Report.needs`: one `Needed` per
 precondition, with its table, column, comparison, bound, SQL and the
 runtime error it rules out. Each postcondition's
 `CheckedCondition.reason` says the same of an unproved postcondition, as a
-code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …). `on_inferred="warn"` assumes the bound with an
-`InferredPreconditionWarning`, and `"silent"` assumes it without one:
+code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …).
+
+`on_inferred` takes four values: `"error"` (the default) needs the bound in
+`requires`, `"warn"` assumes it with an `InferredPreconditionWarning`,
+`"silent"` assumes it without one, and `"off"` infers nothing:
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
@@ -558,9 +588,9 @@ build on it like on any other precondition of a source.
   column, and a value from another contracted transformation is bounded by
   its `ensures`. For these the report's hint suggests a bound
   (`Issue.hint`), and sverify assumes none.
-* `infer=False`, on `@sv.transform` and `sv.verify`, infers
-  nothing: each overflow fails the proof, and its hint names the bound to
-  state.
+* `on_inferred="off"`, on `@sv.transform` and `sv.verify`, infers and
+  assumes nothing: each overflow, a `SUM`'s included, fails the proof, and
+  its hint names the bound to state.
 
 For what it does not infer, the report's `hint:` lines (`Report.hints`) name
 the bound to add. An integer `SUM` gets the range Lean knows for the column it
@@ -705,6 +735,12 @@ The report's parts come as data and as the lines `str(report)` prints:
   runtime error, assumption and note.
 - `Issue.suggested` gives the preconditions that rule an issue out, per
   table, which `Issue.hint` states in words.
+- `Report.needs` gives the preconditions the proof needs, one `Needed` each
+  (table, column, comparison, bound, SQL), and `Report.needed_conditions`
+  the same as conditions ready for `requires=`, in the transform's language:
+  Ibis deferreds (`_.qty.isnull() | (_.qty != 0)`, NULL passing as the
+  inferred bound lets it) or SQL strings
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.
@@ -929,7 +965,7 @@ and its message says which rows failed what:
 ```python
 customers.apply(sv.Changes(inserts=[("dan", "Oslo")]))
 print(c.refresh().summary())
-# cities: orders@v1, customers@v1→v2, Δ trusted (change feed)
+# cities: changes from orders v1, customers v1→v2 (change feed)
 ```
 
 ### Delta Lake and Iceberg
@@ -974,11 +1010,15 @@ tables. A table format plays four roles:
   processes refresh the same `DeltaSink`, the second to commit an epoch
   raises `ConcurrentWriteError` and writes nothing; its next refresh
   recovers.
-  The `ensures` you state become NOT NULL columns (`_.id.notnull()`) and
-  CHECK constraints (Delta) or table properties (Iceberg); a column the
-  plan proves non-NULL but `ensures` leaves out stays nullable, and the commit records the plan hash, the
-  source versions and the contract. A job that reads the table gets its
-  preconditions from them. After the first write, `DeltaSink` MERGEs each
+  The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
+  or table properties (Iceberg). The NOT NULL columns are those `ensures`
+  states (`_.id.notnull()`) and those the proved report shows are never NULL
+  (`report.not_null`, [#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  The commit records the plan hash, the
+  source versions and the contract (`sverify.io.Contract`, in the format of
+  [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json),
+  which every 1.x release reads: [stability.md](stability.md#the-formats)).
+  A job that reads the table gets its preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
   position delete files and a data file of the new rows.
   `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
@@ -1202,7 +1242,7 @@ import json
 
 from sverify.engines import SNOWFLAKE, create_table, run, to_sql  # also DUCKDB, SPARK
 
-plan = c.plan                                  # the plan Lean checked
+plan = c.internal_plan                         # the plan Lean checked
 c.refresh(engine="polars")                     # or "duckdb" (the default), "datafusion", "spark"
 con = sv.connect()                             # or run a plan on tables of your own
 create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
@@ -1226,7 +1266,7 @@ the following about the warehouse:
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
 * Both have no row order, so sorts, `LIMIT` and windows are refused unless
-  you pass `tie_free=True` (justified by a report's `deterministic`), and
+  you pass `deterministic=True` (justified by a report's `deterministic`), and
   so is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
   the additions. Snowflake has no interval type, so interval-valued
   expressions are refused there.
@@ -1271,19 +1311,22 @@ only if one applies:
 | Route | When |
 |---|---|
 | `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars) |
-| `reference` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars) |
+| `translated` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
 | `transfer` | the plan was verified under another profile, and at every option the proof depends on, the engine's choices are within that profile's |
 | `recheck` | the checker proves the plan again under the engine's profile |
 
 `report.routes[engine]` records the route, with its class, which says what
-you can rely on:
+you can rely on. A route prints its class first, then
+the evidence, and the route where it is not `translated`:
+`shim (integer division rewritten to truncate); evidence tested`, or
+`exact; transfer: verified under semantics="duckdb"; …`.
 
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
 | `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
-| `refused` | none of the above: the run raises `sverify.routes.RouteError` and nothing runs |
+| `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
 or on tests and probes (`tested`). Before the plan runs, its preconditions,
@@ -1301,7 +1344,7 @@ list every fact). What to do about one:
   within the plan's bound, which a run accepts by default.
 - Add the precondition the reference raises on, such as a bound on a
   column, so the plan never meets the difference.
-- Run on the other engine, or pass `route="reference"` (or another) to see
+- Run on the other engine, or pass `route="translated"` (or another) to see
   why that one fails.
 
 `deterministic=True` asks for the deterministic profile, which fixes the
@@ -1329,7 +1372,7 @@ means = sv.verify(
 )
 duckdb_result = means.run(readings, "duckdb", route="auto")
 polars_result = means.run(readings, "polars", route="auto")
-means.observation.equal(duckdb_result, polars_result)  # True
+means.equivalence.equal(duckdb_result, polars_result)  # True
 ```
 
 Polars sums doubles in its own order, so its mean is within the plan's
@@ -1413,12 +1456,23 @@ A refusal raises `sverify.errors.ExportError`, which names the reason and
 the gap. So does an unproved report, a plan verified under an engine's
 profile, and a function outside Substrait's YAMLs.
 
+`node.to_substrait()` and `transform.to_substrait()` export the report of
+a node and of a transform's last call
+([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+A node's plan is its last transform's: a contracted node upstream is a
+table of that transform's name, and the contract's `requires` on it are
+what that node guarantees. Export each node to cover a pipeline.
+
 The contract travels in the plan's `advanced_extensions.optimization` as an
 `io.sverify.substrait.v1.Contract` message
 ([`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto)),
 which a consumer that does not know it ignores. It holds the preconditions
 (declared, inferred and assumed) and the postconditions, each in your terms
-and as a Substrait plan of one boolean column, and a manifest:
+and as a Substrait plan of one boolean column, and a manifest
+([`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json)).
+Within 1.x the message and the manifest only gain fields, and
+`sv.from_substrait` reads every earlier 1.x export
+([stability.md](stability.md#the-substrait-contract-message)):
 
 | Key | What it holds |
 |---|---|
@@ -1476,7 +1530,7 @@ sums = samples.pipe(sample_sums).write(
     DeltaSink("sample_sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
 )
 print(sums.refresh(engine="polars", route="auto").nodes[0].route.kind)
-# reference
+# translated
 ```
 
 A relative tolerance (`rel=`) fails where the values may cancel, since
@@ -1516,7 +1570,7 @@ try:
     per_line.run(gcon, "duckdb", route="auto")
 except EngineSettingsError as e:
     print(e)
-# duckdb's integer_division is True, and Profile.duckdb's facts hold under False (duckdb-F1): ...
+# duckdb's integer_division is True, and the facts of semantics="duckdb" hold under False (duckdb-F1): ...
 gcon.ibis.raw_sql("SET GLOBAL integer_division = false")
 ```
 

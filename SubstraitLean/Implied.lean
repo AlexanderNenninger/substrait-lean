@@ -186,9 +186,9 @@ def geTransfer (env : List AVal) (i j : Nat) (strict : Bool) : List AVal :=
     | some bj, some bi => some (bj.meet ⟨none, bi.hi.map (· - d)⟩)
     | _, _ => none
   let ai' : AVal :=
-    ⟨ai.null, ii, ai.tt && (aj.tt || aj.ff), ai.ff && (aj.tt || aj.ff), ai.str && aj.str⟩
+    ⟨ai.null, ii, ai.tt && (aj.tt || aj.ff), ai.ff && (aj.tt || aj.ff), ai.str && aj.str, ai.strs⟩
   let aj' : AVal :=
-    ⟨aj.null, ij, aj.tt && (ai.tt || ai.ff), aj.ff && (ai.tt || ai.ff), aj.str && ai.str⟩
+    ⟨aj.null, ij, aj.tt && (ai.tt || ai.ff), aj.ff && (ai.tt || ai.ff), aj.str && ai.str, aj.strs⟩
   refineCol (refineCol env i fun _ => ai') j fun _ => aj'
 
 def cmpAtom (env : List AVal) : Expr → List AVal
@@ -263,6 +263,7 @@ def Value.kind : Value → Nat
 theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.Mem v)
     (hk : u.kind = v.kind) (hn : a'.null = a.null) (htt : a'.tt = (a.tt && (b.tt || b.ff)))
     (hff : a'.ff = (a.ff && (b.tt || b.ff))) (hs : a'.str = (a.str && b.str))
+    (hss : a'.strs = a.strs)
     (hi : ∀ n, u = .int n → ∃ c, a'.int = some c ∧ c.Mem n) : a'.Mem u := by
   cases u with
   | null => simpa [AVal.Mem, hn] using hu
@@ -302,7 +303,7 @@ theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Boo
     EnvMem (geTransfer env i j strict) row := by
   unfold geTransfer
   refine refineCol_sound (refineCol_sound h ?_) ?_
-  · refine AVal.mem_transfer (h i) (h j) hk rfl rfl rfl rfl fun a ha => ?_
+  · refine AVal.mem_transfer (h i) (h j) hk rfl rfl rfl rfl rfl fun a ha => ?_
     obtain ⟨b, hb, hba⟩ := hi a ha
     have hmi := h i; have hmj := h j
     rw [ha] at hmi; rw [hb] at hmj
@@ -318,7 +319,7 @@ theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Boo
         subst hl
         have := hmj.1 l' hjl
         cases strict <;> simp at hba ⊢ <;> omega
-  · refine AVal.mem_transfer (h j) (h i) hk.symm rfl rfl rfl rfl fun b hb => ?_
+  · refine AVal.mem_transfer (h j) (h i) hk.symm rfl rfl rfl rfl rfl fun b hb => ?_
     obtain ⟨a, ha, hba⟩ := hj b hb
     have hmi := h i; have hmj := h j
     rw [ha] at hmi; rw [hb] at hmj

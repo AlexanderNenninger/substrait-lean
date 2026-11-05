@@ -108,7 +108,7 @@ def test_notes() -> None:
 
 def test_issue_suggested_is_the_hint_as_data() -> None:
     t = ibis.table({"a": "int64", "b": "int64"}, name="t")
-    report = sv.verify(t.select(r=t.a // t.b), infer=False, counterexamples=0)
+    report = sv.verify(t.select(r=t.a // t.b), on_inferred="off", counterexamples=0)
     by_kind = {i.kind: i for i in report.errors}
     zero = by_kind["division by zero"]
     assert zero.suggested == {"t": ("(_.b != 0)",)}
@@ -116,7 +116,7 @@ def test_issue_suggested_is_the_hint_as_data() -> None:
     fixed = sv.verify(
         t.select(r=t.a // t.b),
         requires={"t": [_.b != 0, _.a >= -9 * 10**18]},
-        infer=False,
+        on_inferred="off",
         counterexamples=0,
     )
     assert not fixed.errors

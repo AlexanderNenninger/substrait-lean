@@ -1,0 +1,59 @@
+{
+  "id": "spark-sort-stability",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Sorts are not stable across partitions; ties come in partition order",
+  "verdict": "`tie_order`: ties in an order that changes with the partitioning and between runs",
+  "area": "relations",
+  "options": [
+    "tie_order",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "ORDER BY",
+    "LIMIT",
+    "sort"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "A global sort range-partitions the rows and sorts each partition; equal keys keep the order they arrive in from the shuffle, which depends on the partitioning and on task timing. On one partition the sort keeps input order (`b`, `d` before `a`, `c`, `e`). After a 3-way shuffle the same query gave its ties in different orders on the folded and the codegen paths and between two runs of the probes, so a `LIMIT` on ties picks different rows."
+  ],
+  "reference": "`tie_order`: any order of the ties, and any rows of a tie for a `fetch`. Every behaviour is allowed; sverify's Spark engine refuses plans that need a table's row order unless `tie_free=True`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sort-ties"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sort-ties-one-partition"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "union-order"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

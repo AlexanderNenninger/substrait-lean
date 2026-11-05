@@ -1,0 +1,98 @@
+{
+  "id": "spark-list-index",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`element_at` is 1-based and counts back from the end; `[]` is 0-based; out of range raises (ANSI)",
+  "verdict": "`element_at(a, i)`: 1-based, negative from the end, 0 raises; out of range: raise (ANSI) or NULL",
+  "area": "nested",
+  "options": [
+    "list_indexing",
+    "raise_set",
+    "settings"
+  ],
+  "constructs": [
+    "element_at",
+    "a[i]",
+    "get",
+    "try_element_at",
+    "size",
+    "cardinality",
+    "array_size"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`element_at(a, i)` counts from 1 and a negative `i` from the end (`element_at([10, 20, 30], -1)` is 30). An index of 0 raises `INVALID_INDEX_OF_ZERO` in both modes. Past either end it raises `INVALID_ARRAY_INDEX_IN_ELEMENT_AT` under ANSI and is NULL without it; `try_element_at` gives NULL.",
+    "`a[i]` counts from 0 and has no negative indexes: `a[5]` and `a[-1]` raise `INVALID_ARRAY_INDEX` under ANSI and are NULL without it. `get(a, i)` is 0-based and NULL out of range in both modes.",
+    "`size(NULL)` and `cardinality(NULL)` are NULL under ANSI and -1 without it (`spark.sql.legacy.sizeOfNull` follows ANSI); `array_size(NULL)` is NULL in both."
+  ],
+  "reference": "`list_extract(l, i)` (reference-semantics.md, Nested) counts from 1, as DuckDB's does. `element_at` matches it for positive indexes; a writer guards 0 and out-of-range indexes.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-ansi-compliance.md#L353-L372",
+          "note": "`size`, `element_at` and `array_col[index]` under ANSI"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/collectionOperations.scala#L123-L150",
+          "note": "`Size`: -1 for NULL when `legacySizeOfNull`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/collectionOperations.scala#L2840-L2970",
+          "note": "`ElementAt`: index 0 raises `INVALID_INDEX_OF_ZERO`"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-index"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-index-zero"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-element-at-out"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-subscript-out"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-subscript-negative"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-size-null"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

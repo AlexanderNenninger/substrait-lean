@@ -89,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
@@ -104,6 +105,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.observation import Observation
+from sverify.routes import RouteError
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -230,7 +232,12 @@ class Unique(TableCondition):
         from sverify._weighted import duplicate_keys
 
         if inserts.num_rows and (clash := duplicate_keys(new, self.cols, inserts)):
-            raise PreconditionError(f"{clash} inserted key(s) of {t} violate {self.label}")
+            raise PreconditionError(
+                f"{clash} inserted key(s) of {t} violate {self.label}",
+                source=t,
+                condition=self,
+                rows=_duplicate_rows(inserts, new, self.cols),
+            )
         return Discharged(t, self.label, ON_DATA)
 
 
@@ -248,6 +255,50 @@ def unique(*cols: str) -> Unique:
         A `Unique` condition, for `requires` or `ensures`.
     """
     return Unique(tuple(cols))
+
+
+@dataclass(frozen=True)
+class Key:
+    """A key whose columns are never NULL (see `key`): `unique(*cols)` and
+    `"col" IS NOT NULL` for each column, which it stands for in `requires`
+    and `ensures`.
+
+    Attributes:
+        cols: The key's column names, in the order given to `key`.
+    """
+
+    cols: tuple[str, ...]
+
+    @property
+    def conditions(self) -> list[Condition]:
+        """The conditions it stands for: the `unique` key, then each
+        column's NOT NULL, as SQL."""
+        quoted = ['"' + c.replace('"', '""') + '"' for c in self.cols]
+        return [Unique(self.cols), *(f"{q} IS NOT NULL" for q in quoted)]
+
+
+def key(*cols: str) -> Key:
+    """A primary key: at most one row per combination of `cols`, and no NULL
+    in any of them. `sv.key("id")` is `sv.unique("id")` and `'"id" IS NOT
+    NULL'`, which it stands for in the contract and the report.
+
+    Args:
+        *cols: The names of the key's columns.
+
+    Returns:
+        A `Key`, for `requires` or `ensures`.
+    """
+    if not cols:
+        raise ValueError("key() needs at least one column")
+    return Key(tuple(cols))
+
+
+def expand_keys(conds: Sequence[Condition]) -> list[Condition]:
+    """`conds` with each `key` replaced by the conditions it stands for."""
+    out: list[Condition] = []
+    for c in conds:
+        out += c.conditions if isinstance(c, Key) else [c]
+    return out
 
 
 @dataclass(frozen=True)
@@ -294,7 +345,7 @@ class References(TableCondition):
         return CheckedCondition(self.label, False, "foreign keys are not proved")
 
 
-def references(col: str, *legacy: str, to: ir.Column | tuple[str, str] | None = None) -> References:
+def references(col: str, *, to: ir.Column | tuple[str, str] | None = None) -> References:
     """A foreign key: every non-NULL value of `col` occurs in the column `to`
     of another table.
 
@@ -305,9 +356,6 @@ def references(col: str, *legacy: str, to: ir.Column | tuple[str, str] | None = 
 
     Args:
         col: The referencing column of the input the condition is on.
-        *legacy: Deprecated: the referenced table and column as two more
-            positional strings, `references(col, table, other)`, which are
-            easy to swap. Use `to=`.
         to: The referenced column, keyword-only: an Ibis column of a named
             table (`customers.id`), or a `(table, column)` pair of names as
             `verify` and the backend know them.
@@ -324,17 +372,7 @@ def references(col: str, *legacy: str, to: ir.Column | tuple[str, str] | None = 
         sv.references("customer_id", to=("customers", "id"))
         ```
     """
-    if legacy:
-        if to is not None or len(legacy) != 2:
-            raise TypeError("references() takes a column and to=(table, column)")
-        warnings.warn(
-            "references(col, table, other) is deprecated; write "
-            f"references({col!r}, to=({legacy[0]!r}, {legacy[1]!r})) or to=<table>.<column>",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        table, other = legacy
-    elif to is None:
+    if to is None:
         raise TypeError(
             f"references({col!r}) needs the referenced column: to=customers.id or "
             "to=('customers', 'id')"
@@ -458,7 +496,9 @@ class MaxRows(TableCondition):
         from sverify._weighted import row_count
 
         if (n := row_count(new)) > self.n:
-            raise PreconditionError(f"{n - self.n} row(s) of {t} violate {self.label}")
+            raise PreconditionError(
+                f"{n - self.n} row(s) of {t} violate {self.label}", source=t, condition=self
+            )
         return Discharged(t, self.label, ON_DATA)
 
 
@@ -745,7 +785,7 @@ def _transfer_failure(f: Mapping[str, Any]) -> str:
     """Why the reference's proof does not carry over to Substrait at one option."""
     where = f"{f['group']}'s {f['option']}" if f.get("group") else f["option"]
     return (
-        f"not proved under Profile.substrait: {where} allows "
+        f'not proved under semantics="substrait": {where} allows '
         f"{', '.join(f['substrait'])}, the reference only {', '.join(f['reference']) or 'nothing'}"
     )
 
@@ -777,6 +817,7 @@ Condition = (
     | ir.BooleanValue
     | str
     | Unique
+    | Key
     | References
     | ArrivesWithin
     | MaxRows
@@ -981,8 +1022,8 @@ RUNTIME_CHECK = (
 
 #: How a report explains a `SUM` it assumes fits (`Report.assumed`).
 SUM_ASSUMED = (
-    "fits {} in every group (inferred; checked on the data while the job "
-    "runs, which raises if it does not)"
+    "fits {} in every group (checked at run time: the job raises if it does not; "
+    'on_inferred="off" makes it an error)'
 )
 
 #: A decimal `SUM`'s argument in Lean's notation: `DECIMAL_p_s(…)`.
@@ -991,8 +1032,9 @@ _DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
 
 #: How a report explains an operation it assumes stays finite (#575).
 FINITE_ASSUMED = (
-    "may overflow to ±inf on finite inputs; assumed it does not (inferred; "
-    "checked on the data before the run, which is refused if it does)"
+    "stays finite on finite inputs (checked at run time: the data is checked "
+    'before the run, which is refused if it overflows to ±inf; on_inferred="off" '
+    "makes it an error)"
 )
 
 #: The kind of an operation on finite doubles that may give `±∞` (#575).
@@ -1000,8 +1042,8 @@ INFINITE = "overflow to infinity"
 
 #: What a report suggests for an operation that may overflow to `±∞` (#575).
 INFINITE_HINT = (
-    "no bound on a column proves a double operation finite; with infer=True it "
-    "is assumed and checked on the data while the job runs"
+    "no bound on a column proves a double operation finite; unless "
+    'on_inferred="off", it is assumed and checked on the data while the job runs'
 )
 
 
@@ -1038,7 +1080,7 @@ def _cause(issue: Issue) -> str:
     error of a double SUM or addition is NaN from +inf plus -inf."""
     if issue.kind != "domain error" or issue.shown is None:
         return ""
-    m = re.fullmatch(r"(?:sum|avg|mean)\((\w+)\)", issue.shown)
+    m = re.fullmatch(r"(?:sum|avg|mean)\((\w+)\)(?: or \w+\(\1\))*", issue.shown)
     if m:
         return (
             f" (NaN where {m[1]} holds both +inf and -inf: bound it in requires, "
@@ -1151,6 +1193,10 @@ class Report:
     found."""
     facts: dict[str, str] = field(default_factory=dict)
     """What the checker established about each output column."""
+    not_null: list[str] = field(default_factory=list)
+    """The output columns the checker proved never NULL, from what it
+    established about them (`facts`), in the output's order. A stored node
+    of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """False when rows may tie in the ORDER BY of a window or of an ordered
     aggregate (`first`, `last`, `group_concat`; without an `order_by` every
@@ -1202,11 +1248,11 @@ class Report:
     assumed: list[Issue] = field(default_factory=list)
     """The `SUM`s assumed to fit their type in every group (64 bits for
     integers, the result's precision for decimals), and the operations on
-    finite doubles assumed to stay finite (#575), inferred
-    like the bounds in `inferred`: those the inputs' row caps (`max_rows`,
-    #219) and the values' range do not prove to fit. The job checks each
-    on the data while it runs and raises where one fails. The proof holds under these assumptions
-    (`Rel.noIssue_of_assumedHold`). With `infer=False` they are errors instead."""
+    finite doubles assumed to stay finite (#575): those the inputs' row caps
+    (`max_rows`, #219) and the values' range do not prove to fit. The job
+    checks each at run time, on the data, and raises where one fails. The
+    proof holds under these assumptions (`Rel.noIssue_of_assumedHold`). With
+    `on_inferred="off"` they are errors instead."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -1241,7 +1287,8 @@ class Report:
     plan's bound (`floats="plan"`, printed with the bound, `epsilon`) and
     other values exact, the same as `sv.equivalent(floats="plan")`. Under
     the plan's bound a run holds the double columns a postcondition reads
-    to their exact value (`sverify.routes.observed`)."""
+    to their exact value (`sverify.routes.observed`). `equivalence` is the same, by the
+    concept's name."""
     stated: bool = field(default=False, repr=False, compare=False)
     """Whether `ensures` names the observation (`sv.equivalent`)."""
     floats_on: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
@@ -1434,7 +1481,10 @@ class Report:
                 if n := violations(table, c):
                     raise PreconditionError(
                         f"{n} row(s) of {t} violate {label(c)}: refused before the run"
-                        + self._source(t, c)
+                        + self._source(t, c),
+                        source=t,
+                        condition=c,
+                        rows=violating_rows(table, c),
                     )
         if self.assumed and self.plan is not None:
             # The proved DuckDB translation checks each assumption as it runs:
@@ -1479,8 +1529,9 @@ class Report:
         unverified: bool = False,
         deterministic: bool = False,
         reproducible: Observation | None = None,
-        check_inputs: bool = True,
+        check_requires: bool = True,
         streaming: Literal["allow", "require"] = "allow",
+        check_inputs: bool | None = None,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1489,8 +1540,9 @@ class Report:
         runs on `engine` as `sverify.engines.run` runs a plan, with the
         meaning `Rel.eval` gives it.
 
-        A plan that is not proved (`proved` is False) is refused, with what
-        was not proved in the message; `unverified=True` runs it anyway, and
+        A plan that is not proved (`proved` is False) is refused
+        (`UnverifiedRunError`), with what was not proved in the message;
+        `unverified=True` runs it anyway, and
         says so: a warning (`UnverifiedRunWarning`), the route `"unverified"`
         in `routes`, and `sverify.verified: false` in the result's schema
         metadata.
@@ -1511,8 +1563,9 @@ class Report:
             engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
                 Spark session. Default: the connection's engine.
             route: `"auto"` (the default) chooses a route; `"native"`,
-                `"reference"`, `"transfer"` or `"recheck"` takes that one or
-                refuses.
+                `"translated"`, `"transfer"` or `"recheck"` takes that one or
+                refuses (`"reference"` is a deprecated alias of
+                `"translated"`).
             unverified: Run a plan that is not proved, without a route.
                 Default False: such a plan is refused.
             deterministic: Require a rerun to reproduce the result exactly
@@ -1520,18 +1573,21 @@ class Report:
             reproducible: What a rerun must reproduce (D20): the
                 engine's run-to-run variation must refine it. Default None:
                 determinism is only reported.
-            check_inputs: Check the preconditions (`requires`, the inferred
-                bounds among them) and the assumed `SUM`s on the tables of
-                `con` before the run, and refuse a batch that breaks one
-                (`check_inputs`, #444 goal 1, #604). Default True. False
-                skips the check, for a caller that has made it already: the
-                report's guarantee then holds only on data that meets them,
-                and a batch that does not may raise on the engine.
+            check_requires: Check the preconditions (`requires`, the
+                inferred bounds among them) and the assumed `SUM`s on the
+                tables of `con` before the run, and refuse a batch that
+                breaks one (`check_inputs`, #444 goal 1, #604), as
+                `transform(check_requires=)` does on bound inputs. Default
+                True. False skips the check, for a caller that has made it
+                already: the report's guarantee then holds only on data that
+                meets them, and a batch that does not may raise on the
+                engine.
             streaming: On Polars, `"require"` refuses a plan any of whose
                 nodes runs on the in-memory engine
                 (`polars_engine.fallback_nodes`); `"allow"` (the default)
                 runs it. Either way a chosen route records the nodes in
                 `Route.fallbacks`.
+            check_inputs: Deprecated alias of `check_requires`.
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1540,10 +1596,12 @@ class Report:
         Raises:
             ValueError: The report has no plan (it was not made by
                 `verify`), or `engine` is unknown.
-            sverify.routes.RouteError: The plan is not proved (and
-                `unverified` is False), no route takes it to `engine`, or,
-                with `streaming="require"`, a node of its Polars plan runs
-                on the in-memory engine.
+            sverify.errors.UnverifiedRunError: The plan is not proved, and
+                `unverified` is False. It is a `VerificationError` and a
+                `RouteError`.
+            sverify.errors.RouteError: No route takes the plan to `engine`,
+                or, with `streaming="require"`, a node of its Polars plan
+                runs on the in-memory engine.
             sverify.routes.EngineVersionError: The engine's major version is
                 not the one its profile's facts were probed at.
             sverify.errors.PreconditionError: With `check_inputs`, a
@@ -1567,6 +1625,13 @@ class Report:
 
         if self.plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
+        if check_inputs is not None:
+            warnings.warn(
+                "Report.run(check_inputs=...) is deprecated; write check_requires=...",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            check_requires = check_inputs
         kind: str | None = None
         target = engine if engine is not None else con.engine
         chosen = None
@@ -1590,15 +1655,17 @@ class Report:
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
+                if not routes.verified(self):
+                    raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
-        if check_inputs:
+        if check_requires:
             self.check_inputs(con)
         if target == "polars" and (chosen is not None or streaming == "require"):
             self._streaming(con, chosen, streaming)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
-        finite = self.semantics == "reference" or kind == "reference"
+        finite = self.semantics == "reference" or kind == "translated"
         out = run_plan(con, written_plan(self.plan), engine, finite=finite)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
@@ -1704,6 +1771,18 @@ class Report:
         return {t: [label(c) for c in cs] for t, cs in self.inferred.items() if cs}
 
     @property
+    def needed_text(self) -> list[str]:
+        """`needed` in words: per input table and operation, the preconditions
+        the proof needs, where they come from, and the fixes."""
+        return self._needs_lines()
+
+    @property
+    def equivalence(self) -> Observation:
+        """The equivalence the result is proved up to: `sv.equivalent(...)` in
+        `ensures`, or rows as a multiset with exact values (`observation`)."""
+        return self.observation
+
+    @property
     def needs(self) -> list[Needed]:
         """`needed` as data, one `Needed` per precondition: the table, the
         column, the comparison and the bound, the SQL, and the runtime
@@ -1725,7 +1804,44 @@ class Report:
                 )
         return out
 
+    @property
+    def needed_conditions(self) -> dict[str, list[Condition]]:
+        """`needs` as conditions, per input table, ready for `requires=`: Ibis
+        deferreds for an Ibis transform (`_.qty < 9 * 10**18`, or
+        `_.qty.isnull() | (_.qty < 9 * 10**18)` where `qty` may be NULL, as
+        the inferred bound lets NULL pass), SQL strings for a SQL one. A
+        bound with no Ibis form goes as its SQL, which an Ibis transform
+        reads too. Empty unless `on_inferred="error"`.
+
+            report = sv.verify(expr)
+            if not report.proved:
+                report = sv.verify(expr, requires=report.needed_conditions)
+        """
+        out: dict[str, list[Condition]] = {}
+        for n in self.needs:
+            cond = _needed_deferred(n) if self.dialect == "ibis" else None
+            out.setdefault(n.table, []).append(cond if cond is not None else n.sql)
+        return out
+
     def needs_text(self, table: str, labs: Sequence[str]) -> str:
+        """Deprecated: `needed_text` lists every needed precondition."""
+        warnings.warn(
+            "Report.needs_text() is deprecated; read the property report.needed_text",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._needs_text(table, labs)
+
+    def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
+        """Deprecated: the property `needed_text`."""
+        warnings.warn(
+            "Report.needs_lines() is deprecated; read the property report.needed_text",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._needs_lines(needed)
+
+    def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
         issues = [i for lab in labs if (i := self.inferred_from.get(lab)) is not None]
@@ -1740,8 +1856,8 @@ class Report:
             f"first, or a CASE); on_inferred='warn' assumes {it} instead"
         )
 
-    def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
-        """`needs_text` for each table and operation (`needed` by default;
+    def _needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
+        """`_needs_text` for each table and operation (`needed` by default;
         `inferred`, as labels, for a warning)."""
         out = []
         for t, labs in (self.needed if needed is None else needed).items():
@@ -1749,7 +1865,7 @@ class Report:
             for lab in labs:
                 issue = self.inferred_from.get(lab)
                 groups.setdefault(issue.what if issue else lab, []).append(lab)
-            out += [self.needs_text(t, g) for g in groups.values()]
+            out += [self._needs_text(t, g) for g in groups.values()]
         return out
 
     @property
@@ -1899,7 +2015,7 @@ class Report:
                 for c in conds
                 if c not in needed.get(table, ())
             ]
-        lines += [f"needs: {n}" for n in self.needs_lines()]
+        lines += [f"needs: {n}" for n in self._needs_lines()]
         for c in self.ensures:
             lines.append(f"ensures {c.label}: {c.message}")
             if c.counterexample is not None:
@@ -1939,7 +2055,7 @@ class Report:
             rows.append(f"| `{c.label}` | {status(c)} |")
             if c.suggested:
                 rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
-        for n in self.needs_lines():
+        for n in self._needs_lines():
             rows.append(f"| needs | ❌ {n.replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
@@ -2010,7 +2126,7 @@ TIES_HINT = (
 )
 
 
-class VerificationError(Exception):
+class VerificationError(SverifyError):
     """A postcondition, or the absence of runtime errors, could not be proved.
 
     Import it from `sverify.errors`. The message's first line counts what
@@ -2032,7 +2148,7 @@ def error_text(report: Report) -> str:
     one line per finding with its hint, each hint once; `e.report` has the
     full report."""
     lines = [f"{', '.join(report._counts())} (e.report has the details)"]
-    lines += [f"  needs: {n}" for n in report.needs_lines()]
+    lines += [f"  needs: {n}" for n in report._needs_lines()]
     for c in report.ensures:
         if not c.proved:
             line = f"  not proved: {c.label}: {c.why}"
@@ -2056,7 +2172,27 @@ def error_text(report: Report) -> str:
     return "\n".join(lines)
 
 
-class PreconditionError(Exception):
+class UnverifiedRunError(VerificationError, RouteError):
+    """A run or refresh of a plan that is not proved, refused (#690).
+
+    Import it from `sverify.errors`. It is a `VerificationError`, so
+    `except VerificationError` catches every "not proved", and a
+    `RouteError`, as the refusal was before 0.6. `run(..., unverified=True)`
+    or `refresh(unverified=True)` runs the plan anyway, and
+    `transform(on_unproved="warn")` makes a node's refreshes do so.
+
+    Attributes:
+        report: The `Report` that is not proved.
+        route: The refused `Route`, whose `reason` says what was not proved.
+    """
+
+    def __init__(self, report: Report, route: Route):
+        self.report = report
+        self.route = route
+        Exception.__init__(self, f"refused on {route.engine}: {route.reason}")
+
+
+class PreconditionError(SverifyError):
     """Input data violates a precondition.
 
     Import it from `sverify.errors`. Raised when a contracted transformation
@@ -2065,10 +2201,34 @@ class PreconditionError(Exception):
     precondition does not hold on the rows. The message says how many rows
     violate which condition, for example
     "2 row(s) of orders violate (_.amount >= 0)".
+
+    Attributes:
+        source: The input or source table the condition is on (None when
+            the error is about several, an assumed `SUM` among them).
+        condition: The condition as stated in `requires` (an Ibis deferred,
+            a SQL string, a `unique` key, ...) or as inferred, an `Inferred`
+            whose text is its SQL; None as for `source`.
+        rows: Up to `ROWS_SHOWN` (10) of the rows that break it, as an Arrow
+            table with the input's columns; None where the condition is on
+            the table as a whole (`max_rows`, `rows_per`) or the rows could
+            not be fetched.
     """
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        source: str | None = None,
+        condition: Condition | None = None,
+        rows: pa.Table | None = None,
+    ):
+        super().__init__(message)
+        self.source = source
+        self.condition = condition
+        self.rows = rows
 
-class PostconditionError(Exception):
+
+class PostconditionError(SverifyError):
     """Output data violates a postcondition (only raised by runtime checks).
 
     Import it from `sverify.errors`. Raised with `on_unproved="runtime"`,
@@ -2309,6 +2469,41 @@ class Needed:
     `_.qty.notnull()`. `sql` is the form for a SQL contract."""
     issue: Issue | None
     """The runtime error it rules out, and where (`Report.inferred_from`)."""
+
+
+def _sql_value(value: str) -> Any:
+    """The Python value of a SQL literal `Needed.value` gives: an integer,
+    a double, a decimal, a date or a timestamp; None for anything else."""
+    if re.fullmatch(r"-?\d+", value):
+        return int(value)
+    if re.fullmatch(r"-?\d+\.\d+", value):
+        return Decimal(value)
+    try:
+        if (m := re.fullmatch(r"DATE '(.+)'", value)) is not None:
+            return date.fromisoformat(m[1])
+        if (m := re.fullmatch(r"TIMESTAMP '(.+)'", value)) is not None:
+            return datetime.fromisoformat(m[1])
+        x = float(value)
+    except ValueError:
+        return None
+    return x if math.isfinite(x) else None
+
+
+def _needed_deferred(n: Needed) -> Deferred | None:
+    """`n` as an Ibis deferred, letting NULL pass where its SQL does; None
+    where it has no such form."""
+    if n.column is None or n.op is None:
+        return None
+    col: Any = ibis._[n.column]
+    if n.op == "IS NOT NULL":
+        return col.notnull()
+    v = _sql_value(n.value or "")
+    if v is None:
+        return None
+    ops_ = {">=": col >= v, ">": col > v, "<=": col <= v, "<": col < v, "<>": col != v}
+    cmp = ops_[n.op]
+    nulls = '"' + n.column.replace('"', '""') + '" IS NULL OR '
+    return col.isnull() | cmp if n.sql.startswith(nulls) else cmp
 
 
 def _nice(x: int, up: bool) -> tuple[int, str]:
@@ -2669,7 +2864,7 @@ def requires_by_input(
         return {}
     if not isinstance(requires, Mapping):
         conds: list[Any] = (
-            [requires] if isinstance(requires, str | TableCondition) else list(requires)
+            [requires] if isinstance(requires, str | TableCondition | Key) else list(requires)
         )
         if len(inputs) != 1:
             raise error(
@@ -2677,7 +2872,7 @@ def requires_by_input(
                 f"are {len(inputs)} ({', '.join(inputs) or 'none'}); key them by {kind}, "
                 "as requires={name: [...]}"
             )
-        return {inputs[0]: conds}
+        return {inputs[0]: expand_keys(conds)}
     for key in requires:
         if key in inputs:
             continue
@@ -2688,7 +2883,7 @@ def requires_by_input(
             f"requires: unknown {kind} {key!r}; the inputs are: {', '.join(inputs) or 'none'}"
             + hint
         )
-    return dict(requires)
+    return {t: expand_keys(cs) for t, cs in requires.items()}
 
 
 def default_counterexamples() -> int:
@@ -2709,18 +2904,19 @@ def default_counterexamples() -> int:
 
 
 def verify(
-    transform: Transform,
+    query: Transform,
+    /,
     *,
     requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
     ensures: Sequence[Condition] = (),
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
     counterexamples: int | None = None,
     params: Mapping[ir.Scalar, Any] | None = None,
-    infer: bool = True,
     semantics: Semantics | None = None,
     on_inferred: OnInferred = "error",
+    infer: bool | None = None,
 ) -> Report:
-    """Try to prove `ensures` about `transform` (an Ibis table expression or a
+    """Try to prove `ensures` about `query` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
 
     `tables` gives the input schemas; it is only needed for SQL transforms.
@@ -2764,13 +2960,6 @@ def verify(
             `execute(params=...)` takes them. The report is about the
             transform with these values (`bind_params`); an unbound parameter
             is refused.
-        infer: Whether to infer the bounds on input columns that rule out
-            integer overflow (`infer_bounds`) and assume them with
-            `requires`. They are listed in `Report.inferred`. An integer
-            `SUM` that may leave 64 bits is assumed to fit and checked on the
-            data while the job runs (`Report.assumed`). With False, each
-            overflow, `SUM`s included, is an error, and its `Issue.hint`
-            suggests a bound. Default True.
         semantics: What the SQL `verify` lifts means, the transformation
             if it is a SQL string and every SQL condition: `"reference"`
             (the default), sverify's reference semantics, where an
@@ -2786,13 +2975,21 @@ def verify(
             reference holds there where Substrait allows nothing more at
             the options the plan meets, and `Report.transfer` names the
             options where it allows more.
-        on_inferred: What a precondition sverify infers does (`infer`):
-            `"error"` (the default), the plan is not proved without it, and
-            the report says where it came from and how to state it
-            (`Report.needed`); `"warn"`, it is assumed, checked on the data
-            before each run, and a warning names it
-            (`InferredPreconditionWarning`); `"silent"`, it is assumed and
-            checked without a warning.
+        on_inferred: What a precondition sverify infers does. sverify
+            infers the bounds on input columns that rule out integer
+            overflow (`infer_bounds`: `amount * 2` on BIGINT needs
+            `_.amount < 2**62`) and the `IS NOT NULL`s a postcondition
+            needs (`Report.inferred`). `"error"` (the default): the plan is
+            not proved without it, and the report says where it came from
+            and how to state it (`Report.needed`). `"warn"`: it is assumed,
+            checked on the data before each run, and a warning names it
+            (`InferredPreconditionWarning`). `"silent"`: it is assumed and
+            checked without a warning. `"off"`: nothing is inferred or
+            assumed, so an integer `SUM` that may leave 64 bits, or a double
+            operation that may overflow to ±inf, is an error too, which the
+            other values check on the data while the job runs
+            (`Report.assumed`); each `Issue.hint` suggests a bound.
+        infer: Deprecated: `infer=False` is `on_inferred="off"`.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -2833,6 +3030,8 @@ def verify(
         report.facts["total"]  # 'an integer ≥ 1'
         ```
     """
+    transform = query
+    on_inferred = _folded_infer(on_inferred, infer, "verify")
     bound: list[str] = []
     if params:
         if isinstance(transform, str):
@@ -2849,11 +3048,11 @@ def verify(
     return infer_bounds(
         transform,
         requires=requires_by_input(requires, inputs),
-        ensures=ensures,
+        ensures=expand_keys(ensures),
         tables=tables,
         counterexamples=default_counterexamples() if counterexamples is None else counterexamples,
         params=bound,
-        infer=infer,
+        infer=on_inferred != "off",
         semantics=_checked_semantics(semantics),
         on_inferred=on_inferred,
     )
@@ -2964,7 +3163,7 @@ def infer_bounds(
             "assumed inferred precondition(s): "
             + "; ".join(
                 n.split(": declare")[0]
-                for n in out.needs_lines(
+                for n in out._needs_lines(
                     {t: [label(c) for c in cs] for t, cs in out.inferred.items()}
                 )
             ),
@@ -2974,7 +3173,7 @@ def infer_bounds(
     return out
 
 
-OnInferred = Literal["error", "warn", "silent"]
+OnInferred = Literal["error", "warn", "silent", "off"]
 
 
 class InferredPreconditionWarning(UserWarning):
@@ -2982,9 +3181,31 @@ class InferredPreconditionWarning(UserWarning):
 
 
 def _checked_on_inferred(v: str) -> OnInferred:
-    if v not in ("error", "warn", "silent"):
-        raise ValueError(f"on_inferred must be 'error', 'warn' or 'silent', not {v!r}")
+    if v not in ("error", "warn", "silent", "off"):
+        raise ValueError(f"on_inferred must be 'error', 'warn', 'silent' or 'off', not {v!r}")
     return v  # type: ignore[return-value]
+
+
+def _folded_infer(on_inferred: str, infer: bool | None, where: str) -> OnInferred:
+    """`on_inferred`, with the deprecated `infer=` folded in (#690):
+    `infer=False` is `on_inferred="off"`."""
+    on_inferred = _checked_on_inferred(on_inferred)
+    if infer is None:
+        return on_inferred
+    if infer:
+        warnings.warn(
+            f"{where}(infer=True) is deprecated: it is the default; drop it "
+            f"(on_inferred={on_inferred!r} says what an inferred precondition does)",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return on_inferred
+    warnings.warn(
+        f'{where}(infer=False) is deprecated; write on_inferred="off"',
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return "off"
 
 
 def _observed(
@@ -3548,7 +3769,7 @@ def _verify_once(
     out = json.loads(stdout)
     if semantics in _PROFILE_REQUESTS and out.get("profile") != semantics:
         raise ValueError(
-            f"this checker has no Profile.{semantics} to check under yet (#444, step 3a)"
+            f'this checker cannot check under semantics="{semantics}" yet (#444, step 3a)'
         )
     # SQL's types come from the lift, so a timestamp is described as one (#452).
     from sverify.ibis_substrait import sql_model_schema
@@ -3630,6 +3851,11 @@ def _verify_once(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
+        not_null=[
+            f["name"]
+            for f in out["facts"]
+            if f["name"] in dtypes and f.get("abstract", {}).get("null") is False
+        ],
         deterministic=out["deterministic"],
         windows_total=out.get("windows_total", out["deterministic"]),
         tie_places=tie_places(out),
@@ -4181,7 +4407,7 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         for t, cs in requires.items()
         if t in leaves
     }
-    report = verify(sub, requires=known, counterexamples=0, infer=False)
+    report = verify(sub, requires=known, counterexamples=0, on_inferred="off")
     lo, hi = report.bounds.get("x", (None, None))
     # A BIGINT's own range bounds nothing: any two of its values may overflow.
     lo = None if lo is None or lo <= -(2**63) else lo
@@ -4249,6 +4475,57 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+ROWS_SHOWN = 10
+"""How many violating rows a `PreconditionError` carries (`.rows`)."""
+
+
+def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) -> pa.Table | None:
+    """Up to `limit` rows of the bound `table` where `cond` is not TRUE, or
+    for `unique`, the rows of a repeated key; None for a condition on the
+    table as a whole, or if the rows cannot be fetched (they only go into an
+    error, which says how many rows break the condition either way)."""
+    try:
+        if isinstance(cond, Unique):
+            cols = list(cond.cols)
+            counts = table.group_by(cols).aggregate(__sverify_n=table.count())
+            dup = counts.filter(counts["__sverify_n"] > 1).select(cols)
+            return table.semi_join(dup, cols).limit(limit).to_pyarrow()
+        if isinstance(cond, TableCondition):
+            return None
+        if isinstance(cond, str):
+            backend: Any = ibis.get_backend(table)
+            sql = ibis.to_sql(table, dialect=backend.name)
+            query = (
+                f'SELECT * FROM ({sql}) AS "t" WHERE NOT coalesce(({cond}), FALSE) LIMIT {limit}'
+            )
+            # Fetch every row, as `violations` does, so that the connection
+            # is free for the next query (DuckDB 2 refuses work on a
+            # connection with a result left unread).
+            import pyarrow
+
+            cur = backend.raw_sql(query)
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+            return pyarrow.Table.from_pylist(rows, schema=table.schema().to_pyarrow())
+        bad = table.filter(~resolve(cond, table).fill_null(ibis.literal(False)))
+        return bad.limit(limit).to_pyarrow()
+    except Exception:
+        return None
+
+
+def _duplicate_rows(
+    inserts: pa.Table, new: pa.Table | Any, cols: Sequence[str], limit: int = ROWS_SHOWN
+) -> pa.Table | None:
+    """Up to `limit` inserted rows whose key `cols` occurs more than once in
+    the `new` table (None if they cannot be fetched)."""
+    try:
+        from sverify._weighted import duplicate_key_rows
+
+        return duplicate_key_rows(new, cols, inserts, limit)
+    except Exception:
+        return None
 
 
 @dataclass(frozen=True)
@@ -4319,7 +4596,11 @@ def _prove_from(table: ir.Table, facts: Sequence[str], conds: Sequence[Condition
     if key not in _proved_from:
         try:
             report = verify(
-                table, requires={name: list(facts)}, ensures=conds, counterexamples=0, infer=False
+                table,
+                requires={name: list(facts)},
+                ensures=conds,
+                counterexamples=0,
+                on_inferred="off",
             )
             _proved_from[key] = frozenset(c.label for c in report.ensures if c.proved)
         except Exception:
@@ -4374,7 +4655,12 @@ def discharge(
             todo = [c for c in todo if label(c) not in proved]
     for c in todo:
         if n := violations(table, c, engine):
-            raise PreconditionError(f"{n} {what} violate {label(c)}")
+            raise PreconditionError(
+                f"{n} {what} violate {label(c)}",
+                source=name,
+                condition=c,
+                rows=violating_rows(table, c),
+            )
         out.append(Discharged(name, label(c), ON_DATA, isinstance(c, Inferred)))
     return out
 
@@ -4545,6 +4831,9 @@ class ViewContract:
     checked: list[Condition] = field(default_factory=list)
     """Postconditions that were not proved, which the view checks on every
     state (`on_unproved="runtime"`)."""
+    not_null: list[str] = field(default_factory=list)
+    """The columns the proved report shows never NULL (`Report.not_null`):
+    they hold in every state, as `guarantees` do."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -4573,6 +4862,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
+        list(prov.report.not_null) if prov and prov.report.proved else [],
     )
 
 
@@ -4609,12 +4899,12 @@ class ContractedTransform:
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
     ):
-        self.fn, self.ensures = fn, ensures
+        self.fn, self.ensures = fn, expand_keys(ensures)
         self.on_inferred = on_inferred
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
         self.semantics = _checked_semantics(semantics)
-        self.engine = engine
+        self.check_engine = engine
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
         self.requires: dict[str, Sequence[Condition]] = requires_by_input(
@@ -4629,6 +4919,40 @@ class ContractedTransform:
         last call: from metadata (`sverify.io` tables) or on the data."""
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
+
+    def to_substrait(
+        self,
+        format: Literal["json", "binary"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str | bytes:
+        """The verified plan of the last call, with its contract as
+        metadata: `Report.to_substrait` of `last_report`. A call proves the
+        contract for its inputs' schemas, so call the transform first, on
+        tables, sources or nodes; `Node.to_substrait` exports a node.
+
+        Args:
+            format: `"json"` (protobuf JSON, a string) or `"binary"` (the
+                serialized `substrait.Plan`).
+            shims: What to do at a spec gap the proof depends on (see
+                `Report.to_substrait`).
+
+        Returns:
+            The plan, as protobuf JSON or bytes.
+
+        Raises:
+            sverify.errors.ExportError: The transform has not been called
+                yet, its report is not proved, or the plan has no
+                conforming Substrait form that keeps the proof.
+        """
+        from sverify.substrait_export import ExportError
+
+        if self.last_report is None:
+            raise ExportError(
+                f"{self.name} has not been called yet: call it on tables, sources or "
+                "nodes first, which proves its contract for their schemas"
+            )
+        return self.last_report.to_substrait(format, shims=shims)
 
     def _verify(
         self,
@@ -4693,7 +5017,7 @@ class ContractedTransform:
         if not is_bound(table):
             return False
         self.last_preconditions += discharge(
-            table, param, conds, self.engine, table_facts(table), f"row(s) of {param}"
+            table, param, conds, self.check_engine, table_facts(table), f"row(s) of {param}"
         )
         return True
 
@@ -4919,7 +5243,7 @@ class ContractedTransform:
                 checked = [c for c in self.ensures if label(c) in unproved]
                 report = self.last_report = _marked_checked(report)
                 for c in [] if node else checked:
-                    if n := violations(result, c, self.engine):
+                    if n := violations(result, c, self.check_engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
@@ -4955,11 +5279,11 @@ def transform(
     *,
     on_unproved: Literal["error", "runtime", "warn"] = "error",
     check_requires: bool = True,
-    engine: Engine | None = None,
-    infer: bool = True,
-    strict: bool | None = None,
+    check_engine: Engine | None = None,
     semantics: Semantics = "reference",
     on_inferred: OnInferred = "error",
+    engine: Engine | None = None,
+    infer: bool | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -4969,8 +5293,8 @@ def transform(
     `on_unproved="runtime"`, unproved postconditions are checked on the output
     data instead: on inputs bound to a connection, when the transform is
     called; on a node, at every refresh, on the rows the batch inserts, before
-    its sink commits. The report marks them `checked`. `engine` says where
-    those checks on data run (see the module docstring).
+    its sink commits. The report marks them `checked`. `check_engine` says
+    where those checks on data run (see the module docstring).
 
     Piped from a source (`sverify.io`) or a node, `orders.pipe(doubled)`, or
     called on one, `doubled(orders)`, the transform builds a `sverify.Node`
@@ -4993,35 +5317,30 @@ def transform(
             `"error"` (the default) raises; `"runtime"` checks a postcondition
             on the output data instead (bound inputs, or a node at every
             refresh) and a precondition on a bound input's data; `"warn"`
-            emits a warning and returns the result.
+            emits a warning and returns the result, and a node's refreshes
+            run it unverified, each with an `UnverifiedRunWarning`
+            (`refresh(unverified=True)`).
         check_requires: Whether to check preconditions on the data of bound
             inputs at call time. Default True.
-        engine: Where checks on data run: `"duckdb"`, `"polars"` or
+        check_engine: Where checks on data run: `"duckdb"`, `"polars"` or
             `"datafusion"` run each condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
-        infer: Whether to infer the bounds on input columns that rule out
-            integer overflow, as `verify` does. By default (True) sverify
-            infers the bounds it needs (`amount * 2` on BIGINT needs
-            `_.amount < 2**62`) and treats them as preconditions: they are
-            checked on the data or proved from table metadata, and reported
-            as inferred (`Report.inferred`). An integer `SUM` that may leave
-            64 bits is assumed to fit and checked on the data while the job
-            runs (`Report.assumed`). With False, every such bound must be
-            stated in `requires`: an overflow, a `SUM`'s included, fails the
-            proof, and the report's hint names the bound to state.
-            With `on_inferred="error"` (the default), an inferred bound is
-            not assumed: the transformation needs it in `requires`
-            (`Report.needed`).
-        on_inferred: What a precondition sverify infers does, as
-            `verify`'s: `"error"` (the default), the contract is not proved
-            until `requires` states it or the transformation no longer
-            needs it; `"warn"`, it is assumed and checked on the data, with
-            an `InferredPreconditionWarning`; `"silent"`, the same without
-            the warning.
-        strict: Deprecated alias of `infer`, with the opposite polarity:
-            `strict=True` is `infer=False`.
+            `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,
             as `verify`'s: `"reference"` (the default) or `"duckdb"`.
+        on_inferred: What a precondition sverify infers does, as
+            `verify`'s. sverify infers the bounds it needs (`amount * 2` on
+            BIGINT needs `_.amount < 2**62`). `"error"` (the default): the
+            contract is not proved until `requires` states it or the
+            transformation no longer needs it (`Report.needed`). `"warn"`:
+            it is assumed and checked on the data or proved from table
+            metadata, with an `InferredPreconditionWarning`. `"silent"`:
+            the same without the warning. `"off"`: nothing is inferred or
+            assumed, so an integer `SUM` that may leave 64 bits is an error
+            too, which the other values check on the data while the job
+            runs (`Report.assumed`).
+        engine: Deprecated alias of `check_engine`.
+        infer: Deprecated: `infer=False` is `on_inferred="off"`.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -5099,14 +5418,24 @@ def transform(
         # could not prove: (_.total > 5) (it may be FALSE on some rows)
         ```
     """
-    if strict is not None:
+    on_inferred = _folded_infer(on_inferred, infer, "transform")
+    if engine is not None:
         warnings.warn(
-            f"transform(strict={strict}) is deprecated; write infer={not strict}",
+            "transform(engine=...) is deprecated; write check_engine=... (where checks on "
+            "data run; refresh(engine=...) says where the plan runs)",
             DeprecationWarning,
             stacklevel=2,
         )
-        infer = not strict
-    on_inferred = _checked_on_inferred(on_inferred)
+        if check_engine is None:
+            check_engine = engine
     return lambda fn: ContractedTransform(
-        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics, on_inferred
+        fn,
+        requires,
+        ensures,
+        on_unproved,
+        check_requires,
+        check_engine,
+        on_inferred != "off",
+        semantics,
+        on_inferred,
     )

@@ -1271,6 +1271,7 @@ This design pass found seven, each checked against Substrait's `main` at
 | [ST-9](../upstream/bugs/ST-9.json) | a result of finite doubles beyond the largest double: `±inf` or an error | double overflow to `±∞` (#575) |
 | [ST-10](../upstream/bugs/ST-10.json) | `upper`, `lower` with `char_set: UTF8`: Unicode's simple or full case mapping | `char_set` |
 | [ST-11](../upstream/bugs/ST-11.json) | integer `power` with a negative exponent | none: the reference raises (`Issue.negExponent`), D2 |
+| [ST-16](../upstream/bugs/ST-16.json) | a logarithm of zero that is NULL (Spark's), which `on_log_zero` cannot state | `on_log_zero` |
 
 `CLUSTERED` needs no entry: Substrait's `relations/basics.md` defines it.
 
@@ -1359,7 +1360,7 @@ bounds, aggregates for the multiset). Otherwise the checker reports which
 ### D13. Choosing the route
 
 `verify` and `run` choose the route by default: native under the engine's
-profile, then through the reference, then by the option-wise transfer check
+profile, then translated from the reference (`translated`), then by the option-wise transfer check
 ([Which plans run on an engine](#which-plans-run-on-an-engine)). The result
 names the route taken. `semantics=` and an explicit route override the
 choice. The default keeps a plan that verifies somewhere running without the
@@ -1562,8 +1563,9 @@ default: `verify` reports the plan as not proved and names the precondition,
 where it came from, and the fixes, which are to declare it in `requires` or
 to rewrite the plan so no row needs it (filter those rows first, or a `CASE`).
 `on_inferred=` chooses: `"error"` (the default), `"warn"` (assumed, checked
-on the data before each run, with a warning) or `"silent"` (assumed and
-checked, as before #655).
+on the data before each run, with a warning), `"silent"` (assumed and
+checked, as before #655) or `"off"` (nothing inferred or assumed: a `SUM`
+that may overflow is an error too; `infer=False` before 0.6, #690).
 
 Why: an assumed precondition is checked on each batch, and a batch that
 breaks one is refused before the run (#604). An inferred precondition is

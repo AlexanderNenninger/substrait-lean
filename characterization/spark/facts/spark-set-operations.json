@@ -1,0 +1,70 @@
+{
+  "id": "spark-set-operations",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`UNION`, `INTERSECT`, `EXCEPT`, with and without `ALL`: NULLs equal",
+  "verdict": "SQL's set operations; NULLs (and NaN, ±0.0) equal; no order",
+  "area": "relations",
+  "options": [
+    "set_operations",
+    "null_join_keys"
+  ],
+  "constructs": [
+    "UNION",
+    "UNION ALL",
+    "INTERSECT",
+    "INTERSECT ALL",
+    "EXCEPT",
+    "EXCEPT ALL",
+    "MINUS"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`UNION` deduplicates and `UNION ALL` keeps every row; `INTERSECT` and `EXCEPT` deduplicate; `INTERSECT ALL` keeps min(m, n) copies and `EXCEPT ALL` max(m - n, 0). NULLs compare equal, so do NaN and the two zeros. `UNION ALL` of two small inputs came back in input order; nothing guarantees it."
+  ],
+  "reference": "`UNION ALL` is bag union and `UNION DISTINCT` its `distinct`; `INTERSECT` and `EXCEPT` are semi and anti joins with NULLs equal, then `DISTINCT`, and the `ALL` forms number equal rows (#344). Spark is native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-null-semantics.md#L469-L526",
+          "note": "Set operators compare NULLs as equal"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "set-operations"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "set-operations-nan-zero"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "union-order"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    344
+  ]
+}

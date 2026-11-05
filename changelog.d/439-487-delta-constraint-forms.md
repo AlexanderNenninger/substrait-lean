@@ -1,3 +1,0 @@
-### DeltaSink accepts its constraints as Delta stores them
-
-Delta (delta-rs) reads a CHECK constraint back in its own form: `x BETWEEN 0 AND 10` as `x >= 0 AND x <= 10`, and `hi >= lo` as `lo <= hi`. `DeltaSink` now compares constraints after rewriting `BETWEEN` into its two comparisons and turning every comparison to face the same way, so a stored node with a proved `between` or a column-to-column comparison in its `ensures` refreshes again after its first write ([#439](https://github.com/AlexanderNenninger/substrait-lean/issues/439), [#487](https://github.com/AlexanderNenninger/substrait-lean/issues/487)).

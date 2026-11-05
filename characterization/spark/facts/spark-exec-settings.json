@@ -1,0 +1,92 @@
+{
+  "id": "spark-exec-settings",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "The session settings that change results",
+  "verdict": "`ansi.enabled`, `timestampType`, `session.timeZone`, `legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss`, `timeType.enabled`, the JVM locale",
+  "area": "execution",
+  "options": [
+    "settings"
+  ],
+  "constructs": [
+    "spark.sql.ansi.enabled",
+    "spark.sql.timestampType",
+    "spark.sql.session.timeZone",
+    "spark.sql.legacy.statisticalAggregate",
+    "spark.sql.decimalOperations.allowPrecisionLoss",
+    "spark.sql.timeType.enabled",
+    "spark.sql.legacy.sizeOfNull",
+    "spark.sql.shuffle.partitions",
+    "spark.sql.caseSensitive"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`spark.sql.ansi.enabled` (true by default since 4.0) switches overflow, division by zero, casts, indexes and string coercion between raising and NULL or wrapping, and changes type coercion (`FLOAT + INT`, `'1' + 1`); it also sets `size(NULL)` (`spark.sql.legacy.sizeOfNull`) and the text of decimals cast to strings. `spark.sql.timestampType` decides what `TIMESTAMP` means, `spark.sql.session.timeZone` how `TIMESTAMP_LTZ` reads and prints. `spark.sql.legacy.statisticalAggregate` turns the NULLs of degenerate `var_samp`, `covar_samp`, `corr` into NaN. `spark.sql.decimalOperations.allowPrecisionLoss` decides the result scale past 38 digits. `spark.sql.timeType.enabled` enables `TIME`. `spark.sql.shuffle.partitions` and the cluster's parallelism change the order of double sums, `first`, `collect_list` and ties (spark-exec-parallel). Outside Spark's configuration, the JVM's default locale changes `upper` and `lower` (spark-case).",
+    "sverify's Spark session sets ANSI on, UTC, `TIMESTAMP_NTZ`, case-sensitive names and unescaped string literals (`sverify.sql.spark.SPARK_CONF`); the probes ran with those, and each fact records the settings it was checked under."
+  ],
+  "reference": "The reference has no settings. A profile's facts hold under the settings they record (`sverify._engine_settings`, #444); the Spark row needs ANSI on and the settings of `SPARK_CONF`.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-ansi-compliance.md#L28-L66",
+          "note": "`spark.sql.ansi.enabled` and `spark.sql.storeAssignmentPolicy`"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-one-legacy"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "decimal-precision-loss-off"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "time-type-enabled"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "type-names-ltz-default"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-size-null"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "cast-to-string"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "float-arith"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "implicit-casts-string"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    444
+  ]
+}

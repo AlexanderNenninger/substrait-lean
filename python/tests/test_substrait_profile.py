@@ -12,6 +12,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _repo import needs_repo
 from sverify.engine import Connection, checker_path
 from sverify_dev import profile_diff
 
@@ -23,6 +24,7 @@ def _checker(*args: str, stdin: str | None = None) -> dict | list:
     return json.loads(out.stdout)
 
 
+@needs_repo
 def test_diff_is_published() -> None:
     """`docs/core-semantics.md` shows the diff the tables give; after a change
     to either table, `python -m sverify_dev.profile_diff --write` updates it."""
@@ -120,7 +122,7 @@ def test_verify_fails_where_substrait_is_looser(con: Connection) -> None:
     )
     assert not report.proved
     assert any(f["option"] == "overflow" for f in report.transfer or ())
-    assert "not proved under Profile.substrait: int.arith's overflow" in str(report)
+    assert 'not proved under semantics="substrait": int.arith\'s overflow' in str(report)
 
 
 def test_sql_is_refused(con: Connection) -> None:

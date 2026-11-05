@@ -1,0 +1,157 @@
+"""Fixtures of the formats a running pipeline reads (#734, #735, #736,
+`docs/stability.md`): the sink's contract record, the Substrait export and
+its contract, written by one version of sverify, for the tests that read
+them with every later one (`tests/test_formats.py`).
+
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of
+sverify's API.
+
+The script uses the public API only, so that it runs on a release installed
+from PyPI as well as on this checkout:
+
+    uv run python -m sverify_dev.formats tests/formats/<version>
+    <venv with sverify==X>/bin/python tools/sverify_dev/formats.py tests/formats/X
+
+It writes, under the directory it is given:
+
+- `sink/delta/doubled/`: a Delta table a `DeltaSink` created and then merged a
+  change into, with the contract in each commit;
+- `sink/iceberg/doubled.metadata.json`: the table metadata of an `IcebergSink`'s
+  table after the same two writes (the contract in the table properties,
+  the plan, epoch and writer in each snapshot's summary);
+- `sink/contract.json`: the last contract, as `Contract.to_json` wrote it;
+- `substrait/<case>.json` (and `.bin` for one case): `Report.to_substrait`'s
+  exports, where the version has it;
+- `VERSION`: the version that wrote them.
+
+The release skill (`.claude/skills/release-sverify/SKILL.md`) runs it for
+each release.
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import json
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+import ibis
+import pyarrow as pa
+from ibis import _
+
+import sverify as sv
+from sverify.io import StaticSource
+
+ORDERS = pa.table(
+    {
+        "id": pa.array([1, 2, 3], pa.int64()),
+        "amount": pa.array([5, 7, 0], pa.int64()),
+        "region": pa.array(["eu", "us", "eu"], pa.string()),
+    }
+)
+
+
+@sv.transform(
+    requires={"orders": [_.id.notnull(), _.amount >= 0, _.amount < 1000, sv.unique("id")]},
+    ensures=[_.id.notnull(), _.doubled >= 0, sv.unique("id")],
+)
+def doubled(orders):
+    return orders.filter(orders.amount > 0).select("id", "region", doubled=_.amount * 2)
+
+
+def _pretty(text: str) -> str:
+    return json.dumps(json.loads(text), indent=2, sort_keys=True) + "\n"
+
+
+def _write_sink(out: Path) -> None:
+    """A Delta and an Iceberg sink, each created and then given a change."""
+    from deltalake import DeltaTable
+
+    from sverify.io import DeltaSink, IcebergSink
+
+    sink = out / "sink"
+    sink.mkdir(parents=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        from pyiceberg.catalog.sql import SqlCatalog
+
+        cat = SqlCatalog("fixtures", uri=f"sqlite:///{tmp}/catalog.db", warehouse=f"file://{tmp}")
+        cat.create_namespace("db")
+        for make in (
+            lambda: DeltaSink(str(sink / "delta" / "doubled")),
+            lambda: IcebergSink(cat, "db.doubled"),
+        ):
+            src = StaticSource(ORDERS, version=1, name="orders")
+            node = doubled(src).write(make())
+            node.refresh()
+            more = pa.table({"id": [4], "amount": [11], "region": ["us"]}).cast(ORDERS.schema)
+            src.replace(pa.concat_tables([ORDERS, more]), version=2)
+            node.refresh()
+        table = cat.load_table("db.doubled")
+        meta = Path(table.metadata_location.removeprefix("file://"))
+        (sink / "iceberg").mkdir()
+        shutil.copy(meta, sink / "iceberg" / "doubled.metadata.json")
+        text = table.properties["sverify.contract"]
+    (sink / "contract.json").write_text(_pretty(text))
+    # The Delta log's commits must hold the same record.
+    history = DeltaTable(str(sink / "delta" / "doubled")).history()
+    assert any("sverify" in c for c in history), history
+
+
+def _write_substrait(out: Path) -> None:
+    """Exports of a few verified plans, where the version has `to_substrait`."""
+    if not hasattr(sv.Report, "to_substrait"):
+        return
+    orders = ibis.table(
+        {"id": "int64", "amount": "int64", "x": "float64", "region": "string"}, name="orders"
+    )
+    bounded = {"orders": [_.amount >= 0, _.amount < 1000, sv.unique("id")]}
+    cases = {
+        "row_and_table": sv.verify(
+            orders.select("id", total=_.amount * 2),
+            requires=bounded,
+            ensures=[_.total >= 0, sv.unique("id")],
+        ),
+        "aggregate": sv.verify(
+            orders.group_by("region").aggregate(n=_.count(), total=_.amount.sum()),
+            requires={"orders": [_.amount >= 0, _.amount < 1000, sv.max_rows(1000)]},
+            ensures=[_.n >= 1, _.total >= 0, sv.unique("region")],
+        ),
+        "double_shims": sv.verify(
+            orders.filter(_.x == 1.5).select("id", "x"),
+            requires={"orders": [_.id.notnull()]},
+            ensures=[_.id.notnull()],
+        ),
+        "substrait_profile": sv.verify(
+            # A comparison in the plan meets Substrait's NaN options, so
+            # this plan has none (`tests/test_substrait_profile.py`).
+            orders.select("id", n=_.region.length()),
+            requires={"orders": [_.region.notnull()]},
+            ensures=[_.n >= 0],
+            semantics="substrait",
+        ),
+    }
+    folder = out / "substrait"
+    folder.mkdir(parents=True)
+    for name, report in cases.items():
+        assert report.proved, f"{name}: {report}"
+        text = report.to_substrait()
+        (folder / f"{name}.json").write_text(_pretty(text))
+    (folder / "row_and_table.bin").write_bytes(cases["row_and_table"].to_substrait(format="binary"))
+
+
+def write(out: Path) -> None:
+    """Write every fixture this version has under `out`, which must not exist."""
+    if out.exists():
+        raise SystemExit(f"{out} exists: fixtures of a version are written once")
+    out.mkdir(parents=True)
+    (out / "VERSION").write_text(importlib.metadata.version("sverify") + "\n")
+    _write_sink(out)
+    _write_substrait(out)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: python -m sverify_dev.formats <directory>")
+    write(Path(sys.argv[1]))

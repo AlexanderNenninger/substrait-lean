@@ -256,13 +256,13 @@ def _(mo):
     ### What Lean tracks
 
     Per column: whether it can be NULL, integer and double ranges, timestamps,
-    which booleans it can be, and whether it can be a string. Filters such as
-    `amount > 10`, `x = 3`, `x IN (1, 2, 3)` and `x IS NOT NULL` refine those
-    facts. Arithmetic, comparisons, `AND`/`OR`/`NOT` with SQL's NULL
+    which booleans it can be, and which strings it can be while they are few.
+    Filters such as `amount > 10`, `x = 3`, `x IN (1, 2, 3)`,
+    `status <> 'cancelled'` and `x IS NOT NULL` refine those facts. Arithmetic, comparisons, `AND`/`OR`/`NOT` with SQL's NULL
     semantics, `CASE`, `COALESCE`, joins and `UNION ALL` carry them through.
     Keys and relations between columns come next. Not tracked yet: relations
-    that need more than a column plus a constant (`a < 2 * b`), string
-    contents and counts across rows. For those,
+    that need more than a column plus a constant (`a < 2 * b`), what is
+    inside a string and counts across rows. For those,
     `on_unproved="runtime"` checks the condition on the data.
 
     ## Keys
@@ -576,7 +576,7 @@ def _(mo):
 
     A contracted transformation has to be proved free of runtime errors, and
     correctness on the inputs that happen to arrive does not count. We pass
-    `infer=False` to `ratio` to see the error itself: by default Sverify
+    `on_inferred="off"` to `ratio` to see the error itself: by default Sverify
     works out the precondition `(_.n != 0)` and reports the plan as not
     proved until you declare it in `requires`. Declared, it is checked on
     each batch before the run, so `report.run` and `refresh` refuse a batch
@@ -584,7 +584,7 @@ def _(mo):
     ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
     A `SUM` that may overflow, or an operation on doubles that may overflow
     to ±∞, does not block the proof: the assumption is listed in
-    `Report.assumed` and checked on the data before the run
+    `Report.assumed` and checked at run time, on the data before the run
     ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
     """)
     return
@@ -592,7 +592,7 @@ def _(mo):
 
 @app.cell
 def _(VerificationError, ibis, mo, sv):
-    @sv.transform(infer=False)
+    @sv.transform(on_inferred="off")
     def ratio(t):
         return t.select(x=t.qty // t.n)
 

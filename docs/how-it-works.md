@@ -2,7 +2,8 @@
 
 How plans are checked, how the engines are made to agree, and exactly what
 is proved. The user-facing side is in [guide.md](guide.md); the map of the
-Lean files is in the [README](../README.md#the-lean-project).
+proofs, with each Lean module's job and the theorems each guarantee rests
+on, is in [proofs.md](proofs.md).
 
 ```python
 import ibis
@@ -389,7 +390,7 @@ run. Contracts take `engine=` for their runtime checks on data too:
 ```python
 view = IncrementalView(con, query, "v", engine="duckdb")
 
-@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
+@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", check_engine="duckdb")
 def passthrough(orders): ...
 ```
 
@@ -465,7 +466,7 @@ raises when it would answer differently:
 * FETCH over a named table is refused: Snowflake tables have no row order.
   So is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
   the additions.
-  Windows and sorts are refused too, unless you pass `tie_free=True` to
+  Windows and sorts are refused too, unless you pass `deterministic=True` to
   promise there are no ties on their keys (a contract report's
   `deterministic` says so for windows).
 * Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
@@ -509,7 +510,7 @@ Spark differs:
   identifier is quoted with backticks.
 
 Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
-table without `tie_free=True` (tables have no row order), and so `SUM` or
+table without `deterministic=True` (tables have no row order), and so `SUM` or
 `AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
 `Math.pow` (within 1 ulp of C's).
 
@@ -575,7 +576,9 @@ one, which sverify infers (#244).
 
 [Contracts.lean](../SubstraitLean/Contracts.lean) is an abstract interpreter
 over `Rel`. Each column gets an `AVal`, a set of possible values: whether it can be NULL, an integer
-interval, possible booleans, and whether it can be a string.
+interval, possible booleans, and whether it can be a string, with the strings
+it can be when they are few: at most `strCap` (64) of them, past that any string
+(#708).
 
 * `Expr.abs_sound`: abstract evaluation of expressions is sound, including SQL's
   three-valued `AND`/`OR`, NULL-propagating arithmetic and comparisons.
@@ -605,6 +608,11 @@ interval, possible booleans, and whether it can be a string.
   `x IS NULL OR x >= 0` gives "NULL or ≥ 0". `p OR q` is evaluated with `q`
   refined where `p` is not TRUE, also when `p` may be NULL (`orSplitNull`),
   which proves `x >= 0 OR x IS NULL` for a nullable `x`.
+  A string constant is that one string, `s = 'k'` and `s IN ('a', 'b')`
+  narrow a column to those strings, `s <> 'k'` and `NOT IN` take them out,
+  and `CASE`, `COALESCE` and `UNION ALL` join the sets (`AVal.strs`, #708),
+  so a filter `status <> 'cancelled'` over a source whose `status` is one of
+  four strings proves `status IN ('placed', 'shipped', 'returned')`.
 * `Rel.keys_sound` ([Keys.lean](../SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)): the
@@ -625,7 +633,10 @@ interval, possible booleans, and whether it can be a string.
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
   integer column can stand in for it in a key; a filter `$i = k` drops `i` from
   keys; join keys drop right-key columns the condition ties to the left side
-  (`a.device = b.device`), for inner and left joins.
+  (`a.device = b.device`), for inner and left joins. A key of each branch of
+  a `UNION ALL`, with a column whose values the branches cannot share (a
+  constant tag, a `GROUPING` level), is a key of the union (`AVal.disjoint_ne`,
+  #436).
 * `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](../SubstraitLean/Keys.lean)):
   when a window's partition and sort columns contain a key of its input, every
   arrangement of the input sorted by the window's keys gives the same rows as
@@ -678,9 +689,9 @@ the JSON plumbing.
 runtime errors, or reports what may go wrong. `sverify` reports these as
 `may fail: …` (a `VerificationError` from `@sv.transform`). A `SUM` that
 may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
-group (inferred; checked on the data while the job runs …)` (or
+group (checked at run time: the job raises if it does not …)` (or
 `fits DECIMAL(38, 2)` for a decimal `SUM`, #316), and is an error with
-`infer=False`.
+`on_inferred="off"`.
 
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,

@@ -568,7 +568,7 @@ def probe_engines(
         out["snowflake"] = "sql"
     except Untranslatable as e:
         try:
-            text = plan_sql(json.loads(plan), SNOWFLAKE, tie_free=True)
+            text = plan_sql(json.loads(plan), SNOWFLAKE, deterministic=True)
             out["snowflake"] = "sql (tie_free)"
         except Untranslatable:
             text = None

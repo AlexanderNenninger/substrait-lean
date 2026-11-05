@@ -1,0 +1,82 @@
+{
+  "id": "spark-list-order",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Arrays order element-wise with a NULL element lowest, in `<` and in sorts",
+  "verdict": "`list_null_order`: NULL element smallest, `[1, NULL] < [1, 2]` true; ascending sorts NULL list first",
+  "area": "nested",
+  "options": [
+    "list_null_order"
+  ],
+  "rows": [
+    {
+      "group": "list.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    }
+  ],
+  "constructs": [
+    "<",
+    "ORDER BY",
+    "min",
+    "max",
+    "greatest",
+    "sort_array",
+    "array_sort"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Arrays compare element by element, a shorter prefix first; a NULL element is smaller than any value and equal to another NULL. So `array(1, NULL) < array(1, 2)` is true (never NULL), `array(NULL) < array(0)` true, and `array(1, NULL) = array(1, NULL)` true. Ascending sorts put a NULL array first, then `[]`, `[NULL]`, `[1]`, `[1, NULL]`, `[1, 2]`; `min` and `max` of arrays follow the same order.",
+    "Inside an array, `sort_array` puts NULLs first ascending and last descending; `array_sort` puts them last."
+  ],
+  "reference": "`list_null_order`: NULL where a NULL element decides `<`, and `GREATEST` in `ORDER BY` (#207). Spark orders the NULL element lowest in both, so a writer refuses or rewrites list comparisons where an element may be NULL.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-compare"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-sort-order"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-sort-order-desc"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-min-max"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "array-element-functions"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    207
+  ]
+}

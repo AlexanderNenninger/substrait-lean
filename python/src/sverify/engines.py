@@ -5,11 +5,11 @@
     import sverify as sv
     from sverify.engines import SNOWFLAKE, create_table, run, to_sql
 
-    plan = node.plan                  # the plan Lean checked
+    plan = node.internal_plan         # the plan Lean checked
     con = sv.connect()
     create_table(con, "orders", schema, rows)
     run(con, plan, "polars")          # or "duckdb", "datafusion", "spark"
-    to_sql(json.loads(plan), SNOWFLAKE)
+    to_sql(plan, SNOWFLAKE)
 
 Running plans:
 

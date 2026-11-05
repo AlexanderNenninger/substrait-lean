@@ -1,0 +1,152 @@
+{
+  "id": "spark-int-arith",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Integer `+ - *` and unary `-`: raise under ANSI, wrap without",
+  "verdict": "ANSI on: `overflow: ERROR` at every width; ANSI off: `SILENT`",
+  "area": "integers",
+  "options": [
+    "overflow"
+  ],
+  "rows": [
+    {
+      "group": "int.arith",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "unary -",
+    "negative"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Spark keeps the operands' width: `TINYINT + TINYINT` is a `TINYINT`, and so on up to `BIGINT`. With `spark.sql.ansi.enabled` on (the default since 4.0) `+`, `-`, `*` and unary `-` raise past the width (`BINARY_ARITHMETIC_OVERFLOW` for `TINYINT` and `SMALLINT`, `ARITHMETIC_OVERFLOW` for `INT` and `BIGINT`). With it off they wrap in two's complement: `127Y + 1Y` is -128, `-(-2⁶³)` is -2⁶³.",
+    "`try_add`, `try_subtract` and `try_multiply` give NULL on overflow in either mode (spark-try-variants). An integer literal without a suffix is an `INT`, so `2147483647 + 1` raises under ANSI (spark-literal-types)."
+  ],
+  "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR` when the plan omits it (#202); `SILENT` when the plan asks. Spark under ANSI gives `ERROR` natively at every width; without ANSI it gives `SILENT`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-ansi-compliance.md#L68-L98",
+          "note": "Arithmetic Operations: ANSI raises on integer overflow; off, it wraps"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/arithmetic.scala#L51-L95",
+          "note": "`UnaryMinus`: `negateExact` when `failOnError` (ANSI), plain negation otherwise"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/api/src/main/scala/org/apache/spark/sql/catalyst/util/MathUtils.scala",
+          "note": "`addExact`, `subtractExact`, `multiplyExact`, `negateExact`: Java's exact arithmetic wrapped in `withOverflow`"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "tinyint-add"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "tinyint-subtract"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "tinyint-multiply"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "tinyint-negate"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "smallint-add"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "smallint-subtract"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "smallint-multiply"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "smallint-negate"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "int-add"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "int-subtract"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "int-multiply"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "int-negate"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "bigint-add"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "bigint-subtract"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "bigint-multiply"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "bigint-negate"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "integer-literal-overflow"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    202
+  ]
+}

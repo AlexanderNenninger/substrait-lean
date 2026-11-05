@@ -36,6 +36,7 @@ from sverify.plan_json import (
     floor_call,
     ieee_divide,
     if_then,
+    int_range,
     literal,
     semantics,
     type_json,
@@ -176,6 +177,15 @@ def _between(x: Exprs, op: Any) -> Json:
 def _in_values(x: Exprs, op: Any) -> Json:
     args = [op.value, *op.options]
     t = _common_exact(args, _common(*(exact(a) for a in args)))
+    lits = [o.value if isinstance(o, ops.Literal) else None for o in op.options]
+    if op.value.dtype.is_integer() and (span := int_range(lits)) is not None:
+        # `x IN (0, 1)` of an integer `x` is `x BETWEEN 0 AND 1`, NULLs
+        # included, and the checker reads a range as one (#691).
+        lo, hi = (op.options[lits.index(v)] for v in span)
+        return call(
+            "and",
+            [call("gte", [x(op.value, t), x(lo, t)]), call("lte", [x(op.value, t), x(hi, t)])],
+        )
     return {"singularOrList": {"value": x(op.value, t), "options": [x(o, t) for o in op.options]}}
 
 

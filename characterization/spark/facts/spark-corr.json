@@ -9,20 +9,47 @@
     "stat_algo",
     "stat_degenerate"
   ],
+  "rows": [
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
+  ],
   "constructs": [
     "corr"
   ],
   "settings": {
-    "spark.sql.legacy.statisticalAggregate": false,
-    "spark.sql.ansi.enabled": true
+    "spark.sql.legacy.statisticalAggregate": [
+      false,
+      true
+    ],
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
   },
   "description": [
     "One shared Welford state (`ck`, `xMk`, `yMk`); the result is `ck / sqrt(xMk * yMk)`. One pair is NULL (NaN under `spark.sql.legacy.statisticalAggregate`); `xMk == 0` or `yMk == 0` is NULL. Not clamped to [-1, 1].",
-    "If `xMk * yMk` underflows to 0 with neither side 0, the division raises under ANSI mode (the 4.x default) and gives NULL otherwise."
+    "If `xMk * yMk` underflows to 0 with neither side 0, the division raises under ANSI mode (the 4.x default) and gives NULL otherwise.",
+    "The probes: one pair gives NULL (NaN with `spark.sql.legacy.statisticalAggregate`), a constant side NULL, in both ANSI modes."
   ],
   "reference": "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -40,6 +67,34 @@
         }
       ],
       "notes": "Read at tag v4.3.0 (commit 98bc0212). Inferred, not run: the underflow case, from `DivModLike` in arithmetic.scala."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-one"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-one-legacy"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-types"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "corr-degenerate"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "corr-one-pair"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
     }
   ],
   "issues": [

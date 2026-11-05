@@ -31,7 +31,8 @@ Wheels bundle the checker, so no Lean toolchain is needed.
 
 The function body is ordinary Ibis. Called on a source, it proves the
 contract and returns a `Node`; `refresh()` computes it, on DuckDB unless you
-pass `engine=`. `last_report` says what was proved.
+pass `refresh(engine=...)`. `last_report` says what was proved.
+`@sv.transform(check_engine=...)` says where checks on data run.
 
 ```python
 import ibis
@@ -109,11 +110,11 @@ Sverify infers the bounds that rule most of them out (`amount * 2` needs
 under `needs:` (`report.needed`) until `requires` states it or the
 transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"silent"` assumes it and checks it on the data, and
-`infer=False` turns inference off. For the rest, `report.hints` names the bound to
-add, and an unproved comparison with a constant comes with the precondition
-that proves it (`report.suggestions`). An integer `SUM` that may overflow is
-listed in `report.assumed` and checked on the data while the job runs; a row
-cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
+`on_inferred="off"` infers and assumes nothing. For the rest, `report.hints`
+names the bound to add, and an unproved comparison with a constant comes with
+the precondition that proves it (`report.suggestions`). An integer `SUM` that
+may overflow is listed in `report.assumed` and checked at run time (an error
+with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
 `NULLIF`/`ifelse`, or bound it in `requires`.
 
 Sums and means of doubles round: with a row cap, `sv.approx(_.cpu_avg <= 100)`
@@ -126,7 +127,11 @@ states a postcondition up to the proved rounding error.
 * `"error"` (default): raise `VerificationError`.
 * `"runtime"`: check the unproved postconditions on the output data instead,
   at refresh (raises `PostconditionError`).
-* `"warn"`: warn and continue.
+* `"warn"`: warn and continue; a node's refreshes run it unverified, each
+  with an `UnverifiedRunWarning`.
+
+A run or refresh of a plan that is not proved raises `UnverifiedRunError`, a
+`VerificationError` (and a `RouteError`), unless you pass `unverified=True`.
 
 ## Test transforms with pytest
 

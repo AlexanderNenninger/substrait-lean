@@ -1,0 +1,86 @@
+{
+  "id": "spark-avg-int",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`AVG` of integers is a `DOUBLE`, summed in double",
+  "verdict": "`avg_int_result`: `DOUBLE`; the sum is a double, so 64-bit inputs lose digits",
+  "area": "aggregates",
+  "options": [
+    "avg_int_result",
+    "empty_group_aggregates"
+  ],
+  "rows": [
+    {
+      "group": "agg.isum",
+      "option": "avg_int_result",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "avg",
+    "mean",
+    "try_avg"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`avg` of any integer type returns `DOUBLE`, and its running sum is a `DOUBLE` too: `avg(9007199254740993, 9007199254740993)` is 9007199254740992.0, and `avg` of two `BIGINT` maxima is 9.223372036854776E18 without an overflow. No values give NULL."
+  ],
+  "reference": "`avg` of `i64` returns `i64` in Substrait; the reference follows the declared output type (`avg_int_result`, #209). Spark's double result needs a cast back, which may be off where the sum passes 2⁵³; `sverify.sql.spark` computes the average exactly from a `DECIMAL(38,0)` sum.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/Average.scala#L72-L84",
+          "note": "`resultType` and `sumDataType`: `DoubleType` for every non-decimal input"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "avg-int"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "avg-int-large"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "avg-int-small"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "tinyint-sum-overflow"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "empty-aggregates"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    209
+  ]
+}

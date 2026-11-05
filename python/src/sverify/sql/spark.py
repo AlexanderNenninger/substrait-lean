@@ -48,7 +48,7 @@ result is the Lean value, checked on a local Spark session by
 * **Rows**: tables (Parquet, Delta, views) have no row order, so nothing
   can stand for Lean's list order, which FETCH and ties in a sort or window
   follow: `row_ordinal` is refused. Windows and sorts run with
-  `to_sql(..., tie_free=True)`, when the caller knows there are no ties.
+  `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
   Over `VALUES` the order is known, and a `SUM` or `AVG` of doubles adds in
   that order (`aggregate` over the sorted values), as Lean does.
 * **Identifiers** are quoted with backticks; `spark.sql.caseSensitive` keeps
@@ -305,7 +305,7 @@ class SparkDialect(Dialect):
     def row_ordinal(self) -> str:
         raise Unsupported(
             "Spark tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with tie_free=True)"
+            "cannot follow the Lean model's list order (windows run with deterministic=True)"
         )
 
 

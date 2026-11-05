@@ -1,0 +1,72 @@
+{
+  "id": "spark-time-zones",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Time zones: the session's zone for `TIMESTAMP_LTZ`; a DST gap shifts forward, an overlap takes the earlier offset",
+  "verdict": "LTZ in the session zone; gap → later wall time; overlap → earlier offset; bad zone raises",
+  "area": "temporal",
+  "options": [
+    "time_zones",
+    "settings"
+  ],
+  "constructs": [
+    "TIMESTAMP_LTZ",
+    "TIMESTAMP_NTZ",
+    "from_utc_timestamp",
+    "to_utc_timestamp",
+    "convert_timezone",
+    "spark.sql.session.timeZone"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ],
+    "spark.sql.session.timeZone": [
+      "UTC",
+      "America/New_York"
+    ],
+    "spark.sql.timestampType": "TIMESTAMP_NTZ"
+  },
+  "description": [
+    "`TIMESTAMP` is `TIMESTAMP_LTZ` (an instant shown in `spark.sql.session.timeZone`) unless `spark.sql.timestampType` is `TIMESTAMP_NTZ`, as sverify sets it. Text and `TIMESTAMP_NTZ` values become instants in the session zone with `java.time`'s rules: in `America/New_York`, `2024-03-10 02:30` (in the spring gap) becomes 03:30 EDT, and `2024-11-03 01:30` (in the autumn overlap) the earlier offset, EDT (05:30Z).",
+    "A string with an offset cast to `TIMESTAMP_NTZ` drops the offset (`'2024-01-05T10:00:00Z'` and `'…+02:00'` both give 10:00). `from_utc_timestamp`, `to_utc_timestamp` and `convert_timezone` shift by a zone's offset; an unknown zone raises `INVALID_TIMEZONE` in both modes."
+  ],
+  "reference": "Time zones are outside the model; sverify's Spark session pins UTC and `TIMESTAMP_NTZ` (`sverify.sql.spark.SPARK_CONF`), so no plan depends on them.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "time-zone-gap"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "time-zone-overlap"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "time-zone-convert"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "time-zone-invalid"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "cast-string-to-timestamp"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "type-names-ltz-default"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

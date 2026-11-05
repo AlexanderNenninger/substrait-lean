@@ -1,0 +1,51 @@
+{
+  "id": "spark-explode",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`explode` drops NULL and empty arrays; `explode_outer` keeps a NULL row",
+  "verdict": "`unnest_null_empty`: no row for NULL or `[]`; `OUTER` adds one NULL row",
+  "area": "nested",
+  "options": [
+    "unnest_null_empty"
+  ],
+  "constructs": [
+    "explode",
+    "LATERAL VIEW",
+    "LATERAL VIEW OUTER",
+    "explode_outer",
+    "posexplode",
+    "inline"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": "`LATERAL VIEW explode(a)` gives one row per element (a NULL element included) and none for a NULL or empty array; `LATERAL VIEW OUTER explode(a)` (`explode_outer`) gives one row with a NULL element for each.",
+  "reference": "`UNNEST`: one row per element, none for an empty list or NULL. Spark's `explode` is native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "unnest"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "unnest-outer"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "unnest-select"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

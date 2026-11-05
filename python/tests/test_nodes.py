@@ -112,7 +112,7 @@ def test_two_tables_of_one_name_are_refused(tmp_path):
 
 def test_the_plan_is_the_one_the_stage_runs(tmp_path):
     node = doubled(paid(make_orders(tmp_path / "orders", [(1, "ada", 5)])))
-    plan = node.plan
+    plan = node.internal_plan
     node.refresh()
     assert node._stage is not None and node._stage.view.plan == plan
     assert delta_plans(plan) == node._stage.view.deltas
@@ -274,11 +274,11 @@ def test_a_refresh_summarizes_each_node_in_one_line(tmp_path):
     batch = stored.refresh()
     assert not batch.notable
     assert batch.summary() == (
-        "paid: orders@v1→v2, Δ trusted (change feed), requires checked on 1 row(s) "
+        "paid: changes from orders v1→v2 (change feed), requires checked on 1 row(s) "
         "(3 proved from metadata), merge v3: +1 −0"
     )
     assert str(batch).count("\n") > 1  # the full report is still there
-    assert stored.refresh().summary() == "paid: orders@v2 unchanged, already committed"
+    assert stored.refresh().summary() == "paid: orders v2 unchanged, already committed"
 
 
 def test_a_recompute_or_a_schema_change_shows_the_full_report(tmp_path):

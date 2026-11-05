@@ -1,0 +1,40 @@
+{
+  "id": "ST-16",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0 to main@a4d8e00342d0",
+  "status": "unverified",
+  "status_note": "Open on main (a4d8e00342d0): `functions_logarithmic.yaml` gives `ln`, `log10`, `log2`, `logb` and `log1p` `on_log_zero: [NAN, ERROR, MINUS_INFINITY]`, while their `on_domain_error` lists `NULL`. No existing issue found (`gh issue list --repo substrait-io/substrait --search \"on_log_zero null\"`, \"log of zero null\": none); not yet checked against Substrait's issues in depth.",
+  "summary": "`on_log_zero` lists `NAN`, `ERROR` and `MINUS_INFINITY`. Spark (and Hive before it) returns NULL for the logarithm of zero, as it does for a negative argument, which `on_domain_error: NULL` covers. Substrait cannot express Spark's `ln(0)`.",
+  "repro": [
+    "`ln(0.0::fp64)` on Spark 4.3.0: NULL, under ANSI and without it (probe double-math-domain).",
+    "DuckDB 2.0 and Polars 2.1.0: `-inf` (duckdb-R15-math-domain, polars-math-domain)."
+  ],
+  "handling": [
+    "The reference raises (`on_log_zero: ERROR`); the Spark profile guards `x = 0` before the log, so a plan never sees Spark's NULL.",
+    "Could be expressed as: add `NULL` to `on_log_zero`'s values, as `on_domain_error` has it."
+  ],
+  "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, probe double-math-domain",
+  "issues": [
+    738,
+    215
+  ],
+  "files": [
+    "docs/core-semantics.md",
+    "characterization/spark/probes.json"
+  ],
+  "facts": [
+    "spark-math-domain",
+    "polars-math-domain",
+    "duckdb-R15-math-domain"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "substrait": "main@a4d8e00342d0"
+      },
+      "note": "extensions/functions_logarithmic.yaml on main: on_log_zero values [NAN, ERROR, MINUS_INFINITY] for every logarithm"
+    }
+  ]
+}

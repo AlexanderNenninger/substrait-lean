@@ -96,6 +96,8 @@ SQL string ─► SQLGlot lift ────────────────�
   the engine tiers (DuckDB is Tier 1).
 * [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
   citations, and related tools.
+* [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
+  a running pipeline reads, the contracts proved, and the Python API.
 
 ## The Lean project
 
@@ -105,44 +107,16 @@ no dependencies beyond Lean core, so the build takes seconds. The plan model
 (contracts, runtime errors, delta plans, sharding), then the parser and
 writer, which are trusted code.
 
+[docs/proofs.md](docs/proofs.md) maps every Lean module to its job and
+names the theorems each guarantee rests on. The rest of the repository:
+
 | File | Contents |
 |---|---|
-| `SubstraitLean/Value.lean` | Nullable values, rows, bag-semantics relations |
-| `SubstraitLean/Float.lean` | Doubles as exact integer codes (multiples of 2⁻¹⁰⁷⁴), NaN and −0.0 |
-| `SubstraitLean/Rounding.lean` | Exact `FLOOR`/`CEIL`/`ROUND` and casts to `BIGINT` on double codes; monotonicity |
-| `SubstraitLean/Text.lean` | String functions, `LIKE`; black-box `UPPER`/`LOWER`/regexes; patterns that certainly compile |
-| `SubstraitLean/Numeric.lean` | `sqrt`, `exp`, logarithms and trigonometry of doubles (C's libm) with their domains; 64-bit bitwise operations and shifts |
-| `SubstraitLean/Time.lean` | Exact `date_part` and `date_trunc` on the proleptic Gregorian calendar; monotonicity |
-| `SubstraitLean/Expr.lean` | `Literal`, `FieldReference`, scalar functions, `IfThen`, Kleene 3-valued logic |
-| `SubstraitLean/Window.lean` | Sort orders, `ROW_NUMBER`/`LAG`/`LEAD` semantics over partitions |
-| `SubstraitLean/Aggregate.lean` | `GROUP BY` with `COUNT`/`SUM`/`MIN`/`MAX`/`AVG` (`DISTINCT`, `FILTER`) semantics |
-| `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left/semi/anti), `Sort`, `Aggregate`, `Fetch`, `UnionAll`, `Window`; arity, well-formedness, `eval`; type soundness |
-| `SubstraitLean/Rewrites.lean` | Verified rewrites (below) |
-| `SubstraitLean/Incremental.lean` | Z-set semantics, delta rules, delta plans (incremental view maintenance) |
-| `SubstraitLean/Terms.lean` | Splitting a plan into union-free terms (for DataFusion's consumer) |
-| `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
-| `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
-| `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
-| `SubstraitLean/Keys.lean` | Derived keys (`Rel.keys_sound`), window tie-breaking (`Rel.window_deterministic`) |
-| `SubstraitLean/Completeness.lean` | The converse of contracts for the IoT example: no window is lost (`IoT.window_complete`) |
-| `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
-| `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
-| `SubstraitLean/Safety.lean` | Runtime errors, overflow included; `Rel.mayIssues_sound` |
-| `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
-| `SubstraitLean/Semantic.lean` | Rewrites from contract facts and keys (`DISTINCT` on a key, …); `Rel.optimize_sound` |
-| `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
-| `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
-| `SubstraitLean/ShardCheck.lean` | `--shard`: splitting a plan into per-shard and combining plans (trusted) |
-| `SubstraitLean/Check.lean` | Executable `checkWF`, proven equivalent to `Rel.WF`; `Decidable` instance |
-| `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
-| `SubstraitLean/Pretty.lean` | Plan / row rendering |
-| `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
 | `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
 | `notebooks/` | The tour: three workflows and two guides (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
-| `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
 ## Ibis coverage
 
@@ -174,8 +148,8 @@ Every engine runs the plans of the 184 verified operations, except:
 |---|---|---|
 | Polars | 167 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · argmin, argmax · stddev over group · rolling variance (rows) · re_extract · re_replace · hexdigest · time + interval · time truncate · try_cast |
 | DuckDB | 182 | non-equi join · replace '' |
-| Snowflake | 127 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · scalar subquery · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · min over a sliding frame (with `tie_free=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `tie_free=True` it runs) · time + interval · time truncate · try_cast |
-| Spark | 126 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · scalar subquery · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · min over a sliding frame (with `tie_free=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times · time + interval · time truncate · try_cast |
+| Snowflake | 127 | order_by (with `deterministic=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `deterministic=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · scalar subquery · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `deterministic=True` it runs) · lag (with `deterministic=True` it runs) · rank (with `deterministic=True` it runs) · dense_rank (with `deterministic=True` it runs) · cumsum (with `deterministic=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `deterministic=True` it runs) · first (with `deterministic=True` it runs) · percent_rank, cume_dist (with `deterministic=True` it runs) · running mean · rolling sum (interval) (with `deterministic=True` it runs) · rolling sum (range) (with `deterministic=True` it runs) · last, nth (with `deterministic=True` it runs) · max, count over frame (with `deterministic=True` it runs) · min over a sliding frame (with `deterministic=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `deterministic=True` it runs) · time + interval · time truncate · try_cast |
+| Spark | 126 | order_by (with `deterministic=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `deterministic=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · scalar subquery · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `deterministic=True` it runs) · lag (with `deterministic=True` it runs) · rank (with `deterministic=True` it runs) · dense_rank (with `deterministic=True` it runs) · cumsum (with `deterministic=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `deterministic=True` it runs) · first (with `deterministic=True` it runs) · percent_rank, cume_dist (with `deterministic=True` it runs) · running mean · rolling sum (interval) (with `deterministic=True` it runs) · rolling sum (range) (with `deterministic=True` it runs) · last, nth (with `deterministic=True` it runs) · max, count over frame (with `deterministic=True` it runs) · min over a sliding frame (with `deterministic=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `deterministic=True` it runs) · time of day · time parts · compare times · time + interval · time truncate · try_cast |
 <!-- coverage:end -->
 
 The engines refuse what they can't do as Lean does: `<` on strings is

@@ -49,7 +49,7 @@ documentation they rest on:
   partition, as in Lean; `ORDER BY` is required. Tables have no row order
   (no `rowid`), so nothing can stand for Lean's list order, which FETCH and
   ties in a window follow: `row_ordinal` is refused. Windows run with
-  `to_sql(..., tie_free=True)`, when the caller knows there are no ties.
+  `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
 * **Identifiers** fold to upper case unless quoted; every one is quoted.
 """
 
@@ -324,7 +324,7 @@ class SnowflakeDialect(Dialect):
     def row_ordinal(self) -> str:
         raise Unsupported(
             "Snowflake tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with tie_free=True)"
+            "cannot follow the Lean model's list order (windows run with deterministic=True)"
         )
 
     def limit_offset(self, offset: int, count: int | None) -> str:

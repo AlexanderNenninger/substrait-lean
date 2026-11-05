@@ -1,0 +1,72 @@
+{
+  "id": "spark-week-parts",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "ISO weeks; `dayofweek` from Sunday; `date_trunc('week')` to Monday; floors before 1970",
+  "verdict": "ISO `weekofyear`, `YEAROFWEEK`, `DOW_ISO`; `dayofweek` 1 = Sunday; floor before the epoch",
+  "area": "temporal",
+  "options": [
+    "week_numbering"
+  ],
+  "constructs": [
+    "weekofyear",
+    "dayofweek",
+    "weekday",
+    "extract",
+    "date_part",
+    "date_trunc",
+    "trunc",
+    "dayofyear",
+    "date_diff",
+    "timestampdiff",
+    "date_format"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`weekofyear` and `extract(WEEK …)` are ISO weeks (2021-01-03 is week 53 of 2020), `extract(YEAROFWEEK …)` the ISO year, `extract(DOW_ISO …)` 1 = Monday … 7 = Sunday. `dayofweek` and `extract(DOW …)` count 1 = Sunday … 7 = Saturday, and `weekday` 0 = Monday … 6 = Sunday. `date_trunc('week', …)` and `trunc(d, 'week')` go back to Monday.",
+    "Before 1970 parts and truncations floor: `date_trunc('second', 1969-12-31 23:59:59.5)` is 23:59:59, `extract(SECOND …)` 59.500000 (a decimal). `datediff` counts days; `timestampdiff(MONTH, 2024-01-31, 2024-02-29)` is 0, whole months only.",
+    "`date_format` and `to_date` take Java `DateTimeFormatter` patterns; the week-based letters (`Y`, `w`, `u`, `e`) raise `INCONSISTENT_BEHAVIOR_CROSS_VERSION` in both modes. Spark has no `date_bin`; `window(ts, '5 minutes')` buckets from the epoch."
+  ],
+  "reference": "`date_part` and `date_trunc` (`Time.lean`): ISO weeks, Monday-based `isodow`, flooring before the epoch; `strftime` is opaque. Spark is native for the ISO parts; `dayofweek` is a different numbering a writer maps.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "week-parts"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "pre-1970-parts"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "date-diff"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "date-format"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "date-format-legacy-pattern"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "date-bin"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}
