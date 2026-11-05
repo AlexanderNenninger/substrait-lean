@@ -52,6 +52,8 @@ documentation they rest on:
   (no `rowid`), so nothing can stand for Lean's list order, which FETCH and
   ties in a window follow: `row_ordinal` is refused. Windows run with
   `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
+* **Modulus of doubles**: `MOD` computes `a - b * TRUNC(a / b)` in doubles,
+  which differs from C's `fmod` for large quotients, so it is refused.
 * **Aggregates**: `VAR_*` and `STDDEV_*` of doubles use a formula that
   cancels catastrophically, so they are refused; sums of doubles are refused
   as their order is not given.
@@ -288,6 +290,13 @@ class SnowflakeDialect(Dialect):
 
     def window_int_sum(self, v: str, over: str) -> str:
         return f"CAST({self.checked(f'SUM({v}) {over}', row=False)} AS NUMBER(38,0))"
+
+    def float_mod(self, a: str, b: str) -> str:
+        raise Unsupported(
+            "Snowflake's MOD of doubles is a - b * TRUNC(a / b) with each step rounded, which "
+            "differs from the reference's fmod where the quotient is large (Snowflake behaviour "
+            "recorded privately)"
+        )
 
     def float_var(self, fn: str, v: str) -> str:
         raise Unsupported(

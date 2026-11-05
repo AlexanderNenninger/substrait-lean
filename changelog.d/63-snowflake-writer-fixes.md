@@ -11,6 +11,9 @@ changes where it did not give the reference:
   2^31, and a start from 2^32 on raises as on the other engines.
 - `VAR_*` and `STDDEV_*` of doubles are refused: Snowflake's give 0 for
   `1e9 + {4, 7, 13, 16}`, whose variance is 30.
+- A modulus of doubles is refused: Snowflake's `MOD` computes
+  `a - b * TRUNC(a / b)` in doubles, so `MOD(1e308, 9.13e10)` is 0 where the
+  remainder is 3.8e10.
 - Semi, anti and outer joins failed to compile (`002031 Unsupported subquery
   type`): a correlated `EXISTS` now has its condition bare in the `WHERE`.
 - `strpos` is Snowflake's own `POSITION`, which gives 1 for an empty needle
