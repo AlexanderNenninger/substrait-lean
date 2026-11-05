@@ -1,0 +1,50 @@
+// The contract `Report.to_substrait` attaches to an exported plan (#664).
+//
+// It travels in the plan's `advanced_extensions.optimization`, packed in a
+// `google.protobuf.Any` with the type URL
+// `type.googleapis.com/io.sverify.substrait.v1.Contract`. A consumer that
+// does not know it ignores it, as Substrait allows for an optimization.
+// `sverify.substrait_export` builds the same messages at run time;
+// `tests/test_substrait_export.py` checks that they match this file.
+syntax = "proto3";
+
+package io.sverify.substrait.v1;
+
+import "google/protobuf/struct.proto";
+import "substrait/plan.proto";
+
+message Contract {
+  // What the export relies on, as JSON: the format version, sverify's and
+  // Substrait's versions, the extension URNs, the profile the plan was
+  // verified under, its class (exact, observed or assumed), the observation
+  // the postconditions hold up to, the pinned options, the shims applied,
+  // the assumptions annotated, the choices no input meets (`unexercised`),
+  // and the checker's entries for the table conditions. docs/guide.md,
+  // "Exporting to Substrait", lists the keys.
+  google.protobuf.Struct manifest = 1;
+  // The preconditions: declared, inferred (`inferred`) and assumed (kind
+  // "assumed", checked while the job runs in sverify).
+  repeated Condition requires = 2;
+  // The postconditions, each with whether it was proved.
+  repeated Condition ensures = 3;
+}
+
+message Condition {
+  // The condition in the user's terms, or as sverify inferred it.
+  string text = 1;
+  // For a precondition: the input table it constrains.
+  string table = 2;
+  // "row" (a boolean on each row), "assumed", or a table condition's class:
+  // "Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer".
+  string kind = 3;
+  // Inferred by sverify (`Report.inferred`, `Report.assumed`).
+  bool inferred = 4;
+  // For kind "row": a plan of one boolean column, over the input table for a
+  // precondition and over the exported plan's inputs for a postcondition,
+  // true on every row where the condition holds.
+  substrait.Plan plan = 5;
+  // For a table condition: its class and fields.
+  google.protobuf.Value entry = 6;
+  // For a postcondition: proved by the checker.
+  bool proved = 7;
+}

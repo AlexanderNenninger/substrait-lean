@@ -2469,6 +2469,164 @@ theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMe
     (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNeg env) row :=
   Expr.refineNegL_sound env _ h (by rwa [Expr.eval_normConst])
 
+/-! ## Whole conditions on a row (#597)
+
+A precondition that relates columns (`a <= 0 OR b < 0`) says nothing about
+one column on its own. Kept whole, it proves itself where the plan carries it
+through unchanged (`Fact.holds`), and it narrows a column once the other
+disjuncts are ruled out on a path (`Expr.refineOr`). -/
+
+/-- Does `p` hold for every column the expression reads? A lambda's body
+reads its parameter, not the row. -/
+def Expr.allFields (p : Nat → Bool) : Expr → Bool
+  | .lit _ => true
+  | .field i => p i
+  | .un _ a => a.allFields p
+  | .bin _ a b => a.allFields p && b.allFields p
+  | .ifThen c t e => c.allFields p && t.allFields p && e.allFields p
+  | .hof _ l _ => l.allFields p
+
+/-- Read column `g i` wherever the expression reads column `i`. -/
+def Expr.mapFields (g : Nat → Nat) : Expr → Expr
+  | .lit v => .lit v
+  | .field i => .field (g i)
+  | .un f a => .un f (a.mapFields g)
+  | .bin f a b => .bin f (a.mapFields g) (b.mapFields g)
+  | .ifThen c t e => .ifThen (c.mapFields g) (t.mapFields g) (e.mapFields g)
+  | .hof f l b => .hof f (l.mapFields g) b
+
+theorem Expr.allFields_true : ∀ e : Expr, e.allFields (fun _ => true) = true
+  | .lit _ | .field _ => rfl
+  | .un _ a => Expr.allFields_true a
+  | .bin _ a b => by simp [allFields, Expr.allFields_true a, Expr.allFields_true b]
+  | .ifThen c t e => by
+      simp [allFields, Expr.allFields_true c, Expr.allFields_true t, Expr.allFields_true e]
+  | .hof _ l _ => Expr.allFields_true l
+
+theorem Expr.allFields_and {p q : Nat → Bool} :
+    ∀ {e : Expr}, e.allFields p = true → e.allFields q = true → e.allFields (fun i => p i && q i) = true
+  | .lit _, _, _ => rfl
+  | .field _, hp, hq => by simp_all [allFields]
+  | .un _ a, hp, hq => Expr.allFields_and (e := a) hp hq
+  | .bin _ a b, hp, hq => by
+      simp only [allFields, Bool.and_eq_true] at hp hq ⊢
+      exact ⟨Expr.allFields_and hp.1 hq.1, Expr.allFields_and hp.2 hq.2⟩
+  | .ifThen c t e, hp, hq => by
+      simp only [allFields, Bool.and_eq_true] at hp hq ⊢
+      exact ⟨⟨Expr.allFields_and hp.1.1 hq.1.1, Expr.allFields_and hp.1.2 hq.1.2⟩,
+        Expr.allFields_and hp.2 hq.2⟩
+  | .hof _ l _, hp, hq => Expr.allFields_and (e := l) hp hq
+
+theorem Expr.mapFields_id : ∀ e : Expr, e.mapFields id = e
+  | .lit _ | .field _ => rfl
+  | .un f a => by simp [mapFields, Expr.mapFields_id a]
+  | .bin f a b => by simp [mapFields, Expr.mapFields_id a, Expr.mapFields_id b]
+  | .ifThen c t e => by
+      simp [mapFields, Expr.mapFields_id c, Expr.mapFields_id t, Expr.mapFields_id e]
+  | .hof f l b => by simp [mapFields, Expr.mapFields_id l]
+
+/-- Moving the columns an expression reads, with their values, keeps its
+value. -/
+theorem Expr.eval_mapFields {p : Nat → Bool} {g : Nat → Nat} {row row' : Row}
+    (hg : ∀ i, p i = true → row'.getD (g i) .null = row.getD i .null) :
+    ∀ {e : Expr}, e.allFields p = true → (e.mapFields g).eval row' = e.eval row
+  | .lit _, _ => rfl
+  | .field i, h => hg i h
+  | .un f a, h => by simp only [mapFields, eval, Expr.eval_mapFields hg (e := a) h]
+  | .bin f a b, h => by
+      simp only [allFields, Bool.and_eq_true] at h
+      simp only [mapFields, eval, Expr.eval_mapFields hg h.1, Expr.eval_mapFields hg h.2]
+  | .ifThen c t e, h => by
+      simp only [allFields, Bool.and_eq_true] at h
+      simp only [mapFields, eval, Expr.eval_mapFields hg h.1.1, Expr.eval_mapFields hg h.1.2,
+        Expr.eval_mapFields hg h.2]
+  | .hof f l b, h => by simp only [mapFields, eval, Expr.eval_mapFields hg (e := l) h]
+
+/-- The same expression on a row that agrees on the columns it reads. -/
+theorem Expr.eval_congr {p : Nat → Bool} {row row' : Row}
+    (hg : ∀ i, p i = true → row'.getD i .null = row.getD i .null) {e : Expr}
+    (h : e.allFields p = true) : e.eval row' = e.eval row := by
+  simpa [Expr.mapFields_id] using Expr.eval_mapFields (g := id) hg h
+
+theorem AVal.not_isTrue {a : AVal} {v : Value} (hm : a.Mem v) (ht : a.tt = false) :
+    v.isTrue = false := by
+  match v, hm with
+  | .bool true, hm => simp_all [AVal.Mem]
+  | .bool false, _ | .null, _ | .int _, _ | .str _, _ | .list _, _ => rfl
+
+/-- What a row on which `e` is TRUE satisfies, by cases: a disjunct that
+cannot be TRUE under `env` is dropped, so under `a > 0` the condition
+`a <= 0 OR b < 0` narrows `b` to `b < 0`. A `CASE` (`ibis.ifelse`) whose
+condition is decided under `env` is its branch. A disjunct that is NULL is
+not TRUE either, so a NULL operand is dropped with the FALSE ones. -/
+def Expr.refineOr (env : List AVal) : Expr → List AVal
+  | .bin f p q =>
+      if f = .or then
+        if (p.abs env).tt = false then q.refineOr env
+        else if (q.abs env).tt = false then p.refineOr env
+        else List.zipWith AVal.join (p.refineOr env) (q.refineOr env)
+      else (Expr.bin f p q).refine env
+  | .ifThen c t e =>
+      if (c.abs env).tt = false then e.refineOr env
+      else if (c.abs env).certainlyTrue then t.refineOr env
+      else env
+  | e => e.refine env
+
+theorem Expr.refineOr_length (env : List AVal) : ∀ e : Expr, (e.refineOr env).length = env.length
+  | .bin f p q => by
+      simp only [refineOr]
+      split
+      · split
+        · exact Expr.refineOr_length env q
+        · split
+          · exact Expr.refineOr_length env p
+          · simp [Expr.refineOr_length env p, Expr.refineOr_length env q]
+      · exact Expr.refine_length env _
+  | .ifThen c t e => by
+      simp only [refineOr]
+      split
+      · exact Expr.refineOr_length env e
+      · split
+        · exact Expr.refineOr_length env t
+        · rfl
+  | .lit _ | .field _ | .un _ _ | .hof _ _ _ => Expr.refine_length env _
+
+theorem Expr.refineOr_sound {row : Row} (env : List AVal) (h : EnvMem env row) :
+    ∀ (e : Expr), (e.eval row).isTrue = true → EnvMem (e.refineOr env) row
+  | .bin f p q, ht => by
+      simp only [refineOr]
+      split
+      · rename_i hf
+        subst hf
+        simp only [eval, BinFn.apply, isTrue_or3, Bool.or_eq_true] at ht
+        split
+        · rename_i hp
+          exact Expr.refineOr_sound env h q
+            (ht.resolve_left (by simp [AVal.not_isTrue (Expr.abs_sound h p) hp]))
+        · split
+          · rename_i _ hq
+            exact Expr.refineOr_sound env h p
+              (ht.resolve_right (by simp [AVal.not_isTrue (Expr.abs_sound h q) hq]))
+          · rcases ht with hp | hq
+            · exact EnvMem.zip_left (Expr.refineOr_sound env h p hp)
+            · exact EnvMem.zip_right (Expr.refineOr_sound env h q hq)
+      · exact Expr.refine_sound env _ h ht
+  | .ifThen c t e, ht => by
+      simp only [refineOr]
+      have hc := Expr.abs_sound h c
+      split
+      · rename_i hct
+        have hnc := AVal.not_isTrue hc hct
+        simp only [eval, hnc] at ht
+        exact Expr.refineOr_sound env h e ht
+      · split
+        · rename_i _ hcert
+          have hcv := AVal.certainlyTrue_mem hcert hc
+          simp only [eval, hcv, Value.isTrue, ite_true] at ht
+          exact Expr.refineOr_sound env h t ht
+        · exact h
+  | .lit _, ht | .field _, ht | .un _ _, ht | .hof _ _ _, ht => Expr.refine_sound env _ h ht
+
 /-! ## Relational facts
 
 Per-column descriptions cannot say "`t1` is exactly `Δ` after `t0`" or "`v` is
@@ -2485,6 +2643,9 @@ inductive Fact where
   and `x` is a sum of `n` integers in `b`: the `SUM` and `COUNT` of a decimal
   `AVG` (`Parse.decimalAvgs`, #237). -/
   | ratio (s c : Nat) (b : Bound)
+  /-- The condition is TRUE on the row: a precondition or filter condition
+  kept whole, whatever its shape (#597). -/
+  | holds (e : Expr)
   deriving Repr, DecidableEq
 
 def Fact.Holds (row : Row) : Fact → Prop
@@ -2492,6 +2653,7 @@ def Fact.Holds (row : Row) : Fact → Prop
   | .ne i k => row.getD i .null ≠ .int k
   | .ratio s c b => ∀ x n, row.getD s .null = .int x → row.getD c .null = .int n →
       0 < n ∧ (∀ l, b.lo = some l → n * l ≤ x) ∧ (∀ h, b.hi = some h → x ≤ n * h)
+  | .holds e => (e.eval row).isTrue = true
 
 def FactsHold (fs : List Fact) (row : Row) : Prop := ∀ f ∈ fs, f.Holds row
 
@@ -2501,6 +2663,35 @@ theorem FactsHold.append {fs gs : List Fact} {row : Row} (h₁ : FactsHold fs ro
   rcases List.mem_append.mp hf with hf | hf
   · exact h₁ f hf
   · exact h₂ f hf
+
+theorem FactsHold.filter {fs : List Fact} {row : Row} (h : FactsHold fs row) (p : Fact → Bool) :
+    FactsHold (fs.filter p) row := fun f hf => h f (List.mem_filter.mp hf).1
+
+/-- Narrow `env` by every whole condition among the facts. -/
+def useFacts (fs : List Fact) (env : List AVal) : List AVal :=
+  fs.foldl (fun env f => match f with | .holds e => e.refineOr env | _ => env) env
+
+theorem useFacts_length : ∀ (fs : List Fact) (env : List AVal), (useFacts fs env).length = env.length
+  | [], _ => rfl
+  | f :: fs, env => by
+      simp only [useFacts, List.foldl_cons]
+      rw [← useFacts, useFacts_length fs]
+      split
+      · exact Expr.refineOr_length env _
+      · rfl
+
+theorem useFacts_sound {row : Row} :
+    ∀ {fs : List Fact} {env : List AVal}, FactsHold fs row → EnvMem env row →
+      EnvMem (useFacts fs env) row
+  | [], _, _, h => h
+  | f :: fs, env, hfs, h => by
+      simp only [useFacts, List.foldl_cons]
+      rw [← useFacts]
+      refine useFacts_sound (fun g hg => hfs g (by simp [hg])) ?_
+      split
+      · rename_i e
+        exact Expr.refineOr_sound env h e (hfs (.holds e) (by simp))
+      · exact h
 
 /-- `e` is column `j` plus the constant `c`. -/
 def Expr.linTerm : Expr → Option (Nat × Int)
@@ -2549,6 +2740,8 @@ def diffFact (t₁ t₂ : Expr) (mk : Int → Int → Bound) : List Fact :=
 def Fact.mentions (i : Nat) : Fact → Bool
   | .diff a b _ | .ratio a b _ => a == i || b == i
   | .ne a _ => a == i
+  -- A whole condition may be about NULLs.
+  | .holds _ => false
 
 /-- Facts that hold where `x IS NULL` (`q`), from the facts `fs` of the
 other side of an `OR`: those about `x` (facts only constrain non-NULL values). -/
@@ -2563,25 +2756,25 @@ def orGapFacts : Expr → Expr → List Fact
     if t == t' && a ≤ b then (if a ≤ 0 && 0 ≤ b then neFact t 0 else []) ++ neFact t a else []
   | _, _ => []
 
-def Expr.factsOf : Expr → List Fact
-  | .bin .and p q => p.factsOf ++ q.factsOf
+def Expr.factsCore : Expr → List Fact
+  | .bin .and p q => p.factsCore ++ q.factsCore
   | .un .not (.bin .eq t (.lit (.int k))) => neFact t k
   | .un .not (.bin .eq (.lit (.int k)) t) => neFact t k
   | .bin .eq t₁ t₂ => diffFact t₁ t₂ fun c₁ c₂ => .exact (c₂ - c₁)
   | .bin .lt t₁ t₂ => diffFact t₁ t₂ fun c₁ c₂ => ⟨none, some (c₂ - c₁ - 1)⟩
   | .un .not (.bin .lt t₁ t₂) => diffFact t₁ t₂ fun c₁ c₂ => ⟨some (c₂ - c₁), none⟩
   -- NOT (p OR q) is NOT p AND NOT q.
-  | .un .not (.bin .or p q) => (Expr.un .not p).factsOf ++ (Expr.un .not q).factsOf
+  | .un .not (.bin .or p q) => (Expr.un .not p).factsCore ++ (Expr.un .not q).factsCore
   -- NOT (x IS NOT NULL AND q): either x is NULL, or NOT q. Facts about x hold
   -- in both cases, since facts only constrain non-NULL values. (Ibis writes
   -- `~x.isnan()` this way.)
   | .un .not (.bin .and (.un .not (.un .isNull (.field i))) q) =>
-      (Expr.un .not q).factsOf.filter (·.mentions i)
+      (Expr.un .not q).factsCore.filter (·.mentions i)
   -- `p OR q`: the facts of both, those of one about `x` if the other is
   -- `x IS NULL`, and the value a gap `t < a OR b < t` leaves out.
   | .bin .or p q =>
-      let fp := p.factsOf
-      let fq := q.factsOf
+      let fp := p.factsCore
+      let fq := q.factsCore
       fp.filter (fq.contains ·) ++ orNullFacts fp q ++ orNullFacts fq p ++
         orGapFacts p q ++ orGapFacts q p
   | _ => []
@@ -2661,6 +2854,7 @@ theorem Fact.holds_of_null {f : Fact} {row : Row} {i : Nat} (hm : f.mentions i =
     rcases hm with rfl | rfl
     · rw [hn] at hx; cases hx
     · rw [hn] at hy; cases hy
+  | holds _ => simp [Fact.mentions] at hm
 
 theorem orNullFacts_sound {fs : List Fact} {p q : Expr} {row : Row}
     (hp : (p.eval row).isTrue = true → FactsHold fs row)
@@ -2706,9 +2900,9 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
     · simp at hf
   · simp at hf
 
-theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
-    FactsHold e.factsOf row := by
-  fun_induction Expr.factsOf e
+theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
+    FactsHold e.factsCore row := by
+  fun_induction Expr.factsCore e
   case case1 p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht
     exact (ihp ht.1).append (ihq ht.2)
@@ -2769,22 +2963,67 @@ theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = tr
     · exact orGapFacts_sound hpq.symm hf
   case case10 => intro f hf; simp at hf
 
+/-- The conjuncts of a condition. -/
+def Expr.conjuncts : Expr → List Expr
+  | .bin f p q => if f = .and then p.conjuncts ++ q.conjuncts else [.bin f p q]
+  | e => [e]
+
+theorem Expr.conjuncts_sound {row : Row} :
+    ∀ (e : Expr), (e.eval row).isTrue = true → ∀ c ∈ e.conjuncts, (c.eval row).isTrue = true
+  | .bin f p q, ht, c, hc => by
+      simp only [conjuncts] at hc
+      split at hc
+      · rename_i hf
+        subst hf
+        simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht
+        simp only [List.mem_append] at hc
+        rcases hc with hc | hc
+        · exact Expr.conjuncts_sound p ht.1 c hc
+        · exact Expr.conjuncts_sound q ht.2 c hc
+      · simp only [List.mem_singleton] at hc; subst hc; exact ht
+  | .lit _, ht, c, hc | .field _, ht, c, hc | .un _ _, ht, c, hc | .ifThen _ _ _, ht, c, hc
+  | .hof _ _ _, ht, c, hc => by
+      simp only [conjuncts, List.mem_singleton] at hc; subst hc; exact ht
+
+/-- Facts that hold on every row where `e` is TRUE: each conjunct kept whole,
+and what `factsCore` derives. -/
+def Expr.factsOf (e : Expr) : List Fact := e.conjuncts.map .holds ++ e.factsCore
+
+theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
+    FactsHold e.factsOf row := by
+  refine FactsHold.append ?_ (e.factsCore_sound ht)
+  intro f hf
+  simp only [List.mem_map] at hf
+  obtain ⟨c, hc, rfl⟩ := hf
+  exact Expr.conjuncts_sound e ht c hc
+
 /-! ### Facts through a plan -/
 
 def Fact.inRange (n : Nat) : Fact → Bool
   | .diff i j _ | .ratio i j _ => i < n && j < n
   | .ne i _ => i < n
+  | .holds e => e.allFields (· < n)
 
 def Fact.shift (n : Nat) : Fact → Fact
   | .diff i j b => .diff (n + i) (n + j) b
   | .ne i k => .ne (n + i) k
   | .ratio i j b => .ratio (n + i) (n + j) b
+  | .holds e => .holds (e.mapFields (n + ·))
+
+/-- Does the fact only constrain integers (so it holds where its columns are
+NULL)? -/
+def Fact.intsOnly : Fact → Bool
+  | .holds _ => false
+  | _ => true
 
 /-- Re-index a fact: column `i` of the input appears at every position in `σ i`. -/
 def Fact.rename (σ : Nat → List Nat) : Fact → List Fact
   | .diff i j b => (σ i).flatMap fun p => (σ j).map fun q => .diff p q b
   | .ne i k => (σ i).map fun p => .ne p k
   | .ratio i j b => (σ i).flatMap fun p => (σ j).map fun q => .ratio p q b
+  -- At the first place each column it reads appears, if they all do.
+  | .holds e =>
+      if e.allFields (fun i => !(σ i).isEmpty) then [.holds (e.mapFields fun i => (σ i).headD 0)] else []
 
 /-- Positions of input column `i` in an emit mapping. -/
 def positions (m : List Nat) (i : Nat) : List Nat :=
@@ -2869,6 +3108,7 @@ def aggFacts (g : Nat) (ms : List Measure) : List Fact :=
 def Fact.rightOf (n : Nat) : Fact → Bool
   | .diff i j _ | .ratio i j _ => decide (n ≤ i) || decide (n ≤ j)
   | .ne i _ => decide (n ≤ i)
+  | .holds _ => false
 
 /-- Facts that hold on every output row of a plan, given facts `F t` about
 each table. -/
@@ -2888,7 +3128,8 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   -- NULL padding keeps every fact true: facts only speak about integers. So
   -- are the condition's facts that mention a right column.
   | .join a b .left on =>
-      (a.facts cat F T).filter (·.inRange (a.arity cat)) ++ (b.facts cat F T).map (·.shift (a.arity cat)) ++
+      (a.facts cat F T).filter (·.inRange (a.arity cat)) ++
+        ((b.facts cat F T).filter Fact.intsOnly).map (·.shift (a.arity cat)) ++
         on.factsOf.filter (·.rightOf (a.arity cat))
   | .fetch r _ _ => r.facts cat F T
   | .unionAll a b => (a.facts cat F T).filter ((b.facts cat F T).contains ·)
@@ -2900,6 +3141,11 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   | .orderBy r _ | .distinct r => r.facts cat F T
   | .aggregate _ gs ms => aggFacts gs.length ms
   | .unnest _ _ => []
+
+theorem headD_mem_of {l : List Nat} (h : (!l.isEmpty) = true) : l.headD 0 ∈ l := by
+  cases l with
+  | nil => simp at h
+  | cons p ps => simp
 
 theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
     (hσ : ∀ i, ∀ p ∈ σ i, row'.getD p .null = row.getD i .null) :
@@ -2919,6 +3165,14 @@ theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
       obtain ⟨p, hp, q, hq, rfl⟩ := hg
       intro x y hx hy
       exact h x y (hσ i p hp ▸ hx) (hσ j q hq ▸ hy)
+  | .holds e, h, g, hg => by
+      simp only [Fact.rename] at hg
+      split at hg
+      · rename_i hall
+        simp only [List.mem_singleton] at hg; subst hg
+        simp only [Fact.Holds] at h ⊢
+        rw [Expr.eval_mapFields (fun i hi => hσ i _ (headD_mem_of hi)) hall]; exact h
+      · simp at hg
 
 theorem FactsHold.rename {σ : Nat → List Nat} {fs : List Fact} {row row' : Row}
     (h : FactsHold fs row) (hσ : ∀ i, ∀ p ∈ σ i, row'.getD p .null = row.getD i .null) :
@@ -2943,6 +3197,10 @@ theorem Fact.holds_prefix {n : Nat} {row row' : Row}
       simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
       intro x y hx hy
       exact h x y (hpre i hr.1 ▸ hx) (hpre j hr.2 ▸ hy)
+  | .holds e, hr, h => by
+      simp only [Fact.inRange] at hr
+      simp only [Fact.Holds] at h ⊢
+      rw [Expr.eval_congr (fun i hi => hpre i (by simpa using hi)) hr]; exact h
 
 theorem FactsHold.prefix {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHold fs row)
     (hpre : ∀ i < n, row'.getD i .null = row.getD i .null) :
@@ -2962,6 +3220,9 @@ theorem FactsHold.shift {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHo
   | diff i j b => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
   | ne i k => intro hx; exact this (hsh i ▸ hx)
   | ratio i j _ => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
+  | holds e =>
+      simp only [Fact.shift, Fact.Holds] at this ⊢
+      rw [Expr.eval_mapFields (fun i _ => hsh i) (Expr.allFields_true e)]; exact this
 
 theorem getD_append_left' {x y : Row} {i : Nat} (h : i < x.length) :
     (x ++ y).getD i .null = x.getD i .null := by
@@ -2991,6 +3252,20 @@ theorem Fact.rename_holds_inRange {σ : Nat → List Nat} {row row' : Row} {n : 
       obtain ⟨p, hp, q, hq, rfl⟩ := hg
       intro x y hx hy
       exact h x y (hσ i hr.1 p hp ▸ hx) (hσ j hr.2 q hq ▸ hy)
+  | .holds e, hr, h, g, hg => by
+      simp only [Fact.inRange] at hr
+      simp only [Fact.rename] at hg
+      split at hg
+      · rename_i hall
+        simp only [List.mem_singleton] at hg; subst hg
+        simp only [Fact.Holds] at h ⊢
+        rw [Expr.eval_mapFields (p := fun i => decide (i < n) && !(σ i).isEmpty)
+          (fun i hi => by
+            simp only [Bool.and_eq_true, decide_eq_true_eq] at hi
+            exact hσ i hi.1 _ (headD_mem_of hi.2))
+          (Expr.allFields_and hr hall)]
+        exact h
+      · simp at hg
 
 theorem copyCols_getD {n : Nat} {es : List Expr} {row : Row} {i p : Nat}
     (hlen : row.length = n) (hi : i < n) (hp : p ∈ copyCols n es i) :
@@ -3033,11 +3308,13 @@ theorem linFacts_sound {n : Nat} {row row' : Row}
         simpa [Nat.add_assoc, Nat.add_comm 1 k] using this
 
 theorem FactsHold.shift_nulls {n : Nat} {fs : List Fact} {row : Row}
-    (hnull : ∀ i, row.getD (n + i) .null = .null) : FactsHold (fs.map (·.shift n)) row := by
+    (hnull : ∀ i, row.getD (n + i) .null = .null) :
+    FactsHold ((fs.filter Fact.intsOnly).map (·.shift n)) row := by
   intro g hg
-  simp only [List.mem_map] at hg
-  obtain ⟨f, _, rfl⟩ := hg
+  simp only [List.mem_map, List.mem_filter] at hg
+  obtain ⟨f, ⟨_, hio⟩, rfl⟩ := hg
   cases f with
+  | holds _ => simp [Fact.intsOnly] at hio
   | diff i j b => intro x y hx _; rw [hnull i] at hx; cases hx
   | ne i k => intro hx; rw [hnull i] at hx; cases hx
   | ratio i j _ => intro x y hx _; rw [hnull i] at hx; cases hx
@@ -3067,6 +3344,7 @@ theorem FactsHold.rightOf_nulls {n : Nat} {fs : List Fact} {row : Row}
     rcases hf.2 with h | h
     · exact Fact.holds_of_null (i := i) (by simp [Fact.mentions]) (hn i h)
     · exact Fact.holds_of_null (i := j) (by simp [Fact.mentions]) (hn j h)
+  | holds _ => simp [Fact.rightOf] at hf
 
 theorem getD_pad_null {x : Row} {m i : Nat} (h : x.length ≤ i) :
     (x ++ List.replicate m Value.null).getD i .null = .null := by
@@ -3389,7 +3667,8 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
       · simp only [List.mem_filter, List.mem_map] at h
         obtain ⟨⟨y, hy, rfl⟩, ht⟩ := h
         exact ((hfx.prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
-          ((facts_sound hcat hF hT hwf.2.1 y hy).shift fun i => hlen ▸ getD_append_right' i)).append
+          (((facts_sound hcat hF hT hwf.2.1 y hy).filter _).shift
+            fun i => hlen ▸ getD_append_right' i)).append
           fun f hf => on.factsOf_sound ht f (List.mem_filter.mp hf).1
   | .fetch r _ _, hwf, row, h => by
       simp only [eval] at h
@@ -3440,7 +3719,7 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
 /-- A bound on `x - y` for columns `i` and `j`, from the facts. -/
 def Fact.diffBound (i j : Nat) : Fact → Option Bound
   | .diff i' j' b => if i' = i ∧ j' = j then some b else if i' = j ∧ j' = i then some b.neg else none
-  | .ne _ _ | .ratio _ _ _ => none
+  | .ne _ _ | .ratio _ _ _ | .holds _ => none
 
 /-- What all facts together say about `$i - $j` (`ts_right <= ts` and
 `ts_right >= ts - 10` give `0 ≤ ts - ts_right ≤ 10`). -/
@@ -3561,16 +3840,17 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
   | .un f a => narrowAll ks (.un f a) (f.abs (a.absD env fs ks))
   | .bin f a b => narrowAll ks (.bin f a b) <|
       if f = .or ∧ (a.absD env fs ks).nonBool = false then
-        orSplit (a.absD env fs ks) (b.absD ((Expr.un .not a).refine env) fs (a.cstrs false ++ ks))
+        orSplit (a.absD env fs ks)
+          (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
       else if f = .or ∧ (a.absD env fs ks).int.isNone = true ∧ (a.absD env fs ks).str = false then
         orSplitNull (a.absD env fs ks)
-          (b.absD ((a.refineNeg env).map AVal.prune) fs (a.cstrs false ++ ks))
+          (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
       else sharpen fs f a b (a.absD env fs ks) (f.abs (a.absD env fs ks) (b.absD env fs ks))
   -- Each branch is evaluated knowing whether `c` is TRUE.
   | .ifThen c t e => narrowAll ks (.ifThen c t e) <|
       let ac := c.absD env fs ks
-      (if ac.tt then t.absD (c.refine env) fs (c.cstrs true ++ ks) else AVal.bot).join
-        (if ac.nonBool || ac.ff then e.absD (c.refineNeg env) fs (c.cstrs false ++ ks)
+      (if ac.tt then t.absD (useFacts fs (c.refine env)) fs (c.cstrs true ++ ks) else AVal.bot).join
+        (if ac.nonBool || ac.ff then e.absD (useFacts fs (c.refineNeg env)) fs (c.cstrs false ++ ks)
          else AVal.bot)
   | .hof f l b => narrowAll ks (.hof f l b) f.abs
 
@@ -3601,7 +3881,7 @@ theorem Fact.diffBound_sound {f : Fact} {row : Row} {i j : Nat} {d : Bound} {x y
     (hg : f.diffBound i j = some d) (hh : f.Holds row)
     (hx : row.getD i .null = .int x) (hy : row.getD j .null = .int y) : d.Mem (x - y) := by
   cases f with
-  | ne _ _ | ratio _ _ _ => simp [Fact.diffBound] at hg
+  | ne _ _ | ratio _ _ _ | holds _ => simp [Fact.diffBound] at hg
   | diff i' j' b =>
     simp only [Fact.diffBound] at hg
     split at hg
@@ -3833,7 +4113,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
         · have hr := Expr.refine_sound env (.un .not a) h (by simp [eval, hv, UnFn.apply, Value.isTrue])
           have hks' := KsHold.cons_cstrs (c := a) (pos := false)
             (by simp [hv, Value.isTrue]) hks
-          have hq := Expr.absD_sound hr hfs hks' b
+          have hq := Expr.absD_sound (useFacts_sound hfs hr) hfs hks' b
           rw [hv]
           apply AVal.mem_join_right
           rw [ite_eq_left hf]
@@ -3848,7 +4128,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
         rcases AVal.mem_cases ha with ⟨hv, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ |
             ⟨_, _, hs⟩
         · have hnt : (a.eval row).isTrue = false := by simp [hv, Value.isTrue]
-          have hq := Expr.absD_sound (Expr.refineNeg_sound env a h hnt).prune hfs
+          have hq := Expr.absD_sound (useFacts_sound hfs (Expr.refineNeg_sound env a h hnt).prune) hfs
             (KsHold.cons_cstrs (c := a) (pos := false) hnt hks) b
           rw [hv]
           apply AVal.mem_join_right
@@ -3863,7 +4143,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rw [ite_eq_left ht]
           exact AVal.mem_ofValue _
         · have hnt : (a.eval row).isTrue = false := by simp [hv, Value.isTrue]
-          have hq := Expr.absD_sound (Expr.refineNeg_sound env a h hnt).prune hfs
+          have hq := Expr.absD_sound (useFacts_sound hfs (Expr.refineNeg_sound env a h hnt).prune) hfs
             (KsHold.cons_cstrs (c := a) (pos := false) hnt hks) b
           rw [hv]
           apply AVal.mem_join_left
@@ -3887,7 +4167,8 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
         have htt : (c.absD env fs ks).tt = true := hc
         apply AVal.mem_join_left
         rw [ite_eq_left htt]
-        exact Expr.absD_sound (Expr.refine_sound env c h hct) hfs (KsHold.cons_cstrs hct hks) t
+        exact Expr.absD_sound (useFacts_sound hfs (Expr.refine_sound env c h hct)) hfs
+          (KsHold.cons_cstrs hct hks) t
       · rw [ite_eq_right hct]
         apply AVal.mem_join_right
         have : ((c.absD env fs ks).nonBool || (c.absD env fs ks).ff) = true := by
@@ -3900,8 +4181,24 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
         have hf : (c.eval row).isTrue = false := by simpa using hct
-        exact Expr.absD_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e
+        exact Expr.absD_sound (useFacts_sound hfs (Expr.refineNeg_sound env c h hf)) hfs
+          (KsHold.cons_cstrs hf hks) e
   | .hof f _ _ => narrowAll_sound hks (HoFn.abs_sound f _ _)
+
+/-- `absD`, and TRUE for a condition the facts carry whole (#597): an
+`ensures` that restates a `requires` the plan keeps. -/
+def Expr.absF (env : List AVal) (fs : List Fact) (e : Expr) : AVal :=
+  if fs.contains (.holds e) then AVal.ofValue (.bool true) else e.absD env fs
+
+theorem Expr.absF_sound {env : List AVal} {fs : List Fact} {row : Row}
+    (h : EnvMem env row) (hfs : FactsHold fs row) (e : Expr) :
+    (e.absF env fs).Mem (e.eval row) := by
+  unfold absF
+  split
+  · rename_i hc
+    have ht : (e.eval row).isTrue = true := hfs _ (List.contains_iff_mem.mp hc)
+    rw [Value.eq_true_of_isTrue ht]; exact AVal.mem_ofValue _
+  · exact Expr.absD_sound h hfs (ks := []) (by simp [KsHold]) e
 
 /-! ## Abstract plan evaluation -/
 
@@ -4250,11 +4547,11 @@ mutual
 facts about its rows. Computed columns use the facts of their input. -/
 def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
     (sz : Bool := false) : Rel → List AVal
-  | .read t => fit (cat t).arity (A t)
+  | .read t => useFacts (F t) (fit (cat t).arity (A t))
   | .values n _ => List.replicate n AVal.top
-  | .filter r c => c.refine (r.aeval cat A F T sz)
+  | .filter r c => useFacts (r.facts cat F T ++ c.factsOf) (c.refine (r.aeval cat A F T sz))
   | .project r es => r.aeval cat A F T sz ++
-      es.map (·.absD (r.aeval cat A F T sz) (r.facts cat F T ++ r.ratioPart cat A F T sz))
+      es.map (·.absF (r.aeval cat A F T sz) (r.facts cat F T ++ r.ratioPart cat A F T sz))
   | .emit r m => m.map ((r.aeval cat A F T sz).getD · AVal.top)
   | .cross a b => a.aeval cat A F T sz ++ b.aeval cat A F T sz
   | .join a b .inner on => on.refine (a.aeval cat A F T sz ++ b.aeval cat A F T sz)
@@ -4282,9 +4579,10 @@ end
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} {sz : Bool} :
     ∀ {r : Rel}, r.WF cat → (r.aeval cat A F T sz).length = r.arity cat
-  | .read _, _ => by simp [aeval, fit, arity]
+  | .read _, _ => by simp [aeval, fit, arity, useFacts_length]
   | .values _ _, _ => by simp [aeval, arity]
-  | .filter r _, h => by simp [aeval, arity, Expr.refine_length, aeval_length (r := r) h.1]
+  | .filter r _, h => by
+      simp [aeval, arity, useFacts_length, Expr.refine_length, aeval_length (r := r) h.1]
   | .project r _, h => by simp [aeval, arity, aeval_length (r := r) h.1]
   | .emit _ _, _ => by simp [aeval, arity]
   | .cross a b, h => by simp [aeval, arity, aeval_length (r := a) h.1, aeval_length (r := b) h.2]
@@ -4323,6 +4621,13 @@ theorem EnvMem.mapD {env : List AVal} {fs : List Fact} {row : Row} (h : EnvMem e
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
   cases es[j]? <;> simp [AVal.mem_top, Expr.absD_sound h hfs (ks := []) (by simp [KsHold])]
+
+theorem EnvMem.mapF {env : List AVal} {fs : List Fact} {row : Row} (h : EnvMem env row)
+    (hfs : FactsHold fs row) (es : List Expr) :
+    EnvMem (es.map (·.absF env fs)) (es.map (·.eval row)) := by
+  intro j
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases es[j]? <;> simp [AVal.mem_top, Expr.absF_sound h hfs]
 
 theorem EnvMem.emit {env : List AVal} {row : Row} (h : EnvMem env row) (m : List Nat) :
     EnvMem (m.map (env.getD · AVal.top)) (m.map (row.getD · .null)) := by
@@ -4921,17 +5226,18 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
     {sz : Bool} :
     ∀ {r : Rel}, r.WF cat → (sz = true → r.Small cat) → ∀ row ∈ r.eval cat,
       EnvMem (r.aeval cat A F T sz) row
-  | .read t, _, _, row, h => (hA t row h).fit _
+  | .read t, _, _, row, h => useFacts_sound (hF t row h) ((hA t row h).fit _)
   | .values _ _, _, _, row, _ => EnvMem.replicate _ row
   | .filter r c, hwf, hs, row, h => by
       simp only [eval, List.mem_filter] at h
-      exact Expr.refine_sound _ c (aeval_sound hcat hA hF hT hwf.1 hs row h.1) h.2
+      exact useFacts_sound ((Rel.facts_sound hcat hF hT hwf.1 row h.1).append (c.factsOf_sound h.2))
+        (Expr.refine_sound _ c (aeval_sound hcat hA hF hT hwf.1 hs row h.1) h.2)
   | .project r es, hwf, hs, row, h => by
       simp only [eval, List.mem_map] at h
       obtain ⟨x, hx, rfl⟩ := h
       have hm := aeval_sound hcat hA hF hT hwf.1 hs x hx
       have hr := ratioPart_sound hcat hA hF hT hwf.1 hs x hx
-      exact hm.append (hm.mapD ((Rel.facts_sound hcat hF hT hwf.1 x hx).append hr) es)
+      exact hm.append (hm.mapF ((Rel.facts_sound hcat hF hT hwf.1 x hx).append hr) es)
         (by rw [aeval_length hwf.1, eval_arity hcat hwf.1 x hx])
   | .emit r m, hwf, hs, row, h => by
       simp only [eval, List.mem_map] at h
