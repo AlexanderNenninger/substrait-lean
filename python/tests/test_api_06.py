@@ -46,7 +46,7 @@ def con():
 
 def test_on_inferred_off_infers_and_assumes_nothing() -> None:
     off = _quiet(sv.verify, SUM, on_inferred="off")
-    assert not off.assumed and not off.inferred
+    assert not off.assumed and not off._inferred
     assert "SUM overflow" in [i.kind for i in off.errors]
     assert not off.proved
     # The other values assume the SUM fits, and check it at run time.

@@ -44,7 +44,7 @@ def test_ties_suggest_the_unique_that_determines_the_result() -> None:
     report = sv.verify(T.group_by("k").aggregate(f=T.x.first(order_by=T.x)))
     assert not report.deterministic
     assert report.ties == {"t": ["unique(k, x)"]}
-    r = routes.choose(report, "duckdb", deterministic=True)
+    r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
     assert r.refused and r.suggested == {"t": ["unique(k, x)"]}
     assert "declare sv.unique('k', 'x') on t in requires" in r.reason
 
@@ -73,7 +73,7 @@ def plan_report():
 
 
 def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report, plan_report) -> None:
-    rel = routes._bounds(mean_report.epsilon["m"])["rel"][0]
+    rel = routes._bounds(mean_report._epsilon["m"])["rel"][0]
     want = int(1000 * 1e-14 / rel)
     assert not mean_report.proved
     assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in str(

@@ -13,9 +13,9 @@
 - `report.not_null` lists the output columns the checker shows are never NULL, and
   a stored node writes them as NOT NULL columns and records them in its
   contract, with those `ensures` states.
-- `report.needed_conditions` gives `report.needs` as conditions ready for
-  `requires=`: Ibis deferreds for an Ibis transform, SQL strings for a SQL
-  one.
+- Each `Needed` of `report.needs` has its `condition`, ready for
+  `requires=`: an Ibis deferred for an Ibis transform, a SQL string for a
+  SQL one. `report.suggested_requires` is the whole `requires=` mapping.
 - Every exception sverify raises on purpose derives from
   `sverify.errors.SverifyError`, and keeps its built-in base; the classes
   stay importable where they are defined.

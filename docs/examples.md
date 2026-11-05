@@ -160,8 +160,7 @@ each engine.
 
 DuckDB and Polars add doubles in different orders, so a mean's last bits may
 differ. The checker proves how far: a bound on each double the plan computes
-(`report.epsilon`,
-[#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)). With
+([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)). With
 no observation in `ensures`, a run accepts doubles within that bound, the
 same as `sv.equivalent(floats="plan")`, and the report prints the bound.
 
@@ -201,7 +200,7 @@ print(tight)
 ```
 
 `floats="exact"` asks for the same bits, and the report lists the engines
-that give them (`report.floats_on`): for this mean, none.
+that give them on its `observes:` line: for this mean, none.
 
 ## 6. A reproducible sink, kept up to date
 
@@ -291,7 +290,7 @@ each profile's choice.
 `semantics="substrait"` checks a plan under Substrait's semantics as its
 extension YAMLs state them, open wherever they say nothing. The reference's
 proof carries over where Substrait allows nothing more than the reference
-at every option the plan meets; `report.transfer` names the options where it
+at every option the plan meets; `str(report)` names the options where it
 allows more:
 
 ```python
@@ -304,8 +303,8 @@ plus_one = sv.verify(
 )
 print(plus_one.proved)
 # False
-print([(d["group"], d["option"], d["substrait"]) for d in plus_one.transfer])
-# [('int.arith', 'overflow', ['ERROR', 'SILENT', 'SATURATE'])]
+print(str(plus_one).splitlines()[3])
+#   not proved under semantics="substrait": int.arith's overflow allows ERROR, SILENT, SATURATE, the reference only ERROR
 ```
 
 Substrait leaves integer overflow to the consumer (raise, wrap or

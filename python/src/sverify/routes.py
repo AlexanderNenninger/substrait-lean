@@ -44,7 +44,7 @@ A plan whose result is not determined up to row order
 (`Report.deterministic`) runs natively, with the engine's own order of the
 ties: the reference allows every order, and the proofs hold for each (D24).
 Where a rerun must give the same result, the deterministic profile applies:
-`choose(..., deterministic=True)`, an incremental refresh or a sink's
+`choose(..., reproducible=sv.equivalent())`, an incremental refresh or a sink's
 `reproducible=` (D10, D20). It refuses such a plan and names each place where
 ties stay open (`Report.tie_places`).
 """
@@ -953,16 +953,16 @@ def floats_on(report: Report) -> dict[str, list[str]]:
         return {}
     if not any(getattr(t, "is_floating", bool)() for t in report.output.values()):
         return {}
-    plan = json.loads(report.plan) if report.plan else {}
-    depends = report.depends if report.depends is not None else plan_options(plan)
+    plan = json.loads(report.internal_plan) if report.internal_plan else {}
+    depends = report._depends if report._depends is not None else plan_options(plan)
     looser = replace(observation, floats="plan")
     out: dict[str, list[str]] = {}
     for e in TRANSLATIONS:
         if not (_options_json().get("choices") or {}).get(e):
             continue
-        rows_exact = (report.rows_exact or {}).get(e)
-        asked = realization(e, depends, observation, report.epsilon, None, rows_exact)
-        base = realization(e, depends, looser, report.epsilon, None, rows_exact)
+        rows_exact = (report._rows_exact or {}).get(e)
+        asked = realization(e, depends, observation, report._epsilon, None, rows_exact)
+        base = realization(e, depends, looser, report._epsilon, None, rows_exact)
         out[e] = [p for p in asked.problems if p not in base.problems]
     return out
 
@@ -1020,11 +1020,11 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
     """
     from sverify.engine import run_checker
 
-    if report.contract is None:
+    if report._contract is None:
         return None, "the report keeps no contract to check again"
     try:
         code, out, err = run_checker(
-            ("--contract",), json.dumps({**report.contract, "profile": profile})
+            ("--contract",), json.dumps({**report._contract, "profile": profile})
         )
     except Exception as e:  # noqa: BLE001
         return None, f"the checker failed: {e}"
@@ -1071,14 +1071,14 @@ def max_rows_fix(report: Report, engine: str, required: Observation | None) -> d
     does."""
     from sverify.contracts import MaxRows
 
-    if required is None or not isinstance(required.floats, Within) or not report.epsilon:
+    if required is None or not isinstance(required.floats, Within) or not report._epsilon:
         return {}
-    caps = {t: c.n for t, cs in report.conditions.items() for c in cs if isinstance(c, MaxRows)}
+    caps = {t: c.n for t, cs in report._conditions.items() for c in cs if isinstance(c, MaxRows)}
     if len(caps) != 1:
         return {}
     ((table, n0),) = caps.items()
     ratio = None
-    for eps in report.epsilon.values():
+    for eps in report._epsilon.values():
         bounds = _bounds(eps)
         met = False
         best = 0.0
@@ -1180,14 +1180,14 @@ def reproducibility(
         problems.append(
             "the result is not determined up to row order: the deterministic profile needs a "
             "total order (D24), and ties stay open at "
-            + ("; ".join(map(str, report.tie_places)) or "an ORDER BY or a LIMIT")
+            + ("; ".join(map(str, report._tie_places)) or "an ORDER BY or a LIMIT")
             + ", so no rerun is sure to reproduce it"
         )
     if depends is None:
         depends = (
-            report.depends
-            if report.depends is not None
-            else plan_options(json.loads(report.plan) if report.plan else {})
+            report._depends
+            if report._depends is not None
+            else plan_options(json.loads(report.internal_plan) if report.internal_plan else {})
         )
     tested = False
     for d in depends:
@@ -1200,7 +1200,7 @@ def reproducibility(
         rest, bounded, unproved = _plan_bound(
             varied,
             required,
-            report.epsilon,
+            report._epsilon,
             "between runs, and a rerun must reproduce",
             "pass reproducible=sv.equivalent(floats={tol}) or looser, "
             "or sv.equivalent({plan}) (the sinks' default) for the plan's own bound",
@@ -1209,13 +1209,13 @@ def reproducibility(
         # exact); the class's evidence says nothing about reruns.
         tested = tested or unproved or r.get("rerun_evidence") != "proved"
         varies = from_json(rest)
-        missed = varies.coarser_than(_resolve(required, report.epsilon))
+        missed = varies.coarser_than(_resolve(required, report._epsilon))
         if missed:
             unknown = (
                 "; the checker gives no bound on the plan's doubles: bound the inputs "
                 "(a range, and sv.max_rows) or pass "
                 "reproducible=sv.equivalent(floats=sv.within(...))"
-                if "floats" in missed and _resolve(required, report.epsilon).floats == "plan"
+                if "floats" in missed and _resolve(required, report._epsilon).floats == "plan"
                 else ""
             )
             problems.append(
@@ -1234,7 +1234,7 @@ def verified(report: Report) -> bool:
         return True
     return (
         not report.errors
-        and not report.transfer
+        and not report._transfer
         and not report.needs
         and not report.floats_unmet
         and all(c.portable or c.checked for c in report.ensures)
@@ -1260,18 +1260,19 @@ def not_verified(report: Report) -> str:
             see.append("report.unproved")
     parts += [f"needs {n}" for n in report._needs_lines()]
     if report.floats_unmet:
-        first = next(ps[0] for ps in report.floats_on.values() if ps)
+        first = next(ps[0] for ps in report._floats_on.values() if ps)
         want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
         parts.append(f"no engine meets the observation's {want}: {first}")
-        see.append("report.floats_on")
+        see.append("str(report)")
     if report.needs:
         see.append("report.needs")
-    if report.transfer:
+    if report._transfer:
         parts.append(
             "the reference's proof does not carry over to Substrait's semantics on "
-            + ", ".join(_where(f.get("group"), f["option"]) for f in report.transfer)
+            + ", ".join(_where(f.get("group"), f["option"]) for f in report._transfer)
         )
-        see.append("report.transfer")
+        if "str(report)" not in see:
+            see.append("str(report)")
     where = f" (see {', '.join(see)})" if see else ""
     return (
         "not verified: "
@@ -1294,7 +1295,7 @@ def choose(
     engine: Any,
     route: RouteKind | Literal["auto"] = "auto",
     *,
-    deterministic: bool = False,
+    deterministic: bool | None = None,
     version: str | None = None,
     reproducible: Observation | None = None,
 ) -> Route:
@@ -1306,8 +1307,7 @@ def choose(
         route: `"auto"` (the default) tries `"native"`, `"translated"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or
             refused.
-        deterministic: Require a rerun to reproduce the result exactly, rows
-            as a multiset: `reproducible=sv.equivalent()` (D10).
+        deterministic: Deprecated: `reproducible=sv.equivalent()` (D10).
         reproducible: What a rerun must reproduce (D20), as an
             idempotent sink needs: the engine's run-to-run variation must
             refine it (`reproducibility`), or the route is refused. None
@@ -1333,8 +1333,8 @@ def choose(
     notes: list[str] = []
     if w := check_version(e, version):
         notes.append(w)
-    plan = json.loads(report.plan) if report.plan else {}
-    depends = report.depends if report.depends is not None else plan_options(plan)
+    plan = json.loads(report.internal_plan) if report.internal_plan else {}
+    depends = report._depends if report._depends is not None else plan_options(plan)
     notes += check_settings(e, depends=depends)
     source = report.semantics
     det = report.deterministic
@@ -1347,10 +1347,9 @@ def choose(
             cap = max_rows_fix(report, e, report.observation)
             return replace(refuse(not_verified(report) + _cap_text(cap)), suggested=cap)
         return refuse(not_verified(report))
-    if deterministic and reproducible is None:
-        from sverify.observation import Observation as _Observation
+    from sverify.contracts import _deterministic_arg
 
-        reproducible = _Observation()
+    reproducible = _deterministic_arg("choose", deterministic, reproducible)
     rerun_evidence: Evidence | None = None
     if reproducible is not None:
         problems, rerun_evidence = reproducibility(report, e, reproducible)
@@ -1398,7 +1397,9 @@ def choose(
                 rerun_evidence=rerun_evidence,
             )
         seen, held = observed(report)
-        got = realization(e, depends, seen, report.epsilon, held, (report.rows_exact or {}).get(e))
+        got = realization(
+            e, depends, seen, report._epsilon, held, (report._rows_exact or {}).get(e)
+        )
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
@@ -1455,7 +1456,7 @@ def choose(
                 )
             elif not found:
                 which = (
-                    "" if report.depends is not None else " (every option of the plan's functions)"
+                    "" if report._depends is not None else " (every option of the plan's functions)"
                 )
                 return taken(
                     "transfer",

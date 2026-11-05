@@ -88,6 +88,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
+from sverify import _deprecated
 from sverify import observation as _observation
 from sverify._hooks import COLLECTING, Collected
 from sverify._unsupported import SverifyError
@@ -1214,30 +1215,30 @@ class Report:
     row ties), or when a `LIMIT` takes rows that tie in its `ORDER BY`, or
     has none. The engine then picks an order, and a rerun may pick another
     (D10). The postconditions are proved for every order (D24); the
-    deterministic profile (`routes.choose(deterministic=True)`, a sink's
+    deterministic profile (`run(reproducible=sv.equivalent())`, a sink's
     `reproducible=`) refuses such a plan and names `tie_places`."""
-    windows_total: bool = True
+    _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
-    tie_places: list[TiePlace] = field(default_factory=list)
+    _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves the order of ties open (D24), one entry per
     window, ordered aggregate or `LIMIT`; empty when `deterministic`."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, the checker could not rule out; when
     empty, the transformation provably runs without them."""
-    guard_free: bool = False
+    _guard_free: bool = field(default=False, repr=False)
     """The only issues are assumed ones (`SUM`s that may overflow, double
     operations that may give `±∞`, which keep their checks): on data that meets
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
-    unchecked: dict | None = None
+    _unchecked: dict | None = field(default=None, repr=False)
     """The expressions that run correctly without their checks, on data that
     meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
     plan; pass it to `sverify.engines.to_sql(..., unchecked=...)` with the
     same plan, and only the other expressions keep their checks. None when
     Lean found none (a left join with a filter on its right side, for one)."""
-    optimized: dict | None = None
+    _optimized: dict | None = field(default=None, repr=False)
     """The transformation as a Substrait JSON plan, rewritten with the facts
     and keys of the preconditions (`Rel.optimize` in
     `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
@@ -1245,12 +1246,12 @@ class Report:
     (`Rel.optimize_sound`); pass it to `sverify.engines.to_sql`, or as JSON
     to `sverify.engines.run`, instead of the transformation. None if Lean
     did not return one."""
-    rewrites: list[str] = field(default_factory=list)
+    _rewrites: list[str] = field(default_factory=list, repr=False)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
-    inferred: dict[str, list[Condition]] = field(default_factory=dict)
+    _inferred: dict[str, list[Condition]] = field(default_factory=dict, repr=False)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
-    implied: dict[str, str] = field(default_factory=dict)
+    _implied: dict[str, str] = field(default_factory=dict, repr=False)
     """A SQL condition per input table that every row reaching the result
     passes, given `requires` (#81, `Rel.need_eval` in
     `SubstraitLean/Implied.lean`): the transformation gives the same result
@@ -1264,21 +1265,21 @@ class Report:
     checks each at run time, on the data, and raises where one fails. The
     proof holds under these assumptions (`Rel.noIssue_of_assumedHold`). With
     `on_inferred="off"` they are errors instead."""
-    params: list[str] = field(default_factory=list)
+    _params: list[str] = field(default_factory=list, repr=False)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
     these values only."""
-    hints: list[str] = field(default_factory=list)
+    _hints: list[str] = field(default_factory=list, repr=False)
     """What to add to the contract for the `issues` it names (#379): bounds
     on a truncated timestamp column, or on the column an integer `SUM` adds
     up, with the largest group the bound lets fit."""
-    bounds: dict[str, tuple[int | None, int | None]] = field(
+    _bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
-    relations: list[RelationRows] = field(default_factory=list, repr=False, compare=False)
+    _relations: list[RelationRows] = field(default_factory=list, repr=False, compare=False)
     """Each relation of the plan, from the result down in pre-order, with
     the bounds Lean proves on its rows and, for an aggregate, on the rows
     of a group (#219)."""
@@ -1288,7 +1289,7 @@ class Report:
     computes (#411); `"polars"`; or `"substrait"`, Substrait's own (#444)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
-    plan: str | None = field(default=None, repr=False, compare=False)
+    internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it (#461)."""
@@ -1300,16 +1301,16 @@ class Report:
     the plan's bound a run holds the double columns a postcondition reads
     to their exact value (`sverify.routes.observed`). `equivalence` is the same, by the
     concept's name."""
-    stated: bool = field(default=False, repr=False, compare=False)
+    _stated: bool = field(default=False, repr=False, compare=False)
     """Whether `ensures` names the observation (`sv.equivalent`)."""
-    floats_on: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
+    _floats_on: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
     """Where the observation asks for exact doubles or a tolerance: per
     engine the reference translates to, why that engine's doubles may not
     meet it (empty where they do), checked against the plan's bound
     (`epsilon`) at `verify`. Empty under `floats="plan"`, which every
     engine meets. Where no engine meets it, the plan is not proved
     (`floats_unmet`)."""
-    depends: list[dict] | None = field(default=None, repr=False, compare=False)
+    _depends: list[dict] | None = field(default=None, repr=False, compare=False)
     """The options of the profile the proof depends on (`docs/core-semantics.md`,
     step 3c), as the checker reports them: `{"group", "option",
     "behaviours"}` rows. None when the checker does not report them; the
@@ -1318,9 +1319,9 @@ class Report:
     routes: dict[str, Route] = field(default_factory=dict, repr=False, compare=False)
     """The route each engine ran the plan by (`run(..., route=...)`, D13),
     by engine name."""
-    contract: dict | None = field(default=None, repr=False, compare=False)
+    _contract: dict | None = field(default=None, repr=False, compare=False)
     """The request the checker proved, for a check under another profile."""
-    transfer: list[dict] | None = field(default=None, repr=False, compare=False)
+    _transfer: list[dict] | None = field(default=None, repr=False, compare=False)
     """Under `semantics="substrait"`, the options where Substrait allows more
     than the reference, so that the reference's proof does not carry over:
     `{"group", "option", "preferences", "substrait", "reference"}` rows, each
@@ -1328,34 +1329,34 @@ class Report:
     under every other profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types."""
-    epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
+    _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
-    rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
+    _rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
     """Per engine, whether every filter, key and sort of the plan keeps the
     same rows and groups under the columns' `ε` (#568's threshold rule): a
     comparison on a double whose threshold lies within `ε` of its range may
     flip. None where the checker does not say."""
-    conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
-    dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
+    _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
     writes code in it."""
     ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
-    on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
+    _on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
     not proved (`needed`)."""
-    inferred_from: dict[str, Issue] = field(default_factory=dict, repr=False, compare=False)
+    _inferred_from: dict[str, Issue] = field(default_factory=dict, repr=False, compare=False)
     """For each inferred precondition (by label), the runtime error it rules
     out: where it came from."""
     """The preconditions per input table, as conditions: `requires` and
     the bounds inferred (`inferred`). `check_inputs` checks them on data."""
-    postconditions: list[Condition] = field(default_factory=list, repr=False, compare=False)
+    _postconditions: list[Condition] = field(default_factory=list, repr=False, compare=False)
     """The postconditions, as conditions, in the order of `ensures`
     (`to_substrait` ships them)."""
     inputs: dict[str, ibis.Schema] = field(default_factory=dict, repr=False, compare=False)
@@ -1484,7 +1485,7 @@ class Report:
             PreconditionError: A precondition or an assumed `SUM` does not
                 hold on the data.
         """
-        for t, conds in self.conditions.items():
+        for t, conds in self._conditions.items():
             if not con.has(t):
                 continue
             table = con.table(t)
@@ -1497,13 +1498,13 @@ class Report:
                         condition=c,
                         rows=violating_rows(table, c),
                     )
-        if self.assumed and self.plan is not None:
+        if self.assumed and self.internal_plan is not None:
             # The proved DuckDB translation checks each assumption as it runs:
             # a SUM as it adds up, an operation on finite doubles as it gives
             # its result (#575). It runs first, so a batch that breaks one is
             # refused before the plan runs on any engine, Polars included.
             try:
-                run_plan(con, written_plan(self.plan), "duckdb")
+                run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
                 message = str(e)
                 if "overflow in SUM" not in message and "overflow to infinity" not in message:
@@ -1517,9 +1518,9 @@ class Report:
         """Where a precondition the data breaks came from, and what to do,
         for one the report inferred."""
         lab = label(c)
-        if lab not in {label(x) for x in self.inferred.get(table, [])}:
+        if lab not in {label(x) for x in self._inferred.get(table, [])}:
             return ""
-        issue = self.inferred_from.get(lab)
+        issue = self._inferred_from.get(lab)
         where = f" ({issue.kind} otherwise)" if issue is not None else ""
         what = f" from `{issue.what}`{where}" if issue is not None else ""
         return (
@@ -1538,11 +1539,11 @@ class Report:
         *,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
-        deterministic: bool = False,
         reproducible: Observation | None = None,
         check_requires: bool = True,
         streaming: Literal["allow", "require"] = "allow",
         check_inputs: bool | None = None,
+        deterministic: bool | None = None,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1579,11 +1580,11 @@ class Report:
                 `"translated"`).
             unverified: Run a plan that is not proved, without a route.
                 Default False: such a plan is refused.
-            deterministic: Require a rerun to reproduce the result exactly
-                (`reproducible=sv.equivalent()`, D10).
             reproducible: What a rerun must reproduce (D20): the
-                engine's run-to-run variation must refine it. Default None:
-                determinism is only reported.
+                engine's run-to-run variation must refine it, as a sink's
+                `reproducible=` states it; `sv.equivalent()` asks for the
+                same rows and bits (D10). Default None: determinism is only
+                reported (`deterministic`).
             check_requires: Check the preconditions (`requires`, the
                 inferred bounds among them) and the assumed `SUM`s on the
                 tables of `con` before the run, and refuse a batch that
@@ -1634,7 +1635,7 @@ class Report:
         """
         from sverify import routes
 
-        if self.plan is None:
+        if self.internal_plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
         if check_inputs is not None:
             warnings.warn(
@@ -1643,6 +1644,7 @@ class Report:
                 stacklevel=2,
             )
             check_requires = check_inputs
+        reproducible = _deterministic_arg("Report.run", deterministic, reproducible)
         kind: str | None = None
         target = engine if engine is not None else con.engine
         chosen = None
@@ -1656,13 +1658,7 @@ class Report:
                 stacklevel=2,
             )
         else:
-            chosen = routes.choose(
-                self,
-                target,
-                route,
-                deterministic=deterministic,
-                reproducible=reproducible,
-            )
+            chosen = routes.choose(self, target, route, reproducible=reproducible)
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
@@ -1677,7 +1673,15 @@ class Report:
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
         finite = self.semantics == "reference" or kind == "translated"
-        out = run_plan(con, written_plan(self.plan), engine, finite=finite)
+        out = run_plan(
+            con,
+            written_plan(self.internal_plan),
+            engine,
+            finite=finite,
+            # A proved report's `deterministic` justifies Spark's windows
+            # without a row-order tiebreak (`to_sql`'s `deterministic`).
+            tie_free=self.deterministic and kind != "unverified",
+        )
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
@@ -1690,7 +1694,7 @@ class Report:
         return [i for i in self.assumed if i.expr not in raising]
 
     def _inferred_note(self, lab: str) -> str:
-        issue = self.inferred_from.get(lab)
+        issue = self._inferred_from.get(lab)
         return " (inferred)" if issue is None else f" (inferred from {issue.what})"
 
     def _streaming(self, con: Connection, chosen: Any, streaming: str) -> None:
@@ -1701,8 +1705,8 @@ class Report:
         from sverify import polars_engine, routes
         from sverify.engine import read_tables
 
-        assert self.plan is not None
-        plan = json.loads(written_plan(self.plan))
+        assert self.internal_plan is not None
+        plan = json.loads(written_plan(self.internal_plan))
         tables = {t: con.arrow[t] for t in read_tables(plan)}
         nodes = tuple(polars_engine.plan_fallbacks(plan, tables))
         if chosen is not None:
@@ -1732,7 +1736,7 @@ class Report:
         return (
             all(c.portable for c in self.ensures)
             and not self.errors
-            and not self.transfer
+            and not self._transfer
             and not self.needs
             and not self.floats_unmet
         )
@@ -1742,9 +1746,9 @@ class Report:
         """Why no engine's doubles meet the observation's `floats` (exact
         doubles, or a tolerance below the plan's bound), in words; None
         where one does (`floats_on`)."""
-        if not self.floats_on or not all(self.floats_on.values()):
+        if not self._floats_on or not all(self._floats_on.values()):
             return None
-        return "; ".join(f"on {e}: {'; '.join(ps)}" for e, ps in self.floats_on.items())
+        return "; ".join(f"on {e}: {'; '.join(ps)}" for e, ps in self._floats_on.items())
 
     def _observes_lines(self) -> list[str]:
         """The `observes:` line: the observation, the plan's bound beside a
@@ -1752,16 +1756,16 @@ class Report:
         from sverify import routes as _routes
 
         obs = self.observation
-        bound = _routes.plan_bound(self.epsilon)
+        bound = _routes.plan_bound(self._epsilon)
         if obs == _observation.PLAN_BOUND and bound is None:
             return []
         line = f"observes: {obs}"
         if obs.floats != "plan" and bound is not None:
             line += f"; the plan's bound on its doubles is {_observation._bound_text(bound)}"
-        if not self.floats_on:
+        if not self._floats_on:
             return [line]
-        met = [e for e, ps in self.floats_on.items() if not ps]
-        missed = [e for e, ps in self.floats_on.items() if ps]
+        met = [e for e, ps in self._floats_on.items() if not ps]
+        missed = [e for e, ps in self._floats_on.items() if ps]
         want = "exact doubles" if obs.floats == "exact" else "the tolerance"
         if not missed:
             line += f"; {', '.join(met)} meet {want}"
@@ -1770,7 +1774,7 @@ class Report:
             line += _routes._cap_text(_routes.max_rows_fix(self, "", obs))
         else:
             line += f"; {', '.join(met)} meet {want}, {', '.join(missed)} do not"
-        return [line] + [f"  on {e}: {p}" for e in missed for p in self.floats_on[e]]
+        return [line] + [f"  on {e}: {p}" for e in missed for p in self._floats_on[e]]
 
     @property
     def needs(self) -> list[Needed]:
@@ -1786,7 +1790,7 @@ class Report:
             if not report.proved:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
-        if self.on_inferred != "error":
+        if self._on_inferred != "error":
             return []
         return self._inferred_needs()
 
@@ -1796,11 +1800,11 @@ class Report:
             _needed(
                 t,
                 c,
-                self.dialect,
-                self.inferred_from.get(label(c)),
+                self._dialect,
+                self._inferred_from.get(label(c)),
                 self._needs_text(t, [label(c)]),
             )
-            for t, cs in self.inferred.items()
+            for t, cs in self._inferred.items()
             for c in cs
         ]
 
@@ -1811,7 +1815,7 @@ class Report:
         bounds `on_inferred="warn"` or `"silent"` assumes), per input table,
         ready to pass to `verify` or to paste into a contract."""
         out: dict[str, list[Condition]] = {}
-        for t, cs in self.conditions.items():
+        for t, cs in self._conditions.items():
             out[t] = [c for c in cs if not isinstance(c, Inferred)]
         for n in self._inferred_needs():
             have = out.setdefault(n.table, [])
@@ -1856,7 +1860,7 @@ class Report:
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
-        issues = [i for lab in labs if (i := self.inferred_from.get(lab)) is not None]
+        issues = [i for lab in labs if (i := self._inferred_from.get(lab)) is not None]
         kinds = " or ".join(dict.fromkeys(i.kind for i in issues))
         where = f", inferred from `{issues[0].what}` ({kinds} otherwise)" if issues else ""
         both = " and ".join(labs)
@@ -1877,7 +1881,7 @@ class Report:
         for t, labs in needed.items():
             groups: dict[str, list[str]] = {}
             for lab in labs:
-                issue = self.inferred_from.get(lab)
+                issue = self._inferred_from.get(lab)
                 groups.setdefault(issue.what if issue else lab, []).append(lab)
             out += [self._needs_text(t, g) for g in groups.values()]
         return out
@@ -1900,7 +1904,7 @@ class Report:
         label (`{"(_.y <= 100)": [Needed(table="orders", label="(_.x <= 50)", …)]}`)."""
         return {
             c.label: [
-                _needed(t, x, self.dialect, text=f"{label(x)} on {t} would prove {c.label}")
+                _needed(t, x, self._dialect, text=f"{label(x)} on {t} would prove {c.label}")
                 for t, cs in c.suggested.items()
                 for x in cs
             ]
@@ -1920,8 +1924,8 @@ class Report:
         (`deterministic` is False, `ties` says which keys would help), and
         that the proof holds for the `params` given only."""
         out = [] if self.deterministic else [self._ties_hint()]
-        if self.params:
-            out.append(f"{PARAMS_NOTE}: {', '.join(self.params)}")
+        if self._params:
+            out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
         return out
 
     def route(
@@ -1958,18 +1962,18 @@ class Report:
 
         return _routes.choose(self, engine, route, reproducible=reproducible)
 
-    def _hints(self) -> list[str]:
+    def _all_hints(self) -> list[str]:
         """`hints`, and the general overflow hint for an overflow neither they
         nor its own `Issue.hint` cover."""
-        truncated = any(h.startswith(TRUNC_HINT) for h in self.hints)
+        truncated = any(h.startswith(TRUNC_HINT) for h in self._hints)
         covered = [
             i
             for i in self.errors
             if i.kind == "overflow" and (i.hint or truncated and _truncates(i.expr))
         ]
         if any(i.kind == "overflow" and i not in covered for i in self.errors):
-            return [*self.hints, OVERFLOW_HINT]
-        return self.hints
+            return [*self._hints, OVERFLOW_HINT]
+        return self._hints
 
     @property
     def verdict(self) -> str:
@@ -1996,8 +2000,8 @@ class Report:
             out.append(n(len(self.errors), "possible runtime error"))
         if needed := len(self.needs):
             out.append(n(needed, "precondition") + " needed")
-        if self.transfer:
-            out.append(n(len(self.transfer), "option") + " where Substrait allows more")
+        if self._transfer:
+            out.append(n(len(self._transfer), "option") + " where Substrait allows more")
         if self.floats_unmet:
             out.append("no engine's doubles meet the observation")
         return out or ["see the report"]
@@ -2007,9 +2011,9 @@ class Report:
         that closes it, where one on an input reaches the ORDER BY."""
         from sverify._user_text import named
 
-        out = TIES_HINT.format(_ORDERED.get(self.dialect, _ORDERED["ibis"]))
-        plan = json.loads(self.plan) if self.plan else None
-        places = [named(t.what, plan) for t in self.tie_places]
+        out = TIES_HINT.format(_ORDERED.get(self._dialect, _ORDERED["ibis"]))
+        plan = json.loads(self.internal_plan) if self.internal_plan else None
+        places = [named(t.what, plan) for t in self._tie_places]
         if places and all(places):
             out += f" ({'; '.join(dict.fromkeys(p for p in places if p))})"
         if self.ties:
@@ -2027,7 +2031,7 @@ class Report:
         lines = [self.verdict]
         needed = _labels_by_table(self.needs)
         for table, conds in self.requires.items():
-            inferred = {label(c) for c in self.inferred.get(table, [])}
+            inferred = {label(c) for c in self._inferred.get(table, [])}
             lines += [
                 f"requires {table}: {c}" + (self._inferred_note(c) if c in inferred else "")
                 for c in conds
@@ -2045,10 +2049,10 @@ class Report:
             lines.append(f"may fail: {i.message}")
             if i.hint:
                 lines.append(f"  hint: {i.hint}")
-        lines += [f"hint: {h}" for h in self._hints()]
+        lines += [f"hint: {h}" for h in self._all_hints()]
         lines += [f"note: {n}" for n in self.notes]
         lines.append(f"semantics: {self.semantics}")
-        lines += [f"  {_transfer_failure(f)}" for f in self.transfer or ()]
+        lines += [f"  {_transfer_failure(f)}" for f in self._transfer or ()]
         lines += self._observes_lines()
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
         if self.facts or self.rows is not None:
@@ -2084,7 +2088,7 @@ class Report:
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [
-            f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs if not self.needs
+            f"`{label(c)}` on {t}" for t, cs in self._inferred.items() for c in cs if not self.needs
         ]
         inferred += [
             f"SUM of `{i.what}` {_sum_assumed(i)}"
@@ -2092,14 +2096,14 @@ class Report:
             else f"`{i.shown or i.expr}` {FINITE_ASSUMED}"
             for i in self._assumed()
         ]
-        rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
+        rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._all_hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
             facts.insert(0, f"| (rows) | at most {self.rows:,} |")
         note = [f"**{self.verdict}**", ""]
         note += [] if self.deterministic else [f"> ⚠️ {self._ties_hint()}", ""]
-        if self.params:
-            note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
+        if self._params:
+            note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self._params)}", ""]
         if inferred:
             note += [f"> ℹ️ assumed (inferred): {', '.join(inferred)}", ""]
         note += [f"> semantics: {self.semantics}", ""]
@@ -2115,6 +2119,40 @@ class Report:
                 *facts,
             ]
         )
+
+
+_REPORT_INTERNAL = [
+    "windows_total",
+    "tie_places",
+    "guard_free",
+    "unchecked",
+    "optimized",
+    "rewrites",
+    "inferred",
+    "implied",
+    "params",
+    "hints",
+    "bounds",
+    "relations",
+    "stated",
+    "floats_on",
+    "depends",
+    "contract",
+    "transfer",
+    "epsilon",
+    "rows_exact",
+    "conditions",
+    "dialect",
+    "on_inferred",
+    "inferred_from",
+    "postconditions",
+]
+"""`Report`'s fields that are internal (B4 of the 1.0 API review): each has
+an underscore, and its old name reads it with a `DeprecationWarning` for a
+release. `plan` is `internal_plan`."""
+
+
+_deprecated.add(Report, {**{old: "_" + old for old in _REPORT_INTERNAL}, "plan": "internal_plan"})
 
 
 def _would_hold(c: CheckedCondition) -> str:
@@ -2183,8 +2221,8 @@ def error_text(report: Report) -> str:
         if i.hint and i.hint not in hints:
             hints.append(i.hint)
             lines.append(f"    hint: {i.hint}")
-    lines += [f"  hint: {h}" for h in report._hints() if h not in hints]
-    lines += [f"  {_transfer_failure(f)}" for f in report.transfer or ()]
+    lines += [f"  hint: {h}" for h in report._all_hints() if h not in hints]
+    lines += [f"  {_transfer_failure(f)}" for f in report._transfer or ()]
     if report.floats_unmet:
         lines.append(f"  doubles: {report.floats_unmet}")
     return "\n".join(lines)
@@ -2498,6 +2536,24 @@ class Needed:
     conditions too)."""
     text: str = ""
     """The precondition in words: where it comes from, and the fixes."""
+
+
+def _deterministic_arg(
+    where: str, deterministic: bool | None, reproducible: Observation | None
+) -> Observation | None:
+    """`reproducible`, with the deprecated `deterministic=True` (B5 of the
+    1.0 API review) read as `sv.equivalent()`."""
+    if deterministic is None:
+        return reproducible
+    warnings.warn(
+        f"{where}(deterministic=...) is deprecated; write reproducible=sv.equivalent() "
+        "(Report.deterministic stays as the fact)",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    if deterministic and reproducible is None:
+        return _observation.Observation()
+    return reproducible
 
 
 def _needed(
@@ -3199,27 +3255,27 @@ def infer_bounds(
         transform, requires, ensures, tables, counterexamples, params, infer, inputs, semantics
     )
     conditions = {t: list(cs) for t, cs in requires.items()}
-    _merge(conditions, report.inferred)
-    report.conditions = conditions
-    opened = {} if report.windows_total or isinstance(transform, str) else _open_columns(transform)
+    _merge(conditions, report._inferred)
+    report._conditions = conditions
+    opened = {} if report._windows_total or isinstance(transform, str) else _open_columns(transform)
     out = _observed(report, observed or _observation.PLAN_BOUND, ensures, opened)
-    out.stated = observed is not None
+    out._stated = observed is not None
     from sverify import routes as _routes
 
     if out.observation.floats == "plan":
-        out.observation = replace(out.observation, bound=_routes.plan_bound(out.epsilon))
+        out.observation = replace(out.observation, bound=_routes.plan_bound(out._epsilon))
     else:
-        out.floats_on = _routes.floats_on(out)
-    out.on_inferred = _checked_on_inferred(on_inferred)
+        out._floats_on = _routes.floats_on(out)
+    out._on_inferred = _checked_on_inferred(on_inferred)
     if not out.deterministic and not isinstance(transform, str):
         out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
-    if on_inferred == "warn" and out.inferred:
+    if on_inferred == "warn" and out._inferred:
         warnings.warn(
             "assumed inferred precondition(s): "
             + "; ".join(
                 n.split(": declare")[0]
                 for n in out._needs_lines(
-                    {t: [label(c) for c in cs] for t, cs in out.inferred.items()}
+                    {t: [label(c) for c in cs] for t, cs in out._inferred.items()}
                 )
             ),
             InferredPreconditionWarning,
@@ -3432,8 +3488,8 @@ def _infer_bounds(
         _merge(widened, extra)
         first = report.issues
         report = once(widened, counterexamples)[0]
-        report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
-        report.inferred_from = {
+        report._inferred = {t: list[Condition](cs) for t, cs in extra.items()}
+        report._inferred_from = {
             label(c): i
             for cs in extra.values()
             for c in cs
@@ -3442,12 +3498,12 @@ def _infer_bounds(
         }
         # An inferred precondition that a guard under AND/OR would have made
         # unnecessary with a CASE (#604): say so.
-        report.hints += [h for h in guarded if h not in report.hints]
+        report._hints += [h for h in guarded if h not in report._hints]
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
     report = _null_preconditions(transform, report, requires, ensures, inputs, once)
     widened = {t: list(cs) for t, cs in requires.items()}
-    _merge(widened, report.inferred)
+    _merge(widened, report._inferred)
     report = finish(report, schemas, widened)
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
@@ -3497,7 +3553,7 @@ def _null_preconditions(
     if not found:
         return report
     widened = {t: list(cs) for t, cs in requires.items()}
-    _merge(widened, report.inferred)
+    _merge(widened, report._inferred)
     _merge(widened, found)
     again = once(widened, 0)[0]
     proved = {e.label for e in again.ensures if e.proved}
@@ -3509,14 +3565,14 @@ def _null_preconditions(
         if not found:
             return report
         widened = {t: list(cs) for t, cs in requires.items()}
-        _merge(widened, report.inferred)
+        _merge(widened, report._inferred)
         _merge(widened, found)
         again = once(widened, 0)[0]
-    inferred = {t: list(cs) for t, cs in report.inferred.items()}
+    inferred = {t: list(cs) for t, cs in report._inferred.items()}
     _merge(inferred, found)
-    again.inferred = inferred
-    again.inferred_from = {**report.inferred_from, **source}
-    again.hints = report.hints
+    again._inferred = inferred
+    again._inferred_from = {**report._inferred_from, **source}
+    again._hints = report._hints
     return again
 
 
@@ -3532,7 +3588,7 @@ def _confirm_hints(report: Report, requires, once) -> Report:
             key = repr(sorted((t, sorted(label(c) for c in cs)) for t, cs in i.hint_needs.items()))
             if key not in tried:
                 widened = {t: list(cs) for t, cs in requires.items()}
-                _merge(widened, report.inferred)
+                _merge(widened, report._inferred)
                 _merge(widened, i.hint_needs)
                 again = once(widened, 0)[0]
                 tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
@@ -3623,7 +3679,7 @@ def _key_reasons(
                 reason = f"{came}, which has no key on it"
             else:
                 widened = {k: list(v) for k, v in requires.items()}
-                _merge(widened, report.inferred)
+                _merge(widened, report._inferred)
                 widened.setdefault(t, []).append(want)
                 again = once(widened, 0)[0]
                 if any(e.label == c.label and e.proved for e in again.ensures):
@@ -3687,7 +3743,7 @@ def _confirm_suggestions(report: Report, requires, once) -> Report:
     for c in report.ensures:
         if c.suggested:
             widened = {t: list(cs) for t, cs in requires.items()}
-            _merge(widened, report.inferred)
+            _merge(widened, report._inferred)
             _merge(widened, c.suggested)
             again = once(widened, 0)[0]
             if not any(e.label == c.label and e.proved for e in again.ensures):
@@ -3902,7 +3958,7 @@ def _verify_once(
     ]
     report = Report(
         semantics=semantics,
-        dialect=dialect,
+        _dialect=dialect,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
@@ -3912,8 +3968,8 @@ def _verify_once(
             if f["name"] in dtypes and f.get("abstract", {}).get("null") is False
         ],
         deterministic=out["deterministic"],
-        windows_total=out.get("windows_total", out["deterministic"]),
-        tie_places=tie_places(out),
+        _windows_total=out.get("windows_total", out["deterministic"]),
+        _tie_places=tie_places(out),
         issues=_issues(
             raw_issues,
             # Ibis's `//` and `%` floor, and the producer writes them in the
@@ -3926,35 +3982,35 @@ def _verify_once(
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
             dialect=dialect,
         ),
-        guard_free=out["guard_free"],
-        unchecked=out.get("unchecked"),
-        optimized=out["optimized"],
-        rewrites=out["rewrites"],
-        params=bound,
-        bounds=_int_bounds(out["facts"], dtypes),
+        _guard_free=out["guard_free"],
+        _unchecked=out.get("unchecked"),
+        _optimized=out["optimized"],
+        _rewrites=out["rewrites"],
+        _params=bound,
+        _bounds=_int_bounds(out["facts"], dtypes),
         rows=out.get("rows"),
-        relations=[
+        _relations=[
             RelationRows(r["op"], r["depth"], r["rows"], r["group_rows"])
             for r in out.get("relations", [])
         ],
-        implied=_implied_sql(out.get("implied", []), schemas),
-        plan=json.dumps(transform_plan),
-        depends=out.get("depends"),
-        epsilon=out.get("epsilon"),
-        rows_exact=out.get("rows_exact"),
-        contract=contract,
-        transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
+        _implied=_implied_sql(out.get("implied", []), schemas),
+        internal_plan=json.dumps(transform_plan),
+        _depends=out.get("depends"),
+        _epsilon=out.get("epsilon"),
+        _rows_exact=out.get("rows_exact"),
+        _contract=contract,
+        _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
-        postconditions=list(ensures),
+        _postconditions=list(ensures),
         inputs=dict(schemas),
     )
     if not isinstance(transform, str) and report.issues:
-        report.hints = overflow_hints(transform, requires, report)
-    report.hints += and_or_hints(report.issues, transform)
+        report._hints = overflow_hints(transform, requires, report)
+    report._hints += and_or_hints(report.issues, transform)
     if not isinstance(transform, str):
-        report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
+        report._hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
         if semantics != "polars":
-            report.hints += division_hints(transform)
+            report._hints += division_hints(transform)
     return report, out["inferred"], schemas
 
 
@@ -4257,7 +4313,7 @@ def _confirmed_ties(
     if not keys:
         return {}
     widened = {t: list(cs) for t, cs in requires.items()}
-    _merge(widened, report.inferred)
+    _merge(widened, report._inferred)
     for t, ks in keys.items():
         for k in ks:
             cols = re.fullmatch(r"unique\((.*)\)", k)
@@ -4465,7 +4521,7 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         if t in leaves
     }
     report = verify(sub, requires=known, counterexamples=0, on_inferred="off")
-    lo, hi = report.bounds.get("x", (None, None))
+    lo, hi = report._bounds.get("x", (None, None))
     # A BIGINT's own range bounds nothing: any two of its values may overflow.
     lo = None if lo is None or lo <= -(2**63) else lo
     hi = None if hi is None or hi >= 2**63 - 1 else hi
@@ -5293,7 +5349,7 @@ class ContractedTransform:
         # Inferred bounds on the inputs are preconditions like the rest:
         # checked on the data (or proved from metadata) and passed on,
         # before any check on the output reads them.
-        for t, conds in report.inferred.items():
+        for t, conds in report._inferred.items():
             _merge(assumptions, {t: conds})
             if t in plain:
                 param, value = plain[t]

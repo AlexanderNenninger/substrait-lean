@@ -158,7 +158,7 @@ def test_benchmark_sums_are_proved_with_row_bounds(catalogue, qid):
         requires[t] = [*requires.get(t, []), sv.max_rows(n)]
     report = sv.verify(query, requires=requires, ensures=ensures, counterexamples=0)
     assert not sum_risks(report), str(report)
-    assert report.proved and report.guard_free
+    assert report.proved and report._guard_free
     assert report.rows is not None
 
 
@@ -172,7 +172,7 @@ def test_benchmark_sums_of_flags_are_proved_without_row_bounds(catalogue):
     requires, ensures = cat.contract(q, schemas, "native")
     report = sv.verify(query, requires=requires, ensures=ensures, counterexamples=0)
     assert not sum_risks(report), str(report)
-    assert report.proved and report.guard_free
+    assert report.proved and report._guard_free
 
 
 # -- Delta metadata ------------------------------------------------------------

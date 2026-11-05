@@ -105,7 +105,7 @@ def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
     assert auto.reason.startswith("verify with semantics='reference' to run on polars")
     assert routes.choose(duck, "datafusion", "transfer").kind == "transfer"
     # The checker's own dependency report narrows the check.
-    duck.depends = []
+    duck._depends = []
     assert routes.choose(duck, "polars", "transfer").kind == "transfer"
 
 
@@ -154,7 +154,7 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     r = routes.choose(report, "duckdb")
     assert r.kind == "translated" and not r.deterministic
     assert any("ties stay open" in w for w in r.warnings)
-    strict = routes.choose(report, "duckdb", deterministic=True)
+    strict = routes.choose(report, "duckdb", reproducible=sv.equivalent())
     assert strict.refused and "rerun must give the same result" in strict.reason
 
 
@@ -219,7 +219,7 @@ def _row(option: str, cls: str, q: dict | None = None, shim: str | None = None, 
 def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k"))
-    report.depends = [{"group": None, "option": "a"}, {"group": None, "option": "b"}]
+    report._depends = [{"group": None, "option": "a"}, {"group": None, "option": "b"}]
     _classed_tables(
         monkeypatch, [_row("a", "refines"), _row("b", "shim", shim="CASE", ev="tested")]
     )
@@ -239,7 +239,7 @@ def test_q_refinement_against_the_postcondition(monkeypatch, con) -> None:
     exact = sv.verify(t.select("k"))
     canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
     for report in (exact, canon):
-        report.depends = [{"group": None, "option": "zero_sign"}]
+        report._depends = [{"group": None, "option": "zero_sign"}]
     _classed_tables(monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"})])
     r = routes.choose(exact, "polars")
     assert r.refused and "observes its zeros" in r.reason and "sv.equivalent" in r.reason
@@ -257,7 +257,7 @@ def test_q_refinement_against_the_postcondition(monkeypatch, con) -> None:
         (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))]), False),
         (exact, False),
     ):
-        report.depends = [{"group": None, "option": "sum_order"}]
+        report._depends = [{"group": None, "option": "sum_order"}]
         r = routes.choose(report, "polars")
         assert (r.cls == "observed") is ok, r
 
@@ -289,8 +289,8 @@ def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
 
     def route(tolerance, epsilon):
         report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report.depends = [{"group": None, "option": "sum_order"}]
-        report.epsilon = epsilon
+        report._depends = [{"group": None, "option": "sum_order"}]
+        report._epsilon = epsilon
         return routes.choose(report, "polars")
 
     both = {"total": {"abs": 222.0, "rel": 1e-10}, "k": {}}
@@ -319,9 +319,9 @@ def test_rows_that_may_flip_under_the_bound_are_refused(monkeypatch, con) -> Non
 
     def route(rows_exact):
         report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
-        report.depends = [{"group": None, "option": "sum_order"}]
-        report.epsilon = {"total": {"abs": 222.0, "proved": True}}
-        report.rows_exact = rows_exact
+        report._depends = [{"group": None, "option": "sum_order"}]
+        report._epsilon = {"total": {"abs": 222.0, "proved": True}}
+        report._rows_exact = rows_exact
         return routes.choose(report, "polars")
 
     assert route({"polars": True}).cls == "observed"

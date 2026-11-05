@@ -32,7 +32,7 @@ T = ibis.table(
 
 
 def inferred(report) -> list[str]:
-    return [label(c) for cs in report.inferred.values() for c in cs]
+    return [label(c) for cs in report._inferred.values() for c in cs]
 
 
 # -- the analysis, on the issue's examples ---------------------------------------
@@ -129,7 +129,7 @@ def test_without_inference_the_hint_names_the_bound():
         T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, on_inferred="off"
     )
     assert not report.proved
-    assert report.inferred == {}
+    assert report._inferred == {}
     [issue] = report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
     assert "hint: state `(_.amount < 2**62)`" in str(report)
@@ -160,7 +160,7 @@ def test_without_inference_the_hint_names_the_bound():
 def test_limits_are_suggested_not_assumed(expr, hint):
     report = verify(expr, requires={"orders": [_.amount >= 0]})
     assert not report.proved
-    assert report.inferred == {}
+    assert report._inferred == {}
     assert any(i.hint == hint for i in report.errors), report.errors
 
 
@@ -301,7 +301,7 @@ def test_inferred_bounds_compose_through_nodes():
     shop = StaticSource(pa.table({"id": [1], "customer": ["a"], "amount": [5]}), name="orders")
     paid(shop).pipe(twice)  # `paid` guarantees `amount < 1_000_000_000`
     assert twice.last_report is not None
-    assert twice.last_report.proved and twice.last_report.inferred == {}
+    assert twice.last_report.proved and twice.last_report._inferred == {}
 
 
 def test_strict_requires_explicit_bounds():
@@ -312,7 +312,7 @@ def test_strict_requires_explicit_bounds():
     src = StaticSource(pa.table({"id": [1], "amount": [3]}), name="orders")
     with pytest.raises(VerificationError, match=r"overflow: amount \* 2") as e:
         src.pipe(strictly)
-    assert e.value.report.inferred == {}
+    assert e.value.report._inferred == {}
     [issue] = e.value.report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
 

@@ -219,7 +219,7 @@ def test_isin_keeps_its_results():
     con.put("t", pa.table({"x": pa.array([0, 1, 2, None], pa.int64())}))
     t = ibis.table({"x": "int64"}, name="t")
     r = sv.verify(t.select(hit=t.x.isin([0, 1])))
-    assert r.plan is not None and "lte" in r.plan
+    assert r.internal_plan is not None and "lte" in r.internal_plan
     for engine in ("duckdb", "polars"):
         out = r.run(con, engine).column("hit").to_pylist()
         assert out == [True, True, False, None]
@@ -271,7 +271,7 @@ def test_needs_of_sql_are_sql():
     sql = "SELECT total // qty AS u FROM orders"
     tables = {"orders": ibis.schema({"qty": "int64", "total": "int64"})}
     r = sv.verify(sql, tables=tables)
-    assert r.dialect == "sql"
+    assert r._dialect == "sql"
     assert '"qty" IS NULL OR "qty" <> 0' in [n.condition for n in r.needs]
     assert sv.verify(sql, tables=tables, requires=r.suggested_requires).proved
 
@@ -283,7 +283,7 @@ def test_needs_empty_when_assumed():
     assert r.needs == [] and r.proved
     # The assumed bound is still in the mapping, so the contract says it.
     assert sv.verify(expr, requires=r.suggested_requires).proved
-    assert sv.verify(expr, requires=r.suggested_requires).inferred == {}
+    assert sv.verify(expr, requires=r.suggested_requires)._inferred == {}
 
 
 # -- SverifyError --------------------------------------------------------------------

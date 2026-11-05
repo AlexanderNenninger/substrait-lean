@@ -701,7 +701,7 @@ def _(mo):
     picks, and may pick differently on the next run, so Lean proves only
     what holds for every pick. Unless `requires` gives a key on the
     partition and order columns, `report.deterministic` is `False` and
-    `report.tie_places` names the window. With the key, earlier means
+    `report.ties` names the key that would close the ties. With the key, earlier means
     strictly earlier: `prev_ts < ts`.
     """)
     return

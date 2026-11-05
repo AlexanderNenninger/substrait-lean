@@ -51,8 +51,8 @@ Names (#695):
 - `sv.verify`'s first parameter is `query`, positional-only.
 - `report.equivalence` is the equivalence the result is proved up to, by the
   name of `sv.equivalent`; `report.observation` stays.
-- `report.needed_text` is a property; `Report.needs_text()` and
-  `needs_lines()` warn.
+- `Report.needs_text()` and `needs_lines()` warn: each `Needed` of
+  `report.needs` carries its `text`.
 - A refresh report of a stored node is headed by the transform and the sink,
   `daily_revenue → daily:`, where the names differ.
 - `summary()` reads `changes from orders v1→v2 (change feed)` where it read

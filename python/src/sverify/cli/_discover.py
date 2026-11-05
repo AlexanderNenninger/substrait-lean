@@ -57,7 +57,7 @@ class Checked:
         if r.proved:
             return "proved"
         rest = [c for c in r.ensures if not c.portable and not c.checked]
-        missing = rest or r.errors or r.needs or r.transfer or r.floats_unmet
+        missing = rest or r.errors or r.needs or r._transfer or r.floats_unmet
         return "not_proved" if missing else "checked"
 
 

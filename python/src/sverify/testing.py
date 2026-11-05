@@ -20,6 +20,9 @@
   preconditions, for property tests of the code around it
   (`pip install 'sverify[testing]'`).
 * `source` makes an in-memory source (`sverify.io.StaticSource`) from rows.
+* `FlightLog` is a small Arrow Flight server that keeps a numbered batch log
+  in memory, for a `sverify.io.flight.FlightSource` to read in tests and
+  examples (`pip install 'sverify[flight]'`).
 
 Installing sverify registers a pytest plugin (`sverify.pytest_plugin`) with
 the fixtures `sv_engine`, which runs a test once per installed engine, and
@@ -77,7 +80,10 @@ from sverify.nodes import Node, _Derived
 if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy
 
+    from sverify.io.flight import FlightLog
+
 __all__ = [
+    "FlightLog",
     "assert_contract",
     "assert_engines_agree",
     "cases",
@@ -86,6 +92,15 @@ __all__ = [
 ]
 
 EPOCH = dt.datetime(1970, 1, 1)
+
+
+def __getattr__(name: str) -> Any:
+    # `FlightLog` needs `pyarrow.flight`, so it loads on first use.
+    if name == "FlightLog":
+        from sverify.io.flight import FlightLog
+
+        return FlightLog
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def decimal_literal(v: Decimal, precision: int = 38, scale: int | None = None) -> dict:

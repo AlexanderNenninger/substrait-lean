@@ -1592,14 +1592,14 @@ so it runs natively.
 The deterministic profile is the reference with one order fixed: a stable
 sort (`List.mergeSort`) and rows in list order, as `Rel.eval` computes them
 (`Rel.eval_orderAllowed`). A consumer that needs a rerun to give the same
-rows asks for it, through `choose(deterministic=True)` or a sink's
+rows asks for it, through `run(reproducible=sv.equivalent())` or a sink's
 `reproducible=` ([D10](#d10-determinism),
 [D20](#d20-two-observations-per-output)). Engines read tables in an order of
 their own, so no shim reproduces list order on them. The deterministic
 profile needs a plan whose order is total, by a tie-break key or a
 uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
 refuses a plan without one. The refusal names each place where ties stay
-open (`Report.tie_places`).
+open (`str(report)`, with the keys that would close them in `Report.ties`).
 
 Why: `Rel.eval`'s one order leaked into four places
 ([#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)).

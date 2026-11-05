@@ -32,7 +32,7 @@ def test_postconditions_are_proved():
     assert report.proved
     assert report.facts["doubled"] == "an integer ≥ 22"
     assert "(_.amount < 4611686018427387904)" in report.requires["orders"]  # stated (#655)
-    assert report.inferred == {}
+    assert report._inferred == {}
     assert report.facts["id"] == "any integer"  # never NULL, by the precondition
 
 
@@ -145,7 +145,7 @@ def test_report_runs_the_plan_it_checked():
         sv.verify(sql_q, tables={"t": t}, ensures=[sv.unique("host")]),
     ):
         assert report.proved
-        assert report.plan is not None
+        assert report.internal_plan is not None
         for engine in (None, "polars"):
             assert report.run(con, engine).sort_by("host").to_pylist() == expected
 
@@ -385,11 +385,11 @@ def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
 
 def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     expr = SAMPLES.group_by("host").aggregate(total=_.cpu.sum())
-    [hint] = sv.verify(expr).hints
+    [hint] = sv.verify(expr)._hints
     assert hint.startswith("SUM of `cpu`: bound it in `requires` of samples")
     assert "`_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`" in hint
     assert "up to 9,223,372,036 rows" in hint
-    [hint] = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100]}).hints
+    [hint] = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100]})._hints
     assert "it is in [0, 100]" in hint and "up to 92,233,720,368,547,758 rows" in hint
     assert "`sv.max_rows(92_233_720_368_547_758)` in `requires` of samples proves it" in hint
     # With that row cap, the sum is proved to fit.
@@ -402,7 +402,7 @@ def test_an_overflow_of_two_columns_suggests_a_split():
     report = sv.verify(SAMPLES.select(d=SAMPLES.cpu * SAMPLES.cpu))
     [issue] = report.errors
     assert issue.hint is not None and issue.hint.startswith("no single bound rules it out")
-    assert report.inferred == {} and not report.hints
+    assert report._inferred == {} and not report._hints
     assert OVERFLOW_HINT not in str(report)
 
 

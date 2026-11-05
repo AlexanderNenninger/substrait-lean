@@ -82,6 +82,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
+from sverify import _deprecated
 from sverify._scan import Scan, ScanSnapshot, local_path
 from sverify._weighted import split
 from sverify.contracts import Fact
@@ -1104,7 +1105,7 @@ class IcebergSink(_TableSink[Table]):
     root, needs `location`. They only apply to a table the sink creates: an
     overwrite keeps the table's location, spec and properties, and a sink on
     an existing table that differs from them warns once
-    (`IcebergSink.create_options_ignored`).
+    (`IcebergSink._create_options_ignored`).
 
     Every write adds a snapshot and small files: a refresh that deletes rows
     adds a position delete file and a data file, which readers open and the
@@ -1185,7 +1186,7 @@ class IcebergSink(_TableSink[Table]):
         ```
     """
 
-    create_options_ignored = "create options ignored"
+    _create_options_ignored = "create options ignored"
     """The start of the warning a sink on an existing table gives when the
     table differs from its `location`, `partition_by` or `properties`."""
     _create_errors = (TableAlreadyExistsError, CommitFailedException)
@@ -1376,7 +1377,7 @@ class IcebergSink(_TableSink[Table]):
             differs.append(f"other values of the properties {sorted(other)}")
         if differs:
             warnings.warn(
-                f"{self.identifier}: {self.create_options_ignored}: the existing table has "
+                f"{self.identifier}: {self._create_options_ignored}: the existing table has "
                 + "; ".join(differs),
                 stacklevel=2,
             )
@@ -1392,9 +1393,9 @@ class IcebergSink(_TableSink[Table]):
         the Arrow path writes: partitioned tables, nested columns, object
         stores, or a table that does not hold the rows the change deletes."""
         t = table
-        assert change.native is not None
+        assert change._native is not None
         contract, props = change.contract, self._props(change.contract)
-        rows, delta = change.native
+        rows, delta = change._native
         schema = change.schema
         fields = t.schema().fields
         if not t.spec().is_unpartitioned() or any(pa.types.is_nested(f.type) for f in schema):
@@ -1480,3 +1481,6 @@ class IcebergSink(_TableSink[Table]):
             else:
                 _commit_rows(tx, t, rows, deletes, props)
         return SinkWrite(mode, None, contract, rows.num_rows, deleted)
+
+
+_deprecated.add(IcebergSink, {"create_options_ignored": "_create_options_ignored"})

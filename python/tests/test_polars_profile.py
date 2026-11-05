@@ -63,7 +63,7 @@ def test_native_floor_agrees_with_floor_division(report: sv.Report, rows) -> Non
 def test_written_plan_states_floor(report: sv.Report) -> None:
     """Lean writes the calls back with their option, and every engine but
     Polars refuses them."""
-    plan = json.loads(written_plan(report.plan or ""))
+    plan = json.loads(written_plan(report.internal_plan or ""))
     calls = []
 
     def walk(node: object) -> None:

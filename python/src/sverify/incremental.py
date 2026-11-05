@@ -860,6 +860,10 @@ class IncrementalView:
     ):
         self.con, self.name = con, name
         self.engine: Engine = engine or con.engine
+        self.tie_free = False
+        """The view's plan has no window ties on data that meets its
+        preconditions (a proved report's `deterministic`), so Spark runs its
+        windows without a row-order tiebreak; set by a stored node."""
         self.query = query
         contract = None if isinstance(query, str) else view_contract(query)
         self._plan(query, standalone=pipeline is None)
@@ -906,7 +910,9 @@ class IncrementalView:
             result = resume.table.select(schema.names).cast(schema)
             self.resumed = f"resumed from {resume.where}"
         else:
-            result = run_plan(con, self.plan, self.engine, keep=self.store.keep)
+            result = run_plan(
+                con, self.plan, self.engine, keep=self.store.keep, tie_free=self.tie_free
+            )
             if resume is not None:
                 self.resumed = f"computed: {reason} (stored at {resume.where})"
         self._set_schema(result.schema)
@@ -1063,7 +1069,9 @@ class IncrementalView:
             query = query.op().replace(new).to_expr()  # type: ignore[attr-defined]
         self.query = query
         self._plan(query, standalone=False)
-        result = run_plan(self.con, self.plan, self.engine, keep=self.store.keep)
+        result = run_plan(
+            self.con, self.plan, self.engine, keep=self.store.keep, tie_free=self.tie_free
+        )
         self._set_schema(result.schema)
         self.state = self._merge(self.store.weighted(result), keep=self.store.keep)
         self.groups = self._groups_on({})
@@ -1120,7 +1128,7 @@ class IncrementalView:
 
     def recompute(self) -> list[Row]:
         """The view computed from scratch, for checking."""
-        rows = arrow_rows(run_plan(self.con, self.plan, self.engine))
+        rows = arrow_rows(run_plan(self.con, self.plan, self.engine, tie_free=self.tie_free))
         return sorted(rows, key=lambda r: repr(row_key(r)))
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
@@ -1391,9 +1399,7 @@ class IncrementalView:
     def _retires(self) -> bool:
         """The view drops its final buckets: it has retention and every sink
         keeps what the state drops."""
-        return self.retention is not None and all(
-            getattr(s, "keeps_retired", False) for s in self._sinks
-        )
+        return self.retention is not None and all(_keeps_retired(s) for s in self._sinks)
 
     def _kept(self, result: State) -> State:
         """The rows of a result (or a weighted table) whose change the view
@@ -1699,7 +1705,7 @@ class Pipeline:
                 continue
             report = RetentionReport(v.name, spec.column, 0, 0, spec.bound, None)
             out.append(report)
-            if bad := [s for s in v._sinks if not getattr(s, "keeps_retired", False)]:
+            if bad := [s for s in v._sinks if not _keeps_retired(s)]:
                 report.off = (
                     f"sink {bad[0].name} may rewrite its whole table, which would drop "
                     "the retired buckets"
@@ -2293,3 +2299,15 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
     return concat([rest, expanded(consolidated(kept, inserts))])
+
+
+def _keeps_retired(sink: Any) -> bool:
+    """Whether `sink` keeps the rows a view drops from its state: the
+    sink's `_keeps_retired`, or a custom sink's own `keeps_retired`."""
+    for k in type(sink).__mro__:
+        own = k.__dict__.get("keeps_retired")
+        if own is not None and not isinstance(own, property):
+            return bool(own)
+        if "_keeps_retired" in k.__dict__:
+            return bool(k.__dict__["_keeps_retired"])
+    return False

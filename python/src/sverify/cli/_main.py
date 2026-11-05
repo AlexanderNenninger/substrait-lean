@@ -79,8 +79,8 @@ def _problems(c: Checked) -> list[dict[str, Any]]:
         if i.hint:
             p["hint"] = i.hint
         out.append(p)
-    if r.transfer:
-        n_opts = len(r.transfer)
+    if r._transfer:
+        n_opts = len(r._transfer)
         out.append({"code": "transfer", "message": f"Substrait allows more at {n_opts} option(s)"})
     if r.floats_unmet:
         out.append({"code": "floats", "message": r.floats_unmet})

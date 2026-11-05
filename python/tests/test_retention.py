@@ -470,7 +470,7 @@ def put_hour(log, hour):
 @pytest.mark.slow
 def test_a_flight_log_that_expires_batches():
     pytest.importorskip("pyarrow.flight")
-    from sverify.io.flight import FlightLog
+    from sverify.testing import FlightLog
 
     # The log keeps 4 one-hour batches; with 2 h of lateness, a batch
     # expires once its hour is final.

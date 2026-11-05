@@ -1007,7 +1007,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
     from sverify import _substrait_shims, routes
     from sverify.contracts import INFINITE
 
-    assert report.plan is not None
+    assert report.internal_plan is not None
     calls = typer.calls
     canonical = typer.canonical
     builder = _substrait_shims.Builder(typer.plan)
@@ -1022,10 +1022,10 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
         return applied_by[fn]
 
     h = Handling()
-    reads = _dependencies(report.plan)
+    reads = _dependencies(report.internal_plan)
     used = (
-        {(d.get("group"), d["option"]) for d in report.depends}
-        if report.depends is not None
+        {(d.get("group"), d["option"]) for d in report._depends}
+        if report._depends is not None
         else {(r["group"], r["option"]) for r in reads}
     )
     yaml_name = _yaml_names()
@@ -1369,19 +1369,16 @@ def contract_json(report: Report, *, shims: Shims = "apply") -> Json:
 
 
 def _refuse_unverified(report: Report) -> None:
-    if report.plan is None or report.contract is None:
+    if report.internal_plan is None or report._contract is None:
         raise ExportError("this report has no plan to export: it was not made by sv.verify")
     if not report.proved:
         reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
         reasons += [f"may fail: {i}" for i in report.errors]
-        if report.transfer:
-            reasons.append("the proof does not carry over to Substrait (report.transfer)")
+        if report._transfer:
+            reasons.append("the proof does not carry over to Substrait (see str(report))")
         reasons += [f"needs {n}" for n in report._needs_lines()]
         if report.floats_unmet:
-            reasons.append(
-                f"no engine meets the observation's doubles (report.floats_on): "
-                f"{report.floats_unmet}"
-            )
+            reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")
         raise ExportError("not verified: " + "; ".join(reasons))
 
 
@@ -1392,8 +1389,8 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     if shims not in SHIMS:
         raise ValueError(f"shims must be one of {', '.join(map(repr, SHIMS))}, not {shims!r}")
     _refuse_unverified(report)
-    assert report.plan is not None and report.contract is not None
-    plan = json.loads(written_plan(report.plan))
+    assert report.internal_plan is not None and report._contract is not None
+    plan = json.loads(written_plan(report.internal_plan))
     typer = _Typer(plan)
     typer.run()
     if report.semantics == "substrait":
@@ -1418,9 +1415,9 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     from google.protobuf import struct_pb2
 
     c = contract_cls()
-    requires_plans = iter(report.contract.get("requires", []))
-    for table, conds in report.conditions.items():
-        inferred = {str(x) for x in report.inferred.get(table, [])}
+    requires_plans = iter(report._contract.get("requires", []))
+    for table, conds in report._conditions.items():
+        inferred = {str(x) for x in report._inferred.get(table, [])}
         for cond in conds:
             from sverify.contracts import TableCondition, label
 
@@ -1440,8 +1437,8 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         from sverify.contracts import _assumption
 
         c.requires.append(condition_cls(text=_assumption(i), kind="assumed", inferred=True))
-    ens_plans = iter(report.contract.get("ensures", []))
-    posts = report.postconditions or []
+    ens_plans = iter(report._contract.get("ensures", []))
+    posts = report._postconditions or []
     if len(posts) != len(report.ensures):
         raise ExportError("this report keeps no postconditions to export (re-run sv.verify)")
     from sverify.contracts import TableCondition
@@ -1466,7 +1463,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         if handling.assumptions
         else "observed"
         if any(u.get("observation") for u in handling.up_to)
-        or routes.plan_bound(report.epsilon) is not None
+        or routes.plan_bound(report._epsilon) is not None
         else "exact",
         "evidence": "tested" if any(u.get("gap") == "ST-9" for u in handling.up_to) else "proved",
         "shims_mode": shims,
@@ -1483,12 +1480,12 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "assumptions": handling.assumptions,
         "deterministic": report.deterministic,
         "rows": report.rows,
-        "params": list(report.params),
+        "params": list(report._params),
         "output": {k: str(v) for k, v in report.output.items()},
         "checker_contract": {
-            k: report.contract[k]
+            k: report._contract[k]
             for k in ("keys", "ensures_keys", "references", "max_rows", "rows_per")
-            if k in report.contract
+            if k in report._contract
         },
     }
     s = struct_pb2.Struct()
@@ -1655,22 +1652,22 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         ensures=checked,
         facts={f["name"]: f["value"] for f in out["facts"]},
         deterministic=out["deterministic"],
-        windows_total=out.get("windows_total", out["deterministic"]),
-        tie_places=tie_places(out),
+        _windows_total=out.get("windows_total", out["deterministic"]),
+        _tie_places=tie_places(out),
         issues=[
             Issue(i["kind"], i["expr"], i["error"])
             for i in out["issues"]
             if i["error"] and i["kind"] not in ("SUM overflow", "overflow to infinity")
         ],
-        guard_free=out["guard_free"],
+        _guard_free=out["guard_free"],
         rows=out.get("rows"),
-        plan=json.dumps(imp.plan),
-        depends=out.get("depends"),
-        epsilon=out.get("epsilon"),
-        contract=request,
-        transfer=(out.get("transfer") or {}).get("failures") if profile == "substrait" else None,
+        internal_plan=json.dumps(imp.plan),
+        _depends=out.get("depends"),
+        _epsilon=out.get("epsilon"),
+        _contract=request,
+        _transfer=(out.get("transfer") or {}).get("failures") if profile == "substrait" else None,
         observation=observation,
-        params=list(m.get("params") or []),
+        _params=list(m.get("params") or []),
     )
 
 

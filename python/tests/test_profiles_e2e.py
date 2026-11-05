@@ -179,7 +179,7 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     u = ibis.table({"x": "float64", "y": "float64"}, name="u")
     report = sv.verify(u.select(z=u.x * u.y))
     assert report.proved, str(report)
-    assert report.inferred.get("u"), "the bounds that keep x * y finite"
+    assert report._inferred.get("u"), "the bounds that keep x * y finite"
     good = sv.connect()
     good.put("u", pa.table({"x": [2.0, -3.0], "y": [4.0, 0.5]}))
     out = run_both(report, good)
@@ -219,7 +219,7 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
     assert route_of(rounded, "duckdb").cls == "exact"
     assert route_of(rounded, "polars").cls == "shim"
-    assert mean.epsilon, "the plan's bound on the mean"
+    assert mean._epsilon, "the plan's bound on the mean"
     assert route_of(mean, "duckdb").cls in ("exact", "observed")
     assert route_of(mean, "polars").cls == "observed"
 
@@ -249,7 +249,7 @@ def test_b1_float_aggregates_within_a_tolerance(con) -> None:
             ensures=[sv.equivalent(floats=tolerance), sv.approx(_.mean <= 1e6)],
         )
         assert report.proved, str(report)
-        assert report.epsilon, "the plan's bound on the doubles"
+        assert report._epsilon, "the plan's bound on the doubles"
         data = con if tolerance.abs is not None else _non_negative(con)
         run_both(report, data)
         assert route_of(report, "polars").cls == "observed", tolerance
@@ -324,8 +324,8 @@ def test_c2_unspecified_null_order(con) -> None:
         tables={"t": t},
         ensures=[sv.equivalent(rows="sequence")],
     )
-    assert '"SORT_DIRECTION_UNSPECIFIED"' in (report.plan or "") or "UNSPECIFIED" in (
-        report.plan or ""
+    assert '"SORT_DIRECTION_UNSPECIFIED"' in (report.internal_plan or "") or "UNSPECIFIED" in (
+        report.internal_plan or ""
     )
     out = run_both(report, con)
     assert out["polars"].column("k").to_pylist()[-2:] == [None, None]
@@ -343,7 +343,7 @@ def test_c3_limit_over_ties_is_reported_and_refused_where_required(con) -> None:
     r = routes.choose(report, "polars")
     assert r.kind == "translated" and not r.deterministic and r.warnings
     with pytest.raises(RouteError, match="rerun must give the same result"):
-        report.run(con, "polars", route="auto", deterministic=True)
+        report.run(con, "polars", route="auto", reproducible=sv.equivalent())
 
 
 @classes
@@ -438,9 +438,9 @@ def test_f1_verified_under_polars_runs_natively(con) -> None:
     `%` and `//`, with no shim."""
     report = _floor_report(con)
     assert report.proved and report.semantics == "polars", str(report)
-    assert '"FLOOR"' in (report.plan or "")
+    assert '"FLOOR"' in (report.internal_plan or "")
     # Lean writes the calls back as they were, so Polars sees them.
-    assert '"FLOOR"' in sv.engine.written_plan(report.plan or "")
+    assert '"FLOOR"' in sv.engine.written_plan(report.internal_plan or "")
     out = report.run(con, "polars", route="auto")
     r = report.routes["polars"]
     assert (r.kind, r.profile, r.cls) == ("native", "polars", "exact")
@@ -464,7 +464,7 @@ def test_f1b_floor_plan_is_refused_on_duckdb(con) -> None:
         t.select("k", m=t.i % t.j),
         requires={"t": [_.i.between(-100, 100), _.j.between(-100, 100), _.j != 0]},
     )
-    assert ref.proved and '"FLOOR"' not in (ref.plan or "")
+    assert ref.proved and '"FLOOR"' not in (ref.internal_plan or "")
     out = ref.run(con, "duckdb", route="auto")
     assert sorted(out.column("m").to_pylist()) == sorted(
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
@@ -494,7 +494,7 @@ def test_f1d_zero_divisor_is_a_precondition_under_polars(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(m=t.i % t.j), semantics="polars", on_inferred="silent")
     assert report.proved, str(report)
-    assert report.inferred == {"t": ['"j" IS NULL OR "j" <> 0']}, report.inferred
+    assert report._inferred == {"t": ['"j" IS NULL OR "j" <> 0']}, report._inferred
     bad = sv.connect()
     bad.put("t", con.get("t").set_column(2, "j", pa.array([0] * 7, pa.int64())))
     with pytest.raises(PreconditionError, match="refused before the run"):
@@ -581,9 +581,9 @@ def test_f_lean_transfer_agrees(con) -> None:
     for sql in ("SELECT k FROM t ORDER BY k", "SELECT i * 2 AS d FROM t"):
         report = sv.verify(sql, tables={"t": t}, semantics="duckdb")
         depends = (
-            report.depends
-            if report.depends is not None
-            else routes.plan_options(json.loads(report.plan or "{}"))
+            report._depends
+            if report._depends is not None
+            else routes.plan_options(json.loads(report.internal_plan or "{}"))
         )
         lean = routes.lean_transfer("duckdb", "polars", depends)
         assert lean is not None, "substrait-check --transfer"

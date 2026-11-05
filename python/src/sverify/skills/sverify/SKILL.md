@@ -111,8 +111,8 @@ under `needs:` (`report.needs`, ready for `requires=` as
 `report.suggested_requires`) until `requires` states it or the
 transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"silent"` assumes it and checks it on the data, and
-`on_inferred="off"` infers and assumes nothing. For the rest, `report.hints`
-names the bound to add, and an unproved comparison with a constant comes with
+`on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
+`str(report)` name the bound to add, and an unproved comparison with a constant comes with
 the precondition that proves it (`report.suggestions`). An integer `SUM` that
 may overflow is listed in `report.assumed` and checked at run time (an error
 with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
@@ -192,7 +192,7 @@ test_doubles_are_big()
   `ROW_NUMBER` depend on how ties break unless `requires` has a key on the
   partition and order columns (`sv.unique("device_id", "ts")`). Without it
   `verify` proves only what holds for every order of the ties (D24),
-  `report.deterministic` is False and `report.tie_places` names the window;
+  `report.deterministic` is False and `str(report)` names the window;
   a rerun that must give the same rows refuses the plan.
 * **SQL strings are DuckDB's SQL**, read by sverify's lift, which covers a
   subset so far (SELECT, WHERE, joins, subqueries and CTEs, GROUP BY with

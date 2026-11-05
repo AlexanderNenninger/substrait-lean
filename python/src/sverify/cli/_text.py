@@ -80,8 +80,8 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
     ]
     refused += [f"{n.table} needs {plain(n.label)} ({_needed_why(n)})" for n in report.needs]
     refused += [f"may fail: {i.message}" for i in report.errors]
-    if report.transfer:
-        refused.append(f"Substrait allows more at {len(report.transfer)} option(s)")
+    if report._transfer:
+        refused.append(f"Substrait allows more at {len(report._transfer)} option(s)")
     if report.floats_unmet:
         refused.append(f"doubles: {report.floats_unmet}")
     return {"guarantees": guarantees, "checks": checks, "refused": refused}

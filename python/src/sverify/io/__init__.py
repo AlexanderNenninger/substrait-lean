@@ -30,8 +30,8 @@ Your own sources and sinks:
   contract, so states are written exactly once across restarts.
   `sink_from(fn)` hands the whole table to a function.
 * `FlightSource` reads a table of a numbered batch log on an Arrow Flight
-  server, and `FlightLog` is a small server that keeps one
-  (`pip install 'sverify[flight]'`).
+  server (`pip install 'sverify[flight]'`); `sverify.testing.FlightLog` is
+  a small server that keeps one.
 * A table format with metadata and a change feed implements the full
   `VersionedSource` protocol: `Snapshot` and `SourceBatch` are what it
   returns.
@@ -50,13 +50,12 @@ from sverify.io._storage import Storage
 
 if TYPE_CHECKING:
     from sverify.io.delta import DeltaSink, DeltaSource
-    from sverify.io.flight import FlightLog, FlightSource
+    from sverify.io.flight import FlightSource
     from sverify.io.iceberg import IcebergSink, IcebergSource
 
 _MODULES = {
     "DeltaSink": "delta",
     "DeltaSource": "delta",
-    "FlightLog": "flight",
     "FlightSource": "flight",
     "IcebergSink": "iceberg",
     "IcebergSource": "iceberg",
@@ -64,6 +63,17 @@ _MODULES = {
 
 
 def __getattr__(name: str) -> Any:
+    if name == "FlightLog":
+        import warnings
+
+        warnings.warn(
+            "sverify.io.FlightLog is deprecated; import it from sverify.testing",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from sverify.io.flight import FlightLog
+
+        return FlightLog
     if name not in _MODULES:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     return getattr(importlib.import_module(f"sverify.io.{_MODULES[name]}"), name)
@@ -74,7 +84,6 @@ __all__ = [
     "Contract",
     "DeltaSink",
     "DeltaSource",
-    "FlightLog",
     "FlightSource",
     "IcebergSink",
     "IcebergSource",

@@ -180,7 +180,7 @@ def test_the_and_or_hint_appears_once_and_only_for_the_users_and() -> None:
     assert "AND or OR" not in str(report)
     t = ibis.table({"qty": "int64", "total": "int64"}, name="t")
     report = sv.verify(t.filter((t.qty != 0) & (t.total // t.qty > 1)))
-    assert [h for h in report.hints if "AND or OR" in h] == [
+    assert [h for h in report._hints if "AND or OR" in h] == [
         "`total // qty` is inside an AND or OR you wrote (`&` or `|`), and DuckDB and Polars "
         "evaluate both operands on every row, so a guard in the other operand does not keep it "
         "from raising. Guard the operation itself with `ibis.cases((_.qty != 0, _.total // "

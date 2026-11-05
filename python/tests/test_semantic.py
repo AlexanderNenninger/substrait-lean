@@ -50,32 +50,32 @@ def has_aggregate(plan: dict) -> bool:
 @pytest.mark.parametrize(("expr", "rewrite"), REWRITTEN)
 def test_keys_rewrite(expr, rewrite):
     report = sv.verify(expr, requires=KEYED)
-    assert rewrite in report.rewrites
+    assert rewrite in report._rewrites
 
 
 @pytest.mark.parametrize(("expr", "rewrite"), REWRITTEN)
 def test_without_keys_nothing_is_rewritten(expr, rewrite):
     report = sv.verify(expr)
-    assert report.rewrites == []
+    assert report._rewrites == []
 
 
 @pytest.mark.parametrize("expr", [T.distinct(), T.select("a").distinct(), REWRITTEN[4][0]])
 def test_rewritten_plan_has_no_aggregate(expr):
     report = sv.verify(expr, requires=KEYED)
     assert has_aggregate(json.loads(plan_json(connect(), expr)))
-    assert report.optimized is not None and not has_aggregate(report.optimized)
-    assert "DISTINCT" not in to_sql(report.optimized, DUCKDB).upper()
+    assert report._optimized is not None and not has_aggregate(report._optimized)
+    assert "DISTINCT" not in to_sql(report._optimized, DUCKDB).upper()
 
 
 def test_count_distinct_becomes_count():
     report = sv.verify(T.group_by("b").agg(n=T.a.nunique()), requires=KEYED)
-    assert report.optimized is not None
-    assert "DISTINCT" not in to_sql(report.optimized, DUCKDB).upper()
+    assert report._optimized is not None
+    assert "DISTINCT" not in to_sql(report._optimized, DUCKDB).upper()
 
 
 def test_key_on_another_column_does_not_rewrite():
     report = sv.verify(T.select("b").distinct(), requires=KEYED)
-    assert report.rewrites == []
+    assert report._rewrites == []
 
 
 keyed_rows = st.lists(st.integers(-5, 5), max_size=20).flatmap(
@@ -97,9 +97,9 @@ def test_optimized_runs_agree(expr, rewrite, rows):
     want = canonical(
         tuple(r.values()) for r in duckdb_engine.run(plan_json(connect(), expr), tables).to_pylist()
     )
-    assert report.optimized is not None
+    assert report._optimized is not None
     for run in (duckdb_engine.run, polars_engine.run):
-        got = run(report.optimized, tables)
+        got = run(report._optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
 
 
@@ -118,22 +118,22 @@ BOUNDED = {"t": [_.a >= 1, _.b.notnull()]}
 )
 def test_implied_filter_goes(expr):
     report = sv.verify(expr, requires=BOUNDED)
-    assert report.rewrites == ["filter implied by the contract"]
-    assert report.optimized is not None
-    assert "WHERE" not in to_sql(report.optimized, DUCKDB).upper()
+    assert report._rewrites == ["filter implied by the contract"]
+    assert report._optimized is not None
+    assert "WHERE" not in to_sql(report._optimized, DUCKDB).upper()
 
 
 def test_filter_the_contract_rules_out_is_empty():
     report = sv.verify(T.filter(T.a < 0).select("b"), requires=BOUNDED)
-    assert report.rewrites == ["filter the contract rules out"]
+    assert report._rewrites == ["filter the contract rules out"]
     tables = {"t": pa.table({"a": [1, 2], "b": [3, 4]})}
-    assert report.optimized is not None
-    assert duckdb_engine.run(report.optimized, tables).num_rows == 0
+    assert report._optimized is not None
+    assert duckdb_engine.run(report._optimized, tables).num_rows == 0
 
 
 def test_filter_on_other_rows_stays():
     report = sv.verify(T.filter(T.a >= 2), requires=BOUNDED)
-    assert report.rewrites == []
+    assert report._rewrites == []
 
 
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount >= 0, _.amount.notnull()])
@@ -151,7 +151,7 @@ def test_composed_pipeline_drops_the_downstream_check():
     recheck(paid(orders))
     report = recheck.last_report
     assert report is not None and report.proved
-    assert report.rewrites == ["filter implied by the contract"]
+    assert report._rewrites == ["filter implied by the contract"]
 
 
 # Left joins that are inner joins (#77).
@@ -166,9 +166,9 @@ FK = {"o": [_.cust.notnull(), sv.references("cust", to=("c", "cid"))]}
 
 def test_left_join_on_a_foreign_key_is_inner():
     report = sv.verify(LEFT, requires=FK)
-    assert report.rewrites == ["left join on a foreign key"]
-    assert report.optimized is not None
-    assert "LEFT" not in to_sql(report.optimized, DUCKDB).upper()
+    assert report._rewrites == ["left join on a foreign key"]
+    assert report._optimized is not None
+    assert "LEFT" not in to_sql(report._optimized, DUCKDB).upper()
 
 
 @pytest.mark.parametrize(
@@ -180,7 +180,7 @@ def test_left_join_on_a_foreign_key_is_inner():
     ],
 )
 def test_left_join_stays_without_a_not_null_foreign_key(requires):
-    assert sv.verify(LEFT, requires=requires).rewrites == []
+    assert sv.verify(LEFT, requires=requires)._rewrites == []
 
 
 def test_left_join_under_a_null_rejecting_filter_is_inner():
@@ -190,7 +190,7 @@ def test_left_join_under_a_null_rejecting_filter_is_inner():
         .select(ORDERS.id, CUSTOMERS.name)
     )
     report = sv.verify(expr)
-    assert report.rewrites == ["left join under a filter rejecting NULLs"]
+    assert report._rewrites == ["left join under a filter rejecting NULLs"]
 
 
 def test_left_join_under_another_filter_stays():
@@ -199,14 +199,14 @@ def test_left_join_under_another_filter_stays():
         .filter(CUSTOMERS.name.isnull())
         .select(ORDERS.id)
     )
-    assert sv.verify(expr).rewrites == []
+    assert sv.verify(expr)._rewrites == []
 
 
 def test_rewritten_left_join_is_incremental():
     """`Rel.Incremental` excludes left joins; the inner join is maintainable."""
     report = sv.verify(LEFT, requires=FK)
     assert run_checker(("--delta",), plan_json(connect(), LEFT))[0] == 3
-    assert run_checker(("--delta",), json.dumps(report.optimized))[0] == 0
+    assert run_checker(("--delta",), json.dumps(report._optimized))[0] == 0
 
 
 fk_tables = st.lists(st.text("ab", max_size=2), min_size=1, max_size=5).flatmap(
@@ -235,12 +235,12 @@ def test_left_join_on_a_foreign_key_runs_agree(data):
         ),
     }
     report = sv.verify(LEFT, requires=FK)
-    assert report.optimized is not None
+    assert report._optimized is not None
     want = canonical(
         tuple(r.values()) for r in duckdb_engine.run(plan_json(connect(), LEFT), tables).to_pylist()
     )
     for run in (duckdb_engine.run, polars_engine.run):
-        got = run(report.optimized, tables)
+        got = run(report._optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
 
 
@@ -269,10 +269,10 @@ ELIMINATED = [
 @pytest.mark.parametrize(("expr", "requires"), ELIMINATED)
 def test_join_that_only_checks_a_key_goes(expr, requires):
     report = sv.verify(expr, requires=requires)
-    assert any("no column used" in r for r in report.rewrites)
-    assert report.optimized is not None
+    assert any("no column used" in r for r in report._rewrites)
+    assert report._optimized is not None
     for dialect in (DUCKDB, SNOWFLAKE):
-        assert "JOIN" not in to_sql(report.optimized, dialect).upper()
+        assert "JOIN" not in to_sql(report._optimized, dialect).upper()
 
 
 @pytest.mark.parametrize(
@@ -290,7 +290,7 @@ def test_join_that_only_checks_a_key_goes(expr, requires):
 )
 def test_join_stays_without_the_contract(expr, requires):
     report = sv.verify(expr, requires=requires)
-    assert not any("no column used" in r for r in report.rewrites)
+    assert not any("no column used" in r for r in report._rewrites)
 
 
 @pytest.mark.parametrize(("expr", "requires"), ELIMINATED)
@@ -313,12 +313,12 @@ def test_eliminated_join_runs_agree(expr, requires, data):
         ),
     }
     report = sv.verify(expr, requires=requires)
-    assert report.optimized is not None
+    assert report._optimized is not None
     want = canonical(
         tuple(r.values()) for r in duckdb_engine.run(plan_json(connect(), expr), tables).to_pylist()
     )
     for run in (duckdb_engine.run, polars_engine.run):
-        got = run(report.optimized, tables)
+        got = run(report._optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
 
 
@@ -336,9 +336,9 @@ ORD_KEY = {"ord": [sv.unique("o_orderkey")]}
 
 def test_group_by_shrinks_to_the_key():
     report = sv.verify(Q3, requires=ORD_KEY)
-    assert report.rewrites == ["GROUP BY columns that others determine"]
-    assert report.optimized is not None
-    sql = to_sql(report.optimized, DUCKDB)
+    assert report._rewrites == ["GROUP BY columns that others determine"]
+    assert report._optimized is not None
+    sql = to_sql(report._optimized, DUCKDB)
     assert sql.count("MIN(") == 2
 
 
@@ -354,7 +354,7 @@ def test_group_by_shrinks_to_the_key():
 )
 def test_group_by_stays_without_a_dependency(expr):
     requires = {} if expr is Q3 else ORD_KEY
-    assert sv.verify(expr, requires=requires).rewrites == []
+    assert sv.verify(expr, requires=requires)._rewrites == []
 
 
 q3_tables = st.lists(
@@ -393,12 +393,12 @@ def test_group_by_on_the_key_runs_agree(data):
         ),
     }
     report = sv.verify(Q3, requires=ORD_KEY)
-    assert report.optimized is not None
+    assert report._optimized is not None
     want = canonical(
         tuple(r.values()) for r in duckdb_engine.run(plan_json(connect(), Q3), tables).to_pylist()
     )
     for run in (duckdb_engine.run, polars_engine.run):
-        got = run(report.optimized, tables)
+        got = run(report._optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
 
 
@@ -413,9 +413,9 @@ EAGER = (
 
 def test_aggregate_goes_below_a_join_on_a_key():
     report = sv.verify(EAGER, requires=ORD_KEY)
-    assert report.rewrites == ["aggregate below a join on a key"]
-    assert report.optimized is not None
-    sql = to_sql(report.optimized, DUCKDB)
+    assert report._rewrites == ["aggregate below a join on a key"]
+    assert report._optimized is not None
+    sql = to_sql(report._optimized, DUCKDB)
     # The join reads the grouped rows.
     assert sql.index("GROUP BY") < sql.index("JOIN")
 
@@ -441,7 +441,7 @@ def test_aggregate_goes_below_a_join_on_a_key():
     ],
 )
 def test_aggregate_stays_above_the_join(expr, requires):
-    assert "aggregate below a join on a key" not in sv.verify(expr, requires=requires).rewrites
+    assert "aggregate below a join on a key" not in sv.verify(expr, requires=requires)._rewrites
 
 
 @SETTINGS
@@ -471,11 +471,11 @@ def test_eager_aggregation_runs_agree(data):
         ),
     }
     report = sv.verify(EAGER, requires=ORD_KEY)
-    assert report.optimized is not None
+    assert report._optimized is not None
     want = canonical(
         tuple(r.values())
         for r in duckdb_engine.run(plan_json(connect(), EAGER), tables).to_pylist()
     )
     for run in (duckdb_engine.run, polars_engine.run):
-        got = run(report.optimized, tables)
+        got = run(report._optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want

@@ -99,14 +99,14 @@ def test_grouping_by_a_key_bounds_a_group_by_one_row():
     q = ORDERS.group_by("id").aggregate(total=_.amount.sum())
     report = sv.verify(q, requires={"orders": [*BOUNDED, sv.unique("id")]})
     assert not sum_risks(report)
-    assert report.relations[0] == RelationRows("aggregate", 0, None, 1)
+    assert report._relations[0] == RelationRows("aggregate", 0, None, 1)
 
 
 def test_relations_list_the_bounds():
     q = per_customer(ORDERS.filter(_.amount > 10))
     per_key = sv.rows_per(["customer"], at_most=1000)
     report = sv.verify(q, requires={"orders": [*BOUNDED, per_key, sv.max_rows(10**6)]})
-    ops = [(r.op, r.depth, r.rows, r.group_rows) for r in report.relations]
+    ops = [(r.op, r.depth, r.rows, r.group_rows) for r in report._relations]
     assert ops[0] == ("aggregate", 0, 10**6, 1000)
     assert ("read orders", ops[-1][1], 10**6, None) == ops[-1]
     assert any(op == "filter" and rows == 10**6 for op, _, rows, _ in ops)
@@ -121,7 +121,7 @@ def test_a_decimal_sum_scaled_after_a_capped_aggregate_fits():
         q, requires={"t": [_.c.between(1, 1000), sv.max_rows(1000)]}, ensures=[], on_inferred="off"
     )
     assert report.errors == [], str(report)
-    lo, hi = report.bounds.get("s", (None, None)) if report.bounds else (None, None)
+    lo, hi = report._bounds.get("s", (None, None)) if report._bounds else (None, None)
     assert lo is None or lo >= 0
 
 

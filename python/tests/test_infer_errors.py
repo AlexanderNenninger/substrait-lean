@@ -38,7 +38,7 @@ T = ibis.table(
 
 
 def inferred(report: sv.Report) -> list[str]:
-    return [label(c) for cs in report.inferred.values() for c in cs]
+    return [label(c) for cs in report._inferred.values() for c in cs]
 
 
 @pytest.mark.parametrize(

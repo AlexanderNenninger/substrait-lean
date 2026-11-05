@@ -148,8 +148,8 @@ def test_ties_in_the_window_order_hold_for_every_order():
     rn, key = report.ensures
     assert rn.proved
     assert not key.proved and key.value == "not shown to be a key"
-    assert [p.op for p in report.tie_places] == ["window"]
-    assert "with no key among those columns" in report.tie_places[0].what
+    assert [p.op for p in report._tie_places] == ["window"]
+    assert "with no key among those columns" in report._tie_places[0].what
 
 
 def test_a_key_on_the_order_column_alone_suffices():

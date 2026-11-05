@@ -15,7 +15,8 @@ from _pipelines import rows
 fl = pytest.importorskip("pyarrow.flight")
 
 from sverify.io import DeltaSink, DeltaSource  # noqa: E402
-from sverify.io.flight import FlightLog, FlightSource  # noqa: E402
+from sverify.io.flight import FlightSource  # noqa: E402
+from sverify.testing import FlightLog  # noqa: E402
 
 SAMPLES = pa.schema([("host", pa.string()), ("ts", pa.int64()), ("cpu", pa.float64())])
 

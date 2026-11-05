@@ -172,7 +172,7 @@ def test_exact_claims_that_rounding_breaks_are_not_proved() -> None:
     )
     assert [c.proved for c in report.ensures] == [False, False, False]
     # The first misses only by rounding, and the report says so.
-    [hint] = [h for h in report.hints if "rounding" in h]
+    [hint] = [h for h in report._hints if "rounding" in h]
     assert hint.startswith("(_.cpu_avg <= 100) holds up to rounding") and "sv.approx" in hint
 
 
