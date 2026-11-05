@@ -39,7 +39,7 @@ def test_from_substrait_is_a_classmethod_of_report() -> None:
     exported = _quiet(sv.verify, t.select("k")).to_substrait()
     assert _quiet(sv.Report.from_substrait, exported).proved
     with pytest.warns(DeprecationWarning, match="sverify.Report.from_substrait"):
-        assert sv.from_substrait(exported).proved
+        assert sv.from_substrait(exported).proved  # type: ignore[operator]
 
 
 # -- A2: condition arguments --------------------------------------------------------
@@ -164,7 +164,8 @@ def test_a_custom_sink_overrides_contract() -> None:
     orders = StaticSource(pa.table({"id": [1], "amount": [3]}), name="orders")
     sink = New("doubled")
     _quiet(_quiet(doubled, orders).write(sink).refresh)
-    assert sink.contract() is not None and sink.contract().view == "doubled"
+    c = sink.contract()
+    assert c is not None and c.view == "doubled"
 
 
 # -- E3: maintain's names ------------------------------------------------------------
