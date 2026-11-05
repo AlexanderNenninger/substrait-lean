@@ -145,6 +145,54 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L93-L101",
+          "note": "`DECIMAL(38,18)` operands: `+` and `-` are `decimal(38,17)`, `*` and `/` `decimal(38,6)` (precision loss allowed, ANSI on)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L115-L120",
+          "note": "`10.3 * 3.0` is `decimal(6,2)`: scale s1 + s2"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/decimalArithmeticOperations.sql.out#L270-L278",
+          "note": "after `set spark.sql.decimalOperations.allowPrecisionLoss=false`, `DECIMAL(38,18) * DECIMAL(38,18)` is `decimal(38,36)` and `/` `decimal(38,18)`, ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L163-L185",
+          "note": "`(5e36BD + 0.1) + 5e36BD` raises `NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/decimalArithmeticOperations.sql.out#L121-L126",
+          "note": "the same query is NULL, a `decimal(38,1)`, ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L10-L29",
+          "note": "decimal `1.0 / 0.0` raises `DIVIDE_BY_ZERO`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/decimalArithmeticOperations.sql.out#L10-L15",
+          "note": "the same is NULL, a `decimal(8,6)`, ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/group-by.sql.out#L786-L791",
+          "note": "`AVG` of `DECIMAL(9,0)` is `decimal(13,4)`, `SUM` `decimal(19,0)`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/math.sql.out#L194-L199",
+          "note": "`round(525, -1)` is 530: half up"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/math.sql.out#L546-L551",
+          "note": "`bround(525, -1)` is 520: half to even"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ],
   "issues": [

@@ -1,0 +1,1098 @@
+{
+  "_meta": {
+    "conf": {
+      "spark.driver.memory": "2g",
+      "spark.master": "local[2]",
+      "spark.sql.caseSensitive": "true",
+      "spark.sql.execution.arrow.pyspark.enabled": "false",
+      "spark.sql.parser.escapedStringLiterals": "false",
+      "spark.sql.session.timeZone": "UTC",
+      "spark.sql.shuffle.partitions": "2",
+      "spark.sql.timestampType": "TIMESTAMP_NTZ",
+      "spark.ui.enabled": "false",
+      "spark.ui.showConsoleProgress": "false"
+    },
+    "date": "2026-11-05",
+    "java": "21.0.12.1",
+    "os": "Linux amd64",
+    "paths": "ansi true and false; folded and codegen (ConvertToLocalRelation, ConstantFolding excluded)",
+    "spark": "4.3.0"
+  },
+  "aggregates[0]": {
+    "agree": 2880,
+    "columns": "g INT, x DOUBLE",
+    "constructs": [
+      "sum(x)",
+      "avg(x)",
+      "max(x)",
+      "min(x)"
+    ],
+    "fact": "spark-sum-double",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Bit for bit against the fact's order: each scan slice summed in input order, the partials merged in any order; avg the same sum over the count.",
+    "raised": {},
+    "results": 2880,
+    "runs": 48,
+    "seconds": 4.6,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=1",
+      "spark.sql.leafNodeDefaultParallelism=2",
+      "spark.sql.leafNodeDefaultParallelism=3"
+    ]
+  },
+  "aggregates[1]": {
+    "agree": 1440,
+    "columns": "g INT, x DOUBLE",
+    "constructs": [
+      "var_samp(x)",
+      "var_pop(x)",
+      "stddev_samp(x)"
+    ],
+    "fact": "spark-var-stddev",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Welford per slice and Chan's merge, within 1e-12 relative.",
+    "raised": {},
+    "results": 1440,
+    "runs": 24,
+    "seconds": 2.6,
+    "seed": 738,
+    "settings": [
+      "spark.sql.legacy.statisticalAggregate=false spark.sql.leafNodeDefaultParallelism=2",
+      "spark.sql.legacy.statisticalAggregate=true spark.sql.leafNodeDefaultParallelism=3"
+    ]
+  },
+  "cast_string[0]": {
+    "agree": 3762,
+    "columns": "s STRING",
+    "constructs": [
+      "CAST(s AS INT)",
+      "CAST(s AS DOUBLE)",
+      "CAST(s AS BOOLEAN)",
+      "try_cast(s AS INT)"
+    ],
+    "fact": "spark-cast-string",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Strings from the fact's examples, with whitespace around them.",
+    "raised": {
+      "CAST_INVALID_INPUT": 90
+    },
+    "results": 3762,
+    "runs": 16,
+    "seconds": 22.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "cast_string[1]": {
+    "agree": 1200,
+    "columns": "x DOUBLE",
+    "constructs": [
+      "CAST(x AS STRING)"
+    ],
+    "fact": "spark-cast-string",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Formatting modelled as JDK 19's Double.toString: the shortest decimal, scientific outside [1e-3, 1e7).",
+    "raised": {},
+    "results": 1200,
+    "runs": 4,
+    "seconds": 0.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "covar_corr[0]": {
+    "agree": 408,
+    "columns": "g INT, x DOUBLE, y DOUBLE",
+    "constructs": [
+      "covar_samp(x, y)",
+      "covar_pop(x, y)"
+    ],
+    "fact": "spark-covar",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 408,
+    "runs": 8,
+    "seconds": 0.9,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=2"
+    ]
+  },
+  "covar_corr[1]": {
+    "agree": 204,
+    "columns": "g INT, x DOUBLE, y DOUBLE",
+    "constructs": [
+      "corr(x, y)"
+    ],
+    "fact": "spark-corr",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Within 1e-9 relative; not clamped to [-1, 1].",
+    "raised": {},
+    "results": 204,
+    "runs": 4,
+    "seconds": 0.5,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=2"
+    ]
+  },
+  "date_range[0]": {
+    "agree": 2400,
+    "columns": "k INT, n INT",
+    "constructs": [
+      "unix_date(date_add(date_from_unix_date(k), n))",
+      "unix_date(date_from_unix_date(k) + 1)"
+    ],
+    "fact": "spark-date-range",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Day counts compared through unix_date: past 9999-12-31 and before 0001-01-01 computed, past 2^31 days wrapped.",
+    "raised": {},
+    "results": 2400,
+    "runs": 8,
+    "seconds": 0.8,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "date_range[1]": {
+    "agree": 960,
+    "columns": "us BIGINT, n INT",
+    "constructs": [
+      "unix_micros(CAST(timestamp_micros(us) AS TIMESTAMP_NTZ) + make_dt_interval(n, 0, 0, 0))"
+    ],
+    "fact": "spark-date-range",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "TIMESTAMP_NTZ + days past the microsecond range: a bare ArithmeticException (SP-3).",
+    "raised": {
+      "java.lang.ArithmeticException": 60
+    },
+    "results": 960,
+    "runs": 4,
+    "seconds": 19.2,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "decimal_negate[0]": {
+    "agree": 3536,
+    "columns": "x DECIMAL(38,0)",
+    "constructs": [
+      "-x",
+      "abs(x)",
+      "0 - x"
+    ],
+    "fact": "spark-decimal-negate",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 554,
+    "lean_differs": 394,
+    "note": "-x rounds to 34 significant digits half to even (MathContext.DECIMAL128); abs negates negative values only; 0 - x at the scale of DECIMAL(10,0) - DECIMAL(38,s).",
+    "raised": {
+      "NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION": 120
+    },
+    "results": 3536,
+    "runs": 12,
+    "seconds": 32.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "decimal_negate[1]": {
+    "agree": 3548,
+    "columns": "x DECIMAL(38,10)",
+    "constructs": [
+      "-x",
+      "abs(x)",
+      "0 - x"
+    ],
+    "fact": "spark-decimal-negate",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 557,
+    "lean_differs": 401,
+    "note": "-x rounds to 34 significant digits half to even (MathContext.DECIMAL128); abs negates negative values only; 0 - x at the scale of DECIMAL(10,0) - DECIMAL(38,s).",
+    "raised": {
+      "NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION": 120
+    },
+    "results": 3548,
+    "runs": 12,
+    "seconds": 33.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "double_arith[0]": {
+    "agree": 3600,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "a + b",
+      "a - b",
+      "a * b"
+    ],
+    "fact": "spark-double-arith",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 900,
+    "lean_differs": 86,
+    "note": "",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 5.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "double_divide_mod[0]": {
+    "agree": 1200,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "a / b"
+    ],
+    "fact": "spark-double-divide",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 285,
+    "lean_differs": 13,
+    "note": "",
+    "raised": {
+      "DIVIDE_BY_ZERO": 30
+    },
+    "results": 1200,
+    "runs": 4,
+    "seconds": 9.7,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "double_divide_mod[1]": {
+    "agree": 2380,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "a % b",
+      "pmod(a, b)"
+    ],
+    "fact": "spark-double-modulus",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "REMAINDER_BY_ZERO": 60
+    },
+    "results": 2380,
+    "runs": 8,
+    "seconds": 16.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "elem_rounding[0]": {
+    "agree": 8400,
+    "columns": "x DOUBLE",
+    "constructs": [
+      "exp(x)",
+      "sqrt(x)",
+      "sin(x)",
+      "cos(x)",
+      "tan(x)",
+      "atan(x)",
+      "cbrt(x)"
+    ],
+    "fact": "spark-elem-rounding",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 1500,
+    "lean_differs": 92,
+    "note": "Model: the correctly rounded value (mpmath); the fact allows 1 ulp for java.lang.Math and StrictMath, none for sqrt.",
+    "raised": {},
+    "results": 8400,
+    "runs": 28,
+    "seconds": 6.1,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "elem_rounding[1]": {
+    "agree": 3600,
+    "columns": "x DOUBLE",
+    "constructs": [
+      "ln(x)",
+      "log10(x)",
+      "log2(x)"
+    ],
+    "fact": "spark-elem-rounding",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "ln and log10 within 1 ulp of the correctly rounded value (mpmath); log2 modelled as ln(x) / ln(2), two roundings, as the fact states.",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 1.1,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "fp32[0]": {
+    "agree": 5970,
+    "columns": "a FLOAT, b FLOAT, i INT",
+    "constructs": [
+      "a + b",
+      "a * b",
+      "a / b",
+      "a + i",
+      "sqrt(a)"
+    ],
+    "fact": "spark-fp32",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "`a / b` of two FLOATs divides in DOUBLE (Spark's `Divide` casts both sides).",
+    "raised": {
+      "DIVIDE_BY_ZERO": 30
+    },
+    "results": 5970,
+    "runs": 20,
+    "seconds": 9.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_divide[0]": {
+    "agree": 2400,
+    "columns": "a TINYINT, b TINYINT",
+    "constructs": [
+      "a div b",
+      "a / b"
+    ],
+    "fact": "spark-int-divide",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 288,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "DIVIDE_BY_ZERO": 48
+    },
+    "results": 2400,
+    "runs": 8,
+    "seconds": 16.9,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_divide[1]": {
+    "agree": 2400,
+    "columns": "a SMALLINT, b SMALLINT",
+    "constructs": [
+      "a div b",
+      "a / b"
+    ],
+    "fact": "spark-int-divide",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 288,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "DIVIDE_BY_ZERO": 48
+    },
+    "results": 2400,
+    "runs": 8,
+    "seconds": 12.7,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_divide[2]": {
+    "agree": 2400,
+    "columns": "a INT, b INT",
+    "constructs": [
+      "a div b",
+      "a / b"
+    ],
+    "fact": "spark-int-divide",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 287,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "DIVIDE_BY_ZERO": 52
+    },
+    "results": 2400,
+    "runs": 8,
+    "seconds": 14.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_divide[3]": {
+    "agree": 2394,
+    "columns": "a BIGINT, b BIGINT",
+    "constructs": [
+      "a div b",
+      "a / b"
+    ],
+    "fact": "spark-int-divide",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 283,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "ARITHMETIC_OVERFLOW": 2,
+      "DIVIDE_BY_ZERO": 58
+    },
+    "results": 2394,
+    "runs": 8,
+    "seconds": 17.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_pow[0]": {
+    "agree": 1200,
+    "columns": "a BIGINT, b BIGINT",
+    "constructs": [
+      "power(a, b)"
+    ],
+    "fact": "spark-int-pow",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 300,
+    "lean_differs": 37,
+    "note": "Spark calls StrictMath.pow (fdlibm), the model numpy's pow: compared within 1 ulp.",
+    "raised": {},
+    "results": 1200,
+    "runs": 4,
+    "seconds": 0.4,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_shift[0]": {
+    "agree": 3600,
+    "columns": "a TINYINT, n INT",
+    "constructs": [
+      "shiftleft(a, n)",
+      "shiftright(a, n)",
+      "shiftrightunsigned(a, n)"
+    ],
+    "fact": "spark-int-shift",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 1.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_shift[1]": {
+    "agree": 3600,
+    "columns": "a SMALLINT, n INT",
+    "constructs": [
+      "shiftleft(a, n)",
+      "shiftright(a, n)",
+      "shiftrightunsigned(a, n)"
+    ],
+    "fact": "spark-int-shift",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 1.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_shift[2]": {
+    "agree": 3600,
+    "columns": "a INT, n INT",
+    "constructs": [
+      "shiftleft(a, n)",
+      "shiftright(a, n)",
+      "shiftrightunsigned(a, n)"
+    ],
+    "fact": "spark-int-shift",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 1.0,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_shift[3]": {
+    "agree": 3600,
+    "columns": "a BIGINT, n INT",
+    "constructs": [
+      "shiftleft(a, n)",
+      "shiftright(a, n)",
+      "shiftrightunsigned(a, n)"
+    ],
+    "fact": "spark-int-shift",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 0.9,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_sums[0]": {
+    "agree": 858,
+    "columns": "g INT, x BIGINT",
+    "constructs": [
+      "sum(x)",
+      "try_sum(x)"
+    ],
+    "fact": "spark-sum-int",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "ANSI: raises when a partial sum of a slice, in input order, or of the merge passes 64 bits; off: the wrapped total.",
+    "raised": {
+      "ARITHMETIC_OVERFLOW": 18
+    },
+    "results": 858,
+    "runs": 24,
+    "seconds": 6.4,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=1",
+      "spark.sql.leafNodeDefaultParallelism=2",
+      "spark.sql.leafNodeDefaultParallelism=3"
+    ]
+  },
+  "int_sums[1]": {
+    "agree": 164,
+    "columns": "g INT, x INT",
+    "constructs": [
+      "sum(x)"
+    ],
+    "fact": "spark-sum-int",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 164,
+    "runs": 4,
+    "seconds": 0.4,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "int_sums[2]": {
+    "agree": 164,
+    "columns": "g INT, x BIGINT",
+    "constructs": [
+      "avg(x)"
+    ],
+    "fact": "spark-avg-int",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "The sum in DOUBLE in the order of spark-sum-double, over the count.",
+    "raised": {},
+    "results": 164,
+    "runs": 4,
+    "seconds": 0.4,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=2"
+    ]
+  },
+  "list_index[0]": {
+    "agree": 6326,
+    "columns": "a ARRAY<INT>, i INT",
+    "constructs": [
+      "element_at(a, i)",
+      "a[i]",
+      "get(a, i)",
+      "try_element_at(a, i)",
+      "size(a)",
+      "array_size(a)"
+    ],
+    "fact": "spark-list-index",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "INVALID_ARRAY_INDEX": 30,
+      "INVALID_ARRAY_INDEX_IN_ELEMENT_AT": 28,
+      "INVALID_INDEX_OF_ZERO": 92
+    },
+    "results": 6326,
+    "runs": 24,
+    "seconds": 40.4,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "list_order[0]": {
+    "agree": 8400,
+    "columns": "a ARRAY<INT>, b ARRAY<INT>",
+    "constructs": [
+      "a < b",
+      "a = b",
+      "a > b",
+      "greatest(a, b)",
+      "sort_array(a)",
+      "sort_array(a, false)",
+      "array_sort(a)"
+    ],
+    "fact": "spark-list-order",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 8400,
+    "runs": 28,
+    "seconds": 2.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "math_domain[0]": {
+    "agree": 10800,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "sqrt(a)",
+      "asin(a)",
+      "acos(a)",
+      "ln(a)",
+      "log10(a)",
+      "log(a, b)",
+      "power(a, b)",
+      "atan2(a, b)",
+      "sin(a)"
+    ],
+    "fact": "spark-math-domain",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "NaN and the signs of zero in the model are IEEE's; logs NULL for x <= 0; atan2 adds 0.0 to both arguments.",
+    "raised": {},
+    "results": 10800,
+    "runs": 36,
+    "seconds": 2.8,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "nan_sign[0]": {
+    "agree": 4800,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "-a",
+      "abs(a)",
+      "a * -1.0D",
+      "b - b"
+    ],
+    "fact": "spark-nan-sign",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Bit for bit; the created NaN modelled negative, as on x86-64 (spark-exec-platform).",
+    "raised": {},
+    "results": 4800,
+    "runs": 16,
+    "seconds": 1.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "nonfinite[0]": {
+    "agree": 820,
+    "columns": "g INT, x DOUBLE",
+    "constructs": [
+      "sum(x)",
+      "avg(x)",
+      "max(x)",
+      "min(x)",
+      "var_samp(x)"
+    ],
+    "fact": "spark-nonfinite-aggregates",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Values only ±inf, NaN, 1e308, ±1, 0 and NULL.",
+    "raised": {},
+    "results": 820,
+    "runs": 20,
+    "seconds": 1.9,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=2"
+    ]
+  },
+  "quantile[0]": {
+    "agree": 2244,
+    "columns": "g INT, x BIGINT",
+    "constructs": [
+      "percentile_cont(0.0) WITHIN GROUP (ORDER BY x)",
+      "percentile_disc(0.0) WITHIN GROUP (ORDER BY x)",
+      "percentile_cont(0.25) WITHIN GROUP (ORDER BY x)",
+      "percentile_disc(0.25) WITHIN GROUP (ORDER BY x)",
+      "percentile_cont(0.5) WITHIN GROUP (ORDER BY x)",
+      "percentile_disc(0.5) WITHIN GROUP (ORDER BY x)",
+      "percentile_cont(0.9) WITHIN GROUP (ORDER BY x)",
+      "percentile_disc(0.9) WITHIN GROUP (ORDER BY x)",
+      "percentile_cont(1.0) WITHIN GROUP (ORDER BY x)",
+      "percentile_disc(1.0) WITHIN GROUP (ORDER BY x)",
+      "median(x)"
+    ],
+    "fact": "spark-quantile",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 2244,
+    "runs": 44,
+    "seconds": 3.9,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "raise_set[0]": {
+    "agree": 1812,
+    "columns": "n INT, s STRING, a ARRAY<INT>, i INT",
+    "constructs": [
+      "n + s",
+      "element_at(a, i)"
+    ],
+    "fact": "spark-raise-set",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Also the raising rows of spark-substring-range, spark-list-index, spark-decimal-negate, spark-round and spark-date-range.",
+    "raised": {
+      "CAST_INVALID_INPUT": 30,
+      "INVALID_ARRAY_INDEX_IN_ELEMENT_AT": 21,
+      "INVALID_INDEX_OF_ZERO": 39
+    },
+    "results": 1812,
+    "runs": 8,
+    "seconds": 22.1,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "regex[0]": {
+    "agree": 3600,
+    "columns": "s STRING, i INT",
+    "constructs": [
+      "s RLIKE (CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' WHEN 3 THEN '(.)\\\\1' WHEN 4 THEN '^(\\\\s*)x' WHEN 5 THEN '(é+)' WHEN 6 THEN '([a-c]+)-(\\\\d)' WHEN 7 THEN '(?<=a)(b)' END)",
+      "regexp_extract(s, CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' WHEN 3 THEN '(.)\\\\1' WHEN 4 THEN '^(\\\\s*)x' WHEN 5 THEN '(é+)' WHEN 6 THEN '([a-c]+)-(\\\\d)' WHEN 7 THEN '(?<=a)(b)' END, 1)",
+      "regexp_replace(s, CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' WHEN 3 THEN '(.)\\\\1' WHEN 4 THEN '^(\\\\s*)x' WHEN 5 THEN '(é+)' WHEN 6 THEN '([a-c]+)-(\\\\d)' WHEN 7 THEN '(?<=a)(b)' END, '<$1>')"
+    ],
+    "fact": "spark-regex",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Patterns with a group 1, chosen per row; Python's re with ASCII classes as the model of java.util.regex.",
+    "raised": {},
+    "results": 3600,
+    "runs": 12,
+    "seconds": 1.1,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "round[0]": {
+    "agree": 11956,
+    "columns": "x DOUBLE",
+    "constructs": [
+      "round(x, 0)",
+      "bround(x, 0)",
+      "round(x, 1)",
+      "bround(x, 1)",
+      "round(x, 2)",
+      "bround(x, 2)",
+      "round(x, -2)",
+      "bround(x, -2)",
+      "floor(x)",
+      "ceil(x)"
+    ],
+    "fact": "spark-round",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 1200,
+    "lean_differs": 41,
+    "note": "round and bround on the shortest decimal text (Double.toString), HALF_UP and HALF_EVEN.",
+    "raised": {
+      "ARITHMETIC_OVERFLOW": 60
+    },
+    "results": 11956,
+    "runs": 40,
+    "seconds": 21.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "size_limits[0]": {
+    "agree": 964,
+    "columns": "x STRING, s INT",
+    "constructs": [
+      "CAST(x AS DECIMAL(38,2))"
+    ],
+    "fact": "spark-exec-size-limits",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "Decimal text of 30 to 40 digits cast to DECIMAL(38,2).",
+    "raised": {
+      "NUMERIC_OUT_OF_SUPPORTED_RANGE": 8,
+      "NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION": 22
+    },
+    "results": 964,
+    "runs": 4,
+    "seconds": 10.7,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "substring[0]": {
+    "agree": 1200,
+    "columns": "s STRING, p INT, l INT",
+    "constructs": [
+      "substring(s, p, l)"
+    ],
+    "fact": "spark-substring",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 1200,
+    "runs": 4,
+    "seconds": 0.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "substring_range[0]": {
+    "agree": 794,
+    "columns": "s STRING, p BIGINT, l BIGINT",
+    "constructs": [
+      "substring(s, p, l)"
+    ],
+    "fact": "spark-substring-range",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "CAST_OVERFLOW": 30
+    },
+    "results": 794,
+    "runs": 4,
+    "seconds": 7.4,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "try_variants[0]": {
+    "agree": 7200,
+    "columns": "a BIGINT, b BIGINT, s STRING",
+    "constructs": [
+      "try_add(a, b)",
+      "try_subtract(a, b)",
+      "try_multiply(a, b)",
+      "try_mod(a, b)",
+      "try_divide(a, b)",
+      "try_cast(s AS INT)"
+    ],
+    "fact": "spark-try-variants",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 7200,
+    "runs": 24,
+    "seconds": 1.9,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "zero_order[0]": {
+    "agree": 984,
+    "columns": "g INT, x DOUBLE",
+    "constructs": [
+      "min(x)",
+      "max(x)",
+      "count(DISTINCT x)"
+    ],
+    "fact": "spark-zero-order",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "min and max keep the first of equal zeros in each slice, the partials merged in either order (bit for bit); count(DISTINCT x) counts -0.0 and 0.0 once.",
+    "raised": {},
+    "results": 984,
+    "runs": 24,
+    "seconds": 3.1,
+    "seed": 738,
+    "settings": [
+      "spark.sql.leafNodeDefaultParallelism=1",
+      "spark.sql.leafNodeDefaultParallelism=2"
+    ]
+  },
+  "zero_order[1]": {
+    "agree": 4800,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "a = b",
+      "a < b",
+      "a <=> b",
+      "greatest(a, b)"
+    ],
+    "fact": "spark-zero-order",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {},
+    "results": 4800,
+    "runs": 16,
+    "seconds": 1.3,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  },
+  "zero_sign[0]": {
+    "agree": 7042,
+    "columns": "a DOUBLE, b DOUBLE",
+    "constructs": [
+      "a + b",
+      "a * b",
+      "a / b",
+      "-a",
+      "abs(a)",
+      "CAST(a AS STRING)"
+    ],
+    "fact": "spark-zero-sign",
+    "findings": [],
+    "input_rows": 300,
+    "lean_compared": 0,
+    "lean_differs": 0,
+    "note": "",
+    "raised": {
+      "DIVIDE_BY_ZERO": 30
+    },
+    "results": 7042,
+    "runs": 24,
+    "seconds": 8.9,
+    "seed": 738,
+    "settings": [
+      ""
+    ]
+  }
+}

@@ -72,9 +72,88 @@ those entries. The trigonometric functions use `java.lang.Math` and a NaN
 that arithmetic creates takes the CPU's sign, so their last bit and that sign
 are the platform's ([exec-platform](facts/spark-exec-platform.json)).
 
-Most facts also cite Spark's docs or its source at `v4.3.0`. Five findings are upstream bugs, SP-1 to SP-5 in
+Most facts also cite Spark's docs or its source at `v4.3.0`. Seven findings are upstream bugs, SP-1 to SP-7 in
 [upstream/bugs](../../upstream/bugs/), and one a spec gap,
 [ST-16](../../upstream/bugs/ST-16.json).
+
+## Spark's tests
+
+Spark ships its SQL tests with their expected output at each release tag:
+the queries in `sql/core/src/test/resources/sql-tests/inputs/` and the golden
+files `results/*.sql.out` that `SQLQueryTestSuite` checks. Those under
+`results/` run with ANSI on, those under `results/nonansi/` with it off, in
+the time zone America/Los_Angeles. A fact's `engine-test` check links each
+case that pins its behaviour at `v4.3.0`, from its `-- !query` line to its
+last line of output, with a note on what it shows.
+
+`python -m sverify_dev.spark_tests` (`python/tools/sverify_dev/spark_tests.py`)
+clones the tests at the tag into `~/.cache/sverify/spark-tests` (a sparse
+clone, about 20 MB) and searches them; `check` checks that every link names a
+case of a golden file at the tag, and `replay` runs a golden file on the
+local `pyspark` and compares the output (it needs a JVM):
+
+```bash
+cd python
+uv run python -m sverify_dev.spark_tests search 'try_add\(' --file nonansi
+uv run python -m sverify_dev.spark_tests check
+```
+
+A replay against `Rel.eval`, as `sverify_dev.slt` does for DuckDB's
+sqllogictests, would need a lift of Spark's SQL, which sverify does not have.
+The golden files run each query once and sort the rows of a query without an
+`ORDER BY`, so they cannot show what varies between runs or partitionings
+(ties, the order of a sum); the [evidence table](#evidence-fact-by-fact) gives
+the reason for each fact with no case.
+
+Reading the tests corrected four facts: `FLOAT / FLOAT` is a `DOUBLE`
+([fp32](facts/spark-fp32.json)); under ANSI a string next to a `FLOAT`,
+`DOUBLE` or decimal is read as `DOUBLE`
+([implicit-casts](facts/spark-implicit-casts.json));
+`try_element_at(a, 0)` raises like `element_at`
+([try-variants](facts/spark-try-variants.json),
+[list-index](facts/spark-list-index.json)); and XML is a built-in source
+([io](facts/spark-io.json)).
+
+## Fuzzing the open deviations
+
+`python -m sverify_dev.spark_fuzz` (`python/tools/sverify_dev/spark_fuzz.py`)
+runs each open deviation's constructs on random rows that lean on the edges
+the fact names (bounds, zeros, NaN, ±inf, NULL, long decimals), under ANSI on
+and off, on both paths, and compares each result (its value, its type, or its
+error class) with a model of what the fact says. Aggregates run over many
+groups with `spark.sql.leafNodeDefaultParallelism` at 1, 2 and 3: Spark scans
+a local table in slices of consecutive rows, and the models of the sums,
+`avg`, the variances and the covariances follow the fact's algorithm slice by
+slice, then merge the partial results in any order. Where the construct has
+a DuckDB form, `Rel.eval` (the reference profile of sverify's lift) runs on
+the same rows, and the run counts the rows where Spark's value differs from
+it. The run writes [fuzz.json](fuzz.json): per target, the seed, the rows,
+the settings, the counts and any findings. It ran on homelab:
+
+```bash
+cd python && uv run python -m sverify_dev.spark_fuzz --rows 300 --seed 738
+```
+
+The run of 2026-11-05 (Spark 4.3.0, Java 21.0.12, Linux x86-64) checked
+145,610 results over 44 targets, which cover the 36 open deviations, and
+every one came out as its fact says. `--dry` runs the models alone, without
+Spark. The fuzzing corrected four facts first:
+
+- `-x` of a decimal past 34 digits rounds half to even (`DECIMAL128`), and
+  `abs` rounds only a negative value
+  ([decimal-negate](facts/spark-decimal-negate.json),
+  [SP-1](../../upstream/bugs/SP-1.json)); `0 - x` keeps the scale only up to
+  6, so the workaround SP-1 proposes loses a digit past it;
+- `pmod` on doubles adds the divisor only to a negative remainder
+  ([double-modulus](facts/spark-double-modulus.json));
+- `power(±1, ±inf)` and `power(1, NaN)` are NaN, `StrictMath.pow`'s rule
+  ([math-domain](facts/spark-math-domain.json));
+- decimal text with more than 38 integer digits raises
+  `NUMERIC_OUT_OF_SUPPORTED_RANGE` ([exec-size-limits](facts/spark-exec-size-limits.json)).
+
+A fact's `fuzz` check names its targets in [fuzz.json](fuzz.json). Where a
+target covers only some of a row's types (`DOUBLE` and not `FLOAT`, `BIGINT`
+and not the narrower integers), the row keeps `probe` for the others.
 
 ## The Spark diff, as a table
 
@@ -96,7 +175,7 @@ Spark's own SQL gives the reference result.
 | `sum`, `avg` (all) | no values | NULL | native | sum-int, [sum-double](facts/spark-sum-double.json) |
 | `avg` (integers) | `avg_int_result` | the declared type | `DOUBLE`, summed in double | [avg-int](facts/spark-avg-int.json) |
 | decimals | result type, `decimal_rescale`, `overflow` | the YAML's, `TIE_AWAY_FROM_ZERO`, `ERROR` | native; off: NULL on overflow | [decimal-arith](facts/spark-decimal-arith.json) |
-| `negate`, `abs` (decimals) | | exact | rounds past 34 digits, raises at 10³⁸ - 1 ([SP-1](../../upstream/bugs/SP-1.json)) | [decimal-negate](facts/spark-decimal-negate.json) |
+| `negate`, `abs` (decimals) | | exact | rounds past 34 digits half to even, raises at 10³⁸ - 1 ([SP-1](../../upstream/bugs/SP-1.json)) | [decimal-negate](facts/spark-decimal-negate.json) |
 | `add` `subtract` `multiply` (`fp32`, `fp64`) | `rounding` | `TIE_TO_EVEN` | native | [double-arith](facts/spark-double-arith.json) |
 | | `nan_creation`, `float_overflow` | raise | NaN, `±inf`, in both modes | |
 | `divide` (`fp32`, `fp64`) | `on_division_by_zero` | `ERROR` | native; off: NULL, never `±inf` | [double-divide](facts/spark-double-divide.json) |
@@ -175,3 +254,86 @@ Spark's own SQL gives the reference result.
 | streaming | | none | batch only | [exec-streaming-fallback](facts/spark-exec-streaming-fallback.json) |
 | types | names, implicit casts, literals | explicit in the plan | Spark's names; ANSI precedence; `INT` literals, `1.5` a decimal | [type-names](facts/spark-type-names.json), [implicit-casts](facts/spark-implicit-casts.json), [literal-types](facts/spark-literal-types.json) |
 | I/O | formats, object stores, catalogs | outside the plan | Parquet, ORC, CSV, JSON, Avro; Hadoop connectors; catalog plugins | [io](facts/spark-io.json) |
+
+## Evidence, fact by fact
+
+The strongest check behind each fact (`evidence`, in the order docs < source
+< engine_test < probe < fuzz < proof), the cases of Spark's tests it links,
+and for an open deviation the fuzzed results that came out as it says. Of
+the 70 facts, 36 rest on fuzzing, 32 on probes, one on Spark's tests
+([io](facts/spark-io.json)) and one on the source
+([exec-streaming-fallback](facts/spark-exec-streaming-fallback.json)); 59
+link cases of Spark's tests, and the other 11 say why none fits.
+
+| Fact | Status | Evidence | Spark's tests | Fuzz |
+|---|---|---|---|---|
+| [avg-double](facts/spark-avg-double.json) | open | fuzz | 4 cases | 2880 of 2880 |
+| [avg-int](facts/spark-avg-int.json) | open | fuzz | 6 cases | 164 of 164 |
+| [case](facts/spark-case.json) | no-finding | probe | 2 cases | — |
+| [cast-double-to-int](facts/spark-cast-double-to-int.json) | no-finding | probe | 7 cases | — |
+| [cast-string](facts/spark-cast-string.json) | open | fuzz | 12 cases | 4962 of 4962 |
+| [clustered](facts/spark-clustered.json) | no-finding | probe | none: the suite sorts the rows of a query without `ORDER BY`, so no case shows adjacency | — |
+| [concat](facts/spark-concat.json) | no-finding | probe | 3 cases | — |
+| [corr](facts/spark-corr.json) | open | fuzz | 5 cases | 204 of 204 |
+| [covar](facts/spark-covar.json) | open | fuzz | 2 cases | 408 of 408 |
+| [date-range](facts/spark-date-range.json) | open | fuzz | 8 cases | 3360 of 3360 |
+| [decimal-arith](facts/spark-decimal-arith.json) | no-finding | probe | 10 cases | — |
+| [decimal-negate](facts/spark-decimal-negate.json) | open | fuzz | none: no case negates a decimal of more than 34 digits | 7084 of 7084 |
+| [digests](facts/spark-digests.json) | no-finding | probe | none: no case has the output of `md5`, `sha1`, `sha2` or `crc32` | — |
+| [double-arith](facts/spark-double-arith.json) | open | fuzz | 3 cases | 3600 of 3600 |
+| [double-divide](facts/spark-double-divide.json) | open | fuzz | 7 cases | 1200 of 1200 |
+| [double-modulus](facts/spark-double-modulus.json) | open | fuzz | none: `%`, `mod` and `pmod` cases are on integers and decimals only | 2380 of 2380 |
+| [elem-rounding](facts/spark-elem-rounding.json) | open | fuzz | 5 cases | 12000 of 12000 |
+| [exec-evaluation-order](facts/spark-exec-evaluation-order.json) | no-finding | probe | 5 cases | — |
+| [exec-parallel](facts/spark-exec-parallel.json) | open | fuzz | none: each query runs once, on one local partitioning | 3902 of 3902 |
+| [exec-platform](facts/spark-exec-platform.json) | open | fuzz | 1 cases | 16800 of 16800 |
+| [exec-settings](facts/spark-exec-settings.json) | open | fuzz | 7 cases | 17942 of 17942 |
+| [exec-size-limits](facts/spark-exec-size-limits.json) | open | fuzz | 3 cases | 964 of 964 |
+| [exec-streaming-fallback](facts/spark-exec-streaming-fallback.json) | no-finding | source | none: the SQL tests run batch queries only; source at the tag instead | — |
+| [explode](facts/spark-explode.json) | no-finding | probe | 12 cases | — |
+| [first-last](facts/spark-first-last.json) | no-finding | probe | 7 cases | — |
+| [fp32](facts/spark-fp32.json) | open | fuzz | 6 cases | 5970 of 5970 |
+| [implicit-casts](facts/spark-implicit-casts.json) | no-finding | probe | 11 cases | — |
+| [int-abs](facts/spark-int-abs.json) | no-finding | probe | 1 cases | — |
+| [int-arith](facts/spark-int-arith.json) | no-finding | probe | 8 cases | — |
+| [int-divide](facts/spark-int-divide.json) | open | fuzz | 8 cases | 9594 of 9594 |
+| [int-modulus](facts/spark-int-modulus.json) | no-finding | probe | 6 cases | — |
+| [int-pow](facts/spark-int-pow.json) | open | fuzz | none: the `power` cases take doubles only | 1200 of 1200 |
+| [int-shift](facts/spark-int-shift.json) | open | fuzz | 5 cases | 14400 of 14400 |
+| [io](facts/spark-io.json) | no-finding | engine_test | 6 cases | — |
+| [kleene](facts/spark-kleene.json) | no-finding | probe | 9 cases | — |
+| [list-index](facts/spark-list-index.json) | open | fuzz | 13 cases | 6326 of 6326 |
+| [list-order](facts/spark-list-order.json) | open | fuzz | 1 cases | 8400 of 8400 |
+| [literal-types](facts/spark-literal-types.json) | no-finding | probe | 10 cases | — |
+| [match-functions](facts/spark-match-functions.json) | no-finding | probe | 6 cases | — |
+| [math-domain](facts/spark-math-domain.json) | open | fuzz | none: no `ln(0)`, `sqrt(-1)`, `asin(2)` or `atan2(0, 0)` case | 10800 of 10800 |
+| [nan-equality](facts/spark-nan-equality.json) | no-finding | probe | 3 cases | — |
+| [nan-order](facts/spark-nan-order.json) | no-finding | probe | 3 cases | — |
+| [nan-sign](facts/spark-nan-sign.json) | open | fuzz | none: no case looks at a NaN's sign bit | 4800 of 4800 |
+| [nested-equality](facts/spark-nested-equality.json) | no-finding | probe | 2 cases | — |
+| [nonfinite-aggregates](facts/spark-nonfinite-aggregates.json) | open | fuzz | 5 cases | 820 of 820 |
+| [null-keys](facts/spark-null-keys.json) | no-finding | probe | 4 cases | — |
+| [null-order](facts/spark-null-order.json) | no-finding | probe | 5 cases | — |
+| [quantile](facts/spark-quantile.json) | open | fuzz | 5 cases | 2244 of 2244 |
+| [raise-set](facts/spark-raise-set.json) | open | fuzz | 13 cases | 25384 of 25384 |
+| [rank](facts/spark-rank.json) | no-finding | probe | 7 cases | — |
+| [regex](facts/spark-regex.json) | open | fuzz | 6 cases | 3600 of 3600 |
+| [round](facts/spark-round.json) | open | fuzz | 7 cases | 11956 of 11956 |
+| [set-operations](facts/spark-set-operations.json) | no-finding | probe | 7 cases | — |
+| [sort-stability](facts/spark-sort-stability.json) | no-finding | probe | none: the suite sorts unordered output and runs each query once | — |
+| [string-plain](facts/spark-string-plain.json) | no-finding | probe | 5 cases | — |
+| [strpos](facts/spark-strpos.json) | no-finding | probe | 14 cases | — |
+| [substring-range](facts/spark-substring-range.json) | open | fuzz | 2 cases | 794 of 794 |
+| [substring](facts/spark-substring.json) | open | fuzz | 4 cases | 1200 of 1200 |
+| [sum-double](facts/spark-sum-double.json) | open | fuzz | 2 cases | 2880 of 2880 |
+| [sum-int](facts/spark-sum-int.json) | open | fuzz | 7 cases | 1022 of 1022 |
+| [time-type](facts/spark-time-type.json) | no-finding | probe | 2 cases | — |
+| [time-zones](facts/spark-time-zones.json) | no-finding | probe | 4 cases | — |
+| [timestamp-precision](facts/spark-timestamp-precision.json) | no-finding | probe | 10 cases | — |
+| [try-variants](facts/spark-try-variants.json) | open | fuzz | 13 cases | 7200 of 7200 |
+| [type-names](facts/spark-type-names.json) | no-finding | probe | 9 cases | — |
+| [var-stddev](facts/spark-var-stddev.json) | open | fuzz | 6 cases | 1440 of 1440 |
+| [week-parts](facts/spark-week-parts.json) | no-finding | probe | 10 cases | — |
+| [window-values](facts/spark-window-values.json) | no-finding | probe | 7 cases | — |
+| [zero-order](facts/spark-zero-order.json) | open | fuzz | none: every `-0.0` in the suite is a decimal literal, 0.0 before it is a double | 5784 of 5784 |
+| [zero-sign](facts/spark-zero-sign.json) | open | fuzz | 2 cases | 7042 of 7042 |
