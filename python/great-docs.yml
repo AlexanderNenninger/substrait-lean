@@ -152,6 +152,19 @@ reference:
       - cli.Discovery
       - cli.Checked
 
+  - title: Standards
+    desc: >
+      Contracts in the Open Data Contract Standard (`sverify.odcs`, #791):
+      a node's contract written as ODCS, and ODCS contracts read as
+      conditions.
+    contents:
+      - odcs.export
+      - odcs.write
+      - odcs.read
+      - odcs.OdcsContract
+      - odcs.Unread
+      - odcs.UnreadRuleWarning
+
   - title: Errors
     desc: >
       What sverify raises, and when (`sverify.errors`). Every exception is a

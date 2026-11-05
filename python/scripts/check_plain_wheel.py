@@ -30,6 +30,7 @@ OPTIONAL = (
     "pyiceberg",
     "hypothesis",
     "pytest",
+    "yaml",
     "opentelemetry",
     "openlineage",
 )
