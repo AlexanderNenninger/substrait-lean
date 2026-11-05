@@ -108,6 +108,7 @@ import ibis
 import sverify as sv
 from sverify.engines import create_table
 from sverify.incremental import IncrementalView
+from sverify.io import Changes
 
 con = sv.connect()          # Arrow tables; plans run on DuckDB
 orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
@@ -116,8 +117,8 @@ create_table(con, "orders", orders.schema(), [(1, "ada", 30)])
 create_table(con, "customers", customers.schema(), [("ada", "Paris")])
 query = orders.join(customers, orders.customer == customers.name).select(orders.id, customers.city)
 view = IncrementalView(con, query, "v")
-view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
-            "customers": sv.Changes(inserts=[("bob", "Rome")])})
+view.apply({"orders": Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
+            "customers": Changes(inserts=[("bob", "Rome")])})
 assert view.rows() == view.recompute()
 ```
 

@@ -361,7 +361,7 @@ class Source(Pipeable, ABC):
             inserts=pa.concat_tables([e.inserts for e in entries] or [schema.empty_table()]),
             deletes=pa.concat_tables([e.deletes for e in entries] or [schema.empty_table()]),
             trusted=trusted,
-            kind="snapshot diff" if kinds == {"snapshot"} else "change feed",
+            kind="snapshot_diff" if kinds == {"snapshot"} else "change_feed",
             schema=schema,
         )
 

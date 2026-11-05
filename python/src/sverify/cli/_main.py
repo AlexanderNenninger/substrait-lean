@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from sverify.cli import _explain, _text
+from sverify.cli import _contract, _explain, _text
 from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
@@ -573,6 +573,7 @@ def parser() -> argparse.ArgumentParser:
     )
     e.add_argument("what", help="a code from check's output, or file.py[:<node>]")
     e.set_defaults(run=cmd_explain)
+    _contract.add_parser(sub)
     return p
 
 

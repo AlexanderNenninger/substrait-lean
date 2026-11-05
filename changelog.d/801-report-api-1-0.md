@@ -17,8 +17,10 @@ One record for the preconditions a proof needs (B1):
   internal.
 - `report.suggestions` maps each unproved postcondition's label to a list of
   `Needed`. It used to map it to labels per table.
-- `report.needed`, `Report.needs_text()` and `needs_lines()` warn: read
-  `report.needs`. The report JSON keeps its keys.
+- `report.needed`, `report.needed_text`, `report.needed_conditions`,
+  `Report.needs_text()` and `needs_lines()` warn: read `report.needs`, or
+  `report.suggested_requires` for the whole mapping. The report JSON keeps
+  its keys.
 
 Internal fields (B4, E1):
 

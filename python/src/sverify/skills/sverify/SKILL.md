@@ -31,7 +31,7 @@ Wheels bundle the checker, so no Lean toolchain is needed.
 
 The function body is ordinary Ibis. Called on a source, it proves the
 contract and returns a `Node`; `refresh()` computes it, on DuckDB unless you
-pass `refresh(engine=...)`. `last_report` says what was proved.
+pass `refresh(engine=...)`. `report` says what was proved.
 `@sv.transform(check_engine=...)` says where checks on data run.
 
 ```python
@@ -58,7 +58,7 @@ def big_orders(orders):
 big = big_orders(orders)  # proved here, before any data runs
 big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
-report = big_orders.last_report
+report = big_orders.report
 assert report.proved
 print(report.facts["doubled"])  # what Lean established about the column
 ```
@@ -209,8 +209,8 @@ test_doubles_are_big()
   are recomputed and diffed on each refresh (see the `sverify-pipelines`
   skill).
 * **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
-  the rounding would depend on the split; `float_order="any"` splits them
-  anyway, within a proved tolerance that `tolerance=True` reports per row.
+  the rounding would depend on the split; `reproducible=sv.equivalent(floats="plan")`
+  splits them anyway, within a proved tolerance that `tolerance=True` reports per row.
 
 ## More
 

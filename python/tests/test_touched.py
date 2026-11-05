@@ -9,10 +9,9 @@ import ibis
 import pyarrow as pa
 import pytest
 
-import sverify as sv
 from _pipelines import recomputed, rows
 from sverify import incremental
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 SCHEMA = pa.schema([("host", pa.string()), ("minute", pa.int64()), ("cpu", pa.int64())])
 
@@ -69,7 +68,7 @@ def test_touched_groups_match_a_full_recompute(seed, engine):
     node.refresh(engine=engine)
     assert view(node).strategy == "touched groups"
     for ins, dels in batches:
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         out = node.refresh(engine=engine, audit=True)["per_minute"]
         assert out.report is not None
         touched = {(h, m) for h, m, _ in ins + dels}
@@ -84,7 +83,7 @@ def test_status_and_summary_say_which_strategy_ran():
     node.refresh()
     assert "touched groups recomputed (no delta rules:" in str(node.status())
     assert node.status().nodes[0].recomputed is None
-    src.apply(sv.Changes(inserts=samples([("a", 1, 9)])))
+    src.apply(Changes(inserts=samples([("a", 1, 9)])))
     out = node.refresh()["per_minute"]
     assert "1 touched group(s) recomputed" in out.summary()
     assert "view per_minute: 1 touched group(s) recomputed" in str(out.report)
@@ -101,9 +100,9 @@ def test_a_filter_and_projection_over_the_aggregate():
     node.refresh()
     assert view(node).strategy == "touched groups"
     for batch in [
-        sv.Changes(inserts=samples([("b", 1, 9)])),
-        sv.Changes(deletes=samples([("a", 1, 7)])),
-        sv.Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
+        Changes(inserts=samples([("b", 1, 9)])),
+        Changes(deletes=samples([("a", 1, 7)])),
+        Changes(inserts=samples([("a", 1, 1), ("c", 4, 2), ("c", 4, 8)])),
     ]:
         src.apply(batch)
         node.refresh(audit=True)
@@ -122,10 +121,10 @@ def test_an_aggregate_over_a_join():
     node = src.pipe(by_team, hosts=teams)
     node.refresh()
     assert view(node).strategy == "touched groups"
-    src.apply(sv.Changes(inserts=samples([("a", 1, 9), ("b", 2, 1)])))
-    teams.apply(sv.Changes(inserts=pa.table({"host": ["c"], "team": ["x"]})))
+    src.apply(Changes(inserts=samples([("a", 1, 9), ("b", 2, 1)])))
+    teams.apply(Changes(inserts=pa.table({"host": ["c"], "team": ["x"]})))
     node.refresh(audit=True)
-    src.apply(sv.Changes(inserts=samples([("c", 1, 20)]), deletes=samples([("a", 1, 9)])))
+    src.apply(Changes(inserts=samples([("c", 1, 20)]), deletes=samples([("a", 1, 9)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src, teams)
 
@@ -140,7 +139,7 @@ def test_an_input_without_delta_rules_is_recomputed_and_diffed():
     node.refresh()
     assert view(node).strategy == "recompute and diff"
     assert "no touched groups: the aggregate's input has no delta rules" in str(node.status())
-    src.apply(sv.Changes(inserts=samples([("a", 2, 9)])))
+    src.apply(Changes(inserts=samples([("a", 2, 9)])))
     out = node.refresh()["busiest"]
     assert out.report is not None and out.report.diffed == ["busiest"]
     assert "recomputed and diffed" in out.summary()
@@ -156,8 +155,8 @@ def test_a_view_downstream_of_touched_groups():
     node = agg.pipe(hot)
     node.refresh()
     for batch in [
-        sv.Changes(inserts=samples([("a", 1, 9)])),
-        sv.Changes(deletes=samples([("a", 1, 9)]), inserts=samples([("b", 1, 8)])),
+        Changes(inserts=samples([("a", 1, 9)])),
+        Changes(deletes=samples([("a", 1, 9)]), inserts=samples([("b", 1, 8)])),
     ]:
         src.apply(batch)
         node.refresh(audit=True)
@@ -214,7 +213,7 @@ def test_a_time_bucket_key_reads_only_the_touched_range(engine, monkeypatch):
         for d in dels:
             live.remove(d)
         live += ins
-        src.apply(sv.Changes(inserts=timed(ins), deletes=timed(dels)))
+        src.apply(Changes(inserts=timed(ins), deletes=timed(dels)))
         node.refresh(engine=engine, audit=True)
         assert rows(node) == recomputed(node, src)
     assert ran.count(spec.recompute) == 1
@@ -265,7 +264,7 @@ def test_touched_partitions_match_a_full_recompute(seed, engine):
     node.refresh(engine=engine)
     assert view(node).strategy == "touched groups"
     for ins, dels in batches:
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         out = node.refresh(engine=engine, audit=True)["windowed"]
         assert out.report is not None
         if touched := {h for h, _, _ in ins + dels}:

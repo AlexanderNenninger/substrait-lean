@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.5.0"
+version = "0.6.0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, DataFusion, Snowflake and Spark"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
@@ -38,7 +38,9 @@ iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
 flight = ["pyarrow>=26.0.0"]
 # `sverify.testing` and its pytest plugin; the plugin is registered without it.
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing]"]
+# `sverify.odcs` writes and reads ODCS contracts as YAML (#791); JSON needs nothing.
+odcs = ["pyyaml>=6.0"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs]"]
 
 # The command line (`sverify.cli`, #744).
 [project.scripts]

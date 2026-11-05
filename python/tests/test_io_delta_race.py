@@ -64,7 +64,7 @@ def test_the_second_writer_of_an_epoch_fails(jobs, monkeypatch, engine):
     b.refresh(engine=engine)
     append(src, [3])
     # The issue's repro: A is held after reading the sink's last transaction.
-    hold(monkeypatch, a, "committed", lambda: b.refresh(engine=engine))
+    hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
     with pytest.raises(ConcurrentWriteError, match=rf"{sink}.*sverify:paid.*epoch 2"):
         a.refresh(engine=engine)
     assert ids(sink) == [1, 2, 3]
@@ -110,7 +110,7 @@ def test_an_older_write_does_not_land_on_a_newer_state(jobs, monkeypatch, engine
         append(src, [4])
         b.refresh(engine=engine)  # epoch 3, A writes epoch 2
 
-    hold(monkeypatch, a, "committed", b_is_ahead)
+    hold(monkeypatch, a, "contract", b_is_ahead)
     with pytest.raises(ConcurrentWriteError):
         a.refresh(engine=engine)
     assert ids(sink) == [1, 2, 3, 4]
@@ -124,7 +124,7 @@ def test_an_older_write_does_not_land_on_a_newer_state(jobs, monkeypatch, engine
 @pytest.mark.parametrize("engine", ENGINES)
 def test_two_writers_creating_the_table(jobs, monkeypatch, engine):
     _src, sink, a, b = jobs
-    hold(monkeypatch, a, "committed", lambda: b.refresh(engine=engine))
+    hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
     with pytest.raises(ConcurrentWriteError):
         a.refresh(engine=engine)
     assert ids(sink) == [1, 2]

@@ -36,37 +36,37 @@ def per_customer(orders):
 def test_rows_per_group_prove_a_sum_fits():
     report = sv.verify(per_customer(ORDERS), requires={"orders": BOUNDED})
     assert sum_risks(report)
-    per_key = sv.rows_per(["customer"], at_most=10**12)
+    per_key = sv.rows_per("customer", at_most=10**12)
     report = sv.verify(per_customer(ORDERS), requires={"orders": [*BOUNDED, per_key]})
     # 10¹² rows per customer of at most 10⁶ each: below 2⁶³. The table itself
     # has no bound.
     assert not sum_risks(report), str(report)
     assert report.proved
     assert report.rows is None
-    assert "requires orders: rows_per([customer], at_most=1000000000000)" in str(report)
+    assert "requires orders: rows_per(customer, at_most=1000000000000)" in str(report)
 
 
 def test_too_many_rows_per_group_leave_the_sum_checked():
-    per_key = sv.rows_per(["customer"], at_most=10**13)
+    per_key = sv.rows_per("customer", at_most=10**13)
     report = sv.verify(per_customer(ORDERS), requires={"orders": [*BOUNDED, per_key]})
     assert sum_risks(report)
 
 
 def test_a_bound_on_other_columns_bounds_no_group():
-    per_key = sv.rows_per(["region"], at_most=10)
+    per_key = sv.rows_per("region", at_most=10)
     report = sv.verify(per_customer(ORDERS), requires={"orders": [*BOUNDED, per_key]})
     assert sum_risks(report)
 
 
 def test_grouping_by_more_columns_keeps_the_bound():
     q = ORDERS.group_by(["region", "customer"]).aggregate(total=_.amount.sum())
-    per_key = sv.rows_per(["customer"], at_most=1000)
+    per_key = sv.rows_per("customer", at_most=1000)
     report = sv.verify(q, requires={"orders": [*BOUNDED, per_key]})
     assert not sum_risks(report)
 
 
 def test_a_bound_on_several_columns_needs_all_of_them():
-    per_key = sv.rows_per(["customer", "region"], at_most=1000)
+    per_key = sv.rows_per("customer", "region", at_most=1000)
     report = sv.verify(per_customer(ORDERS), requires={"orders": [*BOUNDED, per_key]})
     assert sum_risks(report)
     q = ORDERS.group_by(["customer", "region"]).aggregate(total=_.amount.sum())
@@ -76,7 +76,7 @@ def test_a_bound_on_several_columns_needs_all_of_them():
 
 def test_a_filter_keeps_the_bound():
     q = per_customer(ORDERS.filter(_.amount > 10))
-    per_key = sv.rows_per(["customer"], at_most=1000)
+    per_key = sv.rows_per("customer", at_most=1000)
     report = sv.verify(q, requires={"orders": [*BOUNDED, per_key]})
     assert not sum_risks(report)
 
@@ -86,7 +86,7 @@ def test_a_join_on_a_key_of_its_right_side_keeps_the_bound():
     at most 1000 after the join."""
     joined = ORDERS.join(CUSTOMERS, ORDERS.customer == CUSTOMERS.id)
     q = joined.group_by(["customer", "country"]).aggregate(total=_.amount.sum())
-    per_key = sv.rows_per(["customer"], at_most=1000)
+    per_key = sv.rows_per("customer", at_most=1000)
     requires = {"orders": [*BOUNDED, per_key], "customers": [sv.unique("id")]}
     report = sv.verify(q, requires=requires)
     assert not sum_risks(report), str(report)
@@ -104,7 +104,7 @@ def test_grouping_by_a_key_bounds_a_group_by_one_row():
 
 def test_relations_list_the_bounds():
     q = per_customer(ORDERS.filter(_.amount > 10))
-    per_key = sv.rows_per(["customer"], at_most=1000)
+    per_key = sv.rows_per("customer", at_most=1000)
     report = sv.verify(q, requires={"orders": [*BOUNDED, per_key, sv.max_rows(10**6)]})
     ops = [(r.op, r.depth, r.rows, r.group_rows) for r in report._relations]
     assert ops[0] == ("aggregate", 0, 10**6, 1000)
@@ -130,7 +130,7 @@ def test_rows_per_bounds_a_decimal_sum():
     q = t.group_by("g").aggregate(s=t.d.sum())
     bounded = [_.d.between(-(10**18), 10**18)]
     report = sv.verify(
-        q, requires={"t": [*bounded, sv.rows_per(["g"], at_most=1000)]}, on_inferred="off"
+        q, requires={"t": [*bounded, sv.rows_per("g", at_most=1000)]}, on_inferred="off"
     )
     assert report.errors == [] and report.assumed == [], str(report)
     report = sv.verify(q, requires={"t": bounded}, on_inferred="off")
@@ -139,29 +139,33 @@ def test_rows_per_bounds_a_decimal_sum():
 
 def test_rows_per_is_not_proved_in_ensures():
     report = sv.verify(
-        per_customer(ORDERS), requires={"orders": BOUNDED}, ensures=[sv.rows_per(["customer"], 1)]
+        per_customer(ORDERS),
+        requires={"orders": BOUNDED},
+        ensures=[sv.rows_per("customer", at_most=1)],
     )
     [c] = report.ensures
     assert not c.proved and c.value == "rows per key are checked on inputs only"
 
 
 def test_rows_per_checks_its_arguments():
-    with pytest.raises(ValueError, match="list of columns"):
-        sv.rows_per("customer", at_most=3)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="needs at_most="):
+        sv.rows_per("customer")
+    with pytest.warns(DeprecationWarning, match=r"rows_per\(\*cols, at_most=\.\.\.\)"):
+        assert sv.rows_per(["a", "b"], 3) == sv.rows_per("a", "b", at_most=3)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="0 or more"):
-        sv.rows_per(["customer"], at_most=-1)
-    assert label(sv.rows_per(["a", "b"], at_most=3)) == "rows_per([a, b], at_most=3)"
+        sv.rows_per("customer", at_most=-1)
+    assert label(sv.rows_per("a", "b", at_most=3)) == "rows_per(a, b, at_most=3)"
 
 
 def test_violations_count_the_rows_beyond_the_bound():
     con = sv.connect()
     con.put("t", pa.table({"k": ["a", "a", "a", "b", None, None], "v": [1, 2, 3, 4, 5, 6]}))
     t = con.table("t")
-    assert violations(t, sv.rows_per(["k"], at_most=3)) == 0
+    assert violations(t, sv.rows_per("k", at_most=3)) == 0
     # Three a's (one too many) and two NULLs, which are one key.
-    assert violations(t, sv.rows_per(["k"], at_most=2)) == 1
-    assert violations(t, sv.rows_per(["k"], at_most=1)) == 3
-    assert violations(t, sv.rows_per([], at_most=4)) == 2
+    assert violations(t, sv.rows_per("k", at_most=2)) == 1
+    assert violations(t, sv.rows_per("k", at_most=1)) == 3
+    assert violations(t, sv.rows_per(at_most=4)) == 2
 
 
 def test_a_transform_checks_rows_per_on_data():
@@ -169,7 +173,7 @@ def test_a_transform_checks_rows_per_on_data():
     con.put("orders", orders_table([(1, "ada", 5), (2, "ada", 7), (3, "bob", 1)]))
     orders = con.table("orders")
     contracted = sv.transform(
-        requires={"orders": [_.amount >= 0, sv.rows_per(["customer"], at_most=1)]}, ensures=[]
+        requires={"orders": [_.amount >= 0, sv.rows_per("customer", at_most=1)]}, ensures=[]
     )(lambda orders: orders.group_by("customer").aggregate(total=orders.amount.sum()))
     with pytest.raises(PreconditionError, match=r"1 row\(s\) of orders violate rows_per"):
         contracted(orders)
@@ -178,7 +182,7 @@ def test_a_transform_checks_rows_per_on_data():
 def test_incremental_views_refuse_rows_per():
     src = StaticSource(pa.table({"id": [1], "customer": ["ada"], "amount": [5]}), name="orders")
     contracted = sv.transform(
-        requires={"orders": [_.amount >= 0, sv.rows_per(["customer"], at_most=10)]}, ensures=[]
+        requires={"orders": [_.amount >= 0, sv.rows_per("customer", at_most=10)]}, ensures=[]
     )(lambda orders: orders.group_by("customer").aggregate(total=orders.amount.sum()))
     with pytest.raises(ValueError, match="rows_per"):
         src.pipe(contracted).refresh()

@@ -1,4 +1,4 @@
-"""`Report.to_substrait` and `sv.from_substrait` (#664): the export of a
+"""`Report.to_substrait` and `sv.Report.from_substrait` (#664): the export of a
 verified plan for any Substrait consumer, with its contract as metadata.
 
 The round trips export, read back and prove the contract again; the
@@ -154,7 +154,7 @@ def test_round_trip(case: str, fmt: Literal["json", "binary"]) -> None:
     expr, requires, ensures = ROUND_TRIPS[case]
     report = _verify(expr, requires, ensures)
     out = report.to_substrait(fmt)
-    again = sv.from_substrait(out)
+    again = sv.Report.from_substrait(out)
     assert again.proved
     assert [(c.label, c.proved) for c in again.ensures] == [
         (c.label, c.proved) for c in report.ensures
@@ -169,7 +169,7 @@ def test_round_trip(case: str, fmt: Literal["json", "binary"]) -> None:
 
 def test_from_substrait_needs_the_contract() -> None:
     with pytest.raises(ValueError, match="no sverify contract"):
-        sv.from_substrait('{"relations": []}')
+        sv.Report.from_substrait('{"relations": []}')
 
 
 # -- refusals ---------------------------------------------------------------------

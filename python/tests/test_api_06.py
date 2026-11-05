@@ -22,7 +22,7 @@ from sverify.errors import (
     UnverifiedRunWarning,
     VerificationError,
 )
-from sverify.io import DeltaSink, StaticSource
+from sverify.io import Changes, DeltaSink, StaticSource
 
 T = ibis.table({"k": "int64", "amount": "int64"}, name="t")
 SUM = T.group_by("k").aggregate(total=T.amount.sum())
@@ -240,6 +240,11 @@ def test_needed_text_is_a_field() -> None:
         assert report.needs_text("t", [n.label]) == n.text
     with pytest.warns(DeprecationWarning, match=r"Report.needed is deprecated"):
         assert report.needed == {"t": [m.label for m in report.needs]}
+    with pytest.warns(DeprecationWarning, match=r"Report.needed_text is deprecated"):
+        assert report.needed_text == report._needs_lines()
+    with pytest.warns(DeprecationWarning, match=r"Report.needed_conditions is deprecated"):
+        conds = report.needed_conditions
+    assert [repr(c) for c in conds["t"]] == [repr(m.condition) for m in report.needs]
 
 
 def test_equivalence_is_the_observation() -> None:
@@ -278,7 +283,7 @@ def test_a_summary_says_changes_from(tmp_path) -> None:
 
     node = keep(src)
     node.refresh()
-    src.apply(sv.Changes(inserts=pa.table({"k": [2], "amount": [4]})))
+    src.apply(Changes(inserts=pa.table({"k": [2], "amount": [4]})))
     line = node.refresh()["keep"].summary()
     assert line.startswith("keep: changes from payments v0→v1"), line
     assert "Δ" not in line

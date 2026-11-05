@@ -264,7 +264,7 @@ form, whether the result is proved, and with split doubles where their
 bound is read (`float_bounds`), or exit code 5 with the reason. The
 schema of `__partials` is trusted. `sverify.partition.split` and
 `run_sharded(plan, shards, sharded=…, broadcast=…, keys=…, unique=…,
-float_order=…)` run the shards on Polars in parallel threads. `run_sharded`
+reproducible=…)` run the shards on Polars in parallel threads. `run_sharded`
 checks split keys and `unique` columns on the data before relying on them
 (`check_keys`, `check_unique`), comparing doubles by their bits as Lean
 does. `tests/test_partition.py` compares the sharded result

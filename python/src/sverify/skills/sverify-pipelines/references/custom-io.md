@@ -121,7 +121,7 @@ What such sources can and cannot promise:
   numbers them in order of arrival. `schema=` proves contracts without asking
   the server, and `token=` sends a bearer token.
 
-## A sink: `write(change)`, and `committed()` for exactly once
+## A sink: `write(change)`, and `contract()` for exactly once
 
 `Sink.write` gets a `SinkChange`: `inserts` and `deletes` since the last
 write (Arrow tables), or with `replace` the whole `table`, and the
@@ -129,12 +129,12 @@ write (Arrow tables), or with `replace` the whole `table`, and the
 has already committed, unless another plan committed it (`contract.plan`
 differs) or it was computed from other tables (a source dropped and created
 again: a lower version, or another id in `contract.table_ids`): then it
-hands `write` the whole table with `replace`. `committed()` reads the last contract back from the
+hands `write` the whole table with `replace`. `contract()` reads the last contract back from the
 sink, so that holds across restarts too; without it, sverify remembers for
 the life of the process. If two processes may refresh the same sink, make
 `write` fail for the second one to commit: raise
 `sverify.errors.ConcurrentWriteError` when the sink no longer holds what
-`committed()` returned. Its next refresh writes the whole table, or skips
+`contract()` returned. Its next refresh writes the whole table, or skips
 the state the other process committed.
 
 ```python
@@ -152,7 +152,7 @@ class JsonLines(Sink):
         self.path = Path(path)
         self.record = self.path.with_suffix(".contract.json")
 
-    def committed(self):
+    def contract(self, version=None):
         if not self.record.exists():
             return None
         return Contract.from_json(self.record.read_text())

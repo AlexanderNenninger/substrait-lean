@@ -183,7 +183,7 @@ jobs:
 
           node = big(t)
           node.refresh()
-          t.apply(sv.Changes(inserts=[(7,)]))
+          t.apply(Changes(inserts=[(7,)]))
           node.refresh()
           rows = sorted(r["a"] for r in node.to_arrow().to_pylist())
           assert rows == [5, 7], rows
@@ -327,7 +327,7 @@ jobs:
 
           node = big(t)
           node.refresh()
-          t.apply(sv.Changes(inserts=[(7,)]))
+          t.apply(Changes(inserts=[(7,)]))
           node.refresh()
           rows = sorted(r["a"] for r in node.to_arrow().to_pylist())
           assert rows == [5, 7], rows

@@ -1,0 +1,37 @@
+# The pipelines of this repository and the tables they store.
+#
+# [[pipeline]]: a file of pipelines/, and the nodes `refresh` runs, by
+# variable name. Refreshing a node brings every node it reads up to date, so
+# list the last stored node of each chain.
+#
+# [table.<name>]: what the catalog says about a stored table, by its name
+# (the sink's folder). `chart` draws `y` over `x`, one line per `series`,
+# for the rows `where` selects (SQL).
+
+[[pipeline]]
+file = "pipelines/gdp.py"
+refresh = ["trade_openness_table"]
+
+[table.gdp]
+title = "GDP and main components"
+description = """
+Gross domestic product and its main components (household and government
+consumption, gross capital formation, exports, imports) for ten EU
+countries and the EU, yearly since 2015, in million euros at current prices
+(CP_MEUR) and in chain linked volumes of 2010 (CLV10_MEUR). Eurostat flags
+provisional values with `p` and breaks in series with `b`.
+"""
+source = "Eurostat, nama_10_gdp"
+source_url = "https://ec.europa.eu/eurostat/databrowser/view/nama_10_gdp/default/table"
+chart = { x = "time", y = "value", series = "geo", where = "unit = 'CP_MEUR' AND na_item = 'B1GQ' AND geo <> 'EU27_2020'", label = "GDP, million euros at current prices" }
+
+[table.trade_openness]
+title = "Trade openness"
+description = """
+Exports plus imports of goods and services beside GDP, per country and
+year, in million euros at current prices. Divide `trade` by `gdp` for the
+openness ratio.
+"""
+source = "Eurostat, nama_10_gdp"
+source_url = "https://ec.europa.eu/eurostat/databrowser/view/nama_10_gdp/default/table"
+chart = { x = "time", y = "trade / gdp", series = "geo", label = "Exports plus imports, share of GDP" }
