@@ -43,6 +43,8 @@ together are the whole run.
 import hashlib
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +63,11 @@ SCALE = float(os.environ.get("SVERIFY_EXAMPLES") or ("1" if PROFILE == "ci" else
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    # The checker's answers go to a cache of the run's own, which its xdist
+    # workers share (they inherit the environment), never the user's.
+    if not hasattr(config, "workerinput") and "SVERIFY_CACHE_DIR" not in os.environ:
+        config._proof_cache = tempfile.mkdtemp(prefix="sverify-test-cache-")  # type: ignore[attr-defined]
+        os.environ["SVERIFY_CACHE_DIR"] = config._proof_cache  # type: ignore[attr-defined]
     config.addinivalue_line("markers", "backend(name): the backend a test runs under")
     config.addinivalue_line("markers", "slow: left out of `poe test`, run by CI and `poe test-all`")
     config.addinivalue_line("markers", "chaos: crash injection, only run by `-m chaos`")
@@ -116,6 +123,11 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Any:
             f"{item.nodeid} passes: the lift reads its SQL now, so remove it from "
             "tests/lift_backlog.json"
         )
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    if cache := getattr(config, "_proof_cache", None):
+        shutil.rmtree(cache, ignore_errors=True)
 
 
 def pytest_sessionfinish(session: pytest.Session) -> None:

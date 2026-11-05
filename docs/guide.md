@@ -756,7 +756,25 @@ The counterexample search tries 200 inputs per unproved postcondition. The
 `SVERIFY_COUNTEREXAMPLES` environment variable sets that budget for
 `sv.verify`, a transform's call and `check`; 0 skips the search, for a tool
 that only needs the verdicts
-([test_check_api.py](../python/tests/test_check_api.py)).
+([test_check_api.py](../python/tests/test_check_api.py)). It skips a
+postcondition that only the order of ties leaves open: the checker proves
+it where every window orders its rows totally, so its reason is `"ties"`
+(`CheckedCondition.ties`), and a key that breaks the ties proves it
+([test_checker_speed.py](../python/tests/test_checker_speed.py)).
+
+Sverify keeps the checker's answers on disk, so the next `verify`, `check`
+or `refresh` of an unchanged transform takes its proof from there, and an
+edit proves again only the transforms whose plans, conditions or inputs
+changed ([#825](https://github.com/AlexanderNenninger/substrait-lean/issues/825)).
+An entry is keyed by what the checker reads (the plans, the conditions and
+the profile), sverify's version and a hash of the checker binary, so a
+change to any of them proves again
+([test_proof_cache.py](../python/tests/test_proof_cache.py)). The cache is
+in `SVERIFY_CACHE_DIR`, else `$XDG_CACHE_HOME/sverify`, else
+`~/.cache/sverify`; processes share it, and `SVERIFY_CACHE=off` turns it
+off. Within a Python process or a command, one checker process answers
+every request. A request that a time budget or an interrupt stops ends that
+process, and the next request starts another.
 
 ### The command line
 

@@ -163,8 +163,8 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
     return plan
 
 
-def _checked(plan_json: str) -> str:
-    code, out, err = run_checker((), plan_json)
+def _checked(plan_json: str, flags: tuple[str, ...] = ()) -> str:
+    code, out, err = run_checker(flags, plan_json)
     if code != 0:
         raise subprocess.CalledProcessError(code, "substrait-check", out, err)
     return out
@@ -178,10 +178,11 @@ def lean_rows(plan_json: str) -> list[tuple]:
     return parse_rows(out)
 
 
-def lean_values(plan_json: str) -> list[tuple]:
+def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
-    decimals and a `d` (so only approximately)."""
-    out = _checked(plan_json)
+    decimals and a `d` (so only approximately). `rows_only` asks the checker
+    for the rows alone (`--rows`), without the plan's other facts."""
+    out = _checked(plan_json, ("--rows",) if rows_only else ())
     return parse_rows(out, doubles=True)
 
 

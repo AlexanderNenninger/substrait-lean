@@ -45,6 +45,10 @@ over a `VALUES`, each row's outcomes under the reference profile
 (`Expr.evalP`): the value (doubles as their codes) or the error raised, one
 JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
 
+`substrait-check --rows plan.json`: the default check's well-formedness
+verdict and rows only, without the plan, its round trip or its other
+facts: what the counterexample search reads (#825).
+
 `substrait-check --version`: print `substrait-check protocol <n>` (see
 `protocol`).
 
@@ -62,7 +66,7 @@ open Substrait Parse
 at startup (`sverify.engine.PROTOCOL`): bump both when the output of a mode
 changes shape (a JSON field added, renamed or dropped, a new mode), so that a
 stale build fails with a clear message instead of a `KeyError`. -/
-def protocol : Nat := 1
+def protocol : Nat := 2
 
 /-- Shared static checks; `none` means the plan passed. -/
 def checkPlan (plan : Plan) : Option (UInt32 × String) :=
@@ -132,19 +136,23 @@ def outcomes (plan : Plan) : IO UInt32 := do
   return 0
 
 /-- `spec`: evaluate with `Rel.eval`, the specification, in place of
-`Rel.evalFast` (equal by `Rel.evalFast_eq`; `--eval-spec`, for tests). -/
-def check (plan : Plan) (spec : Bool := false) : IO UInt32 := do
+`Rel.evalFast` (equal by `Rel.evalFast_eq`; `--eval-spec`, for tests).
+`full := false` prints only the well-formedness verdict and the rows
+(`--rows`). -/
+def check (plan : Plan) (spec : Bool := false) (full : Bool := true) : IO UInt32 := do
   let cat := plan.catalog
-  IO.println plan.root.render
-  let tables := (plan.tables.filter (!isInternalKey ·.1) |>.map fun (t, n, _) => s!"{t}({n})").eraseDups
-  unless tables.isEmpty do
-    IO.println s!"tables: {", ".intercalate tables}"
-  IO.println s!"arity: {plan.root.arity cat}"
+  if full then
+    IO.println plan.root.render
+    let tables := (plan.tables.filter (!isInternalKey ·.1) |>.map fun (t, n, _) => s!"{t}({n})").eraseDups
+    unless tables.isEmpty do
+      IO.println s!"tables: {", ".intercalate tables}"
+    IO.println s!"arity: {plan.root.arity cat}"
   if let some (code, msg) := checkPlan plan then
     IO.println msg; return code
   IO.println "well-formed: yes"
-  IO.println s!"incremental: {if plan.root.isIncremental then "yes" else "no"}"
-  IO.println s!"roundtrip: {if Write.roundtrips plan then "ok" else "FAILED"}"
+  if full then
+    IO.println s!"incremental: {if plan.root.isIncremental then "yes" else "no"}"
+    IO.println s!"roundtrip: {if Write.roundtrips plan then "ok" else "FAILED"}"
   -- Named tables have no data in the schema-only catalog, so only
   -- `VirtualTable` rows show up here.
   -- Lean's evaluator panics at the black boxes it does not evaluate
@@ -306,6 +314,7 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
   let mode ← match flag with
     | "" => pure (check · false)
     | "--eval-spec" => pure (check · true)
+    | "--rows" => pure (check · false false)
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
     | "--write" => pure (write false)
@@ -439,11 +448,11 @@ def main (args : List String) : IO UInt32 := do
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
-        "--eval-spec", "--eval-choices", "--dependencies"].contains flag then
+        "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
