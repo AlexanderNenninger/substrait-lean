@@ -14,6 +14,7 @@ import sverify as sv
 from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
 from sverify.engines import create_table, table_rows
 from sverify.incremental import IncrementalView
+from sverify.io import Changes
 
 ERR = -9999.0
 s1 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s1")
@@ -94,7 +95,7 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
             gone = data.draw(pick) if current else []
             taken = {r[0] for r in current} - {r[0] for r in gone}
             new = [r for r in data.draw(rows) if r[0] not in taken]
-            changes[name] = sv.Changes(inserts=new, deletes=gone)
+            changes[name] = Changes(inserts=new, deletes=gone)
         view.apply(changes)
         assert same(view.rows(), view.recompute())
 
@@ -132,7 +133,7 @@ def test_incremental_view_with_integer_constants(engine):
     create_table(con, "hr", hr.schema(), [(1, t(0), 72.0), (1, t(10), -1.0)])
     create_table(con, "sessions", sessions.schema(), [(1, t(0), t(30))])
     view = IncrementalView(con, in_session(con.table("hr"), con.table("sessions")), "v", engine)
-    view.apply({"hr": sv.Changes(inserts=[(1, t(20), 160.0), (1, t(25), 0.0)])})
+    view.apply({"hr": Changes(inserts=[(1, t(20), 160.0), (1, t(25), 0.0)])})
     assert [r[2] for r in view.rows()] == [72.0, 160.0]
     assert view.rows() == view.recompute()
 
@@ -147,7 +148,7 @@ def test_signed_zeros_are_one_row(engine):
     table = con.table("s1")
     view = IncrementalView(con, table.filter(table.value >= 0), "v", engine)
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0), (t, 1.0)])
-    view.apply({"s1": sv.Changes(inserts=[(t, 2.0)], deletes=[(t, -0.0)])})
+    view.apply({"s1": Changes(inserts=[(t, 2.0)], deletes=[(t, -0.0)])})
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
 
 

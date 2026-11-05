@@ -147,3 +147,13 @@ def test_sverify_temp_directory_sets_duckdbs_temp_directory(monkeypatch, tmp_pat
     monkeypatch.setenv("SVERIFY_MEMORY_LIMIT", "1GB")
     monkeypatch.setenv("SVERIFY_TEMP_DIRECTORY", str(tmp_path))
     assert _duckdb.limits() == {"memory_limit": "1GB", "temp_directory": str(tmp_path)}
+
+
+def test_sverify_spill_directory_is_sverify_temp_directory(monkeypatch, tmp_path) -> None:
+    from sverify import _duckdb
+
+    monkeypatch.setenv("SVERIFY_MEMORY_LIMIT", "1GB")
+    monkeypatch.delenv("SVERIFY_TEMP_DIRECTORY", raising=False)
+    monkeypatch.setenv("SVERIFY_SPILL_DIRECTORY", str(tmp_path))
+    with pytest.warns(DeprecationWarning, match="set SVERIFY_TEMP_DIRECTORY"):
+        assert _duckdb.limits()["temp_directory"] == str(tmp_path)

@@ -205,7 +205,7 @@ def test_a_duckdb_sql_node_is_proved_and_runs_on_duckdb():
     orders = StaticSource(table(ORDERS, with_qty), version=1, name="orders")
     node = per_customer(orders)
     node.refresh(engine="duckdb")
-    assert per_customer.last_report is not None and per_customer.last_report.proved
+    assert per_customer.report is not None and per_customer.report.proved
     got = sorted(rows(node), key=repr)
     assert got == sorted([("ada", 5, 2, 3.5), ("cy", 9, 1, 2.0), (None, 2, 1, 7.0)], key=repr)
 
@@ -253,7 +253,7 @@ def test_sql_checks_dialect_and_semantics():
     with pytest.raises(ValueError, match="dialect must be 'duckdb'"):
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
     with pytest.raises(ValueError, match="semantics must be"):
-        sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)
+        sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)  # type: ignore[call-overload]
     with pytest.raises(UnsupportedError, match="unknown function"):
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
@@ -288,7 +288,7 @@ def test_transform_takes_a_semantics():
     t = ibis.table({"a": "float64"}, name="t")
     assert same.semantics == "duckdb"
     same(t)
-    assert same.last_report is not None and same.last_report.semantics == "duckdb"
+    assert same.report is not None and same.report.semantics == "duckdb"
 
 
 @pytest.mark.skipif(

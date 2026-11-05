@@ -182,19 +182,23 @@ def test_sql_step_with_a_matching_as():
         JOIN orders o ON o.cid = c.cid
         JOIN regions r ON r.region = c.region
     """
-    node = orders.pipe(paid).pipe(sv.sql(query, as_="orders"), customers=customers, regions=regions)
+    node = orders.pipe(paid).pipe(
+        sv.sql(query, name="orders"), customers=customers, regions=regions
+    )
     node.refresh()
     assert rows(node) == [(1, "eu", "eve"), (3, "eu", "eve")]
 
 
 def test_sql_step_with_a_wrong_as_names_both():
     orders, customers, _r = sources()
-    with pytest.raises(TypeError, match=r"as_='orders'.*left over.*'customers'"):
-        customers.pipe(sv.sql(JOIN, as_="orders"), orders=orders)
-    with pytest.raises(TypeError, match=r"as_='customers'.*left over.*'orders'"):
-        orders.pipe(sv.sql(JOIN, as_="customers"), customers=customers)
-    with pytest.raises(TypeError, match=r"as_='nope' is not a table the query reads"):
-        sv.sql(JOIN, as_="nope")
+    with pytest.raises(TypeError, match=r"name='orders'.*left over.*'customers'"):
+        customers.pipe(sv.sql(JOIN, name="orders"), orders=orders)
+    with pytest.raises(TypeError, match=r"name='customers'.*left over.*'orders'"):
+        orders.pipe(sv.sql(JOIN, name="customers"), customers=customers)
+    with pytest.raises(TypeError, match=r"name='nope' is not a table the query reads"):
+        sv.sql(JOIN, name="nope")
+    with pytest.warns(DeprecationWarning, match=r"sql\(as_=\.\.\.\) is deprecated"):
+        assert sv.sql(JOIN, as_="orders").as_ == "orders"  # type: ignore[call-overload]
 
 
 def test_sql_step_tables_with_no_input():
@@ -240,5 +244,5 @@ def test_sql_with_tables_is_still_an_ibis_table():
     con.put("orders", table(ORDERS, [(1, "ada", 30)]))
     expr = sv.sql("SELECT id FROM orders", orders=con.table("orders"))
     assert not isinstance(expr, sv.Node)
-    with pytest.raises(TypeError, match="as_ names the chained node"):
-        sv.sql("SELECT id FROM orders", as_="orders", orders=con.table("orders"))
+    with pytest.raises(TypeError, match="name names the chained node"):
+        sv.sql("SELECT id FROM orders", name="orders", orders=con.table("orders"))

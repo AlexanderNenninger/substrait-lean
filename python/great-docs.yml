@@ -39,7 +39,7 @@ reference:
       - key
       - references
       - Report
-      - from_substrait
+      - Report.from_substrait
 
   - title: Transforms, nodes and refresh
     desc: >
@@ -51,7 +51,7 @@ reference:
       - Node
       - sql
       - group
-      - Changes
+      - io.Changes
       - nodes.Group
       - nodes.Refresh
       - nodes.Status

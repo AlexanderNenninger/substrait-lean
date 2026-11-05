@@ -51,21 +51,26 @@ def sql(
     query: str,
     /,
     *,
-    as_: str | None = None,
+    name: str | None = None,
     dialect: str = "duckdb",
-    semantics: str = "reference",
+    semantics: Semantics = "reference",
 ) -> SQLStep: ...
 @overload
 def sql(
-    query: str, /, *, dialect: str = "duckdb", semantics: str = "reference", **tables: ir.Table
+    query: str,
+    /,
+    *,
+    dialect: str = "duckdb",
+    semantics: Semantics = "reference",
+    **tables: ir.Table,
 ) -> ir.Table: ...
 def sql(
     query: str,
     /,
     *,
-    as_: str | None = None,
+    name: str | None = None,
     dialect: str = "duckdb",
-    semantics: str = "reference",
+    semantics: Semantics = "reference",
     **tables: ir.Table,
 ) -> ir.Table | SQLStep:
     """SQL as a step of `Node.pipe`, or as the body of a transform.
@@ -74,7 +79,7 @@ def sql(
     tables the query reads (CTE names don't count, and a table read twice is
     one input). In `node.pipe(sql(query), **inputs)`, the keyword inputs
     bind their own table names, and the chained node binds to the one table
-    left over, wherever the query reads it. `as_` names that table, which
+    left over, wherever the query reads it. `name` names that table, which
     documents it in a long query; it is checked, and doesn't change the
     binding.
 
@@ -97,8 +102,10 @@ def sql(
 
     Args:
         query: The SQL query.
-        as_: For a step: the table the chained node is, checked against the
-            one table the keyword inputs of `pipe` leave over. Default None.
+        name: For a step: the table the chained node is, checked against
+            the one table the keyword inputs of `pipe` leave over, as a
+            source's `name` is the table it is. Default None. (`as_=`, its
+            name before 1.0, warns for one release.)
         dialect: The query's SQL dialect: `"duckdb"`, the default and so
             far the only one.
         semantics: `"reference"` (the default) or `"duckdb"`.
@@ -113,11 +120,11 @@ def sql(
             Lean refuses the plan, saying why (when the query is applied to
             its inputs); or the query cannot be parsed.
         TypeError: A table is a node or a source (pipe a step instead), or
-            `as_` is given with tables or is not a table the query reads.
+            `name` is given with tables or is not a table the query reads.
         ValueError: `dialect` or `semantics` is not one sverify knows.
             In `pipe`: a table of the query has no input, the chained node
             is left unused, a keyword is not a table the query reads, or
-            `as_` is not the table left over.
+            `name` is not the table left over.
 
     Examples:
         With `orders`, `paid` and `customers` from the `Node.pipe` example:
@@ -126,7 +133,7 @@ def sql(
         regional = orders.pipe(paid).pipe(
             sv.sql(
                 "SELECT o.id, c.region FROM customers c JOIN orders o ON o.customer = c.customer",
-                as_="orders",
+                name="orders",
             ),
             customers=customers,
         )
@@ -135,23 +142,32 @@ def sql(
     from sverify.nodes import Node, is_source
     from sverify.sql import Unsupported
 
+    if "as_" in tables:
+        import warnings
+
+        warnings.warn(
+            "sql(as_=...) is deprecated; write sql(query, name=...)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        name = tables.pop("as_")  # type: ignore[assignment]
     semantics = _semantics(dialect, semantics)
     if not tables:
-        return SQLStep(query, as_, dialect, semantics)
-    if as_ is not None:
+        return SQLStep(query, name, dialect, semantics)
+    if name is not None:
         raise TypeError(
-            "sverify.sql: as_ names the chained node of a step, sql(query, as_=...), "
+            "sverify.sql: name names the chained node of a step, sql(query, name=...), "
             "which takes no tables"
         )
-    for name, t in tables.items():
+    for table_name, t in tables.items():
         if isinstance(t, Node) or is_source(t):
             raise TypeError(
-                f"sverify.sql reads Ibis tables; {name}={t!r} is a node or source: pipe "
-                f"the step instead, node.pipe(sv.sql(query), {name}=...), or call sql "
+                f"sverify.sql reads Ibis tables; {table_name}={t!r} is a node or source: pipe "
+                f"the step instead, node.pipe(sv.sql(query), {table_name}=...), or call sql "
                 "inside a transform (@sv.transform), which gets its inputs as tables"
             )
         if not isinstance(t, ir.Table):
-            raise TypeError(f"sverify.sql: {name} is not a table: {t!r}")
+            raise TypeError(f"sverify.sql: {table_name} is not a table: {t!r}")
     names = tuple(tables)
     schemas = {n: t.schema() for n, t in tables.items()}
     try:
@@ -209,7 +225,7 @@ class SQLStep(ContractedTransform):
     Attributes:
         query: The SQL query.
         tables: The tables the query reads, in the order it names them.
-        as_: The table the chained node is, or None.
+        as_: The table the chained node is (`sql(name=)`), or None.
         dialect: The query's dialect (`"duckdb"`), as `sql`'s.
         semantics: `"duckdb"` or `"reference"`, as `sql`'s.
     """
@@ -228,7 +244,7 @@ class SQLStep(ContractedTransform):
             raise TypeError("sverify.sql: the query reads no table, so a step has no input")
         if as_ is not None and as_ not in self.tables:
             raise TypeError(
-                f"sverify.sql: as_={as_!r} is not a table the query reads "
+                f"sverify.sql: name={as_!r} is not a table the query reads "
                 f"({', '.join(self.tables)})"
             )
 
@@ -269,7 +285,7 @@ class SQLStep(ContractedTransform):
             )
         if self.as_ is not None and self.as_ != left[0]:
             raise TypeError(
-                f"sverify.sql: as_={self.as_!r}, but the table left over for the "
+                f"sverify.sql: name={self.as_!r}, but the table left over for the "
                 f"chained node is {left[0]!r}"
             )
         return (), {left[0]: chained, **inputs}

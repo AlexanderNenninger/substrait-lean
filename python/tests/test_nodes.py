@@ -30,7 +30,7 @@ from sverify.errors import (
     PreconditionError,
     VerificationError,
 )
-from sverify.io import DeltaSink, DeltaSource, StaticSource, sink_from
+from sverify.io import Changes, DeltaSink, DeltaSource, StaticSource, sink_from
 
 SETTINGS = settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
@@ -234,7 +234,7 @@ def test_a_restarted_job_resumes_from_its_stored_nodes(tmp_path):
     assert report["paid"].started is not None
     assert report["paid"].started.startswith("resumed from")
     assert report["paid"].report is not None
-    assert report["paid"].report.sources[0].mode == "change feed"
+    assert report["paid"].report.sources[0].mode == "change_feed"
     assert [w.mode for w in report.writes] == ["merge", "merge"]
     assert rows(d) == [(1, "ada", 10), (2, "bob", 14)]
 
@@ -253,10 +253,10 @@ def test_a_static_source_feeds_its_changes(tmp_path):
     src = StaticSource(orders_table([(1, "ada", 5)]), version=1, name="orders")
     node = doubled(paid(src))
     node.refresh()
-    src.apply(sv.Changes(inserts=[(2, "bob", 7)], deletes=[(1, "ada", 5)]))
+    src.apply(Changes(inserts=[(2, "bob", 7)], deletes=[(1, "ada", 5)]))
     report = node.refresh()
     [s] = report["doubled"].report.sources  # type: ignore[union-attr]
-    assert (s.start, s.end, s.mode, s.inserts, s.deletes) == (1, 2, "change feed", 1, 1)
+    assert (s.start, s.end, s.mode, s.inserts, s.deletes) == (1, 2, "change_feed", 1, 1)
     assert "Δ as applied to orders v1→v2" in s.detail
     assert rows(node) == [(2, "bob", 14)]
 
@@ -375,9 +375,9 @@ def test_the_first_refresh_checks_the_preconditions_on_the_sources():
 @pytest.mark.parametrize(
     ("batch", "error"),
     [
-        (sv.Changes(inserts=[(3, "cy", -1)]), r"inserted row\(s\) of orders violate"),
-        (sv.Changes(inserts=[(2, "cy", 1)]), r"inserted key\(s\) of orders violate unique"),
-        (sv.Changes(inserts=[(3, "cy", 1), (3, "dan", 2)]), "unique"),
+        (Changes(inserts=[(3, "cy", -1)]), r"inserted row\(s\) of orders violate"),
+        (Changes(inserts=[(2, "cy", 1)]), r"inserted key\(s\) of orders violate unique"),
+        (Changes(inserts=[(3, "cy", 1), (3, "dan", 2)]), "unique"),
     ],
 )
 def test_a_batch_violating_a_precondition_changes_nothing(batch, error):
@@ -395,7 +395,7 @@ def test_deleting_a_key_frees_it_for_the_same_batch():
     src = static_orders([(1, "ada", 5), (2, "bob", 7)])
     node = doubled(paid(src))
     node.refresh()
-    src.apply(sv.Changes(inserts=[(2, "cy", 1)], deletes=[(2, "bob", 7)]))
+    src.apply(Changes(inserts=[(2, "cy", 1)], deletes=[(2, "bob", 7)]))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src) == [(1, "ada", 10), (2, "cy", 2)]
 
@@ -411,7 +411,7 @@ def capped(t):
 def test_unproved_postconditions_of_a_node_are_checked_at_refresh(tmp_path):
     src = static_orders([(1, "ada", 5), (2, "bob", 7)])
     node = capped(src)  # no VerificationError: checked at refresh instead
-    report = capped.last_report
+    report = capped.report
     assert report is not None and not report.proved
     assert [c.checked for c in report.ensures] == [True, True]
     assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
@@ -419,7 +419,7 @@ def test_unproved_postconditions_of_a_node_are_checked_at_refresh(tmp_path):
     stored = node.write(DeltaSink(str(tmp_path / "capped")))
     first = stored.refresh()["capped"]
     assert {p.condition for p in first.postconditions} == {"(_.amount < 100)", "unique(customer)"}
-    src.apply(sv.Changes(inserts=[(3, "cy", 9)]))
+    src.apply(Changes(inserts=[(3, "cy", 9)]))
     batch = stored.refresh()["capped"]
     assert {p.condition for p in batch.report.postconditions} == {
         "(_.amount < 100)",
@@ -432,8 +432,8 @@ def test_unproved_postconditions_of_a_node_are_checked_at_refresh(tmp_path):
 @pytest.mark.parametrize(
     ("batch", "error"),
     [
-        (sv.Changes(inserts=[(3, "cy", 500)]), r"1 inserted row\(s\) of capped violate \(_.amount"),
-        (sv.Changes(inserts=[(3, "ada", 1)]), r"1 row\(s\) of capped violate unique\(customer\)"),
+        (Changes(inserts=[(3, "cy", 500)]), r"1 inserted row\(s\) of capped violate \(_.amount"),
+        (Changes(inserts=[(3, "ada", 1)]), r"1 row\(s\) of capped violate unique\(customer\)"),
     ],
 )
 def test_a_batch_violating_a_checked_postcondition_writes_nothing(tmp_path, batch, error):
@@ -481,7 +481,7 @@ def test_runtime_postconditions_on_bound_tables_are_checked_in_a_view():
     view = pipe.view("capped", capped(con.table("orders")))
     assert view.checked
     with pytest.raises(PostconditionError):
-        view.apply({"orders": sv.Changes(inserts=[(2, "bob", 500)])})
+        view.apply({"orders": Changes(inserts=[(2, "bob", 500)])})
     assert view.rows() == [(1, "ada", 5)]
 
 
@@ -490,7 +490,7 @@ def test_batches_are_checked_without_reading_the_tables(monkeypatch):
     node = doubled(paid(src))
     node.refresh()
     checked = spy_on(monkeypatch, "sverify.contracts.violations", lambda t, *a: t.get_name())
-    src.apply(sv.Changes(inserts=[(3, "cy", 1)]))
+    src.apply(Changes(inserts=[(3, "cy", 1)]))
     node.refresh()
     # One check per precondition on the inserted rows, none on the tables.
     assert set(checked) == {"orders$inserts"}
@@ -508,7 +508,7 @@ def keyed_batch(draw, src):
     fresh = st.integers(0, 8).filter(lambda i: i not in kept)
     ids = draw(st.lists(fresh, unique=True, max_size=3))
     amounts = st.integers(0, 30)
-    return sv.Changes(inserts=[(i, draw(names), draw(amounts)) for i in ids], deletes=deletes)
+    return Changes(inserts=[(i, draw(names), draw(amounts)) for i in ids], deletes=deletes)
 
 
 @pytest.mark.parametrize("engine", ENGINES)
@@ -560,8 +560,8 @@ def test_nodes_read_stored_nodes_and_contracts_connect():
     customers = StaticSource(arrow_table(CUSTOMERS, [("ada", "Rome")]), name="customers")
     base, by_city, loc, rich = job(static_orders([(1, "ada", 15), (2, "bob", 3)]), customers)
     # `flagged`'s precondition on `base` was proved from `doubled`'s contract.
-    assert flagged.last_report is not None
-    assert flagged.last_report.requires == {
+    assert flagged.report is not None
+    assert flagged.report.requires == {
         "doubled": ["(_.doubled >= 0)", "_.doubled.notnull()", "unique(id)"]
     }
     jobs = sv.group(base, by_city, loc, rich)
@@ -590,7 +590,7 @@ def test_a_job_of_stored_nodes_matches_recompute(engine, data):
         deletes = data.draw(st.lists(st.sampled_from(current), max_size=1)) if current else []
         orders.apply(data.draw(keyed_batch(orders)))
         customers.apply(
-            sv.Changes(inserts=data.draw(st.lists(customers_row, max_size=2)), deletes=deletes)
+            Changes(inserts=data.draw(st.lists(customers_row, max_size=2)), deletes=deletes)
         )
         sv.group(*nodes_).refresh(engine=engine)
         fresh = job(

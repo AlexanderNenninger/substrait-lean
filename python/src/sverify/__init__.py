@@ -25,7 +25,7 @@ DataFusion and Spark.
   Transforms compose left to right, fused into one plan until `.write`
   stores a result; `refresh` keeps the nodes up to date from the changes to
   their sources, and `group` refreshes several together. A batch of
-  `Changes` feeds an in-memory source (`sverify.io.StaticSource`).
+  `sverify.io.Changes` feeds an in-memory source (`sverify.io.StaticSource`).
 * `sql(query)` is SQL as a step of `.pipe`, reading the chained node and
   the keyword inputs by their table names; `sql(query, orders=orders)`
   writes a transform's body in SQL over its input tables.
@@ -59,14 +59,11 @@ from sverify.contracts import (
     verify,
 )
 from sverify.engine import connect
-from sverify.incremental import Changes
 from sverify.nodes import Node, group
 from sverify.observation import equivalent, within
 from sverify.sql_model import sql
-from sverify.substrait_export import from_substrait
 
 __all__ = [
-    "Changes",
     "ContractedTransform",
     "Node",
     "Report",
@@ -75,7 +72,6 @@ __all__ = [
     "asof_join",
     "connect",
     "equivalent",
-    "from_substrait",
     "group",
     "key",
     "max_rows",
@@ -92,6 +88,31 @@ try:
     __version__: str = _version("sverify")
 except _PackageNotFoundError:  # a source tree without an install
     __version__ = "0+unknown"
+
+
+def __getattr__(name: str) -> object:
+    # Moved before 1.0 (the API review's A1); the old names warn for a release.
+    import warnings
+
+    if name == "Changes":
+        warnings.warn(
+            "sverify.Changes is deprecated; import it from sverify.io",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from sverify.incremental import Changes
+
+        return Changes
+    if name == "from_substrait":
+        warnings.warn(
+            "sverify.from_substrait is deprecated; call sverify.Report.from_substrait",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from sverify.substrait_export import from_substrait
+
+        return from_substrait
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:

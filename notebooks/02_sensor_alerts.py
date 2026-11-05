@@ -318,7 +318,7 @@ def _(IcebergSource, alerts, catalog, sv, three_high):
     readings = IcebergSource(catalog, "plant.readings")
     naive = readings.pipe(three_high)  # a plain function: no contract
     alerts_node = readings.pipe(alerts)
-    report = alerts.last_report
+    report = alerts.report
     assert report.proved and report.deterministic
     sv.group(naive, alerts_node).refresh()
     assert sorted(naive.to_arrow()["device_id"].to_pylist()) == [1, 3]

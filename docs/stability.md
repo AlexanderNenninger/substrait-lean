@@ -40,7 +40,7 @@ Each release writes fixtures of the formats it writes into
 `python -m sverify_dev.formats`. [`tests/test_formats.py`](../python/tests/test_formats.py)
 reads every fixture, checks it against its schema, and reads it with the
 API a job uses: a sink resumes from the Delta table and reads its contract,
-`sv.from_substrait` reads each export and proves its contract again, and
+`sv.Report.from_substrait` reads each export and proves its contract again, and
 `Report.from_json` reads each report back to the same document.
 The fixtures of 0.4.0 were written by the release on PyPI.
 
@@ -59,7 +59,7 @@ which keep old readers and old data working:
 - The manifest, a `google.protobuf.Struct`, follows the rules of the JSON
   formats above. Its keys are in
   [the guide](guide.md#exporting-to-substrait).
-- `sv.from_substrait` reads every earlier 1.x export and proves its contract
+- `sv.Report.from_substrait` reads every earlier 1.x export and proves its contract
   again; for an export of a verified plan the report is proved.
 
 The exported plan is Substrait, at the version the export names (`version`

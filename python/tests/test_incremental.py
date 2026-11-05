@@ -20,6 +20,7 @@ from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
 from sverify.engines import create_table, table_rows
 from sverify.errors import NotIncrementalError
 from sverify.incremental import IncrementalView, Pipeline
+from sverify.io import Changes
 from sverify_dev.examples import PIPELINES, UNSUPPORTED
 
 # Plain SQL goes through the same route as Ibis (both reach DataFusion as SQL);
@@ -38,7 +39,7 @@ def batch(draw, con, t, row):
     deletes = draw(st.lists(st.sampled_from(current), unique_by=id, max_size=3)) if current else []
     # Deleting a row twice needs two copies of it.
     deletes = [r for i, r in enumerate(deletes) if deletes[: i + 1].count(r) <= current.count(r)]
-    return sv.Changes(inserts=draw(st.lists(row, max_size=3)), deletes=deletes)
+    return Changes(inserts=draw(st.lists(row, max_size=3)), deletes=deletes)
 
 
 def run_differential(data, make_view):
@@ -94,7 +95,7 @@ def test_count_and_sum_per_group_are_maintained(engine):
     query = orders.group_by("customer").aggregate(total=orders.amount.sum(), n=orders.count())
     view = IncrementalView(con, query, "v", engine)
     assert view.strategy == "delta rules"
-    view.apply({"orders": sv.Changes(inserts=[(4, "cy", 7)], deletes=[(1, "ada", 30)])})
+    view.apply({"orders": Changes(inserts=[(4, "cy", 7)], deletes=[(1, "ada", 30)])})
     assert view.rows() == view.recompute() == [("ada", None, 1), ("bob", 5, 1), ("cy", 7, 1)]
 
 
@@ -110,7 +111,7 @@ def test_deleting_a_missing_row_fails_and_rolls_back(engine):
     con = connect_with([(1, "ada", 30)], [])
     view = IncrementalView(con, PIPELINES["filter_project"], "v", engine)
     with pytest.raises(ValueError):
-        view.apply({"orders": sv.Changes(deletes=[(9, "zed", 1)])})
+        view.apply({"orders": Changes(deletes=[(9, "zed", 1)])})
     assert view.rows() == view.recompute() == [(1, 60)]
     assert table_rows(con, "orders") == [(1, "ada", 30)]
 
@@ -176,4 +177,4 @@ def test_views_change_only_through_their_inputs():
     pipe = Pipeline(con)
     pipe.view("base", doubled(paid(con.table("orders"))))
     with pytest.raises(ValueError, match="views change only through their inputs"):
-        pipe.apply({"base": sv.Changes(inserts=[(9, "x", 1)])})
+        pipe.apply({"base": Changes(inserts=[(9, "x", 1)])})

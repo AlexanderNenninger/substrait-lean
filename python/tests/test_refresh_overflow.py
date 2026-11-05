@@ -20,7 +20,7 @@ def test_a_node_whose_batch_overflows_writes_nothing(tmp_path) -> None:
     orders = make_orders(tmp_path / "orders", [(1, "ada", 500)])
     up = paid(orders).write(DeltaSink(str(tmp_path / "up")))
     down = scaled(up).write(DeltaSink(str(tmp_path / "down")))
-    report = scaled.last_report
+    report = scaled.report
     assert report is not None and [i.kind for i in report.assumed] == ["overflow to infinity"]
     with pytest.raises(Exception, match="overflow to infinity"):
         sv.group(up, down).refresh()

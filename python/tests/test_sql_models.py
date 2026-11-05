@@ -11,7 +11,7 @@ from _pipelines import paid_nonzero as paid
 from _pipelines import rows
 from sverify.engines import ENGINES, UnsupportedError, run
 from sverify.errors import PreconditionError, VerificationError
-from sverify.io import DeltaSink, StaticSource
+from sverify.io import Changes, DeltaSink, StaticSource
 
 ORDERS = pa.schema(
     [
@@ -57,8 +57,8 @@ def test_a_sql_node_between_ibis_nodes_fuses():
     assert node.versions == {"orders": 1}
     assert rows(node) == [("bob", 7)]
     # Composed: `large` builds on what the SQL model proved.
-    assert large.last_report is not None and large.last_report.proved
-    orders.apply(sv.Changes(inserts=[(4, "ada", 3)]))
+    assert large.report is not None and large.report.proved
+    orders.apply(Changes(inserts=[(4, "ada", 3)]))
     node.refresh()
     assert rows(node) == [("ada", 8), ("bob", 7)]
 
@@ -90,7 +90,7 @@ def test_a_sql_node_reads_several_inputs():
     node = regions(orders, customers)
     node.refresh()
     assert rows(node) == [(1, "eu"), (2, "us"), (3, "eu")]
-    customers.apply(sv.Changes(deletes=[("bob", "us")], inserts=[("bob", "eu")]))
+    customers.apply(Changes(deletes=[("bob", "us")], inserts=[("bob", "eu")]))
     node.refresh()
     assert rows(node) == [(1, "eu"), (2, "eu"), (3, "eu")]
 

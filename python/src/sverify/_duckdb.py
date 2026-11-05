@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import tempfile
 import threading
+import warnings
 from collections.abc import Callable
 
 import duckdb
@@ -41,13 +42,19 @@ def limits() -> dict[str, bool | float | int | list[str] | str]:
     #783): DuckDB's `memory_limit` (`"2GB"`, `"512MB"`), and a directory to
     spill to beyond it (DuckDB's `temp_directory`), `SVERIFY_TEMP_DIRECTORY`
     or one under the system's temporary directory. Empty when the variable
-    is unset or empty."""
+    is unset or empty. `SVERIFY_SPILL_DIRECTORY`, its name in 0.6, is read
+    with a `DeprecationWarning`."""
     limit = os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip()
     if not limit:
         return {}
-    spill = os.environ.get("SVERIFY_TEMP_DIRECTORY") or os.path.join(
-        tempfile.gettempdir(), f"sverify-spill-{os.getpid()}"
-    )
+    spill = os.environ.get("SVERIFY_TEMP_DIRECTORY")
+    if not spill and (spill := os.environ.get("SVERIFY_SPILL_DIRECTORY")):
+        warnings.warn(
+            "SVERIFY_SPILL_DIRECTORY is deprecated; set SVERIFY_TEMP_DIRECTORY",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    spill = spill or os.path.join(tempfile.gettempdir(), f"sverify-spill-{os.getpid()}")
     return {"memory_limit": limit, "temp_directory": spill}
 
 

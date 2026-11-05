@@ -54,7 +54,8 @@ Environment variables (J1, J2):
   `SVERIFY_CHECK`, which still works with a `DeprecationWarning`.
   `SVERIFY_PREBUILT_CHECKER` replaces `SVERIFY_PREBUILT_CHECK`, which is
   read too.
-- `SVERIFY_TEMP_DIRECTORY` sets DuckDB's `temp_directory`; the CLI named it
-  `SVERIFY_SPILL_DIRECTORY` before this release.
+- `SVERIFY_TEMP_DIRECTORY` sets DuckDB's `temp_directory`, where it was
+  `SVERIFY_SPILL_DIRECTORY` (0.6), which still works with a
+  `DeprecationWarning`.
 - The guide lists every variable with its flag and its Python keyword
   ([environment variables](docs/guide.md#environment-variables)).

@@ -38,7 +38,7 @@ PIPELINE = textwrap.dedent(
     """
     import pyarrow as pa
     import sverify as sv
-    from sverify.io import StaticSource
+    from sverify.io import Changes, StaticSource
 
     t = StaticSource(pa.table({"a": [1, 5]}), name="t")
 
@@ -83,7 +83,7 @@ def main() -> int:
     import pyarrow as pa
 
     import sverify as sv
-    from sverify.io import StaticSource
+    from sverify.io import Changes, StaticSource
 
     loaded = [m for m in OPTIONAL if m in sys.modules]
     assert not loaded, f"import sverify imported {loaded}"
@@ -97,8 +97,7 @@ def main() -> int:
 
     node = big(t)
     node.refresh()
-    changes = getattr(sv.io, "Changes", None) or sv.Changes
-    t.apply(changes(inserts=[(7,)]))
+    t.apply(Changes(inserts=[(7,)]))
     node.refresh()
     rows = sorted(r["a"] for r in node.to_arrow().to_pylist())
     assert rows == [5, 7], rows

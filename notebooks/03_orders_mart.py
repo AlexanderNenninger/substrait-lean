@@ -332,7 +332,7 @@ def _(DeltaSource, daily_city_revenue, lake):
     orders = DeltaSource(str(lake / "orders"))
     history = DeltaSource(str(lake / "customer_history"), name="history")
     mart = orders.pipe(daily_city_revenue, history=history)
-    assert daily_city_revenue.last_report.proved
+    assert daily_city_revenue.report.proved
     mart.refresh()
     print(mart.status())
     return history, mart, orders
