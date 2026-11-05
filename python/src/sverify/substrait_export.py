@@ -48,8 +48,10 @@ SUBSTRAIT_VERSION = (0, 106, 0)
 #: The protobuf package and type URL of the contract message.
 PACKAGE = "io.sverify.substrait.v1"
 TYPE_URL = f"type.googleapis.com/{PACKAGE}.Contract"
-#: The version of the manifest's format.
-FORMAT = 1
+#: The version of the manifest's format. Format 2 (1.0) says `semantics`
+#: and `equivalence` where format 1 said `profile` and `observation`; `read`
+#: reads both.
+FORMAT = 2
 
 Json = dict[str, Any]
 Format = Literal["json", "binary"]
@@ -1129,7 +1131,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                     "group": g,
                     "option": o,
                     "gap": "ST-9",
-                    "observation": {},
+                    "equivalence": {},
                     "why": "IEEE 754's default rounding, which fp64 follows; tested, "
                     "not stated by the YAML",
                 }
@@ -1161,7 +1163,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             q = from_json(r["q"])
             missed = q.coarser_than(report.observation)
             if not missed:
-                h.up_to.append({"group": g, "option": o, "observation": r["q"]})
+                h.up_to.append({"group": g, "option": o, "equivalence": r["q"]})
                 continue
             observed = (
                 f"{where}: a Substrait consumer agrees with the reference only up to {q}, "
@@ -1458,17 +1460,17 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "sverify": _sverify_version(),
         "substrait": _version(),
         "extension_urns": [u["urn"] for u in plan.get("extensionUrns", [])],
-        "profile": report.semantics,
+        "semantics": report.semantics,
         "class": "assumed"
         if handling.assumptions
         else "observed"
-        if any(u.get("observation") for u in handling.up_to)
+        if any(u.get("equivalence") for u in handling.up_to)
         or routes.plan_bound(report._epsilon) is not None
         else "exact",
         "evidence": "tested" if any(u.get("gap") == "ST-9" for u in handling.up_to) else "proved",
         "shims_mode": shims,
-        "observation": str(observation),
-        "observation_components": {
+        "equivalence": str(observation),
+        "equivalence_components": {
             k: (str(v) if not isinstance(v, str) else v)
             for k, v in dataclasses.asdict(observation).items()
             if k != "bound"
@@ -1508,6 +1510,42 @@ class Imported:
     ensures: list[Json]
 
 
+#: The manifest's keys that format 2 renamed (K1, K2).
+_RENAMED = {
+    "profile": "semantics",
+    "observation": "equivalence",
+    "observation_components": "equivalence_components",
+}
+
+
+def _manifest(m: Mapping[str, Any]) -> Json:
+    """The manifest in this version's format: a format 1 manifest's keys
+    renamed, `rows` an integer (a Struct holds every number as a double).
+
+    Raises:
+        ValueError: The manifest's format is newer than this version reads.
+    """
+    fmt = m.get("format", 1)
+    if not isinstance(fmt, int | float) or fmt > FORMAT:
+        raise ValueError(
+            f"the plan's sverify contract has format {fmt!r}, and this version of sverify "
+            f"reads format {FORMAT} or older: upgrade sverify"
+        )
+    out = dict(m)
+    if fmt < 2:
+        out = {_RENAMED.get(k, k): v for k, v in out.items()}
+        out["up_to"] = [
+            {("equivalence" if k == "observation" else k): v for k, v in u.items()}
+            for u in out.get("up_to") or []
+        ]
+        out["format"] = FORMAT
+    if isinstance(out.get("rows"), float) and out["rows"].is_integer():
+        out["rows"] = int(out["rows"])
+    if isinstance(out.get("format"), float):
+        out["format"] = int(out["format"])
+    return out
+
+
 def read(data: str | bytes | Mapping[str, Any]) -> Imported:
     """The plan and its contract from an export (`to_substrait`'s output, in
     either format, or its JSON as a dict)."""
@@ -1539,7 +1577,7 @@ def read(data: str | bytes | Mapping[str, Any]) -> Imported:
     d = json_format.MessageToDict(found)
     return Imported(
         _plan_dict(msg),
-        d.get("manifest", {}),
+        _manifest(d.get("manifest", {})),
         list(d.get("requires", [])),
         list(d.get("ensures", [])),
     )
@@ -1614,7 +1652,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     request = json.loads(json.dumps(request), parse_float=_num)
     request["ensures_keys"] = [[int(x) for x in k] for k in request["ensures_keys"]]
     request["keys"] = {t: [[int(x) for x in k] for k in ks] for t, ks in request["keys"].items()}
-    if m.get("profile") == "substrait":
+    if m.get("semantics") == "substrait":
         request["profile"] = "substrait"
     code, stdout, stderr = run_checker(("--contract",), json.dumps(request))
     if code not in (0, 4):
@@ -1639,13 +1677,13 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             requires.setdefault(r["table"], []).append(r["text"])
     components = {
         k: v
-        for k, v in (m.get("observation_components") or {}).items()
+        for k, v in (m.get("equivalence_components") or {}).items()
         if k not in ("floats", "bound")
     }
     observation = dataclasses.replace(
-        Observation(floats=_floats_component(m.get("observation_components") or {})), **components
+        Observation(floats=_floats_component(m.get("equivalence_components") or {})), **components
     )
-    profile = m.get("profile", "reference")
+    profile = m.get("semantics", "reference")
     return Report(
         semantics=profile,
         requires=requires,

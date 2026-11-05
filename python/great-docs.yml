@@ -169,6 +169,19 @@ reference:
       - odcs.Unread
       - odcs.UnreadRuleWarning
 
+  - title: Lineage
+    desc: >
+      OpenLineage run events from `refresh`, and upstream events read back
+      (`sverify.openlineage`, #792).
+    contents:
+      - openlineage.Lineage
+      - openlineage.read
+      - openlineage.marquez
+      - openlineage.Events
+      - openlineage.Upstream
+      - openlineage.Assertion
+      - openlineage.LineageWarning
+
   - title: Errors
     desc: What sverify raises, and when (`sverify.errors`).
     contents:

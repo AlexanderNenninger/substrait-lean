@@ -27,7 +27,7 @@ import os
 import time
 import uuid
 import warnings
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath
@@ -77,7 +77,11 @@ from sverify.observation import Observation
 CONSTRAINT = "Delta constraint"
 INSERT = ("insert", "update_postimage")
 DELETE = ("delete", "update_preimage")
-METADATA_KEY = "sverify"
+#: The commitInfo key of the sink's contract record, as Iceberg's table
+#: property (K3).
+METADATA_KEY = "sverify.contract"
+#: The key of the records written before 1.0, which `_last_contract` reads too.
+LEGACY_METADATA_KEY = "sverify"
 # Delta keeps timestamp statistics in milliseconds, truncated.
 TIMESTAMP_SLACK = timedelta(microseconds=999)
 
@@ -167,6 +171,15 @@ def _history(dt: DeltaTable) -> Iterator[dict[str, Any]]:
         seen, n = n, n * 2
 
 
+def _recorded(commit: Mapping[str, Any]) -> Contract | None:
+    """The contract a commit records, under its key or the key of the
+    records written before 1.0."""
+    for key in (METADATA_KEY, LEGACY_METADATA_KEY):
+        if isinstance(commit.get(key), str):
+            return Contract.from_json(commit[key])
+    return None
+
+
 def _last_contract(dt: DeltaTable, upto: int | None = None) -> LastRecord[dict[str, Any], Contract]:
     """The contract the last sverify commit up to version `upto` (default:
     every commit) recorded (`record`), and whether every commit after it
@@ -179,7 +192,7 @@ def _last_contract(dt: DeltaTable, upto: int | None = None) -> LastRecord[dict[s
         commits = (c for c in commits if c.get("version", -1) <= upto)
     return last_record(
         commits,
-        lambda c: Contract.from_json(c[METADATA_KEY]) if METADATA_KEY in c else None,
+        _recorded,
         lambda c: c.get("operation") in _SAME_ROWS,
     )
 
