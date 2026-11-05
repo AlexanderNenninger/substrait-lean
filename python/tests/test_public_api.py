@@ -38,6 +38,7 @@ def test_the_top_level_is_small():
 
     assert sorted(sv.__all__) == [
         "Changes",
+        "ContractedTransform",  # what @sv.transform returns, for isinstance (#682)
         "Node",
         "Report",
         "approx",

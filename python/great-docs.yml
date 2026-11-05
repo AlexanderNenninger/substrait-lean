@@ -153,6 +153,7 @@ reference:
       - errors.SchemaError
       - errors.SqlError
       - errors.ExportError
+      - errors.Unsupported
 
 # Agent skills for sverify users, written by hand and shipped in the wheel
 # (`sverify/skills/<name>/SKILL.md`, with their `references/`). The site

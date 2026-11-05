@@ -125,14 +125,13 @@ def test_an_open_choice_fails_every_requirement(con) -> None:
         assert r.refused and "not determined up to row order" in r.reason
 
 
-@pytest.mark.xfail(
-    reason="D10 in Lean: a LIMIT without an ORDER BY reported as undetermined", strict=False
-)
 def test_a_limit_without_order_by_is_refused(con) -> None:
+    """The deterministic profile names the LIMIT that leaves the rows open (D24)."""
     t = con.table("t")
     report = sv.verify(t.limit(2))
     assert not report.deterministic
-    with pytest.raises(RouteError, match="not determined up to row order"):
+    assert [p.op for p in report.tie_places] == ["fetch"]
+    with pytest.raises(RouteError, match="ties stay open at the fetch at relation 0"):
         report.run(con, "duckdb", route="auto", reproducible=sv.equivalent(rows="multiset"))
 
 

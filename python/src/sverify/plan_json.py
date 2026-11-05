@@ -26,6 +26,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 
 from sverify import black_box
+from sverify._unsupported import Unsupported as _Unsupported
 
 Json = dict[str, Any]
 
@@ -34,8 +35,9 @@ NULLABLE = {"nullability": "NULLABILITY_NULLABLE"}
 REQUIRED = {"nullability": "NULLABILITY_REQUIRED"}
 
 
-class Unsupported(ValueError):
-    """The expression uses something the Lean model does not cover."""
+class Unsupported(_Unsupported):
+    """The expression uses something the Lean model does not cover
+    (`sverify.errors.Unsupported`)."""
 
 
 # --------------------------------------------------------------------------

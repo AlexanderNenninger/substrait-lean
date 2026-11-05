@@ -21,7 +21,8 @@ DuckDB.
 * Value side (`SHIMS`): `int_div_trunc`, `int_mod_trunc`, `round_half_away`,
   `sum_empty_null`, `avg_int_declared`, `one_zero`, `strpos_chars`,
   `substring_wrap`, `null_order`, `tie_order`, `decimal_round_half_away`,
-  `decimal_div_half_away`.
+  `decimal_div_half_away`, `max_nan_greatest` (and `min_ignore_nan`, which
+  needs only `one_zero`).
 * Guards (`GUARDS`): each flag holds exactly where the reference's issue
   does, so a guard refuses exactly the batches the precondition rules out
   (A3: `sum_leaves_i64`; A4: `makes_infinite`, `agg_makes_infinite`; B1:
@@ -280,6 +281,108 @@ theorem avg_int_declared (vs : List Int) : avgIntDeclared vs = AggFn.iavg.apply 
       ⟨foldl_min_le_mem v vs x hx, le_foldl_max_mem v vs x hx⟩
     have hm := tdiv_mean_between (s := (v :: vs).sum) (n := (v :: vs).length) (by simp) hb.1 hb.2
     rw [Int.max_eq_left hm.1, Int.min_eq_left hm.2]
+
+/-! ## `MIN` and `MAX` of doubles: `nan_order` = `GREATEST`, `zero_sign` = `ONE_ZERO` -/
+
+section MinMax
+open FloatCode
+
+/-- The codes a column of doubles holds on Polars: the reference's, `-0.0`
+or the negative NaN, whose sign Polars keeps (`nan_kind`). -/
+def DoubleCode (c : Int) : Prop := IsRef c ∨ c = negZero ∨ c = negNan
+
+theorem canon_le_nan {c : Int} (h : DoubleCode c) : canon c ≤ nan :=
+  (fp64.isRef_canon_of_isRef_or h).2
+
+/-- A double read with one zero (`one_zero`, up to the NaN's sign). -/
+def canonV : Value → Value
+  | .int c => .int (canon c)
+  | v => v
+
+/-- Polars's `min` of a group's doubles (polars-min-max-nan,
+polars-min-max-zero): NULL without values, else one of them that is at most
+each value that is not NaN, so NaN only when every value is. Which of two
+zeros it keeps is the platform's (`f64::min`), so the order is up to the sign
+of zero. Trusted. -/
+def MinIgnoreNan (vs : List Int) (r : Value) : Prop :=
+  match vs with
+  | [] => r = .null
+  | _ :: _ => ∃ c ∈ vs, r = .int c ∧ ∀ x ∈ vs, canon x ≠ nan → canon c ≤ canon x
+
+/-- Polars's `max`: as `min`, at least each value that is not NaN. Trusted. -/
+def MaxIgnoreNan (vs : List Int) (r : Value) : Prop :=
+  match vs with
+  | [] => r = .null
+  | _ :: _ => ∃ c ∈ vs, r = .int c ∧ ∀ x ∈ vs, canon x ≠ nan → canon x ≤ canon c
+
+/-- `max_nan_greatest`: NaN where the group holds one, else Polars's `max`
+read with one zero. -/
+def maxNanGreatest (vs : List Int) (r : Value) : Value :=
+  if vs.any (fun x => decide (canon x = nan)) then .int nan else canonV r
+
+theorem map_canon_cons (v : Int) (vs : List Int) :
+    (Value.int (canon v) :: vs.map fun c => Value.int (canon c)) =
+      (v :: vs).map fun c => Value.int (canon c) := rfl
+
+/-- **`Polars.min_ignore_nan`**: Polars's `min`, read with one zero, is the
+reference's `MIN` (`AggFn.min`): NaN is the greatest double there, so a `min`
+that skips NaN agrees, and the zeros are one. -/
+theorem min_ignore_nan {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleCode x)
+    (h : MinIgnoreNan vs r) : canonV r = AggFn.min.apply (vs.map fun c => .int (canon c)) := by
+  cases vs with
+  | nil => simp only [MinIgnoreNan] at h; subst h; rfl
+  | cons v vs =>
+    obtain ⟨c, hc, rfl, hle⟩ := h
+    simp only [List.map_cons, AggFn.apply]
+    have hmem := pickFold_mem (fun a b => !a.le b) (.int (canon v)) (vs.map fun c => .int (canon c))
+    have hlo := pickFold_min_le (.int (canon v)) (vs.map fun c => .int (canon c))
+    generalize pickFold (fun a b => !a.le b) (.int (canon v)) (vs.map fun c => .int (canon c)) = m
+      at hmem hlo ⊢
+    rw [map_canon_cons] at hmem hlo
+    obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hmem
+    have h1 : canon y ≤ canon c := Value.le_int.mp (hlo _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+    have h2 : canon c ≤ canon y := by
+      by_cases hn : canon y = nan
+      · rw [hn]; exact canon_le_nan (hv c hc)
+      · exact hle y hy hn
+    show Value.int (canon c) = Value.int (canon y)
+    rw [Int.le_antisymm h2 h1]
+
+/-- **`Polars.max_nan_greatest`**: the shimmed `max` is the reference's `MAX`
+(`AggFn.max`): NaN where the group holds one, as NaN is the greatest double,
+else Polars's `max` with one zero. -/
+theorem max_nan_greatest {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleCode x)
+    (h : MaxIgnoreNan vs r) :
+    maxNanGreatest vs r = AggFn.max.apply (vs.map fun c => .int (canon c)) := by
+  cases vs with
+  | nil => simp only [MaxIgnoreNan] at h; subst h; rfl
+  | cons v vs =>
+    obtain ⟨c, hc, rfl, hge⟩ := h
+    simp only [List.map_cons, AggFn.apply]
+    have hmem := pickFold_mem (fun a b => !b.le a) (.int (canon v)) (vs.map fun c => .int (canon c))
+    have hhi := pickFold_max_ge (.int (canon v)) (vs.map fun c => .int (canon c))
+    generalize pickFold (fun a b => !b.le a) (.int (canon v)) (vs.map fun c => .int (canon c)) = m
+      at hmem hhi ⊢
+    rw [map_canon_cons] at hmem hhi
+    obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hmem
+    unfold maxNanGreatest
+    split
+    · rename_i hany
+      obtain ⟨z, hz, hzn⟩ := List.any_eq_true.mp hany
+      have h1 : canon z ≤ canon y := Value.le_int.mp (hhi _ (List.mem_map.mpr ⟨z, hz, rfl⟩))
+      have h2 := canon_le_nan (hv y hy)
+      have hzn : canon z = nan := of_decide_eq_true hzn
+      show Value.int nan = Value.int (canon y)
+      congr 1; omega
+    · rename_i hnone
+      have hy' : canon y ≠ nan := fun e =>
+        hnone (List.any_eq_true.mpr ⟨y, hy, decide_eq_true e⟩)
+      have h1 : canon c ≤ canon y := Value.le_int.mp (hhi _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+      have h2 := hge y hy hy'
+      show Value.int (canon c) = Value.int (canon y)
+      rw [Int.le_antisymm h1 h2]
+
+end MinMax
 
 /-! ## Decimals: `decimal_rescale` = `TIE_AWAY_FROM_ZERO` -/
 

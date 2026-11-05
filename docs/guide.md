@@ -385,9 +385,10 @@ except VerificationError as e:
 * Keys: `sv.unique("user_id", "ts")` says there is at most one row per
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
-  pins down the other side's key). `sv.key("id")` is a primary key:
-  `sv.unique("id")` and `'"id" IS NOT NULL'`, which the report lists in its
-  place ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  pins down the other side's key). Every Arrow column is nullable, so
+  `sv.unique("id")` leaves `id` able to be NULL. `sv.key("id")` is a
+  primary key: `sv.unique("id")` and `'"id" IS NOT NULL'`, which the report
+  lists in its place ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 * Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
@@ -410,7 +411,9 @@ except VerificationError as e:
   in `requires`, `sv.max_rows(10_000_000)` (checked on the data), Lean
   bounds them by the proved rounding error ([float bounds](float-bounds.md)).
   `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
-  the report suggests it when an exact claim misses only by rounding.
+  the report suggests it when an exact claim misses only by rounding, and
+  only for an input with a row cap: without `sv.max_rows` in `requires`,
+  Lean has no bound on the sum's error and suggests nothing.
 * Not tracked yet: string contents, relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
@@ -513,7 +516,12 @@ except VerificationError as e:
 ```
 
 Declare `_.amount < 2**62`, or a tighter bound your data keeps, or filter
-the rows out first. `on_inferred="warn"` assumes the bound with an
+the rows out first. A tool that phrases the fix in its own terms (a dbt
+test, an editor's quick fix) reads `Report.needs`: one `Needed` per
+precondition, with its table, column, comparison, bound, SQL and the
+runtime error it rules out. Each postcondition's
+`CheckedCondition.reason` says the same of an unproved postcondition, as a
+code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …). `on_inferred="warn"` assumes the bound with an
 `InferredPreconditionWarning`, and `"silent"` assumes it without one:
 
 ```python
@@ -678,6 +686,47 @@ Sverify proves each suggestion before showing it, by proving the
 postcondition again with it added. `Report.suggestions` has them as code,
 per postcondition and table, for editors and language servers
 ([test_suggestions.py](../python/tests/test_suggestions.py)).
+
+### Checking without running
+
+A tool that reads a contract's proof, such as an editor, a CI step or dbt,
+checks a transform on input schemas with `check`. It returns the report
+without raising and reads no data, so `requires` is not checked on a bound
+table:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.unit >= 0])
+def unit_price(orders):
+    return orders.select(orders.id, unit=orders.amount // orders.qty)
+
+
+report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
+print(report.proved, report.needed)
+# False {'orders': ['(_.qty != 0)']}
+print(report.ensures[0].message)
+# NOT proved: it may be FALSE or NULL on some rows
+print(report.route("duckdb").cls)
+# refused
+```
+
+The report's parts come as data and as the lines `str(report)` prints:
+
+- `Report.inputs` and `Report.output` give the schemas of the input tables
+  and of the result, the columns `requires` and `ensures` may name.
+- `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
+  `Report.notes` are the report's lines for each postcondition, possible
+  runtime error, assumption and note.
+- `Issue.suggested` gives the preconditions that rule an issue out, per
+  table, which `Issue.hint` states in words.
+- `Report.route(engine)` gives the route a run would take and the plan's
+  class on the engine (exact, observed, shim or refused) without running
+  it. After a run, `report.routes` records the route taken.
+
+The counterexample search tries 200 inputs per unproved postcondition. The
+`SVERIFY_COUNTEREXAMPLES` environment variable sets that budget for
+`sv.verify`, a transform's call and `check`; 0 skips the search, for a tool
+that only needs the verdicts
+([test_check_api.py](../python/tests/test_check_api.py)).
 
 ### Composing contracts
 
@@ -940,7 +989,7 @@ tables. A table format plays four roles:
   recovers.
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg). The NOT NULL columns are those `ensures`
-  states (`_.n.notnull()`) and those the proved report shows are never NULL
+  states (`_.id.notnull()`) and those the proved report shows are never NULL
   (`report.not_null`, [#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
   The commit records the plan hash, the
   source versions and the contract. A job that reads the table gets its
@@ -1200,6 +1249,28 @@ the following about the warehouse:
 How the engine translations relate to the reference semantics, and where
 that is going, is in [docs/engine-profiles.md](engine-profiles.md).
 
+### Integer division in Ibis and SQL
+
+Ibis's `//` is `FloorDivide` and rounds toward minus infinity. Ibis's `%`
+and SQL's `//` and `%` truncate toward zero, so the pair `x // d` and
+`x % d` splits a negative `x` into a quotient and remainder that do not add
+back up under the reference. Sverify follows each operator as its front end
+defines it. On `x = -7`, with `d = 2`:
+
+| Input | `x // 2` | `x % 2` | `q * 2 + r == x` |
+|---|---|---|---|
+| Ibis, `semantics="reference"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
+| SQL through `sv.sql` or `sv.verify`, reference | -3 (truncated) | -1 | yes |
+| Ibis, `semantics="polars"` | -4 | 1 | yes |
+
+A plan that splits milliseconds into seconds and a remainder with `t.ms // 1000`
+and `t.ms % 1000` gets the identity only for non-negative `ms`. State
+`_.ms >= 0` in `requires`, or write the plan in SQL, where both operators
+truncate. When one plan uses Ibis `//` and `%` on the same operands under the
+reference or DuckDB's semantics, its report carries a hint that names the pair.
+[`t7b_div_mod.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/claude/api-critique/api-critique/tasks/t7b_div_mod.py)
+reproduces the table.
+
 ### Routes, classes and profiles
 
 A proof is about the plan under one semantics, a profile: sverify's
@@ -1225,7 +1296,7 @@ you can rely on:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers under an observation that `ensures` states with `sv.equivalent(...)`: rows as a multiset, one zero, or doubles within a tolerance, `floats=sv.within(...)`, at least the plan's proved float bound |
+| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.routes.RouteError` and nothing runs |
 
@@ -1240,15 +1311,22 @@ list every fact). What to do about one:
 
 - Verify under the reference (the default), whose translation shims most
   differences, in place of an engine's profile.
-- State the observation the difference hides: `sv.equivalent(floats=sv.within(abs=...))`
-  for a sum in another order, `rows="multiset"` for row order.
+- State the observation the difference hides: `rows="multiset"` for row
+  order, `zeros="canon"` for the sign of a zero. A sum in another order is
+  within the plan's bound, which a run accepts by default.
 - Add the precondition the reference raises on, such as a bound on a
   column, so the plan never meets the difference.
 - Run on the other engine, or pass `route="reference"` (or another) to see
   why that one fails.
 
-`deterministic=True` refuses a plan whose result is not determined up to
-row order. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
+`deterministic=True` asks for the deterministic profile, which fixes the
+order of ties
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)):
+it refuses a plan whose result is not determined up to row order, and the
+reason names each window, ordered aggregate or `LIMIT` where ties stay open
+(`report.tie_places`), with the `sv.unique(...)` that would close them.
+Without it the plan runs with the engine's own order of the ties, which every
+proof covers. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
 shows a transfer and a refusal, and D13 in
 [core-semantics.md](core-semantics.md#d13-choosing-the-route) the rules
 behind them.
@@ -1273,13 +1351,28 @@ Polars sums doubles in its own order, so its mean is within the plan's
 bound of the reference's: here about `2.2e-4`, from the bounds on `x` and the
 row cap (#85; `--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
 values may cancel, so only an absolute bound holds, and the tolerance is
-absolute. Rows are a multiset and values exact by default. `sv.equivalent` also takes
-`elements="multiset"`, `zeros="canon"`, `timestamps="ms"`, `strings="nfc"`,
-`decimals="value"` and `errors="kind"`; `Observation.refines` orders observations component by
+absolute.
+
+Doubles follow one model. Without `sv.equivalent` in `ensures`, rows are a
+multiset, doubles are within the plan's bound and other values are exact:
+the same observation as `sv.equivalent(floats="plan")`, which
+`report.observation` prints with its bound, `equivalent(floats=plan, ≤
+2.2e-04)` here. `sv.equivalent(...)` states each component, and one you
+leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
+tolerance, and `floats="exact"` asks for the same bits. `verify` checks
+either against the plan's bound on each engine (`report.floats_on`); where
+no engine meets it, the plan is not proved, and the report's `observes:`
+line gives the plan's bound, the reason per engine and a tolerance that
+would do ([example 5](examples.md#5-doubles-within-the-plans-bound)).
+
+`sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
+`timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
+`errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
 `CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
-tolerance.
+tolerance. Under the plan's bound, a run holds a column a postcondition
+reads to its exact value, and `sv.approx` again allows for the bound.
 
 The bound grows with the row cap and the values: for a `SUM` of `n` values
 of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
@@ -1378,7 +1471,9 @@ result. The sink states what "the same" means (`reproducible=`, D20 in
 [core-semantics.md](core-semantics.md)): `sv.equivalent()` asks for exact
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
-refused with a `RouteError`. Polars's streaming `SUM` of doubles may add in
+refused with a `RouteError`; so is a plan whose ties stay open, since the
+sink then needs the deterministic profile (D24), and the error names the
+place. Polars's streaming `SUM` of doubles may add in
 another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
 sink's `reproducible=sv.equivalent(floats=sv.within(abs=...))` for the

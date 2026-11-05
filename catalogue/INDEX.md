@@ -33,7 +33,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | NPD |  |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✓ | ND |  |
 | fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✓ | ND |  |
-| fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✓ | ND |  |
+| fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✓ | NPD |  |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | NPD |  |
 | fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | NPD |  |
 | fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✓ | NPD |  |
@@ -68,7 +68,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | iot-latest-reading | [Latest reading per device](https://questdb.com/docs/query/sql/latest-on/) | ✓ | NPDS |  |
 | iot-change-detection | [Keep only state changes](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | NPDS |  |
 | iot-consecutive-threshold | [Alert on three consecutive high readings](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | NPDS |  |
-| iot-daily-energy | [Daily energy consumption from a cumulative meter](https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption) | ✓ | ND |  |
+| iot-daily-energy | [Daily energy consumption from a cumulative meter](https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption) | ✓ | NPD |  |
 | iot-event-correlation | [Door openings followed by motion](https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/sql/reference/queries/joins/) | ✓ | NPDS |  |
 
 ## job

@@ -42,11 +42,13 @@ def prototypeSlice : List String :=
 
 /-- The theorems of the package `float-bounds` (Mathlib, kept out of the core)
 that rows name as evidence. The core cannot see them: the `run_cmd` at the
-end of `float-bounds/FloatBounds/Epsilon.lean` checks each of these names
-there, and `tests/test_float_bounds.py` that the two lists agree. -/
+ends of `float-bounds/FloatBounds/Epsilon.lean` and `ChanCorr.lean` check
+these names there, and `tests/test_float_bounds.py` that the two lists agree. -/
 def floatBoundsTheorems : List String :=
   ["FloatBounds.StdModel.epsilon_sum", "FloatBounds.StdModel.epsilon_avg",
-   "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel"]
+   "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel",
+   "FloatBounds.StdModel.core_var_chan", "FloatBounds.StdModel.core_cov_chan",
+   "FloatBounds.StdModel.core_corr_chan"]
 
 /-- Evidence from the facts or tests `ids`, none where empty. -/
 def Evidence.ofIds (ids : List String) : Evidence := if ids.isEmpty then .none else .tested ids
@@ -168,9 +170,12 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "case_sensitivity", .native []),
   (none, "string_positions", .native []),
   (none, "null_join_keys", .native []),
-  -- Welford with Chan's merge meets the generic properties the reference allows.
-  (none, "stat_algo", { ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
-    rerun := some { floats := .within "plan" } }),
+  -- Welford with Chan's merge meets the generic properties the reference allows:
+  -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
+  -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
+  -- by `core_stddev` of the variance), for IEEE rounding (`Mono`, `Grid`).
+  (none, "stat_algo", ({ ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
+    rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
@@ -200,6 +205,8 @@ def Profile.polars.table : ProfileTable where
     (none, "zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
+    -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
+    (some "agg.order", "nan_order", .oneOf ["IGNORED"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
     -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
@@ -262,8 +269,14 @@ def Profile.polars.obs : ObsTable := [
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
+  -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
+  -- with NaN as the greatest double (`Polars.min_ignore_nan`).
+  (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
+    note := "MIN and MAX; QUANTILE_DISC sorts its values, NaN last (polars-nan-order)." }).proved
+    "Polars.max_nan_greatest"),
   -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
-  (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-order"] with
+  (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
+    ["polars-zero-order", "polars-min-max-zero"] with
     shim := some "one_zero" }).proved "Polars.one_zero"),
   (none, "avg_int_result", (ObsRow.shimmed "avg_int_declared" ["polars-avg-int"]).proved "Polars.avg_int_declared"),
   (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),

@@ -73,8 +73,9 @@ def options : List OptionSpec := [
   -- Substrait's for `index_in`, which the model does not have; sverify's for
   -- `=`, grouping, `DISTINCT` and joins.
   { id := "nan_equality", substrait := none, core := ["NAN_IS_NAN", "NAN_IS_NOT_NAN"] },
-  { id := "nan_order", substrait := none, core := ["GREATEST", "UNORDERED"],
-    extra := [("GREATEST", "duckdb-arg-min-nulls")] },
+  -- `IGNORED`: `MIN` and `MAX` skip NaN unless every value is NaN.
+  { id := "nan_order", substrait := none, core := ["GREATEST", "UNORDERED", "IGNORED"],
+    extra := [("GREATEST", "duckdb-arg-min-nulls"), ("IGNORED", "polars-min-max-nan")] },
   { id := "nan_kind", substrait := none, core := ["IEEE", "ONE_NAN"],
     extra := [("IEEE", "duckdb-signbit")] },
   -- Strings, dates and lists

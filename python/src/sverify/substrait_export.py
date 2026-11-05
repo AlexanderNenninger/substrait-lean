@@ -1374,10 +1374,17 @@ def _refuse_unverified(report: Report) -> None:
         reasons += [f"may fail: {i}" for i in report.errors]
         if report.transfer:
             reasons.append("the proof does not carry over to Substrait (report.transfer)")
+        reasons += [f"needs {n}" for n in report.needs_lines()]
+        if report.floats_unmet:
+            reasons.append(
+                f"no engine meets the observation's doubles (report.floats_on): "
+                f"{report.floats_unmet}"
+            )
         raise ExportError("not verified: " + "; ".join(reasons))
 
 
 def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
+    from sverify import routes
     from sverify.engine import written_plan
 
     if shims not in SHIMS:
@@ -1457,6 +1464,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         if handling.assumptions
         else "observed"
         if any(u.get("observation") for u in handling.up_to)
+        or routes.plan_bound(report.epsilon) is not None
         else "exact",
         "evidence": "tested" if any(u.get("gap") == "ST-9" for u in handling.up_to) else "proved",
         "shims_mode": shims,
@@ -1464,6 +1472,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "observation_components": {
             k: (str(v) if not isinstance(v, str) else v)
             for k, v in dataclasses.asdict(observation).items()
+            if k != "bound"
         },
         "pinned": handling.pinned,
         "unexercised": handling.unexercised,
@@ -1562,6 +1571,23 @@ def from_substrait(data: str | bytes | Mapping[str, Any]) -> Report:
     return recheck(data)
 
 
+def _floats_component(components: Mapping[str, Any]) -> Any:
+    """The `floats` of a manifest's observation: `"exact"`, `"plan"` (also
+    where the manifest has none), or a tolerance, written as its fields."""
+    import ast
+
+    from sverify.observation import Within
+
+    v = components.get("floats", "plan")
+    if v in ("exact", "plan"):
+        return v
+    try:
+        fields = ast.literal_eval(v)
+        return Within(fields.get("abs"), fields.get("rel"), fields.get("ulps"))
+    except (ValueError, SyntaxError, AttributeError, TypeError):
+        return "plan"
+
+
 def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """`from_substrait`, under its internal name."""
     from sverify.contracts import CheckedCondition, Issue, Report, tie_places
@@ -1612,8 +1638,14 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     for r in imp.requires:
         if r.get("table"):
             requires.setdefault(r["table"], []).append(r["text"])
-    components = {k: v for k, v in (m.get("observation_components") or {}).items() if k != "floats"}
-    observation = dataclasses.replace(Observation(), **components) if components else Observation()
+    components = {
+        k: v
+        for k, v in (m.get("observation_components") or {}).items()
+        if k not in ("floats", "bound")
+    }
+    observation = dataclasses.replace(
+        Observation(floats=_floats_component(m.get("observation_components") or {})), **components
+    )
     profile = m.get("profile", "reference")
     return Report(
         semantics=profile,
