@@ -1,0 +1,39 @@
+{
+  "id": "spark-exec-streaming-fallback",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "No streaming fallback: sverify runs Spark batch queries",
+  "verdict": "not applicable: batch execution only",
+  "area": "execution",
+  "options": [
+    "streaming_fallback"
+  ],
+  "constructs": [
+    "spark.sql",
+    "Structured Streaming"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": "sverify runs plans as batch SQL on a Spark session (`sverify.spark_engine`). Spark has no streaming engine that hands operations to another one: Structured Streaming is a separate API with its own incremental execution, and sverify does not use it.",
+  "reference": "The reference has no engines; a fact holds for the engine it was probed on. Spark's batch engine is the only one in question.",
+  "status": "no-finding",
+  "evidence": "docs",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/streaming/index.md",
+          "note": "Structured Streaming: a separate API on the same engine"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    }
+  ]
+}

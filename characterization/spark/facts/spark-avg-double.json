@@ -8,14 +8,23 @@
   "options": [
     "sum_order"
   ],
+  "rows": [],
   "constructs": [
     "avg"
   ],
-  "settings": {},
-  "description": "`AVG(DOUBLE)` keeps a sum and a count and returns `Divide(sum, count, LEGACY)`, NULL for a count of 0. The sum is spark-sum-double's.",
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`AVG(DOUBLE)` keeps a sum and a count and returns `Divide(sum, count, LEGACY)`, NULL for a count of 0. The sum is spark-sum-double's.",
+    "`avg` of 1e16, 1, -1e16, 1 is 0.25 after a shuffle into one partition and 0.5 into three; of `FLOAT` it returns `DOUBLE`."
+  ],
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -27,6 +36,30 @@
         }
       ],
       "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-1"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-3"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-float"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "empty-aggregates"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
     }
   ],
   "issues": [

@@ -6,7 +6,47 @@
   "verdict": "Welford/West; Chan merge; no clamp",
   "area": "aggregates",
   "options": [
-    "stat_algo"
+    "stat_algo",
+    "stat_degenerate",
+    "rounding"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "distribution",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "rounding",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
   ],
   "constructs": [
     "var_samp",
@@ -17,15 +57,23 @@
     "stddev"
   ],
   "settings": {
-    "spark.sql.legacy.statisticalAggregate": false
+    "spark.sql.legacy.statisticalAggregate": [
+      false,
+      true
+    ],
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
   },
   "description": [
     "All state is `DoubleType`, the count too. The update is Welford/West: `delta = x - avg`, `deltaN = delta / (n + 1)`, `avg += deltaN`, `m2 += delta * (delta - deltaN)`. Partial states merge as `m2.l + m2.r + delta * deltaN * n1 * n2`, with `delta` forced to 0 when a side is empty.",
-    "No values is NULL; the sample variance of one value is NULL (NaN under `spark.sql.legacy.statisticalAggregate`). No clamp."
+    "No values is NULL; the sample variance of one value is NULL (NaN under `spark.sql.legacy.statisticalAggregate`). No clamp.",
+    "`var_samp`/`variance`/`stddev_samp`/`stddev`/`std` take the sample (`distribution: SAMPLE`), `var_pop`/`stddev_pop` the population. Every input type, `BIGINT` and decimals included, is cast to `DOUBLE`, and the result is `DOUBLE`. The probes: one value gives NULL for the sample forms and 0.0 for the population ones (NaN for the sample forms with `spark.sql.legacy.statisticalAggregate`); 1e9 + {4, 7, 13, 16} gives exactly 30 and 22.5, Welford's update cancelling no digits there."
   ],
   "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -40,6 +88,38 @@
         }
       ],
       "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-one"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-one-legacy"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-types"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "var-cancellation"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-nonfinite"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "decimal-aggregates"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
     }
   ],
   "issues": [

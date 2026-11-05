@@ -1,0 +1,73 @@
+{
+  "id": "spark-null-order",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "NULLs first ascending, last descending",
+  "verdict": "`null_order`: `NULLS FIRST` for `ASC`, `NULLS LAST` for `DESC`",
+  "area": "relations",
+  "options": [
+    "null_order"
+  ],
+  "rows": [
+    {
+      "option": "null_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "ORDER BY",
+    "NULLS FIRST",
+    "NULLS LAST",
+    "sort_array"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": "Without `NULLS FIRST` or `NULLS LAST`, an ascending key puts NULLs first and a descending one last. Both clauses are honoured.",
+  "reference": "The key's direction states the NULL placement; `SORT_DIRECTION_UNSPECIFIED` is `NULLS_LAST` (D8). Spark is native for every stated direction; its default ascending placement differs from DuckDB's.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-syntax-qry-select-orderby.md#L40-L62",
+          "note": "the default: `NULLS FIRST` ascending, `NULLS LAST` descending"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "null-order"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "null-order-rows"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-sort"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-sort-desc"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

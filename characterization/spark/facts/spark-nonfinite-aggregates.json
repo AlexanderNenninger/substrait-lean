@@ -1,0 +1,83 @@
+{
+  "id": "spark-nonfinite-aggregates",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Aggregates of ±inf and NaN: IEEE results, no raise",
+  "verdict": "`sum(inf, -inf)` NaN; `variance(inf, 1)` NaN; `sum(1e308, 1e308)` +inf; NaN propagates",
+  "area": "aggregates",
+  "options": [
+    "nonfinite_aggregates",
+    "nan_creation",
+    "float_overflow",
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "nan_creation",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "float_overflow",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "sum",
+    "avg",
+    "variance",
+    "stddev",
+    "min",
+    "max",
+    "median"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`sum` and `avg` of inf and -inf are NaN; `variance` and `stddev` of a set with an infinity are NaN; `sum(1e308, 1e308)` and `avg` are +inf, while `variance(1e308, 1e308)` is 0.0. A NaN input makes `sum`, `avg`, `variance` NaN; `min` skips it (it sorts last) and `max` returns it. None of this raises under ANSI."
+  ],
+  "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`); a sum past the largest double raises (#575). ST-3 and ST-5 record that Substrait leaves both open. Spark needs guards.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-nonfinite"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-inf"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-nan"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-overflow"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ],
+  "issues": [
+    257,
+    575
+  ]
+}

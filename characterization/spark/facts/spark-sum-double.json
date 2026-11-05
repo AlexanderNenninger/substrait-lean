@@ -6,16 +6,53 @@
   "verdict": "plain recursive summation; order depends on partitioning",
   "area": "aggregates",
   "options": [
-    "sum_order"
+    "sum_order",
+    "rounding",
+    "empty_group_aggregates",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "sum_order",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "empty_group_aggregates",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
   ],
   "constructs": [
     "sum"
   ],
-  "settings": {},
-  "description": "`SUM(DOUBLE)` adds with a plain `Add` and no overflow check; partial sums merge plainly. The order of the additions depends on the partitioning.",
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`SUM(DOUBLE)` adds with a plain `Add` and no overflow check; partial sums merge plainly. The order of the additions depends on the partitioning.",
+    "The probes show the order at work: 1e16, 1, -1e16, 1 summed in input order on one partition is 0.0; after a shuffle into one partition 1.0, into three partitions 2.0. A `FLOAT` column sums in `DOUBLE` (`sum` returns `DOUBLE`). No values, or NULLs only, give NULL."
+  ],
   "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
   "status": "open",
-  "evidence": "source",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -27,6 +64,38 @@
         }
       ],
       "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-1"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-3"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-double-order-values"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "sum-float"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "empty-aggregates"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "null-aggregates"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
     }
   ],
   "issues": [
