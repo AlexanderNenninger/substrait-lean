@@ -44,8 +44,8 @@ DATA = {
 }
 
 
-def _verify(expr, requires=None, ensures=()) -> sv.Report:
-    report = sv.verify(expr, requires=requires, ensures=list(ensures))
+def _verify(expr, requires=None, ensures=(), **kw) -> sv.Report:
+    report = sv.verify(expr, requires=requires, ensures=list(ensures), **kw)
     assert report.proved, str(report)
     return report
 
@@ -102,7 +102,10 @@ def test_contract_travels_with_the_plan() -> None:
     a Substrait plan over the inputs."""
     expr = orders.select(orders.id, total=_.amount * 2)
     report = _verify(
-        expr, {"orders": [_.amount >= 0, sv.unique("id")]}, ensures=[_.total >= 0, sv.unique("id")]
+        expr,
+        {"orders": [_.amount >= 0, sv.unique("id")]},
+        ensures=[_.total >= 0, sv.unique("id")],
+        on_inferred="warn",
     )
     imp = read(report.to_substrait())
     texts = [r["text"] for r in imp.requires]
