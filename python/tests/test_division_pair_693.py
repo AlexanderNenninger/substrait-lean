@@ -8,12 +8,13 @@ import pyarrow as pa
 from ibis import _
 
 import sverify as sv
+from sverify.contracts import Semantics
 
 T = ibis.table({"x": "int64", "d": "int64"}, name="t")
 REQUIRES = {"t": [_.x.between(-1000, 1000), _.d.between(1, 10)]}
 
 
-def hints(expr, semantics="reference"):
+def hints(expr, semantics: Semantics = "reference"):
     return sv.verify(expr, requires=REQUIRES, semantics=semantics).hints
 
 

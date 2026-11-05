@@ -3014,10 +3014,14 @@ def division_hints(transform: ir.Table) -> list[str]:
     import ibis.expr.operations as ops
 
     node = transform.op()
-    mods = {(m.left, m.right) for m in node.find(ops.Modulus) if m.dtype.is_integer()}
-    hints = []
+    mods = {
+        (m.left, m.right)
+        for m in node.find(ops.Modulus)
+        if isinstance(m, ops.Modulus) and m.dtype.is_integer()  # pyrefly: ignore
+    }
+    hints: list[str] = []
     for d in node.find(ops.FloorDivide):
-        if d.dtype.is_integer() and (d.left, d.right) in mods:
+        if isinstance(d, ops.FloorDivide) and d.dtype.is_integer() and (d.left, d.right) in mods:
             hint = DIVISION_HINT.format(a=_ibis_text(d.left), b=_ibis_text(d.right))
             if hint not in hints:
                 hints.append(hint)
