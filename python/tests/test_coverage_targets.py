@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
 from sverify_dev.coverage import CASES
 from sverify_dev.coverage_targets import AREAS, TARGETS, Target, probe, report
 
@@ -36,6 +37,7 @@ def test_targets_are_well_formed():
             assert t.why, t.name
 
 
+@needs_repo
 def test_doc_lists_every_target():
     doc = DOC.read_text()
     missing = [t.name for t in TARGETS if t.name not in doc]

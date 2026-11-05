@@ -17,6 +17,7 @@ Jobs and tools read these formats that sverify writes:
 | The sink's contract record ([#734](https://github.com/AlexanderNenninger/substrait-lean/issues/734)) | a Delta commit's `commitInfo` under the key `sverify`; an Iceberg table's property `sverify.contract`, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata ([#735](https://github.com/AlexanderNenninger/substrait-lean/issues/735)) | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
 | The report's JSON ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)) | `Report.to_json()`, read back by `Report.from_json()` | `format` in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
+| The command line's JSON ([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)) | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
 | The quarantine table ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)) | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
 | The refresh report's JSON ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)) | `Refresh.to_json()` | `format` in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
 
@@ -97,6 +98,12 @@ The public API is what the [API reference](https://alexandernenninger.github.io/
 documents. Modules and names that start with an underscore, the maintainer
 tooling `sverify_dev`, and the printed text of a report (`str(report)`) are
 outside it; tools read the report through its attributes or its JSON.
+Two parts of `sverify.engines` are documented but outside it too, and may
+change in a minor release: the plan layer (`to_sql`, `substrait_json`,
+`written_plan`, `run_substrait_json`, `delta_plans`), which takes sverify's
+internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
+`Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
+to a plan's SQL and Substrait.
 
 A minor release may break the public API only when the break is:
 

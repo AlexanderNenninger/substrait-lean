@@ -44,7 +44,7 @@ jobs:
         case "$where" in
           actions) python scripts/lake.py refresh --check check.json --out refresh.json --alert alert.md || status=$? ;;
           cloud-job) scripts/cloud-job.sh refresh.json alert.md || status=$? ;;
-          *) echo "::error::where must be actions or cloud-job, not $where"; exit 4 ;;
+          *) echo "::error::where must be actions or cloud-job, not $where"; exit 2 ;;
         esac
         python scripts/lake.py catalog --out _data/site --stage production \
           --check check.json --refresh refresh.json --title "${GITHUB_REPOSITORY#*/}"

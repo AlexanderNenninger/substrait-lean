@@ -35,7 +35,6 @@ from sverify.engine import canonical as canonical_doubles
 from sverify.engine import (
     collect,
     connect,
-    create_table,
     put_table,
     run_plan,
     substrait_json,
@@ -98,7 +97,7 @@ def plan_of(con, sql: str) -> str:
     source = PLANS.get(sql, sql)
     if callable(source):
         return to_substrait_json(source(con.table("r")))
-    return substrait_json(con, source)
+    return substrait_json(con, source, semantics="duckdb")
 
 
 @pytest.mark.parametrize("sql", QUERIES)
@@ -108,7 +107,7 @@ def plan_of(con, sql: str) -> str:
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
 def test_string_semantics_match_the_oracle(sql, rows):
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expected = oracle(con, sql)
     plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
     assert canonical(lean_values(json.dumps(plan))) == canonical(expected)
@@ -132,7 +131,7 @@ PLANS[BLACK_BOXES[1]] = lambda r: r.select(
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
 def test_engines_match_the_oracle(engine, sql, rows):
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expected = canonical(oracle(con, sql))
     plan = written_plan(plan_of(con, sql))
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
@@ -157,12 +156,14 @@ def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
     (#70). Regular expressions: `test_regex.py`."""
     con = connect()
     rows = [("Straße", "abc", 1)]
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
     with pytest.raises(subprocess.CalledProcessError) as e:
         lean_values(json.dumps(plan))
     assert f"rows not evaluated: {message}" in e.value.stderr
-    ascii_rows = inline_tables(json.loads(substrait_json(con, sql)), {"r": [("abc", "x", 1)]})
+    ascii_rows = inline_tables(
+        json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": [("abc", "x", 1)]}
+    )
     assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
 
 
@@ -197,7 +198,7 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 @given(rows=st.lists(st.tuples(marked, marked, counts), max_size=6))
 def test_repeat_reverse_replace_match_datafusion(sql, rows):
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expected = canonical(oracle(con, sql))
     assert lean_rows(con, sql, rows) == expected
     plan = written_plan(plan_of(con, sql))
@@ -229,7 +230,7 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 @given(rows=st.lists(st.tuples(folded, folded, st.none()), max_size=6))
 def test_ilike_matches_datafusion(rows):
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expected = canonical(oracle(con, ILIKE))
     plan = written_plan(plan_of(con, ILIKE))
     assert (
@@ -252,11 +253,11 @@ def test_repeat_beyond_two_gigabytes_fails_everywhere():
     by a bounded count is proved not to."""
     con = connect()
     rows = [("é", "", 2**30)]
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     sql = "SELECT repeat(s, a) AS r FROM r"
     with pytest.raises(Exception, match="string size overflow on repeat"):
         collect(con._datafusion_session.sql(sql))
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     with pytest.raises(Exception, match="repeat beyond 2\\^31 - 1 bytes"):
         run_plan(con, plan, "duckdb")
     with pytest.raises(Exception, match="repeat beyond 2\\^31 - 1 bytes"):

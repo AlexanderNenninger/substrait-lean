@@ -14,9 +14,23 @@
       "group": "int.pow",
       "option": "overflow",
       "types": [
+        "i64"
+      ]
+    },
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
         "i8",
         "i16",
-        "i32",
+        "i32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
         "i64"
       ]
     },
@@ -26,9 +40,9 @@
       "types": [
         "i8",
         "i16",
-        "i32",
-        "i64"
-      ]
+        "i32"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -46,7 +60,7 @@
   ],
   "reference": "`power` on integers returns the integer type, with `overflow: ERROR`; a negative exponent raises (`negExponent` in `Safety.lean`), and `on_domain_error` never applies (ST-11). An integer power on Spark needs a cast of the double back, exact only below 2⁵³, or a refusal.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -71,6 +85,22 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "int_pow[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 1200 of 1200 results as the fact says; Spark's value differs from Rel.eval's (sverify's lift, reference profile) on 37 of 300 rows compared.",
+        "int_pow[0]: 300 rows, `power(a, b)`, 1200 of 1200 results as the fact says; Spark differs from Rel.eval on 37 of 300.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

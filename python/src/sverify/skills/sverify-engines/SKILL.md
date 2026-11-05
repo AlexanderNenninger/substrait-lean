@@ -58,21 +58,19 @@ rows in those libraries.
 
 ## Write the plan as warehouse SQL
 
-`node.internal_plan` is the plan in Lean's written form, which only sverify reads
-(`report.to_substrait()` is the portable plan). `sverify.engines.to_sql`
-writes it as SQL whose meaning is the model's:
+`node.to_sql(dialect)` writes the node's plan as SQL whose meaning is the
+model's, and refuses a plan whose contract is not proved; `report.to_sql`
+does the same for a report (`report.to_substrait()` is the portable plan):
 
 ```python
-from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, Unsupported, to_sql
-
-plan = json.loads(node.internal_plan)
-for dialect in (DUCKDB, SNOWFLAKE, SPARK):
-    assert to_sql(plan, dialect).startswith("SELECT")
+for dialect in ("duckdb", "snowflake", "spark"):
+    assert node.to_sql(dialect).startswith("SELECT")
 ```
 
-`sverify.engines.run(con, plan, engine)` runs a written plan over a
-connection's tables, and `run_spark(plan, tables)` on a Spark session
-configured with `SPARK_CONF`.
+`sverify.engines.run(con, node.internal_plan, engine)` runs the plan over a
+connection's tables; `engine="spark"` or a Spark session configured with
+`SPARK_CONF` runs it on Spark. `sverify.engines.to_sql(plan, dialect)` writes
+any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
 
@@ -80,27 +78,38 @@ configured with `SPARK_CONF`.
 answering differently from the model:
 
 ```python
+from sverify.engines import Unsupported
+
+
 @sv.transform()
 def numbered(orders):
     w = ibis.window(group_by="id", order_by="amount")
     return orders.mutate(rn=ibis.row_number().over(w))
 
 
-plan = json.loads(numbered(orders).internal_plan)
 try:
-    to_sql(plan, SNOWFLAKE)
+    numbered(orders).to_sql("snowflake")
 except Unsupported as e:
     print(str(e).split(",")[0])
 # Snowflake tables have no row order
-print(to_sql(plan, SNOWFLAKE, deterministic=True)[:6])
+
+
+@sv.transform(requires={"orders": [sv.unique("id")]})
+def numbered_by_id(orders):
+    w = ibis.window(group_by="id", order_by="amount")
+    return orders.mutate(rn=ibis.row_number().over(w))
+
+
+print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is deterministic
 # SELECT
 ```
 
 * **Snowflake and Spark tables have no row order**, so sorts, `LIMIT` and
-  windows are refused unless you pass `deterministic=True`, and so is `SUM` or
-  `AVG` of doubles (the rounding depends on the order of additions). Pass
-  `deterministic=True` only when a contract report says `deterministic` (a key on
-  the partition and order columns rules out ties).
+  windows are refused unless the report is `deterministic` (a key on the
+  partition and order columns rules out ties), and so is `SUM` or `AVG` of
+  doubles (the rounding depends on the order of additions). `node.to_sql` and
+  `report.to_sql` read it from the report; `sverify.engines.to_sql` takes
+  `deterministic=True`, which you pass only when a report says so.
 * **Snowflake has no interval type**: interval-valued expressions are refused.
 * **Warehouse setup the SQL assumes:** Snowflake time columns are
   `TIMESTAMP_NTZ`, strings have no collation, names are quoted lower case;

@@ -1,40 +1,44 @@
 """Engines, SQL and plans: the lower-level tools under `sverify`'s transforms.
 
-    import json
-
     import sverify as sv
-    from sverify.engines import SNOWFLAKE, create_table, run, to_sql
+    from sverify.engines import run
 
-    plan = node.internal_plan         # the plan Lean checked
+    node.refresh(engine="polars")     # or "duckdb", "datafusion", "spark"
+    node.to_sql("snowflake")          # or "duckdb", "spark"; report.to_sql too
     con = sv.connect()
-    create_table(con, "orders", schema, rows)
-    run(con, plan, "polars")          # or "duckdb", "datafusion", "spark"
-    to_sql(plan, SNOWFLAKE)
+    con.create("orders", schema, rows)
+    run(con, node.internal_plan, "polars")
 
 Running plans:
 
-* `run` runs a plan in Lean's written form on DuckDB, Polars or DataFusion
-  (`ENGINES`), or on Spark, over a `Connection`'s tables (`sv.connect()`
-  makes one); `run_substrait_json` runs any Substrait plan on DataFusion;
-  `run_sharded` runs a plan shard by shard and combines the results;
-  `run_spark` runs a plan on a Spark session configured with `SPARK_CONF`
-  (`pip install 'sverify[spark]'`).
+* `run` runs a plan in sverify's internal form on DuckDB, Polars or
+  DataFusion (`ENGINES`), or on Spark (`"spark"`, or a Spark session
+  configured with `SPARK_CONF`; `pip install 'sverify[spark]'`), over a
+  `Connection`'s tables (`sv.connect()` makes one; `con.create`, `con.put`
+  and `con.rows` put rows in and read them back). `run_sharded` runs a plan
+  shard by shard and combines the results.
 * `sv.Report.run` runs the plan a `sv.verify` report checked.
-* `create_table` and `table_rows` put rows into a connection and read them back.
-
-Plans:
-
-* A node's `plan` is the plan Lean checked, in Lean's written form.
-* `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
-  is a plan as Lean parsed and wrote it back, the form `run` and `to_sql` take; `delta_plans` are
-  the weighted delta plans Lean derives for incremental maintenance.
 
 SQL:
 
-* `to_sql` writes a plan as SQL whose meaning is Lean's, in a `Dialect`:
-  `DUCKDB`, `SNOWFLAKE` or `SPARK`. What it cannot write it refuses
-  (`Unsupported`, the same class as `sverify.errors.Unsupported`, which
-  every refusal of sverify raises).
+* `Node.to_sql` and `Report.to_sql` write the plan a proof checked as SQL
+  whose meaning is the proof's, in a `Dialect`: `DUCKDB`, `SNOWFLAKE` or
+  `SPARK`. What a dialect cannot write is refused (`Unsupported`, the same
+  class as `sverify.errors.Unsupported`). `Dialect`'s SQL-writing methods
+  and subclassing it are outside the 1.x promise.
+
+Plans, the low-level layer, outside the 1.x promise (they take sverify's
+internal plan, and may change in a minor release):
+
+* `to_sql` writes any plan in sverify's internal form as SQL.
+* `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
+  is a plan as the checker parsed and wrote it back, the form `run` and
+  `to_sql` take; `run_substrait_json` runs a Substrait plan on DataFusion;
+  `delta_plans` are the weighted delta plans the checker derives for
+  incremental maintenance.
+
+Deprecated: `create_table` (`con.create`), `table_rows` (`con.rows`),
+`run_spark` (`run(con, plan, "spark")`).
 """
 
 from __future__ import annotations
@@ -60,16 +64,40 @@ from sverify.sql.snowflake import SNOWFLAKE
 from sverify.sql.spark import SPARK, SPARK_CONF
 
 if TYPE_CHECKING:
-    from sverify.spark_engine import run as run_spark
+    from collections.abc import Mapping
+
+    import pyarrow as pa
 
 
-def __getattr__(name: str) -> Any:
-    # Spark is an extra: its engine is imported when first used.
-    if name == "run_spark":
-        from sverify.spark_engine import run
+def run_spark(
+    plan: str | dict,
+    tables: Mapping[str, pa.Table],
+    spark: Any = None,
+    *,
+    deterministic: bool = False,
+    tie_free: bool | None = None,
+) -> pa.Table:
+    """Deprecated: `run(con, plan, "spark")`, or `run(con, plan, spark)` for
+    a session of your own, over a connection's tables.
 
-        return run
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    A window that needs a row order is written for Spark when the contract
+    states the order key (`sv.unique(...)` on the order columns): the
+    report is then `deterministic`, and `Node.to_sql("spark")` and
+    `Report.to_sql("spark")` write the window without a tiebreak.
+    """
+    import warnings
+
+    warnings.warn(
+        "sverify.engines.run_spark is deprecated; write run(con, plan, 'spark') or "
+        "run(con, plan, spark_session). For a window without a row order, state the "
+        "order key as sv.unique(...) in the contract and use node.to_sql('spark') or "
+        "report.to_sql('spark')",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from sverify.spark_engine import run as _run
+
+    return _run(plan, tables, spark, deterministic=deterministic, tie_free=tie_free)
 
 
 __all__ = [

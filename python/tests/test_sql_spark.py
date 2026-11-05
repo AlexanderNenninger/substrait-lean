@@ -208,7 +208,9 @@ def test_groups_have_one_zero_and_one_nan(spark):
     con = connect()
     z = pa.table({"x": pa.array([-0.0, 0.0, -0.0, None, math.nan], pa.float64())})
     put_table(con, "z", z)
-    plan = written_plan(substrait_json(con, "SELECT x, count(*) AS n FROM z GROUP BY x"))
+    plan = written_plan(
+        substrait_json(con, "SELECT x, count(*) AS n FROM z GROUP BY x", semantics="duckdb")
+    )
     got = [tuple(r.values()) for r in spark_engine.run(plan, {"z": z}, spark).to_pylist()]
     duck = [tuple(r.values()) for r in run_plan(con, plan, "duckdb").to_pylist()]
     assert canonical(got) == canonical(duck)
@@ -273,7 +275,7 @@ def polars_rows(sql: str, values: list[int | None]) -> list[tuple]:
     """Polars runs the plan Lean writes, and agrees with Lean (`test_time`)."""
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
-    out = run_plan(con, written_plan(substrait_json(con, sql)), "polars")
+    out = run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "polars")
     cols = [c.cast(pa.int64()) if pa.types.is_timestamp(c.type) else c for c in out.columns]
     return [tuple(r.values()) for r in pa.table(cols, names=out.column_names).to_pylist()]
 
