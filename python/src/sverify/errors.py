@@ -11,7 +11,7 @@ The same classes are importable where they are defined (`sverify.routes.RouteErr
   transform's precondition does not follow from what the transform feeding
   it guarantees.
 * `PreconditionError`, `PostconditionError`: a condition checked on the data
-  failed (an input, or an output in `on_unproved="runtime"` mode). A
+  failed (an input, or an output in `on_unproved="check"` mode). A
   `PreconditionError` names the table (`.source`) and the condition
   (`.condition`), and holds up to ten of the rows that break it (`.rows`).
 * `NotIncremental`: a plan has no verified delta rules.

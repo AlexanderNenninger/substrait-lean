@@ -1,5 +1,5 @@
 """`on_inferred=` (#655): a precondition sverify infers is an error by
-default, assumed with a warning on "warn", assumed silently on "silent"."""
+default, assumed with a warning on "warn", assumed silently on "ignore"."""
 
 import warnings
 
@@ -77,7 +77,7 @@ def test_warn_and_silent_assume_it(con) -> None:
     assert warned.proved and warned.needed == {}
     with warnings.catch_warnings():
         warnings.simplefilter("error", InferredPreconditionWarning)
-        silent = sv.verify(expr, on_inferred="silent")
+        silent = sv.verify(expr, on_inferred="ignore")
     assert silent.proved
     assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(silent)
     with pytest.raises(PreconditionError, match="inferred from `total // qty`"):
@@ -100,7 +100,7 @@ def test_a_transform_raises_unless_told(con) -> None:
     ):
         src.pipe(doubled)
 
-    @sv.transform(requires={"orders": [_.amount >= 0]}, on_inferred="silent")
+    @sv.transform(requires={"orders": [_.amount >= 0]}, on_inferred="ignore")
     def assumed(orders):
         return orders.select(orders.id, x=orders.amount * 2)
 
