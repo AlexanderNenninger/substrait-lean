@@ -28,8 +28,14 @@ SCHEMA = json.loads(
 )
 
 
+# Checked once: `jsonschema.validate` checks the 110 KB schema itself on
+# every call, 83 ms against 5 ms for a document.
+jsonschema.validators.validator_for(SCHEMA).check_schema(SCHEMA)
+VALIDATOR = jsonschema.validators.validator_for(SCHEMA)(SCHEMA)
+
+
 def valid(doc: dict) -> dict:
-    jsonschema.validate(doc, SCHEMA)
+    VALIDATOR.validate(doc)
     return doc
 
 
