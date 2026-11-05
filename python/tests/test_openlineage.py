@@ -23,7 +23,7 @@ from sverify import openlineage as ol
 from sverify.cli import main
 from sverify.contracts import MaxRows, Unique
 from sverify.errors import PreconditionError
-from sverify.io import DeltaSink, StaticSource
+from sverify.io import Changes, DeltaSink, StaticSource
 
 # The wheel's tests install only what the Wheels workflow lists.
 jsonschema = pytest.importorskip("jsonschema")
@@ -217,7 +217,7 @@ def test_the_plan_parts_are_built_once_per_node(tmp_path, monkeypatch):
     log = tmp_path / "events.jsonl"
     lineage = ol.Lineage(log)
     p.refresh(lineage=lineage)
-    src.apply(sv.Changes(inserts=[(4, 10, 70)]))
+    src.apply(Changes(inserts=[(4, 10, 70)]))
     p.refresh(lineage=lineage)
     assert len(calls) == 1
     first, second = (e for e in events(log) if e["eventType"] == "COMPLETE")

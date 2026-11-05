@@ -33,7 +33,7 @@ Emitting is off unless a refresh gets `lineage=` (or the command line
 * `read` reads events from a JSON lines file (the file transport's), a
   list of events, or a Marquez server (`marquez`). An upstream dataset's
   `requires` holds the postconditions of its `sverify_contract` facet that
-  sverify proves again from the exported plan (`sv.from_substrait`); every
+  sverify proves again from the exported plan (`sv.Report.from_substrait`); every
   other claim, and every other tool's `dataQualityAssertions`, is checked
   evidence (`evidence`), never proof.
 
@@ -796,7 +796,7 @@ class Upstream:
     def verified(self) -> bool:
         """Whether sverify proved the `sverify_contract` facet's contract
         again: the facet carries its plan exported to Substrait, the
-        checker proves the plan's postconditions (`sv.from_substrait`), and
+        checker proves the plan's postconditions (`sv.Report.from_substrait`), and
         the export is the plan the facet names."""
         self._verify()
         return self._report is not None and self._report.proved
@@ -829,11 +829,10 @@ class Upstream:
             self._why = "the facet carries no plan to prove again"
             self._claims(c)
             return
-        import sverify as sv
-        from sverify.contracts import max_rows, unique
+        from sverify.contracts import Report, max_rows, unique
 
         try:
-            report = sv.from_substrait(export)
+            report = Report.from_substrait(export)
         except Exception as e:  # noqa: BLE001 - an export the checker rejects is evidence only
             self._why = f"the checker rejects the exported plan: {e}"
             self._claims(c)

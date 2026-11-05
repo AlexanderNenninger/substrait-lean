@@ -1415,7 +1415,7 @@ it (`producer`), and
 - `requires`: the postconditions of its `sverify_contract` facet that
   sverify proves again, for a downstream transform's `requires`. The facet
   counts as proved only where it carries its exported plan and the checker
-  proves that plan's postconditions (`sv.from_substrait`): a contract
+  proves that plan's postconditions (`sv.Report.from_substrait`): a contract
   chains across pipelines, repositories and teams, and each link is proved
   where it is used.
 - `evidence`: everything else, as checked evidence: other
