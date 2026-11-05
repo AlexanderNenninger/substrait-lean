@@ -1,0 +1,47 @@
+# Publish the catalog to GitHub Pages: production's at the root, each open
+# pull request's preview at pr/<n>/. The refresh and preview workflows start
+# it after they push the `data` branch. Turn Pages on once: Settings, Pages,
+# Source: GitHub Actions.
+name: pages
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: _data
+      - run: |
+          mkdir -p site
+          if [ -d _data/site ]; then
+            cp -R _data/site/. site/
+          else
+            echo "<p>No refresh yet: run the refresh workflow.</p>" > site/index.html
+          fi
+          for d in _data/staging/pr-*/site; do
+            [ -d "$d" ] || continue
+            n=$(basename "$(dirname "$d")")
+            mkdir -p "site/pr/${n#pr-}"
+            cp -R "$d/." "site/pr/${n#pr-}/"
+          done
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

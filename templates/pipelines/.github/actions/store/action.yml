@@ -1,0 +1,108 @@
+name: Open the store
+description: >-
+  Check out the `data` branch into `_data/` (created on first use) and point
+  SVERIFY_LAKE at the stage's tables. With the repository variable
+  SVERIFY_STORE unset or `repository` (everything in your repository), the
+  tables are on the `data` branch too. Otherwise (for enterprise) log in to
+  the cloud through OIDC with the environment's variables, so delta-rs finds
+  short-lived credentials in the environment.
+inputs:
+  stage:
+    description: "`production` or `staging/pr-<n>`"
+    required: true
+  store:
+    description: "`repository`, `s3`, `r2`, `gcs`, `azure` or `minio` (vars.SVERIFY_STORE)"
+    default: repository
+  bucket:
+    description: "For enterprise: the lake's root, such as s3://my-lake/pipelines (vars.SVERIFY_BUCKET)"
+    default: ""
+outputs:
+  lake:
+    description: Where the stage's tables are
+    value: ${{ steps.lake.outputs.lake }}
+runs:
+  using: composite
+  steps:
+    # The `data` branch: the catalog sites, and with everything in your
+    # repository the tables too.
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+        if git ls-remote --exit-code --heads "$url" data >/dev/null; then
+          git clone --quiet --depth 1 --branch data "$url" _data
+        else
+          git init --quiet -b data _data
+          git -C _data remote add origin "$url"
+          printf 'Tables written by the refresh and preview workflows.\n' > _data/README.md
+          git -C _data add README.md
+          git -C _data commit --quiet -m "Start the data branch"
+        fi
+
+    # For enterprise: AWS S3, or MinIO and R2 through their S3 API.
+    - if: inputs.store == 's3'
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ env.SVERIFY_AWS_ROLE }}
+        aws-region: ${{ env.AWS_REGION }}
+    - if: inputs.store == 'gcs'
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.SVERIFY_GCP_PROVIDER }}
+        service_account: ${{ env.SVERIFY_GCP_SERVICE_ACCOUNT }}
+    - if: inputs.store == 'azure'
+      uses: azure/login@v2
+      with:
+        client-id: ${{ env.AZURE_CLIENT_ID }}
+        tenant-id: ${{ env.AZURE_TENANT_ID }}
+        allow-no-subscriptions: true
+    - if: inputs.store == 'azure'
+      shell: bash
+      run: |
+        # delta-rs reads these: the Azure CLI login above stands behind them.
+        echo "AZURE_USE_AZURE_CLI=true" >> "$GITHUB_ENV"
+    # MinIO over Tailscale: join the tailnet as an ephemeral, tagged node,
+    # then fetch short-lived MinIO keys from OpenBao with the Actions OIDC
+    # token (OpenBao speaks Vault's API).
+    - if: inputs.store == 'minio'
+      uses: tailscale/github-action@v3
+      with:
+        oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
+        oauth-secret: ${{ env.TS_OAUTH_SECRET }}
+        tags: ${{ env.TS_TAGS }}
+    - if: inputs.store == 'minio'
+      uses: hashicorp/vault-action@v3
+      with:
+        url: ${{ env.OPENBAO_ADDR }}
+        method: jwt
+        jwtGithubAudience: openbao
+        role: ${{ env.OPENBAO_ROLE }}
+        secrets: ${{ env.OPENBAO_SECRETS }}
+        exportEnv: true
+    - if: inputs.store == 'minio' || inputs.store == 'r2'
+      shell: bash
+      run: |
+        echo "AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:?set the variable AWS_ENDPOINT_URL}" >> "$GITHUB_ENV"
+        echo "AWS_REGION=${AWS_REGION:-auto}" >> "$GITHUB_ENV"
+        if [ "${AWS_ENDPOINT_URL#http://}" != "$AWS_ENDPOINT_URL" ]; then
+          echo "AWS_ALLOW_HTTP=true" >> "$GITHUB_ENV"
+        fi
+
+    - id: lake
+      shell: bash
+      env:
+        STORE: ${{ inputs.store }}
+        BUCKET: ${{ inputs.bucket }}
+        STAGE: ${{ inputs.stage }}
+      run: |
+        if [ "$STORE" = repository ]; then
+          lake="$PWD/_data/$STAGE"
+        else
+          lake="${BUCKET:?set the repository variable SVERIFY_BUCKET}"
+          lake="${lake%/}/$STAGE"
+        fi
+        echo "SVERIFY_LAKE=$lake" >> "$GITHUB_ENV"
+        echo "lake=$lake" >> "$GITHUB_OUTPUT"
