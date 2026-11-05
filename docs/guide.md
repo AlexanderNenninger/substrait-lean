@@ -1326,6 +1326,106 @@ deletion vectors the statistics cover deleted rows too, which still bounds
 the live ones). Iceberg tables with equality deletes can't be read. What is
 proved is listed under [Table formats](how-it-works.md#table-formats).
 
+### OpenLineage
+
+[OpenLineage](https://openlineage.io) is the standard for lineage and run
+events: Airflow, Spark and dbt emit it, and Marquez, DataHub, OpenMetadata
+and the cloud catalogs read it. A refresh emits a run per node, and
+`sverify.openlineage` reads what upstream jobs emitted
+([#792](https://github.com/AlexanderNenninger/substrait-lean/issues/792)).
+The events follow spec 2-0-2, the spec of `openlineage-python` 1.55.0, and
+the tests validate every event and facet against it
+([tests/standards/](../python/tests/standards/openlineage-1.55.0/),
+[test_openlineage.py](../python/tests/test_openlineage.py)).
+
+```python
+from sverify import openlineage
+
+node.refresh(lineage=openlineage.Lineage("http://marquez:5000", namespace="shop"))
+node.refresh(lineage="lineage/events.jsonl")  # a file, one event per line
+node.refresh(lineage="console")
+node.refresh(lineage=True)  # openlineage.yml and OPENLINEAGE_*, with sverify[openlineage]
+```
+
+```bash
+sverify refresh pipelines/orders.py:paid --lineage http://marquez:5000
+```
+
+Sverify sends nothing and opens no connection unless a refresh gets
+`lineage=` (`--lineage` on the command line). `OPENLINEAGE_DISABLED=true`
+turns it off again, `OPENLINEAGE_NAMESPACE` sets the jobs' namespace and
+`OPENLINEAGE_API_KEY` a bearer token. A target that fails warns with
+`openlineage.LineageWarning`, and the refresh goes on. The file, console
+and HTTP targets need nothing; `lineage=True` reads the OpenLineage
+client's configuration (any of its transports, Kafka included) and needs
+`pip install 'sverify[openlineage]'`.
+
+Each node is a job named after the node, and each refresh of it a run:
+START, then COMPLETE, or FAIL with the error (a node held by a failed
+precondition, or an exception), or ABORT for the nodes an earlier failure
+kept from running. The run's inputs are the node's sources and the stored
+nodes it reads, at their versions, with the `schema`, `dataSource` and
+`version` facets, and the preconditions checked on their rows as
+`dataQualityAssertions`. Its output is the node's sink, with `schema`,
+`dataSource`, `version`, `outputStatistics`, the postconditions checked on
+the data as `dataQualityAssertions`, and two more facets:
+
+- `columnLineage`, from the plan Lean checked: each output column with the
+  input columns it is copied (`IDENTITY`), computed (`TRANSFORMATION`) or
+  aggregated (`AGGREGATION`) from, and the columns that pick the rows
+  (`FILTER`, `JOIN`, `GROUP_BY`, `SORT`, `WINDOW`);
+- `sverify_contract`, a custom facet with a JSON schema
+  ([openlineage-contract-facet.schema.json](../python/src/sverify/schemas/openlineage-contract-facet.schema.json),
+  format 1): the node, the sha256 of its plan, each postcondition with its
+  status (`proved`, `checked`, `not_proved`), the preconditions, the route
+  and class, the outcome, quarantined rows, and the verified plan exported
+  to Substrait ([Exporting to Substrait](#exporting-to-substrait);
+  `Lineage(plan=False)` leaves it out).
+
+Datasets are named by OpenLineage's conventions: a Delta table in object
+storage is `s3://bucket` and its path, a local one `file` and its absolute
+path, an Iceberg table `iceberg://<catalog>` and its identifier, and other
+sources `sverify` and their name.
+
+`openlineage.read(path)` reads events from a JSON lines file (or a list of
+events), and `openlineage.marquez(url, namespace, name)` reads a dataset
+from Marquez's API. `dataset(source)` gives what upstream jobs said of a
+source: its `schema` as an Ibis schema, its `version`, the job that wrote
+it (`producer`), and
+
+- `requires`: the postconditions of its `sverify_contract` facet that
+  sverify proves again, for a downstream transform's `requires`. The facet
+  counts as proved only where it carries its exported plan and the checker
+  proves that plan's postconditions (`sv.from_substrait`): a contract
+  chains across pipelines, repositories and teams, and each link is proved
+  where it is used.
+- `evidence`: everything else, as checked evidence: other
+  tools' `dataQualityAssertions` (a dbt test, a Great Expectations suite),
+  and the claims of a facet sverify could not prove again
+  (`why_unverified` says why).
+
+```python
+upstream = openlineage.read("lineage/events.jsonl").dataset(orders)
+
+@sv.transform(requires={"orders": upstream.requires}, ensures=[...])
+def paid(orders): ...
+
+paid.check(orders=upstream.schema)
+```
+
+To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
+0.51.1 and its Postgres in containers, with the API on port 5000;
+`test_marquez_round_trip` runs against it when
+`SVERIFY_MARQUEZ_URL` is set. DataHub takes OpenLineage events at
+`/openapi/openlineage/api/v1/lineage` on its GMS, so its target is the
+GMS's URL with that prefix and a personal access token:
+
+```python
+lineage = openlineage.Lineage(
+    "http://datahub-gms:8080/openapi/openlineage", api_key=os.environ["DATAHUB_TOKEN"]
+)
+```
+
 ### Time buckets: bounded state
 
 A node that aggregates by a time bucket keeps a row per bucket and group, so
