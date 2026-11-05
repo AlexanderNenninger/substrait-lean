@@ -1,5 +1,5 @@
 import SubstraitLean.Partition
-import SubstraitLean.LoweringDuckDB
+import SubstraitLean.Profile
 import SubstraitLean.StatProps
 
 /-!
@@ -343,12 +343,5 @@ theorem Rel.guardFree_allowed {cat : Catalog} (hcat : cat.WF) {A : String → Li
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     {I : Impl} (hI : I.Faithful) : r.Allowed cat (r.evalI I cat) := by
   rw [Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm hI]; exact r.eval_allowed cat
-
-/-- The DuckDB shim: unless the shimmed plan raises, DuckDB returns an allowed
-result. -/
-theorem Rel.duckdb_shim_allowed {cat : Catalog} {r : Rel}
-    (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
-    r.Allowed cat ((Lowering.duckdb.lowerRel r).evalI (Profile.duckdb {}).impl cat) := by
-  rw [Rel.duckdb_shim_sound h]; exact r.eval_allowed cat
 
 end Substrait

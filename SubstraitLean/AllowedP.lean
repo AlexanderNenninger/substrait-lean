@@ -304,15 +304,15 @@ theorem groupRowsI_lean (gs : List Expr) : groupRowsI Impl.lean gs = groupRows g
 
 /-- The reference's choices of the relational options. -/
 theorem reference_allows_sum : Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["ANY"] := by
-  decide
+  decide +kernel
 theorem reference_allows_var :
-    Profile.reference.table.allows "agg.var" "stat_algo" [] = ["GENERIC"] := by decide
+    Profile.reference.table.allows "agg.var" "stat_algo" [] = ["GENERIC"] := by decide +kernel
 theorem reference_allows_stat :
-    Profile.reference.table.allows "agg.stat" "stat_algo" [] = ["GENERIC"] := by decide
+    Profile.reference.table.allows "agg.stat" "stat_algo" [] = ["GENERIC"] := by decide +kernel
 theorem reference_allows_quant :
-    Profile.reference.table.allows "agg.quant" "quantile_interp" [] = ["BETWEEN"] := by decide
+    Profile.reference.table.allows "agg.quant" "quantile_interp" [] = ["BETWEEN"] := by decide +kernel
 theorem reference_allows_clustered :
-    Profile.reference.table.allows "rel.sort" "clustered" [] = ["ADJACENT"] := by decide
+    Profile.reference.table.allows "rel.sort" "clustered" [] = ["ADJACENT"] := by decide +kernel
 
 theorem AggExtra.not_reference (f : AggFn) : ¬AggExtra Profile.reference.table f :=
   fun ⟨_, _, _, _, _, _, _, _, hb, hn⟩ => hn hb
