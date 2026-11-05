@@ -1182,13 +1182,12 @@
   "contract": {
    "proved": false,
    "guard_free": true,
-   "deterministic": false,
    "inferred": [
     "store_sales: (_.ss_ext_sales_price >= 0.01)"
    ]
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpcds-q42": {
