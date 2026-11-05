@@ -32,12 +32,11 @@ Json = dict[str, Any]
 
 
 def _sverify_version() -> str:
-    from importlib.metadata import PackageNotFoundError, version
+    """The installed version, as `sverify` read it at import: reading the
+    package metadata again took 88 % of `to_json`'s time."""
+    import sverify
 
-    try:
-        return version("sverify")
-    except PackageNotFoundError:
-        return "unknown"
+    return sverify.__version__
 
 
 def _value(v: Any) -> Any:
