@@ -22,7 +22,7 @@ from pyiceberg.types import StringType
 import sverify as sv
 from sverify._scan import Scan
 from sverify.incremental import Pipeline, snapshot_diff
-from sverify.io import DeltaSource, IcebergSink, IcebergSource
+from sverify.io import Changes, DeltaSource, IcebergSink, IcebergSource
 
 FIXTURE_DV = Path(__file__).parent / "data" / "delta_deletion_vectors"
 CDF = {"delta.enableChangeDataFeed": "true"}
@@ -231,7 +231,7 @@ def test_delta_refreshes_match_the_arrow_path(tmp_path, monkeypatch):
         DeltaTable(str(path)).update({"x": "x + 1.0"}, predicate="id < 10")
 
     reports = follow(lambda: DeltaSource(str(path)), [append, delete, update], monkeypatch)
-    assert [r.sources[0].mode for r in reports] == ["change feed"] * 3
+    assert [r.sources[0].mode for r in reports] == ["change_feed"] * 3
 
 
 def test_delta_where_refreshes_match_the_arrow_path(tmp_path, monkeypatch):
@@ -291,7 +291,7 @@ def test_delta_deletes_are_checked_against_the_files(tmp_path, monkeypatch):
 
     def wrong(self, since, *args):
         out = real(self, since, *args)
-        out.changes = sv.Changes(deletes=[(7,)])
+        out.changes = Changes(deletes=[(7,)])
         return out
 
     monkeypatch.setattr(DeltaSource, "changes", wrong)
@@ -331,7 +331,7 @@ def test_iceberg_position_deletes(catalog):
     node = src.pipe(lambda o: o.select(o.id, o.amount)).write(IcebergSink(catalog, "db.out"))
     node.refresh()
     src.table().delete("id IN (2, 5)")
-    assert node.refresh().writes[0].mode == "row-level"
+    assert node.refresh().writes[0].mode == "row_level"
     out = IcebergSource(catalog, "db.out")
     scan = native(out)
     assert scan.deleted is not None and scan.deleted.num_rows == 2
@@ -370,7 +370,7 @@ def test_iceberg_refreshes_match_the_arrow_path(catalog, monkeypatch):
         src.table().delete("id >= 25")
 
     reports = follow(lambda: IcebergSource(catalog, "db.t"), [append, delete], monkeypatch)
-    assert [r.sources[0].mode for r in reports] == ["change feed", "snapshot diff"]
+    assert [r.sources[0].mode for r in reports] == ["change_feed", "snapshot_diff"]
 
 
 def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
@@ -385,7 +385,7 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
         monkeypatch,
         view=lambda t: t.filter(t.x > 100.0),
     )
-    assert reports[0].sources[0].mode == "change feed"
+    assert reports[0].sources[0].mode == "change_feed"
     pipe = Pipeline(sv.connect())
     t = pipe.source("t", DeltaSource(str(path)))
     assert pipe.view("v", t.filter(t.x > 100.0)).rows()[0][0] == 2

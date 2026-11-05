@@ -221,8 +221,8 @@ class World:
     def contract(self, name: str) -> Any:
         """The contract the sink's last commit recorded, with its epoch."""
         if self.kind == "iceberg":
-            return IcebergSink(self.catalog(), f"db.{name}").committed()
-        return DeltaSink(self.sink_uri(name), storage_options=self.options).committed()
+            return IcebergSink(self.catalog(), f"db.{name}").contract()
+        return DeltaSink(self.sink_uri(name), storage_options=self.options).contract()
 
     def txn(self, name: str) -> int | None:
         """The epoch the sink's transaction records (Delta's `txn` action;

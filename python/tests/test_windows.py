@@ -176,7 +176,7 @@ def test_strict_order_under_a_key():
         return n.mutate(gap=n.ts - n.prev_ts)
 
     gaps(readings)
-    report = gaps.last_report
+    report = gaps.report
     assert report is not None and report.proved, str(report)
     assert report.facts["gap"] == "an interval ≥ 0:00:00.000001 or NULL"
 
