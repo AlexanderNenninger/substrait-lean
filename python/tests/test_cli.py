@@ -127,7 +127,7 @@ def test_the_json_document(tmp_path, capsys):
     assert set(item) == {"name", "nodes", "status", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
-    assert item["report"]["format"] == 1 and item["report"]["proved"] is False
+    assert item["report"]["format"] == 2 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):

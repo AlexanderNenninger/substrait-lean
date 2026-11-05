@@ -3,12 +3,24 @@
   "deterministic": true,
   "dialect": "ibis",
   "ensures": [],
+  "equivalence": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
   "facts": {
     "r": "any integer or NULL"
   },
   "floats_on": {},
-  "format": 1,
-  "hints": [],
+  "format": 2,
   "implied": {},
   "inferred": {
     "orders": [
@@ -30,23 +42,25 @@
       "code": "_.total >= -9 * 10**18",
       "column": "total",
       "issue": {
-        "column": null,
-        "constant": false,
-        "error": true,
-        "expr": "($2 / $1)",
-        "hint": "state `(_.total >= -9 * 10**18)` in the requires of 'orders'",
-        "kind": "overflow",
-        "message": "overflow: total // qty",
-        "needs": [
-          "(_.total >= -9 * 10**18)"
-        ],
-        "shown": "total // qty",
-        "suggested": {
-          "orders": [
-            "(_.total >= -9 * 10**18)"
-          ]
+        "kind": "fail",
+        "level": "error",
+        "message": {
+          "text": "overflow: total // qty"
         },
-        "under_and_or": false
+        "properties": {
+          "column": null,
+          "constant": false,
+          "hint": "state `(_.total >= -9 * 10**18)` in the requires of 'orders'",
+          "needs": [
+            {
+              "label": "(_.total >= -9 * 10**18)",
+              "table": "orders"
+            }
+          ],
+          "shown": "total // qty",
+          "under_and_or": false
+        },
+        "ruleId": "overflow"
       },
       "label": "(_.total >= -9 * 10**18)",
       "op": ">=",
@@ -58,23 +72,25 @@
       "code": "_.qty != 0",
       "column": "qty",
       "issue": {
-        "column": null,
-        "constant": false,
-        "error": true,
-        "expr": "($2 / $1)",
-        "hint": "state `(_.qty != 0)` in the requires of 'orders'",
-        "kind": "division by zero",
-        "message": "division by zero: total // qty",
-        "needs": [
-          "(_.qty != 0)"
-        ],
-        "shown": "total // qty",
-        "suggested": {
-          "orders": [
-            "(_.qty != 0)"
-          ]
+        "kind": "fail",
+        "level": "error",
+        "message": {
+          "text": "division by zero: total // qty"
         },
-        "under_and_or": false
+        "properties": {
+          "column": null,
+          "constant": false,
+          "hint": "state `(_.qty != 0)` in the requires of 'orders'",
+          "needs": [
+            {
+              "label": "(_.qty != 0)",
+              "table": "orders"
+            }
+          ],
+          "shown": "total // qty",
+          "under_and_or": false
+        },
+        "ruleId": "division_by_zero"
       },
       "label": "(_.qty != 0)",
       "op": "<>",
@@ -84,19 +100,6 @@
     }
   ],
   "not_null": [],
-  "observation": {
-    "components": {
-      "decimals": "exact",
-      "elements": "sequence",
-      "errors": "exact",
-      "floats": "plan",
-      "rows": "multiset",
-      "strings": "exact",
-      "timestamps": "ns",
-      "zeros": "exact"
-    },
-    "text": "equivalent(floats=plan)"
-  },
   "on_inferred": "error",
   "output": {
     "r": "int64"
@@ -114,8 +117,10 @@
   "rows": null,
   "semantics": "reference",
   "sverify": "0.5.0",
-  "tie_places": [],
-  "ties": {},
+  "ties": {
+    "needs": [],
+    "places": []
+  },
   "transfer": null,
   "verdict": "NOT proved: 2 preconditions needed"
 }

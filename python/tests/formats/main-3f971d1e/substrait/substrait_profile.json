@@ -1,0 +1,510 @@
+{
+  "advancedExtensions": {
+    "optimization": [
+      {
+        "@type": "type.googleapis.com/io.sverify.substrait.v1.Contract",
+        "ensures": [
+          {
+            "kind": "row",
+            "plan": {
+              "extensionUrns": [
+                {
+                  "extensionUrnAnchor": 1,
+                  "urn": "extension:io.substrait:functions_boolean"
+                },
+                {
+                  "extensionUrnAnchor": 2,
+                  "urn": "extension:io.substrait:functions_comparison"
+                },
+                {
+                  "extensionUrnAnchor": 3,
+                  "urn": "extension:io.substrait:functions_string"
+                }
+              ],
+              "extensions": [
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 3,
+                    "functionAnchor": 1,
+                    "name": "char_length:str"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 2,
+                    "functionAnchor": 2,
+                    "name": "lt:any_any"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 1,
+                    "functionAnchor": 3,
+                    "name": "not:bool"
+                  }
+                }
+              ],
+              "relations": [
+                {
+                  "root": {
+                    "input": {
+                      "project": {
+                        "common": {
+                          "emit": {
+                            "outputMapping": [
+                              2
+                            ]
+                          }
+                        },
+                        "expressions": [
+                          {
+                            "scalarFunction": {
+                              "arguments": [
+                                {
+                                  "value": {
+                                    "scalarFunction": {
+                                      "arguments": [
+                                        {
+                                          "value": {
+                                            "selection": {
+                                              "directReference": {
+                                                "structField": {
+                                                  "field": 1
+                                                }
+                                              },
+                                              "rootReference": {}
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "value": {
+                                            "literal": {
+                                              "i64": "0"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "functionReference": 2,
+                                      "outputType": {
+                                        "bool": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ],
+                              "functionReference": 3,
+                              "outputType": {
+                                "bool": {
+                                  "nullability": "NULLABILITY_NULLABLE"
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "input": {
+                          "project": {
+                            "common": {
+                              "emit": {
+                                "outputMapping": [
+                                  4,
+                                  5
+                                ]
+                              }
+                            },
+                            "expressions": [
+                              {
+                                "selection": {
+                                  "directReference": {
+                                    "structField": {}
+                                  },
+                                  "rootReference": {}
+                                }
+                              },
+                              {
+                                "scalarFunction": {
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "selection": {
+                                          "directReference": {
+                                            "structField": {
+                                              "field": 3
+                                            }
+                                          },
+                                          "rootReference": {}
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "functionReference": 1,
+                                  "outputType": {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                }
+                              }
+                            ],
+                            "input": {
+                              "read": {
+                                "baseSchema": {
+                                  "names": [
+                                    "id",
+                                    "amount",
+                                    "x",
+                                    "region"
+                                  ],
+                                  "struct": {
+                                    "nullability": "NULLABILITY_REQUIRED",
+                                    "types": [
+                                      {
+                                        "i64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "i64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "fp64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "string": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "namedTable": {
+                                  "names": [
+                                    "orders"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "names": [
+                      "(_.n >= 0)"
+                    ]
+                  }
+                }
+              ]
+            },
+            "proved": true,
+            "text": "(_.n >= 0)"
+          }
+        ],
+        "manifest": {
+          "assumptions": [],
+          "checker_contract": {
+            "ensures_keys": [],
+            "keys": {
+              "orders": []
+            },
+            "max_rows": {},
+            "references": {
+              "orders": []
+            },
+            "rows_per": {}
+          },
+          "class": "exact",
+          "deterministic": true,
+          "equivalence": "equivalent(floats=plan)",
+          "equivalence_components": {
+            "decimals": "exact",
+            "elements": "sequence",
+            "errors": "exact",
+            "floats": "plan",
+            "rows": "multiset",
+            "strings": "exact",
+            "timestamps": "ns",
+            "zeros": "exact"
+          },
+          "evidence": "proved",
+          "extension_urns": [
+            "extension:io.substrait:functions_string"
+          ],
+          "format": 2.0,
+          "output": {
+            "id": "int64",
+            "n": "int32"
+          },
+          "params": [],
+          "pinned": [],
+          "rows": null,
+          "semantics": "substrait",
+          "shims": [],
+          "shims_mode": "apply",
+          "substrait": "0.106.0",
+          "sverify": "0.5.0",
+          "unexercised": [],
+          "up_to": []
+        },
+        "requires": [
+          {
+            "kind": "row",
+            "plan": {
+              "extensionUrns": [
+                {
+                  "extensionUrnAnchor": 1,
+                  "urn": "extension:io.substrait:functions_boolean"
+                },
+                {
+                  "extensionUrnAnchor": 2,
+                  "urn": "extension:io.substrait:functions_comparison"
+                }
+              ],
+              "extensions": [
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 2,
+                    "functionAnchor": 1,
+                    "name": "is_null:any"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 1,
+                    "functionAnchor": 2,
+                    "name": "not:bool"
+                  }
+                }
+              ],
+              "relations": [
+                {
+                  "root": {
+                    "input": {
+                      "project": {
+                        "common": {
+                          "emit": {
+                            "outputMapping": [
+                              4
+                            ]
+                          }
+                        },
+                        "expressions": [
+                          {
+                            "scalarFunction": {
+                              "arguments": [
+                                {
+                                  "value": {
+                                    "scalarFunction": {
+                                      "arguments": [
+                                        {
+                                          "value": {
+                                            "selection": {
+                                              "directReference": {
+                                                "structField": {
+                                                  "field": 3
+                                                }
+                                              },
+                                              "rootReference": {}
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "functionReference": 1,
+                                      "outputType": {
+                                        "bool": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ],
+                              "functionReference": 2,
+                              "outputType": {
+                                "bool": {
+                                  "nullability": "NULLABILITY_NULLABLE"
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "input": {
+                          "read": {
+                            "baseSchema": {
+                              "names": [
+                                "id",
+                                "amount",
+                                "x",
+                                "region"
+                              ],
+                              "struct": {
+                                "nullability": "NULLABILITY_REQUIRED",
+                                "types": [
+                                  {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  },
+                                  {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  },
+                                  {
+                                    "fp64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  },
+                                  {
+                                    "string": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            "namedTable": {
+                              "names": [
+                                "orders"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "names": [
+                      "c"
+                    ]
+                  }
+                }
+              ]
+            },
+            "table": "orders",
+            "text": "_.region.notnull()"
+          }
+        ]
+      }
+    ]
+  },
+  "extensionUrns": [
+    {
+      "extensionUrnAnchor": 1,
+      "urn": "extension:io.substrait:functions_string"
+    }
+  ],
+  "extensions": [
+    {
+      "extensionFunction": {
+        "extensionUrnReference": 1,
+        "functionAnchor": 1,
+        "name": "char_length:str"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "project": {
+            "common": {
+              "emit": {
+                "outputMapping": [
+                  4,
+                  5
+                ]
+              }
+            },
+            "expressions": [
+              {
+                "selection": {
+                  "directReference": {
+                    "structField": {}
+                  },
+                  "rootReference": {}
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 3
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ],
+                  "functionReference": 1,
+                  "outputType": {
+                    "i64": {
+                      "nullability": "NULLABILITY_NULLABLE"
+                    }
+                  }
+                }
+              }
+            ],
+            "input": {
+              "read": {
+                "baseSchema": {
+                  "names": [
+                    "id",
+                    "amount",
+                    "x",
+                    "region"
+                  ],
+                  "struct": {
+                    "nullability": "NULLABILITY_REQUIRED",
+                    "types": [
+                      {
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "fp64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "string": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "namedTable": {
+                  "names": [
+                    "orders"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "names": [
+          "id",
+          "n"
+        ]
+      }
+    }
+  ],
+  "version": {
+    "minorNumber": 106,
+    "producer": "sverify 0.5.0"
+  }
+}

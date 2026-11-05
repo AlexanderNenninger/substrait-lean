@@ -404,7 +404,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 raise UsageError(f"{path} has no node {target!r}; it has {have}")
             # Proofs and planning end where `Group.refresh` has chosen its
             # routes (`sverify._hooks.planned`): the data moves unbounded.
-            done = node.refresh(engine=args.engine, audit=args.audit)
+            done = node.refresh(engine=args.engine, audit=args.audit, lineage=args.lineage)
     except BaseException as e:  # noqa: BLE001 - every outcome has an exit code
         if isinstance(e, KeyboardInterrupt | SystemExit):
             raise
@@ -532,6 +532,15 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("target", help="file.py:<node>")
     r.add_argument("--engine", default="duckdb", help="duckdb (the default), polars or spark")
     r.add_argument("--audit", action="store_true", help="compare every batch with recomputation")
+    r.add_argument(
+        "--lineage",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="TARGET",
+        help="send OpenLineage run events: to a file (JSON lines), 'console', a URL "
+        "(Marquez), or without TARGET as openlineage.yml and OPENLINEAGE_* say",
+    )
     r.set_defaults(run=cmd_refresh, full=False)
     e = sub.add_parser("explain", parents=[common], help="what a [code] of check's output means")
     e.add_argument("code", help="a code from check's output, such as may_be_false")

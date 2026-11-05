@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.6.0"
+version = "0.7.0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, DataFusion, Snowflake and Spark"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
@@ -38,9 +38,12 @@ iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
 flight = ["pyarrow>=26.0.0"]
 # `sverify.testing` and its pytest plugin; the plugin is registered without it.
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
+# `sverify.openlineage` with the OpenLineage client's own configuration (#792);
+# the file, console and HTTP targets need nothing.
+openlineage = ["openlineage-python>=1.55.0,<2"]
 # `sverify.odcs` writes and reads ODCS contracts as YAML (#791); JSON needs nothing.
 odcs = ["pyyaml>=6.0"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs]"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs,openlineage]"]
 
 # The command line (`sverify.cli`, #744).
 [project.scripts]
@@ -95,6 +98,9 @@ dev = [
     "marimo>=0.25.2",
     # S3 for the Delta sink tests, run as its own process (upstream/bugs/DL-1.json).
     "moto[server]>=5.1",
+    # Correctly rounded reference values for the Spark fuzzer
+    # (sverify_dev.spark_fuzz); it came only through sympy before.
+    "mpmath>=1.3.0",
     "poethepoet>=0.49.0",
     "pyiceberg[sql-sqlite]>=0.12.0",
     "pyrefly>=1.4.0",
