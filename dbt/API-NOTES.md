@@ -30,23 +30,23 @@ Closed in this PR:
 | 19 | `CheckedCondition.condition`: the condition as given in `ensures` |
 | 22 | The checker's pipes close when it stops |
 
-To file (larger than this PR):
+Filed (larger than this PR; the checklist is #692):
 
-| Note | Wanted |
-|---|---|
-| 2 | `class ConditionError(Unsupported)` with `.condition` and `.reason`, raised before the proof; or `CheckedCondition.status == "unreadable"` and the rest proved |
-| 3 | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
-| 6 | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
-| 7, 8, 9 | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
-| 10, 11 | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
-| 12 | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
-| 14 | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
-| 15 | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
-| 17 | A finite value set per string column in the range analysis (Lean) |
-| 18 | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
-| 20 | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
-| 21 | `Report.engine_version`, and a warning from `run` when the installed engine is another |
-| — | `CheckedCondition.suggested` as `Needed`-like records too: sverify-dbt still parses their SQL to write a dbt test (`mapping.as_dbt_test`) |
+| Note | Issue | Wanted |
+|---|---|---|
+| 2 | #699 | `class ConditionError(Unsupported)` with `.condition` and `.reason`, raised before the proof; or `CheckedCondition.status == "unreadable"` and the rest proved |
+| 3 | #700 | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
+| 6 | #701 | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
+| 7, 8, 9 | #687, #702, #703 | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
+| 10, 11 | #703, #704 | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
+| 12 | #705 | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
+| 14 | #706 | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
+| 15 | #707 | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
+| 17 | #708 | A finite value set per string column in the range analysis (Lean) |
+| 18 | #441 | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
+| 20 | #709 | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
+| 21 | #710 | `Report.engine_version`, and a warning from `run` when the installed engine is another |
+| — | #688 | `CheckedCondition.suggested` as `Needed`-like records too: sverify-dbt still parses their SQL to write a dbt test (`mapping.as_dbt_test`) |
 
 ## Errors
 
