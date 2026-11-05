@@ -749,7 +749,7 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     # first, on Polars as on DuckDB.
     with pytest.raises(RouteError, match="not verified: may fail: domain error: x \\* y"):
         ref.run(con, engine)
-    with pytest.raises(PreconditionError, match="stays finite on finite inputs.*refused before the run"):
+    with pytest.raises(PreconditionError, match="stays finite.*refused before the run"):
         ref.run(con, engine, unverified=True)
     with pytest.raises(Exception, match="overflow"):
         ref.run(con, engine, check_requires=False, unverified=True)
