@@ -146,22 +146,22 @@ def test_reports_say_what_was_set_aside():
     node = orders.pipe(make())
     r = node.refresh()
     entry = r[node.name]
-    assert entry.set_aside == 3
+    assert entry.quarantined == 3
     (q,) = entry.quarantine
     assert q.by_condition == {"(_.amount >= 0)": 1, "unique(id)": 2}
     assert q.examples is not None and q.examples.num_rows == 3
     assert r.outcome == "quarantined"
-    assert "orders: 3 row(s) set aside" in str(r)
+    assert "orders: 3 row(s) quarantined" in str(r)
     alert = r.alert()
     assert alert is not None and "(_.amount >= 0)" in alert and "| id | amount |" in alert
     doc = json.loads(r.to_json())
     assert doc["format"] == 1 and doc["outcome"] == "quarantined"
-    assert doc["nodes"][0]["quarantine"]["set_aside"] == 3
+    assert doc["nodes"][0]["quarantined"] == 3
     # An upstream fix: the negative row deleted, one of the repeated ids too.
     orders.apply(Changes(inserts=table([(2, 5)]), deletes=table([(2, -5), (3, 8)])))
     r = node.refresh()
     (q,) = r[node.name].quarantine
-    assert (q.set_aside, q.released, q.deleted, q.held) == (0, 1, 2, 0)
+    assert (q.quarantined, q.released, q.deleted, q.total) == (0, 1, 2, 0)
     assert r.outcome == "ok" and r.alert() is None
     assert bag(node.to_arrow()) == Counter({(1, 30): 1, (2, 5): 1, (3, 7): 1})
 
@@ -201,24 +201,24 @@ def test_the_source_sets_the_policy_unless_the_transform_does():
     assert node.refresh().outcome == "quarantined"
     orders = StaticSource(table([(1, 30), (2, -5)]), name="orders", on_violation="quarantine")
     with pytest.raises(PreconditionError):
-        orders.pipe(make(policy="raise")).refresh()
+        orders.pipe(make(policy="error")).refresh()
 
 
 def test_the_strictest_policy_wins():
-    assert _quarantine.strictest(["quarantine", "skip_batch"]) == "skip_batch"
-    assert _quarantine.resolve([None, "quarantine"], None) == "raise"
+    assert _quarantine.strictest(["quarantine", "hold"]) == "hold"
+    assert _quarantine.resolve([None, "quarantine"], None) == "error"
     assert _quarantine.resolve([None, "quarantine"], "quarantine") == "quarantine"
-    assert _quarantine.resolve(["skip_batch"], "quarantine") == "skip_batch"
+    assert _quarantine.resolve(["hold"], "quarantine") == "hold"
     with pytest.raises(ValueError, match="on_violation must be one of"):
         sv.transform(on_violation="ignore")  # type: ignore[arg-type]
 
 
-# -- skip_batch and holds -----------------------------------------------------------
+# -- hold and holds -----------------------------------------------------------
 
 
-def test_skip_batch_holds_the_node_until_the_source_is_fixed():
+def test_hold_holds_the_node_until_the_source_is_fixed():
     orders = StaticSource(table([(1, 30)]), name="orders")
-    node = orders.pipe(make(policy="skip_batch"))
+    node = orders.pipe(make(policy="hold"))
     node.refresh()
     orders.apply(Changes(inserts=table([(2, -5), (3, 1)])))
     r = node.refresh()
@@ -236,9 +236,9 @@ def test_skip_batch_holds_the_node_until_the_source_is_fixed():
     assert bag(node.to_arrow()) == Counter({(1, 30): 1, (3, 1): 1})
 
 
-def test_skip_batch_on_the_first_load_leaves_downstream_waiting(tmp_path):
+def test_hold_on_the_first_load_leaves_downstream_waiting(tmp_path):
     orders = StaticSource(table([(1, 30), (2, -5)]), name="orders")
-    p = orders.pipe(make(policy="skip_batch")).write(DeltaSink(str(tmp_path / "paid")))
+    p = orders.pipe(make(policy="hold")).write(DeltaSink(str(tmp_path / "paid")))
 
     @sv.transform()
     def total(t):
@@ -290,16 +290,22 @@ def test_the_quarantine_table_next_to_the_sink(tmp_path):
     record = next(
         json.loads(c[_quarantine.RECORD_KEY]) for c in q.history() if _quarantine.RECORD_KEY in c
     )
-    assert record == {"format": 1, "node": "paid", "epoch": 0, "sources": {"orders": 0}}
-    first_at = rows[0]["set_aside_at"]
+    assert record == {
+        "$schema": _quarantine.SCHEMA,
+        "format": 1,
+        "node": "paid",
+        "epoch": 0,
+        "sources": {"orders": 0},
+    }
+    first_at = rows[0]["quarantined_at"]
     # A restarted job resumes; the rows set aside keep when they were.
     write_deltalake(src, table([(4, 1), (5, -1)]), mode="append")
     r = job().refresh()
     (entry,) = r.nodes
-    assert sum(q.set_aside for q in entry.quarantine) == 1
+    assert sum(q.quarantined for q in entry.quarantine) == 1
     rows = DeltaTable(tmp_path / "paid_quarantine").to_pyarrow_table().to_pylist()
     by_row = {x["row"]: x for x in rows}
-    assert by_row[_quarantine.encode_row({"id": 2, "amount": -5})]["set_aside_at"] == first_at
+    assert by_row[_quarantine.encode_row({"id": 2, "amount": -5})]["quarantined_at"] == first_at
     assert len(rows) == 2
     # A quiet refresh writes neither table.
     version = DeltaTable(tmp_path / "paid_quarantine").version()
@@ -386,3 +392,30 @@ def test_a_node_without_quarantine_writes_no_quarantine_table(tmp_path):
     orders = StaticSource(table([(1, 30)]), name="orders")
     orders.pipe(make(policy=None)).write(DeltaSink(str(tmp_path / "paid"))).refresh()
     assert not (tmp_path / "paid_quarantine").exists()
+
+
+# -- one vocabulary for the on_* parameters (API review C1, C2) ---------------------
+
+
+def test_old_spellings_of_on_unproved_and_on_inferred_warn():
+    with pytest.warns(DeprecationWarning, match='on_unproved="check"'):
+        t = sv.transform(on_unproved="runtime")(lambda orders: orders)  # type: ignore[arg-type]
+    assert t.on_unproved == "check"
+    import ibis
+
+    orders = ibis.table({"a": "int64", "b": "int64"}, name="orders")
+    with pytest.warns(DeprecationWarning, match='on_inferred="ignore"'):
+        report = sv.verify(orders.select(r=orders.a // orders.b), on_inferred="silent")  # type: ignore[arg-type]
+    assert report.proved
+
+
+def test_check_requires_false_refuses_an_on_violation():
+    with pytest.raises(ValueError, match="check_requires=False"):
+        sv.transform(check_requires=False, on_violation="quarantine")
+    sv.transform(check_requires=False, on_violation="error")
+
+
+def test_quarantine_true_is_refused(tmp_path):
+    orders = StaticSource(table([(1, 30)]), name="orders")
+    with pytest.raises(TypeError, match="quarantine="):
+        orders.pipe(make()).write(DeltaSink(str(tmp_path / "paid")), quarantine=True)  # type: ignore[arg-type]

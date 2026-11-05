@@ -151,9 +151,9 @@ class Source(Pipeable, ABC):
             appended, in order of ts"`. Default: None.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
-            `on_violation` of their own: `"raise"`, `"quarantine"` or
-            `"skip_batch"` (see `sverify.transform`). Default: None,
-            `"raise"`.
+            `on_violation` of their own: `"error"`, `"quarantine"` or
+            `"hold"` (see `sverify.transform`). Default: None,
+            `"error"`.
 
     Attributes:
         name: The table's name in the plans that read it.
@@ -206,7 +206,7 @@ class Source(Pipeable, ABC):
         *,
         schema: pa.Schema | None = None,
         assumes: str | None = None,
-        on_violation: Literal["raise", "quarantine", "skip_batch"] | None = None,
+        on_violation: Literal["error", "quarantine", "hold"] | None = None,
     ):
         from sverify._quarantine import check_policy
 

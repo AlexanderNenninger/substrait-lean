@@ -322,7 +322,7 @@ def _check_quarantine_table(table: Path) -> None:
     assert set(TABLE_SCHEMA.names) <= set(rows.column_names)
     row_schema = {**schema["$defs"]["row"], "$defs": schema["$defs"]}
     for r in rows.to_pylist():
-        jsonschema.validate({**r, "set_aside_at": str(r["set_aside_at"])}, row_schema)
+        jsonschema.validate({**r, "quarantined_at": str(r["quarantined_at"])}, row_schema)
         assert isinstance(decode_row(r["row"]), dict)
 
 
@@ -345,7 +345,7 @@ def test_quarantine_formats_only_gain_keys(tmp_path: Path) -> None:
     now = json.loads(text)
     _valid(now, "refresh.schema.json")
     assert now["outcome"] == "quarantined"
-    assert now["nodes"][0]["quarantine"]["set_aside"] == 3
+    assert now["nodes"][0]["quarantined"] == 3
     for version in QUARANTINED:
         old = json.loads((FORMATS / version / "quarantine" / "refresh.json").read_text())
         assert set(old) <= set(now) and set(old["nodes"][0]) <= set(now["nodes"][0])

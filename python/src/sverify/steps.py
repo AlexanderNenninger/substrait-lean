@@ -33,7 +33,7 @@ class Pipeable:
     """`pipe` for the sources of `sverify.io`: `orders.pipe(paid)` is the
     node `paid` builds over the source, as `paid(orders)`."""
 
-    on_violation: Literal["raise", "quarantine", "skip_batch"] | None = None
+    on_violation: Literal["error", "quarantine", "hold"] | None = None
     """What a refresh does with a batch that breaks a precondition on this
     source, unless the transform stating it sets its own (#184)."""
 

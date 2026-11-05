@@ -20,7 +20,7 @@ on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
 `Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
 Postconditions a transform checks on its output instead of proving them
-(`on_unproved="runtime"`) are checked on the view's full state once, and then
+(`on_unproved="check"`) are checked on the view's full state once, and then
 on the rows each batch inserts into it, before anything is replaced
 (`PostconditionError`).
 
@@ -628,9 +628,9 @@ class StaticSource(Pipeable):
             `"table"`.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
-            `on_violation` of their own: `"raise"`, `"quarantine"` or
-            `"skip_batch"` (see `sverify.transform`). Default: None,
-            `"raise"`.
+            `on_violation` of their own: `"error"`, `"quarantine"` or
+            `"hold"` (see `sverify.transform`). Default: None,
+            `"error"`.
 
     Attributes:
         table: The current contents.
@@ -824,7 +824,7 @@ class RefreshReport:
     """For each view over a source with `arrives_within`: its open buckets,
     those retired in this refresh, and the bound (`sverify._retention`)."""
     postconditions: list[Discharged] = field(default_factory=list)
-    """The unproved postconditions (`on_unproved="runtime"`) checked on the
+    """The unproved postconditions (`on_unproved="check"`) checked on the
     rows the batch inserts into each view, by view."""
     touched: dict[str, int] = field(default_factory=dict)
     """For each view maintained by touched groups (`sverify._touched`): how
@@ -864,7 +864,7 @@ class RefreshReport:
         ]
         lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
         lines += [
-            f"quarantine: {q}" for q in self.quarantine if q.set_aside or q.released or q.deleted
+            f"quarantine: {q}" for q in self.quarantine if q.quarantined or q.released or q.deleted
         ]
         if self.audited:
             lines.append("audit: batch matches the new snapshots; views match recomputation")
@@ -919,7 +919,7 @@ class IncrementalView:
         state (`Report.not_null`)."""
         self.checked: list[Condition] = contract.checked if contract else []
         """Postconditions that were not proved, checked on every state
-        instead (`on_unproved="runtime"`): on the first in full, then on the
+        instead (`on_unproved="check"`): on the first in full, then on the
         rows each batch inserts (`unique` keys against the new state)."""
         self.postconditions: list[Discharged] = []
         """How `checked` was established on the first state."""
@@ -1640,11 +1640,11 @@ class Pipeline:
         return out
 
     def _policy(self, t: str, cond: Condition) -> Policy:
-        return self.policies.get(t, {}).get(label(cond), "raise")
+        return self.policies.get(t, {}).get(label(cond), "error")
 
     def _quarantining(self, t: str) -> bool:
         """Whether a precondition on `t` sets rows aside or holds batches."""
-        return any(p != "raise" for p in self.policies.get(t, {}).values())
+        return any(p != "error" for p in self.policies.get(t, {}).values())
 
     def _held(self, e: PreconditionError) -> Held | None:
         """`e` as a hold of the stage, if its condition's policy is not raise:
@@ -1653,7 +1653,7 @@ class Pipeline:
         if e.source is None or e.condition is None:
             return None
         policy = self._policy(e.source, e.condition)
-        return None if policy == "raise" else Held(e, policy)
+        return None if policy == "error" else Held(e, policy)
 
     def _rules(self, t: str) -> tuple[list[Condition], list[Unique]]:
         """The row conditions and keys on `t` that a split applies."""
@@ -1666,7 +1666,7 @@ class Pipeline:
         `PreconditionError` if one breaks a condition that raises, `Held` if
         one breaks a condition that holds the batch."""
         policies = self.policies.get(t, {})
-        for policy in ("raise", "skip_batch"):
+        for policy in ("error", "hold"):
             bad = [e for e in entries if any(policies.get(c) == policy for c in e.conditions)]
             if not bad:
                 continue
@@ -1679,9 +1679,9 @@ class Pipeline:
                 condition=conds[0] if len(conds) == 1 else None,
                 rows=pa.Table.from_pylist([e.row for e in bad[:ROWS_SHOWN]]),
             )
-            if policy == "raise":
+            if policy == "error":
                 raise error
-            raise Held(error, "skip_batch")
+            raise Held(error, "hold")
 
     def _split_first(self, t: str) -> None:
         """Set aside the rows of `t` that break its preconditions, on the

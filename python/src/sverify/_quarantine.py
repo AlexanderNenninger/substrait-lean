@@ -22,7 +22,7 @@ row through.
 
 Conditions with no rule for which rows break them (`max_rows`,
 `arrives_within`, assumed `SUM` bounds) hold the stage at its versions
-instead (`Held`), as `skip_batch` does.
+instead (`Held`), as `hold` does.
 """
 
 from __future__ import annotations
@@ -54,14 +54,14 @@ from sverify._weighted import (
     weights_in,
 )
 
-type Policy = Literal["raise", "quarantine", "skip_batch"]
+type Policy = Literal["error", "quarantine", "hold"]
 """What a refresh does with a batch that breaks a precondition: raise
 `PreconditionError` (the default), set the offending rows aside and go on
 (`quarantine`), or commit nothing for the batch and hold the node at its
-versions (`skip_batch`)."""
+versions (`hold`)."""
 
-POLICIES: tuple[Policy, ...] = ("raise", "quarantine", "skip_batch")
-_RANK = {"quarantine": 0, "skip_batch": 1, "raise": 2}
+POLICIES: tuple[Policy, ...] = ("error", "quarantine", "hold")
+_RANK = {"quarantine": 0, "hold": 1, "error": 2}
 
 EXAMPLES = 10
 """How many rows set aside a report shows."""
@@ -80,15 +80,15 @@ def check_policy(policy: object, what: str = "on_violation") -> Policy | None:
 
 
 def strictest(policies: Iterable[Policy]) -> Policy:
-    """The strictest of `policies`: raise, then skip_batch, then quarantine."""
-    return max(policies, key=_RANK.__getitem__, default="raise")
+    """The strictest of `policies`: error, then hold, then quarantine."""
+    return max(policies, key=_RANK.__getitem__, default="error")
 
 
 def resolve(stated: Iterable[Policy | None], source: Policy | None) -> Policy:
     """The policy of one condition: the strictest that the transforms stating
     it set, where a transform that set none takes the source's (and a source
-    that sets none, raise)."""
-    return strictest((p or source or "raise") for p in stated)
+    that sets none, error)."""
+    return strictest((p or source or "error") for p in stated)
 
 
 class Held(Exception):  # noqa: N818 - a control-flow signal, caught by nodes
@@ -476,14 +476,14 @@ class QuarantineReport:
 
     Attributes:
         source: The source's name in the node.
-        set_aside: Rows the batch set aside: new rows that break a
+        quarantined: Rows this refresh quarantined: new rows that break a
             condition, or kept rows a new duplicate key took out.
         by_condition: Of those, how many break each condition, by its label
             as `requires` states it.
         released: Rows set aside before that went to the node: the key they
             repeated is now on one row.
         deleted: Rows set aside before that the source deleted.
-        held: Rows set aside after the refresh, in all.
+        total: Rows quarantined after the refresh, in all.
         examples: Up to 10 of the rows set aside, with `_conditions`,
             `_reason` and `_source_version` columns.
         table: Where the rows set aside are stored: the quarantine table's
@@ -492,36 +492,36 @@ class QuarantineReport:
     """
 
     source: str
-    set_aside: int
+    quarantined: int
     by_condition: dict[str, int]
     released: int
     deleted: int
-    held: int
+    total: int
     examples: pa.Table | None = None
     table: str | None = None
 
     def __str__(self) -> str:
         what = ", ".join(f"{n} × {c}" for c, n in self.by_condition.items())
         parts = []
-        if self.set_aside:
-            parts.append(f"{self.set_aside} row(s) set aside" + (f" ({what})" if what else ""))
+        if self.quarantined:
+            parts.append(f"{self.quarantined} row(s) quarantined" + (f" ({what})" if what else ""))
         if self.released:
             parts.append(f"{self.released} released")
         if self.deleted:
             parts.append(f"{self.deleted} deleted upstream")
-        where = f" in {self.table}" if self.table else ""
-        parts.append(f"{self.held} held{where}")
+        where = f" at {self.table}" if self.table else ""
+        parts.append(f"{self.total} in quarantine{where}")
         return f"{self.source}: " + ", ".join(parts)
 
     def to_dict(self) -> dict[str, Any]:
         """The report as JSON values, for `Refresh.to_json`."""
         return {
             "source": self.source,
-            "set_aside": self.set_aside,
+            "quarantined": self.quarantined,
             "by_condition": dict(self.by_condition),
             "released": self.released,
             "deleted": self.deleted,
-            "held": self.held,
+            "total": self.total,
             "table": self.table,
             "examples": [] if self.examples is None else _json_rows(self.examples),
         }
@@ -571,7 +571,7 @@ TABLE_SCHEMA = pa.schema(
         pa.field("conditions", pa.list_(pa.string()), nullable=False),
         pa.field("reason", pa.string(), nullable=False),
         pa.field("source_version", pa.int64(), nullable=False),
-        pa.field("set_aside_at", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("quarantined_at", pa.timestamp("us", tz="UTC"), nullable=False),
         pa.field("node", pa.string(), nullable=False),
     ]
 )
@@ -630,7 +630,7 @@ def table_rows(node: str, held: Mapping[str, Quarantined]) -> pa.Table:
             "conditions": e.conditions,
             "reason": e.reason,
             "source_version": e.version,
-            "set_aside_at": e.at,
+            "quarantined_at": e.at,
             "node": node,
         }
         for src, q in sorted(held.items())
@@ -639,10 +639,20 @@ def table_rows(node: str, held: Mapping[str, Quarantined]) -> pa.Table:
     return pa.Table.from_pylist(rows, schema=TABLE_SCHEMA)
 
 
+SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/quarantine/1.json"
+"""The `$schema` of a quarantine table's record: its schema's `$id`."""
+
+
 def record(node: str, epoch: int, sources: Mapping[str, int]) -> dict[str, Any]:
     """What each write of the quarantine table records with it: which state
     of the node it matches."""
-    return {"format": FORMAT, "node": node, "epoch": epoch, "sources": dict(sources)}
+    return {
+        "$schema": SCHEMA,
+        "format": FORMAT,
+        "node": node,
+        "epoch": epoch,
+        "sources": dict(sources),
+    }
 
 
 def read_record(data: Mapping[str, Any]) -> dict[str, Any]:

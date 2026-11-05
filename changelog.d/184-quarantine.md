@@ -12,11 +12,11 @@ pipeline ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184
   the batches. `Catalog.kept_sound` (`SubstraitLean/Quarantine.lean`)
   proves every precondition holds on the kept rows, so the node's proof
   holds. A delete or update upstream releases rows.
-- `"skip_batch"` commits nothing for the batch and holds the node at its
+- `"hold"` commits nothing for the batch and holds the node at its
   versions until a later version meets the preconditions. Conditions on a
   table as a whole (`max_rows`, `arrives_within`) hold the node this way
   under quarantine too.
-- `"raise"` stays the default.
+- `"error"` stays the default.
 
 The refresh report says how many rows each refresh set aside, released and
 saw deleted, with examples. `Refresh.outcome` (`"ok"`, `"quarantined"`,
@@ -31,3 +31,17 @@ contract it breaks, with what to do: "`orders.id` became nullable at v12,
 and the new rows have NULLs in it; `paid` requires _.id.notnull(). Fix the
 upstream, or handle NULLs in `paid` (e.g. `.fill_null(0)`) and relax
 `requires`."
+
+### One vocabulary for `on_unproved`, `on_inferred` and `on_violation`
+
+The three `on_*` parameters share their values (the API review's C1): `"error"`
+raises, `"warn"` goes on with a warning, `"ignore"` goes on silently,
+`"check"` checks on the data at run time, `"off"` infers nothing, and
+`on_violation` adds `"quarantine"` and `"hold"`.
+
+- `on_unproved="runtime"` is now `on_unproved="check"`, and
+  `on_inferred="silent"` is `on_inferred="ignore"`. The old spellings still
+  work for one release, with a `DeprecationWarning`; a report JSON written
+  with `"silent"` reads as `"ignore"`.
+- `transform(check_requires=False)` with an `on_violation` other than
+  `"error"` raises `ValueError`: that setting acts on the checks it turns off.

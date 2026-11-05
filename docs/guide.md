@@ -352,7 +352,7 @@ except VerificationError as e:
       quarantine.write(e.rows)
   ```
 * Unproved postconditions raise `VerificationError`. With
-  `on_unproved="runtime"` they are checked on the output data instead
+  `on_unproved="check"` they are checked on the output data instead
   (`PostconditionError`): on bound tables at call time, on a node at every
   refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
   `on_unproved="warn"` you get a warning.
@@ -539,10 +539,10 @@ code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …).
 
 `on_inferred` takes four values: `"error"` (the default) needs the bound in
 `requires`, `"warn"` assumes it with an `InferredPreconditionWarning`,
-`"silent"` assumes it without one, and `"off"` infers nothing:
+`"ignore"` assumes it without one, and `"off"` infers nothing:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="ignore")
 def twice_assumed(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
@@ -817,10 +817,10 @@ lands, the document says `"format": "provisional"`. The exit codes are:
 | 3 | budget exceeded: time or memory |
 | 4 | error |
 | 5 | `refresh` completed, and rows of a node's sources are set aside (`on_violation="quarantine"`) |
-| 6 | `refresh` completed, and a node held its batch (`on_violation="skip_batch"`) |
+| 6 | `refresh` completed, and a node held its batch (`on_violation="hold"`) |
 
 With 5 or 6, `refresh` prints `Refresh.alert()` after the summary, and its
-JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-skip_batch)).
+JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 
 `--timeout` (default 30 s, or `SVERIFY_TIMEOUT`; 0 turns it off) bounds
 proof, planning and checking. A refresh moving data has no time limit:
@@ -982,7 +982,7 @@ another aggregate or a window are recomputed and diffed. Contracted
 nodes keep their guarantees in every state: their preconditions on the
 sources are checked in full once, then only on each batch.
 
-A node whose transform has `on_unproved="runtime"` checks the postconditions
+A node whose transform has `on_unproved="check"` checks the postconditions
 Lean could not prove on its output at every refresh: on the full result the
 first time, then on the rows each batch inserts, before its sink commits. A
 violation raises `PostconditionError`, and the refresh writes nothing. The
@@ -991,7 +991,7 @@ downstream may assume only the proved ones, so such a node is stored with
 `.write` before another transform reads it:
 
 ```python
-@sv.transform(ensures=[_.amount < 1_000], on_unproved="runtime")
+@sv.transform(ensures=[_.amount < 1_000], on_unproved="check")
 def capped(orders):
     return orders.select(orders.id, orders.amount)
 
@@ -1048,7 +1048,7 @@ print(c.refresh().summary())
 # cities: changes from orders v1, customers v1→v2 (change feed)
 ```
 
-### Bad rows: quarantine and skip_batch
+### Bad rows: quarantine and hold
 
 A batch that breaks a precondition on a source raises `PreconditionError` by
 default, and the refresh commits nothing. `on_violation` on the transform, or
@@ -1057,14 +1057,14 @@ on the source, chooses otherwise
 
 - `"quarantine"` sets the rows that break a precondition aside, with the
   reason, and the node runs on the others.
-- `"skip_batch"` commits nothing for the batch and holds the node at its
+- `"hold"` commits nothing for the batch and holds the node at its
   versions. The next refresh reads the batch again, so a fix upstream lets it
   through.
-- `"raise"` is the default.
+- `"error"` is the default.
 
 The transform's setting holds over the source's. Where two transforms fused
-into one node state the same condition, the stricter setting holds: raise,
-then skip_batch, then quarantine.
+into one node state the same condition, the stricter setting holds: error,
+then hold, then quarantine.
 
 ```python
 from deltalake import write_deltalake
@@ -1091,7 +1091,7 @@ print(r)
 # clean:
 #   computed
 # ...
-#   quarantine: orders: 3 row(s) set aside (1 × (_.amount >= 0), 2 × unique(id)), 3 held in lake/clean_quarantine
+#   quarantine: orders: 3 row(s) quarantined (1 × (_.amount >= 0), 2 × unique(id)), 3 in quarantine at lake/clean_quarantine
 # ...
 r.outcome           # "quarantined"
 node.quarantined()  # the rows set aside, with _conditions, _reason, _source_version
@@ -1108,7 +1108,7 @@ refresh batch by batch and a recompute agree:
   same answer under every profile ([D24](core-semantics.md)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
-  node, as `skip_batch` does, and the report says why.
+  node, as `"hold"` does, and the report says why.
 
 Every precondition holds on the rows kept: `Catalog.kept_sound` in
 [`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule,

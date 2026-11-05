@@ -314,7 +314,7 @@ class Node:
         args, kwargs = transform._pipe_args(self, inputs)
         return derive(transform, args, kwargs)
 
-    def write(self, sink: Sink, *, quarantine: Sink | bool | None = None) -> Node:
+    def write(self, sink: Sink, *, quarantine: Sink | Literal[False] | None = None) -> Node:
         """Store this node in `sink` (`sverify.io.DeltaSink`, `IcebergSink`),
         as a cache in the middle of a job or as its output. Each refresh
         writes it once, upstream first, exactly once per state. Returns the
@@ -331,8 +331,9 @@ class Node:
                 `IcebergSink(catalog, identifier)`. A sink stores one node.
             quarantine: Where the rows this node's stage sets aside go
                 (`on_violation="quarantine"`, #184): a `DeltaSink` or
-                `IcebergSink` whose table holds them, False to keep them in
-                memory only (`Node.quarantined`), or None (the default): a
+                `IcebergSink` whose table holds them, False for no
+                quarantine table (`Node.quarantined` still returns them), or
+                None (the default): a
                 table next to the sink's, its URI or identifier with
                 `_quarantine` appended. Written only when a precondition
                 sets rows aside.
@@ -607,7 +608,7 @@ class Node:
         if out.report is not None:
             out.quarantine += out.report.quarantine
         held = stage.pipe.quarantined
-        out.set_aside = sum(q.total for q in held.values())
+        out.quarantined = sum(q.total for q in held.values())
         if target is not None and held:
             out.quarantine_table = target.location
             for q in out.quarantine:
@@ -641,7 +642,7 @@ class _Stored(Node):
     """A node stored in a sink; downstream, a source whose contract is what
     the stored node's stage proved."""
 
-    def __init__(self, upstream: Node, sink: Sink, quarantine: Sink | bool | None = None):
+    def __init__(self, upstream: Node, sink: Sink, quarantine: Sink | Literal[False] | None = None):
         if getattr(sink, "_node", None) is not None:
             raise ValueError(f"sink {sink.name!r} already stores a node")
         expr = ibis.table(upstream.schema, name=sink.name)
@@ -655,6 +656,11 @@ class _Stored(Node):
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
         self._reader: Source = sink._source()
+        if quarantine is True:
+            raise TypeError(
+                "quarantine= takes a sink, None (a table next to the sink's) or False "
+                "(no quarantine table)"
+            )
         if quarantine is None:
             default = getattr(sink, "_quarantine_default", None)
             quarantine = default() if default is not None else None
@@ -841,7 +847,7 @@ class StageRefresh:
     buckets, those dropped from its state after the write, and the bound."""
     postconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: the postconditions the node's transform did not
-    prove and checks on its output (`on_unproved="runtime"`), checked on the
+    prove and checks on its output (`on_unproved="check"`), checked on the
     full result (later batches: `report.postconditions`)."""
     route: Route | None = None
     """With `refresh(route=...)`: how the node's proof reached the engine
@@ -860,12 +866,12 @@ class StageRefresh:
     quarantine: list[QuarantineReport] = field(default_factory=list)
     """For each source with rows set aside (`on_violation="quarantine"`,
     #184): what this refresh set aside, released and deleted."""
-    set_aside: int = 0
-    """The rows of the node's sources set aside after the refresh, in all."""
+    quarantined: int = 0
+    """The rows of the node's sources quarantined after the refresh, in all."""
     quarantine_table: str | None = None
     """Where they are stored, if the node writes them to a table."""
     held: str | None = None
-    """Why the node did not take the batch (`on_violation="skip_batch"`, or
+    """Why the node did not take the batch (`on_violation="hold"`, or
     a condition no row rule covers), or "waiting for <node>" when a stored
     node it reads has no state yet; None if it took it."""
     held_error: Exception | None = None
@@ -877,7 +883,7 @@ class StageRefresh:
         of its sources are set aside, else "ok"."""
         if self.held is not None:
             return "held"
-        return "quarantined" if self.set_aside else "ok"
+        return "quarantined" if self.quarantined else "ok"
 
     @property
     def notable(self) -> list[str]:
@@ -889,7 +895,7 @@ class StageRefresh:
         out = [self.started] if self.started else []
         if self.held is not None:
             out.append(f"held: {self.held}")
-        out += [str(q) for q in self.quarantine if q.set_aside or q.released]
+        out += [str(q) for q in self.quarantine if q.quarantined or q.released]
         if self.report is not None:
             out += self.report.notable
         if self.write is not None and self.write.mode == "overwrite":
@@ -923,8 +929,8 @@ class StageRefresh:
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
         parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
         parts += ["recomputed and diffed" for _ in self.report.diffed]
-        if self.set_aside:
-            parts.append(f"{self.set_aside} row(s) set aside")
+        if self.quarantined:
+            parts.append(f"{self.quarantined} row(s) quarantined")
         if self.report.postconditions:
             # On the rows the batch inserts into the node (keys on its state).
             parts.append(f"{len(self.report.postconditions)} ensures checked on data")
@@ -954,17 +960,15 @@ class StageRefresh:
                     "table": s.table,
                     "from": s.start,
                     "to": s.end,
-                    "mode": s.mode,
+                    "mode": s.mode.replace(" ", "_"),
                     "inserts": s.inserts,
                     "deletes": s.deletes,
                 }
                 for s in (report.sources if report is not None else [])
             ],
-            "quarantine": {
-                "set_aside": self.set_aside,
-                "table": self.quarantine_table,
-                "sources": [q.to_dict() for q in self.quarantine],
-            },
+            "quarantined": self.quarantined,
+            "quarantine_table": self.quarantine_table,
+            "quarantine": [q.to_dict() for q in self.quarantine],
             "write": None
             if self.write is None
             else {
@@ -1040,7 +1044,7 @@ class Refresh:
     @property
     def outcome(self) -> str:
         """How the refresh ended, for a job's exit code: "held" if a node
-        did not take its batch (`on_violation="skip_batch"`), "quarantined"
+        did not take its batch (`on_violation="hold"`), "quarantined"
         if rows of some node's sources are set aside
         (`on_violation="quarantine"`), else "ok". A refresh that fails
         raises instead."""
@@ -1065,15 +1069,15 @@ class Refresh:
                     lines.append(_markdown_rows(rows))
                 lines.append("Fix the rows upstream: the next refresh reads the batch again.")
             for q in s.quarantine:
-                if not (q.set_aside or q.released or q.deleted):
+                if not (q.quarantined or q.released or q.deleted):
                     continue
                 lines.append(f"{q}.")
                 if q.examples is not None and q.examples.num_rows:
                     lines.append(_markdown_rows(q.examples))
-            if s.set_aside:
+            if s.quarantined:
                 where = s.quarantine_table or "memory (`node.quarantined()`)"
                 lines.append(
-                    f"{s.set_aside} row(s) are set aside in {where}. The rest went "
+                    f"{s.quarantined} row(s) are quarantined in {where}. The rest went "
                     "through, and the node's contract holds on them. A fix upstream (an "
                     "update or delete of the rows) releases them at the next refresh."
                 )
@@ -1084,6 +1088,7 @@ class Refresh:
         """The refresh as JSON values: its format, `outcome` and one entry
         per node (`StageRefresh.to_dict`)."""
         return {
+            "$schema": REFRESH_SCHEMA,
             "format": REFRESH_FORMAT,
             "outcome": self.outcome,
             "nodes": [s.to_dict() for s in self.nodes],
@@ -1099,6 +1104,8 @@ class Refresh:
 
 REFRESH_FORMAT = 1
 """The version of `Refresh.to_json`'s format."""
+REFRESH_SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json"
+"""The `$schema` of `Refresh.to_json`'s documents: its schema's `$id`."""
 
 
 def _markdown_rows(table: pa.Table, limit: int = 5) -> str:
@@ -1345,7 +1352,7 @@ def _seed(pipe: Pipeline, target: Sink | None) -> None:
         q = pipe.seed.setdefault(src, Quarantined(pipe.con.schema(src)))
         row = _quarantine.decode_row(r["row"])
         q.entries[_quarantine._key(row)] = _quarantine.Entry(
-            row, r["copies"], r["conditions"], r["reason"], r["source_version"], r["set_aside_at"]
+            row, r["copies"], r["conditions"], r["reason"], r["source_version"], r["quarantined_at"]
         )
 
 
@@ -1562,7 +1569,7 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
         if isinstance(node, _Derived) and (prov := _lookup(node._expr.op())) and prov.checked:
             raise ValueError(
                 f"{node.name} checks {', '.join(label(c) for c in prov.checked)} on its "
-                f"output at refresh (on_unproved='runtime'), which {transform.name} would "
+                f"output at refresh (on_unproved='check'), which {transform.name} would "
                 "fuse away: store it first, with .write(sink)"
             )
         inputs.append(node)

@@ -333,9 +333,9 @@ class IcebergSource(_TableSource):
             part of `identifier`.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
-            `on_violation` of their own: `"raise"`, `"quarantine"` or
-            `"skip_batch"` (see `sverify.transform`). Default: None,
-            `"raise"`.
+            `on_violation` of their own: `"error"`, `"quarantine"` or
+            `"hold"` (see `sverify.transform`). Default: None,
+            `"error"`.
 
     Attributes:
         catalog: The catalog.

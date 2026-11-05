@@ -30,7 +30,7 @@ Exit codes: 0 proved (or every unproved postcondition checked on the data),
 1 not proved, 2 refused (`sverify.errors.Unsupported`), 3 budget exceeded
 (time or memory), 4 error. A `refresh` that completed exits 5 when rows of
 a node's sources are set aside (`on_violation="quarantine"`), and 6 when a
-node held its batch (`on_violation="skip_batch"`), with `Refresh.alert()`'s
+node held its batch (`on_violation="hold"`), with `Refresh.alert()`'s
 text after the summary and `"outcome"` and `"alert"` in the JSON (#184).
 
 * `main` runs the command with given arguments and returns its exit code.

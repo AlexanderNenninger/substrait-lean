@@ -192,7 +192,7 @@ def test_data_must_name_the_tables_read():
 
 
 def test_an_unproved_contract_fails():
-    @sv.transform(ensures=[_.doubled >= 0], on_unproved="warn", on_inferred="silent")
+    @sv.transform(ensures=[_.doubled >= 0], on_unproved="warn", on_inferred="ignore")
     def loose(orders):
         return orders.select(orders.id, doubled=orders.amount * 2)
 

@@ -457,7 +457,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 "started": s.started,
                 "outcome": s.outcome,
                 "held": s.held,
-                "set_aside": s.set_aside,
+                "quarantined": s.quarantined,
                 "quarantine_table": s.quarantine_table,
                 "quarantine": [q.to_dict() for q in s.quarantine],
                 "route": str(s.route) if s.route is not None else None,
@@ -577,7 +577,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
     return its exit code: 0 proved, 1 not proved, 2 refused, 3 budget
     exceeded (time or memory), 4 error; for `refresh`, 5 completed with rows
-    set aside, 6 completed with a node held (#184)."""
+    quarantined, 6 completed with a node held (#184)."""
     args = parser().parse_args(argv)
     try:
         memory_limit_from(args.memory_limit)

@@ -783,10 +783,10 @@ def _(clean_orders, lake):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `on_violation="skip_batch"` holds the node at its versions instead: the
+    `on_violation="hold"` holds the node at its versions instead: the
     refresh commits nothing for the batch, says why (`outcome` is
     `"held"`), and reads the batch again next time. The default,
-    `"raise"`, is what the buttons above do.
+    `"error"`, is what the buttons above do.
 
     A change to the schema breaks a contract in another way. Say the feed's
     owner lets `id` be NULL, and the next version has an order without one.
@@ -1143,7 +1143,7 @@ def _(mo):
     session) picks where it runs; DuckDB in memory is the default. A node
     keeps its state between refreshes, so the next refresh may use another
     engine. Contracts checked on data take `engine=` too:
-    `@sv.transform(ensures=[...], on_unproved="runtime", check_engine="duckdb")`.
+    `@sv.transform(ensures=[...], on_unproved="check", check_engine="duckdb")`.
     We refresh a fresh node of the NULL-key join on each engine:
     """)
     return
