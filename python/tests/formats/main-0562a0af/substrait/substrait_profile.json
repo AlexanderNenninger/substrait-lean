@@ -246,7 +246,7 @@
           "shims": [],
           "shims_mode": "apply",
           "substrait": "0.106.0",
-          "sverify": "0.4.0",
+          "sverify": "0.5.0",
           "unexercised": [],
           "up_to": []
         },
@@ -505,6 +505,6 @@
   ],
   "version": {
     "minorNumber": 106,
-    "producer": "sverify 0.4.0"
+    "producer": "sverify 0.5.0"
   }
 }

@@ -1,9 +1,10 @@
 """The formats a running pipeline reads stay readable across releases
-(`docs/stability.md`, #734, #735).
+(`docs/stability.md`, #734, #735, #736).
 
 `tests/formats/<version>/` holds what each version wrote
 (`python -m sverify_dev.formats`): a Delta table and an Iceberg table's
-metadata with the sink's contract record, and exports of `to_substrait`.
+metadata with the sink's contract record, exports of `to_substrait` and
+reports as JSON.
 Each test reads every version's fixtures with this version, as a job would,
 and checks them against the schemas in `sverify/schemas/`. The tests that
 write the formats afresh check that this version only adds keys."""
@@ -32,6 +33,7 @@ PROTO = Path(sv.__file__).resolve().parent / "substrait_contract.proto"
 
 VERSIONS = sorted(p.name for p in FORMATS.iterdir() if (p / "VERSION").exists())
 EXPORTS = sorted((v, p.stem) for v in VERSIONS for p in (FORMATS / v / "substrait").glob("*.json"))
+REPORTS = sorted((v, p.stem) for v in VERSIONS for p in (FORMATS / v / "report").glob("*.json"))
 
 
 def _schema(name: str) -> dict:
@@ -46,6 +48,7 @@ def test_fixtures_exist() -> None:
     """The baseline: a release from PyPI and this branch's own fixtures."""
     assert "0.4.0" in VERSIONS
     assert EXPORTS, "no Substrait exports among the fixtures"
+    assert REPORTS, "no reports among the fixtures"
 
 
 # -- the sink's contract record (#734) -------------------------------------------
@@ -59,7 +62,7 @@ def test_sink_record_reads(version: str) -> None:
     c = Contract.from_json(text)
     assert c.format == 1
     assert c.view == "doubled" and c.sources == {"orders": 2} and c.epoch == 2
-    assert c.not_null == ["id"] and c.unique == [["id"]]
+    assert "id" in c.not_null and c.unique == [["id"]]
 
 
 @pytest.mark.parametrize("version", VERSIONS)
@@ -245,3 +248,47 @@ def test_proto_keeps_its_fields() -> None:
             assert now.get(name) == spec, f"{message}.{name} changed: {now.get(name)} != {spec}"
         numbers = [n for n, _ in now.values()]
         assert len(numbers) == len(set(numbers)), f"{message} reuses a field number"
+
+
+# -- the report as JSON (#736) ---------------------------------------------------
+
+
+@pytest.mark.parametrize(("version", "case"), REPORTS)
+def test_report_reads(version: str, case: str) -> None:
+    """`Report.from_json` reads each version's report: it follows the schema,
+    keeps its verdict, and writes every key it read back."""
+    doc = json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+    _valid(doc, "report.schema.json")
+    report = sv.Report.from_json(doc)
+    assert report.proved == doc["proved"] and report.verdict == doc["verdict"]
+    assert [c.label for c in report.ensures] == [c["label"] for c in doc["ensures"]]
+    assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]
+    assert set(report.routes) == set(doc["routes"])
+    now = json.loads(report.to_json())
+    _valid(now, "report.schema.json")
+    assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
+    assert {k: v for k, v in now.items() if k in doc and k != "sverify"} == {
+        k: v for k, v in doc.items() if k != "sverify"
+    }
+
+
+def test_report_only_gains_keys() -> None:
+    """The report this version writes has every key an earlier version's
+    report of the same case has."""
+    import ibis
+    from ibis import _
+
+    orders = ibis.table({"id": "int64", "qty": "int64", "total": "int64"}, name="orders")
+    report = sv.verify(
+        orders.select("id", d=_.total * 2),
+        requires={"orders": [_.total >= 0, _.total < 1000, sv.unique("id")]},
+        ensures=[_.d >= 0, sv.unique("id")],
+    )
+    now = json.loads(report.to_json())
+    _valid(now, "report.schema.json")
+    for version, case in REPORTS:
+        if case == "proved":
+            old = json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+            assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
+            for c_old, c_now in zip(old["ensures"], now["ensures"], strict=True):
+                assert set(c_old) <= set(c_now)

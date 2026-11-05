@@ -10,14 +10,18 @@
               "extensionUrns": [
                 {
                   "extensionUrnAnchor": 1,
-                  "urn": "extension:io.substrait:functions_arithmetic"
+                  "urn": "extension:io.substrait:functions_aggregate_generic"
                 },
                 {
                   "extensionUrnAnchor": 2,
-                  "urn": "extension:io.substrait:functions_boolean"
+                  "urn": "extension:io.substrait:functions_arithmetic"
                 },
                 {
                   "extensionUrnAnchor": 3,
+                  "urn": "extension:io.substrait:functions_boolean"
+                },
+                {
+                  "extensionUrnAnchor": 4,
                   "urn": "extension:io.substrait:functions_comparison"
                 }
               ],
@@ -26,20 +30,27 @@
                   "extensionFunction": {
                     "extensionUrnReference": 1,
                     "functionAnchor": 1,
-                    "name": "multiply:i64_i64"
-                  }
-                },
-                {
-                  "extensionFunction": {
-                    "extensionUrnReference": 3,
-                    "functionAnchor": 2,
-                    "name": "lt:any_any"
+                    "name": "count:any"
                   }
                 },
                 {
                   "extensionFunction": {
                     "extensionUrnReference": 2,
+                    "functionAnchor": 2,
+                    "name": "sum:i64"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 4,
                     "functionAnchor": 3,
+                    "name": "lt:any_any"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 3,
+                    "functionAnchor": 4,
                     "name": "not:bool"
                   }
                 }
@@ -52,7 +63,7 @@
                         "common": {
                           "emit": {
                             "outputMapping": [
-                              2
+                              3
                             ]
                           }
                         },
@@ -79,12 +90,12 @@
                                         {
                                           "value": {
                                             "literal": {
-                                              "i64": "0"
+                                              "i64": "1"
                                             }
                                           }
                                         }
                                       ],
-                                      "functionReference": 2,
+                                      "functionReference": 3,
                                       "outputType": {
                                         "bool": {
                                           "nullability": "NULLABILITY_NULLABLE"
@@ -94,7 +105,7 @@
                                   }
                                 }
                               ],
-                              "functionReference": 3,
+                              "functionReference": 4,
                               "outputType": {
                                 "bool": {
                                   "nullability": "NULLABILITY_NULLABLE"
@@ -104,54 +115,24 @@
                           }
                         ],
                         "input": {
-                          "project": {
-                            "common": {
-                              "emit": {
-                                "outputMapping": [
-                                  4,
-                                  5
-                                ]
-                              }
-                            },
-                            "expressions": [
+                          "aggregate": {
+                            "groupingExpressions": [
                               {
                                 "selection": {
                                   "directReference": {
-                                    "structField": {}
+                                    "structField": {
+                                      "field": 3
+                                    }
                                   },
                                   "rootReference": {}
                                 }
-                              },
+                              }
+                            ],
+                            "groupings": [
                               {
-                                "scalarFunction": {
-                                  "arguments": [
-                                    {
-                                      "value": {
-                                        "selection": {
-                                          "directReference": {
-                                            "structField": {
-                                              "field": 1
-                                            }
-                                          },
-                                          "rootReference": {}
-                                        }
-                                      }
-                                    },
-                                    {
-                                      "value": {
-                                        "literal": {
-                                          "i64": "2"
-                                        }
-                                      }
-                                    }
-                                  ],
-                                  "functionReference": 1,
-                                  "outputType": {
-                                    "i64": {
-                                      "nullability": "NULLABILITY_NULLABLE"
-                                    }
-                                  }
-                                }
+                                "expressionReferences": [
+                                  0
+                                ]
                               }
                             ],
                             "input": {
@@ -195,7 +176,288 @@
                                   ]
                                 }
                               }
+                            },
+                            "measures": [
+                              {
+                                "measure": {
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "i64": "1"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "functionReference": 1,
+                                  "invocation": "AGGREGATION_INVOCATION_ALL",
+                                  "outputType": {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "measure": {
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "selection": {
+                                          "directReference": {
+                                            "structField": {
+                                              "field": 1
+                                            }
+                                          },
+                                          "rootReference": {}
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "functionReference": 2,
+                                  "invocation": "AGGREGATION_INVOCATION_ALL",
+                                  "outputType": {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "names": [
+                      "(_.n >= 1)"
+                    ]
+                  }
+                }
+              ]
+            },
+            "proved": true,
+            "text": "(_.n >= 1)"
+          },
+          {
+            "kind": "row",
+            "plan": {
+              "extensionUrns": [
+                {
+                  "extensionUrnAnchor": 1,
+                  "urn": "extension:io.substrait:functions_aggregate_generic"
+                },
+                {
+                  "extensionUrnAnchor": 2,
+                  "urn": "extension:io.substrait:functions_arithmetic"
+                },
+                {
+                  "extensionUrnAnchor": 3,
+                  "urn": "extension:io.substrait:functions_boolean"
+                },
+                {
+                  "extensionUrnAnchor": 4,
+                  "urn": "extension:io.substrait:functions_comparison"
+                }
+              ],
+              "extensions": [
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 1,
+                    "functionAnchor": 1,
+                    "name": "count:any"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 2,
+                    "functionAnchor": 2,
+                    "name": "sum:i64"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 4,
+                    "functionAnchor": 3,
+                    "name": "lt:any_any"
+                  }
+                },
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 3,
+                    "functionAnchor": 4,
+                    "name": "not:bool"
+                  }
+                }
+              ],
+              "relations": [
+                {
+                  "root": {
+                    "input": {
+                      "project": {
+                        "common": {
+                          "emit": {
+                            "outputMapping": [
+                              3
+                            ]
+                          }
+                        },
+                        "expressions": [
+                          {
+                            "scalarFunction": {
+                              "arguments": [
+                                {
+                                  "value": {
+                                    "scalarFunction": {
+                                      "arguments": [
+                                        {
+                                          "value": {
+                                            "selection": {
+                                              "directReference": {
+                                                "structField": {
+                                                  "field": 2
+                                                }
+                                              },
+                                              "rootReference": {}
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "value": {
+                                            "literal": {
+                                              "i64": "0"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "functionReference": 3,
+                                      "outputType": {
+                                        "bool": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ],
+                              "functionReference": 4,
+                              "outputType": {
+                                "bool": {
+                                  "nullability": "NULLABILITY_NULLABLE"
+                                }
+                              }
                             }
+                          }
+                        ],
+                        "input": {
+                          "aggregate": {
+                            "groupingExpressions": [
+                              {
+                                "selection": {
+                                  "directReference": {
+                                    "structField": {
+                                      "field": 3
+                                    }
+                                  },
+                                  "rootReference": {}
+                                }
+                              }
+                            ],
+                            "groupings": [
+                              {
+                                "expressionReferences": [
+                                  0
+                                ]
+                              }
+                            ],
+                            "input": {
+                              "read": {
+                                "baseSchema": {
+                                  "names": [
+                                    "id",
+                                    "amount",
+                                    "x",
+                                    "region"
+                                  ],
+                                  "struct": {
+                                    "nullability": "NULLABILITY_REQUIRED",
+                                    "types": [
+                                      {
+                                        "i64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "i64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "fp64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "string": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "namedTable": {
+                                  "names": [
+                                    "orders"
+                                  ]
+                                }
+                              }
+                            },
+                            "measures": [
+                              {
+                                "measure": {
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "i64": "1"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "functionReference": 1,
+                                  "invocation": "AGGREGATION_INVOCATION_ALL",
+                                  "outputType": {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "measure": {
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "selection": {
+                                          "directReference": {
+                                            "structField": {
+                                              "field": 1
+                                            }
+                                          },
+                                          "rootReference": {}
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "functionReference": 2,
+                                  "invocation": "AGGREGATION_INVOCATION_ALL",
+                                  "outputType": {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
                           }
                         }
                       }
@@ -215,13 +477,13 @@
               "class": "Unique",
               "fields": {
                 "cols": [
-                  "id"
+                  "region"
                 ]
               }
             },
             "kind": "Unique",
             "proved": true,
-            "text": "unique(id)"
+            "text": "unique(region)"
           }
         ],
         "manifest": {
@@ -233,13 +495,11 @@
               ]
             ],
             "keys": {
-              "orders": [
-                [
-                  0.0
-                ]
-              ]
+              "orders": []
             },
-            "max_rows": {},
+            "max_rows": {
+              "orders": 1000.0
+            },
             "references": {
               "orders": []
             },
@@ -249,6 +509,7 @@
           "deterministic": true,
           "evidence": "proved",
           "extension_urns": [
+            "extension:io.substrait:functions_aggregate_generic",
             "extension:io.substrait:functions_arithmetic"
           ],
           "format": 1.0,
@@ -264,16 +525,17 @@
             "zeros": "exact"
           },
           "output": {
-            "id": "int64",
+            "n": "int64",
+            "region": "string",
             "total": "int64"
           },
           "params": [],
           "pinned": [
             {
               "functions": [
-                "multiply:i64_i64"
+                "sum:i64"
               ],
-              "group": "int.arith",
+              "group": "agg.isum",
               "option": "overflow",
               "values": [
                 "ERROR"
@@ -282,11 +544,11 @@
             }
           ],
           "profile": "reference",
-          "rows": null,
+          "rows": 1000.0,
           "shims": [],
           "shims_mode": "apply",
           "substrait": "0.106.0",
-          "sverify": "0.4.0",
+          "sverify": "0.5.0",
           "unexercised": [],
           "up_to": []
         },
@@ -552,16 +814,14 @@
           },
           {
             "entry": {
-              "class": "Unique",
+              "class": "MaxRows",
               "fields": {
-                "cols": [
-                  "id"
-                ]
+                "n": 1000.0
               }
             },
-            "kind": "Unique",
+            "kind": "MaxRows",
             "table": "orders",
-            "text": "unique(id)"
+            "text": "max_rows(1000)"
           }
         ]
       }
@@ -570,6 +830,10 @@
   "extensionUrns": [
     {
       "extensionUrnAnchor": 1,
+      "urn": "extension:io.substrait:functions_aggregate_generic"
+    },
+    {
+      "extensionUrnAnchor": 2,
       "urn": "extension:io.substrait:functions_arithmetic"
     }
   ],
@@ -578,7 +842,14 @@
       "extensionFunction": {
         "extensionUrnReference": 1,
         "functionAnchor": 1,
-        "name": "multiply:i64_i64"
+        "name": "count:any"
+      }
+    },
+    {
+      "extensionFunction": {
+        "extensionUrnReference": 2,
+        "functionAnchor": 2,
+        "name": "sum:i64"
       }
     }
   ],
@@ -586,62 +857,24 @@
     {
       "root": {
         "input": {
-          "project": {
-            "common": {
-              "emit": {
-                "outputMapping": [
-                  4,
-                  5
-                ]
-              }
-            },
-            "expressions": [
+          "aggregate": {
+            "groupingExpressions": [
               {
                 "selection": {
                   "directReference": {
-                    "structField": {}
+                    "structField": {
+                      "field": 3
+                    }
                   },
                   "rootReference": {}
                 }
-              },
+              }
+            ],
+            "groupings": [
               {
-                "scalarFunction": {
-                  "arguments": [
-                    {
-                      "value": {
-                        "selection": {
-                          "directReference": {
-                            "structField": {
-                              "field": 1
-                            }
-                          },
-                          "rootReference": {}
-                        }
-                      }
-                    },
-                    {
-                      "value": {
-                        "literal": {
-                          "i64": "2"
-                        }
-                      }
-                    }
-                  ],
-                  "functionReference": 1,
-                  "options": [
-                    {
-                      "name": "overflow",
-                      "preference": [
-                        "ERROR"
-                      ]
-                    }
-                  ],
-                  "outputType": {
-                    "i64": {
-                      "nullability": "NULLABILITY_NULLABLE"
-                    }
-                  }
-                }
+                "expressionReferences": [
+                  0
+                ]
               }
             ],
             "input": {
@@ -685,11 +918,67 @@
                   ]
                 }
               }
-            }
+            },
+            "measures": [
+              {
+                "measure": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "i64": "1"
+                        }
+                      }
+                    }
+                  ],
+                  "functionReference": 1,
+                  "invocation": "AGGREGATION_INVOCATION_ALL",
+                  "outputType": {
+                    "i64": {
+                      "nullability": "NULLABILITY_NULLABLE"
+                    }
+                  }
+                }
+              },
+              {
+                "measure": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ],
+                  "functionReference": 2,
+                  "invocation": "AGGREGATION_INVOCATION_ALL",
+                  "options": [
+                    {
+                      "name": "overflow",
+                      "preference": [
+                        "ERROR"
+                      ]
+                    }
+                  ],
+                  "outputType": {
+                    "i64": {
+                      "nullability": "NULLABILITY_NULLABLE"
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         "names": [
-          "id",
+          "region",
+          "n",
           "total"
         ]
       }
@@ -697,6 +986,6 @@
   ],
   "version": {
     "minorNumber": 106,
-    "producer": "sverify 0.4.0"
+    "producer": "sverify 0.5.0"
   }
 }

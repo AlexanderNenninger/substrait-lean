@@ -56,6 +56,7 @@ def test_proved() -> None:
         ("unique(id)", True, None),
     ]
     assert doc["facts"]["d"] and doc["output"] == {"id": "int64", "d": "int64"}
+    assert doc["not_null"] == report.not_null
 
 
 def test_unproved_with_reasons_and_counterexample() -> None:

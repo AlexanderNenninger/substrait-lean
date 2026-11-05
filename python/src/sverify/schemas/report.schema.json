@@ -12,7 +12,7 @@
     "verdict": {"description": "The report's first line: \"proved\", or \"NOT proved: \" and what is missing, counted.", "type": "string"},
     "semantics": {"description": "The profile the report is under. 1.x may add values.", "type": "string", "examples": ["reference", "duckdb", "polars", "substrait"]},
     "dialect": {"description": "The language of the transformation, which the labels and code are written in.", "type": "string", "examples": ["ibis", "sql"]},
-    "on_inferred": {"description": "What the inferred preconditions do to the proof (verify(on_inferred=...)).", "type": "string", "examples": ["silent", "warn", "error"]},
+    "on_inferred": {"description": "What the inferred preconditions do to the proof (verify(on_inferred=...)).", "type": "string", "examples": ["error", "warn", "silent", "off"]},
     "observation": {"$ref": "#/$defs/observation"},
     "deterministic": {"description": "Whether the result is determined up to row order (Report.deterministic).", "type": "boolean"},
     "rows": {"description": "At most this many output rows; null if nothing bounds them.", "type": ["integer", "null"]},
@@ -43,6 +43,7 @@
     },
     "needs": {"description": "The preconditions the proof needs that requires does not state (Report.needs); empty unless on_inferred is \"error\".", "type": "array", "items": {"$ref": "#/$defs/needed"}},
     "facts": {"description": "What the checker established about each output column, in words.", "type": "object", "additionalProperties": {"type": "string"}},
+    "not_null": {"description": "The output columns the checker proved never NULL (Report.not_null), in the output's order.", "type": "array", "items": {"type": "string"}},
     "output": {"description": "The output's columns with their Ibis types.", "type": "object", "additionalProperties": {"type": "string"}},
     "routes": {"description": "The route each engine ran the plan by, by engine name; empty until the report's plan runs.", "type": "object", "additionalProperties": {"$ref": "#/$defs/route"}},
     "tie_places": {
@@ -139,7 +140,7 @@
       "required": ["engine", "kind", "profile", "reason"],
       "properties": {
         "engine": {"type": "string"},
-        "kind": {"description": "The route taken; null for a refusal. 1.x may add values.", "type": ["string", "null"]},
+        "kind": {"description": "The route taken; null for a refusal. 1.x may add values.", "type": ["string", "null"], "examples": ["native", "translated", "transfer", "recheck", "unverified"]},
         "class": {"description": "The plan's class on the engine. 1.x may add values.", "type": ["string", "null"], "examples": ["exact", "observed", "shim", "refused"]},
         "evidence": {"type": ["string", "null"], "examples": ["proved", "tested"]},
         "profile": {"type": "string"},
