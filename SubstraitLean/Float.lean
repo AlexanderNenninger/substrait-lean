@@ -548,6 +548,25 @@ axiom div_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0
       (scaled (lift₂ (· / ·) a b)).natAbs ≤
         (scaled a).natAbs * (2 ^ 1074 + 2 ^ 1024) / (scaled b).natAbs + 1
 
+/-- Rounding keeps the sign (#441): a sum or product of non-negative finite
+doubles, and a quotient of one by a positive one, is non-negative, under the
+guards of `add_scaled`, `mul_scaled` and `div_scaled`. Code `0` is `+0.0`, and
+`ofFloat` gives it for `-0.0` too, so a code is at least `0` exactly where its
+double is. IEEE 754's rounding to nearest is monotone and rounds `0` to `0`
+(`StdModel.nonneg`); proved as `core_add_nonneg`, `core_mul_nonneg` and
+`core_div_nonneg` in `float-bounds/FloatBounds/Arith.lean`. -/
+axiom add_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) (ha0 : 0 ≤ a) (hb0 : 0 ≤ b) :
+    0 ≤ lift₂ (· + ·) a b
+
+axiom mul_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) (ha0 : 0 ≤ a) (hb0 : 0 ≤ b) :
+    0 ≤ lift₂ (· * ·) a b
+
+axiom div_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
+    (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) (ha0 : 0 ≤ a) (hb0' : 0 ≤ b) :
+    0 ≤ lift₂ (· / ·) a b
+
 /-- `2⁵²`. -/
 def tolK : Nat := 2 ^ 52
 

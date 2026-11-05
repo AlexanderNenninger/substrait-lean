@@ -195,6 +195,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.window_deterministic
 #print axioms Substrait.Rel.window_allColumns
 #print axioms Substrait.window_orderFree
+#print axioms Substrait.window_tieFree
+#print axioms Substrait.KeyOn.eqVariants
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.Rel.capReads_eval
 #print axioms Substrait.Rel.maxRows_sound

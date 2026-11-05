@@ -841,7 +841,7 @@ class Refresh:
         a schema change, an overwrite) gets its full entry.
 
         Returns:
-            The summary, such as "paid: orders@v3→v4, Δ trusted (change
+            The summary, such as "paid: changes from orders v3→v4 (change
             feed), requires checked on 2 row(s), merge v5: +2 −0".
         """
         return "\n".join(s.summary() for s in self.nodes)

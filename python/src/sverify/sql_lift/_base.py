@@ -799,7 +799,7 @@ class _Lift:
         if e.constant:
             return self.to(E(e.json, e.type, e.value), dt.timestamp(scale=6))
         raise Unsupported(
-            f"output column {name} is a TIMESTAMP in DuckDB (a DATE at midnight), and Lean "
+            f"output column {name} is a TIMESTAMP in DuckDB (a DATE at midnight), and sverify "
             "has no cast of a DATE column to a timestamp yet (#240)"
         )
 
@@ -1450,7 +1450,7 @@ class _Lift:
             return E(literal(None, t), t, None)
         if e.type.is_date() and t.is_timestamp():
             raise Unsupported(
-                "a DATE column as a TIMESTAMP is not supported yet: Lean has no cast of a "
+                "a DATE column as a TIMESTAMP is not supported yet: sverify has no cast of a "
                 "DATE column to a timestamp (#240)"
             )
         return E(cast_json(e.json, t), t)
