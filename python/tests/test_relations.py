@@ -18,7 +18,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, substrait_json
+from sverify.engine import connect, substrait_json
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
@@ -50,12 +50,12 @@ BAGS = [
 
 def both(sql: str, t: list, u: list) -> tuple[list, list]:
     con = connect()
-    create_table(con, "t", T, t)
-    create_table(con, "u", U, u)
+    con.create("t", T, t)
+    con.create("u", U, u)
     # Column-wise: `SELECT *` over both tables has two columns named `a`.
     out = duckdb_sql(con, sql)
     expected = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"t": t, "u": u})
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"t": t, "u": u})
     return lean_values(json.dumps(plan)), expected
 
 
@@ -123,7 +123,7 @@ def test_distinct_rows_are_a_key():
 @given(rows=t_rows, more=t_rows)
 def test_sorted_views_are_maintained(rows, more):
     con = connect()
-    create_table(con, "t", T, rows)
+    con.create("t", T, rows)
     view = IncrementalView(con, t.filter(t.a > 0).order_by(t.b), "v")
     view.apply({"t": Changes(inserts=more, deletes=[])})
     assert view.rows() == view.recompute()

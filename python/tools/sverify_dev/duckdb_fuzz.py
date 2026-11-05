@@ -211,7 +211,7 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     except subprocess.CalledProcessError as e:
         lean = "error: " + slt._clip(((e.stderr or "") + (e.output or "")).strip()[-200:], 200)
     db = connect()
-    for name, table in s.con.arrow.items():
+    for name, table in s.con._arrow.items():
         db.register(name, table)
     duck_rows: list[tuple] | None = None
     try:
@@ -227,7 +227,7 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
         agree = lean_rows is None and duck_rows is None
     else:
         agree = _same_rows(lean_rows, duck_rows, query.ordered)
-    schemas = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in s.con.arrow.items()}
+    schemas = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in s.con._arrow.items()}
     issues = [] if agree else slt._lift_issues(query.sql, schemas)
     if lean_rows is not None and duck_rows is None and issues:
         # DuckDB raises where `Rel.eval` gives rows, and `verify` cannot rule

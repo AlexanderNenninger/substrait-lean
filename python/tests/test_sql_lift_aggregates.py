@@ -169,7 +169,7 @@ def test_covariance_of_a_double_constant_is_of_that_double():
     from sverify.testing import inline_tables, lean_values
 
     con = connect()
-    con.arrow["t"] = pa.table({"f": [1.0, 2.0, 4.0], "g": [2.5, 2.5, 2.5]})
+    con._arrow["t"] = pa.table({"f": [1.0, 2.0, 4.0], "g": [2.5, 2.5, 2.5]})
     t = con.table("t")
     plan = json.loads(written_plan(plan_json(con, t.aggregate(c=t.f.cov(t.g, how="pop")))))
     measure = plan["relations"][0]["root"]["input"]["aggregate"]["measures"][0]["measure"]

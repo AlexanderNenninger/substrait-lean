@@ -92,7 +92,7 @@ def con():
 @pytest.mark.parametrize("label", list(CASES))
 def test_plans_mean_what_ibis_sql_means(con, label):
     expr = CASES[label]()
-    duck = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
+    duck = con._ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
     op: Any = expr.op()
     doubles = [exact(ops.Field(op, n)).is_floating() for n in op.schema.names]
 

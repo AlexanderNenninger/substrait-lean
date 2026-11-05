@@ -16,7 +16,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, create_table, plan_json, put_table, run_checker
+from sverify.engine import connect, plan_json, put_table, run_checker
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify.testing import duckdb_sql, inline_tables, lean_values
 
@@ -39,7 +39,7 @@ def con():
 
 
 def lean(con, expr) -> list[tuple]:
-    rows = [tuple(r.values()) for r in con.arrow["t"].to_pylist()]
+    rows = [tuple(r.values()) for r in con._arrow["t"].to_pylist()]
     plan = inline_tables(json.loads(plan_json(con, expr)), {"t": rows})
     return lean_values(json.dumps(plan))
 
@@ -235,7 +235,7 @@ def test_bound_params_mean_what_ibis_execute_gives():
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
     # Ibis binds them itself in its own DuckDB SQL.
     con = connect()
-    create_table(con, "t", t.schema(), rows)
+    con.create("t", t.schema(), rows)
     native = duckdb_sql(con, ibis.to_sql(build(t), dialect="duckdb", params=params))
     assert sorted(lean, key=repr) == sorted(native_rows(native), key=repr)
 

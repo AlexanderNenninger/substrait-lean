@@ -90,6 +90,42 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L114-L128",
+          "note": "`rank()` per partition: ten 1, 1, 7, 9 rank 1, 1, 3, 4: ties share a rank, the next skips"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L131-L145",
+          "note": "`dense_rank()` of the same is 1, 1, 2, 3"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L148-L162",
+          "note": "`percent_rank()`: 0.0 for the first peers, 0.6666666666666666 for rank 3 of 4"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L165-L179",
+          "note": "`cume_dist()` counts peers: 0.6666666666666666 for two of three tied rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part1.sql.out#L182-L196",
+          "note": "`ntile(3)` over 10 rows gives buckets of 4, 3, 3"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part3.sql.out#L460-L482",
+          "note": "`ntile(0)` raises `DATATYPE_MISMATCH.VALUE_OUT_OF_RANGE` at analysis"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/window.sql.out#L519-L568",
+          "note": "the NULL key ranks first ascending (rank 1, cume_dist 0.25), two tied 1s share rank 2 and get row_number 2 and 3"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

@@ -51,7 +51,6 @@ from sverify.contracts import verify
 from sverify.engine import (
     ENGINES,
     connect,
-    create_table,
     plain_schema,
     run_checker,
     run_plan,
@@ -426,11 +425,11 @@ class Session:
         self.tables = {name: list(tables.get(name, [])) for name in TABLES}
         self.con = connect()
         for name, rows in self.tables.items():
-            create_table(self.con, name, SCHEMAS[name], rows)
+            self.con.create(name, SCHEMAS[name], rows)
 
     def plan(self, sql: str) -> str:
         try:
-            plan = substrait_json(self.con, sql)
+            plan = substrait_json(self.con, sql, semantics="duckdb")
         except Exception as e:  # noqa: BLE001 - the producer refusing is not a finding
             raise Refused(f"producer: {e}") from e
         code, out, err = run_checker((), plan)

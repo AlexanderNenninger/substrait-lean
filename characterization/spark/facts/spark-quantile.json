@@ -13,10 +13,17 @@
       "group": "agg.quant",
       "option": "quantile_interp",
       "types": [
-        "i64",
+        "i64"
+      ]
+    },
+    {
+      "group": "agg.quant",
+      "option": "quantile_interp",
+      "types": [
         "fp64",
         "decimal"
-      ]
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -30,15 +37,16 @@
     "spark.sql.ansi.enabled": [
       true,
       false
-    ]
+    ],
+    "spark.sql.legacy.percentileDiscCalculation": false
   },
   "description": [
     "`median`, `percentile(x, p)` and `percentile_cont(p) WITHIN GROUP (ORDER BY x)` interpolate linearly at position (n - 1)·p: over 1, 2, 3, 10 the median is 2.5 and `p = 0.25` 1.75. `percentile_disc(p)` takes the first value whose cumulative share reaches p (1 at 0.25, 2 at 0.26 over 1, 2, 3, 4). All three return `DOUBLE`, for integer and decimal inputs too (`median` of two `DECIMAL(10,2)` is 1.675 as a double). `percentile_approx` is approximate and returns the input type.",
-    "NULLs are skipped; NaN sorts last (spark-nan-order). The fraction must be a constant."
+    "NULLs are skipped; NaN sorts last (spark-nan-order). The fraction must be a constant. Under `spark.sql.legacy.percentileDiscCalculation` (off by default) `percentile_disc` picks other values."
   ],
   "reference": "`quantile_disc` takes a value of the input, of its type; `quantile_cont` any double between the neighbours (`contAllowed`). Spark's positions match; `percentile_disc` of integers and decimals needs a cast back to the input type, exact for integers below 2⁵³.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -79,6 +87,50 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/percentiles.sql.out#L51-L68",
+          "note": "`percentile_cont(0.25)` per group: 12.5 over 10, 20 and 17.5 over 10, 20, 25, 30 (linear at (n - 1)·p); a NULL-only group is NULL; `double` for `INT` input"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/percentiles.sql.out#L84-L101",
+          "note": "`percentile_disc(0.25)` of `INT` values returns a `double` (10.0 over 10, 20, 25, 30)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/percentiles.sql.out#L419-L435",
+          "note": "`median`, `percentile(v, 0.5)` and `percentile_cont(0.5)` agree: 22.5 over 10, 20, 25, 30, NULL for a NULL-only group"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/percentiles.sql.out#L1110-L1127",
+          "note": "`percentile_disc` at 0.0 to 1.0 over 0..4 gives 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4 (the value at ⌈n·p⌉)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/percentiles.sql.out#L1158-L1182",
+          "note": "a column as the fraction of `percentile_cont` raises `DATATYPE_MISMATCH.NON_FOLDABLE_INPUT`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "quantile[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 2244 of 2244 results as the fact says.",
+        "quantile[0]: 300 rows, `percentile_cont(0.0) WITHIN GROUP (ORDER BY x)`, `percentile_disc(0.0) WITHIN GROUP (ORDER BY x)`, `percentile_cont(0.25) WITHIN GROUP (ORDER BY x)`, `percentile_disc(0.25) WITHIN GROUP (ORDER BY x)`, `percentile_cont(0.5) WITHIN GROUP (ORDER BY x)`, `percentile_disc(0.5) WITHIN GROUP (ORDER BY x)`,`, 2244 of 2244 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ]
 }

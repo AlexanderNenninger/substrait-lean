@@ -27,7 +27,7 @@ import pytest
 import sverify as sv
 from sverify import polars_engine
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, run_plan, written_plan
+from sverify.engine import connect, run_plan, written_plan
 from sverify.ibis_substrait import to_substrait, to_substrait_json
 from sverify.testing import duckdb_ibis, inline_tables, lean_values
 
@@ -132,7 +132,7 @@ def close(printed: object, exact: object) -> bool:
 @pytest.fixture(scope="module")
 def con():
     con = connect()
-    create_table(con, "x", X.schema(), rows())
+    con.create("x", X.schema(), rows())
     return con
 
 
@@ -163,7 +163,7 @@ def test_log10_and_log2_are_libm():
     con = connect()
     ps = [*POSITIVE, 3.0, 5.5, 1e-5]
     rs = [(k, None, p, None, None, None, None, None) for k, p in enumerate(ps)]
-    create_table(con, "x", X.schema(), rs)
+    con.create("x", X.schema(), rs)
     expr = X.select(x.k, a=x.p.log10(), b=x.p.log2())
 
     def libm(f: Any, p: float | None) -> object:
@@ -204,7 +204,7 @@ def test_domain_errors_raise(label, build, row):
     assert [i.kind for i in sv.verify(expr, on_inferred="off").errors] == ["domain error"], label
     con = connect()
     xv, iv, nv = row
-    create_table(con, "x", X.schema(), [(0, xv, 2.0, None, iv, None, nv, None)])
+    con.create("x", X.schema(), [(0, xv, 2.0, None, iv, None, nv, None)])
     written = written_plan(to_substrait_json(expr))
     with pytest.raises(polars_engine.DomainError):
         run_plan(con, written, "polars")

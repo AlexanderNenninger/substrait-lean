@@ -13,7 +13,7 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from sverify import polars_engine
-from sverify.engine import connect, create_table, run_plan, substrait_json, written_plan
+from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.partition import NotShardable, apriori_tolerance, run_sharded, split
 from sverify.testing import canonical
@@ -75,18 +75,18 @@ SETTINGS = settings(
 
 def plan_of(sql: str) -> str:
     con = connect()
-    create_table(con, "r", R)
-    create_table(con, "s", S)
-    create_table(con, "q", Q)
-    return substrait_json(con, sql)
+    con.create("r", R)
+    con.create("s", S)
+    con.create("q", Q)
+    return substrait_json(con, sql, semantics="duckdb")
 
 
 def reference(plan: str, rows: list[tuple], q_rows: Sequence[tuple] = ()) -> list[str]:
     """The plan on all the data, on Polars."""
     con = connect()
-    create_table(con, "r", R, rows)
-    create_table(con, "s", S, S_ROWS)
-    create_table(con, "q", Q, list(q_rows))
+    con.create("r", R, rows)
+    con.create("s", S, S_ROWS)
+    con.create("q", Q, list(q_rows))
     got = run_plan(con, written_plan(plan), "polars")
     return canonical(tuple(r.values()) for r in got.to_pylist())
 
@@ -369,8 +369,8 @@ F = ibis.schema({"g": "int64", "x": "float64"})
 
 def float_plan(sql: str) -> str:
     con = connect()
-    create_table(con, "f", F)
-    return substrait_json(con, sql)
+    con.create("f", F)
+    return substrait_json(con, sql, semantics="duckdb")
 
 
 def f_arrow(rows: list[tuple]) -> pa.Table:

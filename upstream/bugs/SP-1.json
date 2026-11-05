@@ -9,11 +9,11 @@
     "https://issues.apache.org/jira/browse/SPARK-45438"
   ],
   "summary": [
-    "`-x` and `abs(x)` of a `DECIMAL` with more than 34 significant digits round it half up to 34 digits, silently: `-CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0))` is -12345678901234567890123456789012350000. `0 - x` is exact.",
-    "At 10³⁸ - 1 the rounding reaches 10³⁸, which does not fit `DECIMAL(38,0)`, so `-x` raises `NUMERIC_VALUE_OUT_OF_RANGE` even with ANSI off. `Decimal.unary_-` (sql/api/.../types/Decimal.scala#L567-L575) builds `-decimalVal` on a Scala `BigDecimal`, which rounds to its default `MathContext.DECIMAL128` (34 digits); `abs` calls it."
+    "`-x` of a `DECIMAL` with more than 34 significant digits rounds it to 34 digits, half to even, silently: `-CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0))` is -12345678901234567890123456789012350000. `abs(x)` negates a negative `x` the same way and returns a positive one unchanged. `0 - x` is exact up to a scale of 6.",
+    "At 10³⁸ - 1 the rounding reaches 10³⁸, which does not fit `DECIMAL(38,0)`, so `-x` raises `NUMERIC_VALUE_OUT_OF_RANGE` even with ANSI off. `Decimal.unary_-` (sql/api/.../types/Decimal.scala#L567-L575) builds `-decimalVal` on a Scala `BigDecimal`, which rounds to its default `MathContext.DECIMAL128` (34 digits, `HALF_EVEN`); `abs` calls it for a negative value."
   ],
   "repro": "SELECT CAST(-a AS STRING), CAST(abs(-a) AS STRING), CAST(0 - a AS STRING)\nFROM VALUES (CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0))) AS s(a);\n-- -12345678901234567890123456789012350000, 12345678901234567890123456789012350000, -12345678901234567890123456789012345678\nSELECT -CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0));\n-- NUMERIC_VALUE_OUT_OF_RANGE, with spark.sql.ansi.enabled true or false",
-  "handling": "The Spark profile (#739) should spell `negate` of a decimal as `0 - x` and `abs` as `CASE WHEN x < 0 THEN 0 - x ELSE x END`. The fix upstream is to negate the Java `BigDecimal` (`decimalVal.underlying.negate()`), which is exact.",
+  "handling": "The Spark profile (#739) should spell `negate` of a decimal as `0 - x` and `abs` as `CASE WHEN x < 0 THEN 0 - x ELSE x END`. With precision loss on (the default) `0 - x` of a `DECIMAL(38,s)` drops one digit of scale past `s = 6` (it needs 39 digits), so for those scales the profile needs another spelling or `spark.sql.decimalOperations.allowPrecisionLoss` off. The fix upstream is to negate the Java `BigDecimal` (`decimalVal.underlying.negate()`), which is exact.",
   "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, then a manual repro of `decimal-overflow-subtract`",
   "issues": [
     738,
@@ -21,7 +21,8 @@
   ],
   "files": [
     "characterization/spark/probes.json",
-    "characterization/spark/facts/spark-decimal-negate.json"
+    "characterization/spark/facts/spark-decimal-negate.json",
+    "characterization/spark/fuzz.json"
   ],
   "facts": [
     "spark-decimal-negate"
@@ -33,6 +34,13 @@
         "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
       },
       "note": "probes decimal-negate-34-digits and decimal-negate-max of characterization/spark/probes.json, both ANSI modes, folded and codegen. Source at v4.3.0: Decimal.scala#L567-L575, arithmetic.scala#L70. JIRA search (project SPARK) for \"unary minus decimal precision\", \"negate decimal 38\", \"Decimal unary_- MathContext\", \"abs decimal precision loss\": SPARK-45438 only."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
+      },
+      "note": "sverify_dev.spark_fuzz decimal_negate (characterization/spark/fuzz.json): random DECIMAL(38,0) and DECIMAL(38,10) values, ties at 34 digits among them, both ANSI modes, folded and codegen. Ties round half to even; abs of a positive value is exact."
     }
   ]
 }
