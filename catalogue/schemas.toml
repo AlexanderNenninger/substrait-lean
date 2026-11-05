@@ -559,7 +559,7 @@ end_ts = "timestamp"
 "bookings.resource" = ["room-a", "room-b"]
 
 [datasets.app]
-not_null = ["readings.ts", "trades.ts", "quotes.ts", "fx_rates.ts", "payments.payment_id"]
+not_null = ["readings.ts", "trades.ts", "quotes.ts", "fx_rates.ts", "payments.payment_id", "users.user_id", "users.signup_ts"]
 
 # IoT telemetry: sensor readings, cumulative meters and counters, device
 # states, discrete events. Timestamps cluster in two days so windows and
@@ -670,7 +670,7 @@ qty = "int64"
 price = "float64"
 
 [datasets.fin]
-not_null = ["transactions.ts", "ticks.ts", "lots.ts"]
+not_null = ["transactions.ts", "ticks.ts", "ticks.size", "lots.ts"]
 
 [datasets.fin.values]
 "transactions.ts" = ["2024-05-01 09:00:00", "2024-05-01 09:20:00", "2024-05-01 09:45:00", "2024-05-01 12:00:00", "2024-05-02 09:00:00", "2024-09-01 10:00:00"]
@@ -691,6 +691,7 @@ not_null = ["transactions.ts", "ticks.ts", "lots.ts"]
 "ticks.symbol" = ["AAPL", "MSFT"]
 "ticks.ts" = ["2024-05-01 09:30:00", "2024-05-01 09:30:20", "2024-05-01 09:31:05", "2024-05-01 09:31:40", "2024-05-01 09:35:00", "2024-05-02 09:30:00"]
 "ticks.price" = [100.0, 101.5, 99.0, 102.0, 98.5, 103.0]
+"ticks.size" = [1, 5, 10, 50, 100]
 "lots.symbol" = ["AAPL"]
 "lots.side" = ["buy", "sell"]
 "lots.qty" = [10, 5, 20]

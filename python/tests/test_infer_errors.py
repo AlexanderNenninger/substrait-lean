@@ -89,6 +89,35 @@ def test_choices_are_suggested_not_assumed(expr, hint):
     assert any(i.hint and i.hint.startswith(hint) for i in report.errors), report.errors
 
 
+G = T.group_by("s")
+
+
+@pytest.mark.parametrize(
+    ("expr", "conds"),
+    [
+        # A SUM of integers that are each at least 1 is not 0.
+        (G.aggregate(r=T.x.sum() / T.a.sum()), ["(_.a >= 1)"]),
+        # A grouped COUNT of a column that is never NULL is at least 1.
+        (G.aggregate(r=T.x.sum() / T.b.count()), ["_.b.notnull()"]),
+        (G.aggregate(r=T.x.sum() / T.b.nunique()), ["_.b.notnull()"]),
+    ],
+    ids=["sum", "count", "count distinct"],
+)
+def test_a_divisor_that_is_an_aggregate(expr, conds):
+    """The inference looks through a divisor's `SUM` or `COUNT`
+    (`Infer.pullNe`), and the proof holds with what it proposes."""
+    report = verify(expr, counterexamples=0)
+    assert inferred(report) == conds
+    assert "division by zero" not in [i.kind for i in report.errors]
+
+
+def test_a_global_count_divisor_gets_no_bound():
+    """Without groups an empty input has a COUNT of 0, which no column rules out."""
+    report = verify(T.aggregate(r=T.x.sum() / T.b.count()), counterexamples=0)
+    [issue] = [i for i in report.errors if i.kind == "division by zero"]
+    assert issue.hint is not None and issue.hint.startswith("no bound on an input column")
+
+
 def test_a_computed_divisor_gets_no_bound():
     report = verify(T.select(r=T.a % (T.b * T.b)), counterexamples=0, infer=False)
     [issue] = [i for i in report.errors if i.kind == "division by zero"]

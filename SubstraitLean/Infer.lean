@@ -59,6 +59,8 @@ structure Bounds where
   nes : List (String × Nat × Int) := []
   /-- Why no column range rules it out, if none does. -/
   why : Option String := none
+  /-- Base-table columns that must not be NULL (a divisor's `COUNT` of them). -/
+  notNull : List (String × Nat) := []
 
 def Found.append (a b : Found) : Found := ⟨a.cols ++ b.cols, a.split || b.split, a.nes ++ b.nes⟩
 
@@ -336,35 +338,106 @@ def pullNeeds (cat : Catalog) (A : String → List AVal) (F : String → List Fa
         else throw "it reads the value of an aggregate other than MIN or MAX"
       | none => throw "it reads a column out of range"
 
-/-- The base-table column behind column `i` of `r` that must not hold `k`. -/
-def pullNe (cat : Catalog) : Rel → Nat → Int → Except String (List (String × Nat × Int))
-  | .read t, i, k => pure [(t, i, k)]
+/-- What keeps a divisor at column `i` of `r` from holding `k`: base-table
+columns that must not hold a value, ranges (a `SUM` of integers that are
+each at least 1 is not 0), and columns that must not be NULL (a grouped
+`COUNT` of them is at least 1). -/
+structure Pulled where
+  nes : List (String × Nat × Int) := []
+  needs : List (String × Nat × Bound) := []
+  notNull : List (String × Nat) := []
+
+def Pulled.append (a b : Pulled) : Pulled :=
+  ⟨a.nes ++ b.nes, a.needs ++ b.needs, a.notNull ++ b.notNull⟩
+
+/-- The base-table columns behind column `i` of `r` that must not be NULL
+for it not to be NULL. -/
+def pullNotNull (cat : Catalog) : Rel → Nat → Except String (List (String × Nat))
+  | .read t, i => pure [(t, i)]
+  | .values _ _, _ => throw "it reads a value written in the query (VALUES)"
+  | .filter r _, i | .fetch r _ _, i | .orderBy r _, i | .distinct r, i
+  | .semi r _ _ _, i => pullNotNull cat r i
+  | .emit r m, i => match m[i]? with
+    | some j => pullNotNull cat r j
+    | none => throw "it reads a column out of range"
+  | .project r es, i =>
+    if i < r.arity cat then pullNotNull cat r i
+    else match es[i - r.arity cat]?.bind Expr.linTerm with
+      | some (j, _) => pullNotNull cat r j
+      | none => throw "it counts a computed value"
+  | .cross a c, i =>
+    if i < a.arity cat then pullNotNull cat a i else pullNotNull cat c (i - a.arity cat)
+  | .join a c t _, i =>
+    if i < a.arity cat then pullNotNull cat a i
+    else if t = .inner then pullNotNull cat c (i - a.arity cat)
+    else throw "it counts a column a LEFT JOIN may leave NULL"
+  | .unionAll a c, i => do pure ((← pullNotNull cat a i) ++ (← pullNotNull cat c i))
+  | .window r _ _ _, i =>
+    if i < r.arity cat then pullNotNull cat r i else throw "it reads the value of a window function"
+  | .unnest r col, i =>
+    if i ≠ col then pullNotNull cat r i else throw "it reads an UNNEST element"
+  | .aggregate r gs ms, i =>
+    let go (e : Expr) := match e.linTerm with
+      | some (j, _) => pullNotNull cat r j
+      | none => throw "it counts a computed value"
+    match gs[i]? with
+    | some g => go g
+    | none => match ms[i - gs.length]? with
+      | some m => if (m.fn = .min ∨ m.fn = .max) ∧ m.filter.isNone then go m.arg
+        else throw "it counts the value of an aggregate other than MIN or MAX"
+      | none => throw "it reads a column out of range"
+
+/-- What keeps column `i` of `r` from holding `k` (`Pulled`). -/
+def pullNe (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
+    Rel → Nat → Int → Except String Pulled
+  | .read t, i, k => pure { nes := [(t, i, k)] }
   | .values _ _, _, _ => throw "it reads a value written in the query (VALUES)"
   | .filter r _, i, k | .fetch r _ _, i, k | .orderBy r _, i, k | .distinct r, i, k
-  | .semi r _ _ _, i, k => pullNe cat r i k
+  | .semi r _ _ _, i, k => pullNe cat A F T r i k
   | .emit r m, i, k => match m[i]? with
-    | some j => pullNe cat r j k
+    | some j => pullNe cat A F T r j k
     | none => throw "it reads a column out of range"
   | .project r es, i, k =>
-    if i < r.arity cat then pullNe cat r i k
+    if i < r.arity cat then pullNe cat A F T r i k
     else match es[i - r.arity cat]?.bind Expr.linTerm with
-      | some (j, c) => pullNe cat r j (k - c)
+      | some (j, c) => pullNe cat A F T r j (k - c)
       | none => throw "it divides by a computed value"
   | .cross a c, i, k | .join a c _ _, i, k =>
-    if i < a.arity cat then pullNe cat a i k else pullNe cat c (i - a.arity cat) k
-  | .unionAll a c, i, k => do pure ((← pullNe cat a i k) ++ (← pullNe cat c i k))
+    if i < a.arity cat then pullNe cat A F T a i k else pullNe cat A F T c (i - a.arity cat) k
+  | .unionAll a c, i, k => do
+    pure ((← pullNe cat A F T a i k).append (← pullNe cat A F T c i k))
   | .window r _ _ _, i, k =>
-    if i < r.arity cat then pullNe cat r i k else throw "it reads the value of a window function"
+    if i < r.arity cat then pullNe cat A F T r i k
+    else throw "it reads the value of a window function"
   | .unnest r col, i, k =>
-    if i ≠ col then pullNe cat r i k else throw "it reads an UNNEST element"
+    if i ≠ col then pullNe cat A F T r i k else throw "it reads an UNNEST element"
   | .aggregate r gs ms, i, k =>
     let go (e : Expr) := match e.linTerm with
-      | some (j, c) => pullNe cat r j (k - c)
+      | some (j, c) => pullNe cat A F T r j (k - c)
       | none => throw "it divides by a computed value"
     match gs[i]? with
     | some g => go g
     | none => match ms[i - gs.length]? with
-      | some m => if m.fn = .min ∨ m.fn = .max then go m.arg
+      | some m =>
+        if m.fn = .min ∨ m.fn = .max then go m.arg
+        -- A `SUM` of integers that are each at least 1 is not 0; without
+        -- values it is NULL, which divides to NULL.
+        else if m.fn = .sum ∧ k = 0 then do
+          let f ← need (r.aeval cat A F T true) (r.facts cat F T) 1 maxI64 m.arg
+          if f.split then throw "it divides by the SUM of a computed value"
+          let mut out := []
+          for (j, b) in f.cols do
+            let (n, _) ← pullNeeds cat A F T r j b
+            out := out ++ n
+          pure { needs := out }
+        -- A grouped `COUNT` of a value that is never NULL is at least 1:
+        -- every group has a row.
+        else if m.fn = .count ∧ k = 0 ∧ !gs.isEmpty ∧ m.filter.isNone then
+          match m.arg with
+          | .lit v => if v == .null then throw "it divides by a COUNT of NULL" else pure {}
+          | e => match e.linTerm with
+            | some (j, _) => do pure { notNull := ← pullNotNull cat r j }
+            | none => throw "it divides by the COUNT of a computed value"
         else throw "it reads the value of an aggregate other than MIN or MAX"
       | none => throw "it reads a column out of range"
 
@@ -373,10 +446,11 @@ def pullAll (cat : Catalog) (A : String → List AVal) (F : String → List Fact
     (r : Rel) (f : Found) : Bounds :=
   let step := fun (acc : Except String (List (String × Nat × Bound) × Bool)) (jc : Nat × Bound) =>
     do let (out, s) ← acc; let (n, s') ← pullNeeds cat A F T r jc.1 jc.2; pure (out ++ n, s || s')
-  let nes := f.nes.foldl (init := pure []) fun acc (j, k) => do
-    pure ((← acc) ++ (← pullNe cat r j k))
+  let nes := f.nes.foldl (init := pure ({} : Pulled)) fun acc (j, k) => do
+    pure ((← acc).append (← pullNe cat A F T r j k))
   match f.cols.foldl step (pure ([], f.split)), nes with
-  | .ok (needs, split), .ok nes => { needs, split, nes }
+  | .ok (needs, split), .ok p =>
+    { needs := needs ++ p.needs, split, nes := p.nes, notNull := p.notNull }
   | .error why, _ | _, .error why => { why := some why }
 
 /-- The bounds that rule out each overflow `e.mayIssues` reports on the rows
@@ -482,6 +556,11 @@ def merged (A : String → List AVal) (bs : List (Issue × Expr × Bounds)) :
     | some (_, _, b') => acc.map fun x => if x.1 == t && x.2.1 == i then (t, i, meet b b') else x
     | none => acc ++ [(t, i, b)]
   trim A all
+
+/-- The base-table columns that must not be NULL, for the issues that have
+exact bounds. -/
+def mergedNotNull (bs : List (Issue × Expr × Bounds)) : List (String × Nat) :=
+  (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.notNull).flatten.eraseDups
 
 /-- The values each base-table column must not hold, for the issues that
 have exact bounds. -/

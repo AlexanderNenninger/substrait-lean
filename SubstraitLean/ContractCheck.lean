@@ -158,8 +158,13 @@ def needNe (n : String × Nat × Int) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
     ("ne", Json.str (toString n.2.2))]
 
+/-- A column of `table` that must not be NULL. -/
+def needNotNull (n : String × Nat) : Json :=
+  Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2), ("not_null", Lean.toJson true)]
+
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
-  Json.mkObj [("needs", Json.arr (b.needs.map need ++ b.nes.map needNe).toArray),
+  Json.mkObj [("needs",
+      Json.arr (b.needs.map need ++ b.nes.map needNe ++ b.notNull.map needNotNull).toArray),
     ("split", Lean.toJson b.split),
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
@@ -215,6 +220,8 @@ structure Report where
   inferred : List (String × Nat × Bound) := []
   /-- The values `bounds` rule out per base-table column (a divisor's 0). -/
   inferredNes : List (String × Nat × Int) := []
+  /-- The base-table columns `bounds` need not NULL (a divisor's `COUNT`). -/
+  inferredNotNull : List (String × Nat) := []
   /-- Predicates the transformation implies on its base tables (#81): for
   each table, abstract rows (as column bounds) one of which every row that
   reaches the output lies in (`Rel.need`, `Rel.need_eval`). -/
@@ -298,7 +305,8 @@ def Report.json (r : Report) : Json :=
         ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
-    ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe).toArray),
+    ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe ++
+      r.inferredNotNull.map needNotNull).toArray),
     ("implied", Json.arr (r.implied.map fun (t, Es) =>
       Json.mkObj [("table", Lean.toJson t), ("any", Json.arr (Es.map fun E =>
         Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
@@ -533,6 +541,8 @@ def check (input : Json) : Except String Report := do
     inferred := Infer.merged A (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     inferredNes :=
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
+    inferredNotNull :=
+      Infer.mergedNotNull (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
     constant
     underAndOr := issuesUnderAndOr transform issues
