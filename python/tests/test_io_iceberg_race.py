@@ -36,7 +36,7 @@ def ids(catalog) -> list[int]:
 
 
 def epoch(catalog) -> int | None:
-    c = IcebergSink(catalog, SINK).committed()
+    c = IcebergSink(catalog, SINK).contract()
     return None if c is None else c.epoch
 
 
@@ -84,7 +84,7 @@ def test_the_second_writer_of_an_epoch_fails(catalog, jobs, monkeypatch, engine)
     b.refresh(engine=engine)
     append(catalog, [3])
     # A is held after reading the sink's last snapshot.
-    hold(monkeypatch, a, "committed", lambda: b.refresh(engine=engine))
+    hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
     with pytest.raises(ConcurrentWriteError, match=rf"{SINK}.*sverify:paid.*epoch 2"):
         a.refresh(engine=engine)
     assert ids(catalog) == [1, 2, 3]
@@ -132,7 +132,7 @@ def test_an_older_write_does_not_land_on_a_newer_state(catalog, jobs, monkeypatc
         append(catalog, [4])
         b.refresh(engine=engine)  # epoch 3, A writes epoch 2
 
-    hold(monkeypatch, a, "committed", b_is_ahead)
+    hold(monkeypatch, a, "contract", b_is_ahead)
     with pytest.raises(ConcurrentWriteError):
         a.refresh(engine=engine)
     assert ids(catalog) == [1, 2, 3, 4]
@@ -146,7 +146,7 @@ def test_an_older_write_does_not_land_on_a_newer_state(catalog, jobs, monkeypatc
 @pytest.mark.parametrize("engine", ENGINES)
 def test_two_writers_creating_the_table(catalog, jobs, monkeypatch, engine):
     a, b = jobs
-    hold(monkeypatch, a, "committed", lambda: b.refresh(engine=engine))
+    hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
     with pytest.raises(ConcurrentWriteError):
         a.refresh(engine=engine)
     assert ids(catalog) == [1, 2]

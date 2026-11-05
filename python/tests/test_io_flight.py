@@ -75,7 +75,7 @@ def test_appends_by_the_number_of_the_last_batch(server):
     assert put(server, "other", [sample("x", 1, 0.9)]) == [3]
     assert put(server, "samples", [sample("b", 2, 0.75), sample("a", 2, 0.25)]) == [4]
     [entry] = node.refresh()["busy"].report.sources
-    assert (entry.start, entry.end, entry.mode) == (1, 2, "change feed")
+    assert (entry.start, entry.end, entry.mode) == (1, 2, "change_feed")
     assert (entry.inserts, entry.deletes) == (2, 0)
     assert "appended to samples v1→v2" in entry.detail
     assert "numbers batches in order of arrival" in entry.detail

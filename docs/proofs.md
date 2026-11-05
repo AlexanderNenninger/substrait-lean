@@ -29,6 +29,7 @@ and that the input rows meet the contract's preconditions.
 | The generated DuckDB lowering computes the reference | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | Polars, after the shims, computes the reference | `Rel.polars_sound` and one `Polars.<shim>` lemma per shim | `PolarsShims.lean` |
 | Dropping the SQL's guards changes no result | `Rel.guardFree_sound` | `Guards.lean` |
+| Binding arguments to columns before writing keeps the rows and the errors | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
@@ -185,6 +186,7 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
+| `Bind.lean` | Binding nested call arguments to projected columns before a plan is written (#821) |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringCache.lean` | The lowering hints (generated) |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |

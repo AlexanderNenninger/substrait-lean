@@ -43,6 +43,7 @@ import json
 import math
 import re
 import subprocess
+import warnings
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
@@ -445,7 +446,7 @@ def _arrow(rows: Rows, schema: pa.Schema) -> pa.Table:
 
 
 def source(
-    rows: Rows, schema: Any = None, *, name: str = "table", version: int = 0
+    rows: Rows, schema: Any = None, *, name: str | None = None, version: int = 0
 ) -> StaticSource:
     """An in-memory source (`sverify.io.StaticSource`) holding `rows`.
 
@@ -457,8 +458,8 @@ def source(
         schema: The columns, as anything `ibis.schema` accepts (such as
             `{"id": "!int64", "amount": "int64"}`, where `!` is NOT NULL),
             an Ibis schema or an Arrow schema. Optional for an Arrow table.
-        name: The table's name in the plans that read it. Default:
-            `"table"`.
+        name: The table's name in the plans that read it. Required (before
+            1.0 it defaulted to `"table"`, which warns for one release).
         version: The source's version. Default: 0.
 
     Returns:
@@ -470,8 +471,18 @@ def source(
     if schema is None:
         if not isinstance(rows, pa.Table):
             raise TypeError("source() needs a schema unless the rows are an Arrow table")
-        return StaticSource(rows, version, name=name)
-    return StaticSource(_arrow(rows, _arrow_schema(schema)), version, name=name)
+        table = rows
+    else:
+        table = _arrow(rows, _arrow_schema(schema))
+    if name is None:
+        warnings.warn(
+            'source() without name= is deprecated (it defaulted to "table"); '
+            "name the table as the plans read it",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        name = "table"
+    return StaticSource(table, name=name, version=version)
 
 
 def _node(node: Any) -> Node:

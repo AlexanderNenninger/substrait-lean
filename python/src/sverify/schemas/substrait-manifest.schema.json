@@ -46,7 +46,7 @@
       "additionalProperties": {"type": "string"}
     },
     "checker_contract": {
-      "description": "The checker's entries for the table conditions (keys, ensures_keys, references, max_rows, rows_per), which sv.from_substrait sends back to the checker.",
+      "description": "The checker's entries for the table conditions (keys, ensures_keys, references, max_rows, rows_per), which sv.Report.from_substrait sends back to the checker.",
       "type": "object"
     }
   },

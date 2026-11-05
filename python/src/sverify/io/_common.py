@@ -411,7 +411,7 @@ class SinkWrite:
     """What storing a node's state did, in any sink.
 
     `mode` is how: `created` the table, `overwrite` it, `merge` the change
-    (Delta), `append` the new rows or write the change `row-level` (Iceberg),
+    (Delta), `append` the new rows or write the change `row_level` (Iceberg),
     `update` it with the change (a sink of your own), or `skipped` a state
     the table already holds. `version` is the table's version afterwards;
     `constraints` are the CHECK constraints the table has for the node's
@@ -422,7 +422,7 @@ class SinkWrite:
         mode: `"created"` (the first write made the table), `"overwrite"`
             (the table's rows were replaced), `"merge"` (the change in one
             MERGE commit, Delta), `"append"` (the change only added rows,
-            Iceberg), `"row-level"` (position deletes and new rows in one
+            Iceberg), `"row_level"` (position deletes and new rows in one
             snapshot, Iceberg), `"update"` (the change, written by a sink of
             your own) or `"skipped"` (the table already has this state's
             epoch).
@@ -435,7 +435,7 @@ class SinkWrite:
             guarantees, by name (Delta; empty for Iceberg).
     """
 
-    mode: Literal["created", "overwrite", "merge", "append", "row-level", "update", "skipped"]
+    mode: Literal["created", "overwrite", "merge", "append", "row_level", "update", "skipped"]
     version: int | None
     contract: Contract
     inserted: int = 0
@@ -449,7 +449,7 @@ class SinkWrite:
             return f"{self.contract.view} from {src}: already committed{at}"
         at = "" if self.version is None else f" v{self.version}"
         return (
-            f"{self.contract.view} from {src}: {self.mode}{at}, "
+            f"{self.contract.view} from {src}: {self.mode.replace('_', ' ')}{at}, "
             f"{self.inserted} row(s) written, {self.deleted} deleted"
         )
 
@@ -462,7 +462,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
         raise ValueError(
             f"view {view.name} reads tables without a source ({missing}): a sink needs "
             "source versions to write exactly once; read a table that is not in a table "
-            "format through sverify.io.StaticSource(table, version)"
+            "format through sverify.io.StaticSource(table, name=..., version=...)"
         )
     schema = ibis.Schema.from_pyarrow(view.schema)
     not_null: list[str] = []

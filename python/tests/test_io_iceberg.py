@@ -90,7 +90,7 @@ def test_appends_are_a_change_feed(catalog):
     src.table().append(rows_table([(4, "dan", 2)]))
     report = batch(node)
     [s] = report.sources
-    assert (s.start, s.end, s.mode, s.inserts) == (1, 3, "change feed", 2)
+    assert (s.start, s.end, s.mode, s.inserts) == (1, 3, "change_feed", 2)
     assert "Δ trusted as the files Iceberg appends v1→v3 added" in str(report)
     assert discharged(report.preconditions)[("orders", "(_.amount >= 0)")] == (
         "file stats @v3 (new files)"
@@ -106,7 +106,7 @@ def test_row_level_deletes_fall_back_to_a_snapshot_diff(catalog):
     src.table().delete("id = 1")
     src.table().append(rows_table([(3, "cy", 1)]))
     [s] = batch(node).sources
-    assert s.mode == "snapshot diff"
+    assert s.mode == "snapshot_diff"
     assert "not append-only" in s.detail and "only the snapshots are trusted" in s.detail
     # The delete rewrote the first file: it and the appended file are read.
     assert "on the 1 + 2 data file(s) that changed" in s.detail
@@ -142,7 +142,7 @@ def test_iceberg_sink_carries_the_contract(catalog):
     src.table().append(rows_table([(3, "cy", 1)]))
     assert big.refresh().writes[0].mode == "append"
     src.table().delete("id = 2")
-    assert big.refresh().writes[0].mode == "row-level"
+    assert big.refresh().writes[0].mode == "row_level"
     got = catalog.load_table("db.big").scan().to_arrow().to_pylist()
     assert sorted(tuple(r.values()) for r in got) == rows(big)
 
@@ -184,7 +184,7 @@ def test_added_column_is_left_out(catalog):
     wide = rows_table([(2, "bob", 1)]).append_column("note", pa.array(["new"]))
     src.table().append(wide)
     [s] = batch(node).sources
-    assert s.mode == "change feed" and "schema: added note, read in the old schema" in s.detail
+    assert s.mode == "change_feed" and "schema: added note, read in the old schema" in s.detail
     assert rows(node) == [(1, "ada", 10), (2, "bob", 2)]
 
 
@@ -289,7 +289,7 @@ def test_a_delete_reads_only_the_changed_files(catalog, monkeypatch):
     monkeypatch.setattr(ice, "_scan", spy)
     change = src.changes(3)
     # Copy-on-write: one file removed, none added (it held only id 3).
-    assert len(read) == 1 and change.kind == "snapshot diff"
+    assert len(read) == 1 and change.kind == "snapshot_diff"
     assert change.changes is not None
     deletes, inserts = change.changes.deletes, change.changes.inserts
     assert isinstance(deletes, pa.Table) and isinstance(inserts, pa.Table)
@@ -315,7 +315,7 @@ def test_sink_writes_a_change_as_position_deletes(catalog):
     src.table().delete("id IN (1, 2, 3)")
     src.table().append(rows_table([(1, "c", 10), (2, "c", 20)]))
     w = view.refresh().writes[0]
-    assert (w.mode, w.inserted, w.deleted) == ("row-level", 2, 3)
+    assert (w.mode, w.inserted, w.deleted) == ("row_level", 2, 3)
     out = catalog.load_table("db.amounts")
     # One data file of the two new rows and one delete file of three positions.
     assert written_entries(out) == {0: [2], 1: [3]}
@@ -332,7 +332,7 @@ def test_sink_deletes_one_copy_of_a_duplicate(catalog):
     names.refresh()
     src.table().delete("id = 1")
     w = names.refresh().writes[0]
-    assert (w.mode, w.inserted, w.deleted) == ("row-level", 0, 1)
+    assert (w.mode, w.inserted, w.deleted) == ("row_level", 0, 1)
     got = sorted(
         tuple(r.values()) for r in catalog.load_table("db.names").scan().to_arrow().to_pylist()
     )
@@ -357,7 +357,7 @@ def test_reading_a_table_with_position_deletes(catalog):
     copy.refresh()
     before = down.snapshot().table
     src.table().delete("id = 3")
-    assert view.refresh().writes[0].mode == "row-level"
+    assert view.refresh().writes[0].mode == "row_level"
     # The deleted 100 is still in the data file's statistics.
     snap = down.snapshot()
     assert '"amount" IS NOT NULL AND "amount" >= 5 AND "amount" <= 100' in [
@@ -543,11 +543,11 @@ def test_partitioned_sink_writes_only_the_change(catalog, spec):
     # Delete an order of c (day 3), update one of a (day 1).
     src.table().delete("id IN (2, 3)")
     src.table().append(dated([(3, "a", 99, 1)]))
-    out = step("row-level", [("a", 1), ("c", 3)])
+    out = step("row_level", [("a", 1), ("c", 3)])
     assert written_entries(out) == {0: [1], 1: [1, 1]}
     # Every order of one partition goes.
     src.table().delete("customer = 'b'" if spec == "identity" else "id IN (1, 4, 7, 10, 20)")
-    step("row-level", [("b", 2)])
+    step("row_level", [("b", 2)])
     assert view.refresh().writes[0].mode == "skipped"
 
 
@@ -594,7 +594,7 @@ def test_sink_creates_its_table_with_location_partitions_and_properties(
     assert len(out.snapshots()) == 1 and len(files_by_partition(out)) == 3
     src.table().delete("id IN (2, 3)")
     src.table().append(dated([(3, "a", 99, 1)]))
-    out = check("row-level")
+    out = check("row_level")
     assert written_entries(out) == {0: [1], 1: [1, 1]}
     # A sink on the existing table with the same options warns about nothing.
     with warnings.catch_warnings():
@@ -719,7 +719,7 @@ def test_a_restart_resumes_past_the_sinks_own_compaction(catalog):
     agg.refresh()
     for i in range(4, 8):
         src.table().append(rows_table([(i, "ada", i)]))
-        assert agg.refresh().writes[0].mode == "row-level"
+        assert agg.refresh().writes[0].mode == "row_level"
     before = live_files(catalog.load_table("db.totals"))
     assert before == (5, 4)
     done = sink.maintain()
@@ -736,11 +736,13 @@ def test_a_restart_resumes_past_the_sinks_own_compaction(catalog):
     again = totals(src).write(IcebergSink(catalog, "db.totals"))
     entry = again.refresh()["totals"]
     assert entry.started == f"resumed from {stored.where}"
-    assert entry.write is not None and entry.write.mode == "row-level"
+    assert entry.write is not None and entry.write.mode == "row_level"
     assert rows(again) == recomputed(totals(src), src)
     # Expiry keeps the newest snapshots and the sink's last one.
     count = len(catalog.load_table("db.totals").snapshots())
-    out = IcebergSink(catalog, "db.totals").maintain(expire=timedelta(0), min_snapshots=1)
+    out = IcebergSink(catalog, "db.totals").maintain(
+        snapshot_retention=timedelta(0), min_snapshots=1
+    )
     t = catalog.load_table("db.totals")
     # The compaction adds one snapshot, and only it is left.
     assert len(t.snapshots()) == 1 and out["snapshots_expired"] == count

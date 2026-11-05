@@ -20,6 +20,7 @@ from ibis import _
 import sverify as sv
 from sverify.engine import connect, create_table, substrait_json
 from sverify.incremental import IncrementalView
+from sverify.io import Changes
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 
 T = ibis.schema({"a": "int64", "b": "int64"})
@@ -124,5 +125,5 @@ def test_sorted_views_are_maintained(rows, more):
     con = connect()
     create_table(con, "t", T, rows)
     view = IncrementalView(con, t.filter(t.a > 0).order_by(t.b), "v")
-    view.apply({"t": sv.Changes(inserts=more, deletes=[])})
+    view.apply({"t": Changes(inserts=more, deletes=[])})
     assert view.rows() == view.recompute()

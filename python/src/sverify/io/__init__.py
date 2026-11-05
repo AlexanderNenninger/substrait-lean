@@ -42,7 +42,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING, Any
 
-from sverify.incremental import Snapshot, SourceBatch, StaticSource, VersionedSource
+from sverify.incremental import Changes, Snapshot, SourceBatch, StaticSource, VersionedSource
 from sverify.io._common import Contract, SinkWrite
 from sverify.io._sink import Sink, SinkChange, sink_from
 from sverify.io._source import Batch, Source, from_files, from_frame, from_query
@@ -71,6 +71,7 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "Batch",
+    "Changes",
     "Contract",
     "DeltaSink",
     "DeltaSource",

@@ -90,6 +90,7 @@ from ibis.common.graph import Node
 
 from sverify import _stages
 from sverify import observation as _observation
+from sverify._duration import Duration, duration
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyError
@@ -428,7 +429,13 @@ class ArrivesWithin(TableCondition):
 
 
 def arrives_within(
-    col: str, *, days: float = 0, hours: float = 0, minutes: float = 0, seconds: float = 0
+    col: str,
+    within: Duration | None = None,
+    *,
+    days: float | None = None,
+    hours: float | None = None,
+    minutes: float | None = None,
+    seconds: float | None = None,
 ) -> ArrivesWithin:
     """A bound on lateness: every row a batch inserts or deletes has `col` at
     most this far behind the largest `col` seen before the batch.
@@ -446,10 +453,12 @@ def arrives_within(
 
     Args:
         col: The time column of the input, a timestamp.
-        days: The lateness, added up with the other units.
-        hours: The lateness, added up with the other units.
-        minutes: The lateness, added up with the other units.
-        seconds: The lateness, added up with the other units.
+        within: The lateness, a `timedelta` or an ISO 8601 duration:
+            `arrives_within("ts", "PT15M")`.
+        days: Deprecated: write `within`.
+        hours: Deprecated: write `within`.
+        minutes: Deprecated: write `within`.
+        seconds: Deprecated: write `within`.
 
     Returns:
         An `ArrivesWithin` condition, for `requires`.
@@ -457,7 +466,22 @@ def arrives_within(
     Raises:
         ValueError: The lateness is negative.
     """
-    lateness = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+    given = {"days": days, "hours": hours, "minutes": minutes, "seconds": seconds}
+    units = {k: v for k, v in given.items() if v is not None}
+    if units:
+        if within is not None:
+            raise TypeError("arrives_within takes within= or the units, not both")
+        warnings.warn(
+            "arrives_within(col, days=, hours=, minutes=, seconds=) is deprecated; write "
+            'arrives_within(col, within), a timedelta or an ISO 8601 duration ("PT15M")',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        lateness = timedelta(**units)
+    elif within is None:
+        raise TypeError('arrives_within needs the lateness: arrives_within(col, "PT15M")')
+    else:
+        lateness = duration(within, "arrives_within's lateness")
     if lateness < timedelta(0):
         raise ValueError(f"arrives_within needs a lateness of 0 or more, not {lateness}")
     return ArrivesWithin(col, lateness)
@@ -558,7 +582,7 @@ class RowsPer(TableCondition):
 
     @property
     def label(self) -> str:
-        return f"rows_per([{', '.join(self.cols)}], at_most={self.n})"
+        return f"rows_per({''.join(c + ', ' for c in self.cols)}at_most={self.n})"
 
     def violations(self, table: ir.Table) -> int:
         if not self.cols:
@@ -595,13 +619,14 @@ class RowsPer(TableCondition):
         return CheckedCondition(self.label, False, "rows per key are checked on inputs only")
 
 
-def rows_per(cols: Sequence[str], at_most: int) -> RowsPer:
-    """A bound on the rows per key: at most `at_most` rows agree on `cols`.
+def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
+    """A bound on the rows per key: at most `at_most` rows agree on `cols`,
+    `rows_per("customer", "day", at_most=3)`.
 
     In `requires` it is checked on the data like `unique` (a `GROUP BY` of
     `cols`, with NULLs in one group), or proved from a row-count fact of a
     Delta or Iceberg table with at most `at_most` rows. `unique(*cols)` is
-    `rows_per(cols, at_most=1)`.
+    `rows_per(*cols, at_most=1)`.
 
     Lean carries the bounds through the plan (`Rel.perKey`): filters, sorts,
     `DISTINCT`, semi-joins, projections and unions keep them, and so does a
@@ -623,13 +648,28 @@ def rows_per(cols: Sequence[str], at_most: int) -> RowsPer:
         A `RowsPer` condition, for `requires`.
 
     Raises:
-        ValueError: `cols` is a single string, or `at_most` is negative.
+        ValueError: A column is not a name, or `at_most` is missing or
+            negative.
     """
-    if isinstance(cols, str):
-        raise ValueError(f"rows_per needs a list of columns, such as [{cols!r}]")
+    if len(cols) in (1, 2) and not isinstance(cols[0], str):
+        # 0.x: rows_per(["a", "b"], 3) or rows_per(["a", "b"], at_most=3).
+        warnings.warn(
+            "rows_per(cols, at_most) is deprecated; write rows_per(*cols, at_most=...)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if len(cols) == 2:
+            if at_most is not None:
+                raise TypeError("rows_per got at_most twice")
+            at_most = int(cols[1])  # type: ignore[arg-type]
+        cols = tuple(cols[0])
+    if not all(isinstance(c, str) for c in cols):
+        raise ValueError("rows_per takes the key's column names, rows_per('a', 'b', at_most=3)")
+    if at_most is None:
+        raise ValueError("rows_per needs at_most=, the most rows that may share the key")
     if at_most < 0:
         raise ValueError(f"rows_per needs a bound of 0 or more, not {at_most}")
-    return RowsPer(tuple(cols), int(at_most))
+    return RowsPer(tuple(cols), int(at_most))  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True)
@@ -650,27 +690,43 @@ class RelationRows:
 
 @dataclass(frozen=True)
 class Approx:
-    """A condition relaxed by a relative tolerance (see `approx`).
+    """A condition relaxed by a tolerance (see `approx`).
 
     Attributes:
         cond: The condition, an Ibis expression or a function of the table.
-        rel: The relative tolerance.
+        rel: The relative tolerance, or None.
+        abs: The absolute tolerance, or None.
+        ulps: The tolerance in units in the last place, or None.
     """
 
     cond: Any
-    rel: float
+    rel: float | None = 1e-6
+    abs: float | None = None
+    ulps: int | None = None
 
     def __call__(self, table: ir.Table) -> ir.BooleanValue:
-        return _relax(resolve(self.cond, table), self.rel)
+        return _relax(resolve(self.cond, table), self.slack)
+
+    def slack(self, k: float) -> float:
+        """How far a comparison with `k` moves: the largest of `abs`,
+        `rel · max(1, |k|)` and `ulps` units in the last place of `k`."""
+        out = 0.0
+        if self.abs is not None:
+            out = max(out, self.abs)
+        if self.rel is not None:
+            out = max(out, self.rel * max(1.0, abs(k)))
+        if self.ulps is not None:
+            out = max(out, self.ulps * math.ulp(k))
+        return out
 
 
-def _relax(expr: ir.BooleanValue, rel: float) -> ir.BooleanValue:
+def _relax(expr: ir.BooleanValue, tolerance: Callable[[float], float]) -> ir.BooleanValue:
     """`expr` with each comparison against a number `k` moved outward by
-    `rel · max(1, |k|)`."""
+    `tolerance(k)`."""
     import ibis.expr.operations as ops
 
     def slack(k: Any) -> float:
-        return rel * max(1.0, abs(float(k)))
+        return tolerance(float(k))
 
     def number(node: Any) -> Any:
         if isinstance(node, ops.Literal) and node.dtype.is_numeric():
@@ -718,9 +774,17 @@ def _relax(expr: ir.BooleanValue, rel: float) -> ir.BooleanValue:
     return go(expr.op())
 
 
-def approx(cond: Any, rel: float = 1e-6) -> Approx:
+def approx(
+    cond: Any,
+    rel: float | None = None,
+    *,
+    abs: float | None = None,  # noqa: A002 - the keyword of `within` and pytest.approx
+    ulps: int | None = None,
+) -> Approx:
     """A postcondition that holds up to rounding: every comparison of a column
-    with a number `k` in `cond` is relaxed by `rel · max(1, |k|)`.
+    with a number `k` in `cond` is relaxed by the tolerance, with the
+    keywords of `within`: the largest of `abs`, `rel · max(1, |k|)` and
+    `ulps` units in the last place of `k`. With none of them, `rel=1e-6`.
 
     `_.avg <= 100` may fail by the last bits after `AVG` of doubles rounds;
     `approx(_.avg <= 100)` is `_.avg <= 100.0001`, which the checker proves
@@ -732,19 +796,26 @@ def approx(cond: Any, rel: float = 1e-6) -> Approx:
 
     Args:
         cond: An Ibis condition (`_.avg <= 100`) or a function of the table.
-        rel: The relative tolerance, `1e-6` by default.
+        rel: The relative tolerance, `1e-6` when no tolerance is given.
+        abs: The absolute tolerance.
+        ulps: The tolerance in units in the last place of `k`.
 
     Returns:
         A condition for `ensures` (or `requires`).
 
     Raises:
         TypeError: `cond` is a SQL snippet.
+        ValueError: A tolerance is negative.
     """
     if isinstance(cond, str):
         raise TypeError("approx takes an Ibis condition, not SQL; write the slack in the SQL")
+    if any(t is not None and t < 0 for t in (rel, abs, ulps)):
+        raise ValueError("approx's tolerances are 0 or more")
     if isinstance(cond, Deferred):
         _check_approx(cond)
-    return Approx(cond, rel)
+    if rel is None and abs is None and ulps is None:
+        rel = 1e-6
+    return Approx(cond, rel, abs, ulps)
 
 
 def _check_approx(cond: Deferred) -> None:
@@ -772,7 +843,7 @@ def _check_approx(cond: Deferred) -> None:
     except Exception:  # noqa: BLE001 - checked again when verified
         return
     try:
-        _relax(expr, 1e-6)
+        _relax(expr, Approx(None).slack)
     except TypeError as e:
         raise TypeError(f"sv.approx({label(cond)}): {e}") from None
 
@@ -1191,7 +1262,7 @@ class Issue:
 @dataclass
 class Report:
     """What the checker proved about a transformation, returned by `verify` and kept
-    in `ContractedTransform.last_report`.
+    in `ContractedTransform.report`.
 
     `str(report)` lists each postcondition with its status, the possible
     runtime errors and warnings, and what is known about each output column;
@@ -1407,6 +1478,34 @@ class Report:
 
         return report_json.from_json(data)
 
+    @staticmethod
+    def from_substrait(data: str | bytes | Mapping[str, Any]) -> Report:
+        """Read a plan `to_substrait` exported, and prove its contract again
+        with the checker (#664).
+
+        The plan goes to the checker as it was exported, pinned options,
+        shims and all, with the preconditions and postconditions it
+        carries; the report says what the checker proves of it now. For an
+        export of a verified plan, `proved` is true again, with the same
+        postconditions.
+
+        Args:
+            data: The export: protobuf JSON (a string or its dict) or bytes.
+
+        Returns:
+            A `Report` of the plan: its postconditions with their status,
+            the runtime errors the checker cannot rule out, the facts on
+            each output column and the options the proof depends on. Facts
+            are in Lean's notation, and nothing is known of the Ibis types.
+
+        Raises:
+            ValueError: The plan carries no sverify contract, or the
+                checker rejects the plan.
+        """
+        from sverify.substrait_export import recheck
+
+        return recheck(data)
+
     @overload
     def to_substrait(
         self,
@@ -1448,7 +1547,7 @@ class Report:
         and assumed) and `ensures`, each in your terms and as a Substrait
         plan, and a manifest (the profile, the pinned options, the shims and
         assumptions, the observation the result holds up to, the Substrait
-        version and extension URNs, sverify's version). `sv.from_substrait`
+        version and extension URNs, sverify's version). `sv.Report.from_substrait`
         reads it back and proves the contract again.
 
         Args:
@@ -2782,7 +2881,9 @@ def label(cond: Condition) -> str:
     if isinstance(cond, TableCondition):
         return cond.label
     if isinstance(cond, Approx):
-        return f"approx({label(cond.cond)}, rel={cond.rel:g})"
+        tol = (("rel", cond.rel), ("abs", cond.abs), ("ulps", cond.ulps))
+        given = ", ".join(f"{k}={v:g}" for k, v in tol if v is not None)
+        return f"approx({label(cond.cond)}, {given})"
     if isinstance(cond, Observation):
         return cond.label
     if isinstance(cond, str):
@@ -4462,7 +4563,7 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         """The row cap that proves the sum fits (#219)."""
         return (
             f"`sv.max_rows({n:_})` in {where} proves it, and so does "
-            f"`sv.rows_per([<grouping columns>], at_most={n:_})`; without a row bound, the job "
+            f"`sv.rows_per(<grouping columns>, at_most={n:_})`; without a row bound, the job "
             "checks the sum as it runs"
         )
 
@@ -4974,15 +5075,38 @@ class ContractedTransform:
         self.requires: dict[str, Sequence[Condition]] = requires_by_input(
             requires, list(self.signature.parameters), "parameter", TypeError
         )
-        self.last_report: Report | None = None
+        self.report: Report | None = None
         """The `Report` of the proof of the postconditions in the last call,
-        or None before the first call."""
+        or None before the first call: the report of this transform, as a
+        node's `report` is the node's."""
         self._counterexamples: int | None = None
-        self.last_preconditions: list[Discharged] = []
+        self._last_preconditions: list[Discharged] = []
         """How each precondition on a bound input was established, in the
         last call: from metadata (`sverify.io` tables) or on the data."""
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
+
+    @property
+    def last_report(self) -> Report | None:
+        """Deprecated: `report`."""
+        warnings.warn(
+            "ContractedTransform.last_report is deprecated; read .report",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.report
+
+    @property
+    def last_preconditions(self) -> list[Discharged]:
+        """Deprecated: the refresh report carries how each precondition was
+        established (`Refresh.report.preconditions`)."""
+        warnings.warn(
+            "ContractedTransform.last_preconditions is deprecated; a refresh report's "
+            "preconditions say how each was established",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._last_preconditions
 
     def to_substrait(
         self,
@@ -4991,7 +5115,7 @@ class ContractedTransform:
         shims: Literal["apply", "annotate", "refuse"] = "apply",
     ) -> str | bytes:
         """The verified plan of the last call, with its contract as
-        metadata: `Report.to_substrait` of `last_report`. A call proves the
+        metadata: `Report.to_substrait` of `report`. A call proves the
         contract for its inputs' schemas, so call the transform first, on
         tables, sources or nodes; `Node.to_substrait` exports a node.
 
@@ -5011,12 +5135,12 @@ class ContractedTransform:
         """
         from sverify.substrait_export import ExportError
 
-        if self.last_report is None:
+        if self.report is None:
             raise ExportError(
                 f"{self.name} has not been called yet: call it on tables, sources or "
                 "nodes first, which proves its contract for their schemas"
             )
-        return self.last_report.to_substrait(format, shims=shims)
+        return self.report.to_substrait(format, shims=shims)
 
     def _verify(
         self,
@@ -5080,7 +5204,7 @@ class ContractedTransform:
         possible (`discharge`); False if it is not bound."""
         if not is_bound(table):
             return False
-        self.last_preconditions += discharge(
+        self._last_preconditions += discharge(
             table, param, conds, self.check_engine, table_facts(table), f"row(s) of {param}"
         )
         return True
@@ -5198,7 +5322,7 @@ class ContractedTransform:
 
         `doubled.check(orders=schema)` is `doubled(orders)` on an unbound
         table of that schema: the postconditions are proved, the needed
-        preconditions inferred, and the report kept in `last_report`. An
+        preconditions inferred, and the report kept in `report`. An
         unproved contract does not raise `VerificationError`, a bound table
         stands for its schema (its data is not read, so `requires` is not
         checked on it), and `on_unproved` does not apply. An editor, a test
@@ -5237,11 +5361,11 @@ class ContractedTransform:
         try:
             self._build(bound.args, bound.kwargs, node=False, raise_unproved=False)
         except VerificationError as e:  # from a link of a composed input
-            self.last_report = e.report
+            self.report = e.report
         finally:
             self._counterexamples = before
-        assert self.last_report is not None
-        return self.last_report
+        assert self.report is not None
+        return self.report
 
     def _build(
         self,
@@ -5255,7 +5379,7 @@ class ContractedTransform:
         placeholder tables) has its runtime-checked postconditions checked
         at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
-        self.last_preconditions = []
+        self._last_preconditions = []
         entry = None
         if (collected := COLLECTING.get()) is not None:
             entry = Collected(self, node)
@@ -5299,7 +5423,7 @@ class ContractedTransform:
         abstraction = _abstract(result, placeholders, taken)
         assumptions = {**abstraction.assumptions}
         _merge(assumptions, base)
-        report = self.last_report = self._verify(
+        report = self.report = self._verify(
             abstraction.body, assumptions, self.ensures, "ensures", {*base, *plain}, self.infer
         )
         # Inferred bounds on the inputs are preconditions like the rest:
@@ -5322,7 +5446,7 @@ class ContractedTransform:
             if self.on_unproved == "check" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
                 checked = [c for c in self.ensures if label(c) in unproved]
-                report = self.last_report = _marked_checked(report)
+                report = self.report = _marked_checked(report)
                 for c in [] if node else checked:
                     if n := violations(result, c, self.check_engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
@@ -5384,7 +5508,7 @@ def transform(
 
     `requires` maps parameter names to conditions on that input. On each call
     the postconditions are proved (cached per input schema and expression) and
-    the report is kept in `.last_report`; see the module docstring. With
+    the report is kept in `.report`; see the module docstring. With
     `on_unproved="check"`, unproved postconditions are checked on the output
     data instead: on inputs bound to a connection, when the transform is
     called; on a node, at every refresh, on the rows the batch inserts, before
@@ -5481,8 +5605,8 @@ def transform(
             return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
         big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
-        doubled.last_report.proved  # True
-        doubled.last_report.facts["doubled"]  # 'an integer ≥ 22'
+        doubled.report.proved  # True
+        doubled.report.facts["doubled"]  # 'an integer ≥ 22'
         big.refresh()
         big.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]
         ```

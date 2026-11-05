@@ -103,14 +103,16 @@ jobs:
           nbs='notebooks/'
           # sverify-dbt, a package of its own that only the `dbt` job reads.
           dbt='dbt/'
+          # The pipeline template, which only the `template` job reads.
+          template='templates/'
           # Each job and the areas it skips. Oracle A runs `sverify_dev.oracle`
           # on the lift and DuckDB (with Polars's evaluator, `slt`), no pytest;
           # the notebooks run sverify, neither tests nor `sverify_dev`.
-          skip_spark="$polars|$snowflake|$datafusion|$io|$nbs|$dbt"
-          skip_polars="$spark|$datafusion|$nbs|$dbt"
-          skip_datafusion="$spark|$snowflake|$nbs|$dbt"
-          skip_oracle="$spark|$snowflake|$datafusion|$io|$pytests|$nbs|$dbt"
-          skip_notebooks="$pytests|$tools|$dbt"
+          skip_spark="$polars|$snowflake|$datafusion|$io|$nbs|$dbt|$template"
+          skip_polars="$spark|$datafusion|$nbs|$dbt|$template"
+          skip_datafusion="$spark|$snowflake|$nbs|$dbt|$template"
+          skip_oracle="$spark|$snowflake|$datafusion|$io|$pytests|$nbs|$dbt|$template"
+          skip_notebooks="$pytests|$tools|$dbt|$template"
 
           out ledger=false
           out backlog=false
@@ -302,6 +304,10 @@ jobs:
             uv run --locked --project python poe -C python "test-$b" || status=1
           done
           exit $status
+      # The share of the 1.0 coverage targets covered (#743,
+      # docs/coverage-targets.md), in the job summary; a gate from M6.
+      - if: matrix.shard == '1/3'
+        run: uv run --locked --project python python -m sverify_dev.coverage --targets >> "$GITHUB_STEP_SUMMARY"
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query
@@ -468,6 +474,45 @@ jobs:
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
 
+  # The pipeline template (templates/pipelines/, #771), as a repository of
+  # its own: its tests run its workflows' steps (check, refresh twice, the
+  # catalog, a refresh the data refuses) on the recorded Eurostat response
+  # with this checkout's sverify; a warning flags skills that differ from
+  # the package's, and actionlint checks its workflows.
+  template:
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - run: |
+          repo=$(mktemp -d)
+          cp -R templates/pipelines/. "$repo/"
+          git -C "$repo" init --quiet -b main
+          git -C "$repo" add -A
+          git -C "$repo" -c user.name=ci -c user.email=ci@localhost commit --quiet -m "Use this template"
+          py="$PWD/python"
+          cd "$repo"
+          # A PR that changes a skill shouldn't have to edit the template's
+          # copy too: warn, and test with the package's skills.
+          uv run --locked --project "$py" python scripts/sync-skills.py --check \
+            || { echo "::warning::templates/pipelines/.claude/skills differ from the package's; run scripts/sync-skills.py there"; \
+                 uv run --locked --project "$py" python scripts/sync-skills.py; }
+          uv run --locked --project "$py" ruff check .
+          uv run --locked --project "$py" ruff format --check .
+          uv run --locked --project "$py" python -m pytest -q -p no:cacheprovider
+          # actionlint reads the workflows of the git repository it runs in;
+          # as the owner of the files, or git refuses the repository.
+          docker run --rm --user "$(id -u):$(id -g)" -v "$repo:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.
   float-bounds:
@@ -490,7 +535,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, notebooks, bench, dbt, float-bounds, oracle-a, ledger]
+    needs: [changes, checker, lean, golden, static, test, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger]
     if: always()
     runs-on: ubuntu-latest
     steps:

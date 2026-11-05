@@ -39,7 +39,7 @@ reference:
       - key
       - references
       - Report
-      - from_substrait
+      - Report.from_substrait
 
   - title: Transforms, nodes and refresh
     desc: >
@@ -51,7 +51,7 @@ reference:
       - Node
       - sql
       - group
-      - Changes
+      - io.Changes
       - nodes.Group
       - nodes.Refresh
       - nodes.Status
@@ -151,6 +151,19 @@ reference:
       - cli.summary
       - cli.Discovery
       - cli.Checked
+
+  - title: Standards
+    desc: >
+      Contracts in the Open Data Contract Standard (`sverify.odcs`, #791):
+      a node's contract written as ODCS, and ODCS contracts read as
+      conditions.
+    contents:
+      - odcs.export
+      - odcs.write
+      - odcs.read
+      - odcs.OdcsContract
+      - odcs.Unread
+      - odcs.UnreadRuleWarning
 
   - title: Errors
     desc: What sverify raises, and when (`sverify.errors`).
