@@ -1336,9 +1336,9 @@ def _(mo):
     stay inside the window's range, rounded down, and `hour` is in
     `[0, 23]`, a proved range that doesn't grow with the timestamp. Without
     the filter, truncating to a month may fail near the ends of the
-    timestamp range, so Sverify infers that `ts` lies between 1678 and 2262,
-    the range of nanosecond timestamps, and checks it on the data (chapter 4
-    shows how inferred bounds work):
+    timestamp range, so the plan needs `ts` between 1678 and 2262, the range
+    of nanosecond timestamps. Sverify works it out and asks you to declare it
+    (chapter 4 shows how inferred bounds work):
     """)
     return
 

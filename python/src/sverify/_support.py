@@ -125,6 +125,25 @@ def refusal(name: str, engine: str, window: bool = False) -> str:
     )
 
 
+def floors(call: Any) -> bool:
+    """Does the call state `division_type` = `FLOOR`: Polars's `//` and `%`
+    of integers, which only a plan verified under `Profile.polars` states?"""
+    return any(
+        isinstance(o, dict)
+        and o.get("name") == "division_type"
+        and (o.get("preference") or [None])[0] == "FLOOR"
+        for o in call.get("options", [])
+    )
+
+
+def floor_refusal(engine: str) -> str:
+    """Why `engine` refuses a call that states `division_type` = `FLOOR`."""
+    return (
+        f"integer // and % with division_type FLOOR (Polars's, semantics='polars') run on "
+        f"polars only; {engine} truncates: verify with semantics='reference' to run on {engine}"
+    )
+
+
 #: The nodes that call a function by its anchor.
 _CALLS = ("scalarFunction", "measure", "windowFunction")
 
@@ -145,6 +164,8 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                     ok = window_supported if window else supported
                     if name is not None and not ok(name, engine):
                         raise err(refusal(_plan_read.base_name(name), engine, window))
+                    if engine.lower() != "polars" and floors(call):
+                        raise err(floor_refusal(engine))
             for v in node.values():
                 walk(v)
         elif isinstance(node, list):

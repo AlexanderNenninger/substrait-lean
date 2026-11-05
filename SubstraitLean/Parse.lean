@@ -1048,7 +1048,7 @@ differences: `variance` and `std_dev` of integers now accept `rounding`
 (`TIE_TO_EVEN`), as `avg` of integers does, since both convert to doubles;
 `avg` of integers would accept `overflow` (`ERROR`) as `sum` does, which
 no plan reaches: `parseMeasure` reads `avg`'s options as of doubles; and
-`divide` of integers accepts `division_type: TRUNCATE`, how it rounds the
+`divide` and `modulus` of integers accept `division_type: FLOOR` (Polars's), and `divide` `TRUNCATE`, how it rounds the
 quotient (`characterization/areas.json`). -/
 
 private def optionAcceptsBefore (base : String) (float : Bool) : String → Option (Option (List String))
@@ -1121,7 +1121,7 @@ private def optionNames : List String :=
   optionAccepts base float o == optionAcceptsBefore base float o ||
     (["variance", "std_dev"].contains base && !float && o == "rounding") ||
     (base == "avg" && !float && o == "overflow") ||
-    (base == "divide" && !float && o == "division_type")
+    (["divide", "modulus"].contains base && !float && o == "division_type")
 
 -- Each group `optionGroup` gives a name with a row is one of that name's rows'.
 #guard optionNames.all fun base => [false, true].all fun float =>
@@ -1261,6 +1261,44 @@ def optionPref (name dflt : String) (opts : List Json) : String := Id.run do
 
 /-- `on_division_by_zero`; `ERROR` when the plan omits it (#185). -/
 def divByZeroMode : List Json → String := optionPref "on_division_by_zero" "ERROR"
+
+/-- `division_type`; `TRUNCATE` when the plan omits it. -/
+def divisionTypeMode : List Json → String := optionPref "division_type" "TRUNCATE"
+
+/-- `a // b` of integers with `division_type` = `FLOOR` (Polars's `//`,
+`SubstraitLean/PolarsProfile.lean`), in the reference's truncating
+operations: with the signs apart, `(a + 1) / b - 1` for `a < 0 < b` and
+`(a - 1) / b - 1` for `b < 0 < a`, so that no step overflows; otherwise the
+truncated quotient. Each condition compares one argument with zero, `a`
+first, so that the range analysis refines both branches and the arguments
+are read in order. `Write` recognizes the shape and writes the call back. -/
+def _root_.Substrait.Expr.floorDivOf (a b : Expr) : Expr :=
+  .ifThen (.bin .lt a (.lit (.int 0)))
+    (.ifThen (.bin .lt (.lit (.int 0)) b)
+      (.bin .add (.bin .idiv (.bin .add a (.lit (.int 1))) b) (.lit (.int (-1))))
+      (.bin .idiv a b))
+    (.ifThen (.bin .lt b (.lit (.int 0)))
+      (.ifThen (.bin .lt (.lit (.int 0)) a)
+        (.bin .add (.bin .idiv (.bin .sub a (.lit (.int 1))) b) (.lit (.int (-1))))
+        (.bin .idiv a b))
+      (.bin .idiv a b))
+
+/-- `a % b` of integers with `division_type` = `FLOOR` (Polars's `%`): the
+remainder takes the divisor's sign. With the signs apart it is
+`(b - 1) - (-1 - a) % b` for `a < 0 < b` and `(a - 1) % b + (b + 1)` for
+`b < 0 < a`, each a remainder of a dividend that is not negative, so that the
+range analysis sees that no step overflows; otherwise the truncated
+remainder. -/
+def _root_.Substrait.Expr.floorModOf (a b : Expr) : Expr :=
+  .ifThen (.bin .lt a (.lit (.int 0)))
+    (.ifThen (.bin .lt (.lit (.int 0)) b)
+      (.bin .sub (.bin .sub b (.lit (.int 1))) (.bin .imod (.bin .sub (.lit (.int (-1))) a) b))
+      (.bin .imod a b))
+    (.ifThen (.bin .lt b (.lit (.int 0)))
+      (.ifThen (.bin .lt (.lit (.int 0)) a)
+        (.bin .add (.bin .imod (.bin .sub a (.lit (.int 1))) b) (.bin .add b (.lit (.int 1))))
+        (.bin .imod a b))
+      (.bin .imod a b))
 
 /-- `a / b` (`div`, which raises on a zero divisor) under `on_division_by_zero`
 = `mode`. Other than `ERROR`, the mode is a `CASE` on the divisor:
@@ -1870,9 +1908,14 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       | _, _ => mkFloatCall (baseName name) args
     else
       let mode := divByZeroMode (← arrD f "options")
+      -- `division_type` = `FLOOR`: Polars's `//` and `%`, in the reference's
+      -- operations (`SubstraitLean/PolarsProfile.lean`).
+      let floor := divisionTypeMode (← arrD f "options") == "FLOOR"
       let call ← match baseName name, args with
-        | "divide", [a, b] => pure (divByZero mode false (.bin .idiv) a b)
-        | "modulus", [a, b] => pure (divByZero mode false (.bin .imod) a b)
+        | "divide", [a, b] =>
+          pure (divByZero mode false (if floor then Expr.floorDivOf else .bin .idiv) a b)
+        | "modulus", [a, b] =>
+          pure (divByZero mode false (if floor then Expr.floorModOf else .bin .imod) a b)
         | _, _ => mkCall (baseName name) args
       -- A negative start wraps from the end unless the plan says otherwise (#209).
       let call := match call with

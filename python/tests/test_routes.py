@@ -97,7 +97,10 @@ def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
         },
     )
     assert "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR" in r.reason
-    # #655: under "auto", the refusal leads with what to do.
+    # #655: under "auto", the refusal leads with what to do. The re-check
+    # under `Profile.polars` proves this plan, so it is made to fail here.
+    assert routes.choose(duck, "polars").kind == "recheck"
+    monkeypatch.setattr(routes, "recheck", lambda report, e: (False, "not proved"))
     auto = routes.choose(duck, "polars")
     assert auto.reason.startswith("verify with semantics='reference' to run on polars")
     assert routes.choose(duck, "datafusion", "transfer").kind == "transfer"
@@ -111,10 +114,13 @@ def test_transfer_without_tables_is_refused_with_the_reason(monkeypatch, con) ->
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
-    r = routes.choose(duck, "polars")
+    r = routes.choose(duck, "polars", "transfer")
     assert r.refused
     assert "no choices table" in r.reason
-    assert "not verified under the reference" in r.reason
+    # `auto` goes on to the re-check, which the checker proves under
+    # `Profile.polars` (the plan states its options, `PolarsProfile.lean`).
+    auto = routes.choose(duck, "polars")
+    assert (auto.kind, auto.profile) == ("recheck", "polars"), auto
 
 
 def test_unproved_plan_is_refused(con) -> None:
