@@ -143,6 +143,8 @@ def window(x: Exprs, op: Any) -> Json:
                 "partitions": [x(g) for g in op.group_by],
                 "sorts": [_sort_key(x, k) for k in op.order_by],
                 "arguments": fn["arguments"],
+                # A variance's distribution (`Parse.parseWindow`).
+                **({"options": fn["options"]} if "options" in fn else {}),
                 **_frame(op),
             }
         }

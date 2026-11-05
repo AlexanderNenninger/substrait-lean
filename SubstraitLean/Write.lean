@@ -878,8 +878,15 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
     ("lowerBound", writeBound fr.lo), ("upperBound", writeBound fr.hi),
     ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")] ++
-    -- An integer `AVG` says so by its output type (`AggFn.iavg`).
-    (match f with | .agg m _ _ => if m.fn matches .iavg then [("outputType", i64Type)] else [] | _ => [])))]
+    -- An integer `AVG` says so by its output type (`AggFn.iavg`), and a
+    -- variance whether it is of a sample or of a population.
+    (match f with
+      | .agg m _ _ => match m.fn with
+        | .iavg => [("outputType", i64Type)]
+        | .var sample _ => [("options", Json.arr #[obj [("name", "distribution"),
+            ("preference", Json.arr #[if sample then "SAMPLE" else "POPULATION"])]])]
+        | _ => []
+      | _ => [])))]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
 def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=

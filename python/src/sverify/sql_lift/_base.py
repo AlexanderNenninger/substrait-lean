@@ -983,7 +983,7 @@ class _Lift:
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
                     raise Unsupported("nth_value needs a positive integer constant")
                 args.append(literal(k.value, dt.int64))
-        elif _AGGREGATES.get(type(f)) in ("variance", "std_dev", *_PAIRED, *_HOLISTIC):
+        elif _AGGREGATES.get(type(f)) in (*_PAIRED, *_HOLISTIC):
             # Lean's `parseWindow` refuses them too.
             raise Unsupported(f"{_shown(f)} over a window is not supported")
         elif type(f) in AGG_RULES:
@@ -1000,6 +1000,9 @@ class _Lift:
                 values = [column(E(a["value"], dt.null)) for a in agg["arguments"]]
                 fn = self.window_json(w, agg["functionReference"], values, scope, bound, column)
                 fn["windowFunction"]["outputType"] = agg["outputType"]
+                # A variance's distribution (`Parse.parseWindow`).
+                if "options" in agg:
+                    fn["windowFunction"]["options"] = agg["options"]
                 fns.append((fn, t))
             return fns, finish
         else:

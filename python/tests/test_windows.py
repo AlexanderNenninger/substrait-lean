@@ -341,10 +341,11 @@ def test_window_sums_may_wrap():
     assert not strict.proved
 
 
-@pytest.mark.parametrize("fn", ["sum", "mean"])
+@pytest.mark.parametrize("fn", ["sum", "mean", "std", "var"])
 def test_a_window_sum_of_both_infinities_is_a_domain_error(fn):
     """A frame holding `+inf` and `-inf` would sum to NaN, which no operation
-    creates (#257): reported as for a grouped SUM, and ruled out by bounds."""
+    creates (#257): reported as for a grouped SUM, and ruled out by bounds.
+    A variance's deviations are NaN for one infinity already."""
     r = ibis.table({"s": "int64", "x": "float64"}, name="r")
     w = ibis.window(group_by="s", order_by="x")
     expr = r.select("s", w=getattr(r.x, fn)().over(w))
@@ -410,6 +411,9 @@ SLIDING_EXPRS = [
     ),
     W.select("k", a=W.q.min().over(ibis.window(order_by="ts", preceding=1, following=1))),
     W.select("k", "s", a=(W.q * 2).sum().over(group_by="s")),
+    # `varOf` over a frame (#54), of a sample and of a population.
+    W.select("k", d=W.v.std().over(ibis.window(order_by="ts", preceding=3, following=0))),
+    W.select("k", "s", v=W.v.var(how="pop").over(group_by="s"), d=W.q.std().over(group_by="s")),
 ]
 
 #: Distinct timestamps, `k` minutes in (the ROWS frames follow their order), doubles that

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ibis
 
 from sverify_dev.coverage_cases._common import (
+    DUCKDB_ONLY,
     FRAME_DOUBLES,
     NO_ROW_ORDER,
     Case,
@@ -119,6 +120,21 @@ CASES: list[Case] = [
         V,
         lambda: t.mutate(s=(t.qty * 2).sum().over(group_by="name")),
     ),
+    # `varOf` over a frame (#54): the reference's own two passes.
+    case(
+        "windows",
+        "stddev over group",
+        V,
+        lambda: t.mutate(s=t.amount.std().over(group_by="name")),
+    ),
+    case(
+        "windows",
+        "rolling variance (rows)",
+        V,
+        lambda: t.mutate(
+            v=t.amount.var(how="pop").over(ibis.window(order_by="ts", preceding=2, following=0))
+        ),
+    ),
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
@@ -140,6 +156,8 @@ REFUSED: dict[str, dict[str, str]] = {
     "window sum of an expression": NO_ROW_ORDER,
     "last, nth": NO_ROW_ORDER,
     "max, count over frame": NO_ROW_ORDER,
+    "stddev over group": DUCKDB_ONLY,
+    "rolling variance (rows)": DUCKDB_ONLY,
 }
 
 TIE_FREE = {
