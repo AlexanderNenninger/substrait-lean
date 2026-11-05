@@ -10,11 +10,10 @@ from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Literal
 
-from sverify import ContractedTransform, Node
 from sverify._hooks import Collected, collecting
 
 if TYPE_CHECKING:
-    from sverify import Report
+    from sverify import ContractedTransform, Node, Report
 
 Status = Literal["proved", "checked", "not_proved", "unfinished"]
 
@@ -158,6 +157,8 @@ def load(path: str | Path, out: Discovery | None = None) -> Discovery:
 
 
 def _scan(module: ModuleType, out: Discovery) -> None:
+    from sverify import ContractedTransform, Node
+
     for var, value in list(vars(module).items()):
         if isinstance(value, Node):
             out.nodes[var] = value
