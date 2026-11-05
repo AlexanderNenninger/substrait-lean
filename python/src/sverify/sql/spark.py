@@ -43,8 +43,16 @@ result is the Lean value, checked on a local Spark session by
   Java's, which agree with Rust's on simple patterns (black boxes in Lean);
   `RLIKE` searches. `upper`, `lower` and patterns with `\\d`, `\\w` or
   `\\s` raise on non-ASCII text, where Java's tables differ from Rust's (#70).
-* **Decimals** do not occur in the model; the only ones here are the exact
-  `DECIMAL(38,0)` sums and `extract(SECOND …)`, cast back to `BIGINT`.
+* **Decimals** (#27) follow the reference's types, which are Spark's own
+  (`DecimalPrecision`) up to 38 digits; past them Spark cuts the scale to no
+  less than 6 (`spark.sql.decimalOperations.allowPrecisionLoss`), so a sum
+  or product whose type would pass 38 digits at a scale above 6 is refused.
+  A smaller scale rounds half away from zero (`ROUND_HALF_UP`), as the
+  reference does. `-x` rounds past 34 significant digits (SP-1), so a
+  negation of more than 34 digits is `0 - x`, exact up to scale 6 at 38
+  digits, and refused past it. A double goes to a decimal as
+  `round(x · 10ˢ)` in doubles, through `BIGINT`, since Spark reads a double
+  as its shortest text. Division by an integer (an `AVG`) is refused.
 * **Rows**: tables (Parquet, Delta, views) have no row order, so nothing
   can stand for Lean's list order, which FETCH and ties in a sort or window
   follow: `row_ordinal` is refused. Windows and sorts run with
@@ -92,8 +100,21 @@ _TYPES: dict[str, str] = {
 }
 
 
+def _digits(k: Kind) -> tuple[int, int]:
+    """The precision and scale Spark gives an operand of kind `k` in decimal
+    arithmetic: a `BIGINT` is a `DECIMAL(20, 0)`."""
+    if isinstance(k, Dec):
+        return k.p, k.s
+    if k == "int":
+        return 20, 0
+    raise Unsupported(f"decimal arithmetic with a {k} operand on Spark")
+
+
 @dataclass(frozen=True)
 class SparkDialect(Dialect):
+    # Decimals (#27), as the module's docstring says.
+    decimals: bool = True
+
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
 
@@ -269,6 +290,69 @@ class SparkDialect(Dialect):
 
     def day_interval(self, days: int) -> str:
         return f"INTERVAL {days} DAYS"
+
+    # Decimals
+
+    def decimal_arith(
+        self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
+    ) -> str:
+        if kinds is None:
+            raise Unsupported(f"decimal {op} of operands of unknown types on Spark")
+        (p1, s1), (p2, s2) = (_digits(x) for x in kinds)
+        if op == "*":
+            p, sc = p1 + p2 + 1, s1 + s2
+        else:
+            sc = max(s1, s2)
+            p = max(p1 - s1, p2 - s2) + sc + 1
+        if p > 38 and sc > 6:
+            # spark-decimal-arith: Spark cuts the scale to fit 38 digits.
+            raise Unsupported(
+                f"decimal {op} of DECIMAL({p1}, {s1}) and DECIMAL({p2}, {s2}) on Spark: "
+                f"its type DECIMAL({p}, {sc}) has more than 38 digits, and Spark rounds it "
+                "to fewer decimal places; cast an operand to fewer digits"
+            )
+        return self.cast(f"({a} {op} {b})", k)
+
+    def decimal_neg(self, a: str, k: Dec | None = None) -> str:
+        # SP-1: `-x` rounds past 34 significant digits. `0 - x` is exact where
+        # its type keeps the scale: up to 37 digits, or 38 at scale 6 or less.
+        if k is not None and k.p <= 34:
+            return f"(-{a})"
+        if k is not None and (k.p <= 37 or k.s <= 6):
+            return self.cast(f"({self.decimal_lit(0, Dec(1, 0))} - {a})", k)
+        raise Unsupported(
+            f"negation of a DECIMAL({k.p if k else '?'}, {k.s if k else '?'}) on Spark: "
+            "Spark rounds -x past 34 digits and 0 - x past scale 6 at 38 digits (SP-1)"
+        )
+
+    def decimal_abs(self, a: str, k: Dec | None = None) -> str:
+        # SP-1: `abs` negates a negative value as `-x` does.
+        return f"(CASE WHEN {a} < 0 THEN {self.decimal_neg(a, k)} ELSE {a} END)"
+
+    def decimal_cast(self, a: str, k: Dec, src: Kind | None = None) -> str:
+        if src != "float":
+            return self.cast(a, k)
+        if k.p > 18:
+            raise Unsupported(
+                f"CAST of a double to DECIMAL({k.p}, {k.s}) on Spark: Spark reads the "
+                "double as its shortest text, which past 18 digits is not its value"
+            )
+        # `round(x · 10ˢ)` in doubles, halves away from zero (Spark's `ROUND` of
+        # a double rounds its shortest text, which keeps every half where it
+        # is); whole doubles below 2⁶³ are exact as `BIGINT`s.
+        scale = self.float_lit(float(10**k.s))
+        units = self.cast(f"CAST(ROUND({a} * {scale}) AS BIGINT)", Dec(k.p, 0))
+        return self.cast(f"({units} * {self.decimal_lit(1, Dec(k.s + 1, k.s))})", k)
+
+    def decimal_to_int(self, a: str) -> str:
+        # Truncates toward zero; ANSI raises outside 64 bits.
+        return f"CAST({a} AS BIGINT)"
+
+    def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
+        raise Unsupported(
+            "decimal division (an AVG of decimals) on Spark: Spark's decimal quotient "
+            "rounds at a scale of its own first (spark-decimal-arith, #27)"
+        )
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever

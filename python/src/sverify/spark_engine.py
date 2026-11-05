@@ -18,8 +18,9 @@ import functools
 import os
 import re
 import sys
+import weakref
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
@@ -87,6 +88,8 @@ def spark_type(t: pa.DataType) -> str:
     """The Spark type of an Arrow column, as `sverify.sql.spark` writes it."""
     if pa.types.is_integer(t):
         return SPARK.type_name("int")
+    if pa.types.is_decimal(t):
+        return f"DECIMAL({t.precision}, {t.scale})"
     if pa.types.is_floating(t):
         return SPARK.type_name("float")
     if pa.types.is_timestamp(t):
@@ -120,16 +123,29 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
     return t
 
 
+#: The views sverify registered under its own names (`__sverify_<i>`, which
+#: `sverify.engine.run_plan` gives a plan's tables), per session: the Arrow
+#: table each holds. A run over the same table does not send it again.
+_VIEWS: weakref.WeakKeyDictionary[Any, dict[str, pa.Table]] = weakref.WeakKeyDictionary()
+
+
 def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None) -> None:
     """Register each table as a temporary view of that name. The columns go
     to Spark as Arrow, cast to the types `spark_type` names, so NULL and NaN
     stay apart, and no Python worker runs (a table of 100,000 rows takes a
-    quarter of the time it took as Python values)."""
+    quarter of the time it took as Python values). A view of sverify's own
+    names that holds the same Arrow table already is kept as it is."""
     spark = spark or session()
+    held = _VIEWS.setdefault(spark, {})
     for name, table in tables.items():
+        own = name.startswith("__sverify_")
+        if own and held.get(name) is table:
+            continue
         schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
         target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
         spark.createDataFrame(table.cast(target), schema).createOrReplaceTempView(name)
+        if own:
+            held[name] = table
 
 
 def run(

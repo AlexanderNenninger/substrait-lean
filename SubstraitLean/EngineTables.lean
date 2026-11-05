@@ -369,6 +369,8 @@ def Profile.spark.table : ProfileTable where
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
     (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
     (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    -- Decimals raise past their type under ANSI (spark-decimal-arith).
+    (some "dec.arith", "overflow", .oneOf ["ERROR"]),
     -- `ROUND_HALF_UP` on `BigDecimal` (spark-decimal-arith).
     (none, "decimal_rescale", .oneOf ["TIE_AWAY_FROM_ZERO"])] ++ uncharacterized prototypeSlice
 
@@ -427,7 +429,12 @@ def Profile.spark.obs : ObsTable := [
   (none, "stat_algo", ({ ObsRow.native ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["spark-quantile"]),
-  (none, "decimal_rescale", .native ["spark-decimal-arith"])]
+  (none, "decimal_rescale", .native ["spark-decimal-arith"]),
+  -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
+  -- where its type keeps the scale, and a type past 38 digits at a scale
+  -- above 6, which Spark would round, is refused.
+  (some "dec.arith", "overflow", (ObsRow.shimmed "decimal_negate_sub"
+    ["spark-decimal-negate", "spark-decimal-arith"]).proved "Spark.decimal_negate_sub")]
 
 /-! ## The engines -/
 
