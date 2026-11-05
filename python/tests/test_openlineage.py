@@ -14,11 +14,9 @@ import uuid
 import warnings
 from pathlib import Path
 
-import jsonschema
 import pyarrow as pa
 import pytest
 from ibis import _
-from referencing import Registry, Resource
 
 import sverify as sv
 from sverify import openlineage as ol
@@ -27,16 +25,21 @@ from sverify.contracts import MaxRows, Unique
 from sverify.errors import PreconditionError
 from sverify.io import DeltaSink, StaticSource
 
+# The wheel's tests install only what the Wheels workflow lists.
+jsonschema = pytest.importorskip("jsonschema")
+referencing = pytest.importorskip("referencing")
+
 HERE = Path(__file__).parent
 SPEC = HERE / "standards" / f"openlineage-{ol.CLIENT_VERSION}"
 FACET = HERE.parent / "src" / "sverify" / "schemas" / "openlineage-contract-facet.schema.json"
 
 
-def _registry() -> Registry:
+def _registry() -> referencing.Registry:
     docs = [json.loads((SPEC / "OpenLineage.json").read_text())]
     docs += [json.loads(p.read_text()) for p in sorted((SPEC / "facets").glob("*.json"))]
     docs.append(json.loads(FACET.read_text()))
-    return Registry().with_resources((d["$id"], Resource.from_contents(d)) for d in docs)
+    resources = ((d["$id"], referencing.Resource.from_contents(d)) for d in docs)
+    return referencing.Registry().with_resources(resources)
 
 
 REGISTRY = _registry()
