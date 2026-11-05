@@ -366,7 +366,7 @@ The rules for decimals are in [Decimals](#decimals).
 |---|---|---|
 | Aggregates | NULLs are skipped. `COUNT` of no rows is 0, a [black box](#black-boxes) its row's `empty`; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
 | `FIRST` / `LAST` (#55) | The first or last non-NULL value in the aggregate's own `ORDER BY`, NULL without one. Rows tied in the order go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. Without an `ORDER BY` every row ties (any row's value, as in Ibis's `distinct(on=)`), and an engine may take each measure's value from a different row. | ✓ on DuckDB; other engines refuse it until #271 |
-| `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Refused without an `ORDER BY` (the order would be the engine's), and determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. | ✓ on DuckDB; other engines refuse it until #271 |
+| `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Without an `ORDER BY` every row ties, and the strings may come in any order. It is determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. A contract sees some string or NULL, and until conditions are proved over every order (D1 in [core-semantics.md](core-semantics.md)) a postcondition over a plan with ties stays unproved. | ✓ on DuckDB; other engines refuse it until #271 |
 
 ## Windows
 
