@@ -821,7 +821,9 @@ Two limits of the per-option view:
   refused.
 - Relational options act on operators, not calls: `null_order` is
   discharged by writing the sort key's NULL placement, `tie_order` and
-  `tie_pick` by a total order (`tie_free`) or a refusal, and `sum_order`
+  `tie_pick` natively (any engine's pick is one the reference allows), or,
+  under the deterministic profile, by a total order or a refusal
+  ([D24](#d24-tie-order-belongs-to-the-deterministic-profile)), and `sum_order`
   (any order in `P`, a fixed one in `Q`) is native, while the converse needs
   an ordered aggregation (`Dialect.float_sum`), at the cost of a sort.
 
@@ -1124,7 +1126,10 @@ WebAssembly's spec is the closest precedent for profiles of one language
 element of a set the spec defines (`nans_N`), and the deterministic profile
 removes the rules that allow more than one, so that every NaN an operation
 creates is the positive canonical one; every profile is a subset of the full
-one. The core is the full profile and the reference a deterministic one. The
+one. The core is the full profile. The reference fixes the values Wasm's
+deterministic profile fixes, NaNs among them, and leaves the order of ties
+open; sverify's deterministic profile is the reference with that order
+fixed as well ([D24](#d24-tie-order-belongs-to-the-deterministic-profile)). The
 reference goes further on zeros: Wasm keeps `-0` and `+0` apart, and its
 `fmin(-0, +0)` is `-0`, while the reference has one zero (#89). D4's NaN
 codes by sign follow Wasm's treatment of the sign as a choice; IEEE 754 does
@@ -1566,3 +1571,35 @@ with the user, and the declared form documents it.
 `SUM`s assumed to fit 64 bits and operations on doubles assumed to stay
 finite (`Report.assumed`) are not inferred preconditions: they keep their
 checks on the data.
+
+### D24. Tie order belongs to the deterministic profile
+
+The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
+`ORDER BY` or in a window's order come in any order, a `FETCH` takes the
+first rows of any order the plan allows, and `FIRST`, `LAST`,
+`ARG_MIN`/`ARG_MAX`, `STRING_AGG`, `collect` and `MODE` take the rows that
+tie in their own order in any order. `Rel.OrderAllowed`
+(`SubstraitLean/Ties.lean`) holds the results of every such order, and a
+contract holds on all of them: `contract_sound_all` for postconditions,
+`Rel.keys_sound_all` for keys. An engine's own pick is one of these orders,
+so it runs natively.
+
+The deterministic profile is the reference with one order fixed: a stable
+sort (`List.mergeSort`) and rows in list order, as `Rel.eval` computes them
+(`Rel.eval_orderAllowed`). A consumer that needs a rerun to give the same
+rows asks for it, through `choose(deterministic=True)` or a sink's
+`reproducible=` ([D10](#d10-determinism),
+[D20](#d20-two-observations-per-output)). Engines read tables in an order of
+their own, so no shim reproduces list order on them. The deterministic
+profile needs a plan whose order is total, by a tie-break key or a
+uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
+refuses a plan without one. The refusal names each place where ties stay
+open (`Report.tie_places`).
+
+Why: `Rel.eval`'s one order leaked into four places
+([#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)).
+Theorems about `FETCH`, ties and windows held for that order only. The
+catalogue and the oracles compared each engine with it, and reported
+legitimate picks as `tie_order` differences. Shims imitated
+`List.mergeSort` on engines, and Polars refused or shimmed picks it could
+run natively.

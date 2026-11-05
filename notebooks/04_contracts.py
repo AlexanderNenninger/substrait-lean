@@ -697,11 +697,11 @@ def _(mo):
 
     Sensors sometimes report twice in the same instant. If two readings of a
     sensor share a `ts`, SQL does not say which is previous. The engine
-    picks, and may pick differently on the next run, so a proof about one
-    choice says nothing about the other. Unless `requires` gives a key on the
-    partition and order columns, Lean reports every postcondition as
-    undetermined and `report.deterministic` is `False`. With the key,
-    earlier means strictly earlier: `prev_ts < ts`.
+    picks, and may pick differently on the next run, so Lean proves only
+    what holds for every pick. Unless `requires` gives a key on the
+    partition and order columns, `report.deterministic` is `False` and
+    `report.tie_places` names the window. With the key, earlier means
+    strictly earlier: `prev_ts < ts`.
     """)
     return
 
@@ -817,8 +817,8 @@ def _(mo):
       with NULLs, with `"inner"` they disappear, and the proofs hold either
       way.
     * Drop the key on `gyr`. Two gyroscope readings at the same instant tie
-      for "latest", the result is undetermined, and every postcondition is
-      refused (a warning here, because of `on_unproved="warn"`).
+      for "latest". The guarantees hold for either one, and the result is
+      not deterministic: a rerun may pair the sample with the other reading.
 
     One row per sample comes from the key analysis: `ROW_NUMBER()` over a
     partition is a key together with the partition columns, and the filter

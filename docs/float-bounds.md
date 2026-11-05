@@ -358,6 +358,26 @@ parallel one's about `1.6 · 10⁻²`, and two-pass's about `10⁻⁶`, against 
 variance of `1`.
 
 
+DuckDB's own results have the properties the reference allows (#444):
+[`Chan.lean`](../float-bounds/FloatBounds/Chan.lean) and
+[`ChanCorr.lean`](../float-bounds/FloatBounds/ChanCorr.lean) prove them for
+Welford's update with Chan's merge in any tree, as DuckDB computes them:
+
+| Theorem | Property |
+|---|---|
+| `vEval_nonneg` | the co-moment is `≥ 0` |
+| `core_var_chan` | `VAR_*` is `≥ 0` and within `varTol` (`STDDEV_*` follows by `core_stddev`) |
+| `core_cov_chan` | `COVAR_*` is within `covTol` |
+| `corr_duck_le`, `core_corr_chan` | DuckDB's `CORR`, `COVAR_POP / (STDDEV_POP_x · STDDEV_POP_y)` from three states, is at most `1 + 3E/L + 8u` |
+
+`vEval_nonneg` needs two facts of IEEE rounding beyond the standard model:
+rounding is monotone (`StdModel.Mono`), and doubles are multiples of `2⁻¹⁰⁷⁴`
+that round relatively (`Grid`). With them Welford's new mean lies between the
+old one and the value, so the two differences it multiplies have one sign.
+DuckDB's `stat_algo` row cites `core_var_chan` ([realizability](realizability.md)).
+Polars's algorithms (a reassociated two-pass per block, Schubert and Gertz's
+merge) are not proved, and its row stays tested.
+
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
 the variance also needs Popoviciu's inequality, the arguments of `COVAR` and

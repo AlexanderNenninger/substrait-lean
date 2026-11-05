@@ -374,9 +374,13 @@ except VerificationError as e:
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
-  If rows can tie in the order, the engine decides which comes first, so
-  every postcondition is `undetermined` and `report.deterministic` is
-  `False`; a key on the partition and order columns fixes that.
+  If rows can tie in the order, the engine decides which comes first:
+  `verify` proves the postconditions that hold for every order of the ties,
+  `report.deterministic` is `False` and `report.tie_places` names the
+  window ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+  A key on the partition and order columns makes the order total, which
+  facts such as `prev_ts < ts` and a rerun that must give the same rows
+  need.
 * ASOF joins: `sv.asof_join(left, right, on="ts", by="device",
   tolerance=...)` matches each row with the latest earlier row of the other
   table, built from a range join and `ROW_NUMBER` that Lean checks like any

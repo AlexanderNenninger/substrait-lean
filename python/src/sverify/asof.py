@@ -14,8 +14,9 @@ runs and Lean checks like any other plan:
 Lean then proves what an ASOF join promises: one output row per left row
 (`unique(*by, on)`, from `ROW_NUMBER` keys and the join's key analysis),
 `on_right <= on` and `on - on_right <= tolerance`. The ranking is only
-determined when no two right rows tie, so `requires` must give the right
-side a key on `(*by, on)`; without it every postcondition is `undetermined`.
+determined when no two right rows tie: without a key on `(*by, on)` on the
+right side these guarantees still hold for every pick of the tied rows
+(D24), and the report is not `deterministic`.
 """
 
 from collections.abc import Sequence

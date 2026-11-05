@@ -134,17 +134,22 @@ def test_lag_is_null_on_the_first_row():
 
 
 @pytest.mark.slow
-def test_ties_in_the_window_order_are_refused():
+def test_ties_in_the_window_order_hold_for_every_order():
     """Without a key on (sensor, ts), two readings may share a timestamp and
-    DataFusion picks which one is LAG's: nothing is claimed."""
+    the engine picks which one is LAG's. A postcondition that holds for
+    every order is proved (D24), one that needs the key is not, and the
+    report names the window."""
     report = sv.verify(
         with_neighbours(readings),
         requires={"readings": [_.sensor.notnull(), _.ts.notnull()]},
         ensures=[_.rn >= 0, sv.unique("sensor", "ts")],
     )
     assert not report.deterministic
-    assert not report.proved
-    assert all(c.value.startswith("undetermined") for c in report.ensures)
+    rn, key = report.ensures
+    assert rn.proved
+    assert not key.proved and key.value == "not shown to be a key"
+    assert [p.op for p in report.tie_places] == ["window"]
+    assert "with no key among those columns" in report.tie_places[0].what
 
 
 def test_a_key_on_the_order_column_alone_suffices():

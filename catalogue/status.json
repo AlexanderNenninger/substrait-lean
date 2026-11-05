@@ -860,7 +860,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "error: Invalid Input Error: sverify: division by zero: 0.0",
+   "duckdb": "runs",
    "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issu",
    "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/i"
   }
@@ -1183,10 +1183,6 @@
    "proved": false,
    "guard_free": true,
    "deterministic": false,
-   "unproved": [
-    "lochierarchy BETWEEN 0 AND 2",
-    "rank_within_parent >= 1"
-   ],
    "inferred": [
     "store_sales: (_.ss_ext_sales_price >= 0.01)"
    ]
@@ -1222,13 +1218,9 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
+   "proved": true,
    "guard_free": true,
-   "deterministic": false,
-   "unproved": [
-    "(_.web_cumulative > _.store_cumulative)",
-    "(_.store_cumulative >= 0)"
-   ]
+   "deterministic": false
   },
   "verified_sql": {
    "duckdb": "no"

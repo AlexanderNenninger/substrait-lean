@@ -125,10 +125,12 @@ def test_rows_cite_theorems_float_bounds_has() -> None:
     cite (`floatBoundsTheorems`) are the ones `float-bounds` checks exist."""
     root = Path(__file__).resolve().parents[2]
     core = (root / "SubstraitLean" / "EngineTables.lean").read_text()
-    fb = (root / "float-bounds" / "FloatBounds" / "Epsilon.lean").read_text()
     names = re.compile(r'"(FloatBounds\.[\w.]+)"')
     cited = core[core.index("def floatBoundsTheorems") :].split("\n\n")[0]
-    checked = fb[fb.index("run_cmd do") :]
+    checked = "".join(
+        (root / "float-bounds" / "FloatBounds" / f).read_text().split("run_cmd do")[1]
+        for f in ("Epsilon.lean", "ChanCorr.lean")
+    )
     assert set(names.findall(cited)) == set(names.findall(checked)) != set()
 
 

@@ -47,14 +47,14 @@ DataFusion, DuckDB or Polars, whose translations raise rather than differ.
 
 `first()` and `last()` without `order_by`, and so `distinct(on=…)`, which
 Ibis writes as `FIRST` (or `LAST`) of each other column, take any row's
-value (#55). `verify` takes the rows in the input's list order, one of the
-choices an engine may make, and reports the result as not `deterministic`
-unless the grouping (`on`) columns form a key; then nothing is proved about
-it. Each column is chosen on its own: `FIRST` skips NULLs column by column,
+value (#55). `verify` proves what holds for every row an engine may take,
+and reports the result as not `deterministic` unless the grouping (`on`)
+columns form a key
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). Each column is chosen on its own: `FIRST` skips NULLs column by column,
 so `distinct(on="name")` may keep `a` from one row and `b` from another, and
 a fact about every input row, such as `a <= b`, need not hold of the result.
 `keep=None` keeps the groups of one row, but the report still calls it
-undetermined. The plan runs on DuckDB for now (#271).
+not `deterministic`. The plan runs on DuckDB for now (#271).
 
 ## Parameters
 
