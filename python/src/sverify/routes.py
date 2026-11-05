@@ -711,6 +711,7 @@ def realization(
     observed: Observation,
     epsilon: Mapping[str, Mapping[str, float]] | None = None,
     held: Mapping[str, str] | None = None,
+    rows_exact: bool | None = None,
 ) -> Realized:
     """How `engine` realizes the reference's choices on the options a plan
     depends on, from the class, observation and shim columns of its choices rows
@@ -728,7 +729,9 @@ def realization(
 
     A row whose observation bounds the doubles per plan (`{"floats": {"bound":
     "plan"}}`, Polars's `sum_order`) is checked against `epsilon`, the
-    contract's per-column `ε`.
+    contract's per-column `ε`. Where the engine's doubles may differ and
+    `rows_exact` is False, a filter, key or sort on them may keep other rows
+    than the reference's (#568's threshold rule): the plan is refused there.
     """
     from sverify.observation import from_json
 
@@ -777,6 +780,12 @@ def realization(
         classes.append(cls)
         if r.get("evidence"):
             evidence.append(r["evidence"])
+    if rows_exact is False and any(x.floats != "exact" for x in seen):
+        problems.append(
+            f"a filter, grouping key or sort on a double may keep other rows on {engine} than "
+            "the reference: its threshold lies within the doubles' bound of their range; "
+            "state a precondition that keeps the values away from it, or compare exact columns"
+        )
     worst = max(classes, key=CLASSES.index) if classes else None
     ev: Evidence | None = None
     if evidence and len(evidence) == len(classes):
@@ -1225,7 +1234,9 @@ def choose(
                 rerun_evidence=rerun_evidence,
             )
         seen, held = observed(report)
-        got = realization(e, depends, seen, report.epsilon, held)
+        got = realization(
+            e, depends, seen, report.epsilon, held, (report.rows_exact or {}).get(e)
+        )
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
