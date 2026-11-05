@@ -38,9 +38,12 @@ iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
 flight = ["pyarrow>=26.0.0"]
 # `sverify.testing` and its pytest plugin; the plugin is registered without it.
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
+# `sverify.openlineage` with the OpenLineage client's own configuration (#792);
+# the file, console and HTTP targets need nothing.
+openlineage = ["openlineage-python>=1.55.0,<2"]
 # `sverify.odcs` writes and reads ODCS contracts as YAML (#791); JSON needs nothing.
 odcs = ["pyyaml>=6.0"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs]"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs,openlineage]"]
 
 # The command line (`sverify.cli`, #744).
 [project.scripts]
