@@ -154,7 +154,7 @@ def test_a_node_reads_a_duckdb_written_delta_sink(tmp_path):
         report = down.refresh()[down.name].report
         assert report is not None
         [s] = report.sources
-        assert s.mode == "change feed"
+        assert s.mode == "change_feed"
         assert repr(sorted(map(repr, down.to_arrow().to_pylist()))) == repr(
             sorted(map(repr, node.to_arrow().select(["name", "x"]).to_pylist()))
         )
@@ -222,7 +222,7 @@ def test_iceberg_sinks_written_by_duckdb(tmp_path, monkeypatch, catalog):
         lambda engine: catalog.load_table(f"db.kept_{engine}").scan().to_arrow(),
         [append, delete, everything],
     )
-    assert [w.mode for w in writes] == ["created", "append", "row-level", "row-level"]
+    assert [w.mode for w in writes] == ["created", "append", "row_level", "row_level"]
 
 
 def test_iceberg_statistics_as_pyiceberg_writes_them(tmp_path, catalog):

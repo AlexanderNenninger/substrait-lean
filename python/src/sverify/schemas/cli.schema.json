@@ -18,6 +18,11 @@
       "type": "array",
       "items": {"$ref": "#/$defs/item"}
     },
+    "findings": {
+      "description": "check: what the check found wrong, one per postcondition not proved, needed precondition, possible runtime error, broken link or unchecked transform: the view the text, github, sarif and junit outputs print.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    },
     "unchecked": {"description": "check: the contracted transforms the file defines but never applies.", "type": "array", "items": {"type": "string"}},
     "error": {"description": "What stopped the command; null if nothing did.", "oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]},
     "budget": {
@@ -107,6 +112,22 @@
         },
         "links": {"description": "Preconditions on another transform's result that its guarantees do not imply, one message each.", "type": "array", "items": {"type": "string"}},
         "report": {"description": "Report.to_json(), in the format of report.schema.json; null when unfinished.", "type": ["object", "null"]}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["code", "level", "message", "item", "nodes", "line"],
+      "properties": {
+        "code": {"description": "The code `sverify explain` takes, in snake case (the report's reason or issue kind, or needs, composition, unchecked, timeout, ...). 1.x may add values.", "type": "string"},
+        "level": {"description": "SARIF's level.", "enum": ["error", "warning", "note"]},
+        "message": {"type": "string"},
+        "item": {"description": "The transform's name.", "type": "string"},
+        "nodes": {"type": "array", "items": {"type": "string"}},
+        "line": {"description": "The line of the transform's decorator in the file.", "type": ["integer", "null"]},
+        "condition": {"description": "The postcondition or needed precondition, as its label.", "type": "string"},
+        "counterexample": {"type": "string"},
+        "hint": {"type": "string"},
+        "table": {"description": "The input table a needed precondition is on.", "type": "string"}
       }
     },
     "error": {

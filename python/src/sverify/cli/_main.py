@@ -14,7 +14,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
-from sverify.cli import _explain, _findings, _formats, _text
+from sverify.cli import _contract, _explain, _findings, _formats, _text
 from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
@@ -164,6 +164,7 @@ class Check:
             "file": self.file,
             "target": self.target,
             "items": [_item(c) for c in self.checked],
+            "findings": self.findings(),
             "unchecked": self.unchecked,
             "error": self.error,
             "budget": {"timeout": self.budget.seconds, "elapsed": round(self.budget.elapsed, 3)},
@@ -539,6 +540,7 @@ def parser() -> argparse.ArgumentParser:
     e = sub.add_parser("explain", parents=[common], help="what a [code] of check's output means")
     e.add_argument("code", help="a code from check's output, such as may_be_false")
     e.set_defaults(run=cmd_explain, full=False)
+    _contract.add_parser(sub)
     return p
 
 

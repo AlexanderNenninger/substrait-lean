@@ -25,7 +25,7 @@ DataFusion and Spark.
   Transforms compose left to right, fused into one plan until `.write`
   stores a result; `refresh` keeps the nodes up to date from the changes to
   their sources, and `group` refreshes several together. A batch of
-  `Changes` feeds an in-memory source (`sverify.io.StaticSource`).
+  `sverify.io.Changes` feeds an in-memory source (`sverify.io.StaticSource`).
 * `sql(query)` is SQL as a step of `.pipe`, reading the chained node and
   the keyword inputs by their table names; `sql(query, orders=orders)`
   writes a transform's body in SQL over its input tables.
@@ -64,11 +64,9 @@ if _TYPE_CHECKING:
         verify,
     )
     from sverify.engine import connect
-    from sverify.incremental import Changes
     from sverify.nodes import Node, group
     from sverify.observation import equivalent, within
     from sverify.sql_model import sql
-    from sverify.substrait_export import from_substrait
 
 # The public names, imported on first use (PEP 562): `import sverify` stays
 # cheap, and so do the command's `--help`, `--version` and `explain`, until
@@ -87,19 +85,34 @@ _LAZY = {
     "unique": "sverify.contracts",
     "verify": "sverify.contracts",
     "connect": "sverify.engine",
-    "Changes": "sverify.incremental",
     "Node": "sverify.nodes",
     "group": "sverify.nodes",
     "equivalent": "sverify.observation",
     "within": "sverify.observation",
     "sql": "sverify.sql_model",
-    "from_substrait": "sverify.substrait_export",
+}
+
+
+#: Moved before 1.0 (the API review's A1); the old names warn for a release.
+_DEPRECATED = {
+    "Changes": ("sverify.incremental", "sverify.Changes is deprecated; import it from sverify.io"),
+    "from_substrait": (
+        "sverify.substrait_export",
+        "sverify.from_substrait is deprecated; call sverify.Report.from_substrait",
+    ),
 }
 
 
 def __getattr__(name: str) -> _Any:
-    """A public name, imported on first use; else a submodule
-    (`sverify.contracts`), as an eager import used to load them."""
+    """A public name, imported on first use; a deprecated one, with a
+    warning; else a submodule (`sverify.contracts`), as an eager import
+    used to load them."""
+    if name in _DEPRECATED:
+        import warnings
+
+        module, message = _DEPRECATED[name]
+        warnings.warn(message, DeprecationWarning, stacklevel=2)
+        return getattr(_importlib.import_module(module), name)
     if name in _LAZY:
         value = getattr(_importlib.import_module(_LAZY[name]), name)
         globals()[name] = value
@@ -128,7 +141,6 @@ class _Module(_types.ModuleType):
 _sys.modules[__name__].__class__ = _Module
 
 __all__ = [
-    "Changes",
     "ContractedTransform",
     "Node",
     "Report",
@@ -137,7 +149,6 @@ __all__ = [
     "asof_join",
     "connect",
     "equivalent",
-    "from_substrait",
     "group",
     "key",
     "max_rows",

@@ -1,0 +1,2 @@
+# The pipelines' dependencies. sverify 0.6 brings the `sverify` command.
+sverify[delta]>=0.6

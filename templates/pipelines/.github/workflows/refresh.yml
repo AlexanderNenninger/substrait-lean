@@ -1,0 +1,53 @@
+# Refresh the production tables from `main`, then rebuild the catalog. Runs
+# on a schedule and by hand (Actions, refresh, Run workflow: the GitHub app
+# has the button too). The `production` environment is the only one whose
+# credentials write production tables; give it required reviewers to
+# approve each run.
+#
+# `where` picks the runner of the refresh step: `actions` (default) runs it
+# here; `cloud-job` starts it as a job in your cloud, next to the bucket, and
+# waits for it (scripts/cloud-job.sh; for enterprise, once the sverify
+# container image exists, #770). The repository variable
+# SVERIFY_REFRESH_WHERE sets it for scheduled runs.
+name: refresh
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      where:
+        description: Where the refresh runs
+        type: choice
+        options: [default, actions, cloud-job]
+        default: default
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      id-token: write
+      actions: write
+    uses: ./.github/workflows/lake.yml
+    secrets: inherit
+    with:
+      environment: production
+      stage: production
+      run: |
+        status=0
+        where="${{ (inputs.where != 'default' && inputs.where) || vars.SVERIFY_REFRESH_WHERE || 'actions' }}"
+        case "$where" in
+          actions) python scripts/lake.py refresh --check check.json --out refresh.json --alert alert.md || status=$? ;;
+          cloud-job) scripts/cloud-job.sh refresh.json alert.md || status=$? ;;
+          *) echo "::error::where must be actions or cloud-job, not $where"; exit 2 ;;
+        esac
+        python scripts/lake.py catalog --out _data/site --stage production \
+          --check check.json --refresh refresh.json --title "${GITHUB_REPOSITORY#*/}"
+        scripts/publish-data.sh "Refresh $(date -u +%Y-%m-%dT%H:%MZ)" "${{ vars.SVERIFY_SQUASH_AFTER || '30' }}"
+        gh workflow run pages.yml --ref main
+        exit $status

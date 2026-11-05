@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = true ]; then pip install -q -r \"$CLAUDE_PROJECT_DIR/requirements.txt\" pytest; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(sverify check:*)",
+      "Bash(sverify explain:*)",
+      "Bash(python scripts/lake.py check:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pytest:*)"
+    ]
+  }
+}

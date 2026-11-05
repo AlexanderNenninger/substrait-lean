@@ -1,0 +1,44 @@
+# The secondary path to Claude (README, "Using Claude"): mention @claude in
+# an issue or a pull request, and the Claude GitHub Action works on it here.
+# It needs the Claude GitHub app and a repository secret, ANTHROPIC_API_KEY
+# or CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`, with a Claude plan).
+# Without either, this workflow does nothing.
+name: claude
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  claude:
+    if: >-
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude')) ||
+      (github.event_name != 'issues' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    env:
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - if: env.HAS_KEY != 'true'
+        run: echo "::notice::Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to use @claude here."
+      - if: env.HAS_KEY == 'true'
+        uses: actions/checkout@v4
+      - if: env.HAS_KEY == 'true'
+        uses: ./.github/actions/setup
+      - if: env.HAS_KEY == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # CLAUDE.md describes the loop; these let it run the checks.
+          claude_args: >-
+            --allowedTools "Bash(sverify check:*),Bash(sverify explain:*),Bash(python scripts/lake.py check:*),Bash(pytest:*),Bash(python -m pytest:*)"

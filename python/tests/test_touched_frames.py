@@ -12,9 +12,8 @@ import ibis
 import pyarrow as pa
 import pytest
 
-import sverify as sv
 from _pipelines import recomputed, rows
-from sverify.io import StaticSource
+from sverify.io import Changes, StaticSource
 
 T0 = datetime(2026, 11, 3)
 SCHEMA = pa.schema([("host", pa.string()), ("ts", pa.timestamp("us")), ("cpu", pa.int64())])
@@ -112,7 +111,7 @@ def test_framed_windows_match_a_full_recompute(seed, by):
     assert spec is not None and spec.framed is not None
     assert (spec.framed.start, spec.framed.end) == (-timedelta(minutes=10), timedelta(minutes=2))
     for ins, dels in batches:
-        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         node.refresh(audit=True)
         assert rows(node) == recomputed(node, src)
 
@@ -121,7 +120,7 @@ def test_a_change_far_from_the_rest_recomputes_only_its_neighbourhood():
     src = StaticSource(samples([("a", m, 1) for m in range(0, 600, 2)]), name="samples")
     node = src.pipe(frames(["host"]))
     node.refresh()
-    src.apply(sv.Changes(inserts=samples([("a", 301, 5)])))
+    src.apply(Changes(inserts=samples([("a", 301, 5)])))
     out = node.refresh(audit=True)["windows"]
     assert out.report is not None
     # The frames reach from 10 minutes back to 2 ahead, so 5:01 is in the
@@ -150,7 +149,7 @@ def test_a_frame_that_ends_before_the_row_recomputes_the_rows_it_reaches():
     spec = view(node).touched
     assert spec is not None and spec.framed is not None
     assert (spec.framed.start, spec.framed.end) == (-timedelta(minutes=10), timedelta(0))
-    src.apply(sv.Changes(inserts=samples([("a", 20, 100)])))
+    src.apply(Changes(inserts=samples([("a", 20, 100)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src)
 
@@ -161,7 +160,7 @@ def test_status_and_summary_name_the_strategy():
     node.refresh()
     assert "touched frames recomputed (no delta rules:" in str(node.status())
     assert any(s.framed for s in node.status().nodes)
-    src.apply(sv.Changes(inserts=samples([("a", 3, 9)])))
+    src.apply(Changes(inserts=samples([("a", 3, 9)])))
     out = node.refresh()["windows"]
     assert "row(s) in touched frames recomputed" in out.summary()
     assert "not proved" not in str(out.report)
