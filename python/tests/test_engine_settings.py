@@ -9,6 +9,7 @@ from collections.abc import Iterator
 
 import pyarrow as pa
 import pytest
+from ibis import _
 
 import sverify as sv
 from sverify import _duckdb, _engine_settings, routes
@@ -75,7 +76,7 @@ def test_a_duckdb_setting_a_choice_depends_on_refuses(
     con, duckdb_global, name: str, value: str, named: str
 ) -> None:
     t = con.table("t")
-    report = sv.verify(t.select("k", j=t.i // 2))
+    report = sv.verify(t.select("k", j=t.i // 2), requires={"t": [_.i.between(-100, 100)]})
     duckdb_global(name, value)
     with pytest.raises(EngineSettingsError, match=f"{named}.*which this plan relies on"):
         report.run(con, "duckdb", route="auto")
@@ -98,7 +99,9 @@ def test_a_setting_the_plan_does_not_rely_on_warns(
     """#655: a sort states its NULLS LAST, and the written SQL spells it out,
     so the session's default null order changes nothing the plan relies on."""
     t = con.table("t")
-    report = sv.verify(t.order_by(t.i).select("k", j=t.i + 1))
+    report = sv.verify(
+        t.order_by(t.i).select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]}
+    )
     duckdb_global(name, value)
     with pytest.warns(EngineSettingsWarning, match=f"{named}.*this plan does not rely on it"):
         report.run(con, "duckdb")
@@ -182,7 +185,7 @@ def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
 
 def test_polars_engine_affinity(con, affinity) -> None:
     t = con.table("t")
-    report = sv.verify(t.select("k", j=t.i + 1))
+    report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
     affinity("streaming")
     report.run(con, "polars", route="auto")
     affinity("in-memory")

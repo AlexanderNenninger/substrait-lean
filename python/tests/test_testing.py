@@ -92,7 +92,7 @@ def test_a_failing_assertion_reads_well(pytester):
         from sverify.testing import assert_contract
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0]},
+            requires={"orders": [_.amount >= 0, _.amount < 2**62]},
             ensures=[_.doubled >= 0],
         )
         def doubled(orders):
@@ -192,7 +192,7 @@ def test_data_must_name_the_tables_read():
 
 
 def test_an_unproved_contract_fails():
-    @sv.transform(ensures=[_.doubled >= 0], on_unproved="warn")
+    @sv.transform(ensures=[_.doubled >= 0], on_unproved="warn", on_inferred="silent")
     def loose(orders):
         return orders.select(orders.id, doubled=orders.amount * 2)
 

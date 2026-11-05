@@ -1112,6 +1112,10 @@ class Report:
     column, #568), as the checker computes it for this plan; None where it
     does not."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
+    """What the inferred preconditions (`inferred`) do to the proof
+    (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
+    not proved (`needed`)."""
     inferred_from: dict[str, Issue] = field(default_factory=dict, repr=False, compare=False)
     """For each inferred precondition (by label), the runtime error it rules
     out: where it came from."""
@@ -1352,7 +1356,48 @@ class Report:
         an observation (`sv.equivalent`), no postcondition depends on what
         it ignores. Under `semantics="substrait"`, the reference's proof
         also carries over (`transfer` is empty)."""
-        return all(c.portable for c in self.ensures) and not self.errors and not self.transfer
+        return (
+            all(c.portable for c in self.ensures)
+            and not self.errors
+            and not self.transfer
+            and not self.needed
+        )
+
+    @property
+    def needed(self) -> dict[str, list[str]]:
+        """With `on_inferred="error"`, the preconditions the proof needs that
+        `requires` does not state, as labels per input table (the bounds
+        `infer_bounds` found, `inferred`); empty otherwise."""
+        if self.on_inferred != "error":
+            return {}
+        return {t: [label(c) for c in cs] for t, cs in self.inferred.items() if cs}
+
+    def needs_text(self, table: str, labs: Sequence[str]) -> str:
+        """Needed preconditions on one table that come from one operation,
+        where they come from, and the fixes."""
+        issues = [i for lab in labs if (i := self.inferred_from.get(lab)) is not None]
+        kinds = " or ".join(dict.fromkeys(i.kind for i in issues))
+        where = f", inferred from `{issues[0].what}` ({kinds} otherwise)" if issues else ""
+        both = " and ".join(labs)
+        it = "it" if len(labs) == 1 else "them"
+        cond = labs[0] if len(labs) == 1 else " & ".join(labs)
+        return (
+            f"{both} on {table}{where}: declare {it} in requires (each run then checks "
+            f"{it} on the data), or rewrite so no row needs {it} (`{table}.filter({cond})` "
+            f"first, or a CASE); on_inferred='warn' or 'silent' assumes {it}"
+        )
+
+    def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
+        """`needs_text` for each table and operation (`needed` by default;
+        `inferred`, as labels, for a warning)."""
+        out = []
+        for t, labs in (self.needed if needed is None else needed).items():
+            groups: dict[str, list[str]] = {}
+            for lab in labs:
+                issue = self.inferred_from.get(lab)
+                groups.setdefault(issue.what if issue else lab, []).append(lab)
+            out += [self.needs_text(t, g) for g in groups.values()]
+        return out
 
     @property
     def errors(self) -> list[Issue]:
@@ -1396,12 +1441,15 @@ class Report:
 
     def __str__(self) -> str:
         lines = []
+        needed = self.needed
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self.inferred.get(table, [])}
             lines += [
                 f"requires {table}: {c}" + (self._inferred_note(c) if c in inferred else "")
                 for c in conds
+                if c not in needed.get(table, ())
             ]
+        lines += [f"needs: {n}" for n in self.needs_lines()]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved: {c.why}"
             if c.ignores:
@@ -1452,6 +1500,8 @@ class Report:
             rows.append(f"| `{c.label}` | {status(c)} |")
             if c.suggested:
                 rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
+        for n in self.needs_lines():
+            rows.append(f"| needs | ❌ {n.replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
             note = f" ({RUNTIME_CHECK})" if _assumable(i) else ""
@@ -1460,7 +1510,9 @@ class Report:
             )
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
-        inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
+        inferred = [
+            f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs if not self.needed
+        ]
         inferred += [
             f"SUM of `{i.what}` {_sum_assumed(i)}"
             if _sum(i)
@@ -1527,6 +1579,7 @@ class VerificationError(Exception):
         self.report = report
         problems = [f"{c.label} ({c.why})" for c in report.unproved]
         problems += [f"no runtime error ({i})" for i in report.errors]
+        problems += [f"without the precondition {n}" for n in report.needs_lines()]
         super().__init__(f"could not prove: {', '.join(problems)}\n{report}")
 
 
@@ -2117,6 +2170,7 @@ def verify(
     params: Mapping[ir.Scalar, Any] | None = None,
     infer: bool = True,
     semantics: Semantics | None = None,
+    on_inferred: OnInferred = "error",
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -2181,6 +2235,13 @@ def verify(
             reference holds there where Substrait allows nothing more at
             the options the plan meets, and `Report.transfer` names the
             options where it allows more.
+        on_inferred: What a precondition sverify infers does (`infer`):
+            `"error"` (the default), the plan is not proved without it, and
+            the report says where it came from and how to state it
+            (`Report.needed`); `"warn"`, it is assumed, checked on the data
+            before each run, and a warning names it
+            (`InferredPreconditionWarning`); `"silent"`, it is assumed and
+            checked without a warning.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -2243,6 +2304,7 @@ def verify(
         params=bound,
         infer=infer,
         semantics=_checked_semantics(semantics),
+        on_inferred=on_inferred,
     )
 
 
@@ -2257,6 +2319,7 @@ def infer_bounds(
     infer: bool = True,
     inputs: Collection[str] | None = None,
     semantics: Semantics = "reference",
+    on_inferred: OnInferred = "silent",
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -2288,7 +2351,33 @@ def infer_bounds(
     opened = {} if report.windows_total or isinstance(transform, str) else _open_columns(transform)
     out = _observed(report, observed or Observation(), ensures, opened)
     out.stated = observed is not None
+    out.on_inferred = _checked_on_inferred(on_inferred)
+    if on_inferred == "warn" and out.inferred:
+        warnings.warn(
+            "assumed inferred precondition(s): "
+            + "; ".join(
+                n.split(": declare")[0]
+                for n in out.needs_lines(
+                    {t: [label(c) for c in cs] for t, cs in out.inferred.items()}
+                )
+            ),
+            InferredPreconditionWarning,
+            stacklevel=3,
+        )
     return out
+
+
+OnInferred = Literal["error", "warn", "silent"]
+
+
+class InferredPreconditionWarning(UserWarning):
+    """A precondition sverify inferred is assumed (`on_inferred="warn"`)."""
+
+
+def _checked_on_inferred(v: str) -> OnInferred:
+    if v not in ("error", "warn", "silent"):
+        raise ValueError(f"on_inferred must be 'error', 'warn' or 'silent', not {v!r}")
+    return v  # type: ignore[return-value]
 
 
 def _observed(
@@ -3331,8 +3420,10 @@ class ContractedTransform:
         engine: Engine | None,
         infer: bool = True,
         semantics: Semantics = "reference",
+        on_inferred: OnInferred = "error",
     ):
         self.fn, self.ensures = fn, ensures
+        self.on_inferred = on_inferred
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
         self.semantics = _checked_semantics(semantics)
@@ -3380,6 +3471,7 @@ class ContractedTransform:
             tag,
             inputs,
             infer,
+            self.on_inferred,
             self.semantics,
             ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
@@ -3397,6 +3489,9 @@ class ContractedTransform:
                 infer=infer,
                 inputs=inputs,
                 semantics=self.semantics,
+                # Only the postconditions' proof needs the user's bounds; the
+                # links' and conditions' proofs infer as before.
+                on_inferred=self.on_inferred if tag == "ensures" else "silent",
             )
         return self._cache[key]
 
@@ -3614,6 +3709,7 @@ def transform(
     infer: bool = True,
     strict: bool | None = None,
     semantics: Semantics = "reference",
+    on_inferred: OnInferred = "error",
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -3663,6 +3759,15 @@ def transform(
             runs (`Report.assumed`). With False, every such bound must be
             stated in `requires`: an overflow, a `SUM`'s included, fails the
             proof, and the report's hint names the bound to state.
+            With `on_inferred="error"` (the default), an inferred bound is
+            not assumed: the transformation needs it in `requires`
+            (`Report.needed`).
+        on_inferred: What a precondition sverify infers does, as
+            `verify`'s: `"error"` (the default), the contract is not proved
+            until `requires` states it or the transformation no longer
+            needs it; `"warn"`, it is assumed and checked on the data, with
+            an `InferredPreconditionWarning`; `"silent"`, the same without
+            the warning.
         strict: Deprecated alias of `infer`, with the opposite polarity:
             `strict=True` is `infer=False`.
         semantics: What the contract's SQL conditions mean in its proofs,
@@ -3751,6 +3856,7 @@ def transform(
             stacklevel=2,
         )
         infer = not strict
+    on_inferred = _checked_on_inferred(on_inferred)
     return lambda fn: ContractedTransform(
-        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics
+        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics, on_inferred
     )
