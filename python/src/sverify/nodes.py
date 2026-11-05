@@ -923,6 +923,8 @@ class StageRefresh:
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
         parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
         parts += ["recomputed and diffed" for _ in self.report.diffed]
+        if self.set_aside:
+            parts.append(f"{self.set_aside} row(s) set aside")
         if self.report.postconditions:
             # On the rows the batch inserts into the node (keys on its state).
             parts.append(f"{len(self.report.postconditions)} ensures checked on data")

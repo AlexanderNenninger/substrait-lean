@@ -863,7 +863,9 @@ class RefreshReport:
             f"view {v}: {n} row(s) in touched frames recomputed" for v, n in self.framed.items()
         ]
         lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
-        lines += [f"quarantine: {q}" for q in self.quarantine]
+        lines += [
+            f"quarantine: {q}" for q in self.quarantine if q.set_aside or q.released or q.deleted
+        ]
         if self.audited:
             lines.append("audit: batch matches the new snapshots; views match recomputation")
         lines += [str(r) for r in self.retention]
@@ -1659,29 +1661,27 @@ class Pipeline:
         rows: list[Condition] = [c for c in conds if not isinstance(c, TableCondition)]
         return rows, [c for c in conds if isinstance(c, Unique)]
 
-    def _judge(self, t: str, entries: Sequence[_quarantine.Entry]) -> bool:
-        """Whether the rows `entries` sets aside may be set aside: False if
-        one breaks a condition that raises (the checks then raise as they
-        would without quarantine); `Held` if one breaks a condition that
-        holds the batch."""
-        worst = _quarantine.strictest(
-            self.policies.get(t, {}).get(c, "raise") for e in entries for c in e.conditions
-        )
-        if worst == "raise" and entries:
-            return False
-        if worst == "skip_batch" and entries:
-            n = sum(e.copies for e in entries)
-            labels = sorted({c for e in entries for c in e.conditions})
-            shown = pa.Table.from_pylist([e.row for e in entries[:ROWS_SHOWN]])
-            raise Held(
-                PreconditionError(
-                    f"{n} row(s) of {t} violate {', '.join(labels)}",
-                    source=t,
-                    rows=shown,
-                ),
-                "skip_batch",
+    def _judge(self, t: str, entries: Sequence[_quarantine.Entry]) -> None:
+        """Raise unless every row `entries` sets aside may be set aside:
+        `PreconditionError` if one breaks a condition that raises, `Held` if
+        one breaks a condition that holds the batch."""
+        policies = self.policies.get(t, {})
+        for policy in ("raise", "skip_batch"):
+            bad = [e for e in entries if any(policies.get(c) == policy for c in e.conditions)]
+            if not bad:
+                continue
+            n = sum(e.copies for e in bad)
+            labels = sorted({c for e in bad for c in e.conditions if policies.get(c) == policy})
+            conds = [c for c in self.requires.get(t, []) if label(c) in labels]
+            error = PreconditionError(
+                f"{n} row(s) of {t} violate {', '.join(labels)}",
+                source=t,
+                condition=conds[0] if len(conds) == 1 else None,
+                rows=pa.Table.from_pylist([e.row for e in bad[:ROWS_SHOWN]]),
             )
-        return True
+            if policy == "raise":
+                raise error
+            raise Held(error, "skip_batch")
 
     def _split_first(self, t: str) -> None:
         """Set aside the rows of `t` that break its preconditions, on the
@@ -1692,9 +1692,7 @@ class Pipeline:
         kept, q = _quarantine.split_snapshot(
             self.con, rows, row_conds, keys, version, old=self.seed.get(t)
         )
-        if not self._judge(t, list(q.entries.values())):
-            put_table(self.con, t, rows)
-            return
+        self._judge(t, list(q.entries.values()))
         put_table(self.con, t, kept)
         # Statistics of the files describe the source's rows, not the kept ones.
         register_facts(self.con, t, None)
@@ -2051,10 +2049,9 @@ class Pipeline:
             counts = inserted_count(ch), deleted_count(ch)
             if self._quarantining(t):
                 moves = self._split_batch(t, ch, batch.end)
-                if moves is not None:
-                    ch, moved[t] = moves.kept, moves
-                    # Facts about the batch's files say nothing of released rows.
-                    facts[t] = []
+                ch, moved[t] = moves.kept, moves
+                # Facts about the batch's files say nothing of released rows.
+                facts[t] = []
             changes[t], versions[t] = ch, batch.end
             snapshot_facts[t] = [] if self._quarantining(t) else batch.snapshot_facts
             report.append(
@@ -2154,18 +2151,19 @@ class Pipeline:
             return rows
         return concat([rows, expanded(q.weighted()).cast(rows.schema)])
 
-    def _split_batch(self, t: str, ch: pa.Table, version: int) -> _quarantine.Moves | None:
+    def _split_batch(self, t: str, ch: pa.Table, version: int) -> _quarantine.Moves:
         """Split the source-level change `ch` of `t` into the base table's
-        change and the rows set aside (`sverify._quarantine`); None if a row
-        breaks a condition that raises, so the checks raise as they would
-        without quarantine."""
+        change and the rows set aside (`sverify._quarantine`). A row that
+        breaks a condition whose policy raises raises `PreconditionError`;
+        one that holds the batch, `Held`."""
         row_conds, keys = self._rules(t)
         current = _as_arrow(self.con.get(t))
         q = self.quarantined.get(t) or Quarantined(current.schema)
         moves = _quarantine.split_batch(
             self.con, current, q, ch.cast(weighted(current, 1).schema), row_conds, keys, version
         )
-        return moves if self._judge(t, moves.set_aside) else None
+        self._judge(t, moves.set_aside)
+        return moves
 
     def _reading(self, tables: set[str]) -> list[IncrementalView]:
         """The views that read any of `tables`, directly or through other
