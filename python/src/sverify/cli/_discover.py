@@ -47,7 +47,7 @@ class Checked:
     def status(self) -> Status:
         """`"proved"`; `"checked"`, when every postcondition it does not
         prove is checked on the data at each refresh
-        (`on_unproved="runtime"`) and nothing else is missing;
+        (`on_unproved="check"`) and nothing else is missing;
         `"not_proved"`; or `"unfinished"`, when the budget ran out first."""
         r = self.report
         if r is None:

@@ -403,7 +403,7 @@ def test_deleting_a_key_frees_it_for_the_same_batch():
 # -- runtime-checked postconditions (#373) -------------------------------------
 
 
-@sv.transform(ensures=[_.amount < 100, sv.unique("customer")], on_unproved="runtime")
+@sv.transform(ensures=[_.amount < 100, sv.unique("customer")], on_unproved="check")
 def capped(t):
     return t.select(t.id, t.customer, t.amount)
 

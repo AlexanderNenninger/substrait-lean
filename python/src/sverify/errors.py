@@ -22,7 +22,7 @@ The data:
 
 * `PreconditionError` (`precondition_failed`), `PostconditionError`
   (`postcondition_failed`): a condition checked on the data failed (an
-  input, or an output in `on_unproved="runtime"` mode). A
+  input, or an output in `on_unproved="check"` mode). A
   `PreconditionError` names the table (`.source`) and the condition
   (`.condition`), and holds up to ten of the rows that break it (`.rows`).
 * `SchemaError` (`schema_changed`): a source's schema changed in a way a

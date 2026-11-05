@@ -149,6 +149,11 @@ class Source(Pipeable, ABC):
             read may return nothing. Default: the first batch's.
         assumes: What the batches rest on, such as `"rows are only
             appended, in order of ts"`. Default: None.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition on this source, for transforms that set no
+            `on_violation` of their own: `"error"`, `"quarantine"` or
+            `"hold"` (see `sverify.transform`). Default: None,
+            `"error"`.
 
     Attributes:
         name: The table's name in the plans that read it.
@@ -201,8 +206,12 @@ class Source(Pipeable, ABC):
         *,
         schema: pa.Schema | None = None,
         assumes: str | None = None,
+        on_violation: Literal["error", "quarantine", "hold"] | None = None,
     ):
+        from sverify._quarantine import check_policy
+
         self.name = name
+        self.on_violation = check_policy(on_violation)
         self._declared = schema
         if assumes is not None:
             self.assumes = assumes

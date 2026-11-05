@@ -33,6 +33,7 @@ source versions.
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
@@ -42,6 +43,8 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
+from sverify import _quarantine
+from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import _LOCAL_ENGINES, connect, plain_schema, written_plan
@@ -71,8 +74,13 @@ class Sink(Protocol):
     """
 
     name: str
+    location: str
 
     def _attach(self, view: IncrementalView) -> None: ...
+
+    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
+
+    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None: ...
 
     def _commit(self) -> SinkWrite: ...
 
@@ -294,7 +302,7 @@ class Node:
         args, kwargs = transform._pipe_args(self, inputs)
         return derive(transform, args, kwargs)
 
-    def write(self, sink: Sink) -> Node:
+    def write(self, sink: Sink, *, quarantine: Sink | Literal[False] | None = None) -> Node:
         """Store this node in `sink` (`sverify.io.DeltaSink`, `IcebergSink`),
         as a cache in the middle of a job or as its output. Each refresh
         writes it once, upstream first, exactly once per state. Returns the
@@ -309,6 +317,14 @@ class Node:
         Args:
             sink: Where to store the node, such as `DeltaSink(uri)` or
                 `IcebergSink(catalog, identifier)`. A sink stores one node.
+            quarantine: Where the rows this node's stage sets aside go
+                (`on_violation="quarantine"`, #184): a `DeltaSink` or
+                `IcebergSink` whose table holds them, False for no
+                quarantine table (`Node.quarantined` still returns them), or
+                None (the default): a
+                table next to the sink's, its URI or identifier with
+                `_quarantine` appended. Written only when a precondition
+                sets rows aside.
 
         Returns:
             The stored node, named by the sink's `name`. Refreshing it (or
@@ -328,7 +344,7 @@ class Node:
             [w.mode for w in r.refresh().writes]  # ['created', 'created']
             ```
         """
-        return _Stored(self, sink)
+        return _Stored(self, sink, quarantine)
 
     def refresh(
         self,
@@ -469,6 +485,36 @@ class Node:
         view = self._view()
         return view.con.arrow[view.name]
 
+    def quarantined(self, source: str | None = None) -> pa.Table:
+        """The rows of the node's sources set aside by `on_violation=
+        "quarantine"` (#184), as of the last refresh: each copy once, with
+        the source's columns and `_conditions` (the labels of the
+        preconditions it breaks), `_reason` and `_source_version` (the
+        version that set it aside).
+
+        Args:
+            source: The source whose rows to return. Default None: the only
+                source with rows set aside, or an empty table.
+
+        Raises:
+            RuntimeError: The node has not been refreshed yet.
+            ValueError: `source` is None and several sources have rows set
+                aside.
+        """
+        held = self._view().pipeline.quarantined
+        if source is None:
+            names = [t for t, q in held.items() if q.entries]
+            if len(names) > 1:
+                raise ValueError(f"rows of {names} are set aside: name the source")
+            source = names[0] if names else None
+        if source is None:
+            return pa.table({})
+        q = held.get(source)
+        if q is None:
+            schema = self._view().con.schema(source)
+            q = Quarantined(schema)
+        return q.table()
+
     def to_polars(self) -> polars.DataFrame:
         """The node's state as a Polars DataFrame (needs `polars`).
 
@@ -526,17 +572,35 @@ class Node:
                 pins.setdefault(id(leaf), leaf._reader.latest())
         versions = {leaf.name: pins[id(leaf)] for leaf in leaves}
         sink = self.sink if isinstance(self, _Stored) else None
+        target = self.quarantine_table if isinstance(self, _Stored) else None
         out = StageRefresh(self.name, None, route=route, transform=_made_by(self))
-        if self._stage is None:
-            self._stage = _Stage.build(self, leaves, versions, engine, sink)
-            out.started = self._stage.view.resumed or "computed"
-            out.preconditions = list(self._stage.pipe.preconditions)
-            out.postconditions = list(self._stage.view.postconditions)
-            if self._stage.view.versions != versions:
+        first = self._stage is None
+        try:
+            if self._stage is None:
+                self._stage = _Stage.build(self, leaves, versions, engine, sink, target)
+                out.started = self._stage.view.resumed or "computed"
+                out.preconditions = list(self._stage.pipe.preconditions)
+                out.postconditions = list(self._stage.view.postconditions)
+                out.quarantine = list(self._stage.pipe.quarantine)
+                if self._stage.view.versions != versions:
+                    out.report = self._stage.refresh(versions, audit)
+            else:
+                self._stage.use(engine)
                 out.report = self._stage.refresh(versions, audit)
-        else:
-            self._stage.use(engine)
-            out.report = self._stage.refresh(versions, audit)
+        except Held as h:
+            out.held, out.held_error = _held_text(h, self._stage), h.error
+            if self._stage is None:
+                return out
+        stage = self._stage
+        if out.report is not None:
+            out.quarantine += out.report.quarantine
+        held = stage.pipe.quarantined
+        out.quarantined = sum(q.total for q in held.values())
+        if target is not None and held:
+            out.quarantine_table = target.location
+            for q in out.quarantine:
+                q.table = target.location
+            _write_quarantine(self.name, stage, target, first)
         if sink is not None:
             out.write = sink._commit()
         # After the write: a sink keeps the buckets the state drops.
@@ -565,7 +629,7 @@ class _Stored(Node):
     """A node stored in a sink; downstream, a source whose contract is what
     the stored node's stage proved."""
 
-    def __init__(self, upstream: Node, sink: Sink):
+    def __init__(self, upstream: Node, sink: Sink, quarantine: Sink | Literal[False] | None = None):
         if getattr(sink, "_node", None) is not None:
             raise ValueError(f"sink {sink.name!r} already stores a node")
         expr = ibis.table(upstream.schema, name=sink.name)
@@ -574,11 +638,23 @@ class _Stored(Node):
             # Its sources' preconditions, and its runtime-checked
             # postconditions, are checked by its own stage, not by the
             # stages reading it.
-            _register(expr.op(), replace(prov, external={}, checked=[]))
+            _register(expr.op(), replace(prov, external={}, checked=[], policies={}))
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
         self._reader: Source = sink._source()
+        if quarantine is True:
+            raise TypeError(
+                "quarantine= takes a sink, None (a table next to the sink's) or False "
+                "(no quarantine table)"
+            )
+        if quarantine is None:
+            default = getattr(sink, "_quarantine_default", None)
+            quarantine = default() if default is not None else None
+        self.quarantine_table: Sink | None = (
+            quarantine if not isinstance(quarantine, bool) else None
+        )
+        """Where the rows the stage sets aside are written, if anywhere."""
 
     def _query(self) -> Node:
         return self.upstream
@@ -619,9 +695,11 @@ class _Stage:
         versions: dict[str, int],
         engine: Any,
         sink: Sink | None,
+        target: Sink | None = None,
     ) -> _Stage:
         """The stage at `versions`, or resumed from what `sink` stored (at
-        its versions; the caller refreshes it to `versions`)."""
+        its versions; the caller refreshes it to `versions`). `target` holds
+        the rows an earlier run set aside."""
         stored = sink._stored() if sink is not None else None
         if stored is not None and (
             set(stored.sources) != set(versions)
@@ -631,14 +709,16 @@ class _Stage:
             stored = None
         if stored is not None:
             try:
-                stage = _Stage._load(node, leaves, stored.sources, engine, stored)
+                stage = _Stage._load(node, leaves, stored.sources, engine, stored, target=target)
+            except Held:
+                raise
             except Exception:  # noqa: BLE001 - e.g. the stored versions were vacuumed
                 stored = None
             else:
                 if sink is not None:
                     sink._attach(stage.view)
                 return stage
-        stage = _Stage._load(node, leaves, versions, engine, None)
+        stage = _Stage._load(node, leaves, versions, engine, None, target=target)
         if sink is not None:
             sink._attach(stage.view)
         return stage
@@ -651,6 +731,8 @@ class _Stage:
         engine: Any,
         resume: Stored | None,
         implied: dict[str, str] | None = None,
+        *,
+        target: Sink | None = None,
     ) -> _Stage:
         """The stage, with each source in `implied` reading only the rows
         that pass its predicate. Without `implied`, the predicates the
@@ -672,6 +754,7 @@ class _Stage:
         bound: ir.Table = (mapping[root] if root in mapping else root.replace(mapping)).to_expr()  # type: ignore[attr-defined]
         if (prov := _lookup(root)) is not None:
             _register(bound.op(), prov)
+        _seed(pipe, target)
         name = node.name
         taken = set(versions)
         view_name, n = name, 1
@@ -683,7 +766,7 @@ class _Stage:
         if implied is None and prunable:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
             if found:
-                return _Stage._load(node, leaves, versions, engine, resume, found)
+                return _Stage._load(node, leaves, versions, engine, resume, found, target=target)
         stage = _Stage(pipe, view)
         stage.use(engine)
         return stage
@@ -751,7 +834,7 @@ class StageRefresh:
     buckets, those dropped from its state after the write, and the bound."""
     postconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: the postconditions the node's transform did not
-    prove and checks on its output (`on_unproved="runtime"`), checked on the
+    prove and checks on its output (`on_unproved="check"`), checked on the
     full result (later batches: `report.postconditions`)."""
     route: Route | None = None
     """With `refresh(route=...)`: how the node's proof reached the engine
@@ -767,6 +850,28 @@ class StageRefresh:
         it where the names differ."""
         return self.node if self.transform is None else f"{self.transform} → {self.node}"
 
+    quarantine: list[QuarantineReport] = field(default_factory=list)
+    """For each source with rows set aside (`on_violation="quarantine"`,
+    #184): what this refresh set aside, released and deleted."""
+    quarantined: int = 0
+    """The rows of the node's sources quarantined after the refresh, in all."""
+    quarantine_table: str | None = None
+    """Where they are stored, if the node writes them to a table."""
+    held: str | None = None
+    """Why the node did not take the batch (`on_violation="hold"`, or
+    a condition no row rule covers), or "waiting for <node>" when a stored
+    node it reads has no state yet; None if it took it."""
+    held_error: Exception | None = None
+    """The `PreconditionError` that held it, with `.rows`."""
+
+    @property
+    def outcome(self) -> str:
+        """ "held" if the node did not take the batch, "quarantined" if rows
+        of its sources are set aside, else "ok"."""
+        if self.held is not None:
+            return "held"
+        return "quarantined" if self.quarantined else "ok"
+
     @property
     def notable(self) -> list[str]:
         """Why this entry deserves more than one line, or []: the first
@@ -775,6 +880,9 @@ class StageRefresh:
         applied incrementally, a schema change, or a sink that replaced its
         table's rows."""
         out = [self.started] if self.started else []
+        if self.held is not None:
+            out.append(f"held: {self.held}")
+        out += [str(q) for q in self.quarantine if q.quarantined or q.released]
         if self.report is not None:
             out += self.report.notable
         if self.write is not None and self.write.mode == "overwrite":
@@ -808,6 +916,8 @@ class StageRefresh:
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
         parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
         parts += ["recomputed and diffed" for _ in self.report.diffed]
+        if self.quarantined:
+            parts.append(f"{self.quarantined} row(s) quarantined")
         if self.report.postconditions:
             # On the rows the batch inserts into the node (keys on its state).
             parts.append(f"{len(self.report.postconditions)} ensures checked on data")
@@ -824,16 +934,52 @@ class StageRefresh:
                 parts.append(f"{w.mode}{at}: +{w.inserted} −{w.deleted}")
         return f"{self.heading}: " + ", ".join(parts)
 
+    def to_dict(self) -> dict[str, Any]:
+        """The entry as JSON values (`Refresh.to_json`)."""
+        report = self.report
+        return {
+            "node": self.node,
+            "outcome": self.outcome,
+            "started": self.started,
+            "held": self.held,
+            "sources": [
+                {
+                    "table": s.table,
+                    "from": s.start,
+                    "to": s.end,
+                    "mode": s.mode.replace(" ", "_"),
+                    "inserts": s.inserts,
+                    "deletes": s.deletes,
+                }
+                for s in (report.sources if report is not None else [])
+            ],
+            "quarantined": self.quarantined,
+            "quarantine_table": self.quarantine_table,
+            "quarantine": [q.to_dict() for q in self.quarantine],
+            "write": None
+            if self.write is None
+            else {
+                "mode": self.write.mode,
+                "version": self.write.version,
+                "inserted": self.write.inserted,
+                "deleted": self.write.deleted,
+            },
+        }
+
     def __str__(self) -> str:
         lines = [f"{self.heading}:"]
         if self.started:
             lines.append(f"  {self.started}")
+        if self.held is not None:
+            lines.append(f"  held: {self.held}")
         lines += [f"  requires {p}" for p in self.preconditions]
         lines += [f"  ensures {p}" for p in self.postconditions]
         if self.route is not None:
             lines.append(f"  route on {self.route.engine}: {self.route}")
         if self.report is not None:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
+        if self.report is None:
+            lines += [f"  quarantine: {q}" for q in self.quarantine]
         if self.write is not None:
             lines.append(f"  wrote {self.write}")
         lines += [f"  {r}" for r in self.retention]
@@ -882,8 +1028,80 @@ class Refresh:
         """
         return "\n".join(s.summary() for s in self.nodes)
 
+    @property
+    def outcome(self) -> str:
+        """How the refresh ended, for a job's exit code: "held" if a node
+        did not take its batch (`on_violation="hold"`), "quarantined"
+        if rows of some node's sources are set aside
+        (`on_violation="quarantine"`), else "ok". A refresh that fails
+        raises instead."""
+        outcomes = {s.outcome for s in self.nodes}
+        return next((o for o in ("held", "quarantined") if o in outcomes), "ok")
+
+    def alert(self) -> str | None:
+        """A short Markdown text for whoever is on call, when the outcome is
+        not "ok": per node, what broke, how many rows, a few examples, where
+        the rows are, and what to do. None when there is nothing to say.
+
+        A scheduled job posts it, for example as a GitHub issue (#771)."""
+        parts = []
+        for s in self.nodes:
+            if s.outcome == "ok":
+                continue
+            lines = [f"### {s.node}"]
+            if s.held is not None:
+                lines.append(f"Held: {s.held}.")
+                rows = getattr(s.held_error, "rows", None)
+                if rows is not None and rows.num_rows:
+                    lines.append(_markdown_rows(rows))
+                lines.append("Fix the rows upstream: the next refresh reads the batch again.")
+            for q in s.quarantine:
+                if not (q.quarantined or q.released or q.deleted):
+                    continue
+                lines.append(f"{q}.")
+                if q.examples is not None and q.examples.num_rows:
+                    lines.append(_markdown_rows(q.examples))
+            if s.quarantined:
+                where = s.quarantine_table or "memory (`node.quarantined()`)"
+                lines.append(
+                    f"{s.quarantined} row(s) are quarantined in {where}. The rest went "
+                    "through, and the node's contract holds on them. A fix upstream (an "
+                    "update or delete of the rows) releases them at the next refresh."
+                )
+            parts.append("\n\n".join(lines))
+        return "\n\n".join(parts) or None
+
+    def to_dict(self) -> dict[str, Any]:
+        """The refresh as JSON values: its format, `outcome` and one entry
+        per node (`StageRefresh.to_dict`)."""
+        return {
+            "$schema": REFRESH_SCHEMA,
+            "format": REFRESH_FORMAT,
+            "outcome": self.outcome,
+            "nodes": [s.to_dict() for s in self.nodes],
+        }
+
+    def to_json(self) -> str:
+        """`to_dict` as JSON, for a CLI or a scheduled job."""
+        return json.dumps(self.to_dict(), default=str)
+
     def __str__(self) -> str:
         return "\n".join(str(s) for s in self.nodes)
+
+
+REFRESH_FORMAT = 1
+"""The version of `Refresh.to_json`'s format."""
+REFRESH_SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json"
+"""The `$schema` of `Refresh.to_json`'s documents: its schema's `$id`."""
+
+
+def _markdown_rows(table: pa.Table, limit: int = 5) -> str:
+    """Up to `limit` rows of `table` as a Markdown table."""
+    names = table.column_names
+    rows = table.slice(0, limit).to_pylist()
+    head = "| " + " | ".join(names) + " |\n|" + "---|" * len(names)
+    body = "\n".join("| " + " | ".join(str(r[c]) for c in names) + " |" for r in rows)
+    return head + "\n" + body
 
 
 @dataclass
@@ -1035,7 +1253,21 @@ class Group:
             for leaf in n._leaves():
                 if isinstance(leaf, _Source) and id(leaf) not in pins:
                     pins[id(leaf)] = leaf.source.latest()
-        return Refresh([n._refresh(pins, engine, audit, chosen.get(id(n))) for n in order])
+        done: list[StageRefresh] = []
+        waiting: dict[int, str] = {}
+        for n in order:
+            blocked = [leaf.name for leaf in n._leaves() if id(leaf) in waiting]
+            if blocked:
+                # A stored node it reads has no state yet: it was held.
+                entry = StageRefresh(n.name, None, held=f"waiting for {', '.join(blocked)}")
+                waiting[id(n)] = n.name
+                done.append(entry)
+                continue
+            entry = n._refresh(pins, engine, audit, chosen.get(id(n)))
+            if entry.held is not None and n._stage is None:
+                waiting[id(n)] = n.name
+            done.append(entry)
+        return Refresh(done)
 
     def status(self) -> Status:
         """Where each node stands (`Node.status`).
@@ -1061,6 +1293,52 @@ class Group:
                 )
             )
         return out
+
+
+def _held_text(h: Held, stage: _Stage | None) -> str:
+    """Why a stage holds, and where it stays."""
+    at = (
+        "it has no state yet"
+        if stage is None
+        else "it stays at " + ", ".join(f"{t}@v{n}" for t, n in stage.view.versions.items())
+    )
+    return f"{h.error} ({h.policy}); nothing was committed, {at}"
+
+
+def _write_quarantine(name: str, stage: _Stage, target: Sink, first: bool) -> None:
+    """Write the rows the stage sets aside to `target`, when they changed:
+    the quarantine table matches the node's state, by its epoch."""
+    view = stage.view
+    epoch = sum(view.versions.values())
+    record = _quarantine.record(name, epoch, view.versions)
+    if getattr(stage, "_quarantine_written", None) == record:
+        return
+    rows = _quarantine.table_rows(name, stage.pipe.quarantined)
+    if first:
+        read = target._read_quarantine()
+        if read is not None and read[1] == record and read[0].num_rows == rows.num_rows:
+            stage._quarantine_written = record  # type: ignore[attr-defined]
+            return
+    target._write_quarantine(rows, record)
+    stage._quarantine_written = record  # type: ignore[attr-defined]
+
+
+def _seed(pipe: Pipeline, target: Sink | None) -> None:
+    """Rows an earlier run set aside, read back from `target`, so that the
+    first load keeps when and at which version they were set aside."""
+    read = target._read_quarantine() if target is not None else None
+    if read is None:
+        return
+    rows, _ = read
+    for r in rows.to_pylist():
+        src = r["source"]
+        if src not in pipe.sources:
+            continue
+        q = pipe.seed.setdefault(src, Quarantined(pipe.con.schema(src)))
+        row = _quarantine.decode_row(r["row"])
+        q.entries[_quarantine._key(row)] = _quarantine.Entry(
+            row, r["copies"], r["conditions"], r["reason"], r["source_version"], r["quarantined_at"]
+        )
 
 
 def _recomputed(view: IncrementalView) -> str | None:
@@ -1276,7 +1554,7 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
         if isinstance(node, _Derived) and (prov := _lookup(node._expr.op())) and prov.checked:
             raise ValueError(
                 f"{node.name} checks {', '.join(label(c) for c in prov.checked)} on its "
-                f"output at refresh (on_unproved='runtime'), which {transform.name} would "
+                f"output at refresh (on_unproved='check'), which {transform.name} would "
                 "fuse away: store it first, with .write(sink)"
             )
         inputs.append(node)

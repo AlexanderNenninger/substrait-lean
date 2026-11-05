@@ -86,7 +86,7 @@ def test_needs_code_is_what_requires_takes() -> None:
 
 
 def test_needs_is_empty_when_inferred_bounds_are_assumed() -> None:
-    report = sv.verify("select q + 1 as a from t", tables=T, on_inferred="silent")
+    report = sv.verify("select q + 1 as a from t", tables=T, on_inferred="ignore")
     assert report.needs == [] and report.inferred
 
 

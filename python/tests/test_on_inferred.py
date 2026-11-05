@@ -1,5 +1,5 @@
 """`on_inferred=` (#655): a precondition sverify infers is an error by
-default, assumed with a warning on "warn", assumed silently on "silent"."""
+default, assumed with a warning on "warn", assumed silently on "ignore"."""
 
 import warnings
 
@@ -8,8 +8,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import InferredPreconditionWarning
-from sverify.errors import PreconditionError, RouteError, VerificationError
+from sverify.errors import InferredWarning, PreconditionError, RouteError, VerificationError
 from sverify.io import StaticSource
 
 
@@ -72,12 +71,12 @@ def test_filtering_first_needs_no_precondition(con) -> None:
 def test_warn_and_silent_assume_it(con) -> None:
     t = con.table("t")
     expr = t.select(t.k, per=t.total // t.qty)
-    with pytest.warns(InferredPreconditionWarning, match=r"\(_.qty != 0\) on t, inferred from"):
+    with pytest.warns(InferredWarning, match=r"\(_.qty != 0\) on t, inferred from"):
         warned = sv.verify(expr, on_inferred="warn")
     assert warned.proved and warned.needed == {}
     with warnings.catch_warnings():
-        warnings.simplefilter("error", InferredPreconditionWarning)
-        silent = sv.verify(expr, on_inferred="silent")
+        warnings.simplefilter("error", InferredWarning)
+        silent = sv.verify(expr, on_inferred="ignore")
     assert silent.proved
     assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(silent)
     with pytest.raises(PreconditionError, match="inferred from `total // qty`"):
@@ -100,7 +99,7 @@ def test_a_transform_raises_unless_told(con) -> None:
     ):
         src.pipe(doubled)
 
-    @sv.transform(requires={"orders": [_.amount >= 0]}, on_inferred="silent")
+    @sv.transform(requires={"orders": [_.amount >= 0]}, on_inferred="ignore")
     def assumed(orders):
         return orders.select(orders.id, x=orders.amount * 2)
 

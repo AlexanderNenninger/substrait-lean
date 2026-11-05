@@ -28,7 +28,11 @@ sink commits.
 
 Exit codes: 0 proved (or every unproved postcondition checked on the data),
 1 not proved, 2 refused (`sverify.errors.UnsupportedError`), 3 budget exceeded
-(time or memory), 4 error.
+(time or memory), 4 error. A `refresh` that completed exits 5 when rows of
+a node's sources are quarantined (`on_violation="quarantine"`) or a node
+held its batch (`on_violation="hold"`), with `Refresh.alert()`'s text after
+the summary, and the JSON's `status` (`"quarantined"` or `"held"`),
+`"outcome"` and `"alert"` (#184).
 
 * `main` runs the command with given arguments and returns its exit code.
 * `discover` imports a file the way `check` does and returns a `Discovery`:
