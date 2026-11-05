@@ -977,8 +977,10 @@ tables. A table format plays four roles:
   The `ensures` you state become NOT NULL columns (`_.id.notnull()`) and
   CHECK constraints (Delta) or table properties (Iceberg); a column the
   plan proves non-NULL but `ensures` leaves out stays nullable, and the commit records the plan hash, the
-  source versions and the contract. A job that reads the table gets its
-  preconditions from them. After the first write, `DeltaSink` MERGEs each
+  source versions and the contract (`sverify.io.Contract`, in the format of
+  [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json),
+  which every 1.x release reads: [stability.md](stability.md#the-formats)).
+  A job that reads the table gets its preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
   position delete files and a data file of the new rows.
   `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
@@ -1418,7 +1420,11 @@ The contract travels in the plan's `advanced_extensions.optimization` as an
 ([`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto)),
 which a consumer that does not know it ignores. It holds the preconditions
 (declared, inferred and assumed) and the postconditions, each in your terms
-and as a Substrait plan of one boolean column, and a manifest:
+and as a Substrait plan of one boolean column, and a manifest
+([`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json)).
+Within 1.x the message and the manifest only gain fields, and
+`sv.from_substrait` reads every earlier 1.x export
+([stability.md](stability.md#the-substrait-contract-message)):
 
 | Key | What it holds |
 |---|---|
