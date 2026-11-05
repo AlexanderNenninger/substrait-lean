@@ -15,9 +15,8 @@ in three shards.
 On pull requests CI runs what the change can affect; pushes to main, merge
 queue entries and retargets run everything. One job builds `substrait-check`
 and the others download it. The generated proofs are checked only when a
-Lean input changes. Engine jobs, oracle A, the notebooks and `dbt` (the
-`sverify-dbt` package in `dbt/`) skip changes in areas they cannot read (the
-table in the `changes` job). A pull request that
+Lean input changes. Engine jobs, oracle A and the notebooks skip changes in
+areas they cannot read (the table in the `changes` job). A pull request that
 changes only facts, probes, `upstream/` or `python/tests/lift_backlog.json`
 (and docs) runs `static` and a `ledger` job: the checkers and the tests that
 read those files. A pull request into a branch other than main (a stack)

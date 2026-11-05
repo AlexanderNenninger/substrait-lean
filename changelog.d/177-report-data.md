@@ -1,8 +1,9 @@
 ### Reports as data for tools built on sverify
 
-What [sverify-dbt](dbt/README.md) needed from the public API
-([#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177),
-[dbt/API-NOTES.md](dbt/API-NOTES.md)):
+What sverify-dbt, a package that checks dbt projects with sverify, needed
+from the public API
+([#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177);
+the gaps left open are [#699](https://github.com/AlexanderNenninger/substrait-lean/issues/699) to [#710](https://github.com/AlexanderNenninger/substrait-lean/issues/710)):
 
 - `sverify.errors.Unsupported` is the one class every refusal raises: the
   SQL lift's and the Ibis producer's, the SQL writer's and the Polars

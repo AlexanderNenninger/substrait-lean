@@ -1,4 +1,0 @@
-emp_id,manager_id,name,dept,salary
-1,,Ada,exec,200
-2,1,Grace,eng,150
-3,2,Linus,eng,120

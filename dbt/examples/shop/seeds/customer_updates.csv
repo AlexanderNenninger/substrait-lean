@@ -1,5 +1,0 @@
-customer_id,city,plan,updated_at
-1,Berlin,free,2024-01-01 00:00:00
-1,Hamburg,pro,2024-02-01 00:00:00
-2,Leipzig,free,2024-01-15 00:00:00
-3,Bremen,pro,2024-03-01 00:00:00

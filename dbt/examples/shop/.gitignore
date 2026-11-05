@@ -1,8 +1,0 @@
-target/
-dbt_packages/
-logs/
-*.duckdb
-*.duckdb.wal
-# Written by `sverify-dbt check --selectors`.
-selectors.yml
-.user.yml
