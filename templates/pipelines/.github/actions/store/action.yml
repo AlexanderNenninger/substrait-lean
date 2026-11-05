@@ -63,7 +63,7 @@ runs:
       shell: bash
       run: |
         # delta-rs reads these: the Azure CLI login above stands behind them.
-        echo "AZURE_STORAGE_USE_AZURE_CLI=true" >> "$GITHUB_ENV"
+        echo "AZURE_USE_AZURE_CLI=true" >> "$GITHUB_ENV"
     # MinIO over Tailscale: join the tailnet as an ephemeral, tagged node,
     # then fetch short-lived MinIO keys from OpenBao with the Actions OIDC
     # token (OpenBao speaks Vault's API).
@@ -78,6 +78,7 @@ runs:
       with:
         url: ${{ env.OPENBAO_ADDR }}
         method: jwt
+        jwtGithubAudience: openbao
         role: ${{ env.OPENBAO_ROLE }}
         secrets: ${{ env.OPENBAO_SECRETS }}
         exportEnv: true

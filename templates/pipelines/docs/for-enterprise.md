@@ -95,7 +95,7 @@ internet, and GitHub stores no MinIO key.
      oidc_discovery_url=https://token.actions.githubusercontent.com \
      bound_issuer=https://token.actions.githubusercontent.com
    bao write auth/jwt/role/pipelines-production role_type=jwt \
-     user_claim=sub bound_audiences=https://github.com/<owner> \
+     user_claim=sub bound_audiences=openbao \
      bound_claims='{"sub":"repo:<owner>/<repository>:environment:production"}' \
      policies=pipelines-production ttl=15m
    ```
