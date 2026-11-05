@@ -59,6 +59,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sverify.io._secrets import Secret
+
 if TYPE_CHECKING:
     import ibis
 
@@ -428,15 +430,16 @@ class _Console:
 
 
 class _Http:
-    def __init__(self, url: str, api_key: str | None, timeout: float):
+    def __init__(self, url: str, api_key: str | Secret | None, timeout: float):
         self.url = url.rstrip("/") + "/api/v1/lineage"
         self.api_key = api_key
         self.timeout = timeout
 
     def emit(self, event: Mapping[str, Any]) -> None:
         headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        key = self.api_key.value() if isinstance(self.api_key, Secret) else self.api_key
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
         req = urllib.request.Request(  # noqa: S310 - the URL is the user's
             self.url, data=json.dumps(event).encode(), headers=headers, method="POST"
         )
@@ -479,7 +482,9 @@ class Lineage:
             transport) is used as it is.
         namespace: The jobs' namespace. Default: `OPENLINEAGE_NAMESPACE`,
             else "default", the client's default.
-        api_key: A bearer token for an HTTP target. Default:
+        api_key: The bearer token for an HTTP target, by name or reference
+            (`sverify.io.Secret`, such as `"env:LINEAGE_TOKEN"`), read at
+            each event; a plain string is the token itself. Default:
             `OPENLINEAGE_API_KEY`.
         timeout: Seconds an HTTP target may take per event. Default 5.
         plan: Whether the `sverify_contract` facet carries the verified plan
@@ -495,7 +500,7 @@ class Lineage:
         target: Any = None,
         *,
         namespace: str | None = None,
-        api_key: str | None = None,
+        api_key: str | Secret | None = None,
         timeout: float = 5.0,
         plan: bool = True,
     ):
@@ -522,7 +527,11 @@ class Lineage:
             self._transport = _File(target)
 
     def __repr__(self) -> str:
-        return f"Lineage({self.target!r}, namespace={self.namespace!r})"
+        target = self.target
+        if isinstance(target, str) and "@" in target.partition("://")[2].partition("/")[0]:
+            scheme, _, rest = target.partition("://")
+            target = f"{scheme}://***@{rest.partition('@')[2]}"
+        return f"Lineage({target!r}, namespace={self.namespace!r})"
 
     def emit(self, event: Mapping[str, Any]) -> None:
         """Send one event; a failure warns (`LineageWarning`)."""
@@ -1005,7 +1014,7 @@ def marquez(
     namespace: str,
     name: str,
     *,
-    api_key: str | None = None,
+    api_key: str | Secret | None = None,
     timeout: float = 10.0,
 ) -> Upstream:
     """A dataset as a Marquez server (or another server with Marquez's
@@ -1016,13 +1025,15 @@ def marquez(
         url: The server, such as `http://localhost:5000`.
         namespace: The dataset's namespace.
         name: The dataset's name.
-        api_key: A bearer token. Default: `OPENLINEAGE_API_KEY`.
+        api_key: The bearer token, or a `sverify.io.Secret` naming it.
+            Default: `OPENLINEAGE_API_KEY`.
         timeout: Seconds per request. Default 10.
 
     Returns:
         An `Upstream`, verified on demand like one from events.
     """
-    key = api_key or os.environ.get("OPENLINEAGE_API_KEY")
+    key = api_key.value() if isinstance(api_key, Secret) else api_key
+    key = key or os.environ.get("OPENLINEAGE_API_KEY")
 
     def get(path: str) -> Any:
         req = urllib.request.Request(url.rstrip("/") + path)  # noqa: S310

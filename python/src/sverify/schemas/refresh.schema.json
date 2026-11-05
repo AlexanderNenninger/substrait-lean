@@ -193,6 +193,46 @@
               "type": "integer"
             }
           }
+        },
+        "credentials": {
+          "description": "The credentials the node's stage used, by name, never a value (#778): one entry per table and credential, for reading its sources or writing its sink.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "table",
+              "credential",
+              "access"
+            ],
+            "properties": {
+              "table": {
+                "type": "string"
+              },
+              "credential": {
+                "description": "A secret's name or reference, \"default chain\" for what the store finds itself, or \"inline values\" for options given as values.",
+                "type": "string"
+              },
+              "access": {
+                "enum": [
+                  "read",
+                  "write"
+                ]
+              },
+              "location": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "in_scope": {
+                "description": "Whether the location lies inside what the credential may read or write; null when unknown.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          }
         }
       }
     }

@@ -115,13 +115,32 @@ CODES: dict[str, str] = {
         "engine whose behaviour differs from the proof's semantics. The message names "
         "the reason; `sverify check --full` prints the routes."
     ),
+    "scope": (
+        "A node writes a sink (or reads a source) outside what its credential may touch: "
+        "the prefixes `Storage(reads=, writes=)` or the credential's configuration "
+        "(`[tool.sverify.secrets.names]`) declare (#778). The refresh would fail on a "
+        "denied write, or the credential is wider than its configuration says. Move the "
+        "table, or use a credential scoped to it."
+    ),
+    "inline_credentials": (
+        "A source or sink holds credentials as values (`storage_options` with literal "
+        "keys, `FlightSource(token=)`), which travel with every object holding them. "
+        'Name them instead: `Storage(credentials="lake")`, `Secret("env:NAME")` '
+        "(#775), or leave them to the store's default chain."
+    ),
     "usage": "The command line is wrong: a flag, a missing file, or a node the file lacks.",
     "error": "The file raised an error of its own while sverify imported it: see the message.",
 }
 
 
 #: Each code's level, as SARIF names them; "error" where it is not listed.
-LEVELS: dict[str, str] = {"observation": "note", "unchecked": "warning", "sum_overflow": "warning"}
+LEVELS: dict[str, str] = {
+    "observation": "note",
+    "unchecked": "warning",
+    "sum_overflow": "warning",
+    "scope": "warning",
+    "inline_credentials": "warning",
+}
 
 
 def code_of(kind: str) -> str:
