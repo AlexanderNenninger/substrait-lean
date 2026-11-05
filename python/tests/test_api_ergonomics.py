@@ -88,7 +88,7 @@ def test_references_needs_the_referenced_column():
 def test_connection_public_attributes_are_generic():
     con = sv.connect()
     public = {n for n in vars(con) if not n.startswith("_")}
-    assert public == {"engine", "arrow", "ibis"}
+    assert public == {"engine"}
 
 
 # The wording of an unproved condition

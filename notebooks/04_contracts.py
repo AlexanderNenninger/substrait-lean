@@ -64,7 +64,6 @@ def _():
     import ibis
     import sverify as sv
     from ibis import _
-    from sverify.engines import create_table, table_rows
     from sverify.errors import (
         CompositionError,
         PostconditionError,
@@ -89,12 +88,10 @@ def _():
         PostconditionError,
         PreconditionError,
         VerificationError,
-        create_table,
         doubled,
         ibis,
         orders,
         sv,
-        table_rows,
         warnings,
     )
 
@@ -203,11 +200,11 @@ def _(mo):
 
 
 @app.cell
-def _(create_table, display, ibis, sv, table_rows):
+def _(display, ibis, sv):
     con = sv.connect()  # plans run on DuckDB
     _schema = ibis.schema({"id": "int64", "customer": "string", "amount": "int64"})
-    create_table(con, "orders", _schema, [(1, "ada", 30), (2, "bob", 5), (3, "cy", None)])
-    display.table(table_rows(con, "orders"), ["id", "customer", "amount"], title="orders")
+    con.create("orders", _schema, [(1, "ada", 30), (2, "bob", 5), (3, "cy", None)])
+    display.table(con.rows("orders"), ["id", "customer", "amount"], title="orders")
     return (con,)
 
 
@@ -321,16 +318,14 @@ def _(mo):
 
 
 @app.cell
-def _(PreconditionError, create_table, ibis, mo, sv, with_city):
+def _(PreconditionError, ibis, mo, sv, with_city):
     con_keys = sv.connect()
-    create_table(
-        con_keys,
+    con_keys.create(
         "orders",
         ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
         [(1, "ada", 30), (2, "bob", 5)],
     )
-    create_table(
-        con_keys,
+    con_keys.create(
         "customers",
         ibis.schema({"name": "string", "city": "string"}),
         [("ada", "Paris"), ("bob", "Oslo"), ("bob", "Rome")],
@@ -652,15 +647,14 @@ def _(mo):
 
 
 @app.cell
-def _(create_table, ibis, sv):
+def _(ibis, sv):
     import datetime as dt
 
     def at(m, s=0):
         return dt.datetime(2024, 5, 1, 7, m, s)
 
     con_w = sv.connect()
-    create_table(
-        con_w,
+    con_w.create(
         "readings",
         ibis.schema({"sensor": "string", "ts": "timestamp", "v": "float64"}),
         [
@@ -770,7 +764,7 @@ def _(mo):
 
 
 @app.cell
-def _(con_w, create_table, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
+def _(con_w, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
     from ibis import _
 
     _t0 = dt.datetime(2024, 5, 1, 7, 0)
@@ -778,12 +772,8 @@ def _(con_w, create_table, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
     _gyr = [
         (1, _t0 + dt.timedelta(microseconds=round(1e6 * i / 130)), float(i)) for i in range(130)
     ]
-    create_table(
-        con_w, "acc", ibis.schema({"device": "int64", "ts": "timestamp", "a": "float64"}), _acc
-    )
-    create_table(
-        con_w, "gyr", ibis.schema({"device": "int64", "ts": "timestamp", "g": "float64"}), _gyr
-    )
+    con_w.create("acc", ibis.schema({"device": "int64", "ts": "timestamp", "a": "float64"}), _acc)
+    con_w.create("gyr", ibis.schema({"device": "int64", "ts": "timestamp", "g": "float64"}), _gyr)
 
     tol = ibis.interval(milliseconds=tolerance_ms.value)
 

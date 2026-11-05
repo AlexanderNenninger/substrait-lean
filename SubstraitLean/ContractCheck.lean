@@ -485,8 +485,13 @@ def check (input : Json) : Except String Report := do
       | throw "a precondition plan must only select from one table"
     pre := (t, cs) :: pre
   let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
+  -- Each table's description and facts, computed once: `A` and `F` are
+  -- called at every read of every pass (#825).
+  let names := tables.map (·.1) |>.eraseDups
+  let envs := names.map fun t => (t, tableEnv (schemas t) (preOf t))
+  let factsOf := names.map fun t => (t, (preOf t).flatMap Expr.factsOf)
+  let A := fun t => (envs.lookup t).getD (tableEnv (schemas t) (preOf t))
+  let F := fun t => (factsOf.lookup t).getD ((preOf t).flatMap Expr.factsOf)
   let inputKeys : String → List (List Nat) := fun t =>
     natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
   let T := Rel.keyedWindows cat A F inputKeys

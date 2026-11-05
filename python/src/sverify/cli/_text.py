@@ -58,7 +58,7 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
       sums assumed to fit). With `sources`, only the preconditions on
       those tables: the others follow from what the transforms feeding
       them guarantee;
-    * `refused`: what is not proved, and the runtime errors it may raise.
+    * `not_proved`: what is not proved, and the runtime errors it may raise.
     """
     guarantees = [plain(c.label) for c in report.ensures if c.proved and not c.ignores]
     if report.rows is not None:
@@ -73,18 +73,18 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
         checks += [f"{table}: {plain(c)}" for c in conds if c not in needed.get(table, ())]
     checks += [f"output: {plain(c.label)}" for c in report.ensures if c.checked]
     checks += [f"while it runs: {i.assumption}" for i in report.assumed]
-    refused = [
+    not_proved = [
         f"{plain(c.label)}: not proved, {c.why}"
         for c in report.ensures
         if not c.portable and not c.checked
     ]
-    refused += [f"{n.table} needs {plain(n.label)} ({_needed_why(n)})" for n in report.needs]
-    refused += [f"may fail: {i.message}" for i in report.errors]
+    not_proved += [f"{n.table} needs {plain(n.label)} ({_needed_why(n)})" for n in report.needs]
+    not_proved += [f"may fail: {i.message}" for i in report.errors]
     if report._transfer:
-        refused.append(f"Substrait allows more at {len(report._transfer)} option(s)")
+        not_proved.append(f"Substrait allows more at {len(report._transfer)} option(s)")
     if report.floats_unmet:
-        refused.append(f"doubles: {report.floats_unmet}")
-    return {"guarantees": guarantees, "checks": checks, "refused": refused}
+        not_proved.append(f"doubles: {report.floats_unmet}")
+    return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}
 
 
 def _needed_why(n: Any) -> str:

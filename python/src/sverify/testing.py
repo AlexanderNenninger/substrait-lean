@@ -390,7 +390,7 @@ def duckdb_sql(con: Connection, sql: str) -> pa.Table:
     from sverify.engine import canonical as canonical_doubles
 
     db = duckdb.connect()
-    for name, table in con.arrow.items():
+    for name, table in con._arrow.items():
         db.register(name, table)
     rel = db.sql(sql)
     # DuckDB sums integers as HUGEINTs; the lifted plan sums into BIGINT
@@ -540,11 +540,11 @@ def _norm(v: object) -> object:
 def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
     """The rows of table `name` where `cond` is not TRUE; for `unique`, every
     row whose key repeats."""
-    rows = con.arrow[name].to_pylist()
+    rows = con._arrow[name].to_pylist()
     if isinstance(cond, TableCondition):
-        return cond.violating(rows, _norm, lambda t: con.arrow[t].to_pylist())
+        return cond.violating(rows, _norm, lambda t: con._arrow[t].to_pylist())
     if isinstance(cond, str):
-        cur = con.ibis.raw_sql(f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({cond}), FALSE)")
+        cur = con._ibis.raw_sql(f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({cond}), FALSE)")
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
     t = con.table(name)

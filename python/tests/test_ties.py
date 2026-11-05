@@ -17,7 +17,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import routes
-from sverify.engine import connect, create_table, run_plan
+from sverify.engine import connect, run_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.routes import RouteError
 from sverify.testing import allows_rows, inline_tables, lean_choices
@@ -82,8 +82,8 @@ def test_duckdbs_own_pick_is_allowed() -> None:
     got = choices(expr)
     assert got is not None
     con = connect()
-    create_table(con, "t", T.schema(), ROWS)
-    native = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
+    con.create("t", T.schema(), ROWS)
+    native = con._ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
     assert allows_rows([tuple(r.values()) for r in native.to_pylist()], got)
     written = run_plan(con, to_substrait_json(expr), "duckdb")
     assert allows_rows([tuple(r.values()) for r in written.to_pylist()], got)
@@ -128,7 +128,7 @@ def test_an_ordered_aggregate_is_named_too() -> None:
 
 def test_a_sink_that_must_reproduce_refuses_open_ties() -> None:
     con = connect()
-    create_table(con, "t", T.schema(), ROWS)
+    con.create("t", T.schema(), ROWS)
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
     with pytest.raises(RouteError, match="ties stay open at the window"):
         report.run(con, "duckdb", reproducible=sv.equivalent())

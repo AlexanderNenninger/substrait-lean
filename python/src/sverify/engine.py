@@ -23,7 +23,8 @@ import json
 import os
 import subprocess
 import threading
-from collections.abc import Iterator, MutableMapping
+import warnings
+from collections.abc import Iterable, Iterator, MutableMapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -128,20 +129,22 @@ class _Arrow(MutableMapping[str, pa.Table]):
 class Connection:
     """Named Arrow tables, and the engine that runs plans over them.
 
-    * `arrow[name]` is the table as given (`put`), the input of every engine.
-      A table may instead be one DuckDB reads where it is (`get`): a table
-      format's files (`Scan`), or a table DuckDB holds, such as a view's
-      state (`Resident`). Looking it up in `arrow` reads it into Arrow.
+    `sverify.connect()` makes one; the class is for type hints.
+
+    * `create(name, schema, rows)` and `put(name, table)` add a table;
+      `get(name)` is the table as given, the input of every engine, and
+      `rows(name)` its rows. A table may instead be one DuckDB reads where
+      it is: a table format's files (`Scan`), or a table DuckDB holds, such
+      as a view's state (`Resident`).
     * `table(name)` is an Ibis table bound to it, through an Ibis DuckDB
-      backend that views the Arrow tables (`ibis`). Contracts find a table's
-      data and metadata through it, and Ibis's own `execute` works on it.
+      backend that views the Arrow tables. Contracts find a table's data
+      and metadata through it, and Ibis's own `execute` works on it;
+      `con.table(name).get_backend()` is the backend, for SQL of your own.
     * `engine` runs plans (`sverify.engines.run`) unless a call names
       another.
     * The DataFusion engine runs on a private DataFusion session holding the
       same tables (with the functions Ibis's DataFusion SQL calls), created
       on first use.
-
-    `sverify.connect()` makes one.
 
     Args:
         engine: `"duckdb"`, `"polars"` or `"datafusion"`. Default:
@@ -149,8 +152,10 @@ class Connection:
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
-        arrow: The tables by name, as Arrow tables.
-        ibis: The Ibis DuckDB backend the bound tables read through.
+        arrow: Deprecated: the tables by name, as Arrow tables; `get`,
+            `rows` and `put` read and write them.
+        ibis: Deprecated: the Ibis DuckDB backend the bound tables read
+            through; `table(name).get_backend()` is the same backend.
         datafusion: Deprecated: the DataFusion session, an internal of the
             DataFusion engine (#413).
 
@@ -164,10 +169,10 @@ class Connection:
         self.engine: Engine = engine
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
-        self.arrow: MutableMapping[str, pa.Table] = _Arrow(self)
-        self.ibis: Any = _ibis_backend()
+        self._arrow: MutableMapping[str, pa.Table] = _Arrow(self)
+        self._ibis: Any = _ibis_backend()
         # A bound table keeps its backend alive, and the backend its connection.
-        self.ibis._sverify_connection = self
+        self._ibis._sverify_connection = self
         self._datafusion: Any = None
 
     def table(self, name: str) -> ir.Table:
@@ -185,7 +190,53 @@ class Connection:
             KeyError: The connection has no table `name`.
         """
         schema = ibis.Schema.from_pyarrow(self.schema(name))
-        return ops.DatabaseTable(name, schema=schema, source=self.ibis).to_expr()
+        return ops.DatabaseTable(name, schema=schema, source=self._ibis).to_expr()
+
+    @property
+    def arrow(self) -> MutableMapping[str, pa.Table]:
+        """Deprecated: the tables by name, as Arrow tables."""
+        warnings.warn(
+            "Connection.arrow is deprecated; read a table with con.get(name) or "
+            "con.rows(name), and write one with con.put(name, table)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._arrow
+
+    @property
+    def ibis(self) -> Any:
+        """Deprecated: the Ibis DuckDB backend the bound tables read through."""
+        warnings.warn(
+            "Connection.ibis is deprecated; con.table(name).get_backend() is the same Ibis backend",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._ibis
+
+    def create(
+        self, name: str, schema: ibis.Schema | pa.Schema, rows: Iterable[tuple] = ()
+    ) -> None:
+        """Add table `name` with `schema` (Ibis or Arrow) and `rows` (tuples
+        in schema order), replacing any table of that name.
+
+        Args:
+            name: The table's name.
+            schema: Its schema, as an Ibis or Arrow schema. An Arrow schema
+                can mark columns NOT NULL (`nullable=False`), which contracts
+                use.
+            rows: Tuples in the schema's column order. Default: no rows.
+        """
+        arrow_schema = schema if isinstance(schema, pa.Schema) else schema.to_pyarrow()
+        self.put(name, to_arrow(rows, arrow_schema))
+
+    def rows(self, name: str) -> list[tuple]:
+        """The rows of table `name`, as tuples in schema order, in the
+        table's order.
+
+        Raises:
+            KeyError: The connection has no table `name`.
+        """
+        return arrow_rows(self._arrow[name])
 
     def has(self, name: str) -> bool:
         """Whether the connection has a table `name`."""
@@ -223,12 +274,12 @@ class Connection:
             self._tables[name] = table
             # A scan whose files were removed is held, but cannot be read.
             if table.readable():
-                self._views[name] = table.attach(self.ibis.con, name)
+                self._views[name] = table.attach(self._ibis.con, name)
             return
         _check_times(table.schema)
         table = canonical(table.cast(plain_schema(table.schema)))
         self._tables[name] = table
-        self.ibis.con.register(name, table)
+        self._ibis.con.register(name, table)
         if self._datafusion is not None:
             _register(self._datafusion, name, table)
 
@@ -239,7 +290,7 @@ class Connection:
         if (drop := self._views.pop(name, None)) is not None:
             drop()
         elif isinstance(table, pa.Table):
-            self.ibis.con.unregister(name)
+            self._ibis.con.unregister(name)
         if self._datafusion is not None and self._datafusion.table_exist(name):
             self._datafusion.deregister_table(name)
 
@@ -256,7 +307,7 @@ class Connection:
             # Ibis's DataFusion backend registers the UDFs its SQL calls
             # (`extract_epoch_seconds_timestamp`, …).
             ctx = ibis.datafusion.connect().con
-            for name, table in self.arrow.items():
+            for name, table in self._arrow.items():
                 _register(ctx, name, table)
             self._datafusion = ctx
         return self._datafusion
@@ -271,7 +322,7 @@ def connect(engine: Engine = "duckdb") -> Connection:
 
     Returns:
         A connection with no tables. Add them with
-        `sverify.engines.create_table` or `Connection.put`.
+        `Connection.create` or `Connection.put`.
 
     Raises:
         ValueError: `engine` is unknown.
@@ -297,7 +348,7 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
     return to_substrait_json(query, semantics)
 
 
-def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
+def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> str:
     """Compile DuckDB's SQL to a Substrait plan with sverify's lift
     (`sverify.sql_lift`, SQLGlot), as protobuf JSON.
 
@@ -308,9 +359,10 @@ def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
     Args:
         con: The connection whose tables the SQL reads.
         sql: A query in DuckDB's SQL dialect.
-        semantics: `"duckdb"` (the default): what DuckDB computes; or
-            `"reference"`: what sverify's reference model computes where the
-            two differ.
+        semantics: `"reference"` (the default, as for `sv.verify` and
+            `sv.sql`): what sverify's reference model computes; or
+            `"duckdb"`: what DuckDB computes where the two differ. Before
+            0.6 the default was `"duckdb"`.
 
     Returns:
         The Substrait plan as protobuf JSON.
@@ -328,7 +380,7 @@ def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
         read = set()  # the lift says why
     schemas = {
         name: ibis.Schema.from_pyarrow(con.schema(name))
-        for name in con.arrow
+        for name in con._arrow
         if name.lower() in read
     }
     return json.dumps(lift(sql, schemas, semantics).plan)
@@ -770,8 +822,8 @@ def run_plan(
     there.
 
     DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
-    a translation to a lazy frame, Spark the Spark SQL of
-    `sverify.engines.run_spark`; each gives the result `Rel.eval` gives.
+    a translation to a lazy frame, Spark the Spark SQL
+    `sverify.engines.to_sql` writes in the `SPARK` dialect; each gives the result `Rel.eval` gives.
     This is `sverify.engines.run`.
 
     Args:
@@ -810,7 +862,7 @@ def run_plan(
         import ibis
         import pyarrow as pa
         import sverify as sv
-        from sverify.engines import ENGINES, create_table, run
+        from sverify.engines import ENGINES, run
         from sverify.io import StaticSource
 
         orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
@@ -821,11 +873,10 @@ def run_plan(
             return orders.filter(orders.amount > 10)
 
 
-        plan = big_orders(orders).internal_plan  # the plan Lean checked
+        plan = big_orders(orders).internal_plan  # the plan the checker proved
 
         con = sv.connect()
-        create_table(con, "orders", ibis.schema({"id": "int64", "amount": "int64"}),
-                     [(1, 30), (2, 5)])
+        con.create("orders", ibis.schema({"id": "int64", "amount": "int64"}), [(1, 30), (2, 5)])
         for engine in ENGINES:
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
@@ -839,7 +890,7 @@ def run_plan(
         # Spark's temporary views take plain names, not the delta plans' `t$delta`.
         names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
         _rename_tables(plan, names)
-        tables = {alias: con.arrow[t] for t, alias in names.items()}
+        tables = {alias: con._arrow[t] for t, alias in names.items()}
         return spark_engine.run(
             plan, tables, None if engine == "spark" else engine, deterministic=tie_free
         )
@@ -854,7 +905,7 @@ def run_plan(
         if keep:
             return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
         return duckdb_engine.run(plan_json, tables, finite=finite)
-    tables = {t: con.arrow[t] for t in read}
+    tables = {t: con._arrow[t] for t in read}
     if engine == "polars":
         from sverify import polars_engine
 
@@ -920,40 +971,48 @@ def plain_schema(schema: pa.Schema) -> pa.Schema:
     return pa.schema(fields, metadata=schema.metadata)
 
 
+def arrow_rows(table: pa.Table) -> list[tuple]:
+    """The rows of an Arrow table, as tuples in schema order, read column by
+    column: no dictionary per row."""
+    if table.num_columns == 0:
+        return [()] * table.num_rows
+    return list(zip(*(c.to_pylist() for c in table.columns), strict=True))
+
+
 def to_arrow(rows, schema: pa.Schema) -> pa.Table:
-    """Rows (tuples in schema order) as an Arrow table."""
-    names = schema.names
-    return pa.Table.from_pylist([dict(zip(names, r, strict=True)) for r in rows], schema=schema)
+    """Rows (tuples in schema order) as an Arrow table, built column by
+    column: no dictionary per row.
+
+    Raises:
+        ValueError: A row's length is not the schema's.
+    """
+    rows = rows if isinstance(rows, list | tuple) else list(rows)
+    n = len(schema)
+    if any(len(r) != n for r in rows):
+        raise ValueError(f"every row needs {n} values, one per column of {schema.names}")
+    columns = list(zip(*rows, strict=True)) if rows else [()] * n
+    if n == 0:
+        return pa.Table.from_pylist([{} for _ in rows], schema=schema)
+    arrays = [pa.array(c, type=f.type) for c, f in zip(columns, schema, strict=True)]
+    return pa.Table.from_arrays(arrays, schema=schema)
 
 
 def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
-    """Add table `name` to `con` with `schema` (Ibis or Arrow) and `rows`
-    (tuples in schema order), replacing any table of that name.
-
-    Args:
-        con: The connection.
-        name: The table's name.
-        schema: Its schema, as an Ibis or Arrow schema. An Arrow schema can
-            mark columns NOT NULL (`nullable=False`), which contracts use.
-        rows (Iterable[tuple]): Tuples in the schema's column order.
-            Default: no rows.
-    """
-    arrow_schema = schema if isinstance(schema, pa.Schema) else schema.to_pyarrow()
-    put_table(con, name, to_arrow(rows, arrow_schema))
+    """Deprecated: `con.create(name, schema, rows)`."""
+    warnings.warn(
+        "sverify.engines.create_table(con, ...) is deprecated; "
+        "write con.create(name, schema, rows)",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    con.create(name, schema, rows)
 
 
 def table_rows(con: Connection, name: str) -> list[tuple]:
-    """The rows of table `name` of `con`, as tuples in schema order.
-
-    Args:
-        con: The connection.
-        name: A table of the connection.
-
-    Returns:
-        The rows, in the table's order.
-
-    Raises:
-        KeyError: The connection has no table `name`.
-    """
-    t = con.arrow[name]
-    return [tuple(r.values()) for r in t.to_pylist()]
+    """Deprecated: `con.rows(name)`."""
+    warnings.warn(
+        "sverify.engines.table_rows(con, name) is deprecated; write con.rows(name)",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return con.rows(name)

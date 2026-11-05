@@ -12,7 +12,6 @@ from ibis import _
 import sverify as sv
 from _pipelines import bound_orders
 from sverify.contracts import OVERFLOW_HINT, violations
-from sverify.engines import create_table
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
 from sverify_dev.examples import customers, orders
 
@@ -197,7 +196,7 @@ def test_checks_on_data_do_not_warn_through_pandas():
         warnings.filterwarnings("error", message="The 'future.infer_string' option")
         con = sv.connect()
         schema = ibis.schema({"id": "int64", "amount": "int64"})
-        create_table(con, "orders_479", schema, [(1, 30), (1, 300)])
+        con.create("orders_479", schema, [(1, 30), (1, 300)])
 
         @sv.transform(ensures=[_.amount < 100], on_unproved="check")
         def passthrough(orders):
@@ -295,7 +294,7 @@ def test_iot_proved_postconditions_hold_on_data(data):
     )
     db = sv.connect()
     for name in ["sensor1", "sensor2"]:
-        create_table(db, name, sensor1.schema(), data.draw(readings))
+        db.create(name, sensor1.schema(), data.draw(readings))
     report = sv.verify(iot_windows(sensor1, sensor2), ensures=IOT_ENSURES)
     result = iot_windows(db.table("sensor1"), db.table("sensor2"))
     for cond, checked in zip(IOT_ENSURES, report.ensures, strict=True):
@@ -343,7 +342,7 @@ def test_proved_keys_hold_on_data(data):
     )
     db = sv.connect()
     for name in ["sensor1", "sensor2"]:
-        create_table(db, name, sensor1.schema(), data.draw(readings))
+        db.create(name, sensor1.schema(), data.draw(readings))
     result = iot_windows(db.table("sensor1"), db.table("sensor2"))
     assert violations(result, sv.unique("t0")) == 0
 

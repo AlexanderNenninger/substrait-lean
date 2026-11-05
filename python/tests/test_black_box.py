@@ -22,7 +22,7 @@ from hypothesis import strategies as st
 import sverify as sv
 from _sql_lift import SCHEMAS, TABLES
 from sverify import black_box, duckdb_engine
-from sverify.engine import checker_path, connect, create_table, run_checker, run_plan, written_plan
+from sverify.engine import checker_path, connect, run_checker, run_plan, written_plan
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql import Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
@@ -168,7 +168,7 @@ def test_other_dialects_refuse(query, dialect):
 def test_other_engines_refuse(query, engine):
     con = connect(engine)
     schema = ibis.schema({"s": "string", "x": "int64"})
-    create_table(con, "t", schema, [("a", 1), (None, 2)])
+    con.create("t", schema, [("a", 1), (None, 2)])
     plan = written_plan(json.dumps(lift(query, {"t": schema}).plan))
     # Each engine's own `Unsupported`, a `ValueError`.
     with pytest.raises(ValueError, match="see #271"):

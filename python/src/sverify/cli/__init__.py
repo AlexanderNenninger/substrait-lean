@@ -3,35 +3,38 @@ a CI job or an agent (#744).
 
     sverify check pipelines/orders.py            # prove every transform and node
     sverify check pipelines/orders.py:paid       # one node (or transform)
+    sverify check pipelines/orders.py --full     # with each node's full report
+    sverify check pipelines/orders.py --fix      # write needed preconditions into requires=
+    sverify check pipelines/orders.py --diff     # show what --fix would write
     sverify check path/to/dbt_project            # a dbt project, through sverify-dbt
-    sverify suggest pipelines/orders.py --apply  # write needed preconditions into requires=
     sverify refresh pipelines/orders.py:paid     # run a node, report what changed
-    sverify explain may-be-false                 # what a [code] of check's output means
-    sverify explain pipelines/orders.py:paid     # a node's full report
+    sverify explain may_be_false                 # what a [code] of check's output means
 
 `check` imports the file without running it: every contracted transform it
 applies is proved, a node's on its sources' schemas, and a proof that fails
 is reported instead of raised. A `refresh()` in the file must sit under
 `if __name__ == "__main__":`; while sverify checks, it raises. The output
 starts with the contract in plain words: what the output guarantees, what
-each refresh checks on the data, and what is not proved, each problem with
+each refresh checks on the data, and what is not proved, each finding with
 a code that `explain` expands.
 
-Every command takes `--json`, which prints one JSON document for tools,
-marked `"format": "provisional"` until the versioned report format (#736)
-replaces it; `--timeout` (default 30 s, `SVERIFY_TIMEOUT`; 0 turns it off),
-which bounds proof, planning and checking, never a refresh moving data; and
-`--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`), DuckDB's
+Every command takes `--format` (`--output-format`): `text` (the default) or
+`json`, one document in the format of `sverify/schemas/cli.schema.json`
+that embeds each node's `Report.to_json()`; `check` also writes `github`
+(workflow commands that annotate a pull request's lines), `sarif` (SARIF
+2.1.0, for code scanning) and `junit` (JUnit XML, for test reports).
+`--json` is `--format json`. `--timeout` (default 30 s, `SVERIFY_TIMEOUT`;
+0 turns it off) bounds proof, planning and checking, never a refresh moving
+data; `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`) is DuckDB's
 `memory_limit`, past which it spills to a temporary directory
 (`SVERIFY_SPILL_DIRECTORY`). A breach of either stops the call before any
 sink commits.
 
-Exit codes: 0 proved (or every unproved postcondition checked on the data),
-1 not proved, 2 refused (`sverify.errors.Unsupported`), 3 budget exceeded
-(time or memory), 4 error. A `refresh` that completed exits 5 when rows of
-a node's sources are quarantined (`on_violation="quarantine"`) or a node
-held its batch (`on_violation="hold"`), with `Refresh.alert()`'s text after
-the summary, and the JSON's `status` (`"quarantined"` or `"held"`),
+Exit codes: 0 proved (a refresh committed every row), 1 not proved, 2 usage
+error, 3 unsupported or refused, 4 time or memory budget exceeded, 5 a
+refresh committed with rows quarantined or held a node, 6 error.
+A `refresh` that exits 5 prints `Refresh.alert()`'s text after the
+summary; its JSON's `status` says `"quarantined"` or `"held"`, with
 `"outcome"` and `"alert"` (#184).
 
 * `main` runs the command with given arguments and returns its exit code.

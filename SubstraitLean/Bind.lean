@@ -20,6 +20,8 @@ keeps the columns as they were. It repeats this, innermost arguments first,
 so each written function reads columns or small expressions. Equal arguments
 share one column. An aggregate's measure arguments move into a projection
 below it first (`Rel.pullArgs`), which is then bound the same way.
+A term computed in several places, `CASE` branches among them, is bound
+too when one of the places evaluates it on every row (`Expr.repeated`).
 
 The pass only moves expressions that every evaluation of the projection
 evaluates anyway (`Expr.eager`): arguments of calls, never a `CASE`'s
@@ -182,7 +184,44 @@ def Expr.bindTo (ss : List Expr) (base : Nat) (free : Bool := true) : Expr → E
     match if free && !e.pinnedArg then ss.idxOf? e else none with
     | some j => .field (base + j)
     | none => .bin f (a.bindTo ss base) (b.bindTo ss base)
+  | e@(.ifThen c t x) =>
+    match if free then ss.idxOf? e else none with
+    | some j => .field (base + j)
+    | none => .ifThen (c.bindTo ss base) (t.bindTo ss base) (x.bindTo ss base)
+  | e@(.hof f l b) =>
+    match if free then ss.idxOf? e else none with
+    | some j => .field (base + j)
+    | none => .hof f (l.bindTo ss base) b
   | e => e
+
+/-! ### Repeated subexpressions (#821, step 2)
+
+A term an expression computes in several places, `CASE` branches among
+them, is computed once as a column. Evaluating it on every row is safe where
+the expressions evaluate it on every row anyway: in an eager position of one
+of them (`Expr.eager`; `Rel.bindStep` checks it). A `CASE` chain over the
+same value (`CASE WHEN x = 0 THEN … WHEN x = 1 THEN …`) has it in its first
+condition. Terms only under a `CASE`'s branches stay: hoisting them could
+raise where the `CASE` guards them (`x / y` under `y <> 0`). -/
+
+/-- The terms `e` is built from, outside lambdas' bodies, `e` among them. -/
+def Expr.terms : Expr → List Expr
+  | .lit _ | .field _ => []
+  | e@(.un _ a) => e :: a.terms
+  | e@(.bin _ a b) => e :: (a.terms ++ b.terms)
+  | e@(.ifThen c t x) => e :: (c.terms ++ t.terms ++ x.terms)
+  | e@(.hof _ l _) => e :: l.terms
+
+/-- The repeated terms of `es` worth a column: read a column, occur at least
+twice, at least once eagerly, and copy enough (`Expr.cost`); the innermost
+of them, so a step binds before what reads them. -/
+def Expr.repeated (es : List Expr) : List Expr :=
+  let all := es.flatMap Expr.terms
+  let eager := es.flatMap Expr.eager
+  let cands := all.eraseDups.filter fun s =>
+    s.readsField && !s.pinnedArg && bindCost ≤ all.count s * s.cost && 2 ≤ all.count s &&
+      eager.contains s
+  cands.filter fun s => !cands.any fun t => t != s && s.terms.contains t
 
 /-! ## One step on a projection -/
 
@@ -195,7 +234,7 @@ the arguments to bind, `ss`, and the expressions reading them as columns
 `n`, `n + 1`, …, if the step checks out: substituting `ss` back gives `es`,
 and every expression of `ss` is one some expression of `es` always evaluates. -/
 def Rel.bindStep (n : Nat) (es : List Expr) : Option (List Expr × List Expr) :=
-  let ss := (es.flatMap Expr.toBind).eraseDups
+  let ss := (es.flatMap Expr.toBind ++ Expr.repeated es).eraseDups
   if ss.isEmpty then none else
   let es' := es.map (·.bindTo ss n)
   if es'.map (·.subst (bindSubst n ss)) == es && ss.all (fun s => es.any (s ∈ ·.eager)) then

@@ -411,7 +411,7 @@ class Sink:
         kept = self._kept
         if kept is None or (kept.table is not None and kept.epoch == contract.epoch):
             return
-        table = view.con.arrow[view.name]
+        table = view.con._arrow[view.name]
         before = kept.table
         retired = view.retired_through is not None and before is not None
         if retired and change is not None and not change.replace:

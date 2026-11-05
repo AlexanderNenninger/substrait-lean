@@ -22,7 +22,7 @@
       false
     ]
   },
-  "description": "`LATERAL VIEW explode(a)` gives one row per element (a NULL element included) and none for a NULL or empty array; `LATERAL VIEW OUTER explode(a)` (`explode_outer`) gives one row with a NULL element for each.",
+  "description": "`LATERAL VIEW explode(a)` gives one row per element (a NULL element included) and none for a NULL or empty array; `LATERAL VIEW OUTER explode(a)` (`explode_outer`) gives one row with a NULL element for each. Spark 4.3.0 also has ANSI `UNNEST` in `FROM`: `UNNEST(a)` gives no rows for a NULL or empty array, `WITH ORDINALITY` adds a 1-based `bigint` column, and `UNNEST(a, b)` zips several arrays, padding the shorter ones with NULL (a NULL array counts as empty). `LEFT JOIN LATERAL UNNEST(a) ON true` keeps one row with a NULL element for a NULL or empty array.",
   "reference": "`UNNEST`: one row per element, none for an empty list or NULL. Spark's `explode` is native.",
   "status": "no-finding",
   "evidence": "probe",
@@ -46,6 +46,62 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/generators.sql.out#L12-L34",
+          "note": "`explode(array(a, b))` over rows with NULLs gives a row for each NULL element"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/generators.sql.out#L183-L187",
+          "note": "`explode(cast(null as array<int>))` gives no rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/generators.sql.out#L362-L367",
+          "note": "`explode_outer(cast(null as array<int>))` gives one NULL row"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/generators.sql.out#L716-L721",
+          "note": "`posexplode_outer(cast(null as array<int>))` gives one row `NULL, NULL`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/table-valued-functions.sql.out#L260-L264",
+          "note": "`explode(array())` gives no rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/table-valued-functions.sql.out#L469-L474",
+          "note": "`explode_outer(array())` gives one NULL row"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L43-L47",
+          "note": "`UNNEST(cast(null as array<int>))` gives no rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L35-L39",
+          "note": "`UNNEST(array())` gives no rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L51-L58",
+          "note": "`UNNEST(array(10, 20, 30)) WITH ORDINALITY` numbers the rows 1 to 3, a `bigint`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L70-L77",
+          "note": "`UNNEST(array(1, 2), array(10, 20, 30))` pads the shorter array with NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L110-L123",
+          "note": "`LATERAL UNNEST(xs, ys) WITH ORDINALITY`: no rows where both are empty; a NULL `xs` beside `array('f')` gives `NULL, f`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L126-L138",
+          "note": "`LEFT JOIN LATERAL UNNEST(xs) ON true` gives one NULL row for an empty and for a NULL array"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

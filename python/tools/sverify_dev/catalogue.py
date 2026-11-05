@@ -346,7 +346,7 @@ def requires_hold(con: Connection, requires: dict) -> str | None:
 
     for t, conds in requires.items():
         for c in conds:
-            if isinstance(c, Unique) and (dup := duplicate_keys(con.arrow[t], c.cols)):
+            if isinstance(c, Unique) and (dup := duplicate_keys(con._arrow[t], c.cols)):
                 return f"{t}: {dup} duplicate(s) of key {c.cols}"
         rowwise = [c for c in conds if not isinstance(c, Unique)]
         try:
@@ -601,7 +601,7 @@ def probe_profile(
     # DuckDB runs the query itself: Ibis's own DuckDB SQL for an expression.
     try:
         sql = query if isinstance(query, str) else ibis.to_sql(query, dialect="duckdb")
-        out = canonical(con.ibis.con.sql(sql).to_arrow_table())
+        out = canonical(con._ibis.con.sql(sql).to_arrow_table())
         if not isinstance(query, str):
             # In the expression's types.
             with contextlib.suppress(pa.ArrowInvalid, pa.ArrowNotImplementedError):

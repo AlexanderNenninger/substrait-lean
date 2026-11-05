@@ -24,7 +24,6 @@ import sverify as sv
 from sverify.contracts import decode_double
 from sverify.engine import (
     connect,
-    create_table,
     put_table,
     run_plan,
     substrait_json,
@@ -57,9 +56,9 @@ small = st.one_of(st.none(), st.integers(-7, 7))
 @given(rows=st.lists(st.tuples(small, small), max_size=8))
 def test_integer_semantics_match_duckdb(sql, rows):
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": rows})
     out = lean_values(json.dumps(plan))
     assert canonical(out) == canonical(expected)
     assert canonical(duckdb_rows(json.dumps(plan))) == canonical(expected)
@@ -82,7 +81,7 @@ F = ibis.schema({"f": "float64"})
 def test_rounding_semantics(sql):
     con = connect()
     rows = [(f,) for f in DOUBLES]
-    create_table(con, "r", F, rows)
+    con.create("r", F, rows)
     # ROUND is half away from zero, and casts truncate (DuckDB's round); the
     # model has one zero.
     half_away = {f: math.copysign(math.floor(abs(f) + 0.5), f) + 0.0 for f in DOUBLES}
@@ -334,7 +333,7 @@ def test_division_overflow_is_reported_at_every_width(ty, dtype, lo):
     assert "overflow" in [i.kind for i in sv.verify(sql).issues]
     schema = ibis.schema({"a": dtype, "b": dtype})
     con = connect()
-    create_table(con, "t", schema, [(lo, -1)])
+    con.create("t", schema, [(lo, -1)])
     plan = written_plan(json.dumps(lift("SELECT a // b AS x FROM t", {"t": schema}, "duckdb").plan))
     with pytest.raises(Exception, match="(?i)out of range|overflow"):
         run_plan(con, plan, "duckdb")
@@ -357,7 +356,7 @@ def test_round_to_digits_is_duckdbs(xs, d):
     native = duckdb.connect()
     assert probe.lean_outcomes(p, rows, None) == [probe.duckdb_outcome(native, p, r) for r in rows]
     con = connect()
-    create_table(con, "r", F, rows)
+    con.create("r", F, rows)
     plan = written_plan(
         json.dumps(lift(f"SELECT round(f, {d}) AS x FROM r", {"r": F}, "duckdb").plan)
     )
@@ -402,7 +401,7 @@ def test_try_cast_is_null_where_cast_fails(rows):
     want = [expected_try_cast(f, i) for f, i in rows]
     assert lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))) == want
     con = connect()
-    create_table(con, "t", TC.schema(), rows)
+    con.create("t", TC.schema(), rows)
     got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
     assert [tuple(r.values()) for r in got] == want
 
@@ -412,7 +411,7 @@ def test_try_cast_is_no_error_and_cast_is():
     plain = TC.select(a=TC.f.cast("int64"), b=TC.i.cast("int8"))
     assert [i.kind for i in sv.verify(plain, on_inferred="off").issues] == ["cast out of range"] * 2
     con = connect()
-    create_table(con, "t", TC.schema(), [(1.5, 1)])
+    con.create("t", TC.schema(), [(1.5, 1)])
     plan = written_plan(to_substrait_json(try_casts(TC)))
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
@@ -447,4 +446,4 @@ def test_nested_narrow_arithmetic_overflows_as_duckdb(expr):
         i.kind for i in sv.verify(sql, tables={"t": {"i": "int8"}}, on_inferred="off").issues
     ]
     with pytest.raises(duckdb.Error, match="out of range"):
-        run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")
+        run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "duckdb")

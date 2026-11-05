@@ -9,7 +9,7 @@ import ibis
 import pytest
 
 from _sql_lift import TABLES
-from sverify.engine import connect, create_table, run_checker, run_plan, written_plan
+from sverify.engine import connect, run_checker, run_plan, written_plan
 from sverify.sql_lift import lift
 
 ORDERS = TABLES["orders"].select(["id", "price"])
@@ -64,7 +64,7 @@ def test_checked_and_written_back(direction, written):
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_unspecified_puts_nulls_last(engine):
     con = connect("duckdb")
-    create_table(con, "orders", ORDERS.schema, [tuple(r.values()) for r in ORDERS.to_pylist()])
+    con.create("orders", ORDERS.schema, [tuple(r.values()) for r in ORDERS.to_pylist()])
     plan = written_plan(json.dumps(sort_plan("SORT_DIRECTION_UNSPECIFIED")))
     prices = run_plan(con, plan, engine).column("price").to_pylist()
     assert prices == [-1.5, 0.0, 2.5, 10.0, None]

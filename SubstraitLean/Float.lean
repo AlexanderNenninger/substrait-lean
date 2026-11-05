@@ -72,18 +72,20 @@ def toFloat (c : Int) : Float :=
 
 def lift₂ (op : Float → Float → Float) (a b : Int) : Int := ofFloat (op (toFloat a) (toFloat b))
 
-/-- `ROUND(x, d)`, as DuckDB computes it (#335), halves away from zero: with
-`m = 10^|d|` (C's `pow`), `round(x · m) / m` for `d ≥ 0`, or `x` itself where
-that is not finite (`m` or `x · m` is `±∞`); `round(x / m) · m` for `d < 0`,
-or 0 where that is not finite (`round(42, -1000)` is 0, not `0 · ∞`). `±∞`
-and NaN stay. -/
+/-- `ROUND(x, d)`, as DuckDB 2.0 computes it (#335, `duckdb-round-digits-2`), halves
+away from zero: with `m = 10^|d|` (C's `pow`), `round(x · m) / m` for
+`d ≥ 0` and `round(x / m) · m` for `d < 0`, or `x` itself where that is not
+finite (`round(1.5e308, -308)` is `1.5e308`, not `2e308`); 0 for `d < 0`
+when `m` is `±∞` (`round(42, -1000)` is 0). `±∞` and NaN stay. -/
 def roundTo (d : Int) (c : Int) : Int :=
   let x := toFloat c
   if x.isNaN || x.isInf then c
   else
     let m := Float.pow 10.0 (Float.ofNat d.natAbs)
-    let r := if 0 ≤ d then (x * m).round / m else (x / m).round * m
-    if r.isNaN || r.isInf then (if 0 ≤ d then c else 0) else ofFloat r
+    if d < 0 && m.isInf then 0
+    else
+      let r := if 0 ≤ d then (x * m).round / m else (x / m).round * m
+      if r.isNaN || r.isInf then c else ofFloat r
 
 /-- Negation flips the sign; zero (code `0`) stays zero. Code negation would
 turn NaN into a code below `-∞`, so the parser writes `negate` as
@@ -105,6 +107,28 @@ kernel computes it in `f` steps; `Nat.log2` takes `n` steps). -/
 def bitLen : Nat → Nat → Nat
   | 0, _ => 0
   | f + 1, n => if n = 0 then 0 else bitLen f (n / 2) + 1
+
+/-- `bitLen` through `Nat.log2`, which the runtime computes natively. The
+checker runs this one (`bitLen_csimp`); halving bit by bit took most of a
+decimal `CAST`'s abstract evaluation (#825). -/
+def bitLenFast (f n : Nat) : Nat := if n = 0 then 0 else min f (n.log2 + 1)
+
+theorem bitLen_eq_fast : ∀ f n, bitLen f n = bitLenFast f n
+  | 0, n => by by_cases hn : n = 0 <;> simp [bitLen, bitLenFast, hn]
+  | f + 1, n => by
+    by_cases hn : n = 0
+    · simp [bitLen, bitLenFast, hn]
+    · simp only [bitLen, hn, ↓reduceIte, bitLen_eq_fast f (n / 2), bitLenFast]
+      by_cases h2 : n / 2 = 0
+      · have h1 : n = 1 := by omega
+        subst h1
+        simp [Nat.log2_def]
+      · rw [Nat.log2_def n]
+        simp only [h2, show 2 ≤ n by omega, ↓reduceIte]
+        omega
+
+@[csimp] theorem bitLen_csimp : @bitLen = @bitLenFast := by
+  funext f n; exact bitLen_eq_fast f n
 
 /-- `n` rounded to 53 significant bits, as IEEE rounds an integer to a
 double (before the exponent's range is applied). From `2¹¹⁰⁰` on, far above
@@ -600,6 +624,8 @@ def isNan (c : Int) : Bool := c == nan
 #guard roundTo 2 (ofFloat 42.123) == ofFloat 42.12 && roundTo 0 (ofFloat 2.5) == ofFloat 3.0
 #guard roundTo 400 (ofFloat 5e-324) == ofFloat 5e-324 && roundTo 308 (ofFloat 5e-324) == 0
 #guard roundTo (-309) (ofFloat 1e308) == 0 && roundTo (-308) (ofFloat 1e308) == ofFloat 1e308
+#guard roundTo (-308) (ofFloat 1.5e308) == ofFloat 1.5e308 && roundTo (-308) (ofFloat 5e307) == ofFloat 1e308
+#guard roundTo (-308) (ofFloat (-1.5e308)) == ofFloat (-1.5e308) && roundTo (-309) (ofFloat 1.5e308) == 0
 #guard roundTo (-3) posInf == posInf && roundTo 3 nan == nan
 #guard ofFloat (-1.0 * 0.0) == 0 && negInf < ofFloat (-1.0) && ofFloat 5e-324 > 0 && posInf < nan
 
@@ -685,7 +711,7 @@ theorem canon_zero : canon 0 = 0 :=
 theorem roundTo_canon (d : Int) {c : Int} (h : IsRef c) : roundTo d (canon c) = canon (roundTo d c) := by
   rw [canon_of_isRef h]
   unfold roundTo; dsimp only
-  split <;> (try split) <;> (try split) <;>
+  split <;> (try split) <;> (try split) <;> (try split) <;>
     first
     | exact (canon_of_isRef h).symm
     | exact canon_zero.symm

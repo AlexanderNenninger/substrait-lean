@@ -102,7 +102,6 @@ from sverify.engine import (
     checker_failed,
     connect,
     connection_of,
-    create_table,
     plan_json,
     run_checker,
     run_plan,
@@ -1579,6 +1578,91 @@ class Report:
 
         return substrait_export.contract_json(self, shims=shims)
 
+    def to_sql(self, dialect: Any = "duckdb") -> str:
+        """The verified plan as SQL whose meaning is the proof's, in
+        `dialect`.
+
+        The SQL keeps every run-time check, as `run` does. Where the report
+        is `deterministic` (no window ties on data that meets the
+        preconditions), windows need no row-order tiebreak, so Snowflake and
+        Spark take them. A plan verified under an engine's semantics
+        (`semantics="duckdb"`) is written only for an engine its route
+        reaches (`sverify.routes.choose`). Snowflake takes plans verified
+        under the reference. Run the SQL on data that meets the
+        preconditions (`requires`); `run` checks them first
+        (`check_inputs`).
+
+        Args:
+            dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
+                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+
+        Returns:
+            One SQL query, reading the plan's tables by the names it was
+            verified with.
+
+        Raises:
+            ValueError: The report has no plan (it was not made by
+                `verify`), or `dialect` is unknown.
+            sverify.errors.UnverifiedRunError: The plan is not proved.
+            sverify.errors.RouteError: No route takes the plan to the
+                dialect's engine.
+            sverify.errors.Unsupported: The dialect cannot express the plan.
+
+        Examples:
+            ```python
+            report = sv.verify(
+                "SELECT host, max(cpu) AS m FROM t GROUP BY host",
+                tables={"t": t},
+                ensures=[sv.unique("host")],
+            )
+            print(report.to_sql("snowflake"))
+            ```
+        """
+        from sverify.sql import to_sql
+
+        if self.internal_plan is None:
+            raise ValueError("this report has no plan: it was not made by sv.verify")
+        d, finite = self._sql_route(dialect)
+        return to_sql(
+            written_plan(self.internal_plan), d, deterministic=self.deterministic, finite=finite
+        )
+
+    def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
+        """The dialect `dialect` names, and whether its SQL checks the
+        reference's `±∞` precondition, for this report's plan; refused as
+        `run` refuses it."""
+        from sverify import routes
+        from sverify.sql import dialect_of
+
+        d = dialect_of(dialect)
+        if d.name in ("duckdb", "spark"):
+            chosen = routes.choose(self, d.name)
+        else:
+            # Snowflake has no profile: it takes the reference's translation.
+            reason = None
+            if not routes.verified(self):
+                reason = routes.not_verified(self)
+            elif self.semantics != "reference":
+                reason = (
+                    f"verified under {self.semantics} semantics; {d.name} SQL is written "
+                    "only for plans verified under the reference"
+                )
+            chosen = routes.Route(
+                d.name,
+                None if reason else "translated",
+                self.semantics,
+                reason or "the reference's translation",
+                self.deterministic,
+                cls="refused" if reason else None,
+            )
+        if chosen.refused:
+            reason = chosen.reason.removesuffix("; run(..., unverified=True) runs it anyway")
+            chosen = replace(chosen, reason=reason)
+            if not routes.verified(self):
+                raise UnverifiedRunError(self, chosen)
+            raise routes.RouteError(chosen)
+        return d, self.semantics == "reference" or chosen.kind == "translated"
+
     def check_inputs(self, con: Connection) -> None:
         """Check the preconditions (`requires`, the inferred bounds among
         them) and the `SUM`s assumed to fit (`assumed`) on the tables of
@@ -1811,7 +1895,7 @@ class Report:
 
         assert self.internal_plan is not None
         plan = json.loads(written_plan(self.internal_plan))
-        tables = {t: con.arrow[t] for t in read_tables(plan)}
+        tables = {t: con._arrow[t] for t in read_tables(plan)}
         nodes = tuple(polars_engine.plan_fallbacks(plan, tables))
         if chosen is not None:
             chosen = dataclasses.replace(chosen, fallbacks=nodes)
@@ -3948,7 +4032,7 @@ def _verify_once(
         schemas = {**leaf_tables(transform), **schemas}
     con = connect()
     for name, schema in schemas.items():
-        create_table(con, name, schema)
+        con.create(name, schema)
 
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
@@ -4857,7 +4941,7 @@ _facts: dict[tuple[int, str], list[Fact]] = {}
 
 def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> None:
     """Record (or with None, forget) what metadata says about table `name`."""
-    key = (id(con.ibis), name)
+    key = (id(con._ibis), name)
     if facts is None:
         _facts.pop(key, None)
     else:
