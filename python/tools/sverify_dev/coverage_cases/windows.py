@@ -175,3 +175,7 @@ TIE_FREE = {
     "max, count over frame",
     "min over a sliding frame",
 }
+
+# A plan's frame and Ibis's own SQL may sum in another order, so variances
+# agree to the last digit only up to rounding (#54).
+APPROXIMATE = {"stddev over group", "rolling variance (rows)"}
