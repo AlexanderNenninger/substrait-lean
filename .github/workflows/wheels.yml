@@ -154,10 +154,12 @@ jobs:
       # A pull request runs the fast set (`poe test`'s: no `slow` tests, a
       # tenth of the Hypothesis examples): it checks the packaging, and CI's
       # `test` jobs run the whole suite on the same code from source. A
-      # release, the nightly and the weekly run test the whole suite here.
+      # release, the nightly and the weekly run test the whole suite here,
+      # and so does a release's version-bump pull request (`release-*`), so
+      # a test the wheel fails shows up before the tag.
       - name: Test installed wheel
         env:
-          FAST: ${{ github.event_name == 'pull_request' }}
+          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') }}
         run: |
           cp -r python/tests "$RUNNER_TEMP/tests"
           cp -r python/tools "$RUNNER_TEMP/tools"
@@ -171,7 +173,7 @@ jobs:
           fi
           uv run --isolated --no-project \
             --with "sverify[all] @ file://$wheel" \
-            --with pytest --with hypothesis --with pyyaml \
+            --with pytest --with hypothesis --with pyyaml --with mpmath \
             --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
             "${select[@]}" tests
@@ -185,7 +187,7 @@ jobs:
           import importlib.util
           import pyarrow as pa
           import sverify as sv
-          from sverify.io import StaticSource
+          from sverify.io import Changes, StaticSource
 
           assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
           t = StaticSource(pa.table({"a": [1, 5]}), name="t")
@@ -330,7 +332,7 @@ jobs:
           fi
           uv run --isolated --no-project --python ${{ matrix.python }} \
             --with "sverify[all] @ file://$wheel" \
-            --with pytest --with hypothesis --with pyyaml \
+            --with pytest --with hypothesis --with pyyaml --with mpmath \
             --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
             "${select[@]}" tests
@@ -343,7 +345,7 @@ jobs:
           import importlib.util
           import pyarrow as pa
           import sverify as sv
-          from sverify.io import StaticSource
+          from sverify.io import Changes, StaticSource
 
           assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
           t = StaticSource(pa.table({"a": [1, 5]}), name="t")

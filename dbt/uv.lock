@@ -1657,7 +1657,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "duckdb" },
@@ -1681,11 +1681,12 @@ requires-dist = [
     { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
+    { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
     { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing"], marker = "extra == 'all'" },
+    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs"], marker = "extra == 'all'" },
 ]
-provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "all"]
+provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1708,7 +1709,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-dbt"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
