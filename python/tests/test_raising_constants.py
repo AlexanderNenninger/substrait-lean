@@ -42,7 +42,7 @@ def test_a_constant_that_raises_is_reported_whatever_the_preconditions(sql):
     [issue] = report.errors
     assert issue.kind == "division by zero" and issue.constant
     assert issue.hint == CONSTANT_HINT
-    assert not report.guard_free
+    assert not report._guard_free
 
 
 def test_a_constant_without_an_error_is_nothing():

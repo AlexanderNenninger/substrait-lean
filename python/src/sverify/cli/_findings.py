@@ -54,8 +54,8 @@ def of(c: Checked) -> list[dict[str, Any]]:
     for i in r.errors:
         extra = {"hint": i.hint} if i.hint else {}
         out.append(_finding(c, _explain.code_of(i.kind), f"may fail: {i.message}", **extra))
-    if r.transfer:
-        text = f"Substrait allows more at {len(r.transfer)} option(s)"
+    if r._transfer:
+        text = f"Substrait allows more at {len(r._transfer)} option(s)"
         out.append(_finding(c, "transfer", text))
     if r.floats_unmet:
         out.append(_finding(c, "floats", r.floats_unmet))

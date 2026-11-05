@@ -129,7 +129,7 @@ def test_ties_on_the_right_keep_the_guarantees():
     )
     assert report.proved, str(report)
     assert not report.deterministic
-    assert [p.op for p in report.tie_places] == ["window"]
+    assert [p.op for p in report._tie_places] == ["window"]
 
 
 def test_aligning_100hz_with_130hz():

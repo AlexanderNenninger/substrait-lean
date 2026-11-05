@@ -619,7 +619,7 @@ def test_create_options_of_an_existing_table_are_ignored_with_a_warning(catalog,
     )
     big = doubled(src).write(sink)
     src.table().append(rows_table([(3, "cy", 1)]))
-    with pytest.warns(UserWarning, match=IcebergSink.create_options_ignored) as caught:
+    with pytest.warns(UserWarning, match=IcebergSink._create_options_ignored) as caught:
         big.refresh()
     message = str(caught[0].message)
     assert "location" in message and "partition fields" in message and "'a'" in message

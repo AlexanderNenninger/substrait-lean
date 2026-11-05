@@ -209,7 +209,7 @@ def test_params_are_bound_for_verify():
     report = sv.verify(expr, params={p: 5, q: "x"}, ensures=[ibis._.qty > 5])
     assert report.proved, str(report)
     # The proof is for these values only, and the report says so.
-    assert report.params == ["param1 (int64) = 5", "param2 (string) = 'x'"]
+    assert report._params == ["param1 (int64) = 5", "param2 (string) = 'x'"]
     assert "proved for these parameter values only" in str(report)
     assert not sv.verify(expr, params={p: 0, q: "x"}, ensures=[ibis._.qty > 5]).proved
     with pytest.raises(ValueError, match="pass params"):

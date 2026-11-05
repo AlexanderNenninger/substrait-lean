@@ -12,6 +12,7 @@ import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
+import sverify as sv
 from sverify import polars_engine
 from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
@@ -19,6 +20,9 @@ from sverify.partition import NotShardable, apriori_tolerance, run_sharded, spli
 from sverify.testing import canonical
 
 pytestmark = pytest.mark.backend("polars")
+
+#: Doubles within the split's proved bound (`run_sharded`'s `reproducible`).
+PLAN = sv.equivalent(floats="plan")
 
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "string"})
@@ -176,7 +180,7 @@ def test_float_order_any(sql: str, data):
     assert not split(plan, ["r"], float_order="any").proved
     pairs = list(zip(rows, where, strict=True))
     shards = [{"r": arrow([row for row, k in pairs if k == i])} for i in range(4)]
-    got = run_sharded(plan, shards, sharded=["r"], float_order="any")
+    got = run_sharded(plan, shards, sharded=["r"], reproducible=PLAN)
     assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
 
 
@@ -498,7 +502,7 @@ def test_sharded_doubles_within_the_reported_tolerance(sql: str, data):
     shards = [
         {"f": f_arrow([r for r, k in zip(rows, where, strict=True) if k == i])} for i in range(4)
     ]
-    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
     assert got.rows_exact
     grouped = "GROUP BY" in sql
     kept = [r for r in rows if "WHERE" not in sql or r[0] > 0]
@@ -530,7 +534,7 @@ def test_apriori_tolerance_bounds_the_split(data):
     shards = [
         {"f": f_arrow([r for r, k in zip(rows, where, strict=True) if k == i])} for i in range(4)
     ]
-    got = run_sharded(plan, shards, sharded=["f"], float_order="any").to_pylist()[0]
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN).to_pylist()[0]
     bound = max(abs(x) for x in xs)
     s = lean_sum(xs)
     assert s is not None
@@ -543,7 +547,7 @@ def test_cancellation_is_within_the_tolerance():
     scales with `Σ|x|`, so it covers both."""
     plan = float_plan("SELECT SUM(x) AS s FROM f")
     shards = [{"f": f_arrow([(0, 1e16), (0, -1e16)])}, {"f": f_arrow([(0, 1.0)])}]
-    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
     assert got.table.to_pylist() == [{"s": 1.0}]
     assert lean_sum([1e16, 1.0, -1e16]) == 0.0
     assert 1.0 <= got.tolerance["s"][0] < 20.0
@@ -554,13 +558,13 @@ def test_no_bound_where_it_does_not_carry_over():
     keep other rows, and a group with NaN or near overflow has none."""
     plan = float_plan("SELECT g, SUM(x) * 2 AS s2 FROM f GROUP BY g HAVING SUM(x) > 1")
     shards = [{"f": f_arrow([(0, 1.5), (1, 3.0)])}, {"f": f_arrow([(0, 1.0)])}]
-    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
     assert not got.rows_exact
     assert got.tolerance["s2"] == [math.inf, math.inf]
     plan = float_plan("SELECT g, SUM(x) AS s FROM f GROUP BY g")
     # Near overflow, short of it: `1e308 + 1e308` would raise (#575).
     shards = [{"f": f_arrow([(0, math.nan), (1, 1e308), (2, 1.0)])}, {"f": f_arrow([(1, 7e307)])}]
-    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
     tau = {r["g"]: t for r, t in zip(got.table.to_pylist(), got.tolerance["s"], strict=True)}
     assert tau[0] == math.inf and tau[1] == math.inf and math.isfinite(tau[2])
 
@@ -569,12 +573,37 @@ def test_tolerance_without_the_keys_in_the_output():
     """Without the grouping keys, each row gets the largest τ of any group."""
     plan = float_plan("SELECT SUM(x) AS s FROM f GROUP BY g")
     shards = [{"f": f_arrow([(0, 1.0), (1, 1e10)])}, {"f": f_arrow([(1, 1.0)])}]
-    got = run_sharded(plan, shards, sharded=["f"], float_order="any", tolerance=True)
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
     big = run_sharded(
         float_plan("SELECT g, SUM(x) AS s FROM f GROUP BY g"),
         shards,
         sharded=["f"],
-        float_order="any",
+        reproducible=PLAN,
         tolerance=True,
     )
     assert got.tolerance["s"] == [max(big.tolerance["s"])] * 2
+
+
+def test_a_stated_tolerance_is_checked_against_the_bound():
+    """`reproducible=sv.equivalent(floats=sv.within(...))` splits the
+    doubles and raises where a row's τ exceeds the tolerance."""
+    plan = float_plan("SELECT SUM(x) AS s FROM f")
+    shards = [{"f": f_arrow([(0, 1e16), (0, -1e16)])}, {"f": f_arrow([(0, 1.0)])}]
+    loose = sv.equivalent(floats=sv.within(abs=100.0))
+    assert run_sharded(plan, shards, sharded=["f"], reproducible=loose).to_pylist() == [{"s": 1.0}]
+    tight = sv.equivalent(floats=sv.within(abs=1e-3))
+    with pytest.raises(ValueError, match="does not cover"):
+        run_sharded(plan, shards, sharded=["f"], reproducible=tight)
+    # Exact doubles refuse the split, as without `reproducible`.
+    with pytest.raises(NotShardable):
+        run_sharded(plan, shards, sharded=["f"], reproducible=sv.equivalent())
+
+
+def test_float_order_is_deprecated():
+    plan = float_plan("SELECT SUM(x) AS s FROM f")
+    shards = [{"f": f_arrow([(0, 1.0)])}, {"f": f_arrow([(0, 2.0)])}]
+    with pytest.warns(DeprecationWarning, match="float_order"):
+        got = run_sharded(plan, shards, sharded=["f"], float_order="any")
+    assert got.to_pylist() == [{"s": 3.0}]
+    with pytest.raises(TypeError, match="not both"):
+        run_sharded(plan, shards, sharded=["f"], float_order="any", reproducible=PLAN)
