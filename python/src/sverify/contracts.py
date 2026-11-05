@@ -3419,7 +3419,15 @@ def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) ->
             query = (
                 f'SELECT * FROM ({sql}) AS "t" WHERE NOT coalesce(({cond}), FALSE) LIMIT {limit}'
             )
-            return backend.raw_sql(query).fetch_arrow_table()
+            # Fetch every row, as `violations` does, so that the connection
+            # is free for the next query (DuckDB 2 refuses work on a
+            # connection with a result left unread).
+            import pyarrow
+
+            cur = backend.raw_sql(query)
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+            return pyarrow.Table.from_pylist(rows, schema=table.schema().to_pyarrow())
         bad = table.filter(~resolve(cond, table).fill_null(ibis.literal(False)))
         return bad.limit(limit).to_pyarrow()
     except Exception:

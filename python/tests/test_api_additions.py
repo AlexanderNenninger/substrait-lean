@@ -223,3 +223,19 @@ def test_isin_keeps_its_results():
     for engine in ("duckdb", "polars"):
         out = r.run(con, engine).column("hit").to_pylist()
         assert out == [True, True, False, None]
+
+
+def test_precondition_error_rows_of_a_sql_condition():
+    @sv.transform(requires={"orders": ["amount >= 0"]})
+    def same(orders):
+        return orders
+
+    con = sv.connect()
+    con.put("orders", pa.table({"id": [1, 2], "amount": [3, -4]}))
+    with pytest.raises(PreconditionError) as e:
+        same(con.table("orders"))
+    assert e.value.condition == "amount >= 0"
+    assert e.value.rows is not None
+    assert e.value.rows.to_pylist() == [{"id": 2, "amount": -4}]
+    # The connection is free for the next query.
+    assert con.table("orders").count().to_pyarrow().as_py() == 2
