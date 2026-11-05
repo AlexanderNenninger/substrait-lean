@@ -184,6 +184,23 @@ def test_floats(spark):
     assert repr(got) == repr([(-1.0, 0.0), (0.0, 0.0), (1.0, 0.0)])
 
 
+def test_the_parser_cache_is_flushed(spark):
+    """The local session bounds the parser's ANTLR DFA cache, which deeply
+    nested SQL grew to most of a 1 GB heap (`spark_engine.LOCAL_CONF`)."""
+    assert spark.conf.get("spark.sql.parser.manageParserCaches") == "true"
+    assert float(spark.conf.get("spark.sql.parser.parserDfaCacheFlushRatio")) > 0
+
+
+def test_driver_memory_from_the_memory_limit():
+    from sverify.spark_engine import driver_memory
+
+    assert driver_memory("2GB") == "2g"
+    assert driver_memory(" 512 mb ") == "512m"
+    assert driver_memory("4GiB") == "4g"
+    with pytest.raises(ValueError, match="memory limit"):
+        driver_memory("lots")
+
+
 def test_groups_have_one_zero_and_one_nan(spark):
     """Through `sverify.spark_engine.run`, Arrow in and out."""
     from sverify import spark_engine

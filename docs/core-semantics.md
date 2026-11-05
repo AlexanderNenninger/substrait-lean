@@ -1563,7 +1563,7 @@ default: `verify` reports the plan as not proved and names the precondition,
 where it came from, and the fixes, which are to declare it in `requires` or
 to rewrite the plan so no row needs it (filter those rows first, or a `CASE`).
 `on_inferred=` chooses: `"error"` (the default), `"warn"` (assumed, checked
-on the data before each run, with a warning), `"silent"` (assumed and
+on the data before each run, with a warning), `"ignore"` (assumed and
 checked, as before #655) or `"off"` (nothing inferred or assumed: a `SUM`
 that may overflow is an error too; `infer=False` before 0.6, #690).
 

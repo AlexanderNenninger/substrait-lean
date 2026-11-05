@@ -270,7 +270,7 @@ def test_needed_conditions_of_sql_are_sql():
 
 def test_needed_conditions_empty_when_assumed():
     t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
-    r = sv.verify(t.select(u=t.total // t.qty), on_inferred="silent")
+    r = sv.verify(t.select(u=t.total // t.qty), on_inferred="ignore")
     assert r.needed_conditions == {}
 
 

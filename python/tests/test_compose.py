@@ -139,7 +139,7 @@ def test_runtime_mode_checks_a_broken_link_on_data():
     def not_null(orders):
         return orders.filter(orders.amount.notnull())
 
-    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0], on_unproved="runtime")
+    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0], on_unproved="check")
     def lenient(t):
         return t
 

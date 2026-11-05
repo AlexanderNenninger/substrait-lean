@@ -648,7 +648,7 @@ def assert_contract(
     postconditions proved and every precondition on another node's result
     proved from that node's guarantees. A transform with
     `on_unproved="error"` (the default) already raises when the node is
-    built; this catches `"warn"` and `"runtime"`, which let an unproved
+    built; this catches `"warn"` and `"check"`, which let an unproved
     contract through.
 
     With `data`, the node runs on those rows: they must meet the

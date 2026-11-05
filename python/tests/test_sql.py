@@ -722,7 +722,7 @@ def test_contract_checks_on_duckdb():
     @sv.transform(
         requires={"orders": [_.amount >= 0]},
         ensures=[_.amount < 100],
-        on_unproved="runtime",
+        on_unproved="check",
         check_engine="duckdb",
     )
     def passthrough(orders):

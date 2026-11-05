@@ -21,8 +21,8 @@ from sverify.io import StaticSource
 
 #: These tests are about inferred preconditions: assume them, as before
 #: `on_inferred` (#655); `test_on_inferred.py` tests the default.
-verify = functools.partial(sv.verify, on_inferred="silent")
-transform = functools.partial(sv.transform, on_inferred="silent")
+verify = functools.partial(sv.verify, on_inferred="ignore")
+transform = functools.partial(sv.transform, on_inferred="ignore")
 
 
 T = ibis.table(
