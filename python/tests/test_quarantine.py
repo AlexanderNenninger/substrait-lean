@@ -374,9 +374,15 @@ def test_the_quarantine_table_next_to_an_iceberg_sink(tmp_path):
     assert [_quarantine.decode_row(r["row"]) for r in rows] == [{"id": 2, "amount": -5}]
     snap = q.current_snapshot()
     assert snap is not None and snap.summary is not None
-    record = json.loads(snap.summary[_quarantine.RECORD_KEY])
+    record = json.loads(str(snap.summary[_quarantine.RECORD_KEY]))
     assert record["node"] == "paid" and record["format"] == 1
     # Fixed upstream: the table empties.
     orders.apply(Changes(deletes=table([(2, -5)])))
     node.refresh()
     assert cat.load_table("db.paid_quarantine").scan().to_arrow().num_rows == 0
+
+
+def test_a_node_without_quarantine_writes_no_quarantine_table(tmp_path):
+    orders = StaticSource(table([(1, 30)]), name="orders")
+    orders.pipe(make(policy=None)).write(DeltaSink(str(tmp_path / "paid"))).refresh()
+    assert not (tmp_path / "paid_quarantine").exists()

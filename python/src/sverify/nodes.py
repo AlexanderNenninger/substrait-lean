@@ -608,7 +608,7 @@ class Node:
             out.quarantine += out.report.quarantine
         held = stage.pipe.quarantined
         out.set_aside = sum(q.total for q in held.values())
-        if target is not None and (held or first):
+        if target is not None and held:
             out.quarantine_table = target.location
             for q in out.quarantine:
                 q.table = target.location
