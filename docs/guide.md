@@ -785,7 +785,7 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.last_report)
-# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where amount is NULL: ...
+# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows
 # ...
 print(n.refresh())
 # capped:

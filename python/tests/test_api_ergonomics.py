@@ -122,18 +122,21 @@ def test_connection_public_attributes_are_generic():
         ("TRUE or FALSE", "it may be FALSE on some rows"),
         ("FALSE", "it is FALSE on every row"),
         ("TRUE or NULL", "it may be NULL on some rows, where a column it reads is NULL"),
-        ("TRUE, FALSE or NULL", "it may be FALSE or NULL on some rows, where"),
+        # NULL is not the only way to fail: no NOT NULL advice (#655).
+        ("TRUE, FALSE or NULL", "it may be FALSE or NULL on some rows"),
     ],
 )
 def test_why_a_condition_is_unproved(value, why):
     assert CheckedCondition("c", False, value).why.startswith(why)
 
 
-def test_a_nullable_column_suggests_not_null():
-    t = ibis.table({"a": "int64"}, name="t")
+def test_a_nullable_column_suggests_not_null_only_where_null_alone_fails():
+    t = ibis.table({"a": "int64", "s": "string"}, name="t")
     report = sv.verify(t.select(b=t.a), ensures=[_.b >= 0], counterexamples=0)
     assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
-    assert "`!int64`" in str(report) and ".notnull()" in str(report)
+    assert ".notnull()" not in str(report)
+    only_null = sv.verify(t.select(n=t.s.length()), ensures=[_.n >= 0], counterexamples=0)
+    assert only_null.needed == {"t": ["_.s.notnull()"]}
 
 
 # #440: ibis.param in a transformation

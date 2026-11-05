@@ -957,6 +957,7 @@ def ties_fix(report: Report) -> str:
     `sv.unique(...)` it needs (`Report.ties`), or `TIES`."""
     if not report.ties:
         return TIES
+
     def code(lab: str) -> str:
         cols = lab.removeprefix("unique(").removesuffix(")").split(", ")
         return f"sv.unique({', '.join(repr(c) for c in cols)})"
