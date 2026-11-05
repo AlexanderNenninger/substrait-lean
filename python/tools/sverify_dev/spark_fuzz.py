@@ -390,6 +390,8 @@ def _int_pow() -> list[Target]:
 # --- Targets: decimals ------------------------------------------------------
 
 _D34 = Context(prec=34, rounding=ROUND_HALF_UP)
+#: Wide enough that no decimal here rounds (the default context keeps 28 digits).
+_EXACT = Context(prec=100)
 
 
 def _rand_dec(r: random.Random, s: int) -> Decimal:
@@ -397,9 +399,11 @@ def _rand_dec(r: random.Random, s: int) -> Decimal:
     n = r.randint(10 ** (digits - 1) if digits > 1 else 0, 10**digits - 1)
     if r.random() < 0.3:
         n = int(str(n)[:-1] + "5") if digits > 1 else 5
+    if digits == 38 and r.random() < 0.3:
+        n = int(str(n)[:34] + "5000")  # a tie at 34 digits: half up and half even differ
     if r.random() < 0.1:
         n = 10**38 - 1
-    return Decimal(-n if r.random() < 0.5 else n).scaleb(-s)
+    return Decimal(-n if r.random() < 0.5 else n).scaleb(-s, context=_EXACT)
 
 
 def _decimal_negate() -> list[Target]:
@@ -415,7 +419,7 @@ def _decimal_negate() -> list[Target]:
                 if x is None:
                     return None
                 y = _D34.plus(f(x))
-                if abs(y) >= Decimal(10) ** (38 - s):
+                if y.copy_abs() >= Decimal(10) ** (38 - s):
                     return Raise("NUMERIC_VALUE_OUT_OF_RANGE")
                 return y.quantize(Decimal(1).scaleb(-s), context=Context(prec=100))
 
@@ -428,15 +432,23 @@ def _decimal_negate() -> list[Target]:
                 rows,
                 [
                     Expr(
-                        f"-x decimal(38,{s})", "-x", model(lambda x: -x), f"decimal(38,{s})", "-x"
+                        f"-x decimal(38,{s})",
+                        "-x",
+                        model(Decimal.copy_negate),
+                        f"decimal(38,{s})",
+                        "-x",
                     ),
                     Expr(
-                        f"abs decimal(38,{s})", "abs(x)", model(abs), f"decimal(38,{s})", "abs(x)"
+                        f"abs decimal(38,{s})",
+                        "abs(x)",
+                        model(Decimal.copy_abs),
+                        f"decimal(38,{s})",
+                        "abs(x)",
                     ),
                     Expr(
                         f"0 - x decimal(38,{s})",
                         "0 - x",
-                        lambda row, ansi: None if row[0] is None else -row[0],
+                        lambda row, ansi: None if row[0] is None else row[0].copy_negate(),
                         None,
                     ),
                 ],
@@ -452,14 +464,14 @@ def _size_limits() -> list[Target]:
         d = r.choice([30, 36, 37, 38, 38, 39, 40])
         n = r.randint(10 ** (d - 1), 10**d - 1)
         s = r.choice([0, 0, 2, 10])
-        return (("-" if r.random() < 0.5 else "") + str(Decimal(n).scaleb(-s)), s)
+        return (("-" if r.random() < 0.5 else "") + str(Decimal(n).scaleb(-s, context=_EXACT)), s)
 
     def model(row: tuple, ansi: bool) -> Any:
         x, s = row
         v = Decimal(x)
         # CAST(x AS DECIMAL(38, 2)): rounds half up to 2 places, then fits 38 digits or not.
         y = v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP, context=Context(prec=100))
-        if abs(y) >= Decimal(10) ** 36:
+        if y.copy_abs() >= Decimal(10) ** 36:
             return Raise("NUMERIC_VALUE_OUT_OF_RANGE") if ansi else None
         return y
 
@@ -2218,7 +2230,11 @@ class Stats:
 
 def _matches(e: Expr, got: Any, want: Any) -> bool:
     if isinstance(want, Raise) or isinstance(got, Raise):
-        return isinstance(want, Raise) and isinstance(got, Raise) and got.cls == want.cls
+        return (
+            isinstance(want, Raise)
+            and isinstance(got, Raise)
+            and (got.cls == want.cls or got.cls.startswith(want.cls + "."))
+        )
     if e.same is not None:
         return e.same(got, want)
     if isinstance(want, float) and isinstance(got, float):
