@@ -874,8 +874,9 @@ def test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not():
     assert both([1.0, math.nan, -1.0], False) == (-1.0, 1.0)
     lo, hi = both([1.0, math.nan, -1.0], True)
     assert lo == -1.0 and math.isnan(hi)
-    # macOS arm64 (polars-min-max-zero); the shims read one zero.
-    assert [math.copysign(1.0, z) for z in both([0.0, -0.0], False)] == [-1.0, 1.0]
+    # The zero Polars keeps is the platform's (polars-min-max-zero): `min` is
+    # -0.0 on macOS arm64, and `max` too on Linux x86_64. The shims read one.
+    assert math.copysign(1.0, both([0.0, -0.0], False)[0]) == -1.0
     assert [math.copysign(1.0, z) for z in both([0.0, -0.0], True)] == [1.0, 1.0]
     assert both([None, None], True) == (None, None)
 

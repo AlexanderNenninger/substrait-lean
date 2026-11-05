@@ -22,7 +22,7 @@
     ]
   },
   "description": [
-    "`min` and `max` of doubles combine values with Rust's `f32::min`/`f64::min` (`max`) and the SIMD kernel's `simd_min`/`simd_max`, which give either zero when the operands are 0.0 and -0.0. On macOS arm64 `min` over {0.0, -0.0} is -0.0 and `max` is 0.0 in either input order, for `Float32` and `Float64`, grouped or not, on both engines. Another target can give the other zero.",
+    "`min` and `max` of doubles combine values with Rust's `f32::min`/`f64::min` (`max`) and the SIMD kernel's `simd_min`/`simd_max`, which give either zero when the operands are 0.0 and -0.0. On macOS arm64 `min` over {0.0, -0.0} is -0.0 and `max` is 0.0 in either input order, for `Float32` and `Float64`, grouped or not, on both engines. On Linux x86_64 `max` of [0.0, -0.0] is -0.0 too.",
     "With the column's sorted flag set, `min` returns the first non-null value and `max` the last, so it returns the zero the sort put first, and the sort holds the two zeros equal (polars-zero-order).",
     "No upstream test pins this; it may change between versions."
   ],
@@ -102,6 +102,17 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64; `engine=\"streaming\"`. The translation reads the result with one zero (`one_zero`, `Polars.min_ignore_nan`, `Polars.max_nan_greatest`)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "manual-repro",
+      "checked_by": "CI of PR #718 (test (polars snowflake), job 127139080369)",
+      "evidence": [
+        {
+          "note": "Float64 column [0.0, -0.0], streaming engine, Linux x86_64 (GitHub's ubuntu-latest): min -0.0 and max -0.0, where macOS arm64 gives max 0.0. The zero is the platform's."
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python); `tests/test_polars_shims.py::test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not` before it stopped pinning the native `max`."
     }
   ],
   "issues": [
