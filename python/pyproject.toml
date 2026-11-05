@@ -43,6 +43,12 @@ testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
 openlineage = ["openlineage-python>=1.55.0,<2"]
 # `sverify.odcs` writes and reads ODCS contracts as YAML (#791); JSON needs nothing.
 odcs = ["pyyaml>=6.0"]
+# Secret backends of `sverify.io.Secret` (#775): environment variables, files
+# and OpenBao/Vault need nothing.
+secrets-aws = ["boto3>=1.35"]
+secrets-gcp = ["google-cloud-secret-manager>=2.20"]
+secrets-azure = ["azure-identity>=1.17", "azure-keyvault-secrets>=4.8"]
+secrets-keychain = ["keyring>=25"]
 all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing,odcs,openlineage]"]
 
 # The command line (`sverify.cli`, #744).

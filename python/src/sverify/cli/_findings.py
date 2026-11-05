@@ -12,6 +12,7 @@ from sverify.cli import _explain
 
 if TYPE_CHECKING:
     from sverify.cli._discover import Checked, Discovery
+    from sverify.io._credentials import CredentialUse
 
 
 def line_of(c: Checked) -> int | None:
@@ -81,3 +82,34 @@ def unchecked(name: str, d: Discovery) -> dict[str, Any]:
         "nodes": [],
         "line": getattr(code, "co_firstlineno", None),
     }
+
+
+def credentials(uses: list[tuple[str, CredentialUse]]) -> list[dict[str, Any]]:
+    """The findings of the credentials nodes use (#778): a table outside
+    its credential's scope, and credentials given as values."""
+    from sverify.io._credentials import INLINE
+
+    out = []
+    for var, u in uses:
+        if u.in_scope is False:
+            text = (
+                f"{u.access}s {u.table} ({u.location}) outside what {u.credential} may {u.access}"
+            )
+            code = "scope"
+        elif u.credential == INLINE:
+            text = f"{u.table}: credentials given as values; name them (Storage(credentials=...))"
+            code = "inline_credentials"
+        else:
+            continue
+        out.append(
+            {
+                "code": code,
+                "level": _explain.level_of(code),
+                "message": text,
+                "item": var,
+                "nodes": [var],
+                "line": None,
+                "table": u.table,
+            }
+        )
+    return out

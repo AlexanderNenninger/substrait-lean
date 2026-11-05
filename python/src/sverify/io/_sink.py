@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -31,6 +31,8 @@ from sverify.io._common import (
     sink_schema,
     view_contract_record,
 )
+from sverify.io._credentials import declared
+from sverify.io._secrets import Secret
 from sverify.observation import PLAN_BOUND, Observation
 
 if TYPE_CHECKING:
@@ -687,13 +689,19 @@ class _FnSink(Sink):
     def __init__(self, fn: Callable[[pa.Table], Any], name: str):
         super().__init__(name)
         self.fn = fn
+        self.credentials: tuple[Secret, ...] = ()
 
     def write(self, change: SinkChange) -> SinkWrite:
         self.fn(change.table)
         return SinkWrite("overwrite", None, change.contract, change.table.num_rows, 0)
 
 
-def sink_from(fn: Callable[[pa.Table], Any], *, name: str) -> Sink:
+def sink_from(
+    fn: Callable[[pa.Table], Any],
+    *,
+    name: str,
+    credentials: str | Secret | Sequence[str | Secret] | None = None,
+) -> Sink:
     """A sink that hands the node's whole table to `fn` whenever it
     changes: `node.write(sink_from(save, name="paid"))`.
 
@@ -705,6 +713,9 @@ def sink_from(fn: Callable[[pa.Table], Any], *, name: str) -> Sink:
         fn: Called with the table (an Arrow table) to store; what it returns
             is ignored.
         name: The stored table's name in the plans that read it.
+        credentials: The secrets `fn` writes with, by name or reference
+            (`sverify.io.Secret`), so reports list them (#778). Read one
+            inside `fn` with `Secret(name).value()`. Default: none.
 
     Returns:
         The sink.
@@ -728,4 +739,6 @@ def sink_from(fn: Callable[[pa.Table], Any], *, name: str) -> Sink:
         )
         ```
     """
-    return _FnSink(fn, name)
+    out = _FnSink(fn, name)
+    out.credentials = declared(credentials)
+    return out
