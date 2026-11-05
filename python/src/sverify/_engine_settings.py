@@ -266,6 +266,7 @@ def describe(engine: str, setting: Setting, value: Any) -> str:
         else ""
     )
     return (
-        f"{engine}'s {setting.name} is {value!r}, and Profile.{engine}'s facts hold under "
+        f"{engine}'s {setting.name} is {value!r}, and the facts of "
+        f'semantics="{engine}" hold under '
         f"{want}{facts}: it changes {setting.affects}"
     )

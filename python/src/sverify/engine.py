@@ -23,7 +23,6 @@ import json
 import os
 import subprocess
 import threading
-import warnings
 from collections.abc import Iterator, MutableMapping
 from dataclasses import replace
 from pathlib import Path
@@ -243,18 +242,6 @@ class Connection:
             self.ibis.con.unregister(name)
         if self._datafusion is not None and self._datafusion.table_exist(name):
             self._datafusion.deregister_table(name)
-
-    @property
-    def datafusion(self) -> Any:
-        """Deprecated: the DataFusion session the DataFusion engine runs on, an
-        internal that will become private (#413)."""
-        warnings.warn(
-            "Connection.datafusion is deprecated: it is an internal of the DataFusion "
-            "engine. Run plans with sverify.engines.run(con, plan, 'datafusion').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._datafusion_session
 
     @property
     def _datafusion_session(self) -> Any:
@@ -821,7 +808,7 @@ def run_plan(
             return orders.filter(orders.amount > 10)
 
 
-        plan = big_orders(orders).plan  # the plan Lean checked
+        plan = big_orders(orders).internal_plan  # the plan Lean checked
 
         con = sv.connect()
         create_table(con, "orders", ibis.schema({"id": "int64", "amount": "int64"}),

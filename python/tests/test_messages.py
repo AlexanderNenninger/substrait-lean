@@ -56,7 +56,7 @@ def double_charges(p: ibis.Table) -> ibis.Table:
 def test_a_floor_division_is_one_issue_as_written() -> None:
     """Ibis's `//` is the reference's floor division, `(a + 1) // b - 1` and
     so on: its branches and sub-expressions fold into the expression."""
-    report = sv.verify(margins(ITEMS), requires={"items": [_.price > 0]}, infer=False)
+    report = sv.verify(margins(ITEMS), requires={"items": [_.price > 0]}, on_inferred="off")
     shown = [str(i) for i in report.errors]
     assert shown == [
         "overflow: (price - cost) * 100 // price",
@@ -66,7 +66,7 @@ def test_a_floor_division_is_one_issue_as_written() -> None:
 
 
 def test_a_window_value_is_named_not_numbered() -> None:
-    report = sv.verify(sessionize(CLICKS), infer=False)
+    report = sv.verify(sessionize(CLICKS), on_inferred="off")
     assert [str(i) for i in report.errors] == ["overflow: ts - lag(ts)"]
     assert "$" not in str(report)
 
@@ -77,7 +77,7 @@ def test_a_sum_in_sql_is_named_by_its_measure() -> None:
     SELECT customer_id, revenue, rank() OVER (ORDER BY revenue DESC) AS r FROM per
     """
     report = sv.verify(sql, tables={"orders": ORDERS}, requires={"orders": ["amount >= 0"]})
-    assert "assumes: sum(amount) may overflow to ±inf" in str(report)
+    assert "assumes: sum(amount) stays finite on finite inputs" in str(report)
     assert "$" not in str(report)
 
 
@@ -86,7 +86,7 @@ def test_aggregates_over_one_column_are_named_together() -> None:
         m=READINGS.temp_c.mean(), s=READINGS.temp_c.std(), lo=READINGS.temp_c.min()
     )
     report = sv.verify(expr, requires={"readings": [_.temp_c.between(-90, 60)]})
-    assert "assumes: mean(temp_c) or std(temp_c) may overflow to ±inf" in str(report)
+    assert "assumes: mean(temp_c) or std(temp_c) stays finite on finite inputs" in str(report)
 
 
 def test_a_decimal_cast_reads_as_the_cast() -> None:
@@ -340,7 +340,7 @@ def test_the_and_or_guard_proves_when_pasted() -> None:
 
 
 def test_the_window_hint_bounds_the_column_it_reads() -> None:
-    report = sv.verify(sessionize(CLICKS), infer=False)
+    report = sv.verify(sessionize(CLICKS), on_inferred="off")
     (issue,) = report.errors
     assert issue.hint is not None
     assert issue.hint.startswith("bound the columns it reads: state `(_.ts >= datetime(1900")
@@ -387,12 +387,12 @@ def test_every_hint_removes_its_issue_when_pasted(case) -> None:
     """#688: the code each hint proposes, pasted into `requires`, makes its
     issue go away."""
     expr, requires = case()
-    report = sv.verify(expr, requires=requires, infer=False, counterexamples=0)
+    report = sv.verify(expr, requires=requires, on_inferred="off", counterexamples=0)
     hinted = [(i, i.hint) for i in report.errors if i.hint and "in the requires of" in i.hint]
     assert hinted, report
     for issue, hint in hinted:
         pasted = {t: list(cs) for t, cs in requires.items()}
         for t, cs in _pasted(hint).items():
             pasted.setdefault(t, []).extend(cs)
-        again = sv.verify(expr, requires=pasted, infer=False, counterexamples=0)
+        again = sv.verify(expr, requires=pasted, on_inferred="off", counterexamples=0)
         assert (issue.kind, str(issue)) not in {(i.kind, str(i)) for i in again.errors}, issue.hint

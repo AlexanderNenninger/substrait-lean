@@ -89,7 +89,7 @@ V, R, X = "verified", "rejected", "upstream"
 #:   it, so it is NULL, where SQL compares), so no engine may run it.
 #: * Snowflake and Spark tables have no row order, which FETCH and a stable
 #:   sort's or a window's ties follow. Sorts and windows run with
-#:   `tie_free=True`. A `SUM` or `AVG` of doubles adds in that order too
+#:   `deterministic=True`. A `SUM` or `AVG` of doubles adds in that order too
 #:   (rounding depends on it). So does a window frame's `SUM` or `AVG`.
 #: * Spark has no TIME type before 4.1.
 NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}

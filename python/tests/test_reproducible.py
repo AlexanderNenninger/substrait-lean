@@ -62,7 +62,7 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     report = _float_sum(con)
     report.epsilon = {"total": {"abs": 1e-3, "rel": 1e-10, "proved": {"abs": True}}}
     ok = routes.choose(report, "polars", reproducible=sv.equivalent(floats=sv.within(abs=1e-2)))
-    assert ok.kind == "reference" and ok.rerun_evidence == "proved"
+    assert ok.kind == "translated" and ok.rerun_evidence == "proved"
     assert (
         routes.choose(
             report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-9))
@@ -77,7 +77,7 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     # `deterministic=True` asks for exact values too.
     assert routes.choose(report, "polars", deterministic=True).refused
     # Without a requirement, the route only reports.
-    assert routes.choose(report, "polars").kind == "reference"
+    assert routes.choose(report, "polars").kind == "translated"
     with pytest.raises(RouteError, match="rerun must give the same result"):
         report.run(con, "polars", route="auto", reproducible=sv.equivalent())
 
@@ -99,7 +99,7 @@ def test_a_missing_variation_reads_as_exact_on_a_test(monkeypatch, con) -> None:
     _tables(monkeypatch, None)
     report = _float_sum(con)
     r = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert r.kind == "reference" and r.rerun_evidence == "tested"
+    assert r.kind == "translated" and r.rerun_evidence == "tested"
 
 
 @pytest.mark.parametrize(
@@ -111,7 +111,7 @@ def test_an_exact_variation_with_its_evidence(monkeypatch, con, evidence, expect
     _tables(monkeypatch, {}, evidence)
     report = _float_sum(con)
     r = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert r.kind == "reference" and r.rerun_evidence == expected
+    assert r.kind == "translated" and r.rerun_evidence == expected
 
 
 def test_an_open_choice_fails_every_requirement(con) -> None:
@@ -194,7 +194,7 @@ def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
     )
     assert report.epsilon, "the plan's bound on the sum"
     loose = sv.equivalent(floats=sv.within(abs=1.0, rel=1e-6))
-    assert routes.choose(report, "polars", reproducible=loose).kind == "reference"
+    assert routes.choose(report, "polars", reproducible=loose).kind == "translated"
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused and "sum_order" in exact.reason
 
@@ -207,6 +207,6 @@ def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> N
     assert not ties.refines(sv.equivalent(rows="sequence"))
     _tables(monkeypatch, {"rows": "ties permuted"})
     report = _float_sum(con)
-    assert routes.choose(report, "polars", reproducible=sv.equivalent()).kind == "reference"
+    assert routes.choose(report, "polars", reproducible=sv.equivalent()).kind == "translated"
     r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
     assert r.refused and "rows" in r.reason

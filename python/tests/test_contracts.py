@@ -373,7 +373,7 @@ def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
     # issue's hint names them.
     assert sv.verify(expr, on_inferred="silent").proved
     assert not sv.verify(expr).proved
-    report = sv.verify(expr, infer=False)
+    report = sv.verify(expr, on_inferred="off")
     [issue] = report.errors
     assert issue.kind == "overflow" and issue.hint is not None
     hint = issue.hint

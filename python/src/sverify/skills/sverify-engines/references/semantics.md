@@ -18,7 +18,7 @@ the model on random tables.
   Snowflake and Spark, whose tables have no order, they are refused.
 * **Order.** Below a `LIMIT`, a window or a sort, an ordinal column carries
   the model's row order, so ties break the same way on DuckDB and Polars.
-  Snowflake and Spark need `tie_free=True`.
+  Snowflake and Spark need `deterministic=True`.
 * **Strings** count characters, not bytes, in lengths, positions and
   `substring`; `LIKE` names its escape character.
 * **Time.** Timestamps are microseconds without a time zone (`TIMESTAMP_NTZ`

@@ -138,7 +138,7 @@ T = ibis.table({"qty": "int64", "n": "int64", "amount": "float64"}, name="t")
 
 def errors(expr) -> list[str]:
     """What Lean reports, without the bounds `verify` would infer (#244)."""
-    return [i.kind for i in sv.verify(expr, infer=False).errors]
+    return [i.kind for i in sv.verify(expr, on_inferred="off").errors]
 
 
 @pytest.mark.parametrize(
@@ -190,7 +190,7 @@ def test_bounded_round_gives_bounded_integers():
 
 
 def test_contracts_fail_on_possible_errors():
-    @sv.transform(ensures=[], infer=False)
+    @sv.transform(ensures=[], on_inferred="off")
     def ratio(t):
         return t.select(x=t.qty // t.n)
 
@@ -200,7 +200,7 @@ def test_contracts_fail_on_possible_errors():
 
 def test_overflow_is_an_error():
     """An integer result that does not fit its declared width raises (#202)."""
-    report = sv.verify(T.select(x=T.qty + 1), infer=False)
+    report = sv.verify(T.select(x=T.qty + 1), on_inferred="off")
     assert not report.proved
     assert [i.kind for i in report.errors] == ["overflow"]
 
@@ -260,7 +260,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     """The generated SQL raises where the reference raises (a reported
     error) or an engine would wrap around (a warning)."""
     expr = PIPELINES[i]
-    report = sv.verify(expr, infer=False)
+    report = sv.verify(expr, on_inferred="off")
     reported = report.errors + report.warnings
     table = pa.table(
         {
@@ -312,7 +312,7 @@ def test_preconditions_prove_a_divisor_non_zero(label, requires, expr):
     ],
 )
 def test_preconditions_that_leave_zero_possible(label, requires, expr):
-    report = sv.verify(expr, requires={"d": requires}, infer=False)
+    report = sv.verify(expr, requires={"d": requires}, on_inferred="off")
     assert "division by zero" in [i.kind for i in report.issues], label
 
 
@@ -410,7 +410,7 @@ def test_try_cast_is_null_where_cast_fails(rows):
 def test_try_cast_is_no_error_and_cast_is():
     assert sv.verify(try_casts(TC)).issues == []
     plain = TC.select(a=TC.f.cast("int64"), b=TC.i.cast("int8"))
-    assert [i.kind for i in sv.verify(plain, infer=False).issues] == ["cast out of range"] * 2
+    assert [i.kind for i in sv.verify(plain, on_inferred="off").issues] == ["cast out of range"] * 2
     con = connect()
     create_table(con, "t", TC.schema(), [(1.5, 1)])
     plan = written_plan(to_substrait_json(try_casts(TC)))
@@ -444,7 +444,7 @@ def test_nested_narrow_arithmetic_overflows_as_duckdb(expr):
     with pytest.raises(duckdb.Error, match="Overflow"):
         native.execute(sql).fetchall()
     assert "overflow" in [
-        i.kind for i in sv.verify(sql, tables={"t": {"i": "int8"}}, infer=False).issues
+        i.kind for i in sv.verify(sql, tables={"t": {"i": "int8"}}, on_inferred="off").issues
     ]
     with pytest.raises(duckdb.Error, match="out of range"):
         run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")

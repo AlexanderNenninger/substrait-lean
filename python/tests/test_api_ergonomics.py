@@ -1,8 +1,6 @@
 """Rough edges of the public API found in a review (#408, #409, #412, #413)
 and the wording of unproved conditions."""
 
-import warnings
-
 import ibis
 import ibis.expr.datatypes as dt
 import pytest
@@ -57,23 +55,6 @@ def test_transform_takes_a_list_of_requires_for_one_parameter():
     assert plus.last_report is not None and plus.last_report.proved
 
 
-# #409: one name for bound inference
-
-
-def test_transform_strict_is_a_deprecated_alias_of_infer():
-    with pytest.warns(DeprecationWarning, match=r"strict=True\) is deprecated; write infer=False"):
-        dec = sv.transform(strict=True)
-
-    def f(t):
-        return t
-
-    assert dec(f).infer is False
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        assert sv.transform(infer=False)(f).infer is False
-        assert sv.transform()(f).infer is True
-
-
 # #412: references
 
 
@@ -85,11 +66,6 @@ def test_references_takes_a_pair_of_names():
     assert sv.references("cust", to=("customers", "id")) == References("cust", "customers", "id")
 
 
-def test_references_positional_form_is_deprecated():
-    with pytest.warns(DeprecationWarning, match=r"to=\('customers', 'id'\)"):
-        assert sv.references("cust", "customers", "id") == References("cust", "customers", "id")
-
-
 def test_references_needs_the_referenced_column():
     with pytest.raises(TypeError, match="needs the referenced column"):
         sv.references("cust")
@@ -98,13 +74,6 @@ def test_references_needs_the_referenced_column():
 
 
 # #413: Connection's engine handles
-
-
-def test_connection_datafusion_is_deprecated():
-    pytest.importorskip("datafusion")
-    con = sv.connect()
-    with pytest.warns(DeprecationWarning, match="Connection.datafusion is deprecated"):
-        con.datafusion  # noqa: B018
 
 
 def test_connection_public_attributes_are_generic():

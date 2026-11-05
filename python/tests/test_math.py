@@ -201,7 +201,7 @@ def test_domain_errors_raise(label, build, row):
     and DataFusion (whose IEEE result or wrapped shift an error allows) runs
     the plan."""
     expr = build()
-    assert [i.kind for i in sv.verify(expr, infer=False).errors] == ["domain error"], label
+    assert [i.kind for i in sv.verify(expr, on_inferred="off").errors] == ["domain error"], label
     con = connect()
     xv, iv, nv = row
     create_table(con, "x", X.schema(), [(0, xv, 2.0, None, iv, None, nv, None)])

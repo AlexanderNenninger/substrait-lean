@@ -118,9 +118,9 @@ def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
     assert sorted(out["duckdb"].column("mod").to_pylist()) == sorted(
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
-    assert route_of(report, "duckdb").kind == "reference"
+    assert route_of(report, "duckdb").kind == "translated"
     assert route_of(report, "duckdb").cls == "exact"
-    assert route_of(report, "polars").kind == "reference"
+    assert route_of(report, "polars").kind == "translated"
     assert route_of(report, "polars").cls == "shim"
 
 
@@ -135,7 +135,7 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
     assert report.proved and not report.assumed and not report.issues
     run_both(report, con)
     for e in ENGINES:
-        assert route_of(report, e).kind == "reference"
+        assert route_of(report, e).kind == "translated"
         assert route_of(report, e).cls == "exact"
 
 
@@ -341,7 +341,7 @@ def test_c3_limit_over_ties_is_reported_and_refused_where_required(con) -> None:
     report = sv.verify(t.order_by("k").limit(2))
     assert report.proved and not report.deterministic
     r = routes.choose(report, "polars")
-    assert r.kind == "reference" and not r.deterministic and r.warnings
+    assert r.kind == "translated" and not r.deterministic and r.warnings
     with pytest.raises(RouteError, match="rerun must give the same result"):
         report.run(con, "polars", route="auto", deterministic=True)
 
@@ -379,7 +379,7 @@ def test_d1_open_picks_and_element_order(con) -> None:
     assert report.proved, str(report)
     run_both(report, con, sv.equivalent(elements="multiset"))
     for e in ENGINES:
-        assert route_of(report, e).kind == "reference"
+        assert route_of(report, e).kind == "translated"
         assert route_of(report, e).cls in ("exact", "observed")
     reads = sv.verify(expr, requires=req, ensures=[q, _.f == _.mx, _.l[0] <= _.mx])
     assert {c.label: c.ignores for c in reads.ensures} == {
@@ -604,7 +604,7 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
     assert report.proved
     out = report.run(con, "duckdb", route="auto")
     assert out.column("h").to_pylist()[0] == "900150983cd24fb0d6963f7d28e17f72"
-    assert report.routes["duckdb"].kind == "reference"
+    assert report.routes["duckdb"].kind == "translated"
     r = routes.choose(report, "polars")
     assert r.refused and r.cls == "refused" and "#271" in r.reason
     with pytest.raises(RouteError, match=r"hexdigest\('md5'\) \(SQL md5\) runs on duckdb only"):
@@ -618,8 +618,8 @@ def test_h1_engine_versions(con, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(routes, "installed_version", lambda e: "2.2.0" if e == "polars" else None)
     with pytest.warns(routes.EngineVersionWarning, match="polars 2.2.0"):
         r = routes.choose(report, "polars")
-    assert r.kind == "reference" and any("2.2.0" in w for w in r.warnings)
+    assert r.kind == "translated" and any("2.2.0" in w for w in r.warnings)
     monkeypatch.setattr(routes, "installed_version", lambda e: "3.0.0" if e == "polars" else None)
     with pytest.raises(routes.EngineVersionError, match="install a 2.x release of polars"):
         report.run(con, "polars", route="auto")
-    assert routes.choose(report, "duckdb").kind == "reference"
+    assert routes.choose(report, "duckdb").kind == "translated"

@@ -576,7 +576,7 @@ def _(mo):
 
     A contracted transformation has to be proved free of runtime errors, and
     correctness on the inputs that happen to arrive does not count. We pass
-    `infer=False` to `ratio` to see the error itself: by default Sverify
+    `on_inferred="off"` to `ratio` to see the error itself: by default Sverify
     works out the precondition `(_.n != 0)` and reports the plan as not
     proved until you declare it in `requires`. Declared, it is checked on
     each batch before the run, so `report.run` and `refresh` refuse a batch
@@ -584,7 +584,7 @@ def _(mo):
     ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
     A `SUM` that may overflow, or an operation on doubles that may overflow
     to ±∞, does not block the proof: the assumption is listed in
-    `Report.assumed` and checked on the data before the run
+    `Report.assumed` and checked at run time, on the data before the run
     ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
     """)
     return
@@ -592,7 +592,7 @@ def _(mo):
 
 @app.cell
 def _(VerificationError, ibis, mo, sv):
-    @sv.transform(infer=False)
+    @sv.transform(on_inferred="off")
     def ratio(t):
         return t.select(x=t.qty // t.n)
 

@@ -362,8 +362,6 @@ def _(mo):
 
 @app.cell
 def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to_sql):
-    import json
-
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -372,10 +370,10 @@ def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to
     assert len({repr(r) for r in _rows.values()}) == 1
 
     try:
-        to_sql(json.loads(alerts_node.plan), SNOWFLAKE)
+        to_sql(alerts_node.internal_plan, SNOWFLAKE)
     except Unsupported as e:
         refused = str(e)
-    _sql = to_sql(json.loads(alerts_node.plan), SNOWFLAKE, tie_free=report.deterministic)
+    _sql = to_sql(alerts_node.internal_plan, SNOWFLAKE, deterministic=report.deterministic)
     assert _sql.startswith("SELECT")
     refused
     return
@@ -384,8 +382,8 @@ def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    With `tie_free=True` the SQL is written. Without the key, `deterministic`
-    would be `False`, and passing `tie_free=True` anyway would be an
+    With `deterministic=True` the SQL is written. Without the key, `deterministic`
+    would be `False`, and passing `deterministic=True` anyway would be an
     unproved promise.
 
     ## 6. New readings, and a sensor that sends twice

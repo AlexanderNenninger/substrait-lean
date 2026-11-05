@@ -345,7 +345,8 @@ def test_refresh_runs_a_node(tmp_path, capsys):
 def test_refresh_refuses_an_unproved_node(tmp_path, capsys):
     code, doc = run_json(capsys, "refresh", f"{write(tmp_path, NOT_PROVED)}:p")
     assert code == 1
-    assert doc["error"]["type"] == "RouteError"
+    assert doc["error"]["type"] == "UnverifiedRunError"
+    assert doc["error"]["code"] == "not-proved"
     code, doc = run_json(capsys, "refresh", str(write(tmp_path, NOT_PROVED)))
     assert code == 4
 
