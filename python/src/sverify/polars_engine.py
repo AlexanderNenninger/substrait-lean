@@ -71,6 +71,7 @@ from sverify import _plan_read, _support
 from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import Unsupported as _Unsupported
 
 try:
     import polars as pl
@@ -87,8 +88,9 @@ DType = pl.DataType | type[pl.DataType]
 Tables = Mapping[str, pl.LazyFrame | pl.DataFrame | pa.Table]
 
 
-class Unsupported(ValueError):
-    """The plan uses something the translator does not map to Polars."""
+class Unsupported(_Unsupported):
+    """The plan uses something the translator does not map to Polars
+    (`sverify.errors.Unsupported`)."""
 
 
 class RuntimeIssue(ArithmeticError):

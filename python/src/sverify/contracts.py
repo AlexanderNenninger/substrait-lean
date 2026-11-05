@@ -745,6 +745,27 @@ Condition = (
 )
 Transform = ir.Table | str
 
+UnprovedReason = Literal[
+    "observation",
+    "not_a_key",
+    "ties",
+    "always_false",
+    "may_be_false",
+    "may_be_null",
+    "not_proved_kind",
+    "unknown",
+]
+"""`CheckedCondition.reason`: why a postcondition is not proved."""
+
+# The `value` of a postcondition sverify checks on data only.
+_DATA_ONLY = frozenset(
+    {
+        "foreign keys are not proved",
+        "lateness is checked on a source's batches",
+        "rows per key are checked on inputs only",
+    }
+)
+
 
 @dataclass(frozen=True)
 class TiePlace:
@@ -803,6 +824,45 @@ class CheckedCondition:
     nullable: tuple[str, ...] | None = None
     """Of the columns it reads, those the report says may be NULL; None
     where that is not known."""
+    condition: Any = field(default=None, repr=False, compare=False)
+    """The condition as it was given in `ensures` (a SQL string, an Ibis
+    expression, `unique(...)`, …), to pair the result with it; None for a
+    report not built by `verify` or a transform."""
+
+    @property
+    def reason(self) -> UnprovedReason | None:
+        """Why it is not proved, as a code a tool can act on; None when it
+        is proved and independent of the observation (`portable`). `why`
+        says the same in words.
+
+        * `"observation"`: proved, but it depends on what the observation
+          (`sv.equivalent`) ignores.
+        * `"not_a_key"`: a `unique` the preconditions do not make a key.
+        * `"ties"`: rows may tie in an ORDER BY, so the result is not
+          determined.
+        * `"always_false"`: it is FALSE on every row.
+        * `"may_be_false"`: it may be FALSE on some rows (and maybe NULL).
+        * `"may_be_null"`: it may be NULL on some rows, and is never FALSE.
+        * `"not_proved_kind"`: a condition sverify checks on data only
+          (`references`, `rows_per`, `arrives_within`).
+        * `"unknown"`: Lean knows nothing that decides it.
+        """
+        if self.proved:
+            return "observation" if self.ignores else None
+        if self.value == "not shown to be a key":
+            return "not_a_key"
+        if self.value.startswith("undetermined"):
+            return "ties"
+        parts = set(self.value.replace(" or ", ", ").split(", "))
+        if parts == {"FALSE"}:
+            return "always_false"
+        if "FALSE" in parts:
+            return "may_be_false"
+        if "NULL" in parts:
+            return "may_be_null"
+        if self.value in _DATA_ONLY:
+            return "not_proved_kind"
+        return "unknown"
 
     @property
     def portable(self) -> bool:
@@ -1477,6 +1537,28 @@ class Report:
             return {}
         return {t: [label(c) for c in cs] for t, cs in self.inferred.items() if cs}
 
+    @property
+    def needs(self) -> list[Needed]:
+        """`needed` as data, one `Needed` per precondition: the table, the
+        column, the comparison and the bound, the SQL, and the runtime
+        error it rules out. A tool that phrases the preconditions in its
+        own terms (a dbt test, an editor's quick fix) reads these; empty
+        unless `on_inferred="error"`."""
+        out = []
+        for t, labs in self.needed.items():
+            by_label = {getattr(c, "text", None): c for c in self.inferred.get(t, [])}
+            for lab in labs:
+                c = by_label.get(lab)
+                column = getattr(c, "column", None)
+                op, value = c.parts() if isinstance(c, Inferred) else (None, None)
+                sql = str(c) if c is not None else lab
+                out.append(
+                    Needed(
+                        t, column, op, value, sql, lab, _unparen(lab), self.inferred_from.get(lab)
+                    )
+                )
+        return out
+
     def needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
@@ -1894,11 +1976,55 @@ class Inferred(str):
     is checked, proved and reported like a precondition the user wrote."""
 
     text: str
+    column: str | None = None
+    """The input column it bounds (set by `_render_needs`)."""
 
     def __new__(cls, sql: str, text: str) -> Inferred:
         out = super().__new__(cls, sql)
         out.text = text
         return out
+
+    def parts(self) -> tuple[str | None, str | None]:
+        """The comparison and the SQL value of `col <op> <value>`, after an
+        `IS NULL OR` that lets NULL pass: `("<", "9000000000000000000")`,
+        `("IS NOT NULL", None)`; `(None, None)` where it is not of that form."""
+        if self.column is None:
+            return None, None
+        col = '"' + self.column.replace('"', '""') + '"'
+        rest = self.removeprefix(f"{col} IS NULL OR ")
+        if rest == f"{col} IS NOT NULL":
+            return "IS NOT NULL", None
+        m = re.fullmatch(re.escape(col) + r" (>=|<=|<>|<|>) (.+)", rest)
+        return (m[1], m[2]) if m else (None, None)
+
+
+@dataclass(frozen=True)
+class Needed:
+    """A precondition the proof needs that `requires` does not state
+    (`Report.needs`): a bound sverify inferred on one input column, which
+    `on_inferred="error"` does not assume."""
+
+    table: str
+    """The input table."""
+    column: str | None
+    """The input column it is on."""
+    op: str | None
+    """`>=`, `>`, `<=`, `<`, `<>` or `IS NOT NULL`; None if it is none of
+    these."""
+    value: str | None
+    """The bound, as a SQL literal (`9000000000000000000`,
+    `TIMESTAMP '2000-01-01 00:00:00'`); None for `IS NOT NULL`."""
+    sql: str
+    """The whole condition as DuckDB's SQL, NULL passing where the column
+    is nullable: `"qty" IS NULL OR "qty" < 9000000000000000000`."""
+    label: str
+    """The condition as `Report.needed` lists it: `(_.qty < 9 * 10**18)`."""
+    code: str
+    """The condition as the Python a user writes in `requires`, for an
+    editor's quick fix: `_.qty < 9 * 10**18`, `_.qty != 0`,
+    `_.qty.notnull()`. `sql` is the form for a SQL contract."""
+    issue: Issue | None
+    """The runtime error it rules out, and where (`Report.inferred_from`)."""
 
 
 def _nice(x: int, up: bool) -> tuple[int, str]:
@@ -2111,6 +2237,8 @@ def _render_needs(
         else:
             lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
             new = _bound_conditions(col, schema[col], lo, hi)
+        for c in new:
+            c.column = col
         have += [c for c in new if c not in have]
     return {t: cs for t, cs in out.items() if cs}
 
@@ -2321,8 +2449,10 @@ def verify(
             keys. Default: none, which still reports the facts and possible
             runtime errors.
         tables: Input schemas by table name, as Ibis schemas, anything
-            `ibis.schema` accepts, or Ibis tables. Needed for SQL transforms;
-            an Ibis expression's own tables are found from it.
+            `ibis.schema` accepts, Ibis tables, or mappings of column names
+            to DuckDB's type names (`{"id": "BIGINT", "name": "VARCHAR NOT
+            NULL"}`, `input_schema`). Needed for SQL transforms; an Ibis
+            expression's own tables are found from it.
         counterexamples: How many small inputs to try per unproved
             postcondition when searching for one that breaks it. Default 200;
             0 skips the search.
@@ -2423,6 +2553,54 @@ def verify(
         semantics=_checked_semantics(semantics),
         on_inferred=on_inferred,
     )
+
+
+def _unparen(code: str) -> str:
+    """`code` without the one pair of parentheses around all of it."""
+    if not (code.startswith("(") and code.endswith(")")):
+        return code
+    depth = 0
+    for i, ch in enumerate(code):
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if depth == 0 and i < len(code) - 1:
+            return code
+    return code[1:-1]
+
+
+def input_schema(s: Any) -> ibis.Schema:
+    """An input of `verify(tables=...)` as an Ibis schema: an Ibis table or
+    schema, or a mapping of column names to types, each an Ibis type or
+    type name (`"int64"`, `"!string"`) or DuckDB's (`"BIGINT"`, `"HUGEINT"`,
+    `"VARCHAR NOT NULL"`), as `CREATE TABLE` and `DESCRIBE` write them."""
+    if isinstance(s, ir.Table):
+        return s.schema()
+    if isinstance(s, ibis.Schema) or not isinstance(s, Mapping):
+        return ibis.schema(s)
+    return ibis.schema({c: _column_type(c, t) for c, t in s.items()})
+
+
+def _column_type(col: str, t: Any) -> Any:
+    """`t` as an Ibis type: Ibis's own names first, then DuckDB's."""
+    if not isinstance(t, str):
+        return t
+    try:
+        return ibis.dtype(t)
+    except Exception:  # noqa: BLE001 - Ibis raises several kinds
+        pass
+    from ibis.backends.sql.datatypes import DuckDBType
+
+    text = t.strip()
+    m = re.fullmatch(r"(.*?)\s+NOT\s+NULL", text, re.IGNORECASE)
+    unknown = ValueError(
+        f"tables: column {col!r} has type {t!r}, which is neither an Ibis type nor one of DuckDB's"
+    )
+    try:
+        dtype = DuckDBType.from_string(m[1] if m else text)
+    except Exception as e:  # noqa: BLE001
+        raise unknown from e
+    if dtype.is_unknown():
+        raise unknown
+    return dtype.copy(nullable=not m)
 
 
 def infer_bounds(
@@ -2775,10 +2953,7 @@ def _verify_once(
             f"semantics={semantics!r} checks Ibis transformations; "
             "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
         )
-    schemas = {
-        name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
-        for name, s in (tables or {}).items()
-    }
+    schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
     con = connect()
@@ -2922,6 +3097,7 @@ def _verify_once(
             checked.append(
                 CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
             )
+        checked[-1].condition = c
     from sverify._user_text import user_expr
 
     dialect = "sql" if isinstance(transform, str) else "ibis"

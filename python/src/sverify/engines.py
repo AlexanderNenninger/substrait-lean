@@ -33,13 +33,15 @@ SQL:
 
 * `to_sql` writes a plan as SQL whose meaning is Lean's, in a `Dialect`:
   `DUCKDB`, `SNOWFLAKE` or `SPARK`. What it cannot write it refuses
-  (`Unsupported`).
+  (`Unsupported`, the same class as `sverify.errors.Unsupported`, which
+  every refusal of sverify raises).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sverify._unsupported import Unsupported
 from sverify.engine import (
     ENGINES,
     Connection,
@@ -52,7 +54,7 @@ from sverify.engine import (
 from sverify.engine import run_plan as run
 from sverify.incremental import delta_plans
 from sverify.partition import run_sharded
-from sverify.sql import Dialect, Unsupported, to_sql
+from sverify.sql import Dialect, to_sql
 from sverify.sql.duckdb import DUCKDB
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.sql.spark import SPARK, SPARK_CONF

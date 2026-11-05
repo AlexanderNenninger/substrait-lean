@@ -519,6 +519,11 @@ class _Checker:
         if self.proc is not None:
             self.proc.kill()
             self.proc.wait()
+            # Close the pipes too, or the interpreter warns at exit
+            # (ResourceWarning: unclosed file).
+            for pipe in (self.proc.stdin, self.proc.stdout):
+                if pipe is not None:
+                    pipe.close()
             self.proc = None
 
 
