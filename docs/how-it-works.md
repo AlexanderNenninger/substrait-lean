@@ -2,7 +2,8 @@
 
 How plans are checked, how the engines are made to agree, and exactly what
 is proved. The user-facing side is in [guide.md](guide.md); the map of the
-Lean files is in the [README](../README.md#the-lean-project).
+proofs, with each Lean module's job and the theorems each guarantee rests
+on, is in [proofs.md](proofs.md).
 
 ```python
 import ibis
