@@ -43,7 +43,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _quarantine
+from sverify import _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -1400,6 +1400,7 @@ def _warns(node: Node) -> bool:
     return prov is not None and getattr(prov.transform, "on_unproved", None) == "warn"
 
 
+@_stages.staged("plan")
 def _routes(
     order: Sequence[Node],
     engine: Any,

@@ -187,6 +187,10 @@ structure Report where
   /-- For each postcondition, the base-table ranges that would make it hold
   (`Infer.suggest`): untrusted, and only suggested. -/
   suggestions : List Infer.Bounds := []
+  /-- For each postcondition: unproved, and proved where every window orders
+  its rows totally, so only the order of ties leaves it open. Untrusted: it
+  only spares the counterexample search (#691, #825). -/
+  tiesOnly : List Bool := []
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -300,10 +304,12 @@ partial def _root_.Substrait.Rel.allExprs : Rel → List Expr
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
-    ("ensures", Json.arr ((r.ensures.zip (r.suggestions ++
-        List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).map fun ((n, ok, v), b) =>
+    ("ensures", Json.arr (((r.ensures.zip (r.suggestions ++
+        List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).zip
+        (r.tiesOnly ++ List.replicate r.ensures.length false)).map fun (((n, ok, v), b), t) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
-        ("value", Lean.toJson v), ("suggest", if ok then .null else b.json)]).toArray),
+        ("value", Lean.toJson v), ("suggest", if ok then .null else b.json),
+        ("ties", Lean.toJson t)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
@@ -496,6 +502,7 @@ def check (input : Json) : Except String Report := do
   let perKey := rowsPer ((input.getObjVal? "rows_per").toOption.getD (.obj {}))
   let mut results : List (String × Bool × String) := []
   let mut suggestions : List Infer.Bounds := []
+  let mut tiesOnly : List Bool := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
     if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
@@ -505,9 +512,18 @@ def check (input : Json) : Except String Report := do
     -- Proved for every order of the ties (`contract_sound_all`, with
     -- `Rel.orderAllowed_capReads` and `Rel.keyedWindows_soundAll`, D24).
     results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
+    -- Suggestions only for what is unproved: the report drops the others.
     suggestions := suggestions ++ (List.range env.length).map fun i =>
-      let b := Infer.suggest cat A F T q.root i
-      { b with needs := Infer.trim A b.needs }
+      if (env.getD i AVal.top).certainlyTrue then ({ why := none } : Infer.Bounds) else
+        let b := Infer.suggest cat A F T q.root i
+        { b with needs := Infer.trim A b.needs }
+    -- What every window ordering its rows totally would prove.
+    let total : Option (List AVal) :=
+      if env.all (·.certainlyTrue) then none
+      else some ((q.root.capReads caps).aeval cat A F fun _ _ _ => true)
+    tiesOnly := tiesOnly ++ (List.range env.length).map fun i =>
+      !(env.getD i AVal.top).certainlyTrue &&
+        (total.map fun t => (t.getD i AVal.top).certainlyTrue).getD false
   let facts := match transform with
     | some p =>
       if !p.root.checkWF cat then []
@@ -583,6 +599,7 @@ def check (input : Json) : Except String Report := do
     rewrites
     ensures := results
     suggestions
+    tiesOnly
     facts
     keys
     deterministic
