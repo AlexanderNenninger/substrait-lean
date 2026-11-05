@@ -644,6 +644,17 @@ abbrev Substrait.duckdbOn.bbox : (name : String) →
   Substrait.UnEntry.native (Substrait.UnFn.bbox name)
     (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.bbox_native name))
 
+theorem Substrait.duckdbOn.flatten_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      Substrait.UnFn.flatten x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.flatten x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.flatten : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.flatten :=
+  Substrait.UnEntry.native Substrait.UnFn.flatten
+  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.flatten_native)
+
 theorem Substrait.duckdbOn.add_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       Substrait.BinFn.add x y =
@@ -969,4 +980,17 @@ abbrev Substrait.duckdbOn.bbox2 : (name : String) →
   fun name =>
   Substrait.BinEntry.native (Substrait.BinFn.bbox2 name)
     (Substrait.Lowering.bin_agree_of_eq (Substrait.duckdbOn.bbox2_native name))
+
+theorem Substrait.duckdbOn.listFn_native : ∀ (op : Substrait.ListOp) (x y : Substrait.Value),
+  Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      (Substrait.BinFn.listFn op) x y =
+    Substrait.Profile.bin Substrait.Profile.reference (Substrait.BinFn.listFn op) x y := by
+  native_tac
+
+abbrev Substrait.duckdbOn.listFn : (op : Substrait.ListOp) →
+  Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (Substrait.BinFn.listFn op) :=
+  fun op =>
+  Substrait.BinEntry.native (Substrait.BinFn.listFn op)
+    (Substrait.Lowering.bin_agree_of_eq (Substrait.duckdbOn.listFn_native op))
 

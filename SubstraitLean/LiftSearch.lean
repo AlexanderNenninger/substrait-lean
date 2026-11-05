@@ -315,6 +315,7 @@ def valueTerm : Value → MetaM Lean.Expr
 -- One type a line: a list derives only its first.
 deriving instance Lean.ToExpr for FMath
 deriving instance Lean.ToExpr for BitOp
+deriving instance Lean.ToExpr for ListOp
 deriving instance Lean.ToExpr for Time.DatePart
 deriving instance Lean.ToExpr for Time.TimeUnit
 deriving instance Lean.ToExpr for OverflowMode

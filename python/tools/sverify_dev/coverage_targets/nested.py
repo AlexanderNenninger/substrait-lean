@@ -20,7 +20,7 @@ TARGETS = [
         "len, list_contains, computed list elements",
         "in",
         "tag filters on list columns; replay (part of 1,724 list refusals)",
-        False,
+        True,
         sql="SELECT len(xs), list_contains(xs, 1), [qty, id] FROM t",
         issue=812,
     ),
