@@ -38,7 +38,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb, _support
+from sverify import _duckdb, _proof_cache, _stages, _support
 from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
 from sverify._support import DUCKDB_ONLY
@@ -343,9 +343,10 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
     (`substrait_json`) with `semantics`."""
-    if isinstance(query, str):
-        return substrait_json(con, query, semantics)
-    return to_substrait_json(query, semantics)
+    with _stages.stage("lift"):
+        if isinstance(query, str):
+            return substrait_json(con, query, semantics)
+        return to_substrait_json(query, semantics)
 
 
 def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> str:
@@ -468,7 +469,7 @@ def canonical(table: pa.Table) -> pa.Table:
 
 #: The checker protocol this sverify speaks: `protocol` in `Main.lean`, bumped
 #: with it whenever a mode's output changes shape.
-PROTOCOL = 1
+PROTOCOL = 2
 
 
 class CheckerVersionError(SverifyError, RuntimeError):
@@ -549,18 +550,31 @@ def checker_path() -> Path:
     (a symlink to the lake build in an editable install). The first call for a
     path checks that the checker speaks this sverify's protocol
     (`CheckerVersionError` if not)."""
-    if env := os.environ.get("SVERIFY_CHECK"):
-        path = Path(env)
-    else:
-        path = Path(__file__).parent / "_bin" / "substrait-check"
-        if not path.exists():
-            raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECK")
+    path = _checker_file()
     _check_protocol(str(path))
     return path
 
 
+def _checker_file() -> Path:
+    """`checker_path` without the protocol check: the cache's answers were
+    given by a checker of this protocol (`sverify._proof_cache`), so a hit
+    needs no process."""
+    if env := os.environ.get("SVERIFY_CHECK"):
+        return Path(env)
+    path = Path(__file__).parent / "_bin" / "substrait-check"
+    if not path.exists():
+        raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECK")
+    return path
+
+
 class _Checker:
-    """One `substrait-check --serve` process, started on first use."""
+    """One `substrait-check --serve` process, started on first use and
+    reused by every request of the Python process (#182).
+
+    A request interrupted before its answer is read (the CLI's time budget
+    raises `BudgetExceeded`, a notebook's interrupt raises
+    `KeyboardInterrupt`) kills the process: its answer would otherwise be
+    read as the next request's. The next request starts a new one."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -579,14 +593,19 @@ class _Checker:
                 )
                 self.path = path
             assert self.proc.stdin is not None and self.proc.stdout is not None
-            self.proc.stdin.write(f"{flag} {len(data)}\n".encode() + data)
-            self.proc.stdin.flush()
-            header = self.proc.stdout.readline()
-            if not header:
+            try:
+                self.proc.stdin.write(f"{flag} {len(data)}\n".encode() + data)
+                self.proc.stdin.flush()
+                header = self.proc.stdout.readline()
+                if not header:
+                    raise RuntimeError("substrait-check --serve exited")
+                code, m, k = map(int, header.split())
+                out, err = self.proc.stdout.read(m), self.proc.stdout.read(k)
+                if len(out) != m or len(err) != k:
+                    raise RuntimeError("substrait-check --serve exited mid-answer")
+            except BaseException:
                 self.close()
-                raise RuntimeError("substrait-check --serve exited")
-            code, m, k = map(int, header.split())
-            out, err = self.proc.stdout.read(m), self.proc.stdout.read(k)
+                raise
         return code, out.decode(), err.decode()
 
     def close(self) -> None:
@@ -607,7 +626,13 @@ atexit.register(_CHECKER.close)
 
 @functools.lru_cache(maxsize=8192)
 def _run_checker(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
-    return _CHECKER.ask(flags, stdin)
+    if (answer := _proof_cache.get(path, flags, stdin)) is not None:
+        _stages.hit("disk")
+        return answer
+    with _stages.stage("checker", within=("counterexamples",)):
+        answer = _CHECKER.ask(flags, stdin)
+    _proof_cache.put(path, flags, stdin, answer)
+    return answer
 
 
 def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
@@ -615,8 +640,16 @@ def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
 
     Requests go to one long-lived `substrait-check --serve` process (a process
     start costs ~20 ms, most of it Lean's module initialization; a request
-    ~0.04 ms) and are memoized: the checker is a pure function of its input."""
-    return _run_checker(str(checker_path()), flags, stdin)
+    ~0.04 ms) and are memoized: the checker is a pure function of its input.
+    The answers that prove or write a plan are also kept on disk
+    (`sverify._proof_cache`), so the next process does not prove an
+    unchanged transform again."""
+    path = str(_checker_file())
+    hits = _run_checker.cache_info().hits
+    answer = _run_checker(path, flags, stdin)
+    if _run_checker.cache_info().hits > hits:
+        _stages.hit("memo")
+    return answer
 
 
 def read_tables(plan: dict) -> list[str]:
