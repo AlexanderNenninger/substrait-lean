@@ -43,6 +43,11 @@ tables are regenerated with
 
 by the `Generated files` workflow on `main` after every merge; feature branches
 leave them alone.
+
+    uv run python -m sverify_dev.coverage --targets
+
+prints instead the share of the 1.0 coverage targets covered
+(`sverify_dev.coverage_targets`, `docs/coverage-targets.md`), by area.
 """
 
 from __future__ import annotations
@@ -201,6 +206,11 @@ def write_readme(rs: list[Result]) -> None:
 
 
 def main() -> None:
+    if "--targets" in sys.argv:
+        from sverify_dev.coverage_targets import report
+
+        print(report())
+        return
     rs = results()
     if "--write-readme" in sys.argv:
         write_readme(rs)
