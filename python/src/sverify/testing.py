@@ -49,7 +49,7 @@ import subprocess
 import warnings
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import TYPE_CHECKING, Any, overload
 
 import ibis
@@ -110,7 +110,9 @@ def decimal_literal(v: Decimal, precision: int = 38, scale: int | None = None) -
     if scale is None:
         exponent = v.as_tuple().exponent
         scale = max(0, -exponent) if isinstance(exponent, int) else 0
-    unscaled = int(v.scaleb(scale).to_integral_value(rounding=ROUND_HALF_UP))
+    # A context wide enough for 38 digits: the default's 28 would round them.
+    with localcontext(prec=80):
+        unscaled = int(v.scaleb(scale).to_integral_value(rounding=ROUND_HALF_UP))
     value = base64.b64encode(unscaled.to_bytes(16, "little", signed=True)).decode()
     return {"literal": {"decimal": {"value": value, "precision": precision, "scale": scale}}}
 

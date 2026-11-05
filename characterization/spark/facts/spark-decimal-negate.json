@@ -35,7 +35,7 @@
     "`Decimal.unary_-` negates the Scala `BigDecimal`, whose default `MathContext` is `DECIMAL128` (34 digits, `HALF_EVEN`); `Decimal.abs` calls it for a negative value only. Upstream bug SP-1."
   ],
   "reference": "`negate` and `abs` of decimals are exact, and never overflow (the negation of a `DECIMAL(p,s)` fits it). Spark is wrong past 34 digits; a writer spells `-x` as `0 - x` and `abs(x)` as `CASE WHEN x < 0 THEN 0 - x ELSE x END`, exact for a scale up to 6; past it `0 - x` loses the last digit unless precision loss is off.",
-  "status": "open",
+  "status": "shimmed",
   "evidence": "fuzz",
   "provenance": [
     {
@@ -100,6 +100,20 @@
         "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 7084 of 7084 results as the fact says; Spark's value differs from Rel.eval's (sverify's lift, reference profile) on 795 of 1111 rows compared.",
         "decimal_negate[0]: 300 rows, `-x`, `abs(x)`, `0 - x`, 3536 of 3536 results as the fact says (raised: NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION 120); Spark differs from Rel.eval on 394 of 554; decimal_negate[1]: 300 rows, `-x`, `abs(x)`, `0 - x`, 3548 of 3548 results as the fact says (raised: NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION 120); Spark differs from Rel.eval on 401 of 557.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    },
+    {
+      "checked_at": "2026-11-06",
+      "method": "probe",
+      "checked_by": "the Spark profile's decimals (#739), tests/test_spark_decimal.py",
+      "evidence": [
+        {
+          "test": "python/tests/test_spark_decimal.py::test_negation_past_34_digits_is_exact",
+          "note": "DECIMAL(38,0), (38,6), (37,20), (35,3): the written -x and abs(x) are exact on Spark and equal Rel.eval's"
+        }
+      ],
+      "notes": [
+        "sverify.sql.spark writes -x as 0 - x past 34 digits where its type keeps the scale (up to 37 digits, or 38 at scale 6 or less) and refuses DECIMAL(38, s) with s > 6; Spark.decimal_negate_sub (SubstraitLean/SparkShims.lean). Spark 4.3.0, Java 21.0.13, macOS arm64, local[2]."
       ]
     }
   ]
