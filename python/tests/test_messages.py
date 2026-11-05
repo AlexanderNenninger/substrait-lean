@@ -207,7 +207,7 @@ def test_an_observed_route_rounds_its_bound() -> None:
 
 
 def test_the_ties_note_names_functions_in_the_users_language() -> None:
-    sql = "SELECT customer_id, rank() OVER (ORDER BY amount DESC) AS r FROM orders"
+    sql = "SELECT customer_id, row_number() OVER (ORDER BY amount DESC) AS r FROM orders"
     report = sv.verify(sql, tables={"orders": ORDERS})
     note = next(line for line in str(report).splitlines() if line.startswith("note:"))
     assert "FIRST, LAST, STRING_AGG, MODE, ARG_MIN or ARG_MAX" in note
@@ -287,8 +287,9 @@ def test_a_key_lost_through_a_self_join_is_not_advice_to_declare_it() -> None:
 
 def test_a_key_lost_through_a_join_names_the_input_that_has_it() -> None:
     sql = (
-        "SELECT c.customer_id, c.name FROM (SELECT customer_id, count(*) n FROM orders "
-        "GROUP BY customer_id) p JOIN customers c ON c.customer_id = p.customer_id"
+        # Each order repeats its customer: the key of customers is lost.
+        "SELECT c.customer_id, c.name FROM orders o JOIN customers c "
+        "ON c.customer_id = o.customer_id"
     )
     report = sv.verify(
         sql,

@@ -37,7 +37,7 @@ def test_a_postcondition_keeps_its_condition_and_reason() -> None:
     got = {c.label: (c.condition, c.reason) for c in report.ensures}
     assert got == {
         "q > 0": ("q > 0", None),
-        "s = 'b'": ("s = 'b'", "may_be_false"),
+        "s = 'b'": ("s = 'b'", "always_false"),
         "unique(k)": (key, "not_a_key"),
         "q > 5": ("q > 5", "may_be_false"),
         "k IS NOT NULL": ("k IS NOT NULL", "may_be_false"),

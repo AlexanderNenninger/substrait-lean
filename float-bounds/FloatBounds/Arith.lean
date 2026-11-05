@@ -227,6 +227,114 @@ theorem core_div (L : NativeLink) {a b : Float} (ha : a.isFinite) (hb : b.isFini
         have := mul_le_mul_of_nonneg_right this hQ
         nlinarith
 
+/-! ### Signs (#441)
+
+Rounding keeps the sign (`StdModel.nonneg`): under the guards of `core_add`,
+`core_mul` and `core_div`, a sum or product of non-negative doubles, and a
+quotient of one by a positive one, is non-negative. The core states these as
+`FloatCode.add_nonneg`, `mul_nonneg` and `div_nonneg`. -/
+
+/-- **`+`** of non-negative doubles is non-negative. -/
+theorem core_add_nonneg (L : NativeLink) {a b : Float} (ha : a.isFinite) (hb : b.isFinite)
+    {A B : ℝ} (hA : |a.toReal - A| ≤ 2 * u * |A|) (hB : |b.toReal - B| ≤ 2 * u * |B|)
+    (h : |A| + |B| ≤ 2 ^ 1023) (ha0 : 0 ≤ a.toReal) (hb0 : 0 ≤ b.toReal) :
+    0 ≤ (a + b).toReal := by
+  obtain ⟨-, hu', -, -, -⟩ := fpFacts
+  have h1 := decoded_le hA
+  have h2 := decoded_le hB
+  have hS : |a.toReal + b.toReal| ≤ (1 + 2 * u) * (|A| + |B|) := by
+    have := abs_add_le a.toReal b.toReal; linarith
+  have hM : |a.toReal + b.toReal| ≤ maxFinite := by
+    have h2u : 1 + 2 * u ≤ 1 + 1 / 2 ^ 40 := by
+      linarith [show (2 : ℝ) * (1 / 2 ^ 53) ≤ 1 / 2 ^ 40 by norm_num]
+    have := mul_le_mul h2u h (by positivity) (by norm_num)
+    have := two_pow_1023_le
+    linarith
+  obtain ⟨-, he⟩ := L.add a b ha hb hM
+  rw [he]
+  exact L.model.nonneg _ (add_nonneg ha0 hb0)
+
+/-- **`*`** of non-negative doubles is non-negative. -/
+theorem core_mul_nonneg (L : NativeLink) {a b : Float} (ha : a.isFinite) (hb : b.isFinite)
+    {A B : ℝ} (hA : |a.toReal - A| ≤ 2 * u * |A|) (hB : |b.toReal - B| ≤ 2 * u * |B|)
+    (h : |A * B| ≤ 2 ^ 1023) (ha0 : 0 ≤ a.toReal) (hb0 : 0 ≤ b.toReal) :
+    0 ≤ (a * b).toReal := by
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
+  have hu1 : u ≤ 1 / 2 ^ 53 := hu'
+  have hP : 0 ≤ |A * B| := abs_nonneg _
+  -- the product of the decoded doubles: within `(4u + 4u²) |A B|`
+  have hd : |a.toReal * b.toReal - A * B| ≤ (4 * u + 4 * u * u) * |A * B| := by
+    have e : a.toReal * b.toReal - A * B
+        = (a.toReal - A) * B + A * (b.toReal - B) + (a.toReal - A) * (b.toReal - B) := by ring
+    rw [e, abs_mul A B]
+    have p1 : |(a.toReal - A) * B| ≤ 2 * u * |A| * |B| := by
+      rw [abs_mul]; exact mul_le_mul_of_nonneg_right hA (abs_nonneg _)
+    have p2 : |A * (b.toReal - B)| ≤ |A| * (2 * u * |B|) := by
+      rw [abs_mul]; exact mul_le_mul_of_nonneg_left hB (abs_nonneg _)
+    have p3 : |(a.toReal - A) * (b.toReal - B)| ≤ (2 * u * |A|) * (2 * u * |B|) := by
+      rw [abs_mul]; exact mul_le_mul hA hB (abs_nonneg _) (by positivity)
+    have := abs_add_le ((a.toReal - A) * B + A * (b.toReal - B)) ((a.toReal - A) * (b.toReal - B))
+    have := abs_add_le ((a.toReal - A) * B) (A * (b.toReal - B))
+    nlinarith
+  have hsmall : 4 * u + 4 * u * u ≤ 1 / 2 ^ 40 := by nlinarith
+  have hS : |a.toReal * b.toReal| ≤ (1 + 1 / 2 ^ 40) * |A * B| := by
+    have := abs_sub_abs_le_abs_sub (a.toReal * b.toReal) (A * B)
+    nlinarith
+  have hM : |a.toReal * b.toReal| ≤ maxFinite := by
+    have := mul_le_mul_of_nonneg_left h (by norm_num : (0 : ℝ) ≤ 1 + 1 / 2 ^ 40)
+    have := two_pow_1023_le
+    linarith
+  obtain ⟨-, he⟩ := L.mul a b ha hb hM
+  rw [he]
+  exact L.model.nonneg _ (mul_nonneg ha0 hb0)
+
+/-- **`/`** of a non-negative double by a positive one is non-negative. -/
+theorem core_div_nonneg (L : NativeLink) {a b : Float} (ha : a.isFinite) (hb : b.isFinite)
+    {A B : ℝ} (hA : |a.toReal - A| ≤ 2 * u * |A|) (hB : |b.toReal - B| ≤ 2 * u * |B|)
+    (hB0 : B ≠ 0) (h : |A / B| ≤ 2 ^ 1023) (ha0 : 0 ≤ a.toReal) (hbn : 0 ≤ b.toReal) :
+    0 ≤ (a / b).toReal := by
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
+  have hu1 : u ≤ 1 / 2 ^ 53 := hu'
+  have hBp : 0 < |B| := abs_pos.mpr hB0
+  -- the decoded divisor keeps its sign and is at least `(1 − 2u) |B|`
+  have hb' : (1 - 2 * u) * |B| ≤ |b.toReal| := by
+    have := abs_sub_abs_le_abs_sub B b.toReal
+    rw [abs_sub_comm] at this; nlinarith
+  have hbp : 0 < |b.toReal| := lt_of_lt_of_le (by nlinarith) hb'
+  have hb0 : b.toReal ≠ 0 := abs_pos.mp hbp
+  set q := A / B
+  have hq : A = q * B := by rw [div_mul_cancel₀ _ hB0]
+  have hQ : 0 ≤ |q| := abs_nonneg _
+  -- `a' / b' − q = ((a' − A) − q (b' − B)) / b'`
+  have hd : |a.toReal / b.toReal - q| ≤ (4 * u / (1 - 2 * u)) * |q| := by
+    have e : a.toReal / b.toReal - q = ((a.toReal - A) - q * (b.toReal - B)) / b.toReal := by
+      field_simp; rw [hq]; ring
+    rw [e, abs_div, div_le_iff₀ hbp]
+    have h1 : |(a.toReal - A) - q * (b.toReal - B)| ≤ 2 * u * |A| + |q| * (2 * u * |B|) := by
+      have := abs_sub_le_add (a.toReal - A) (q * (b.toReal - B))
+      rw [abs_mul] at this
+      have := mul_le_mul_of_nonneg_left hB hQ
+      linarith
+    have hAq : |A| = |q| * |B| := by rw [hq, abs_mul]
+    rw [hAq] at h1
+    have h2u : 0 < 1 - 2 * u := by nlinarith
+    calc _ ≤ 2 * u * (|q| * |B|) + |q| * (2 * u * |B|) := h1
+      _ = (4 * u / (1 - 2 * u)) * |q| * ((1 - 2 * u) * |B|) := by field_simp; ring
+      _ ≤ _ := by gcongr
+  have hc : 4 * u / (1 - 2 * u) ≤ 1 / 2 ^ 50 - 2 * u := by
+    rw [div_le_iff₀ (by nlinarith)]; nlinarith
+  have hS : |a.toReal / b.toReal| ≤ (1 + 1 / 2 ^ 50) * |q| := by
+    have := abs_sub_abs_le_abs_sub (a.toReal / b.toReal) q
+    have := mul_le_mul_of_nonneg_right hc hQ
+    nlinarith
+  have hM : |a.toReal / b.toReal| ≤ maxFinite := by
+    have := two_pow_1023_le
+    have := mul_le_mul (by norm_num : (1 + 1 / 2 ^ 50 : ℝ) ≤ 1 + 1 / 2 ^ 40) h hQ (by norm_num)
+    linarith
+  obtain ⟨-, he⟩ := L.div a b ha hb hb0 hM
+  rw [he]
+  exact L.model.nonneg _ (div_nonneg ha0 hbn)
+
 theorem exp_le_two_pow : Real.exp (709 + 1 / 2 ^ 30) ≤ 2 ^ 1023 := by
   have hlog : (709 : ℝ) + 1 / 2 ^ 30 ≤ 1023 * Real.log 2 := by
     have := Real.log_two_gt_d9; norm_num at this ⊢; linarith

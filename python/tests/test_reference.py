@@ -738,9 +738,10 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     tables = {"f": con.table("f")}
     duck = sv.verify(sql, tables=tables, semantics="duckdb")
     assert INFINITE not in [i.kind for i in duck.issues + duck.assumed]
-    # Not proved either (`x * y` may be 0 · inf): run with unverified=True.
-    with pytest.warns(UserWarning, match="unverified"):
-        out = duck.run(con, engine, unverified=True)
+    # And proved: DuckDB's `0 · inf` is NaN, which the lift's `CASE` writes
+    # and `verify` sees guards the product (#702).
+    assert duck.proved
+    out = duck.run(con, engine)
     assert out.column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
