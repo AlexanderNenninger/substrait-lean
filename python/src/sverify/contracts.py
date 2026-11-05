@@ -812,12 +812,16 @@ class CheckedCondition:
         if not bad:
             return f"Lean only knows it is {self.value}"
         why = f"it may be {' or '.join(bad)} on some rows"
-        if "NULL" in bad and self.nullable is None:
+        if bad != ["NULL"]:
+            # NULL is one way among others to fail: making a column NOT NULL
+            # does not prove it.
+            pass
+        elif self.nullable is None:
             why += (
                 ", where a column it reads is NULL: declare the column NOT NULL in the schema "
                 "(`!int64`) or add `_.<column>.notnull()` to `requires`"
             )
-        elif "NULL" in bad and self.nullable:
+        elif self.nullable:
             col = self.nullable[0]
             why += (
                 f", where {', '.join(self.nullable)} is NULL: declare it NOT NULL in the "
@@ -1112,6 +1116,10 @@ class Report:
     column, #568), as the checker computes it for this plan; None where it
     does not."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
+    """For a result not determined up to row order (`deterministic`), the
+    `sv.unique(...)` per input table that would determine it: the partition
+    (or grouping) and order columns of its windows and ordered aggregates."""
     on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
@@ -2352,6 +2360,8 @@ def infer_bounds(
     out = _observed(report, observed or Observation(), ensures, opened)
     out.stated = observed is not None
     out.on_inferred = _checked_on_inferred(on_inferred)
+    if not out.deterministic and not isinstance(transform, str):
+        out.ties = tie_keys(transform)
     if on_inferred == "warn" and out.inferred:
         warnings.warn(
             "assumed inferred precondition(s): "
@@ -2549,6 +2559,7 @@ def _infer_bounds(
         report.hints += [h for h in guarded if h not in report.hints]
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
+    report = _null_preconditions(transform, report, requires, ensures, inputs, once)
     report = _confirm_suggestions(report, requires, once)
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
@@ -2556,6 +2567,69 @@ def _infer_bounds(
     report.assumed = [i for i in report.issues if _assumable(i)]
     report.issues = [i for i in report.issues if not _assumable(i)]
     return report
+
+
+#: The kind an inferred `IS NOT NULL` names as its source (#655).
+NULL_KIND = "a NULL result"
+
+
+def _null_preconditions(
+    transform: Transform,
+    report: Report,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    inputs: Collection[str] | None,
+    once: Callable[..., Any],
+) -> Report:
+    """`report` with the `IS NOT NULL` preconditions that prove a
+    postcondition failing only on NULL (`TRUE or NULL`), inferred like the
+    bounds (#655): for each column it reads that passes on an input
+    column, `_.<column>.notnull()` on that input, kept if the postcondition
+    is then proved. A postcondition that may also be FALSE gets none."""
+    if isinstance(transform, str):
+        return report
+    found: dict[str, list[Condition]] = {}
+    source: dict[str, Issue] = {}
+    by_label = {label(c): c for c in ensures if not isinstance(c, TableCondition)}
+    root = transform.op()
+    for c in report.ensures:
+        cond = by_label.get(c.label)
+        if c.proved or cond is None:
+            continue
+        if set(c.value.replace(" or ", ", ").split(", ")) != {"TRUE", "NULL"}:
+            continue
+        for t, base in _input_columns(root, _reads(cond, report.output) or []):
+            if inputs is not None and t not in inputs:
+                continue
+            new = getattr(ibis._, base).notnull()
+            if label(new) in {label(x) for x in [*requires.get(t, []), *found.get(t, [])]}:
+                continue
+            found.setdefault(t, []).append(new)
+            source[label(new)] = Issue(NULL_KIND, c.label, False, shown=c.label)
+    if not found:
+        return report
+    widened = {t: list(cs) for t, cs in requires.items()}
+    _merge(widened, report.inferred)
+    _merge(widened, found)
+    again = once(widened, 0)[0]
+    proved = {e.label for e in again.ensures if e.proved}
+    if not all(c.proved or c.label in proved for c in report.ensures if c.label in by_label):
+        # Only where it proves every postcondition that failed on NULL alone.
+        kept_for = {iss.expr for iss in source.values() if iss.expr in proved}
+        found = {t: [x for x in cs if source[label(x)].expr in kept_for] for t, cs in found.items()}
+        found = {t: cs for t, cs in found.items() if cs}
+        if not found:
+            return report
+        widened = {t: list(cs) for t, cs in requires.items()}
+        _merge(widened, report.inferred)
+        _merge(widened, found)
+        again = once(widened, 0)[0]
+    inferred = {t: list(cs) for t, cs in report.inferred.items()}
+    _merge(inferred, found)
+    again.inferred = inferred
+    again.inferred_from = {**report.inferred_from, **source}
+    again.hints = report.hints
+    return again
 
 
 def _confirm_suggestions(report: Report, requires, once) -> Report:
@@ -2883,6 +2957,62 @@ def _origin(rel: Node, name: str) -> tuple[str, str] | None:
     if parent is not None and name in parent.schema:
         return _origin(parent, name)
     return None
+
+
+def tie_keys(expr: ir.Table) -> dict[str, list[str]]:
+    """The `sv.unique(...)` per input table that leaves no ties in the
+    ORDER BY of a window or of an ordered aggregate (`first`, `last`, …):
+    its partition (or grouping) and order columns, as labels (#655)."""
+    out: dict[str, list[str]] = {}
+
+    def add(fields: Sequence[Any]) -> None:
+        cols = [o for f in fields if (o := _value_origin(f)) is not None]
+        tables = {t for t, _c in cols}
+        if len(tables) != 1 or len(cols) != len(fields):
+            return
+        (t,) = tables
+        lab = label(unique(*dict.fromkeys(c for _t, c in cols)))
+        if lab not in out.setdefault(t, []):
+            out[t].append(lab)
+
+    def fields_of(values: Sequence[Any]) -> list[Any]:
+        found: list[Any] = []
+        for v in values:
+            v = getattr(v, "expr", v)
+            found += [f for f in v.find(ops.Field) if isinstance(f, ops.Field) and f not in found]
+        return found
+
+    for agg in expr.op().find(ops.Aggregate):
+        if not isinstance(agg, ops.Aggregate):
+            continue
+        for metric in agg.metrics.values():
+            order = getattr(metric, "order_by", None)
+            if order:
+                add(fields_of([*agg.groups.values(), *order]))
+    for win in expr.op().find(ops.WindowFunction):
+        if isinstance(win, ops.WindowFunction) and win.order_by:
+            add(fields_of([*win.group_by, *win.order_by]))
+    return out
+
+
+def _input_columns(rel: Node, names: Sequence[str]) -> list[tuple[str, str]]:
+    """The base table columns the output columns `names` of `rel` read:
+    the column itself where it is passed on, else the columns its value
+    reads that are passed on (`length(s)` reads `s`)."""
+    out: list[tuple[str, str]] = []
+    values = getattr(rel, "values", None)
+    if isinstance(rel, ops.Aggregate):
+        values = {**rel.groups, **rel.metrics}
+    for name in names:
+        if (o := _origin(rel, name)) is not None:
+            found = [o]
+        elif values is not None and name in values:
+            fields = [f for f in values[name].find(ops.Field) if isinstance(f, ops.Field)]
+            found = [o for f in fields if (o := _value_origin(f)) is not None]
+        else:
+            found = []
+        out += [o for o in found if o not in out]
+    return out
 
 
 def _value_origin(value: Node) -> tuple[str, str] | None:

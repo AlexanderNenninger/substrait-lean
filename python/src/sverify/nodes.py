@@ -1049,7 +1049,7 @@ def _routes(
             if needed is not None:
                 problems, _ = routes.reproducibility(report, e, needed)
                 if problems:
-                    hint = "" if report.deterministic else f"; {routes.TIES}"
+                    hint = "" if report.deterministic else f"; {routes.ties_fix(report)}"
                     raise routes.RouteError(
                         routes.Route(
                             e,

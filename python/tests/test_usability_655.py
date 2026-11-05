@@ -178,8 +178,9 @@ def test_null_and_key_hints(con) -> None:
     text = str(report)
     assert "declare" not in text.split("ensures qty > 3")[1].split("\n")[0]
     assert "add sv.unique('k') on the input it comes from to requires" in text
+    # FALSE is possible too, so NOT NULL alone would not prove it (#655).
     nullable = sv.verify(t.select("k", "qty"), ensures=[_.qty > 3])
-    assert "where qty is NULL" in str(nullable)
+    assert "where qty is NULL" not in str(nullable)
 
 
 # -- refusals that name functions ---------------------------------------------
