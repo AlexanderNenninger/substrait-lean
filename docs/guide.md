@@ -369,7 +369,9 @@ except VerificationError as e:
 * Keys: `sv.unique("user_id", "ts")` says there is at most one row per
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
-  pins down the other side's key).
+  pins down the other side's key). Every Arrow column is nullable, so
+  `sv.unique("id")` leaves `id` able to be NULL: a postcondition or sink that
+  needs `id` NOT NULL also states `_.id.notnull()` in `requires`.
 * Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
@@ -392,7 +394,9 @@ except VerificationError as e:
   in `requires`, `sv.max_rows(10_000_000)` (checked on the data), Lean
   bounds them by the proved rounding error ([float bounds](float-bounds.md)).
   `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
-  the report suggests it when an exact claim misses only by rounding.
+  the report suggests it when an exact claim misses only by rounding, and
+  only for an input with a row cap: without `sv.max_rows` in `requires`,
+  Lean has no bound on the sum's error and suggests nothing.
 * Not tracked yet: string contents, relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
@@ -920,8 +924,9 @@ tables. A table format plays four roles:
   processes refresh the same `DeltaSink`, the second to commit an epoch
   raises `ConcurrentWriteError` and writes nothing; its next refresh
   recovers.
-  The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
-  or table properties (Iceberg), and the commit records the plan hash, the
+  The `ensures` you state become NOT NULL columns (`_.id.notnull()`) and
+  CHECK constraints (Delta) or table properties (Iceberg); a column the
+  plan proves non-NULL but `ensures` leaves out stays nullable, and the commit records the plan hash, the
   source versions and the contract. A job that reads the table gets its
   preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
@@ -1178,6 +1183,28 @@ the following about the warehouse:
 
 How the engine translations relate to the reference semantics, and where
 that is going, is in [docs/engine-profiles.md](engine-profiles.md).
+
+### Integer division in Ibis and SQL
+
+Ibis's `//` is `FloorDivide` and rounds toward minus infinity. Ibis's `%`
+and SQL's `//` and `%` truncate toward zero, so the pair `x // d` and
+`x % d` splits a negative `x` into a quotient and remainder that do not add
+back up under the reference. Sverify follows each operator as its front end
+defines it. On `x = -7`, with `d = 2`:
+
+| Input | `x // 2` | `x % 2` | `q * 2 + r == x` |
+|---|---|---|---|
+| Ibis, `semantics="reference"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
+| SQL through `sv.sql` or `sv.verify`, reference | -3 (truncated) | -1 | yes |
+| Ibis, `semantics="polars"` | -4 | 1 | yes |
+
+A plan that splits milliseconds into seconds and a remainder with `t.ms // 1000`
+and `t.ms % 1000` gets the identity only for non-negative `ms`. State
+`_.ms >= 0` in `requires`, or write the plan in SQL, where both operators
+truncate. When one plan uses Ibis `//` and `%` on the same operands under the
+reference or DuckDB's semantics, its report carries a hint that names the pair.
+[`t7b_div_mod.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/claude/api-critique/api-critique/tasks/t7b_div_mod.py)
+reproduces the table.
 
 ### Routes, classes and profiles
 
