@@ -9,6 +9,9 @@
 - `check --full` adds each node's full report; `check --diff` shows the
   preconditions the proofs need (`Report.needs`) as a diff of the
   decorators' `requires=`, and `check --fix` writes them and checks again.
+- `sverify suggest` from #786 is now `check --fix` and `check --diff`, and
+  `sverify explain <file>:<node>` is `check --full`; `explain` takes codes
+  only (API review I2, I3). Neither was released, so no aliases remain.
 - `sverify refresh <file>:<node>` runs a node and reports what changed;
   `sverify explain <code>` says what a code means and how to fix it. The
   codes are snake case, as the report writes them.
