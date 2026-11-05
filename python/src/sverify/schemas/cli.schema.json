@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/cli.schema.json",
+  "title": "sverify command output",
+  "description": "The JSON document every `sverify` command prints with --format json (#744, API review I5). Format 1. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Each checked node carries its report as Report.to_json() writes it, in the format of report.schema.json.",
+  "type": "object",
+  "required": ["format", "sverify", "command", "exit", "status"],
+  "properties": {
+    "format": {"description": "The version of this format.", "const": 1},
+    "sverify": {"description": "The version of sverify that wrote the document.", "type": "string"},
+    "command": {"description": "The command.", "enum": ["check", "refresh", "explain"]},
+    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget exceeded, 5 a refresh quarantined rows or held a node, 6 error.", "type": "integer", "minimum": 0, "maximum": 6},
+    "status": {"description": "The exit code in words. 1.x may add values.", "type": "string", "examples": ["proved", "not_proved", "usage", "unsupported", "budget_exceeded", "quarantined", "held", "error"]},
+    "file": {"description": "The pipeline's file, as given.", "type": "string"},
+    "target": {"description": "The node or transform asked for (file.py:<target>); null for the whole file.", "type": ["string", "null"]},
+    "items": {
+      "description": "check (and a refresh that did not run): each application of a contracted transform, in the order the file made them.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "unchecked": {"description": "check: the contracted transforms the file defines but never applies.", "type": "array", "items": {"type": "string"}},
+    "error": {"description": "What stopped the command; null if nothing did.", "oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]},
+    "budget": {
+      "description": "check: the time budget and the time spent, in seconds.",
+      "type": "object",
+      "required": ["timeout", "elapsed"],
+      "properties": {"timeout": {"type": "number"}, "elapsed": {"type": "number"}}
+    },
+    "fixes": {
+      "description": "check --fix and --diff: the preconditions each transform needs, per parameter, as code for requires=.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["transform", "requires", "placed", "reason"],
+        "properties": {
+          "transform": {"type": "string"},
+          "requires": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+          "placed": {"description": "Whether --fix could write them into the decorator.", "type": "boolean"},
+          "reason": {"description": "Why they were not placed; null if they were.", "type": ["string", "null"]}
+        }
+      }
+    },
+    "diff": {"description": "check --fix and --diff: the change to the file, as a unified diff.", "type": "string"},
+    "applied": {"description": "check --fix: whether the file was written (and checked again; the rest of the document is that second check).", "type": "boolean"},
+    "nodes": {
+      "description": "refresh: what each node's refresh did, upstream first.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node", "summary"],
+        "properties": {
+          "node": {"type": "string"},
+          "summary": {"description": "StageRefresh.summary(): one line, or the full entry where something is notable.", "type": "string"},
+          "started": {"type": ["string", "null"]},
+          "outcome": {"type": "string", "examples": ["ok", "quarantined", "held"]},
+          "route": {"type": ["string", "null"]},
+          "write": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {"type": "string"},
+                  "version": {"type": ["integer", "null"]},
+                  "inserted": {"type": "integer"},
+                  "deleted": {"type": "integer"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "outcome": {"description": "refresh: \"ok\", \"quarantined\" or \"held\".", "type": "string"},
+    "memory_limit": {"description": "refresh: the --memory-limit given, if any.", "type": ["string", "null"]},
+    "code": {"description": "explain: the code, in snake case.", "type": "string"},
+    "level": {"description": "explain: the code's level.", "enum": ["error", "warning", "note"]},
+    "text": {"description": "explain: what the code means and how to fix it.", "type": "string"}
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["name", "nodes", "status", "summary", "links", "report"],
+      "properties": {
+        "name": {"description": "The transform's name.", "type": "string"},
+        "nodes": {"description": "The file's variables that hold the node this application built.", "type": "array", "items": {"type": "string"}},
+        "status": {"description": "proved; checked (every postcondition it does not prove is checked on the data at each refresh); not_proved; or unfinished (the time budget ran out first).", "enum": ["proved", "checked", "not_proved", "unfinished"]},
+        "summary": {
+          "description": "The contract in plain words; null when unfinished.",
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["guarantees", "checks", "not_proved"],
+              "properties": {
+                "guarantees": {"description": "What the output meets, proved.", "type": "array", "items": {"type": "string"}},
+                "checks": {"description": "What each refresh checks on the data before it writes.", "type": "array", "items": {"type": "string"}},
+                "not_proved": {"description": "What is not proved, and the runtime errors it may raise.", "type": "array", "items": {"type": "string"}}
+              }
+            }
+          ]
+        },
+        "links": {"description": "Preconditions on another transform's result that its guarantees do not imply, one message each.", "type": "array", "items": {"type": "string"}},
+        "report": {"description": "Report.to_json(), in the format of report.schema.json; null when unfinished.", "type": ["object", "null"]}
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "type", "message"],
+      "properties": {
+        "code": {"description": "A code `sverify explain` takes: usage, unsupported, refused, not_proved, timeout, memory or error. 1.x may add values.", "type": "string"},
+        "type": {"description": "The exception's class.", "type": "string"},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}

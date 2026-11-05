@@ -3,17 +3,23 @@
 - `sverify check <file>[:<node>]` proves every contracted transform and node
   a Python file applies, without running it, and prints the contract in
   plain words first: what the output guarantees, what each refresh checks
-  on the data, and what is not proved, each problem with a code. A dbt
+  on the data, and what is not proved, each finding with a code. A dbt
   project goes to `sverify-dbt check`
   ([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)).
-- `sverify suggest <file> [--apply]` writes the preconditions the proofs
-  need (`Report.needs`) into the decorators' `requires=`, then checks the
-  file again.
+- `check --full` adds each node's full report; `check --diff` shows the
+  preconditions the proofs need (`Report.needs`) as a diff of the
+  decorators' `requires=`, and `check --fix` writes them and checks again.
 - `sverify refresh <file>:<node>` runs a node and reports what changed;
-  `sverify explain <code>` explains a code, and `sverify explain
-  <file>:<node>` prints a node's full report.
-- Every command takes `--json` (a provisional format until #736) and exits
-  0 proved, 1 not proved, 2 refused, 3 budget exceeded, 4 error.
+  `sverify explain <code>` says what a code means and how to fix it. The
+  codes are snake case, as the report writes them.
+- `--format text|json|github|sarif|junit` (`--output-format`; `--json` is
+  `--format json`). The JSON is format 1 of `schemas/cli.schema.json`, with
+  each node's `Report.to_json()`. `github` annotates a pull request's lines,
+  `sarif` is SARIF 2.1.0 for code scanning, `junit` a test report
+  ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+- Exit codes: 0 proved, 1 not proved, 2 usage error, 3 unsupported or
+  refused, 4 time or memory budget exceeded, 5 a refresh quarantined rows or
+  held a node, 6 error.
 - `--timeout` (default 30 s, `SVERIFY_TIMEOUT`, 0 turns it off) bounds
   proof, planning and checking, never a refresh moving data.
   `--memory-limit` (`SVERIFY_MEMORY_LIMIT`) sets DuckDB's `memory_limit`,
