@@ -1,7 +1,11 @@
 name: Docs
 
-# The API reference site (Great Docs, from python/great-docs.yml). Every pull
-# request and push to main builds it, so broken docs show up in review. The
+# The API reference site (Great Docs, from python/great-docs.yml). A pull
+# request builds it when it changes a file the site reads (the paths below:
+# the package and its docstrings, the skills, docs/, the ledgers and the
+# tools that write their pages), so broken docs show up in review; every push
+# to main builds it. A pull request that changes only Lean, tests, notebooks,
+# dbt/ or the template skips it and leaves runner slots to CI. The
 # site is deployed to GitHub Pages only for a release tag (`v*`, the same tags
 # that publish the wheels) or by hand, so it matches the version on PyPI. To
 # deploy on every push to main instead, add `github.ref == 'refs/heads/main'`
@@ -11,6 +15,19 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+    paths:
+      - python/src/**
+      - python/tools/**
+      - python/README.md
+      - python/great-docs.yml
+      - python/pyproject.toml
+      - python/uv.lock
+      - python/hatch_build.py
+      - docs/**
+      - upstream/**
+      - characterization/**
+      - .github/workflows/docs.yml
+      - .github/actions/setup-lean/**
   workflow_dispatch:
 
 concurrency:
