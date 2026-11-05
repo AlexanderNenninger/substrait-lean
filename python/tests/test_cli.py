@@ -498,3 +498,31 @@ def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out
     assert "  5  a refresh committed with rows quarantined, or held a node" in out
+
+
+QUARANTINE = """
+@sv.transform(
+    requires={"orders": [_.amount >= 20, _.amount < 1000, sv.unique("id")]},
+    ensures=[_.amount >= 20, sv.unique("id")],
+    on_violation="POLICY",
+)
+def paid(orders):
+    return orders.filter(orders.amount > 10)
+
+
+p = orders.pipe(paid)
+"""
+
+
+@pytest.mark.parametrize(
+    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 5, "held")]
+)
+def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
+    tmp_path, capsys, policy, code, status
+):
+    path = write(tmp_path, QUARANTINE.replace("POLICY", policy))
+    got, doc = run_json(capsys, "refresh", f"{path}:p")
+    assert got == code and doc["status"] == status and doc["outcome"] == status
+    assert doc["alert"] and "(_.amount >= 20)" in doc["alert"]
+    got, out = run(capsys, "refresh", f"{path}:p")
+    assert got == code and "### paid" in out

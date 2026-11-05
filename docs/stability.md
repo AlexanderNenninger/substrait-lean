@@ -10,7 +10,7 @@ to it.
 
 ## The formats
 
-Jobs and tools read four formats that sverify writes:
+Jobs and tools read these formats that sverify writes:
 
 | Format | Where it lives | Version | Schema |
 |---|---|---|---|
@@ -18,6 +18,8 @@ Jobs and tools read four formats that sverify writes:
 | The Substrait contract metadata ([#735](https://github.com/AlexanderNenninger/substrait-lean/issues/735)) | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
 | The report's JSON ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)) | `Report.to_json()`, read back by `Report.from_json()` | `format` in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
 | The command line's JSON ([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)) | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
+| The quarantine table ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)) | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
+| The refresh report's JSON ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)) | `Refresh.to_json()` | `format` in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
 
 Within 1.x each format follows these rules:
 

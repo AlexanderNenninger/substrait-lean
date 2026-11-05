@@ -53,6 +53,10 @@
           "summary": {"description": "StageRefresh.summary(): one line, or the full entry where something is notable.", "type": "string"},
           "started": {"type": ["string", "null"]},
           "outcome": {"type": "string", "examples": ["ok", "quarantined", "held"]},
+          "held": {"description": "Why the node did not take the batch (on_violation=\"hold\", or a stored node it reads with no state yet); null if it took it.", "type": ["string", "null"]},
+          "quarantined": {"description": "How many rows of the node's sources were quarantined.", "type": "integer"},
+          "quarantine_table": {"description": "The quarantine table the rows went to; null if none.", "type": ["string", "null"]},
+          "quarantine": {"description": "Each quarantine write's record, in the format of quarantine.schema.json.", "type": "array", "items": {"type": "object"}},
           "route": {"type": ["string", "null"]},
           "write": {
             "oneOf": [
@@ -72,6 +76,7 @@
       }
     },
     "outcome": {"description": "refresh: \"ok\", \"quarantined\" or \"held\".", "type": "string"},
+    "alert": {"description": "refresh: Refresh.alert(), what needs attention when rows were quarantined or a node held; null otherwise.", "type": ["string", "null"]},
     "memory_limit": {"description": "refresh: the --memory-limit given, if any.", "type": ["string", "null"]},
     "code": {"description": "explain: the code, in snake case.", "type": "string"},
     "level": {"description": "explain: the code's level.", "enum": ["error", "warning", "note"]},

@@ -72,6 +72,11 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 - **Long-running jobs that aren't QA** (a full sqllogictest replay, fuzzing)
   count as a run too. Give them a `/tmp/substrait-lean-*` directory, so the
   check above sees them.
+- **Never use sudo there,** not even `sudo -n` to test for it. Everything
+  runs as `nennia`: user-level `systemd-run --user` scopes for memory caps,
+  and tools installed under `~/` (elan, uv, the JDK already there). Nothing
+  in QA needs root or the maintainer's password. If something seems to,
+  stop and ask the coordinator.
 - **Clean up after yourself.** Delete your directory when the run ends,
   also when it fails. To stop a run, kill its processes by PID, not with
   `pkill -f` over `ssh`: the pattern also matches the `ssh` command itself.

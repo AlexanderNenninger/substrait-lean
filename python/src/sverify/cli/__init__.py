@@ -33,6 +33,9 @@ sink commits.
 Exit codes: 0 proved (a refresh committed every row), 1 not proved, 2 usage
 error, 3 unsupported or refused, 4 time or memory budget exceeded, 5 a
 refresh committed with rows quarantined or held a node, 6 error.
+A `refresh` that exits 5 prints `Refresh.alert()`'s text after the
+summary; its JSON's `status` says `"quarantined"` or `"held"`, with
+`"outcome"` and `"alert"` (#184).
 
 * `main` runs the command with given arguments and returns its exit code.
 * `discover` imports a file the way `check` does and returns a `Discovery`:

@@ -32,12 +32,12 @@ CODES: dict[str, str] = {
     ),
     "not_proved_kind": (
         "A condition sverify checks on the data only (`references`, `rows_per`, "
-        '`arrives_within`): no proof covers it. With `on_unproved="runtime"` each refresh '
+        '`arrives_within`): no proof covers it. With `on_unproved="check"` each refresh '
         "checks it on the rows it writes."
     ),
     "unknown": (
         "The checker knows nothing that decides the postcondition. State more about the "
-        'inputs in `requires`, or check it on the data with `on_unproved="runtime"`.'
+        'inputs in `requires`, or check it on the data with `on_unproved="check"`.'
     ),
     "observation": (
         "A postcondition is proved, but depends on what the observation "
@@ -79,7 +79,7 @@ CODES: dict[str, str] = {
     "composition": (
         "A transform's precondition on another transform's result does not follow from "
         "what that transform guarantees. Add it to the producing transform's `ensures` "
-        '(and prove it there), or check it on the data with `on_unproved="runtime"`.'
+        '(and prove it there), or check it on the data with `on_unproved="check"`.'
     ),
     "transfer": (
         'Under `semantics="substrait"`, the proof holds for the reference but Substrait '

@@ -427,7 +427,11 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 "node": s.node,
                 "summary": s.summary(),
                 "started": s.started,
-                "outcome": getattr(s, "outcome", "ok"),
+                "outcome": s.outcome,
+                "held": s.held,
+                "quarantined": s.quarantined,
+                "quarantine_table": s.quarantine_table,
+                "quarantine": [q.to_dict() for q in s.quarantine],
                 "route": str(s.route) if s.route is not None else None,
                 "write": None
                 if w is None
@@ -439,13 +443,19 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 },
             }
         )
-    outcome = getattr(done, "outcome", "ok")
+    outcome = done.outcome
     code = _outcome_code(outcome)
     result["outcome"] = outcome
     result["memory_limit"] = args.memory_limit
     if code != OK:
         result["status"] = outcome
-    return _emit(args, code, result, done.summary)
+    result["alert"] = done.alert()
+
+    def human() -> str:
+        alert = done.alert()
+        return done.summary() + ("" if alert is None else "\n\n" + alert)
+
+    return _emit(args, code, result, human)
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
