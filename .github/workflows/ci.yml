@@ -82,6 +82,7 @@ jobs:
       oracle: ${{ steps.diff.outputs.oracle }}
       notebooks: ${{ steps.diff.outputs.notebooks }}
       dbt: ${{ steps.diff.outputs.dbt }}
+      python: ${{ steps.diff.outputs.python }}
       matrix: ${{ steps.diff.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -136,6 +137,7 @@ jobs:
             out oracle=true
             out notebooks=true
             out dbt=true
+            out python=true
             out 'matrix={"backends":["duckdb","spark","datafusion","polars snowflake"],"include":[{"backends":"core","shard":"1/3"},{"backends":"core","shard":"2/3"},{"backends":"core","shard":"3/3"}]}'
           }
           # A push to main whose tree a pull request's run already tested.
@@ -156,7 +158,7 @@ jobs:
           }
           if [ "$EVENT" != pull_request ]; then
             if tested; then
-              for o in code floats proofs oracle notebooks dbt; do out "$o=false"; done
+              for o in code floats proofs oracle notebooks dbt python; do out "$o=false"; done
               out 'matrix={"backends":["duckdb"]}'
               exit 0
             fi
@@ -197,6 +199,13 @@ jobs:
           fi
           out "oracle=$(flag "$skip_oracle")"
           out "notebooks=$(flag "$skip_notebooks")"
+          # The tests outside the repository (`outside-repo`) read python/ and
+          # the dependencies; the workflow itself.
+          if grep -qE '^(python/|\.github/workflows/ci\.yml$)' <<< "$files"; then
+            out python=true
+          else
+            out python=false
+          fi
           # sverify-dbt reads sverify, and what the checker proves.
           if grep -qE '^(dbt/|python/|SubstraitLean/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out dbt=true
@@ -341,6 +350,29 @@ jobs:
       # docs/coverage-targets.md), in the job summary; a gate from M6.
       - if: matrix.shard == '1/3'
         run: uv run --locked --project python python -m sverify_dev.coverage --targets >> "$GITHUB_STEP_SUMMARY"
+
+  # The tests as the Wheels workflow runs them against the installed wheel:
+  # from a copy outside the repository, with only the package's extras and
+  # the test dependencies `python/scripts/wheel_tests.sh` lists, the fast
+  # set. A test that reads repository files without `needs_repo`, or imports
+  # a package the wheel test lacks, fails here, on its own pull request,
+  # instead of in a release's Wheels run (0.5.0, 0.6.0).
+  outside-repo:
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: python/pyproject.toml
+      - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query
@@ -542,7 +574,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, notebooks, dbt, template, float-bounds, oracle-a, ledger]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, notebooks, dbt, template, float-bounds, oracle-a, ledger]
     if: always()
     runs-on: ubuntu-latest
     steps:

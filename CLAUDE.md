@@ -41,6 +41,14 @@ runs `static` only and its `qa` fails; retargeting it to main starts the full
 run (`.github/workflows/retarget.yml`). The header of
 `.github/workflows/ci.yml` has the details.
 
+A pull request that changes `python/` also runs `outside-repo`: the fast set
+from a copy of the tests outside the repository, as the release's wheel test
+runs them (`python/scripts/wheel_tests.sh`). A test that reads repository
+files (docs, the catalogue, facts, Lean sources) carries `needs_repo`
+(`tests/_repo.py`); a test dependency the package doesn't bring goes into
+that script's list, or the test uses `pytest.importorskip`. Run it locally
+with `bash python/scripts/wheel_tests.sh --editable python --fast`.
+
 ### Runner slots
 
 GitHub runs at most 20 jobs at once for this repository, and a full CI run
