@@ -65,8 +65,8 @@
       "disagree": 0
     },
     "string": {
-      "agree": 77,
-      "refused": 206,
+      "agree": 82,
+      "refused": 201,
       "disagree": 39
     },
     "window": {
@@ -75,8 +75,8 @@
       "disagree": 0
     },
     "all": {
-      "agree": 631,
-      "refused": 625,
+      "agree": 636,
+      "refused": 620,
       "disagree": 61
     }
   },
@@ -215,7 +215,6 @@
       "checker: unsupported function trim/N": 7,
       "checker: replace: option case_sensitivity is not supported": 6,
       "checker: unsupported function concat_ws/N": 5,
-      "checker: unsupported function string_split/N": 5,
       "checker: concat is only supported with null_handling ACCEPT_NULLS": 4,
       "checker: contains: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
       "checker: ends_with: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,

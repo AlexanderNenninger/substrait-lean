@@ -766,3 +766,53 @@ def test_bit_count_keeps_its_laws_on_random_data(vs):
         assert r["b"] == (None if r["x"] is None else bin(r["x"] % 2**64).count("1"))
     result = check(query, {"t": t})
     assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def _string_split(s: str | None, sep: str | None) -> list[str] | None:
+    """DuckDB's `string_split` (`BlackBox.stringSplit`)."""
+    if s is None:
+        return None
+    if sep is None:
+        return [s]
+    if sep == "":
+        return list(s) or [""]
+    return s.split(sep)
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.one_of(st.none(), st.text("ab,é", max_size=8)),
+            st.one_of(st.none(), st.sampled_from(["", ",", "a", "ab", ",,", "é"])),
+        ),
+        max_size=8,
+    )
+)
+def test_string_split_is_leans_on_random_data(rows):
+    # The pieces left to right, characters for '', `[s]` for a NULL separator
+    # (#808): Python's `str.split`, DuckDB's, and through oracles A and C.
+    t = pa.table(
+        {"s": pa.array([s for s, _ in rows], pa.string()),
+         "p": pa.array([p for _, p in rows], pa.string())}
+    )  # fmt: skip
+    got = duckdb_result("SELECT string_split(s, p) AS l FROM t", {"t": t}).column("l")
+    for v, (s, p) in zip(got.to_pylist(), rows, strict=True):
+        assert v == _string_split(s, p)
+    query = (
+        "SELECT s, p, string_split(s, p) AS l, split_part(s, p, 2) AS b,"
+        " split_part(s, p, -1) AS c FROM t"
+    )
+    result = check(query, {"t": t})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_string_split_proves_a_contract():
+    # Not NULL for a string (#808): the pieces are a list.
+    report = sv.verify(
+        "SELECT string_split(customer, ',') AS l FROM orders WHERE customer IS NOT NULL",
+        tables=SCHEMAS,
+        ensures=["l IS NOT NULL"],
+        counterexamples=0,
+    )
+    assert all(c.proved for c in report.ensures), report
