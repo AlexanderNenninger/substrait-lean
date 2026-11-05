@@ -23,7 +23,10 @@ CACHES = [ROOT / "SubstraitLean" / "LoweringCache.lean", ROOT / "SubstraitLean" 
 
 
 def _modules() -> list[Path]:
-    lean = [*(ROOT / "SubstraitLean").rglob("*.lean"), *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean")]
+    lean = [
+        *(ROOT / "SubstraitLean").rglob("*.lean"),
+        *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
+    ]
     return sorted(p for p in lean if not any(d in p.parents for d in GENERATED_DIRS))
 
 
@@ -35,20 +38,31 @@ def _section(title: str) -> str:
 
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: str(p.relative_to(ROOT)))
 def test_every_module_has_a_line(module):
-    rel = module.relative_to(ROOT / ("float-bounds/FloatBounds" if "float-bounds" in module.parts else "SubstraitLean"))
+    rel = module.relative_to(
+        ROOT / ("float-bounds/FloatBounds" if "float-bounds" in module.parts else "SubstraitLean")
+    )
     assert f"`{rel.as_posix()}`" in _section("The modules"), f"{rel} is missing from docs/proofs.md"
 
 
 def test_generated_globs_have_lines():
     modules = _section("The modules")
-    for glob in ["LoweringDuckDB/On/*.lean", "LiftDuckDB/Duckdb/*.lean", "LiftDuckDB/Reference/*.lean"]:
+    for glob in [
+        "LoweringDuckDB/On/*.lean",
+        "LiftDuckDB/Duckdb/*.lean",
+        "LiftDuckDB/Reference/*.lean",
+    ]:
         assert f"`{glob}`" in modules
 
 
 def _theorems() -> set[str]:
     names = set()
-    for p in [*(ROOT / "SubstraitLean").rglob("*.lean"), *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean")]:
-        names.update(re.findall(r"^(?:private )?(?:theorem|lemma) ([^\s({:]+)", p.read_text(), re.M))
+    for p in [
+        *(ROOT / "SubstraitLean").rglob("*.lean"),
+        *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
+    ]:
+        names.update(
+            re.findall(r"^(?:private )?(?:theorem|lemma) ([^\s({:]+)", p.read_text(), re.M)
+        )
     return names
 
 
