@@ -18,6 +18,9 @@ the raw notes in the order they happened, with every message quoted in full.
 | Refusals, inferred preconditions | `t6_refusals.py`, `t6b_…` | 5 | worked; messages long and partly wrong |
 | DuckDB and Polars | `t7_engines.py`, `t7b_…` | 3 | ran; `//` means two things |
 | `to_substrait()` | `t8_substrait.py` | 2 | worked for integers; a filter on a double is refused |
+| Second pass (section 7): pytest | `t9_pytest.py` | 2 | worked; two shapes for test data |
+| A custom source into Iceberg | `t10_custom_source_iceberg.py` | 3 | worked; late rows need `audit=True` |
+| SQL for the warehouse | `t11_warehouse_sql.py` | 3 | runs; not reviewable |
 
 On timing: I am an agent, and my wall clock (about 20 minutes from install to
 the last task, reading included) says little about a person's. The better
@@ -180,7 +183,11 @@ Keep these as the model for the rest:
 
 ## 2. Awkward: semantics a user trips over
 
-### 2.1 One tie-sensitive window makes every postcondition undetermined (high)
+### 2.1 One tie-sensitive window makes every postcondition undetermined (high; fixed by #681)
+
+Rechecked on main at 7af9267d: after #681 (contracts over every order of the
+ties), the mart's `n_orders >= 1`, `revenue >= 0` and `revenue_rank >= 1`
+prove. The text below records what 0.5's main at b87a8963 did.
 
 A dbt mart with `rank() OVER (ORDER BY revenue DESC)` (task 4): every
 `ensures` came back `NOT proved: Lean only knows it is undetermined: rows may
@@ -447,16 +454,71 @@ names stay as aliases.
 | README install | "elsewhere pip builds from the sdist, which needs elan" | `pip install .` from a checkout starts a full `lake build` of every generated module (load 25 on a 10-core laptop in a minute) | say so, with `SVERIFY_PREBUILT_CHECK` for contributors |
 | guide, Using sverify | "`report.run(con)` … checks the report's preconditions" | fine; but `check_inputs=False` vs the transform's `check_requires=False` (3.3) | one name |
 
-## 7. The five changes that would most improve the first hour
+## 7. Second pass: testing, custom sources, warehouse SQL
+
+Three more tasks on main at 7af9267d (`t9_pytest.py`, `t10_custom_source_iceberg.py`,
+`t11_warehouse_sql.py`; LOG.md "Second pass").
+
+### 7.1 The testing helpers are the model for messages (keep)
+
+`assert_contract` failures list the missing and unexpected rows, and the
+input rows that break each precondition. A refresh's `PreconditionError`
+should read the same way (#691 adds `.rows`).
+
+### 7.2 Two shapes for test data (medium)
+
+`assert_contract(data=)` takes `{"orders": [tuples]}`; `cases(node)` yields
+`{"orders": pyarrow.Table}`. And `assert_contract` refuses an Ibis expression
+(`expected a sverify.Node … got Table`), though a transform works on one.
+
+Proposal: `data=` accepts tables, lists of tuples and lists of dicts, and
+`cases(node, rows=True)` yields tuples; `assert_contract` takes an expression
+built by a transform on Ibis tables. Not breaking.
+
+### 7.3 Late rows in a `from_query` source (medium)
+
+A row older than the cursor is dropped silently, as the docstring warns, and
+`refresh(audit=True)` catches it with `AuditError: events@v2 differs from the
+table read again in full: its batches missed rows; nothing was applied`.
+
+Proposal: `from_query(fn, cursor_on="ts", lookback=timedelta(minutes=15),
+key="event_id")` re-reads the window behind the cursor and keeps rows by key,
+with `sv.arrives_within` as the stated precondition; the `AuditError` lists
+the missed rows and names `lookback=`. Not breaking.
+
+### 7.4 SQL for the warehouse is not reviewable (medium)
+
+`to_sql(json.loads(node.plan), SNOWFLAKE)` gives three nested subqueries with
+positional aliases (`s3."g0"`, `"m0"`) and an overflow guard on every `SUM`.
+It runs; nobody would paste it into a dbt model.
+
+Proposals, not breaking:
+
+- `report.to_sql(dialect)` and `node.to_sql(dialect)` beside `to_substrait()`,
+  accepting the plan as it is.
+- A readable form: the user's column names, CTEs for the steps, and the
+  guards collected in one place (or left out where `guard_free`).
+- The Snowflake `LIMIT` refusal names the fix: "rows may tie on `total`:
+  order by a key too (`order_by([_.total.desc(), _.customer])`), and pass
+  `tie_free=True` once `report.deterministic` is True". It mentions windows
+  and Lean today.
+
+### 7.5 The `iceberg` extra has no catalog to try it with (low)
+
+`SqlCatalog` needs `pyiceberg[sql-sqlite]`; notebook 2 installs it, the
+README's extras don't mention it. Proposal: the `iceberg` extra includes
+`pyiceberg[sql-sqlite]`, or the README says to add it. Not breaking.
+
+## 8. The five changes that would most improve the first hour
 
 1. Reports and errors in the user's terms: no `$n`, no internal rewrites, one
    line per user expression, a verdict on the first line, the exception's text
    a short summary with `e.report` for the rest (1.1, 1.3, 1.4, 1.5).
 2. No wrong advice: every hint carries code that sverify has checked makes
    the issue go away, or no hint (1.2). This is the trust repair.
-3. Scope tie-sensitivity to the columns that read the window, and treat
-   `RANK`/`DENSE_RANK` as tie-free (2.1), so a dbt mart with a rank column can
-   have a contract.
+3. Keys through an inner join's equated columns (2.3, #694), so a dbt mart
+   that selects the dimension's key keeps it. (The rank column of 2.1 already
+   proves on main after #681.)
 4. One float model: the plan's bound is the default and the report prints
    it; every tolerance is checked at verify; `floats="plan"` documented (2.6).
 5. Fewer knobs for "not proved": remove `strict=`, fold `infer=` into
