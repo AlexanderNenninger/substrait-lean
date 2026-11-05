@@ -22,6 +22,9 @@ def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
     to = op.to
     if not op.arg.dtype.is_string():
         return None
+    if isinstance(op.arg, ops.Literal) and not try_:
+        # A constant: Lean folds it, as it did (`DATE '1998-12-01'` in TPC-H).
+        return None
     if to.is_decimal():
         raise Unsupported(f"a cast of a string to {to} is not supported yet (#27)")
     for accepts, name, via in (

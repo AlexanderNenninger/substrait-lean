@@ -82,7 +82,7 @@ engines is trusted, and kept small:
   hypothesis of `Rel.cdf_sound` wherever Sverify reads a Delta change data
   feed; it is proved when the change is computed from two snapshots.
 - The evaluators behind black boxes and regular expressions
-  (`implemented_by` in `BlackBox.lean`, `Regex.lean`, `Digest.lean`). No
+  (`implemented_by` in `BlackBox.lean`, `Regex.lean`, `Digest.lean`, `VarcharCasts.lean`). No
   proof reads them; the proofs use only each black box's declared laws.
 
 ## The modules
@@ -99,6 +99,7 @@ generators, then the trusted reading and writing.
 | `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
+| `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |
 | `Rounding.lean` | Exact `FLOOR`, `CEIL`, `ROUND` and double-to-integer casts on codes |
