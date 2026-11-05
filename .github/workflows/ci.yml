@@ -479,8 +479,9 @@ jobs:
           uv run --locked --project "$py" ruff check .
           uv run --locked --project "$py" ruff format --check .
           uv run --locked --project "$py" python -m pytest -q -p no:cacheprovider
-          # actionlint reads the workflows of the git repository it runs in.
-          docker run --rm -v "$repo:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+          # actionlint reads the workflows of the git repository it runs in;
+          # as the owner of the files, or git refuses the repository.
+          docker run --rm --user "$(id -u):$(id -g)" -v "$repo:/repo" -w /repo rhysd/actionlint:1.7.7 -color
 
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.
