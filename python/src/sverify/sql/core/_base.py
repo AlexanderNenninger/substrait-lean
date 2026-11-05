@@ -4463,8 +4463,12 @@ class _Writer:
             case ("add" | "sub" | "mul") as op, [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 sa = ka.s if isinstance(ka, Dec) else 0
-                kinds = (ka, expr_kind(e.args[1], cols))
-                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, kinds)
+                kb = expr_kind(e.args[1], cols)
+                if ka is None or kb is None:
+                    raise Unsupported(f"decimal {op} of an operand of unknown type")
+                return d.decimal_arith(
+                    {"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, (ka, kb)
+                )
             case "neg", [a]:
                 return d.decimal_neg(a, k)
             case "abs", [a]:
