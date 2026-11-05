@@ -2661,13 +2661,9 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
-    if semantics in _PROFILE_REQUESTS and (
-        isinstance(transform, str)
-        or any(isinstance(c, str) for cs in requires.values() for c in cs)
-        or any(isinstance(c, str) for c in ensures)
-    ):
+    if semantics in _PROFILE_REQUESTS and isinstance(transform, str):
         raise ValueError(
-            f"semantics={semantics!r} checks Ibis transformations and conditions; "
+            f"semantics={semantics!r} checks Ibis transformations; "
             "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
         )
     schemas = {
@@ -2680,8 +2676,14 @@ def _verify_once(
     for name, schema in schemas.items():
         create_table(con, name, schema)
 
+    def lift(query: Any) -> Semantics:
+        # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
+        # under the reference where the profile has no lift of its own.
+        own = not (isinstance(query, str) and semantics in _PROFILE_REQUESTS)
+        return semantics if own else "reference"
+
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query, semantics))
+        return json.loads(plan_json(con, query, lift(query)))
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
@@ -2710,12 +2712,12 @@ def _verify_once(
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t, c), c, semantics)) for t, c in req_conds]
+    req_plans = [plan(condition_query(table_ref(t, c), c, lift(c))) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(output(c), c, semantics))
+        p = plan(condition_query(output(c), c, lift(c)))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)

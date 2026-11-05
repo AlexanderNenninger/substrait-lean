@@ -309,12 +309,14 @@ def _sort_key(x: Exprs, k: Any) -> Json:
 # Plans
 
 
-def to_substrait(expr: ir.Table) -> Json:
-    """The Substrait plan of an Ibis table expression, as protobuf JSON."""
-    with compiling() as compiler:
+def to_substrait(expr: ir.Table, semantics: str = "reference") -> Json:
+    """The Substrait plan of an Ibis table expression, as protobuf JSON. Under
+    `semantics="polars"`, integer `//` and `%` are Polars's: they state
+    `division_type` = `FLOOR` (`Profile.polars`)."""
+    with compiling(semantics) as compiler:
         op: Any = expr.op()
         return plan(compiler, rel(op), list(op.schema.names))
 
 
-def to_substrait_json(expr: ir.Table) -> str:
-    return json.dumps(to_substrait(expr))
+def to_substrait_json(expr: ir.Table, semantics: str = "reference") -> str:
+    return json.dumps(to_substrait(expr, semantics))

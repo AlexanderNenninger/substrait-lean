@@ -33,9 +33,11 @@ from sverify.plan_json import (
     call,
     cast_json,
     field_ref,
+    floor_call,
     ieee_divide,
     if_then,
     literal,
+    semantics,
     type_json,
 )
 
@@ -72,6 +74,9 @@ def _modulus(x: Exprs, op: Any) -> Json:
     Substrait's `modulus` has no double impl."""
     if exact(op).is_floating():
         return call("sverify_fmod", [x(op.left, exact(op)), x(op.right, exact(op))])
+    if semantics() == "polars" and exact(op).is_integer():
+        # Polars's `%` takes the divisor's sign (`Profile.polars`).
+        return floor_call("modulus", [x(op.left, exact(op)), x(op.right, exact(op))])
     return _arith("modulus")(x, op)
 
 
@@ -101,6 +106,9 @@ def _divide(x: Exprs, op: Any) -> Json:
 
 
 def _floor_divide(x: Exprs, op: Any) -> Json:
+    if op.left.dtype.is_integer() and op.right.dtype.is_integer() and semantics() == "polars":
+        # Polars's own `//` (`Profile.polars`).
+        return floor_call("divide", [x(op.left, op.dtype), x(op.right, op.dtype)])
     if op.left.dtype.is_integer() and op.right.dtype.is_integer():
         # Floor division in integers, as `sverify.engine` compiles `//`. With
         # the signs apart, it is `(a + 1) / b - 1` for `a < 0 < b`, and
