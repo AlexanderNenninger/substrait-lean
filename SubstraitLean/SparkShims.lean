@@ -1,0 +1,211 @@
+import SubstraitLean.PolarsShims
+
+/-!
+# The reference on Spark: the shims, proved (#739)
+
+The translation from the reference to Spark 4.3.0 is Spark SQL written by
+`sverify.sql.spark` under `SPARK_CONF` (ANSI mode on). Where Spark's value
+differs from the reference's on the reference's non-raising domain, the
+writer writes a shim; where Spark raises or gives its own value only where
+the reference raises (the error side), it writes nothing. This module states
+what Spark does for each, as its facts record it
+(`characterization/spark/facts/`), and proves once, per shim, that the
+shimmed expression gives the reference's value. The lemmas are named as the
+shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`.
+
+**Trusted**: the model of Spark's own functions below (`Spark.bin`,
+`Spark.sortWith`, the `DECIMAL(38,0)` sum), each from its fact.
+
+* `int_sum_decimal` (spark-sum-int): Spark adds a `BIGINT` `SUM` in `BIGINT`
+  and, under ANSI, raises as soon as a partial sum leaves 64 bits, which
+  depends on the order of the rows. The writer sums `DECIMAL(38,0)` values
+  and checks the total: no partial sum of fewer than 10¹⁸ 64-bit values
+  leaves 38 digits, in any order (`Spark.partial_sums_fit`), so the decimal
+  sum is the exact total, the reference's `SUM`.
+* `int_avg_decimal` (spark-avg-int): Spark's `avg` of integers is a double.
+  The writer divides the exact decimal sum by the count with `div`, which
+  truncates: the reference's `AVG` of integers.
+* `null_order` (spark-null-order): Spark puts NULLs first in an ascending
+  key; the writer states the placement on every key.
+* `one_zero` (spark-zero-sign, spark-zero-order): `-0.0` as `0.0` where a
+  result's zero is observed (`Dialect.canon`).
+* Error side: under ANSI, integer `+ - *` and `MIN div -1` raise where the
+  reference raises (spark-int-arith, spark-int-divide); a zero divisor
+  raises; `0 · ∞`, `∞ - ∞` and `sqrt(-1)` are NaN (spark-double-arith,
+  spark-math-domain); `date_add` wraps past 2³¹ days (SP-2). None needs a
+  shim: `Spark.written_faithful`, hence `Rel.spark_sound`, as
+  `Rel.polars_sound` is for Polars.
+-/
+
+namespace Substrait.Spark
+
+/-! ## Aggregates: `SUM` and `AVG` of integers -/
+
+/-- `|x| ≤ 2⁶³` for a 64-bit integer. -/
+theorem natAbs_le_of_inI64 {x : Int} (h : inI64 x = true) : x.natAbs ≤ 2 ^ 63 := by
+  simp only [inI64, between, Bool.and_eq_true, decide_eq_true_eq] at h
+  have hmin : FloatCode.minI64 = -(2 ^ 63) := rfl
+  have hmax : FloatCode.maxI64 = 2 ^ 63 - 1 := rfl
+  omega
+
+/-- A sum of 64-bit integers is at most `n · 2⁶³` in absolute value. -/
+theorem natAbs_sum_le : ∀ vs : List Int, (∀ x ∈ vs, inI64 x = true) →
+    vs.sum.natAbs ≤ vs.length * 2 ^ 63
+  | [], _ => by simp
+  | v :: vs, h => by
+    have hv := natAbs_le_of_inI64 (h v (List.mem_cons_self ..))
+    have ih := natAbs_sum_le vs fun x hx => h x (List.mem_cons_of_mem _ hx)
+    simp only [List.sum_cons, List.length_cons]
+    have := Int.natAbs_add_le v vs.sum
+    rw [Nat.add_mul, Nat.one_mul]
+    omega
+
+/-- **`Spark.partial_sums_fit`**: every sum of some of the values (a partial
+sum, in whatever order the tasks add and merge them, is the sum of a
+sublist) of fewer than 10¹⁸ 64-bit integers fits `DECIMAL(38,0)`. So
+Spark's decimal `SUM` never raises on them and is exact. -/
+theorem partial_sums_fit {vs : List Int} (hv : ∀ x ∈ vs, inI64 x = true)
+    (hn : vs.length < 10 ^ 18) {ws : List Int} (hs : ws.Sublist vs) :
+    ws.sum.natAbs < 10 ^ 38 := by
+  have h1 := natAbs_sum_le ws fun x hx => hv x (hs.subset hx)
+  have h2 := hs.length_le
+  have h3 : ws.length * 2 ^ 63 < 10 ^ 18 * 2 ^ 63 := Nat.mul_lt_mul_of_pos_right (by omega) (by decide)
+  have h4 : (10 : Nat) ^ 18 * 2 ^ 63 < 10 ^ 38 := by decide
+  omega
+
+/-- `int_sum_decimal`: the exact sum (the `DECIMAL(38,0)` one), NULL for no
+values. The range check the writer adds raises where the reference's
+overflow issue does. -/
+def intSumDecimal (vs : List Int) : Value := if vs.length = 0 then .null else .int vs.sum
+
+/-- **`Spark.int_sum_decimal`**: the shimmed `SUM` is the reference's
+(`AggFn.sum`). -/
+theorem int_sum_decimal (vs : List Int) : intSumDecimal vs = AggFn.sum.apply (vs.map .int) :=
+  Polars.sum_empty_null vs
+
+/-- `int_avg_decimal`: the exact sum truncated by the count (Spark's `div`
+truncates, spark-int-divide), NULL for no values. -/
+def intAvgDecimal (vs : List Int) : Value :=
+  if vs.length = 0 then .null else .int (vs.sum.tdiv vs.length)
+
+/-- **`Spark.int_avg_decimal`**: the shimmed `AVG` of integers is the
+reference's (`AggFn.iavg`). -/
+theorem int_avg_decimal (vs : List Int) : intAvgDecimal vs = AggFn.iavg.apply (vs.map .int) := by
+  rw [← Polars.avg_int_declared]
+  unfold intAvgDecimal Polars.avgIntDeclared
+  split
+  · rfl
+  · rename_i h
+    rw [Polars.int_div_trunc _ (by omega)]
+
+/-! ## Sorts and zeros -/
+
+/-- Spark's placement of NULLs for a key as the writer states it: as the key
+states, and last for an `UNSPECIFIED` key (D8). Unstated, Spark puts NULLs
+first in an ascending key and last in a descending one (spark-null-order). -/
+def nullsLast (k : SortKey) : Bool := Polars.nullsLast k
+
+/-- Spark's sort comparator for keys with `NULLS FIRST` or `NULLS LAST`
+written: NULLs as written, the values by `Value.le` (NaN greatest,
+spark-nan-order). -/
+def sortWith (ks : List (SortKey × Bool)) : Row → Row → Bool := Polars.sortWith ks
+
+/-- **`Spark.null_order`**: with each key's placement written, Spark orders
+rows as the reference (`sortLe`). -/
+theorem null_order (ks : List SortKey) : sortWith (ks.map fun k => (k, nullsLast k)) = sortLe ks :=
+  Polars.null_order ks
+
+/-- `one_zero`: `Dialect.canon`, `-0.0` as `0.0`. -/
+def oneZero (c : Int) : Int := Polars.oneZero c
+
+/-- **`Spark.one_zero`**: the shim is `canon` on every code but the negative
+NaN, which Spark keeps (spark-nan-sign: `nan_kind` refines up to `canon`). -/
+theorem one_zero {c : Int} (h : c ≠ FloatCode.negNan) : oneZero c = FloatCode.canon c :=
+  Polars.one_zero h
+
+/-! ## The error side: no shim for a verified plan -/
+
+/-- Spark's `date_add(d, CAST(n AS INT))`: the days added as 32-bit `int`s,
+wrapping past 2³¹ - 1 (SP-2); a count outside `INT` fails the cast (ANSI),
+modelled as NULL. -/
+def wrap32 (x : Int) : Int := (x + 2 ^ 31) % 2 ^ 32 - 2 ^ 31
+
+/-- **Spark as the writer writes it, under ANSI**, on the functions of the
+slice: integer `+ - *` raise past 64 bits (spark-int-arith), integer `div`
+truncates and raises at a zero divisor and `MIN div -1` (spark-int-divide),
+`%` truncates and raises at a zero divisor (spark-int-modulus), doubles are
+IEEE's with NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞` (spark-double-arith), and
+`date_add` wraps at 2³¹ days (spark-date-range). A raise is modelled as NULL:
+the theorem below needs only that it happens where the reference raises.
+Every other function is the reference's. -/
+def bin : BinFn → Value → Value → Value
+  | .add, .int a, .int b => if inI64 (a + b) then .int (a + b) else .null
+  | .sub, .int a, .int b => if inI64 (a - b) then .int (a - b) else .null
+  | .mul, .int a, .int b => if inI64 (a * b) then .int (a * b) else .null
+  | .idiv, .int a, .int b => if b = 0 then .null else if inI64 (a.tdiv b) then .int (a.tdiv b) else .null
+  | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
+  | .dateAdd, .int a, .int b =>
+    if -2 ^ 31 ≤ b ∧ b < 2 ^ 31 then .int (wrap32 (a + b)) else .null
+  | f, .int a, .int b =>
+    if nanCase f a b then .int FloatCode.nan else f.apply (.int a) (.int b)
+  | f, v, w => f.apply v w
+
+def written : Impl := ⟨UnFn.apply, bin⟩
+
+theorem wrap32_of_small {x : Int} (h1 : -2 ^ 31 ≤ x) (h2 : x < 2 ^ 31) : wrap32 x = x := by
+  unfold wrap32; omega
+
+/-- **`Spark.written_faithful`**: Spark under ANSI, as the writer writes it,
+agrees with the reference wherever the reference reports no issue. Its
+raises and its own values elsewhere (NaN, a wrapped date) are on the error
+side, where a verified plan does not go. -/
+theorem written_faithful : written.Faithful := by
+  refine ⟨fun _ _ _ => rfl, fun f v w h => ?_⟩
+  show bin f v w = f.apply v w
+  cases v <;> cases w <;> (try (cases f <;> rfl))
+  rename_i a b
+  have hfloat : bin f (.int a) (.int b) =
+      (if nanCase f a b then .int FloatCode.nan else f.apply (.int a) (.int b)) ∨
+      f = .add ∨ f = .sub ∨ f = .mul ∨ f = .idiv ∨ f = .imod ∨ f = .dateAdd := by
+    cases f <;> simp [bin]
+  rcases hfloat with he | rfl | rfl | rfl | rfl | rfl | rfl
+  · rw [he]
+    have : nanCase f a b = false := by
+      cases hn : nanCase f a b
+      · rfl
+      · exact absurd h (Polars.nanCase_issue hn)
+    simp [this]
+  all_goals simp only [BinFn.issue, wrapIf, rangeIssue] at h
+  · simp only [bin, BinFn.apply]; split at h <;> simp_all
+  · simp only [bin, BinFn.apply]; split at h <;> simp_all
+  · simp only [bin, BinFn.apply]; split at h <;> simp_all
+  · by_cases hb : b = 0 <;> by_cases hi : inI64 (a.tdiv b) = true <;> simp_all [bin, BinFn.apply]
+  · by_cases hb : b = 0 <;> simp_all [bin, BinFn.apply]
+  · split at h
+    · rename_i hr
+      simp only [between, Bool.and_eq_true, decide_eq_true_eq] at hr
+      have h1 : Time.dayMin = -719162 := rfl
+      have h2 : Time.dayMax = 2932896 := rfl
+      have hb : -2 ^ 31 ≤ b ∧ b < 2 ^ 31 := by omega
+      simp only [bin, BinFn.apply, hb, and_self, ite_true]
+      rw [wrap32_of_small (by omega) (by omega)]
+    · simp at h
+
+end Substrait.Spark
+
+namespace Substrait
+
+/-- **A verified plan runs on Spark.** When `Rel.mayIssues` reports nothing
+but assumed issues (whose guards the writer keeps), on every catalog that
+satisfies the preconditions, Spark under ANSI as the writer writes it gives
+`Rel.eval`'s rows. -/
+theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
+    r.evalI Spark.written cat = r.eval cat :=
+  Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Spark.written_faithful
+
+end Substrait

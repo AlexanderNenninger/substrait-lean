@@ -124,6 +124,7 @@ class EngineProfile:
 PROFILES: Mapping[str, EngineProfile] = {
     "duckdb": EngineProfile("duckdb", ("2.0.0",)),
     "polars": EngineProfile("polars", ("2.1.0",)),
+    "spark": EngineProfile("spark", ("4.3.0",)),
 }
 
 #: The translation from the reference to each engine, with what makes it
@@ -135,7 +136,7 @@ TRANSLATIONS: Mapping[str, str] = {
     "datafusion": "sverify's SQL writer, with shims where DataFusion differs from the "
     "reference, tested against the reference",
     "spark": "sverify's Spark SQL writer, with shims where Spark differs from the reference, "
-    "tested against the reference",
+    "proved against Spark's facts (Rel.spark_sound) and tested against the reference",
 }
 
 #: How a route line names a route without a class (#687).
@@ -345,6 +346,10 @@ def installed_version(engine: str) -> str | None:
             import polars
 
             return polars.__version__
+        if engine == "spark":
+            import pyspark
+
+            return pyspark.__version__
     except ImportError:
         return None
     return None
@@ -1335,7 +1340,11 @@ def choose(
         notes.append(w)
     plan = json.loads(report.plan) if report.plan else {}
     depends = report.depends if report.depends is not None else plan_options(plan)
-    notes += check_settings(e, depends=depends)
+    from sverify import _engine_settings
+
+    # A Spark session of the caller's: its own settings.
+    values = None if isinstance(engine, str) else _engine_settings.spark_values(engine)
+    notes += check_settings(e, values, depends=depends)
     source = report.semantics
     det = report.deterministic
 

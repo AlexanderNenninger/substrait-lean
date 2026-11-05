@@ -172,7 +172,8 @@ def provedOrders : List String := ["SEQUENTIAL", "ANY", "PAIRWISE", "SCALED_CONS
 
 /-- The engines `epsilon_by_engine` reports on, with their tables. -/
 def epsEngines : List (String × ProfileTable) :=
-  [("duckdb", Profile.duckdb.table {}), ("polars", Profile.polars.table)]
+  [("duckdb", Profile.duckdb.table {}), ("polars", Profile.polars.table),
+   ("spark", Profile.spark.table)]
 
 /-- Does every engine's `sum_order` give one of the proved orders? -/
 def ordersProved : Bool :=
