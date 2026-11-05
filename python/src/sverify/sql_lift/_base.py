@@ -399,9 +399,8 @@ class E:
     `midnight`: DuckDB types it a TIMESTAMP, but it is always a date at
     midnight (`DATE + INTERVAL 1 DAY`, `date_trunc` of a DATE), so the plan
     holds the date. It compares, truncates and has date parts exactly as
-    the timestamp; only where a timestamp is needed (an output column, a
-    comparison with a timestamp column) is it refused, for Lean has no cast
-    of a DATE column to a timestamp yet (#240)."""
+    the timestamp; where a timestamp is needed (an output column) it is cast
+    to one (`UnFn.dateTime`, #807)."""
 
     json: Json
     type: Any
@@ -653,9 +652,7 @@ class _Lift:
 
         outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
         names = [e.alias_or_name for e in node.expressions]
-        outs = [
-            self.timestamp_of(e, n) if e.midnight else e for e, n in zip(outs, names, strict=True)
-        ]
+        outs = [self.timestamp_of(e) if e.midnight else e for e in outs]
         # Sort keys that are not output columns are computed after them, and
         # dropped after the sort.
         keys: list[Json] = []
@@ -792,16 +789,11 @@ class _Lift:
             rel = emit_rel(rel, list(range(n)))
         return rel, cols
 
-    def timestamp_of(self, e: E, name: str) -> E:
+    def timestamp_of(self, e: E) -> E:
         """An output column DuckDB types a TIMESTAMP that the plan holds as a
-        date at midnight: a constant becomes the timestamp; a column needs a
-        cast Lean lacks."""
-        if e.constant:
-            return self.to(E(e.json, e.type, e.value), dt.timestamp(scale=6))
-        raise Unsupported(
-            f"output column {name} is a TIMESTAMP in DuckDB (a DATE at midnight), and sverify "
-            "has no cast of a DATE column to a timestamp yet (#240)"
-        )
+        date at midnight: the timestamp, a constant's or the cast's (#807)."""
+        value = e.value if e.constant else _NO_VALUE
+        return self.to(E(e.json, e.type, value), dt.timestamp(scale=6))
 
     def output_index(
         self, key: sge.Expression, names: list[str], outs: list[sge.Expression]
@@ -1207,10 +1199,7 @@ class _Lift:
                 raise Unsupported(f"{_shown(node)} takes one argument")
             a = self.expr(arg, scope, bound)
             if a.midnight:
-                raise Unsupported(
-                    f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
-                    "TIMESTAMP is not supported yet (#240)"
-                )
+                a = self.timestamp_of(a)  # DuckDB's TIMESTAMP (#807)
             args = [a]
             t = a.type
             if agg_rule is not None:
@@ -1301,10 +1290,7 @@ class _Lift:
             raise Unsupported(f"{_shown(node)} needs an argument")
         a = self.expr(arg, scope, bound)
         if a.midnight:
-            raise Unsupported(
-                f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
-                "TIMESTAMP is not supported yet (#240)"
-            )
+            a = self.timestamp_of(a)  # DuckDB's TIMESTAMP (#807)
         t = a.type
         args = [a.json]
         sorts: list[Json] = []
@@ -1448,11 +1434,7 @@ class _Lift:
                 return E(literal(v, t), t, v)
         if e.type.is_null():
             return E(literal(None, t), t, None)
-        if e.type.is_date() and t.is_timestamp():
-            raise Unsupported(
-                "a DATE column as a TIMESTAMP is not supported yet: sverify has no cast of a "
-                "DATE column to a timestamp (#240)"
-            )
+        # A DATE as a TIMESTAMP is its midnight (`UnFn.dateTime`, #807).
         return E(cast_json(e.json, t), t)
 
     def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:

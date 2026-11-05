@@ -458,6 +458,11 @@ class Dialect:
         represents (the years -262143 to 262142)."""
         raise Unsupported(f"{self.name}: date_part is not implemented")
 
+    def day_part(self, part: str, d: str) -> str:
+        """`UnFn.dayPart`: the part of a DATE's midnight, for a date chrono
+        represents (the caller checks)."""
+        return self.date_part(part, self.date_to_time(d))
+
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`: rounded down to the unit, weeks from Monday."""
         raise Unsupported(f"{self.name}: date_trunc is not implemented")
@@ -491,6 +496,18 @@ class Dialect:
     def as_time(self, us: str) -> str:
         """`UnFn.asTime`: the timestamp `us` microseconds after 1970-01-01."""
         raise Unsupported(f"{self.name}: timestamps from microseconds are not implemented")
+
+    def date_time(self, d: str) -> str:
+        """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
+        raise Unsupported(
+            f"a DATE as a TIMESTAMP is not yet supported on {self.name}; " + DUCKDB_ONLY
+        )
+
+    def epoch_us(self, ts: str) -> str:
+        """`UnFn.epochUs`: a timestamp's microseconds since 1970-01-01 (#809)."""
+        raise Unsupported(
+            f"a timestamp's microseconds are not yet supported on {self.name}; " + DUCKDB_ONLY
+        )
 
     def zero_pad(self, n: str, width: int) -> str:
         """The integer `n ≥ 0` in decimal, padded with zeros to `width` digits
@@ -925,7 +942,7 @@ class Field:
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
     "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
-    "black_box",
+    "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
@@ -946,7 +963,7 @@ StringBinOp = Literal[
 #: Dates and timestamps (`temporal.py`).
 TemporalUnOp = Literal[
     "date_part", "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day",
-    "as_time", "strftime", "bucket", "time_add", "time_trunc",
+    "as_time", "strftime", "bucket", "time_add", "time_trunc", "date_time", "epoch_us",
 ]  # fmt: skip
 TemporalBinOp = Literal["date_add", "date_diff"]
 
@@ -1468,6 +1485,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
             k = _bb_kind(n)
             return None if k == "other" else k
+        case Un(op="raise"):
+            return None  # the kind of where it stands
         case Un(op=op) if op in UN_KINDS:
             return UN_KINDS[op]
         case Un():
@@ -2306,6 +2325,11 @@ class _Parser:
                 # Microseconds since 1970-01-01 (arrow's cast of an integer).
                 if target == "time" and k == "int":
                     return Un("as_time", e)
+                # A DATE's midnight (#807), a timestamp's microseconds (#809).
+                if target == "time" and k == "date":
+                    return Un("date_time", e)
+                if target == "int" and k == "time" and _int_bits(_req(v, "type")) == 64:
+                    return Un("epoch_us", e)
                 # Fails where the value does not fit (`UnFn.narrow`).
                 if target == "int" and k == "int":
                     bits = _int_bits(_req(v, "type"))
@@ -3215,6 +3239,9 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("eq", a, b)
         case "not_equal", [a, b]:
             return Un("not", Bin("eq", a, b))
+        case "sverify_raise", [a, Lit(value=str(msg))]:
+            # `UnFn.raise`: a guard of the lift's (`make_date`, #809).
+            return Un("raise", a, param=msg)
         case "lt", [a, b]:
             return Bin("lt", a, b)
         case "gt", [a, b]:
@@ -4235,6 +4262,8 @@ class _Writer:
                 return d.decimal_to_float(go(a, kind(a)))
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
+            case Un(op="raise", arg=a, param=msg):
+                return d.raise_(msg, go(a, kind(a)), ctx or "int")
             case Un(op="is_null", arg=a):
                 return d.is_null(go(a))
             case Un(op="neg", arg=a):
