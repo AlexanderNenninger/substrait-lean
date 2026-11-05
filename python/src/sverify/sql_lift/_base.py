@@ -9,10 +9,11 @@ from __future__ import annotations
 import copy
 import dataclasses
 import datetime as dt_
+import functools
 import re
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, localcontext
-from typing import Any
+from typing import Any, cast
 
 import ibis
 import ibis.expr.datatypes as dt
@@ -20,7 +21,6 @@ import sqlglot as sg
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 from sqlglot.errors import ErrorLevel
-from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
@@ -273,7 +273,10 @@ def _generated_avg(lf: _Lift, a: E) -> Measures | None:
 # Parsing and typing
 
 
+@functools.lru_cache(maxsize=1024)
 def _sql_type(dtype: Any) -> str:
+    """The DuckDB SQL type SQLGlot resolves an Ibis type's columns with,
+    once per type (it was a tenth of each lift's time)."""
     return DuckDBType.from_ibis(dtype).sql(DIALECT)
 
 
@@ -314,8 +317,9 @@ def expand_table_shorthand(query: str) -> str:
 
 def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
     """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
-    every name resolved (`qualify`) and typed (`annotate_types`) against the
-    tables `schemas` (Ibis schemas by table name).
+    every name resolved (`qualify`) against the tables `schemas` (Ibis
+    schemas by table name). SQLGlot's typing is not run: the lift types every
+    expression by the profile.
 
     Raises:
         Unsupported: SQLGlot cannot parse the query, or a name in it is not
@@ -350,7 +354,6 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             validate_qualify_columns=True,
             quote_identifiers=False,
         )
-        tree = annotate_types(tree, schema=catalog, dialect=DIALECT)
     except sg.errors.OptimizeError as e:
         raise Unsupported(f"cannot resolve the SQL's names: {str(e).splitlines()[0]}") from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
@@ -594,6 +597,9 @@ class _Lift:
         # subquery is in (which it may not read: no correlated subqueries).
         self.ctes: dict[str, sge.Expression] = {}
         self.outer: list[list[Column]] = []
+        # The overflow guard of each window whose RANGE frame bounds DuckDB
+        # computes in its integer key's type (`_bound_guard`).
+        self.guards: dict[int, Json] = {}
 
     # -- relations ---------------------------------------------------------
 
@@ -638,7 +644,7 @@ class _Lift:
         groupings = _groupings(node, parts)
         bound: Bound = Bound()
         if group is not None or aggs:
-            rel, scope, bound = self.aggregate(rel, scope, group, aggs, groupings)
+            rel, scope, bound = self.aggregate(rel, scope, group, aggs, groupings, node.expressions)
             if (having := node.args.get("having")) is not None:
                 cond = self.condition(having.this, scope, bound)
                 rel = {"filter": {"input": rel, "condition": cond}}
@@ -837,7 +843,11 @@ class _Lift:
             if method := join.args.get("method"):
                 # Not the inner join of its ON: an ASOF join keeps each left
                 # row's latest match, a POSITIONAL join pairs rows by position.
-                raise Unsupported(f"{str(method).upper()} JOIN is not supported yet")
+                rule = JOIN_METHODS.get(str(method).upper())
+                if rule is None:
+                    raise Unsupported(f"{str(method).upper()} JOIN is not supported yet")
+                rel, scope = rule(self, rel, scope, join)
+                continue
             right, cols = self.source(join.this)
             side, kind = (join.side or "").upper(), (join.kind or "").upper()
             on = join.args.get("on")
@@ -885,6 +895,8 @@ class _Lift:
         if isinstance(node, sge.Subquery):
             rel, cols = self.query(node.this)
             return rel, [Column(alias, c.name, c.type) for c in cols]
+        if (rule := SOURCES.get(type(node))) is not None:
+            return rule(self, node)
         raise Unsupported(f"FROM {_shown(node)} is not supported")
 
     def windows(
@@ -917,7 +929,20 @@ class _Lift:
             for _, t in js:
                 refs.append(field_ref(len(cols)))
                 cols.append(Column(None, "", t))
-            bound[w] = value(refs)
+            v = value(refs)
+            if (guard := self.guards.get(id(w))) is not None:
+                # DuckDB raises where a frame bound leaves the key's type.
+                # The value in THEN, whose kind the CASE has (`Expr.kind`);
+                # a NULL key computes no bound.
+                msg = literal("Overflow in a RANGE frame bound", dt.string)
+                fail = _fn("sverify_raise", [guard, msg], v.type)
+                ok = _fn(
+                    "or",
+                    [_fn("not", [guard], dt.boolean), _fn("is_null", [guard], dt.boolean)],
+                    dt.boolean,
+                )
+                v = E(if_then([(ok, v.json)], fail), v.type)
+            bound[w] = v
         return rel, cols, bound
 
     def window(
@@ -1025,22 +1050,28 @@ class _Lift:
         partitions = [column(self.expr(p, scope, bound)) for p in w.args.get("partition_by") or []]
         order = w.args.get("order")
         sorts = []
+        key_types = []
         for o in order.expressions if order is not None else []:
             desc = bool(o.args.get("desc"))
             nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
+            k = self.expr(o.this, scope, bound)
+            key_types.append(k.type)
             sorts.append(
                 {
-                    "expr": column(self.expr(o.this, scope, bound)),
+                    "expr": column(k),
                     "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}",
                 }
             )
+        fr = frame or _frame(w, bool(sorts))
         fn = {
             "functionReference": anchor(name) if isinstance(name, str) else name,
             "partitions": partitions,
             "sorts": sorts,
             "arguments": [{"value": a} for a in args],
-            **(frame or _frame(w, bool(sorts))),
+            **fr,
         }
+        if len(key_types) == 1 and (guard := _bound_guard(fr, sorts[0], key_types[0])):
+            self.guards[id(w)] = guard
         return {"windowFunction": fn}
 
     def ntile(
@@ -1098,11 +1129,12 @@ class _Lift:
         group: sge.Group | None,
         aggs: list[sge.Expression],
         groupings: list[sge.Grouping],
+        outputs: Sequence[sge.Expression] = (),
     ) -> tuple[Json, list[Column], Bound]:
         """The aggregate relation, its columns, and the expressions that are
         its columns (each grouping key, each aggregate and each
         `GROUPING(…)`)."""
-        keys, sets = _grouping_sets(group)
+        keys, sets = _grouping_sets(group, outputs)
         groups = [self.expr(k, scope) for k in keys]
         measures = [self.measure(a, scope) for a in aggs]
         parts = [p for ms, _ in measures for p in ms]
@@ -1354,6 +1386,9 @@ class _Lift:
         elif order is not None:
             raise Unsupported(f"{_shown(node)}: ORDER BY in {name} is not supported")
         if name in ("arg_min", "arg_max"):
+            if node.args.get("count") is not None:
+                # `arg_max(x, y, n)`: a list of the `n` best.
+                raise Unsupported(f"{_shown(node)}: {name} of the n best is not supported yet")
             if distinct:
                 raise Unsupported(f"{_shown(node)}: DISTINCT is not supported")
             by = self.expr(node.expression, scope, bound).json
@@ -1492,6 +1527,14 @@ RULES: dict[type, Rule] = {}
 #: Rewrites of the parsed tree, before its functions are checked: the black
 #: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
 PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+#: The relations in FROM of other node types (`VALUES`), each area's: the
+#: relation and its columns, `rule(lf, node)`.
+SOURCES: dict[type, Callable[[_Lift, Any], tuple[Json, list[Column]]]] = {}
+
+#: The joins with a method (`ASOF`), by the method: the relation joined with
+#: `join`'s right side and its columns, `rule(lf, rel, scope, join)`.
+JOIN_METHODS: dict[str, Callable[[_Lift, Json, list[Column], Any], tuple[Json, list[Column]]]] = {}
 
 #: The aggregates of nodes of their own (the black boxes', #325), each also in
 #: `_AGGREGATES`: the Substrait function and output type of a measure, from
@@ -1650,6 +1693,41 @@ def _frame(w: sge.Window, ordered: bool) -> Json:
     }
 
 
+def _bound_guard(fr: Json, key: Json, t: Any) -> Json | None:
+    """Where DuckDB raises computing a RANGE frame's bounds: it adds an
+    offset to (subtracts it from) an integer key in the key's type, and a
+    bound that leaves the type is an overflow (`sql_export/range_frames.test`).
+    The condition on the key (a column) that a row's bound overflows, or None
+    for a frame without integer offsets."""
+    if fr.get("boundsType") != "BOUNDS_TYPE_RANGE" or not t.is_integer():
+        return None
+    bits = t.nbytes * 8
+    lo, hi = -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
+    desc = "DESC" in key["direction"]
+    k = key["expr"]
+    conds = []
+    for b in (fr["lowerBound"], fr["upperBound"]):
+        side = "preceding" if "preceding" in b else "following" if "following" in b else None
+        if side is None:
+            continue
+        n = int(b[side]["offset"])
+        # ASC: `PRECEDING` subtracts, `FOLLOWING` adds; DESC the other way.
+        if (side == "preceding") != desc:
+            edge, op = lo + n, "lt"
+        else:
+            edge, op = hi - n, "gt"
+        if lo <= edge <= hi:
+            conds.append(_fn(op, [k, literal(edge, t)], dt.boolean))
+        else:
+            conds.append(_fn("is_not_null", [k], dt.boolean))
+    if not conds:
+        return None
+    out = conds[0]
+    for c in conds[1:]:
+        out = _fn("or", [out, c], dt.boolean)
+    return out
+
+
 def _windows(nodes: list[sge.Expression | None]) -> list[sge.Window]:
     """The window functions in `nodes`, each once, in order; not those of
     subqueries."""
@@ -1722,13 +1800,25 @@ def _groupings(select: sge.Select, nodes: list[sge.Expression | None]) -> list[s
     return found
 
 
-def _grouping_sets(group: sge.Group | None) -> tuple[list[sge.Expression], list[list[int]]]:
+def _grouping_sets(
+    group: sge.Group | None, outputs: Sequence[sge.Expression] = ()
+) -> tuple[list[sge.Expression], list[list[int]]]:
     """GROUP BY's keys, each once, and its grouping sets, as indices into
     them: one set for a plain GROUP BY; ROLLUP, CUBE and GROUPING SETS give
-    several, and several of those listed give their cross product."""
+    several, and several of those listed give their cross product. A key
+    that is an integer constant is a position in the select list `outputs`,
+    as DuckDB reads it; `qualify` writes the alias of a constant so
+    (`GROUPING SETS ((k), ())` with `7 AS k` is `GROUPING SETS ((1), ())`)."""
     keys: list[sge.Expression] = []
 
     def index(e: sge.Expression) -> int:
+        if (
+            isinstance(e, sge.Literal)
+            and not e.is_string
+            and e.this.isdigit()
+            and 1 <= int(e.this) <= len(outputs)
+        ):
+            e = cast(sge.Expression, outputs[int(e.this) - 1].unalias())
         for i, k in enumerate(keys):
             if k == e:
                 return i

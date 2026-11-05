@@ -100,13 +100,13 @@ is what the probe gives.
 | CTEs and uncorrelated subqueries | in | covered | catalogue: cte 3, in_subquery 2, scalar_subquery 2; dbt models are CTE chains |  |
 | set operations | in | covered | catalogue: union_all 3, intersect_except; dbt_utils.union_relations |  |
 | GROUPING SETS and ROLLUP | in | covered | catalogue: grouping_sets 2 (TPC-DS) |  |
-| VALUES in FROM | in | — | dbt mapping tables; catalogue values (Ibis memtables); replay ~80 | [#803](https://github.com/AlexanderNenninger/substrait-lean/issues/803) |
+| VALUES in FROM | in | covered | dbt mapping tables; catalogue values (Ibis memtables); replay ~80 | [#803](https://github.com/AlexanderNenninger/substrait-lean/issues/803) |
 | correlated EXISTS and NOT EXISTS | in | — | replay 1,340 (all correlated subqueries); dbt anti-joins for new rows | [#345](https://github.com/AlexanderNenninger/substrait-lean/issues/345) |
 | DISTINCT ON | in | — | dedup pattern ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)); catalogue dedup_latest 3; replay 64 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | GROUP BY ALL and ORDER BY ALL | in | — | DuckDB style SQL; replay 124 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | range() and generate_series() with constant bounds | in | — | catalogue dbt-generate-date-spine; dbt_utils.date_spine; gap filling ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749)); replay 965 | [#321](https://github.com/AlexanderNenninger/substrait-lean/issues/321) |
-| UNPIVOT | in | — | catalogue dbt-unpivot-longer, unpivot 2; Eurostat's wide tables ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); dbt_utils.unpivot | [#804](https://github.com/AlexanderNenninger/substrait-lean/issues/804) |
-| ASOF JOIN | in | — | catalogue asof_join 2 (through sverify.asof_join); time-weighted pattern ([#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)); replay 105 | [#805](https://github.com/AlexanderNenninger/substrait-lean/issues/805) |
+| UNPIVOT | in | covered | catalogue dbt-unpivot-longer, unpivot 2; Eurostat's wide tables ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); dbt_utils.unpivot | [#804](https://github.com/AlexanderNenninger/substrait-lean/issues/804) |
+| ASOF JOIN | in | covered | catalogue asof_join 2 (through sverify.asof_join); time-weighted pattern ([#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)); replay 105 | [#805](https://github.com/AlexanderNenninger/substrait-lean/issues/805) |
 | correlated scalar subqueries, ANY and ALL | skipped | — | replay 1,340 with EXISTS; Ibis correlated scalar subquery | [#813](https://github.com/AlexanderNenninger/substrait-lean/issues/813) |
 | WITH RECURSIVE | skipped | — | catalogue dbt-org-hierarchy; dbt shop org_depth; replay 243 | [#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320) |
 | SAMPLE and POSITIONAL JOIN | skipped | — | replay 145; Ibis sample |  |
