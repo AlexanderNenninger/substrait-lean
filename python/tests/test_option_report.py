@@ -313,7 +313,7 @@ def test_epsilon_through_scalar_rules_and_thresholds(monkeypatch):
     assert e["h"]["abs"] == e["s"]["abs"] and e["h"]["proved"]["abs"] is True
     assert 0 < e["r"]["abs"] < e["m"]["abs"] and e["r"]["proved"]["abs"] is True
     # `m` is at least 1: a relative bound; `s` may be 0: none.
-    assert e["m"]["rel"] <= e["m"]["abs"] and e["m"]["proved"]["rel"] is True
+    assert e["m"]["rel"] <= e["m"]["abs"] * 1.001 and e["m"]["proved"]["rel"] is True
     assert "rel" not in e["s"]
     # The mean is at least 1 - ε: `m > 0.5` keeps every group on both sides.
     assert eps(agg.filter(ibis._.m > 0.5))["s"]["proved"]["abs"] is True

@@ -261,7 +261,7 @@ theorem rule_exp {a a' εa ha r e : ℝ} (hεa : |a' - a| ≤ εa) (hha : a ≤ 
 engines (`NativeLink.sqrt`). -/
 
 /-- **`abs`**: `||a'| − |a|| ≤ εa`. -/
-theorem rule_abs {a a' εa : ℝ} (h : |a' - a| ≤ εa) : | |a'| - |a| | ≤ εa :=
+theorem rule_abs {a a' εa : ℝ} (h : |a' - a| ≤ εa) : abs (abs a' - abs a) ≤ εa :=
   le_trans (abs_abs_sub_abs_le_abs_sub a' a) h
 
 /-- **A step function** whose value lies in `[x − c₁, x + c₂]`: within
