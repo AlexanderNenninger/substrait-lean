@@ -11,7 +11,8 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engines import ENGINES, create_table, table_rows
+from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
+from sverify.engines import create_table, table_rows
 from sverify.incremental import IncrementalView
 
 ERR = -9999.0

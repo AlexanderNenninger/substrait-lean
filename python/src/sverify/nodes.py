@@ -186,18 +186,6 @@ class Node:
         return self._plan
 
     @property
-    def plan(self) -> str:
-        """Deprecated: `internal_plan`, sverify's own form of the plan
-        (`Report.to_substrait()` is the portable one)."""
-        warnings.warn(
-            "Node.plan is deprecated; read node.internal_plan (sverify's own form of the "
-            "plan), or report.to_substrait() for a portable Substrait plan",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.internal_plan
-
-    @property
     def report(self) -> Report | None:
         """The `Report` of the contract that made the node's result: the
         last transform's proof over its inputs, where a contracted node
@@ -426,12 +414,11 @@ class Node:
             r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
             ```
         """
-        from sverify.routes import checked_route
 
         return group(self).refresh(
             engine=engine,
             audit=audit,
-            route=checked_route(route),
+            route=route,
             unverified=unverified,
             reproducible=reproducible,
         )
@@ -1027,7 +1014,6 @@ class Group:
                 nothing was refreshed.
         """
         from sverify._hooks import PLANNED, is_collecting
-        from sverify.routes import checked_route
 
         if is_collecting():
             raise RuntimeError(
@@ -1037,7 +1023,6 @@ class Group:
             )
         if engine is None:
             engine = "duckdb"
-        route = checked_route(route)
         order = self._order()
         chosen = _routes(order, engine, route, reproducible, unverified)
         if (planned := PLANNED.get()) is not None:

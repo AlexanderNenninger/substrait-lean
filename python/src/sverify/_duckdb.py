@@ -39,12 +39,13 @@ _FORGET: list[Callable[[], None]] = []
 def limits() -> dict[str, bool | float | int | list[str] | str]:
     """The settings `SVERIFY_MEMORY_LIMIT` asks of the database (#744,
     #783): DuckDB's `memory_limit` (`"2GB"`, `"512MB"`), and a directory to
-    spill to beyond it, `SVERIFY_SPILL_DIRECTORY` or one under the system's
-    temporary directory. Empty when the variable is unset or empty."""
+    spill to beyond it (DuckDB's `temp_directory`), `SVERIFY_TEMP_DIRECTORY`
+    or one under the system's temporary directory. Empty when the variable
+    is unset or empty."""
     limit = os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip()
     if not limit:
         return {}
-    spill = os.environ.get("SVERIFY_SPILL_DIRECTORY") or os.path.join(
+    spill = os.environ.get("SVERIFY_TEMP_DIRECTORY") or os.path.join(
         tempfile.gettempdir(), f"sverify-spill-{os.getpid()}"
     )
     return {"memory_limit": limit, "temp_directory": spill}

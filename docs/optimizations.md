@@ -108,7 +108,7 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `to_sql(plan, dialect, unchecked=report.unchecked)` drops the checks of the
 expressions `unchecked` lists and keeps the others, and every aggregate's.
 The writer checks that the tree's nodes are the plan's, so a report on
-another plan raises `Unsupported`. In `SELECT a // b, a * b` with
+another plan raises `UnsupportedError`. In `SELECT a // b, a * b` with
 `0 ≤ a ≤ 1000` and `b ≥ 1`, the division loses its `CASE` and the product
 keeps its overflow check (`test_per_expression_guards` in
 `python/tests/test_guards.py`). The Polars engine still drops all of its

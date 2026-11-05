@@ -227,7 +227,7 @@ these are hand-written and tested, not proved:
 
 A translation compensates for its engine where it can (an exact `SUM`
 through `DECIMAL(38,0)`, `canonical` doubles, explicit `NULLS FIRST/LAST`,
-guards that raise) and refuses the plan where it cannot (`Unsupported`).
+guards that raise) and refuses the plan where it cannot (`UnsupportedError`).
 "Raise rather than differ" is the standard each one is tested against:
 `Rel.eval` (`lean_rows`), another engine's rows, or a raised error. Guard
 elimination (`SubstraitLean/Guards.lean`) is the part already proved in Lean.

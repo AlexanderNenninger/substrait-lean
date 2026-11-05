@@ -378,7 +378,7 @@ def test_a_duckdb_memory_breach_exits_3_and_writes_nothing(tmp_path):
     sink = tmp_path / "lake" / "ids"
     path = tmp_path / "big.py"
     path.write_text(MEMORY.replace("SINK", repr(str(sink))))
-    env = {**os.environ, "SVERIFY_TIMEOUT": "0", "SVERIFY_SPILL_DIRECTORY": str(tmp_path / "spill")}
+    env = {**os.environ, "SVERIFY_TIMEOUT": "0", "SVERIFY_TEMP_DIRECTORY": str(tmp_path / "spill")}
     argv = [sys.executable, "-m", "sverify.cli", "refresh", f"{path}:stored", "--json"]
     done = subprocess.run(
         [*argv, "--memory-limit", "20MB"], capture_output=True, text=True, env=env

@@ -22,7 +22,7 @@ The cases live in `sverify_dev.coverage_cases`, one module per area (the rows of
 the README table), each with that area's entries of these tables, keyed by
 case label:
 
-* `REFUSED`: verified cases an engine refuses (`Unsupported`), with a pattern
+* `REFUSED`: verified cases an engine refuses (`UnsupportedError`), with a pattern
   of the reason (`coverage_cases._common` explains the shared ones);
 * `TIE_FREE`: of those, the cases Snowflake and Spark run when the caller
   promises no ties;

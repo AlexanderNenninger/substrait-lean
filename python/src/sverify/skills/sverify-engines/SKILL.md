@@ -5,7 +5,7 @@ description: >
   write their plans as DuckDB, Snowflake or Spark SQL with the same
   semantics. Use when a user wants the same result on several engines, moves
   a job between engines or to a warehouse, gets
-  `sverify.engines.Unsupported` and wants to know why, needs
+  `sverify.engines.UnsupportedError` and wants to know why, needs
   `deterministic=True`, or aligns two time series with `asof_join`.
 ---
 
@@ -63,7 +63,7 @@ rows in those libraries.
 writes it as SQL whose meaning is the model's:
 
 ```python
-from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, Unsupported, to_sql
+from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, UnsupportedError, to_sql
 
 plan = json.loads(node.internal_plan)
 for dialect in (DUCKDB, SNOWFLAKE, SPARK):
@@ -76,7 +76,7 @@ configured with `SPARK_CONF`.
 
 ## Why a plan is refused
 
-`to_sql` and the engines raise `Unsupported` (with the reason) instead of
+`to_sql` and the engines raise `UnsupportedError` (with the reason) instead of
 answering differently from the model:
 
 ```python
@@ -89,7 +89,7 @@ def numbered(orders):
 plan = json.loads(numbered(orders).internal_plan)
 try:
     to_sql(plan, SNOWFLAKE)
-except Unsupported as e:
+except UnsupportedError as e:
     print(str(e).split(",")[0])
 # Snowflake tables have no row order
 print(to_sql(plan, SNOWFLAKE, deterministic=True)[:6])

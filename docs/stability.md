@@ -96,6 +96,10 @@ documents. Modules and names that start with an underscore, the maintainer
 tooling `sverify_dev`, and the printed text of a report (`str(report)`) are
 outside it; tools read the report through its attributes or its JSON.
 
+The engines in the promise are DuckDB, Polars and Spark
+(`sverify.engines.Engine`). DataFusion (`engine="datafusion"`, the
+`datafusion` extra, `run_substrait_json`) is experimental and outside it.
+
 A minor release may break the public API only when the break is:
 
 - loud: a call that used the old form raises, or warns with a

@@ -475,7 +475,7 @@ def _(mo):
     before the model runs. The one that would have failed in production,
     `not_null(city)` after a left join, failed at definition time instead.
     The preconditions came from Delta metadata where possible, and the
-    checked plan gives the same rows on DuckDB, Polars and DataFusion, and
+    checked plan gives the same rows on DuckDB and Polars, and
     can be written as Snowflake or Spark SQL, where the same SQL text would
     not. The model is outside the incremental fragment, so it runs as a node
     that is recomputed and diffed, with its sink merged exactly once per

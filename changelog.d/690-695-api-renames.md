@@ -1,8 +1,9 @@
 ### Breaking: fewer knobs for "not proved", one name per concept (#690, #695)
 
-From the API critique (#686). Every renamed or removed keyword below still
-works in 0.6 with a `DeprecationWarning` that names its replacement, and goes
-in 0.7. The names deprecated before 0.5 are gone.
+From the API critique (#686). The old names below are removed, by the API
+review before 1.0 (`api-review/PROPOSAL.md`, section M): a call that uses one
+raises a `TypeError` or an `AttributeError`. The names deprecated before 0.5
+are gone too.
 
 Not proved (#690):
 
@@ -10,7 +11,7 @@ Not proved (#690):
   `@sv.transform`: nothing is inferred or assumed, so a `SUM` that may leave
   64 bits, or a double operation that may overflow to ±inf, is an error.
   `on_inferred` takes `"error"` (the default), `"warn"`, `"silent"` and
-  `"off"`. `infer=` warns.
+  `"off"`. `infer=` and `ContractedTransform.infer` are removed.
 - `@sv.transform(on_unproved="warn")` now lets the node's refreshes run
   unverified, each with an `UnverifiedRunWarning`, where it used to need
   `refresh(unverified=True)` as well.
@@ -28,14 +29,13 @@ Not proved (#690):
   `sverify.testing.Connection.datafusion` (deprecated since 0.4).
 - `node.plan` is `node.internal_plan`: sverify's own form of the plan, with
   its private extension URNs. `Report.to_substrait()` is the portable one.
-  `node.plan` warns.
+  `node.plan` is removed.
 
 Names (#695):
 
 - The route `"reference"` is `"translated"`: a plan verified under
   `semantics="reference"` runs through the translation to the engine.
-  `route="reference"` warns and takes `"translated"`; `Route.kind` is
-  `"translated"`.
+  `route="reference"` is refused; `Route.kind` is `"translated"`.
 - A route's line names the route only where it is not `translated`:
   `exact; transfer: verified under semantics="duckdb"; …`.
 - Printed output says `semantics="duckdb"` where it said `Profile.duckdb`.
@@ -52,7 +52,7 @@ Names (#695):
 - `report.equivalence` is the equivalence the result is proved up to, by the
   name of `sv.equivalent`; `report.observation` stays.
 - `report.needed_text` is a property; `Report.needs_text()` and
-  `needs_lines()` warn.
+  `needs_lines()` are removed.
 - A refresh report of a stored node is headed by the transform and the sink,
   `daily_revenue → daily:`, where the names differ.
 - `summary()` reads `changes from orders v1→v2 (change feed)` where it read

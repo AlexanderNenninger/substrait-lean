@@ -193,7 +193,7 @@ print(stored.refresh())  # the Change Data Feed v1→v3, the proved delta plans,
 assert stored.to_arrow().to_pylist() == [
     {"first_txn": 3, "duplicate_txn": 4, "merchant": "books", "amount_cents": 2599}]
 
-for engine in ENGINES:  # the same rows on DuckDB, Polars and DataFusion
+for engine in ENGINES:  # the same rows on DuckDB and Polars
     again = duplicate_payments(transactions)
     again.refresh(engine=engine)
     assert again.to_arrow().to_pylist() == stored.to_arrow().to_pylist()
@@ -297,7 +297,7 @@ postcondition that doesn't follow is refused, with what *is* known:
 def plus_one(orders):
     return orders.select(orders.id, total=orders.amount + 1)
 
-from sverify.errors import CompositionError, NotIncremental, VerificationError
+from sverify.errors import CompositionError, NotIncrementalError, VerificationError
 
 try:
     plus_one(orders)
@@ -538,7 +538,7 @@ runtime error it rules out. Each postcondition's
 code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …).
 
 `on_inferred` takes four values: `"error"` (the default) needs the bound in
-`requires`, `"warn"` assumes it with an `InferredPreconditionWarning`,
+`requires`, `"warn"` assumes it with an `InferredWarning`,
 `"silent"` assumes it without one, and `"off"` infers nothing:
 
 ```python
@@ -813,7 +813,7 @@ lands, the document says `"format": "provisional"`. The exit codes are:
 |------|---------|
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh |
 | 1 | not proved |
-| 2 | refused: a construct outside sverify's model (`sverify.errors.Unsupported`) |
+| 2 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 3 | budget exceeded: time or memory |
 | 4 | error |
 
@@ -821,10 +821,27 @@ lands, the document says `"format": "provisional"`. The exit codes are:
 proof, planning and checking. A refresh moving data has no time limit:
 `--memory-limit` (or `SVERIFY_MEMORY_LIMIT`, such as `2GB`) bounds it
 instead, as DuckDB's `memory_limit`, past which DuckDB spills to a
-temporary directory (`SVERIFY_SPILL_DIRECTORY`). Past either budget the
+temporary directory (`SVERIFY_TEMP_DIRECTORY`). Past either budget the
 call stops with code 3 before any sink commits, and reports what was
 proved before it ([test_cli.py](../python/tests/test_cli.py)).
 `sverify.cli.discover(path)` does what `check` does from Python.
+
+### Environment variables
+
+Each variable sets what a flag or a keyword sets; a flag or a keyword
+given wins over the variable, and the variable over the default.
+
+| Variable | Flag | Python | Default | Sets |
+|---|---|---|---|---|
+| `SVERIFY_CHECKER` | | | the bundled checker | the path to a `substrait-check` binary, such as your own `lake build` |
+| `SVERIFY_COUNTEREXAMPLES` | | `verify(counterexamples=)` | 200 | how many inputs are tried per unproved postcondition; 0 skips the search |
+| `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
+| `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |
+| `SVERIFY_TEMP_DIRECTORY` | | | a directory under the system's temporary one | DuckDB's `temp_directory`, where it spills past the memory limit |
+| `SVERIFY_PREBUILT_CHECKER` | | | | for contributors: an editable install links this checker and skips `lake build` |
+
+`SVERIFY_CHECK` and `SVERIFY_PREBUILT_CHECK`, the checker's names before
+1.0, are read too, the first with a `DeprecationWarning`.
 
 ### Composing contracts
 
@@ -1325,7 +1342,7 @@ create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "a
 create_table(con, "customers", ibis.schema({"name": "string", "city": "string"}),
              [("ada", "Paris"), ("cy", "Rome")])
 run(con, plan, "polars")
-snowflake_sql = to_sql(json.loads(plan), SNOWFLAKE)  # or sverify.engines.Unsupported, saying why
+snowflake_sql = to_sql(json.loads(plan), SNOWFLAKE)  # or sverify.engines.UnsupportedError, saying why
 ```
 
 `refresh(engine=...)` picks where a node's plans run; `sv.connect(engine=...)`

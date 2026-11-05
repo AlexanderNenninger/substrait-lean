@@ -90,7 +90,7 @@ from ibis.common.graph import Node
 
 from sverify import observation as _observation
 from sverify._hooks import COLLECTING, Collected
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
@@ -1532,7 +1532,6 @@ class Report:
         reproducible: Observation | None = None,
         check_requires: bool = True,
         streaming: Literal["allow", "require"] = "allow",
-        check_inputs: bool | None = None,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about (#461).
@@ -1588,7 +1587,6 @@ class Report:
                 (`polars_engine.fallback_nodes`); `"allow"` (the default)
                 runs it. Either way a chosen route records the nodes in
                 `Route.fallbacks`.
-            check_inputs: Deprecated alias of `check_requires`.
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1626,13 +1624,6 @@ class Report:
 
         if self.plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
-        if check_inputs is not None:
-            warnings.warn(
-                "Report.run(check_inputs=...) is deprecated; write check_requires=...",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            check_requires = check_inputs
         kind: str | None = None
         target = engine if engine is not None else con.engine
         chosen = None
@@ -1823,24 +1814,6 @@ class Report:
             cond = _needed_deferred(n) if self.dialect == "ibis" else None
             out.setdefault(n.table, []).append(cond if cond is not None else n.sql)
         return out
-
-    def needs_text(self, table: str, labs: Sequence[str]) -> str:
-        """Deprecated: `needed_text` lists every needed precondition."""
-        warnings.warn(
-            "Report.needs_text() is deprecated; read the property report.needed_text",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._needs_text(table, labs)
-
-    def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
-        """Deprecated: the property `needed_text`."""
-        warnings.warn(
-            "Report.needs_lines() is deprecated; read the property report.needed_text",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._needs_lines(needed)
 
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
@@ -2139,9 +2112,17 @@ class VerificationError(SverifyError):
         report: The `Report` of the failed proof.
     """
 
+    code = "not_proved"
+
     def __init__(self, report: Report):
         self.report = report
         super().__init__(error_text(report))
+
+
+def _warning_text(error: VerificationError) -> str:
+    """An `UnprovedWarning`'s message: the error's, where the warning's
+    `.report` has the details."""
+    return str(error).replace("(e.report has the details)", "(.report has the details)", 1)
 
 
 def error_text(report: Report) -> str:
@@ -2187,6 +2168,8 @@ class UnverifiedRunError(VerificationError, RouteError):
         route: The refused `Route`, whose `reason` says what was not proved.
     """
 
+    code = "unverified_run"
+
     def __init__(self, report: Report, route: Route):
         self.report = report
         self.route = route
@@ -2215,6 +2198,8 @@ class PreconditionError(SverifyError):
             not be fetched.
     """
 
+    code = "precondition_failed"
+
     def __init__(
         self,
         message: str,
@@ -2236,6 +2221,8 @@ class PostconditionError(SverifyError):
     when a postcondition the checker could not prove fails on the output rows. The
     message says how many output rows violate which condition.
     """
+
+    code = "postcondition_failed"
 
 
 # Doubles, timestamps and dates are integer codes in the Lean model
@@ -2915,7 +2902,6 @@ def verify(
     params: Mapping[ir.Scalar, Any] | None = None,
     semantics: Semantics | None = None,
     on_inferred: OnInferred = "error",
-    infer: bool | None = None,
 ) -> Report:
     """Try to prove `ensures` about `query` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -2984,13 +2970,12 @@ def verify(
             not proved without it, and the report says where it came from
             and how to state it (`Report.needed`). `"warn"`: it is assumed,
             checked on the data before each run, and a warning names it
-            (`InferredPreconditionWarning`). `"silent"`: it is assumed and
+            (`sverify.errors.InferredWarning`). `"silent"`: it is assumed and
             checked without a warning. `"off"`: nothing is inferred or
             assumed, so an integer `SUM` that may leave 64 bits, or a double
             operation that may overflow to ±inf, is an error too, which the
             other values check on the data while the job runs
             (`Report.assumed`); each `Issue.hint` suggests a bound.
-        infer: Deprecated: `infer=False` is `on_inferred="off"`.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -3032,7 +3017,7 @@ def verify(
         ```
     """
     transform = query
-    on_inferred = _folded_infer(on_inferred, infer, "verify")
+    on_inferred = _checked_on_inferred(on_inferred)
     bound: list[str] = []
     if params:
         if isinstance(transform, str):
@@ -3161,14 +3146,16 @@ def infer_bounds(
         out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
     if on_inferred == "warn" and out.inferred:
         warnings.warn(
-            "assumed inferred precondition(s): "
-            + "; ".join(
-                n.split(": declare")[0]
-                for n in out._needs_lines(
-                    {t: [label(c) for c in cs] for t, cs in out.inferred.items()}
-                )
+            InferredWarning(
+                "assumed inferred precondition(s): "
+                + "; ".join(
+                    n.split(": declare")[0]
+                    for n in out._needs_lines(
+                        {t: [label(c) for c in cs] for t, cs in out.inferred.items()}
+                    )
+                ),
+                out,
             ),
-            InferredPreconditionWarning,
             stacklevel=3,
         )
     return out
@@ -3177,36 +3164,46 @@ def infer_bounds(
 OnInferred = Literal["error", "warn", "silent", "off"]
 
 
-class InferredPreconditionWarning(UserWarning):
-    """A precondition sverify inferred is assumed (`on_inferred="warn"`)."""
+class InferredWarning(SverifyWarning):
+    """A precondition sverify inferred is assumed (`on_inferred="warn"`).
+
+    Attributes:
+        report: The `Report` whose `inferred` preconditions are assumed.
+    """
+
+    def __init__(self, message: str, report: Report | None = None):
+        super().__init__(message)
+        self.report = report
+
+
+class UnprovedWarning(SverifyWarning):
+    """A transform with `on_unproved="warn"` is built although its contract
+    is not proved; its refreshes run unverified (`UnverifiedRunWarning`).
+
+    Attributes:
+        report: The `Report` that is not proved.
+    """
+
+    def __init__(self, message: str, report: Report | None = None):
+        super().__init__(message)
+        self.report = report
+
+
+def __getattr__(name: str) -> Any:
+    if name == "InferredPreconditionWarning":
+        warnings.warn(
+            "InferredPreconditionWarning is deprecated; catch sverify.errors.InferredWarning",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return InferredWarning
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _checked_on_inferred(v: str) -> OnInferred:
     if v not in ("error", "warn", "silent", "off"):
         raise ValueError(f"on_inferred must be 'error', 'warn', 'silent' or 'off', not {v!r}")
     return v  # type: ignore[return-value]
-
-
-def _folded_infer(on_inferred: str, infer: bool | None, where: str) -> OnInferred:
-    """`on_inferred`, with the deprecated `infer=` folded in (#690):
-    `infer=False` is `on_inferred="off"`."""
-    on_inferred = _checked_on_inferred(on_inferred)
-    if infer is None:
-        return on_inferred
-    if infer:
-        warnings.warn(
-            f"{where}(infer=True) is deprecated: it is the default; drop it "
-            f"(on_inferred={on_inferred!r} says what an inferred precondition does)",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return on_inferred
-    warnings.warn(
-        f'{where}(infer=False) is deprecated; write on_inferred="off"',
-        DeprecationWarning,
-        stacklevel=3,
-    )
-    return "off"
 
 
 def _observed(
@@ -4693,6 +4690,8 @@ class CompositionError(VerificationError):
         producer: The name of the contracted transformation that produced it.
     """
 
+    code = "composition_not_proved"
+
     def __init__(self, report: Report, consumer: str, param: str, producer: str, guarantees):
         self.report = report
         self.consumer, self.param, self.producer = consumer, param, producer
@@ -4891,21 +4890,20 @@ class ContractedTransform:
     def __init__(
         self,
         fn: Callable[..., ir.Table],
-        requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None,
-        ensures: Sequence[Condition],
-        on_unproved: Literal["error", "runtime", "warn"],
-        check_requires: bool,
-        engine: Engine | None,
-        infer: bool = True,
+        *,
+        requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
+        ensures: Sequence[Condition] = (),
+        on_unproved: Literal["error", "runtime", "warn"] = "error",
+        check_requires: bool = True,
+        check_engine: Engine | None = None,
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
     ):
         self.fn, self.ensures = fn, expand_keys(ensures)
-        self.on_inferred = on_inferred
+        self.on_inferred = _checked_on_inferred(on_inferred)
         self.on_unproved, self.check_requires = on_unproved, check_requires
-        self.infer = infer
         self.semantics = _checked_semantics(semantics)
-        self.check_engine = engine
+        self.check_engine = check_engine
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
         self.requires: dict[str, Sequence[Condition]] = requires_by_input(
@@ -5064,7 +5062,7 @@ class ContractedTransform:
             report, self.name, param, prov.transform.name, [label(c) for c in known]
         )
         if self.on_unproved == "warn":
-            warnings.warn(str(error), stacklevel=4)
+            warnings.warn(UnprovedWarning(_warning_text(error), report), stacklevel=4)
         elif self.on_unproved == "runtime" and self._check_on_data(value, param, unproved):
             pass
         elif entry is not None:
@@ -5232,7 +5230,12 @@ class ContractedTransform:
         assumptions = {**abstraction.assumptions}
         _merge(assumptions, base)
         report = self.last_report = self._verify(
-            abstraction.body, assumptions, self.ensures, "ensures", {*base, *plain}, self.infer
+            abstraction.body,
+            assumptions,
+            self.ensures,
+            "ensures",
+            {*base, *plain},
+            self.on_inferred != "off",
         )
         # Inferred bounds on the inputs are preconditions like the rest:
         # checked on the data (or proved from metadata) and passed on,
@@ -5261,7 +5264,8 @@ class ContractedTransform:
             elif entry is not None:
                 pass  # collected: the caller reads the report
             elif self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=3)
+                error = VerificationError(report)
+                warnings.warn(UnprovedWarning(_warning_text(error), report), stacklevel=3)
             else:
                 raise VerificationError(report)
         if entry is not None:
@@ -5302,8 +5306,6 @@ def transform(
     check_engine: Engine | None = None,
     semantics: Semantics = "reference",
     on_inferred: OnInferred = "error",
-    engine: Engine | None = None,
-    infer: bool | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -5354,13 +5356,11 @@ def transform(
             contract is not proved until `requires` states it or the
             transformation no longer needs it (`Report.needed`). `"warn"`:
             it is assumed and checked on the data or proved from table
-            metadata, with an `InferredPreconditionWarning`. `"silent"`:
+            metadata, with an `sverify.errors.InferredWarning`. `"silent"`:
             the same without the warning. `"off"`: nothing is inferred or
             assumed, so an integer `SUM` that may leave 64 bits is an error
             too, which the other values check on the data while the job
             runs (`Report.assumed`).
-        engine: Deprecated alias of `check_engine`.
-        infer: Deprecated: `infer=False` is `on_inferred="off"`.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -5438,24 +5438,14 @@ def transform(
         # could not prove: (_.total > 5) (it may be FALSE on some rows)
         ```
     """
-    on_inferred = _folded_infer(on_inferred, infer, "transform")
-    if engine is not None:
-        warnings.warn(
-            "transform(engine=...) is deprecated; write check_engine=... (where checks on "
-            "data run; refresh(engine=...) says where the plan runs)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if check_engine is None:
-            check_engine = engine
+    on_inferred = _checked_on_inferred(on_inferred)
     return lambda fn: ContractedTransform(
         fn,
-        requires,
-        ensures,
-        on_unproved,
-        check_requires,
-        check_engine,
-        on_inferred != "off",
-        semantics,
-        on_inferred,
+        requires=requires,
+        ensures=ensures,
+        on_unproved=on_unproved,
+        check_requires=check_requires,
+        check_engine=check_engine,
+        semantics=semantics,
+        on_inferred=on_inferred,
     )

@@ -295,11 +295,11 @@ def test_every_error_is_a_sverify_error():
 def test_errors_keep_their_builtin_bases_and_old_names():
     import sverify.engines
     import sverify.routes
-    from sverify.errors import ExportError, RouteError, SverifyError, Unsupported
+    from sverify.errors import ExportError, RouteError, SverifyError, UnsupportedError
 
-    assert issubclass(Unsupported, ValueError) and issubclass(RouteError, ValueError)
+    assert issubclass(UnsupportedError, ValueError) and issubclass(RouteError, ValueError)
     assert issubclass(ExportError, ValueError)
     assert sverify.routes.RouteError is RouteError
-    assert sverify.engines.Unsupported is Unsupported
+    assert sverify.engines.UnsupportedError is UnsupportedError
     with pytest.raises(SverifyError):
         sv.verify("SELECT nope(x) FROM t", tables={"t": ibis.schema({"x": "int64"})})

@@ -253,7 +253,7 @@ plan) once left an integer next to a double's code (#16). Upstream's mistakes ar
 (integer `/` divided integers, `where=` filters were dropped, sorts were always
 `NULLS FIRST`, promotions could cast a double down to an integer, timestamp
 literals were read in local time), and anything outside the model raises
-`Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
+`UnsupportedError`. `python/tests/test_ibis_substrait.py` checks every verified
 coverage case against DuckDB running Ibis's own SQL on random tables, except
 where DuckDB's SQL computes something else (`coverage.NO_DUCKDB_SQL`).
 
@@ -310,7 +310,7 @@ Polars runs Lean's own serialisation of the checked plan: the plan as
 `substrait-check --write` writes it back out from the parsed `Rel`
 (`sverify.engines.written_plan`), and the delta plans of `--delta`, which use the same
 writer. `sverify/polars_engine.py` translates only that small, canonical form
-to a `LazyFrame` and raises `Unsupported` on anything else. It does not go
+to a `LazyFrame` and raises `UnsupportedError` on anything else. It does not go
 through Ibis's Polars backend, which would compile a different plan. The
 translator pins the semantics and takes no Polars defaults:
 
@@ -396,7 +396,7 @@ def passthrough(orders): ...
 
 The SQL generator (`python/src/sverify/sql/`) reads Substrait JSON as
 `Parse.lean` does. It accepts exactly the plans `substrait-check` accepts and
-raises `Unsupported` on everything else. It then writes SQL whose result is
+raises `UnsupportedError` on everything else. It then writes SQL whose result is
 `Rel.eval`. The query spells out every semantic choice and leaves none to
 the engine:
 
@@ -460,7 +460,7 @@ Snowflake's documented behaviour differs:
 * every identifier is quoted, so create tables and columns with quoted
   lower-case names.
 
-Where Snowflake can't match, the plan is refused (`Unsupported`) or the query
+Where Snowflake can't match, the plan is refused (`UnsupportedError`) or the query
 raises when it would answer differently:
 
 * FETCH over a named table is refused: Snowflake tables have no row order.

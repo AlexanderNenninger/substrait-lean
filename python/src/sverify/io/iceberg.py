@@ -83,6 +83,7 @@ except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
 from sverify._scan import Scan, ScanSnapshot, local_path
+from sverify._unsupported import SverifyWarning
 from sverify._weighted import split
 from sverify.contracts import Fact
 from sverify.incremental import (
@@ -1378,6 +1379,7 @@ class IcebergSink(_TableSink[Table]):
             warnings.warn(
                 f"{self.identifier}: {self.create_options_ignored}: the existing table has "
                 + "; ".join(differs),
+                SverifyWarning,
                 stacklevel=2,
             )
 

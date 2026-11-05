@@ -23,11 +23,11 @@ replaces it; `--timeout` (default 30 s, `SVERIFY_TIMEOUT`; 0 turns it off),
 which bounds proof, planning and checking, never a refresh moving data; and
 `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`), DuckDB's
 `memory_limit`, past which it spills to a temporary directory
-(`SVERIFY_SPILL_DIRECTORY`). A breach of either stops the call before any
+(`SVERIFY_TEMP_DIRECTORY`). A breach of either stops the call before any
 sink commits.
 
 Exit codes: 0 proved (or every unproved postcondition checked on the data),
-1 not proved, 2 refused (`sverify.errors.Unsupported`), 3 budget exceeded
+1 not proved, 2 refused (`sverify.errors.UnsupportedError`), 3 budget exceeded
 (time or memory), 4 error.
 
 * `main` runs the command with given arguments and returns its exit code.

@@ -64,10 +64,10 @@ def test_pipe_chains_left_to_right():
 
 def test_pipe_gives_the_same_plan_as_the_call_form():
     orders, customers, _r = sources()
-    assert orders.pipe(paid).pipe(doubled).plan == doubled(paid(orders)).plan
+    assert orders.pipe(paid).pipe(doubled).internal_plan == doubled(paid(orders)).internal_plan
     assert (
-        orders.pipe(paid).pipe(enrich, customers=customers).plan
-        == enrich(paid(orders), customers=customers).plan
+        orders.pipe(paid).pipe(enrich, customers=customers).internal_plan
+        == enrich(paid(orders), customers=customers).internal_plan
     )
 
 
@@ -150,7 +150,7 @@ def test_a_plain_function_is_a_transform_without_a_contract():
 
     node = orders.pipe(regional, customers=customers)
     assert node.name == "regional"
-    assert node.plan == sv.transform()(regional)(orders, customers=customers).plan
+    assert node.internal_plan == sv.transform()(regional)(orders, customers=customers).internal_plan
     # Downstream transforms may assume nothing a plain function didn't prove.
     with pytest.raises(CompositionError):
         orders.pipe(lambda t: t).pipe(doubled)
@@ -232,7 +232,7 @@ def test_sql_step_tables_skip_ctes_and_repeats():
 def test_sql_step_called_directly_takes_tables_by_keyword():
     orders, customers, _r = sources()
     node = sv.sql(JOIN)(orders=orders, customers=customers)
-    assert node.plan == orders.pipe(sv.sql(JOIN), customers=customers).plan
+    assert node.internal_plan == orders.pipe(sv.sql(JOIN), customers=customers).internal_plan
 
 
 def test_sql_with_tables_is_still_an_ibis_table():

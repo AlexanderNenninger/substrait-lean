@@ -9,7 +9,7 @@ import sverify as sv
 from _pipelines import arrow_table as table
 from _pipelines import paid_nonzero as paid
 from _pipelines import rows
-from sverify.engines import ENGINES, Unsupported, run
+from sverify.engines import ENGINES, UnsupportedError, run
 from sverify.errors import PreconditionError, VerificationError
 from sverify.io import DeltaSink, StaticSource
 
@@ -127,14 +127,14 @@ def test_refused_sql_says_what_is_refused():
             orders=orders,
         )
 
-    with pytest.raises(Unsupported, match="over a window is not supported"):
+    with pytest.raises(UnsupportedError, match="over a window is not supported"):
         money(orders)
 
     @sv.transform()
     def missing(orders):
         return sv.sql("SELECT * FROM nope", orders=orders)
 
-    with pytest.raises(Unsupported, match="nope"):
+    with pytest.raises(UnsupportedError, match="nope"):
         missing(orders)
 
 

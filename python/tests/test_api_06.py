@@ -1,7 +1,6 @@
 """The 0.6 API changes from the critique (#686): fewer knobs for "not
-proved" (#690) and one name per concept (#695). Each renamed or removed
-keyword keeps working for one release, with a `DeprecationWarning` that
-names the replacement; the names deprecated before 0.5 are gone."""
+proved" (#690) and one name per concept (#695). The old names warned for
+one release; 1.0 removes them (the API review's section M)."""
 
 import json
 import warnings
@@ -14,9 +13,9 @@ from ibis import _
 import sverify as sv
 from _pipelines import doubled, make_orders, paid
 from sverify import routes
-from sverify.contracts import InferredPreconditionWarning
 from sverify.engines import SNOWFLAKE, to_sql
 from sverify.errors import (
+    InferredWarning,
     RouteError,
     UnverifiedRunError,
     UnverifiedRunWarning,
@@ -54,29 +53,12 @@ def test_on_inferred_off_infers_and_assumes_nothing() -> None:
     assert [i.kind for i in assumed.assumed] == ["SUM overflow"]
 
 
-def test_verify_infer_false_is_deprecated_for_on_inferred_off() -> None:
-    with pytest.warns(
-        DeprecationWarning, match=r'verify\(infer=False\) is deprecated; write on_inferred="off"'
-    ):
-        old = sv.verify(SUM, infer=False)
-    new = _quiet(sv.verify, SUM, on_inferred="off")
-    assert old.issues == new.issues and old.assumed == new.assumed == []
-    with pytest.warns(DeprecationWarning, match=r"verify\(infer=True\) is deprecated"):
-        sv.verify(SUM, infer=True)
-
-
-def test_transform_infer_false_is_deprecated_for_on_inferred_off() -> None:
-    def f(t):
-        return t
-
-    with pytest.warns(
-        DeprecationWarning, match=r'transform\(infer=False\) is deprecated; write on_inferred="off"'
-    ):
-        old = sv.transform(infer=False)(f)
-    assert old.on_inferred == "off" and old.infer is False
-    new = _quiet(sv.transform(on_inferred="off"), f)
-    assert new.on_inferred == "off" and new.infer is False
-    assert _quiet(sv.transform(), f).infer is True
+def test_infer_is_removed() -> None:
+    with pytest.raises(TypeError, match="infer"):
+        sv.verify(SUM, infer=False)  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="infer"):
+        sv.transform(infer=False)  # type: ignore[call-arg]
+    assert not hasattr(_quiet(sv.transform(on_inferred="off"), lambda t: t), "infer")
 
 
 def test_on_inferred_names_its_four_values() -> None:
@@ -157,14 +139,10 @@ def test_an_unproved_refresh_raises_unverified_run_error() -> None:
 def test_the_route_reference_is_now_translated(con, tmp_path) -> None:
     report = _quiet(sv.verify, con.table("t").select("k"))
     assert _quiet(routes.choose, report, "duckdb").kind == "translated"
-    with pytest.warns(
-        DeprecationWarning, match=r'route="reference" is deprecated; write route="translated"'
-    ):
-        report.run(con, route="reference")
+    _quiet(report.run, con, route="translated")
     assert report.routes["duckdb"].kind == "translated"
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
-    with pytest.warns(DeprecationWarning, match='route="translated"'):
-        out = doubled(paid(orders)).refresh(route="reference")
+    out = _quiet(doubled(paid(orders)).refresh, route="translated")
     assert out["doubled"].route is not None and out["doubled"].route.kind == "translated"
 
 
@@ -187,21 +165,16 @@ def test_transform_engine_is_check_engine() -> None:
     def f(t):
         return t
 
-    with pytest.warns(
-        DeprecationWarning, match=r"transform\(engine=\.\.\.\) is deprecated; write check_engine="
-    ):
-        old = sv.transform(engine="duckdb")(f)
-    assert old.check_engine == "duckdb"
+    with pytest.raises(TypeError, match="engine"):
+        sv.transform(engine="duckdb")  # type: ignore[call-arg]
     assert _quiet(sv.transform(check_engine="duckdb"), f).check_engine == "duckdb"
 
 
 def test_run_check_inputs_is_check_requires(con) -> None:
     report = _quiet(sv.verify, con.table("t").select("k"))
     _quiet(report.run, con, check_requires=False)
-    with pytest.warns(
-        DeprecationWarning, match=r"run\(check_inputs=\.\.\.\) is deprecated; write check_requires="
-    ):
-        report.run(con, check_inputs=False)
+    with pytest.raises(TypeError, match="check_inputs"):
+        report.run(con, check_inputs=False)  # type: ignore[call-arg]
 
 
 def test_to_sql_takes_deterministic_and_a_plan_string(tmp_path) -> None:
@@ -210,18 +183,14 @@ def test_to_sql_takes_deterministic_and_a_plan_string(tmp_path) -> None:
     plan = _quiet(lambda: node.internal_plan)
     text = _quiet(to_sql, plan, SNOWFLAKE, deterministic=True)
     assert text == _quiet(to_sql, json.loads(plan), SNOWFLAKE, deterministic=True)
-    with pytest.warns(
-        DeprecationWarning, match=r"to_sql\(tie_free=\.\.\.\) is deprecated; write deterministic="
-    ):
-        assert to_sql(plan, SNOWFLAKE, tie_free=True) == text
+    with pytest.raises(TypeError, match="tie_free"):
+        to_sql(plan, SNOWFLAKE, tie_free=True)  # type: ignore[call-arg]
 
 
 def test_node_plan_is_internal_plan(tmp_path) -> None:
     node = paid(make_orders(tmp_path / "orders", [(1, "ada", 5)]))
-    with pytest.warns(
-        DeprecationWarning, match=r"Node\.plan is deprecated; read node\.internal_plan"
-    ):
-        assert node.plan == node.internal_plan
+    assert node.internal_plan
+    assert not hasattr(node, "plan")
 
 
 def test_verify_takes_the_query_positionally() -> None:
@@ -234,13 +203,7 @@ def test_needed_text_is_a_property() -> None:
     report = _quiet(sv.verify, expr)
     assert report.needed and report.needed_text
     assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in report.needed_text[0]
-    with pytest.warns(
-        DeprecationWarning,
-        match=r"needs_lines\(\) is deprecated; read the property report\.needed_text",
-    ):
-        assert report.needs_lines() == report.needed_text
-    with pytest.warns(DeprecationWarning, match=r"needs_text\(\) is deprecated"):
-        report.needs_text("t", report.needed["t"])
+    assert not hasattr(report, "needs_lines") and not hasattr(report, "needs_text")
 
 
 def test_equivalence_is_the_observation() -> None:
@@ -250,8 +213,9 @@ def test_equivalence_is_the_observation() -> None:
 
 
 def test_inferred_warn_still_warns() -> None:
-    with pytest.warns(InferredPreconditionWarning):
-        sv.verify(T.select(x=T.amount * 2), on_inferred="warn")
+    with pytest.warns(InferredWarning) as w:
+        report = sv.verify(T.select(x=T.amount * 2), on_inferred="warn")
+    assert w[0].message.report is report  # type: ignore[union-attr]
 
 
 # -- #695: refresh reports -------------------------------------------------------

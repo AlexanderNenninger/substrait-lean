@@ -28,17 +28,19 @@ dependencies = [
 # `sverify.connect()`. Other engines and table formats are extras; the SQL
 # dialects (DuckDB, Snowflake, Spark) need nothing.
 [project.optional-dependencies]
-# DataFusion as an engine (`engine="datafusion"`).
+# DataFusion as an engine (`engine="datafusion"`): experimental, outside the
+# 1.x promise (`docs/stability.md`), and not in `all`.
 datafusion = ["datafusion==51.0.0"]
 polars = ["numpy>=2.5.4", "polars>=2.1.0"]
 spark = ["pyspark>=4.0"]
 delta = ["deltalake>=1.6.6"]
-iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
+# `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
+iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
 # `sverify.io.flight`: pyarrow built with Flight, as the PyPI wheels are.
 flight = ["pyarrow>=26.0.0"]
 # `sverify.testing` and its pytest plugin; the plugin is registered without it.
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing]"]
+all = ["sverify[polars,spark,delta,iceberg,flight,testing]"]
 
 # The command line (`sverify.cli`, #744).
 [project.scripts]
@@ -84,7 +86,7 @@ exclude = ["build", "src/sverify/_bin"]
 
 [dependency-groups]
 dev = [
-    "sverify[all]",
+    "sverify[all,datafusion]",
     "fakesnow>=0.12.1",
     "hypothesis>=6.170.14",
     # Checks the engine facts against characterization/fact.schema.json,

@@ -15,7 +15,7 @@ from _pipelines import arrow_table as table
 from _pipelines import rows
 from _sql_lift import CUSTOMER_ROWS, CUSTOMERS, ORDER_ROWS, ORDERS, SCHEMAS, TABLES
 from sverify.engine import run_checker
-from sverify.engines import Unsupported
+from sverify.engines import UnsupportedError
 from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
@@ -254,7 +254,7 @@ def test_sql_checks_dialect_and_semantics():
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)
-    with pytest.raises(Unsupported, match="unknown function"):
+    with pytest.raises(UnsupportedError, match="unknown function"):
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
 

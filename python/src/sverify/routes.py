@@ -59,7 +59,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify import _plan_read
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.observation import Observation, Within
 
 if TYPE_CHECKING:
@@ -199,13 +199,13 @@ def observed_text(obs: Observation) -> str:
     return ", ".join(parts) or "equal"
 
 
-class UnverifiedRunWarning(UserWarning):
+class UnverifiedRunWarning(SverifyWarning):
     """A plan that is not proved runs, because the caller passed
     `unverified=True`, or the transform says `on_unproved="warn"`: nothing
     the report says holds of its result."""
 
 
-class EngineVersionWarning(UserWarning):
+class EngineVersionWarning(SverifyWarning):
     """The engine's version is not one its profile's facts were probed at,
     but the major version is the same (D14)."""
 
@@ -215,8 +215,10 @@ class EngineVersionError(SverifyError, RuntimeError):
     were probed at: re-run the probes (`characterization/<engine>/`) first
     (D14)."""
 
+    code = "engine_version"
 
-class EngineSettingsWarning(UserWarning):
+
+class EngineSettingsWarning(SverifyWarning):
     """An engine setting differs from its profile's, where only behaviour
     sverify does not rely on changes."""
 
@@ -226,9 +228,13 @@ class EngineSettingsError(SverifyError, RuntimeError):
     value its facts were probed under, and the plan relies on it: restore it
     (the message says how), or re-run the probes under it."""
 
+    code = "engine_settings"
+
 
 class RouteError(SverifyError, ValueError):
     """No route takes the plan to the engine; `route` says why."""
+
+    code = "route_refused"
 
     def __init__(self, route: Route):
         super().__init__(f"refused on {route.engine}: {route.reason}")
@@ -1047,20 +1053,6 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
 # -- choosing the route (D13) -------------------------------------------------
 
 
-def checked_route(route: str) -> Any:
-    """`route`, with the deprecated name `"reference"` of the route
-    `"translated"` (#695) read as it, with a `DeprecationWarning`."""
-    if route == "reference":
-        warnings.warn(
-            'route="reference" is deprecated; write route="translated" (the plan verified '
-            'under semantics="reference" runs through the translation to the engine)',
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return "translated"
-    return route
-
-
 def max_rows_fix(report: Report, engine: str, required: Observation | None) -> dict[str, list[str]]:
     """The `sv.max_rows(N)` under which the plan's bound on its doubles
     (`Report.epsilon`) meets the tolerance `required` states, by the input
@@ -1326,7 +1318,6 @@ def choose(
     """
     from sverify import _support
 
-    route = checked_route(route)
     if route != "auto" and route not in ROUTES:
         raise ValueError(f"route must be 'auto' or one of {', '.join(ROUTES)}, not {route!r}")
     e = engine_name(engine)

@@ -107,7 +107,7 @@ def sql(
         A `SQLStep` without tables, else the query as an Ibis table.
 
     Raises:
-        sverify.engines.Unsupported: The producer cannot plan the query, or
+        sverify.engines.UnsupportedError: The producer cannot plan the query, or
             Lean refuses the plan, saying why (when the query is applied to
             its inputs); or the query cannot be parsed.
         TypeError: A table is a node or a source (pipe a step instead), or
@@ -239,7 +239,7 @@ class SQLStep(ContractedTransform):
         except ValueError:  # a name that can't be a parameter, such as "from"
             params = [inspect.Parameter("tables", inspect.Parameter.VAR_KEYWORD)]
         body.__signature__ = inspect.Signature(params)  # type: ignore[attr-defined]
-        super().__init__(body, {}, (), "error", True, None)
+        super().__init__(body)
 
     def __repr__(self) -> str:
         return f"<sverify.sql step reading {', '.join(self.tables)}>"

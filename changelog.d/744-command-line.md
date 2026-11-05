@@ -17,6 +17,6 @@
 - `--timeout` (default 30 s, `SVERIFY_TIMEOUT`, 0 turns it off) bounds
   proof, planning and checking, never a refresh moving data.
   `--memory-limit` (`SVERIFY_MEMORY_LIMIT`) sets DuckDB's `memory_limit`,
-  with a spill directory (`SVERIFY_SPILL_DIRECTORY`); a breach stops before
+  with a spill directory (`SVERIFY_TEMP_DIRECTORY`); a breach stops before
   any sink commits.
 - `sverify.cli.discover(path)` does what `check` does from Python.

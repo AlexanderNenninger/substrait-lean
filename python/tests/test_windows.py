@@ -24,7 +24,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.errors import NotIncremental
+from sverify.errors import NotIncrementalError
 from sverify.ibis_substrait import to_substrait
 from sverify.incremental import IncrementalView
 from sverify.testing import (
@@ -199,7 +199,7 @@ def test_strict_order_needs_an_offset():
 def test_windows_are_not_incremental():
     con = connect()
     create_table(con, "readings", readings.schema(), [])
-    with pytest.raises(NotIncremental):
+    with pytest.raises(NotIncrementalError):
         IncrementalView(con, ibis.to_sql(with_neighbours(readings), dialect="duckdb"), "v")
 
 

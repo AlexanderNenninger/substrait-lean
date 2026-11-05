@@ -142,7 +142,7 @@ def _on_state(c: Condition) -> bool:
     return isinstance(c, TableCondition) and c.on_state
 
 
-class NotIncremental(SverifyError):
+class NotIncrementalError(SverifyError):
     """The plan is outside the fragment with verified delta rules.
 
     Raised by `sverify.engines.delta_plans` for a plan with an operator
@@ -152,6 +152,8 @@ class NotIncremental(SverifyError):
     per group, or in `DISTINCT`, is maintained from a state per group,
     `sverify._linear`.) The message is the checker's reason.
     """
+
+    code = "not_incremental"
 
 
 def delta_plans(plan_json: str) -> list[str]:
@@ -171,13 +173,13 @@ def delta_plans(plan_json: str) -> list[str]:
         The delta plans, each a Substrait JSON plan in Lean's written form.
 
     Raises:
-        sverify.errors.NotIncremental: The plan has an operator without a
+        sverify.errors.NotIncrementalError: The plan has an operator without a
             verified delta rule.
         ValueError: The checker rejects the plan.
     """
     code, out, err = run_checker(("--delta",), plan_json)
     if code == 3:
-        raise NotIncremental(err.strip())
+        raise NotIncrementalError(err.strip())
     if code != 0:
         raise checker_failed("--delta", err)
     return out.splitlines()
@@ -451,6 +453,8 @@ class SchemaError(SverifyError):
     cannot be. Build its nodes again on the new schema, so the contract is
     proved against it. Nothing was applied.
     """
+
+    code = "schema_changed"
 
 
 def _plain(t: pa.DataType) -> pa.DataType:
@@ -831,6 +835,8 @@ class AuditError(SverifyError):
     anything: when this is raised, nothing was applied.
     """
 
+    code = "audit_failed"
+
 
 class IncrementalView:
     """A query result kept up to date from table changes instead of recomputed.
@@ -845,7 +851,7 @@ class IncrementalView:
     its proved postconditions; they hold in every state of the view, because
     every batch is checked against the preconditions on the base tables
     (`requires`). A standalone view refuses a query without delta rules
-    (`NotIncremental`); in a `Pipeline` such a view is recomputed instead.
+    (`NotIncrementalError`); in a `Pipeline` such a view is recomputed instead.
     """
 
     def __init__(
@@ -952,7 +958,7 @@ class IncrementalView:
         count per key (`sverify._semi`)."""
         try:
             self.deltas = delta_plans(json.dumps(plan))
-        except NotIncremental as e:
+        except NotIncrementalError as e:
             try:
                 linear = _linear.plan(self.name, query)
             except Exception as refused:  # noqa: BLE001 - a plan refused: the other strategies

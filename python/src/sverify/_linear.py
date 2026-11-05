@@ -98,7 +98,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     it cannot be."""
     from sverify.engine import plan_json, written_plan
     from sverify.ibis_substrait.core import DecimalDiv
-    from sverify.incremental import NotIncremental, delta_plans
+    from sverify.incremental import NotIncrementalError, delta_plans
 
     if isinstance(query, str):
         return "the view is SQL"
@@ -111,7 +111,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     parent = node.parent.to_expr()
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
-    except NotIncremental as e:
+    except NotIncrementalError as e:
         return f"the {what}'s input has no delta rules ({e})"
 
     def write(expr: ir.Table) -> str:

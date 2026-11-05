@@ -57,7 +57,7 @@ def _(mo):
     2. write the rule in Ibis and state its contract: what it assumes about
        the input and what the refund queue may rely on;
     3. have the checker prove the contract before any data runs;
-    4. run the checked plan on DuckDB, Polars and DataFusion, and see the
+    4. run the checked plan on DuckDB and Polars, and see the
        SQL a warehouse would run (the Snowflake and Spark dialects are a
        preview: they run on an emulator and a local session, and work on
        them waits on [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271));
@@ -598,8 +598,8 @@ def _(mo):
     assumptions before a single row ran and would have caught a self-join
     bug at definition time. The preconditions came from Delta's constraints
     and file statistics where it has them and from the data where it
-    doesn't. The same plan gives the same rows on DuckDB, Polars and
-    DataFusion, and it stays right as charges arrive and get reversed, where
+    doesn't. The same plan gives the same rows on DuckDB and Polars, and it
+    stays right as charges arrive and get reversed, where
     the watermark job got two rows wrong. The next job builds on the stored
     table without checking again.
 

@@ -94,7 +94,7 @@ reference:
 
   - title: Engines and SQL
     desc: >
-      Run a checked plan on DuckDB, Polars, DataFusion or Spark, or write it
+      Run a checked plan on DuckDB, Polars or Spark, or write it
       as DuckDB, Snowflake or Spark SQL (`sverify.engines`).
     contents:
       - connect
@@ -108,7 +108,7 @@ reference:
       - engines.DUCKDB
       - engines.SNOWFLAKE
       - engines.SPARK
-      - engines.Unsupported
+      - engines.UnsupportedError
       - engines.run_spark
       - engines.SPARK_CONF
       - engines.run_sharded
@@ -153,19 +153,37 @@ reference:
       - cli.Checked
 
   - title: Errors
-    desc: What sverify raises, and when (`sverify.errors`).
+    desc: >
+      What sverify raises, and when (`sverify.errors`). Every exception is a
+      `SverifyError` with a `code`; every warning a `SverifyWarning`.
     contents:
       - errors.SverifyError
       - errors.VerificationError
+      - errors.CompositionError
+      - errors.UnverifiedRunError
       - errors.PreconditionError
       - errors.PostconditionError
-      - errors.CompositionError
-      - errors.NotIncremental
-      - errors.AuditError
       - errors.SchemaError
+      - errors.AuditError
+      - errors.RouteError
+      - errors.NotIncrementalError
+      - errors.ConcurrentWriteError
+      - errors.UnsupportedError
       - errors.SqlError
       - errors.ExportError
-      - errors.Unsupported
+      - errors.CheckerVersionError
+      - errors.EngineVersionError
+      - errors.EngineSettingsError
+
+  - title: Warnings
+    desc: What sverify warns about (`sverify.errors`).
+    contents:
+      - errors.SverifyWarning
+      - errors.UnverifiedRunWarning
+      - errors.UnprovedWarning
+      - errors.InferredWarning
+      - errors.EngineVersionWarning
+      - errors.EngineSettingsWarning
 
 # Agent skills for sverify users, written by hand and shipped in the wheel
 # (`sverify/skills/<name>/SKILL.md`, with their `references/`). The site

@@ -785,7 +785,7 @@ class Replay:
         try:
             lifted = lift(rec.sql, schemas, "duckdb")
         except Exception as e:  # noqa: BLE001 - the lift refusing (or failing: recorded)
-            kind = "" if type(e).__name__ == "Unsupported" else f"{type(e).__name__}: "
+            kind = "" if type(e).__name__ == "UnsupportedError" else f"{type(e).__name__}: "
             res.cls, res.reason = "refused", f"lift: {kind}{_clip(str(e), 200)}"
             return res
         plan = json.dumps(lifted.plan)
@@ -916,7 +916,7 @@ def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     try:
         # Without inference: an inferred precondition would absorb the
         # overflow the test expects (#619).
-        report = verify(sql, tables=schemas, infer=False)
+        report = verify(sql, tables=schemas, on_inferred="off")
     except Exception:  # noqa: BLE001
         return []
     return [str(i) for i in report.issues + report.assumed]

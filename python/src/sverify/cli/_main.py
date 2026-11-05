@@ -120,11 +120,11 @@ def _item(c: Checked) -> dict[str, Any]:
 
 
 def _exception(e: BaseException) -> dict[str, Any]:
-    from sverify.errors import Unsupported
+    from sverify.errors import UnsupportedError
 
     if isinstance(e, BudgetExceeded):
         code = "memory" if e.what == "memory" else "timeout"
-    elif isinstance(e, Unsupported):
+    elif isinstance(e, UnsupportedError):
         code = "refused"
     elif is_out_of_memory(e):
         code = "memory"
@@ -138,13 +138,13 @@ def _exit_for_error(e: BaseException) -> int:
         AuditError,
         PostconditionError,
         PreconditionError,
-        Unsupported,
+        UnsupportedError,
         VerificationError,
     )
 
     if isinstance(e, BudgetExceeded) or is_out_of_memory(e):
         return BUDGET
-    if isinstance(e, Unsupported):
+    if isinstance(e, UnsupportedError):
         return REFUSED
     if isinstance(e, VerificationError | PreconditionError | PostconditionError | AuditError):
         return NOT_PROVED
@@ -544,9 +544,7 @@ def parser() -> argparse.ArgumentParser:
     s.set_defaults(run=cmd_suggest)
     r = sub.add_parser("refresh", parents=[common], help="run a node and report what changed")
     r.add_argument("target", help="file.py:<node>")
-    r.add_argument(
-        "--engine", default="duckdb", help="duckdb (default), polars, datafusion or spark"
-    )
+    r.add_argument("--engine", default="duckdb", help="duckdb (default), polars or spark")
     r.add_argument("--audit", action="store_true", help="compare every batch with recomputation")
     r.set_defaults(run=cmd_refresh)
     e = sub.add_parser(

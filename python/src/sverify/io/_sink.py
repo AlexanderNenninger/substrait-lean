@@ -20,6 +20,7 @@ import pyarrow as pa
 
 from sverify._scan import Resident
 from sverify._state import DuckDBStore, arrow_of
+from sverify._unsupported import SverifyWarning
 from sverify._weighted import ChangeLog, consolidated, expanded, split, weighted
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource, first_line
 from sverify.io._common import (
@@ -528,7 +529,11 @@ class _TableSink[T](Sink, ABC):
             try:
                 self._maintain()
             except Exception as e:  # noqa: BLE001 - the write is committed
-                warnings.warn(f"{self.location}: maintenance failed: {first_line(e)}", stacklevel=2)
+                warnings.warn(
+                    f"{self.location}: maintenance failed: {first_line(e)}",
+                    SverifyWarning,
+                    stacklevel=2,
+                )
         return out
 
 
