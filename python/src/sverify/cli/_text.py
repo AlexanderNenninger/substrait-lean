@@ -64,7 +64,9 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
     if report.rows is not None:
         guarantees.append(f"at most {report.rows:,} rows")
     checks: list[str] = []
-    needed = report.needed
+    needed: dict[str, list[str]] = {}
+    for n in report.needs:
+        needed.setdefault(n.table, []).append(n.label)
     for table, conds in report.requires.items():
         if sources is not None and table not in sources:
             continue

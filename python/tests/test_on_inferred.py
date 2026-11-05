@@ -13,6 +13,15 @@ from sverify.errors import PreconditionError, RouteError, VerificationError
 from sverify.io import StaticSource
 
 
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
+
 @pytest.fixture
 def con():
     c = sv.connect()
@@ -24,7 +33,7 @@ def test_an_inferred_precondition_is_an_error_by_default(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, per=t.total // t.qty))
     assert not report.proved
-    assert report.needed == {"t": ["(_.total >= -9 * 10**18)", "(_.qty != 0)"]}
+    assert _needed(report) == {"t": ["(_.total >= -9 * 10**18)", "(_.qty != 0)"]}
     text = str(report)
     assert (
         "needs: (_.total >= -9 * 10**18) and (_.qty != 0) on t, inferred from `total // qty` "
@@ -43,7 +52,7 @@ def test_the_refusal_names_both_fixes(con) -> None:
     report = sv.verify(t.select(t.k, per=t.total // t.qty))
     with pytest.raises(
         RouteError,
-        match=r"not verified: needs .*declare them in requires.*filter.*\(see report.needed\)",
+        match=r"not verified: needs .*declare them in requires.*filter.*\(see report.needs\)",
     ):
         report.run(con)
 
@@ -54,7 +63,7 @@ def test_declaring_it_proves_the_plan_and_checks_it(con) -> None:
         t.select(t.k, per=t.total // t.qty),
         requires={"t": [_.qty != 0, _.total >= 0]},
     )
-    assert report.proved and report.needed == {}
+    assert report.proved and _needed(report) == {}
     with pytest.raises(PreconditionError, match=r"violate \(_.qty != 0\)"):
         report.run(con)
 
@@ -74,7 +83,7 @@ def test_warn_and_silent_assume_it(con) -> None:
     expr = t.select(t.k, per=t.total // t.qty)
     with pytest.warns(InferredPreconditionWarning, match=r"\(_.qty != 0\) on t, inferred from"):
         warned = sv.verify(expr, on_inferred="warn")
-    assert warned.proved and warned.needed == {}
+    assert warned.proved and _needed(warned) == {}
     with warnings.catch_warnings():
         warnings.simplefilter("error", InferredPreconditionWarning)
         silent = sv.verify(expr, on_inferred="silent")
@@ -117,5 +126,5 @@ def test_a_transform_raises_unless_told(con) -> None:
 def test_infer_false_still_turns_inference_off(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, per=t.total // t.qty), on_inferred="off")
-    assert report.inferred == {} and report.needed == {}
+    assert report.inferred == {} and _needed(report) == {}
     assert any(i.kind == "division by zero" for i in report.errors)

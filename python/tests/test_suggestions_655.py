@@ -10,13 +10,22 @@ from ibis import _
 import sverify as sv
 from sverify import routes
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 T = ibis.table({"k": "string", "s": "string", "x": "float64"}, name="t")
 
 
 def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0])
     assert not report.proved
-    assert report.needed == {"t": ["_.s.notnull()"]}
+    assert _needed(report) == {"t": ["_.s.notnull()"]}
     assert "needs: _.s.notnull() on t, inferred from `(_.n >= 0)` (a NULL result otherwise)" in str(
         report
     )
@@ -26,7 +35,7 @@ def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
 
 def test_a_postcondition_that_may_be_false_gets_no_null_advice() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 1])
-    assert report.needed == {}
+    assert _needed(report) == {}
     line = next(x for x in str(report).splitlines() if x.startswith("ensures"))
     assert line == "ensures (_.n >= 1): NOT proved: it may be FALSE or NULL on some rows"
 

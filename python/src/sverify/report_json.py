@@ -87,6 +87,8 @@ def observation(d: Mapping[str, Any]) -> Observation:
 
 
 def issue_json(i: Issue) -> Json:
+    from sverify.contracts import _labels_by_table
+
     return {
         "kind": i.kind,
         "expr": i.expr,
@@ -97,13 +99,13 @@ def issue_json(i: Issue) -> Json:
         "hint": i.hint,
         "constant": i.constant,
         "under_and_or": i.under_and_or,
-        "needs": list(i.needs),
-        "suggested": {t: list(labs) for t, labs in i.suggested.items()},
+        "needs": list(i._labels),
+        "suggested": {t: list(labs) for t, labs in _labels_by_table(i.needs).items()},
     }
 
 
 def issue(d: Mapping[str, Any]) -> Issue:
-    from sverify.contracts import Issue
+    from sverify.contracts import Issue, _needed
 
     return Issue(
         d["kind"],
@@ -113,9 +115,11 @@ def issue(d: Mapping[str, Any]) -> Issue:
         column=d.get("column"),
         constant=d.get("constant", False),
         under_and_or=d.get("under_and_or", False),
-        needs=tuple(d.get("needs", ())),
+        _labels=tuple(d.get("needs", ())),
         shown=d.get("shown"),
-        suggested={t: tuple(labs) for t, labs in (d.get("suggested") or {}).items()},
+        needs=[
+            _needed(t, lab, "sql") for t, labs in (d.get("suggested") or {}).items() for lab in labs
+        ],
     )
 
 

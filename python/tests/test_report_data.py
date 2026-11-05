@@ -11,6 +11,15 @@ import sverify.engines
 import sverify.errors
 from sverify.contracts import Needed
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 T = {"t": {"k": "BIGINT", "q": "BIGINT", "s": "VARCHAR"}}
 
 
@@ -68,7 +77,7 @@ def test_needs_as_data() -> None:
     assert first.label == "(_.q < 9 * 10**18)"
     assert first.code == "_.q < 9 * 10**18"
     assert first.issue is not None and first.issue.shown == "q + 1"
-    assert [n.label for n in needs] == [lab for labs in report.needed.values() for lab in labs]
+    assert [n.label for n in needs] == [lab for labs in _needed(report).values() for lab in labs]
 
 
 def test_needs_code_is_what_requires_takes() -> None:

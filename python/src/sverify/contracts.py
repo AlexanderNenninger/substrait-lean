@@ -1136,23 +1136,33 @@ class Issue:
     """The operation sits inside an operand of an `AND` or `OR`, which
     evaluates both operands (#604, D19): a guard in the other operand does
     not keep it from raising. The report suggests a `CASE` (`AND_OR_HINT`)."""
-    needs: tuple[str, ...] = field(default=(), repr=False, compare=False)
+    _labels: tuple[str, ...] = field(default=(), repr=False, compare=False)
     """The preconditions that rule it out, as labels, where the inference
     found them (`infer_bounds` assumes them)."""
     shown: str | None = None
     """The operation in the user's terms: column names and the Ibis or SQL
     operator (`total // qty`, `sum(x)`); None where the plan does not say
     which columns `expr` reads."""
-    suggested: dict[str, tuple[str, ...]] = field(default_factory=dict, compare=False)
-    """The preconditions that rule it out, as labels per input table
-    (`{"orders": ("(_.qty != 0)",)}`), where the inference found them: what
-    `hint` says to state in `requires`, as data. Empty where it found none."""
+    needs: list[Needed] = field(default_factory=list, compare=False)
+    """The preconditions that rule it out, one `Needed` each, where the
+    inference found them: what `hint` says to state in `requires`, as data.
+    Empty where it found none."""
     hint_needs: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     """The preconditions per input table that `hint` proposes, as code; a
     hint is shown only where a proof with them rules the issue out
     (`_confirm_hints`, #688)."""
     unconfirmed: str | None = field(default=None, repr=False, compare=False)
     """The hint to show instead where a proof does not confirm `hint`."""
+
+    @property
+    def suggested(self) -> dict[str, tuple[str, ...]]:
+        """Deprecated: `needs`. Its labels per input table."""
+        warnings.warn(
+            "Issue.suggested is deprecated; read Issue.needs",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _labels_by_table(self.needs)
 
     @property
     def what(self) -> str:
@@ -1723,7 +1733,7 @@ class Report:
             all(c.portable for c in self.ensures)
             and not self.errors
             and not self.transfer
-            and not self.needed
+            and not self.needs
             and not self.floats_unmet
         )
 
@@ -1763,19 +1773,61 @@ class Report:
         return [line] + [f"  on {e}: {p}" for e in missed for p in self.floats_on[e]]
 
     @property
-    def needed(self) -> dict[str, list[str]]:
-        """With `on_inferred="error"`, the preconditions the proof needs that
-        `requires` does not state, as labels per input table (the bounds
-        `infer_bounds` found, `inferred`); empty otherwise."""
+    def needs(self) -> list[Needed]:
+        """The preconditions the proof needs that `requires` does not state,
+        one `Needed` each: the table, the column, the comparison and the
+        bound, the SQL, the condition ready for `requires=`, the runtime
+        error it rules out and the fixes in words. These are the bounds
+        sverify inferred (`infer_bounds`) and does not assume, so the list
+        is empty unless `on_inferred="error"`. `suggested_requires` adds
+        them to the stated preconditions.
+
+            report = sv.verify(expr)
+            if not report.proved:
+                report = sv.verify(expr, requires=report.suggested_requires)
+        """
         if self.on_inferred != "error":
-            return {}
-        return {t: [label(c) for c in cs] for t, cs in self.inferred.items() if cs}
+            return []
+        return self._inferred_needs()
+
+    def _inferred_needs(self) -> list[Needed]:
+        """Every inferred bound (`inferred`) as a `Needed`, assumed or not."""
+        return [
+            _needed(
+                t,
+                c,
+                self.dialect,
+                self.inferred_from.get(label(c)),
+                self._needs_text(t, [label(c)]),
+            )
+            for t, cs in self.inferred.items()
+            for c in cs
+        ]
 
     @property
-    def needed_text(self) -> list[str]:
-        """`needed` in words: per input table and operation, the preconditions
-        the proof needs, where they come from, and the fixes."""
-        return self._needs_lines()
+    def suggested_requires(self) -> dict[str, list[Condition]]:
+        """The `requires=` mapping that states every precondition the proof
+        uses: the stated ones and those sverify inferred (`needs`, and the
+        bounds `on_inferred="warn"` or `"silent"` assumes), per input table,
+        ready to pass to `verify` or to paste into a contract."""
+        out: dict[str, list[Condition]] = {}
+        for t, cs in self.conditions.items():
+            out[t] = [c for c in cs if not isinstance(c, Inferred)]
+        for n in self._inferred_needs():
+            have = out.setdefault(n.table, [])
+            if n.condition is not None and n.label not in {label(c) for c in have}:
+                have.append(n.condition)
+        return {t: cs for t, cs in out.items() if cs}
+
+    @property
+    def needed(self) -> dict[str, list[str]]:
+        """Deprecated: `needs`. Their labels per input table."""
+        warnings.warn(
+            "Report.needed is deprecated; read Report.needs",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return {t: list(labs) for t, labs in _labels_by_table(self.needs).items()}
 
     @property
     def equivalence(self) -> Observation:
@@ -1783,60 +1835,19 @@ class Report:
         `ensures`, or rows as a multiset with exact values (`observation`)."""
         return self.observation
 
-    @property
-    def needs(self) -> list[Needed]:
-        """`needed` as data, one `Needed` per precondition: the table, the
-        column, the comparison and the bound, the SQL, and the runtime
-        error it rules out. A tool that phrases the preconditions in its
-        own terms (a dbt test, an editor's quick fix) reads these; empty
-        unless `on_inferred="error"`."""
-        out = []
-        for t, labs in self.needed.items():
-            by_label = {getattr(c, "text", None): c for c in self.inferred.get(t, [])}
-            for lab in labs:
-                c = by_label.get(lab)
-                column = getattr(c, "column", None)
-                op, value = c.parts() if isinstance(c, Inferred) else (None, None)
-                sql = str(c) if c is not None else lab
-                out.append(
-                    Needed(
-                        t, column, op, value, sql, lab, _unparen(lab), self.inferred_from.get(lab)
-                    )
-                )
-        return out
-
-    @property
-    def needed_conditions(self) -> dict[str, list[Condition]]:
-        """`needs` as conditions, per input table, ready for `requires=`: Ibis
-        deferreds for an Ibis transform (`_.qty < 9 * 10**18`, or
-        `_.qty.isnull() | (_.qty < 9 * 10**18)` where `qty` may be NULL, as
-        the inferred bound lets NULL pass), SQL strings for a SQL one. A
-        bound with no Ibis form goes as its SQL, which an Ibis transform
-        reads too. Empty unless `on_inferred="error"`.
-
-            report = sv.verify(expr)
-            if not report.proved:
-                report = sv.verify(expr, requires=report.needed_conditions)
-        """
-        out: dict[str, list[Condition]] = {}
-        for n in self.needs:
-            cond = _needed_deferred(n) if self.dialect == "ibis" else None
-            out.setdefault(n.table, []).append(cond if cond is not None else n.sql)
-        return out
-
     def needs_text(self, table: str, labs: Sequence[str]) -> str:
-        """Deprecated: `needed_text` lists every needed precondition."""
+        """Deprecated: `Needed.text` of each of `needs`."""
         warnings.warn(
-            "Report.needs_text() is deprecated; read the property report.needed_text",
+            "Report.needs_text() is deprecated; read Needed.text of report.needs",
             DeprecationWarning,
             stacklevel=2,
         )
         return self._needs_text(table, labs)
 
     def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
-        """Deprecated: the property `needed_text`."""
+        """Deprecated: `Needed.text` of each of `needs`."""
         warnings.warn(
-            "Report.needs_lines() is deprecated; read the property report.needed_text",
+            "Report.needs_lines() is deprecated; read Needed.text of report.needs",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1858,10 +1869,12 @@ class Report:
         )
 
     def _needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
-        """`_needs_text` for each table and operation (`needed` by default;
-        `inferred`, as labels, for a warning)."""
+        """`_needs_text` for each table and operation (the labels of `needs`
+        by default; `inferred`, as labels, for a warning)."""
         out = []
-        for t, labs in (self.needed if needed is None else needed).items():
+        if needed is None:
+            needed = _labels_by_table(self.needs)
+        for t, labs in needed.items():
             groups: dict[str, list[str]] = {}
             for lab in labs:
                 issue = self.inferred_from.get(lab)
@@ -1881,12 +1894,16 @@ class Report:
         return [i for i in self.issues if not i.error]
 
     @property
-    def suggestions(self) -> dict[str, dict[str, list[str]]]:
-        """For each unproved postcondition with one, the preconditions per
-        input table under which it would be proved, as code
-        (`{"(_.y <= 100)": {"orders": ["(_.x <= 50)"]}}`)."""
+    def suggestions(self) -> dict[str, list[Needed]]:
+        """For each unproved postcondition with one, the preconditions under
+        which it would be proved, one `Needed` each, by the postcondition's
+        label (`{"(_.y <= 100)": [Needed(table="orders", label="(_.x <= 50)", …)]}`)."""
         return {
-            c.label: {t: [label(x) for x in cs] for t, cs in c.suggested.items()}
+            c.label: [
+                _needed(t, x, self.dialect, text=f"{label(x)} on {t} would prove {c.label}")
+                for t, cs in c.suggested.items()
+                for x in cs
+            ]
             for c in self.ensures
             if c.suggested
         }
@@ -1977,7 +1994,7 @@ class Report:
             )
         if self.errors:
             out.append(n(len(self.errors), "possible runtime error"))
-        if needed := sum(len(v) for v in self.needed.values()):
+        if needed := len(self.needs):
             out.append(n(needed, "precondition") + " needed")
         if self.transfer:
             out.append(n(len(self.transfer), "option") + " where Substrait allows more")
@@ -2008,7 +2025,7 @@ class Report:
 
     def __str__(self) -> str:
         lines = [self.verdict]
-        needed = self.needed
+        needed = _labels_by_table(self.needs)
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self.inferred.get(table, [])}
             lines += [
@@ -2067,7 +2084,7 @@ class Report:
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [
-            f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs if not self.needed
+            f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs if not self.needs
         ]
         inferred += [
             f"SUM of `{i.what}` {_sum_assumed(i)}"
@@ -2445,9 +2462,11 @@ class Inferred(str):
 
 @dataclass(frozen=True)
 class Needed:
-    """A precondition the proof needs that `requires` does not state
-    (`Report.needs`): a bound sverify inferred on one input column, which
-    `on_inferred="error"` does not assume."""
+    """A precondition a proof needs that `requires` does not state: a bound
+    on one input column. `Report.needs` lists those the proof needs
+    (`on_inferred="error"` does not assume them), `Issue.needs` those that
+    rule out one runtime error, and `Report.suggestions` those under which
+    an unproved postcondition would be proved."""
 
     table: str
     """The input table."""
@@ -2469,7 +2488,42 @@ class Needed:
     editor's quick fix: `_.qty < 9 * 10**18`, `_.qty != 0`,
     `_.qty.notnull()`. `sql` is the form for a SQL contract."""
     issue: Issue | None
-    """The runtime error it rules out, and where (`Report.inferred_from`)."""
+    """The runtime error it rules out, and where; None where it rules out
+    none (a suggestion for a postcondition) or is the `Issue`'s own."""
+    condition: Condition | None = None
+    """The condition, ready for `requires=`: an Ibis deferred for an Ibis
+    transform (`_.qty < 9 * 10**18`, or `_.qty.isnull() | (_.qty < 9 * 10**18)`
+    where `qty` may be NULL, as the bound lets NULL pass), `sql` for a SQL
+    one or where the bound has no Ibis form (an Ibis transform reads SQL
+    conditions too)."""
+    text: str = ""
+    """The precondition in words: where it comes from, and the fixes."""
+
+
+def _needed(
+    table: str,
+    c: Condition,
+    dialect: str,
+    issue: Issue | None = None,
+    text: str = "",
+) -> Needed:
+    """A `Needed` for the condition `c` on `table`: an `Inferred` bound, or
+    a label where the bound is not at hand."""
+    lab = label(c)
+    column = getattr(c, "column", None)
+    op, value = c.parts() if isinstance(c, Inferred) else (None, None)
+    sql = str(c) if isinstance(c, str) else lab
+    n = Needed(table, column, op, value, sql, lab, _unparen(lab), issue, text=text)
+    cond = _needed_deferred(n) if dialect == "ibis" else None
+    return replace(n, condition=cond if cond is not None else n.sql)
+
+
+def _labels_by_table(needs: Sequence[Needed]) -> dict[str, tuple[str, ...]]:
+    """The labels of `needs` per input table, in order."""
+    out: dict[str, tuple[str, ...]] = {}
+    for n in needs:
+        out[n.table] = (*out.get(n.table, ()), n.label)
+    return out
 
 
 def _sql_value(value: str) -> Any:
@@ -3384,7 +3438,7 @@ def _infer_bounds(
             for cs in extra.values()
             for c in cs
             for i in reversed(first)
-            if label(c) in i.needs
+            if label(c) in i._labels
         }
         # An inferred precondition that a guard under AND/OR would have made
         # unnecessary with a CASE (#604): say so.
@@ -3483,7 +3537,7 @@ def _confirm_hints(report: Report, requires, once) -> Report:
                 again = once(widened, 0)[0]
                 tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
             if (i.kind, i.expr) in tried[key]:
-                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, suggested={})
+                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, needs=[])
         issues.append(i)
     return replace(report, issues=issues)
 
@@ -3870,6 +3924,7 @@ def _verify_once(
             column=lambda e: _sum_column(transform, e),
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
+            dialect=dialect,
         ),
         guard_free=out["guard_free"],
         unchecked=out.get("unchecked"),
@@ -3985,6 +4040,7 @@ def _issues(
     column: Callable[[str], str | None],
     shown: Callable[..., str | None],
     guess: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
+    dialect: str = "ibis",
 ) -> list[Issue]:
     """The checker's issues, one per expression the user wrote and kind
     (#687): the sub-expressions of an expression that may overflow, and the
@@ -4052,9 +4108,9 @@ def _issues(
                 tuple(label(c) for cs in code.values() for c in cs) if not fallback else (),
                 user,
                 # The inference's preconditions, as data; a guess is not one.
-                {t: tuple(label(c) for c in cs) for t, cs in code.items() if cs}
+                [_needed(t, c, dialect) for t, cs in code.items() for c in cs]
                 if error and not fallback
-                else {},
+                else [],
                 hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
                 unconfirmed=fallback,
             )

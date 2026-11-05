@@ -229,18 +229,17 @@ def test_verify_takes_the_query_positionally() -> None:
         sv.verify(transform=SUM)  # type: ignore[call-arg]
 
 
-def test_needed_text_is_a_property() -> None:
+def test_needed_text_is_a_field() -> None:
     expr = T.select(x=T.amount * 2)
     report = _quiet(sv.verify, expr)
-    assert report.needed and report.needed_text
-    assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in report.needed_text[0]
-    with pytest.warns(
-        DeprecationWarning,
-        match=r"needs_lines\(\) is deprecated; read the property report\.needed_text",
-    ):
-        assert report.needs_lines() == report.needed_text
+    n = next(n for n in report.needs if "< 2**62" in n.label)
+    assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in n.text
+    with pytest.warns(DeprecationWarning, match=r"needs_lines\(\) is deprecated"):
+        assert report.needs_lines() == report._needs_lines()
     with pytest.warns(DeprecationWarning, match=r"needs_text\(\) is deprecated"):
-        report.needs_text("t", report.needed["t"])
+        assert report.needs_text("t", [n.label]) == n.text
+    with pytest.warns(DeprecationWarning, match=r"Report.needed is deprecated"):
+        assert report.needed == {"t": [m.label for m in report.needs]}
 
 
 def test_equivalence_is_the_observation() -> None:

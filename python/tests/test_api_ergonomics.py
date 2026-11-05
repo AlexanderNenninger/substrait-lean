@@ -9,6 +9,15 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import CheckedCondition, References, requires_by_input
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 S = ibis.table({"a": "!int64"}, name="s")
 CUSTOMERS = ibis.table({"id": "!int64"}, name="customers")
 
@@ -105,7 +114,7 @@ def test_a_nullable_column_suggests_not_null_only_where_null_alone_fails():
     assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
     assert ".notnull()" not in str(report)
     only_null = sv.verify(t.select(n=t.s.length()), ensures=[_.n >= 0], counterexamples=0)
-    assert only_null.needed == {"t": ["_.s.notnull()"]}
+    assert _needed(only_null) == {"t": ["_.s.notnull()"]}
 
 
 # #440: ibis.param in a transformation

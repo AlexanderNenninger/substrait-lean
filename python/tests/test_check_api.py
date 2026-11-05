@@ -10,6 +10,15 @@ from ibis import _
 import sverify as sv
 from sverify.errors import VerificationError
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 SCHEMA = {"id": "int64", "amount": "int64", "qty": "int64"}
 
 
@@ -35,7 +44,7 @@ def test_check_returns_an_unproved_report_without_raising() -> None:
         unit(ibis.table(SCHEMA, name="orders"))
     report = unit.check(orders=SCHEMA)
     assert not report.proved
-    assert report.needed == {"orders": ["(_.qty != 0)"]}
+    assert _needed(report) == {"orders": ["(_.qty != 0)"]}
     assert unit.last_report is report
 
 
@@ -111,7 +120,10 @@ def test_issue_suggested_is_the_hint_as_data() -> None:
     report = sv.verify(t.select(r=t.a // t.b), on_inferred="off", counterexamples=0)
     by_kind = {i.kind: i for i in report.errors}
     zero = by_kind["division by zero"]
-    assert zero.suggested == {"t": ("(_.b != 0)",)}
+    assert [(n.table, n.label) for n in zero.needs] == [("t", "(_.b != 0)")]
+    assert repr(zero.needs[0].condition) == repr(_["b"].isnull() | (_["b"] != 0))
+    with pytest.warns(DeprecationWarning, match="Issue.needs"):
+        assert zero.suggested == {"t": ("(_.b != 0)",)}
     assert zero.hint == "state `(_.b != 0)` in the requires of 't'"
     fixed = sv.verify(
         t.select(r=t.a // t.b),

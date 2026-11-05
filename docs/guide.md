@@ -700,8 +700,8 @@ print(report)
 ```
 
 Sverify proves each suggestion before showing it, by proving the
-postcondition again with it added. `Report.suggestions` has them as code,
-per postcondition and table, for editors and language servers
+postcondition again with it added. `Report.suggestions` has them as
+`Needed` records, per postcondition, for editors and language servers
 ([test_suggestions.py](../python/tests/test_suggestions.py)).
 
 ### Checking without running
@@ -718,8 +718,8 @@ def unit_price(orders):
 
 
 report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
-print(report.proved, report.needed)
-# False {'orders': ['(_.qty != 0)']}
+print(report.proved, [n.label for n in report.needs])
+# False ['(_.qty != 0)']
 print(report.ensures[0].message)
 # NOT proved: it may be FALSE or NULL on some rows
 print(report.route("duckdb").cls)
@@ -733,14 +733,17 @@ The report's parts come as data and as the lines `str(report)` prints:
 - `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
   `Report.notes` are the report's lines for each postcondition, possible
   runtime error, assumption and note.
-- `Issue.suggested` gives the preconditions that rule an issue out, per
-  table, which `Issue.hint` states in words.
-- `Report.needs` gives the preconditions the proof needs, one `Needed` each
-  (table, column, comparison, bound, SQL), and `Report.needed_conditions`
-  the same as conditions ready for `requires=`, in the transform's language:
-  Ibis deferreds (`_.qty.isnull() | (_.qty != 0)`, NULL passing as the
-  inferred bound lets it) or SQL strings
+- `Report.needs` gives the preconditions the proof needs, one `Needed` each:
+  table, column, comparison, bound, SQL, the runtime error it rules out,
+  the fixes in words (`text`) and the `condition` ready for `requires=`, in
+  the transform's language: an Ibis deferred (`_.qty.isnull() | (_.qty != 0)`,
+  NULL passing as the inferred bound lets it) or a SQL string
   ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  `Issue.needs` holds the same records for one runtime error, which
+  `Issue.hint` states in words.
+- `Report.suggested_requires` is the whole `requires=` mapping: the stated
+  preconditions and the inferred ones, ready to pass to `verify` again or
+  to paste into the decorator.
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.

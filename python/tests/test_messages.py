@@ -17,6 +17,15 @@ import sverify as sv
 from sverify import engine, routes
 from sverify.errors import CheckerVersionError, VerificationError
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 ITEMS = ibis.table(
     {"sku": "int64", "price": "int64", "cost": "int64", "qty": "int64"}, name="items"
 )
@@ -336,7 +345,7 @@ def test_the_and_or_guard_proves_when_pasted() -> None:
     guarded = t.filter((t.qty != 0) & (per > 1))  # type: ignore[operator]
     report = sv.verify(guarded, requires=req, on_inferred="error")
     assert not any(i.kind == "division by zero" for i in report.errors)
-    assert not report.needed
+    assert not _needed(report)
 
 
 def test_the_window_hint_bounds_the_column_it_reads() -> None:

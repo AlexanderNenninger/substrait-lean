@@ -537,8 +537,8 @@ def _(VARIANTS, mo, sv, variant):
     _report = sv.verify(VARIANTS[variant.value])
     if _report.errors:
         _summary = mo.callout(mo.md("Lean cannot rule out a runtime error."), kind="warn")
-    elif _report.needed:
-        _needs = ", ".join(f"`{c}`" for cs in _report.needed.values() for c in cs)
+    elif _report.needs:
+        _needs = ", ".join(f"`{n.label}`" for n in _report.needs)
         _summary = mo.callout(
             mo.md(f"Lean proves this cannot fail once you declare {_needs} in `requires`."),
             kind="warn",

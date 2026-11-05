@@ -107,7 +107,8 @@ assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).proved
 overflow at the declared width, bad casts); an error makes `proved` False.
 Sverify infers the bounds that rule most of them out (`amount * 2` needs
 `_.amount < 2**62`) and, by default (`on_inferred="error"`), reports each
-under `needs:` (`report.needed`) until `requires` states it or the
+under `needs:` (`report.needs`, ready for `requires=` as
+`report.suggested_requires`) until `requires` states it or the
 transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"silent"` assumes it and checks it on the data, and
 `on_inferred="off"` infers and assumes nothing. For the rest, `report.hints`

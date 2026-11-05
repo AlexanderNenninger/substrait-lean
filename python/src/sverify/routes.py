@@ -1235,7 +1235,7 @@ def verified(report: Report) -> bool:
     return (
         not report.errors
         and not report.transfer
-        and not report.needed
+        and not report.needs
         and not report.floats_unmet
         and all(c.portable or c.checked for c in report.ensures)
     )
@@ -1264,8 +1264,8 @@ def not_verified(report: Report) -> str:
         want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
         parts.append(f"no engine meets the observation's {want}: {first}")
         see.append("report.floats_on")
-    if report.needed:
-        see.append("report.needed")
+    if report.needs:
+        see.append("report.needs")
     if report.transfer:
         parts.append(
             "the reference's proof does not carry over to Substrait's semantics on "
