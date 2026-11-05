@@ -19,6 +19,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _repo import needs_repo
 from sverify import substrait_export as se
 from sverify.substrait_export import ExportError, read
 
@@ -262,6 +263,7 @@ def test_gaps_where_the_reference_raises_need_no_shim() -> None:
         assert u["gap"] == "ST-1"
 
 
+@needs_repo
 def test_gaps_name_existing_entries() -> None:
     for gap in {*se.GAPS.values(), *se.FUNCTION_GAPS.values()}:
         doc = json.loads((ROOT / "upstream" / "bugs" / f"{gap}.json").read_text())
@@ -363,6 +365,7 @@ def test_runs_on_a_substrait_consumer(case: str) -> None:
 # -- the generated table and the .proto ------------------------------------------------
 
 
+@needs_repo
 def test_extension_table_is_fresh() -> None:
     """`_substrait_extensions.json` is what the YAMLs at the pinned tag give
     (`python -m sverify_dev.substrait_extensions --write`)."""

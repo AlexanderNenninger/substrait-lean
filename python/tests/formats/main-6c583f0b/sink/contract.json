@@ -1,0 +1,25 @@
+{
+  "checks": {
+    "sverify_1": "doubled >= 0"
+  },
+  "cursors": {},
+  "digests": {
+    "orders": "72ab98a91b76ab1ace502fd00deeefd20de426b1d4c61229ee15e9ff3436b79a"
+  },
+  "epoch": 2,
+  "format": 1,
+  "not_null": [
+    "id"
+  ],
+  "plan": "9c5856f7e02977ba7fe061a8663f31d2f0ee3f8b3d6a7721d12b0a73bc933502",
+  "sources": {
+    "orders": 2
+  },
+  "table_ids": {},
+  "unique": [
+    [
+      "id"
+    ]
+  ],
+  "view": "doubled"
+}

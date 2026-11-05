@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from _repo import needs_repo
 from _sql_lift import TABLES
 from sverify._polars_shims import SHIMS
 from sverify.engine import connect, create_table, run_plan, written_plan
@@ -20,6 +21,7 @@ def table() -> dict:
     return realizability.table()
 
 
+@needs_repo
 def test_doc_is_current(table):
     """A change to the reference or an engine's tables that alters a row (a new
     shim, a precondition, a refusal) fails here until the doc is regenerated:
@@ -53,6 +55,7 @@ def _ids_exist(engine: str, ids: list[str]) -> list[str]:
     return missing
 
 
+@needs_repo
 def test_every_shim_is_proved_or_tested(table):
     """Each shim the table names rests on a Lean theorem (whose existence the
     Lean build checks, `SubstraitLean/Obligations.lean`) or on facts and tests
@@ -70,6 +73,7 @@ def test_every_shim_is_proved_or_tested(table):
             assert not _ids_exist(engine, r["facts"]), (engine, r)
 
 
+@needs_repo
 def test_every_row_names_real_facts(table):
     for engine, e in table.items():
         for r in e["rows"]:
@@ -136,6 +140,7 @@ def test_clustered_is_a_sort():
         seen.append(p)
 
 
+@needs_repo
 def test_evidence_levels(table):
     """Each row has a level; a row the Polars lemmas cover is `proof`, a row
     with no fact `missing`, and a fact's level is its strongest check."""

@@ -24,6 +24,7 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import bound_orders
+from _repo import needs_repo
 from sverify.errors import PreconditionError
 
 U = Fraction(1, 2**53)
@@ -118,6 +119,7 @@ def test_kahan_meets_the_tree_bound(xs: list[float]) -> None:
     assert abs(Fraction(kahan(xs[:3])) - exact(xs[:3])[0]) <= gamma(len(xs[:3])) * exact(xs[:3])[1]
 
 
+@needs_repo
 def test_rows_cite_theorems_float_bounds_has() -> None:
     """The core cannot see `float-bounds`' theorems: the names its engine rows
     cite (`floatBoundsTheorems`) are the ones `float-bounds` checks exist."""
