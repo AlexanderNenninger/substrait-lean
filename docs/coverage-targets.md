@@ -133,7 +133,7 @@ is what the probe gives.
 
 ### Casts
 
-1 of 6 in for 1.0 covered.
+2 of 6 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -142,7 +142,7 @@ is what the probe gives.
 | decimal to a smaller scale | in | — | CAST(x AS DECIMAL(10, 2)) after arithmetic; replay 25 | [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
 | casts to VARCHAR | in | — | dbt surrogate keys and hash diffs (md5 of casts), dbt_utils.unpivot, labels; replay 184 | [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346) |
 | casts from VARCHAR, and TRY_CAST | in | — | Eurostat values ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); CSV sources; Ibis try_cast string | [#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806) |
-| DATE as TIMESTAMP: the cast, date_trunc and DATE ± INTERVAL of a date column | in | — | monthly rollups over DATE columns (catalogue date_trunc 11); dbt.dateadd | [#807](https://github.com/AlexanderNenninger/substrait-lean/issues/807) |
+| DATE as TIMESTAMP: the cast, date_trunc and DATE ± INTERVAL of a date column | in | covered | monthly rollups over DATE columns (catalogue date_trunc 11); dbt.dateadd | [#807](https://github.com/AlexanderNenninger/substrait-lean/issues/807) |
 | casts of a double to VARCHAR | after 1.0 | — | labels; replay (part of 184) | [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346) |
 
 ### Strings
@@ -162,7 +162,7 @@ is what the probe gives.
 
 ### Temporal
 
-3 of 10 in for 1.0 covered.
+5 of 10 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -170,8 +170,8 @@ is what the probe gives.
 | constant intervals on timestamps, date literals | in | covered | catalogue: interval_day_time 17, date_literal 18, interval_month 8 |  |
 | date_diff in days, date - date | in | covered | catalogue date_diff 6; retention pattern |  |
 | DATE ± INTEGER | in | — | dbt.dateadd on DuckDB; replay 57 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
-| date_diff in hours, minutes, months; epoch | in | — | sessionization, time-weighted averages, cohorts ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)); catalogue epoch 2 | [#809](https://github.com/AlexanderNenninger/substrait-lean/issues/809) |
-| make_date, last_day, dayname, monthname | in | — | Ibis date from columns; calendar dimensions | [#809](https://github.com/AlexanderNenninger/substrait-lean/issues/809) |
+| date_diff in hours, minutes, months; epoch | in | covered | sessionization, time-weighted averages, cohorts ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)); catalogue epoch 2 | [#809](https://github.com/AlexanderNenninger/substrait-lean/issues/809) |
+| make_date, last_day, dayname, monthname | in | covered | Ibis date from columns; calendar dimensions | [#809](https://github.com/AlexanderNenninger/substrait-lean/issues/809) |
 | timestamp - timestamp, and intervals from columns | in | — | sessionization gaps (ts - lag(ts) > INTERVAL 30 MINUTE); Ibis timestamp delta, column intervals; replay 307 | [#342](https://github.com/AlexanderNenninger/substrait-lean/issues/342) |
 | strptime, try_strptime, strftime | in | — | dates as text in raw data; Eurostat periods ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); Ibis string to timestamp; replay 243 | [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347) |
 | time_bucket | in | — | catalogue time_bucket 1; metrics rollups; replay 74 | [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347) |

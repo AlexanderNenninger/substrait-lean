@@ -6,6 +6,8 @@ import json
 
 import pyarrow as pa
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from _sql_lift import SCHEMAS, TABLES
 from sverify.engine import run_checker
@@ -41,6 +43,30 @@ QUERIES = [
     "SELECT extract(year FROM day) AS y, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
+    # A DATE as a TIMESTAMP is its midnight (#807): the cast, and where DuckDB
+    # types a date's arithmetic or truncation as a TIMESTAMP.
+    "SELECT id, CAST(day AS TIMESTAMP) AS t, date_trunc('day', day) AS d,"
+    " date_trunc('month', day) AS m, day + INTERVAL 1 DAY AS n, day - INTERVAL 1 MONTH AS p,"
+    " day + INTERVAL 1 HOUR AS h, day - INTERVAL '1 day 90 minutes' AS q FROM orders",
+    "SELECT id FROM orders WHERE day < placed OR day >= TIMESTAMP '2024-02-01 12:00'",
+    "SELECT max(date_trunc('month', day)) AS m, min(day + INTERVAL 1 DAY) AS n FROM orders",
+    # date_diff in every unit (#809): the boundaries crossed, weeks from Monday.
+    "SELECT id, date_diff('microsecond', placed, TIMESTAMP '2024-01-01') AS us,"
+    " date_diff('millisecond', placed, TIMESTAMP '2024-01-01 00:00:00.0005') AS ms,"
+    " date_diff('second', placed, day) AS s, date_diff('minute', placed, day) AS mi,"
+    " date_diff('hour', day, placed) AS h, date_diff('day', placed, day) AS d,"
+    " date_diff('week', placed, day) AS w, date_diff('month', DATE '2023-11-30', placed) AS mo,"
+    " date_diff('quarter', placed, day) AS q, datediff('year', day, placed) AS y FROM orders",
+    "SELECT id, date_diff('hour', day, DATE '2024-03-01') AS h, date_diff('weeks', day,"
+    " DATE '2024-03-01') AS w, date_diff('mins', day, DATE '1969-12-31') AS m FROM orders",
+    # epoch, a DOUBLE of seconds; parts and names (#809).
+    "SELECT id, epoch(placed) AS e, extract(epoch FROM day) AS f, epoch_us(placed) AS u,"
+    " date_part('epoch', placed) AS g FROM orders",
+    "SELECT id, dayname(day) AS dn, monthname(placed) AS mn, isodow(day) AS i,"
+    " isoyear(placed) AS y, extract(isoyear FROM day) AS z, last_day(day) AS l,"
+    " last_day(placed) AS lp FROM orders",
+    "SELECT id, make_date(2024, amount, 1) AS a, make_date(2023 + id // 3, 2, 28 + id // 4) AS b,"
+    " make_date(2024, 2, 29) = DATE '2024-02-29' AS c FROM orders WHERE amount BETWEEN 1 AND 12",
 ]
 
 
@@ -63,13 +89,10 @@ def test_the_reference_lift_is_checked_too(query):
     ("query", "message"),
     [
         ("SELECT INTERVAL 2 DAYS AS x", "INTERVAL output column"),
-        # A DATE at midnight that DuckDB types a TIMESTAMP needs a cast Lean
-        # lacks where it is one: an output column, next to a timestamp column.
-        ("SELECT date_trunc('day', day) AS d FROM orders", "is a TIMESTAMP in DuckDB"),
-        ("SELECT day + INTERVAL 1 DAY AS d FROM orders", "is a TIMESTAMP in DuckDB"),
-        ("SELECT id FROM orders WHERE day < placed", "DATE column as a TIMESTAMP"),
-        ("SELECT day + INTERVAL 1 HOUR AS d FROM orders", "hours or less"),
-        ("SELECT extract(epoch FROM placed) FROM orders", "date part EPOCH"),
+        ("SELECT date_diff('decade', day, day) FROM orders", "datediff in decade"),
+        ("SELECT dayname(customer) FROM orders", "not a date or a timestamp"),
+        ("SELECT make_date(2024, 2, 30) AS d", "DuckDB raises"),
+        ("SELECT make_date(2024, price, 1) AS d FROM orders", "make_date of a float64"),
         ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
         # `ago` negates; SQLGlot drops it from one unit (#626, SG-8).
         ("SELECT placed + INTERVAL '1 day ago' AS p FROM orders", "ago"),
@@ -197,3 +220,50 @@ def test_time_plus_interval_wraps_around_midnight(query):
 def test_time_constants_outside_the_model_are_refused(query, message):
     with pytest.raises(Refused, match=message):
         lift(query, {})
+
+
+#: Timestamps from 1900 to 2100, in microseconds since 1970-01-01.
+_US = st.integers(-2_208_988_800_000_000, 4_102_444_800_000_000)
+
+
+@settings(max_examples=40, deadline=None)
+@given(rows=st.lists(st.tuples(st.one_of(st.none(), _US), _US), max_size=8))
+def test_date_diff_and_epoch_on_random_timestamps(rows):
+    # Boundaries crossed, flooring before 1970 too; epoch as a double (#809).
+    t = pa.table(
+        {"a": pa.array([a for a, _ in rows], pa.timestamp("us")),
+         "b": pa.array([b for _, b in rows], pa.timestamp("us"))}
+    )  # fmt: skip
+    units = ("microsecond", "millisecond", "second", "minute", "hour", "day", "week", "month",
+             "quarter", "year")  # fmt: skip
+    cols = ", ".join(f"date_diff('{u}', a, b) AS {u}" for u in units)
+    query = f"SELECT {cols}, epoch(a) AS e, CAST(CAST(b AS DATE) AS TIMESTAMP) AS d FROM t"
+    result = check(query, {"t": t})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@settings(max_examples=30, deadline=None)
+@given(rows=st.lists(st.tuples(st.integers(1, 9999), st.integers(1, 12), st.integers(1, 28)),
+                     max_size=6))  # fmt: skip
+def test_make_date_on_random_dates(rows):
+    # H. Hinnant's days_from_civil, as DuckDB's (#809).
+    t = pa.table({k: pa.array([r[i] for r in rows], pa.int64()) for i, k in enumerate("ymd")})
+    result = check("SELECT make_date(y, m, d) AS x, isoyear(make_date(y, m, d)) AS i FROM t",
+                   {"t": t})  # fmt: skip
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT make_date(2024, amount, 1) AS d FROM orders",
+        "SELECT make_date(2024, 2, amount + 26) AS d FROM orders",
+    ],
+)
+def test_make_date_outside_the_calendar_raises(sql):
+    """DuckDB raises for a month or day outside the calendar; `verify`
+    reports it unless `requires` bounds them."""
+    import sverify as sv
+
+    report = sv.verify(sql, tables=SCHEMAS, counterexamples=0, on_inferred="off")
+    assert report.errors, report

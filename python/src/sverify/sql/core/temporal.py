@@ -19,6 +19,7 @@ from sverify.sql.core._base import (
     NS_DAY_MIN,
     NS_MAX,
     NS_MIN,
+    OUTSIDE_DATES,
     PART_MAX,
     PART_MIN,
     Bin,
@@ -130,6 +131,17 @@ def expr(
             return d.time_trunc(unit, self.operand(a, "tod", ref, cols, "date_trunc"))
         case Un(op="as_time", arg=a):
             return d.as_time(self.int_operand(a, ref, cols, "CAST to TIMESTAMP"))
+        case Un(op="date_time", arg=a):
+            # The reference's dates (`UnFn.dateTime`); DuckDB's are wider.
+            x = self.operand(a, "date", ref, cols, "CAST to TIMESTAMP")
+            if not d.guards:
+                return d.date_time(x)
+            lo, hi = d.int_lit(DAY_MIN), d.int_lit(DAY_MAX)
+            bad = f"({d.date_days(x)} NOT BETWEEN {lo} AND {hi})"
+            fail = d.raise_(f"a DATE as a TIMESTAMP {OUTSIDE_DATES}", x, "time")
+            return d.case_when(bad, fail, d.date_time(f"(CASE WHEN NOT {bad} THEN {x} END)"))
+        case Un(op="epoch_us", arg=a):
+            return d.epoch_us(self.operand(a, "time", ref, cols, "epoch_us"))
         case Un(op="strftime", arg=a, param=fmt):
             x = self.operand(a, "time", ref, cols, "strftime")
             return self.chrono_only(x, self.strftime(x, fmt), "strftime", "str")
@@ -141,7 +153,7 @@ def expr(
             x = self.operand(a, "date", ref, cols, "date_part")
             lo, hi = d.int_lit(CHRONO_DAY_MIN), d.int_lit(CHRONO_DAY_MAX)
             inside = f"{d.date_days(x)} BETWEEN {lo} AND {hi}"
-            return f"(CASE WHEN {inside} THEN {d.date_part(part, d.date_to_time(x))} END)"
+            return f"(CASE WHEN {inside} THEN {d.day_part(part, x)} END)"
         case Un(op="day_trunc", arg=a, param=unit):
             x = self.operand(a, "date", ref, cols, "date_trunc")
             return self.date_range(
@@ -196,7 +208,8 @@ def expr(
 UN_KINDS: dict[str, FixedKind] = {
     "date_part": "int", "day_part": "int", "date_trunc": "time", "to_date": "date",
     "day_trunc": "date", "time_of_day": "tod", "as_time": "time", "bucket": "time",
-    "strftime": "str", "time_add": "tod", "time_trunc": "tod",
+    "strftime": "str", "time_add": "tod", "time_trunc": "tod", "date_time": "time",
+    "epoch_us": "int",
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {"date_diff": "int", "date_add": "date"}
 
