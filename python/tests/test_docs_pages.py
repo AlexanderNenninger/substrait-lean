@@ -67,3 +67,30 @@ def test_the_examples_page_is_docs_examples(pages):
     page = pages["examples/examples.md"]
     assert page.startswith('---\ntitle: "Examples"')
     assert "## 8. Substrait's own semantics" in page
+
+
+def test_the_index_has_one_short_row_per_entry(pages):
+    """The index's table is HTML with a plain one-line summary per entry, so
+    no entry's Markdown (an unbalanced backtick, a `|`) can break it."""
+    index = pages["ledgers/index.qmd"]
+    rows = re.findall(r"^<tr><td><a href=\"[^\"]+#([^\"]+)\">", index, re.M)
+    ids = _ids("upstream/bugs/*.json") | _ids("characterization/*/facts/*.json")
+    assert sorted(rows) == sorted(ids)
+    for cell in re.findall(r"<td>([^<]*)</td>", index):
+        assert len(cell) <= 200, cell
+        assert "`" not in cell, cell
+
+
+def test_pipe_tables_are_well_formed(pages):
+    """Every row of a Markdown table has its header's columns and balanced
+    code spans."""
+    for name, text in pages.items():
+        width = None
+        for line in text.splitlines():
+            if not line.startswith("|"):
+                width = None
+                continue
+            cells = re.split(r"(?<!\\)\|", line.strip())[1:-1]
+            width = width or len(cells)
+            assert len(cells) == width, (name, line[:120])
+            assert all(c.count("`") % 2 == 0 for c in cells), (name, line[:120])

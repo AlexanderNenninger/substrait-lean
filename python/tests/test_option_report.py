@@ -332,3 +332,9 @@ def test_epsilon_per_engine(monkeypatch):
     sv.verify(t.select(r=t.y.ln()), requires=req)
     eps = json.loads(seen["out"])["epsilon_by_engine"]
     assert eps["duckdb"]["r"]["proved"] == {"abs": False}
+    # `exp` is `libm` within one ulp on both sides (`rule_exp`): bounded and proved.
+    sv.verify(t.select(r=t.y.exp()), requires=req)
+    eps = json.loads(seen["out"])["epsilon_by_engine"]
+    for engine in ("duckdb", "polars"):
+        assert 0 < eps[engine]["r"]["abs"] < 1e-10  # 4u · e¹⁰
+        assert eps[engine]["r"]["proved"] == {"abs": True}
