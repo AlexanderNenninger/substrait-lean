@@ -287,7 +287,7 @@ def litKind : Value → Kind
 def bbKind : BlackBox.Ty → Kind
   | .int => .int | .double => .float | .str => .str | .bool => .bool | .date => .date
   | .timestamp => .time
-  | .doubles => .list .float | .ints => .list .int
+  | .doubles => .list .float | .ints => .list .int | .strs => .list .str
   | .atom | .any => .other
 
 /-- Does a black box take an argument of kind `k` for one of type `t`? -/

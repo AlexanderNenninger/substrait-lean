@@ -1,6 +1,7 @@
 import Lean.Data.Json
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
+import SubstraitLean.SparkShims
 import SubstraitLean.Allowed
 import SubstraitLean.LoweringDuckDB
 
@@ -101,7 +102,12 @@ def shimCosts : List (String × String × ShimCost) := [
   ("polars", "decimal_round_half_away", .expression),
   ("polars", "decimal_div_half_away", .expression),
   ("polars", "max_nan_greatest", .expression),
-  ("polars", "sort on the keys", .sort)]
+  ("polars", "sort on the keys", .sort),
+  ("spark", "int_sum_decimal", .expression),
+  ("spark", "int_avg_decimal", .expression),
+  ("spark", "Dialect.canon", .expression),
+  ("spark", "null_order", .argument),
+  ("spark", "sort on the keys", .sort)]
 
 def shimCost? (engine name : String) : Option ShimCost :=
   (shimCosts.find? fun (e, n, _) => e == engine && n == name).map (·.2.2)
@@ -110,6 +116,7 @@ def shimCost? (engine name : String) : Option ShimCost :=
 def translationTheorem : String → String
   | "duckdb" => "Rel.duckdb_refines"
   | "polars" => "Rel.polars_sound"
+  | "spark" => "Rel.spark_sound"
   | _ => ""
 
 /-! ## The rows -/

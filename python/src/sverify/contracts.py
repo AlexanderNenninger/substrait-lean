@@ -847,15 +847,15 @@ def _check_approx(cond: Deferred) -> None:
         raise TypeError(f"sv.approx({label(cond)}): {e}") from None
 
 
-Semantics = Literal["reference", "duckdb", "polars", "substrait"]
+Semantics = Literal["reference", "duckdb", "polars", "spark", "substrait"]
 """The profile a check is under: sverify's reference semantics (the
 default), DuckDB's (#411), whose SQL also means what DuckDB computes,
-Polars's, for Ibis transformations, or Substrait's own, as its extension
-YAMLs state it (#444)."""
+Polars's or Spark's (#739), for Ibis transformations, or Substrait's own, as
+its extension YAMLs state it (#444)."""
 
 #: The profiles the checker is asked for by name (`"profile"` in a
 #: `--contract` request): those beyond the reference and DuckDB's lift.
-_PROFILE_REQUESTS = frozenset({"polars", "substrait"})
+_PROFILE_REQUESTS = frozenset({"polars", "spark", "substrait"})
 
 
 def _transfer_failure(f: Mapping[str, Any]) -> str:
@@ -882,9 +882,10 @@ def _expr_semantics(transform: Transform) -> Semantics:
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    if semantics not in ("reference", "duckdb", "polars", "substrait"):
+    if semantics not in ("reference", "duckdb", "polars", "spark", "substrait"):
         raise ValueError(
-            f"semantics must be 'reference', 'duckdb', 'polars' or 'substrait', not {semantics!r}"
+            "semantics must be 'reference', 'duckdb', 'polars', 'spark' or 'substrait', "
+            f"not {semantics!r}"
         )
     return semantics  # type: ignore[return-value]
 
@@ -1367,7 +1368,8 @@ class Report:
     semantics: Semantics = "reference"
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
-    computes (#411); `"polars"`; or `"substrait"`, Substrait's own (#444)."""
+    computes (#411); `"polars"`; `"spark"` (#739); or `"substrait"`, Substrait's own
+    (#444)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
@@ -3320,7 +3322,9 @@ def verify(
             (None), it is `"duckdb"` for a transformation whose SQL is all
             `sv.sql(..., semantics="duckdb")`, else `"reference"`.
             `"polars"` checks an Ibis transformation under Polars's
-            profile (#444); the checker refuses it until it has one.
+            profile (#444), `"spark"` under Spark's (#739): its plan runs
+            natively on that engine (`sverify.routes`, the route
+            `"native"`).
             `"substrait"` checks an Ibis transformation under Substrait's
             own semantics (`Profile.substrait`, #444): the proof under the
             reference holds there where Substrait allows nothing more at

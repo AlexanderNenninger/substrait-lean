@@ -19,6 +19,12 @@ versions the caller gives. Each table format is an extra:
 imported when first used. `Storage` holds object store options (credentials,
 region) shared by several tables.
 
+Credentials go by name (#775): a `Secret` names where a value lives
+(`"env:NAME"`, `"bao:kv/path#field"`, a cloud secret manager, the OS
+keychain, or a bare name the configuration maps), and the `Resolver` reads
+it when a table is opened. `Node.credentials()` and each refresh entry
+list them per table, for reading or writing (`CredentialUse`, #778).
+
 Your own sources and sinks:
 
 * A `Source` subclass implements `read(since)`, which returns the new rows
@@ -44,6 +50,8 @@ from typing import TYPE_CHECKING, Any
 
 from sverify.incremental import Changes, Snapshot, SourceBatch, StaticSource, VersionedSource
 from sverify.io._common import Contract, SinkWrite
+from sverify.io._credentials import CredentialUse
+from sverify.io._secrets import Resolver, Secret, set_resolver
 from sverify.io._sink import Sink, SinkChange, sink_from
 from sverify.io._source import Batch, Source, from_files, from_frame, from_query
 from sverify.io._storage import Storage
@@ -83,11 +91,14 @@ __all__ = [
     "Batch",
     "Changes",
     "Contract",
+    "CredentialUse",
     "DeltaSink",
     "DeltaSource",
     "FlightSource",
     "IcebergSink",
     "IcebergSource",
+    "Resolver",
+    "Secret",
     "Sink",
     "SinkChange",
     "SinkWrite",
@@ -100,5 +111,6 @@ __all__ = [
     "from_files",
     "from_frame",
     "from_query",
+    "set_resolver",
     "sink_from",
 ]

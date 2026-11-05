@@ -49,7 +49,8 @@ class BlackBoxAgg(sge.Expression, sge.AggFunc):
 _TYPES: dict[str, Any] = {"int": dt.int64, "double": dt.float64, "str": dt.string,
                           "bool": dt.boolean, "date": dt.date, "timestamp": dt.timestamp(scale=6),
                           "doubles": dt.Array(value_type=dt.float64),
-                          "ints": dt.Array(value_type=dt.int64)}  # fmt: skip
+                          "ints": dt.Array(value_type=dt.int64),
+                          "strs": dt.Array(value_type=dt.string)}  # fmt: skip
 
 #: The types an argument is converted to (`lf.to`); the others are taken as
 #: they are.
@@ -92,6 +93,7 @@ def _accepts(ty: str, t: Any) -> bool:
         or (ty == "atom" and (t.is_integer() or t.is_string() or t.is_boolean()))
         or (ty == "doubles" and t.is_array() and t.value_type.is_float64())
         or (ty == "ints" and t.is_array() and t.value_type.is_integer())
+        or (ty == "strs" and t.is_array() and t.value_type.is_string())
     )
 
 
@@ -121,6 +123,9 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
             # SQLGlot's `kurtosis(x)` and `skewness(x)`.
             name = "kurtosis" if isinstance(n, sge.Kurtosis) else "skewness"
             return BlackBoxAgg(this=n.this, fname=sge.Literal.string(name))
+        if isinstance(n, sge.Split):
+            # SQLGlot's `string_split(s, sep)` (also `str_split`, `string_to_array`).
+            return BlackBoxCall(this="string_split", expressions=[n.this, n.expression])
         if isinstance(n, sge.Format):
             # SQLGlot's `format(fmt, …)`.
             return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])

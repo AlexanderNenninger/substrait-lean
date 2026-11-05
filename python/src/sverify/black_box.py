@@ -23,9 +23,11 @@ from typing import Literal
 #: The URN of sverify's black-box functions (`BlackBox.blackBoxUrn`).
 URN = "extension:io.sverify:black_box"
 
-Ty = Literal["int", "double", "str", "bool", "date", "timestamp", "atom", "doubles", "ints", "any"]
-"""`atom` is an integer, string or boolean (`BlackBox.Ty.atom`); `doubles` and
-`ints` are lists of them."""
+Ty = Literal[
+    "int", "double", "str", "bool", "date", "timestamp", "atom", "doubles", "ints", "strs", "any"
+]
+"""`atom` is an integer, string or boolean (`BlackBox.Ty.atom`); `doubles`,
+`ints` and `strs` are lists of doubles, integers and strings."""
 
 #: The code of `1.0` (`BlackBox.codeOne`).
 CODE_ONE = 2 * 2**1074 + 1
@@ -168,6 +170,17 @@ TABLE: tuple[BlackBox, ...] = (
     ),
     # A BIGINT, which raises past its range: DuckDB's own is a HUGEINT.
     BlackBox("list_sum", "scalar", ("ints",), "int", "CAST(list_sum({0}) AS BIGINT)", raises=True),
+    # The pieces of `s` between the occurrences of `sep` (#808); `[s]` for a
+    # NULL `sep`, so not strict.
+    BlackBox(
+        "string_split",
+        "scalar",
+        ("str", "str"),
+        "strs",
+        "string_split({0}, {1})",
+        strict=False,
+        laws=(("non_null",),),
+    ),
     # `CAST` and `TRY_CAST` of a string (#806): DuckDB's rules
     # (`duckdb-cast-varchar`); `CAST` raises where `TRY_CAST` is NULL.
     BlackBox(

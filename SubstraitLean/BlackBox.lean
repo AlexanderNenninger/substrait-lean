@@ -43,7 +43,7 @@ differential tests pin each black box to DuckDB, and the laws are checked
 on random data (`python/tests/test_black_box.py`).
 
 Lean's evaluator computes the black boxes it has an evaluator for
-(`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, `list_sum`, and `signbit`
+(`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, `list_sum`, `string_split`, and `signbit`
 away from `±0.0` and NaN) and panics at the others, so `substrait-check`
 refuses to print rows rather than print wrong ones.
 -/
@@ -67,6 +67,8 @@ inductive Ty where
   | atom
   /-- A list of doubles (their codes) or of integers, NULLs among them. -/
   | doubles | ints
+  /-- A list of strings, NULLs among them. -/
+  | strs
   /-- Any value (an aggregate's argument). -/
   | any
   deriving Repr, DecidableEq
@@ -74,6 +76,11 @@ inductive Ty where
 /-- Is `v` NULL or an integer: an element of `doubles` or `ints`? -/
 def intOrNull : Value → Bool
   | .null | .int _ => true
+  | _ => false
+
+/-- Is `v` NULL or a string: an element of `strs`? -/
+def strOrNull : Value → Bool
+  | .null | .str _ => true
   | _ => false
 
 /-- Is `v` NULL or a value of the type? -/
@@ -84,6 +91,7 @@ def Ty.has : Ty → Value → Bool
   | .bool, .bool _ => true
   | .atom, .int _ | .atom, .str _ | .atom, .bool _ => true
   | .doubles, .list vs | .ints, .list vs => vs.all intOrNull
+  | .strs, .list vs => vs.all strOrNull
   | .any, _ => true
   | _, _ => false
 
@@ -221,6 +229,12 @@ def scalars : List Scalar := [
   -- raises past its range, as `SUM`. Lean evaluates it.
   { name := "list_sum", args := [.ints], result := .int, raises := .sometimes,
     sample := .int 0 },
+  -- `string_split(s, sep)`: the pieces of `s` between the occurrences of
+  -- `sep`, found left to right without overlapping; its characters (code
+  -- points) for `sep = ''`, and `['']` for `s = ''` (#808). NULL for a NULL
+  -- `s`, and `[s]` for a NULL `sep`, so not strict. Lean evaluates it.
+  { name := "string_split", args := [.str, .str], result := .strs, strict := false,
+    laws := [.nonNull], sample := .list [.str ""] },
   -- `CAST(s AS t)` and `TRY_CAST(s AS t)` of a string (#806), DuckDB's rules
   -- (`duckdb-cast-varchar`): spaces around, signs, fractions and exponents
   -- (a BIGINT rounds half away from zero), `inf` and `nan`, `true`/`t`/`yes`/
@@ -352,6 +366,26 @@ def bitCount (i : Int) : Nat :=
 
 #guard bitCount 7 == 3 && bitCount (-1) == 64 && bitCount 0 == 0 && bitCount (-2 ^ 63) == 1
 
+/-- The pieces of a text between the occurrences of `sep` (not empty), left
+to right: `skip` characters of a match still to drop, and `acc` the piece so
+far, reversed. -/
+def splitChars (sep : List Char) : Nat → List Char → List Char → List String
+  | _, [], acc => [String.ofList acc.reverse]
+  | k + 1, _ :: r, acc => splitChars sep k r acc
+  | 0, c :: r, acc =>
+    if sep.isPrefixOf (c :: r) then String.ofList acc.reverse :: splitChars sep (sep.length - 1) r []
+    else splitChars sep 0 r (c :: acc)
+
+/-- DuckDB's `string_split(s, sep)`: by characters for `sep = ''`. -/
+def stringSplit (s sep : String) : List String :=
+  if sep.isEmpty then (if s.isEmpty then [""] else s.toList.map Char.toString)
+  else splitChars sep.toList 0 s.toList []
+
+#guard stringSplit "a,,b" "," == ["a", "", "b"] && stringSplit "" "," == [""]
+#guard stringSplit "aaa" "aa" == ["", "a"] && stringSplit "ababcab" "abc" == ["ab", "ab"]
+#guard stringSplit "a,b," "," == ["a", "b", ""] && stringSplit "" "" == [""]
+#guard stringSplit "héllo" "" == ["h", "é", "l", "l", "o"]
+
 /-- A cast from VARCHAR (#806) by its target, the row's name less its prefix. -/
 def varcharCast? : String → Option (String → VarcharCasts.Parsed)
   | "bigint" => some VarcharCasts.bigint
@@ -379,6 +413,9 @@ def evalScalar : String → List Value → Value
   | "list_sum", [.list vs] => match listSum vs with
     | some n => .int n
     | none => .null
+  | "string_split", [.str s, .str sep] => .list ((stringSplit s sep).map .str)
+  | "string_split", [.str s, .null] => .list [.str s]
+  | "string_split", [.null, _] => .null
   | name, [.str s] => match varcharRow? name with
     | some (parse, _) => match parse s with
       | .val v => v

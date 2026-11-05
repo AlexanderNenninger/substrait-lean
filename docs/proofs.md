@@ -28,6 +28,7 @@ and that the input rows meet the contract's preconditions.
 | DuckDB, under its default settings, computes the reference | `Rel.duckdb_sound` | `Profile.lean` |
 | The generated DuckDB lowering computes the reference | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | Polars, after the shims, computes the reference | `Rel.polars_sound` and one `Polars.<shim>` lemma per shim | `PolarsShims.lean` |
+| Spark under ANSI, after the shims, computes the reference | `Rel.spark_sound` and one `Spark.<shim>` lemma per shim | `SparkShims.lean` |
 | Dropping the SQL's guards changes no result | `Rel.guardFree_sound` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
@@ -176,6 +177,8 @@ generators, then the trusted reading and writing.
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |
 | `PolarsShims.lean` | The Polars shims, proved against a model of Polars's functions |
 | `PolarsProfile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |
+| `SparkShims.lean` | The Spark shims, proved against a model of Spark under ANSI |
+| `SparkProfile.lean` | `Profile.spark`, the semantics under `semantics="spark"` |
 | `SubstraitProfile.lean` | Substrait's own semantics as a profile |
 | `Transfer.lean` | The options a plan meets, and transfer between profiles |
 | `Obligations.lean` | The realizability table: how each engine discharges each option |

@@ -1348,7 +1348,8 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
 #: The kind of each `black_box.Ty` (#325; `Parse.bbKind`).
 _BB_KINDS: dict[str, Any] = {"int": "int", "double": "float", "str": "str", "bool": "bool",
                              "date": "date", "timestamp": "time", "atom": "other", "any": "other",
-                             "doubles": Lst("float"), "ints": Lst("int")}  # fmt: skip
+                             "doubles": Lst("float"), "ints": Lst("int"),
+                             "strs": Lst("str")}  # fmt: skip
 
 
 def _bb_kind(name: str) -> Any:

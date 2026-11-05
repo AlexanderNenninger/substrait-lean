@@ -17,7 +17,7 @@ on it are checked on the rows.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -33,6 +33,8 @@ from sverify.incremental import (
     snapshot_diff,
 )
 from sverify.io._common import UNRECORDED, cursor_value
+from sverify.io._credentials import declared
+from sverify.io._secrets import Secret
 from sverify.steps import Pipeable
 
 Kind = Literal["append", "snapshot", "changes"]
@@ -196,6 +198,8 @@ class Source(Pipeable, ABC):
 
     name: str = "table"
     assumes: str | None = None
+    credentials: tuple[Secret, ...] = ()
+    """The secrets the source reads with, by name (#778)."""
     _declared: pa.Schema | None = None
     _state: _State | None = None
     _base: int = 0
@@ -207,10 +211,12 @@ class Source(Pipeable, ABC):
         schema: pa.Schema | None = None,
         assumes: str | None = None,
         on_violation: Literal["error", "quarantine", "hold"] | None = None,
+        credentials: str | Secret | Sequence[str | Secret] | None = None,
     ):
         from sverify._quarantine import check_policy
 
         self.name = name
+        self.credentials = declared(credentials)
         self.on_violation = check_policy(on_violation)
         self._declared = schema
         if assumes is not None:
@@ -543,6 +549,7 @@ def from_query(
     cursor_on: str,
     name: str,
     schema: pa.Schema | None = None,
+    credentials: str | Secret | Sequence[str | Secret] | None = None,
 ) -> Source:
     """A source that reads new rows by a high-water mark: `fn(since)`
     returns the rows whose `cursor_on` column is greater than `since` (all
@@ -562,6 +569,9 @@ def from_query(
         schema: The table's schema, if `fn(None)` may return nothing.
             Default: that of the first rows.
 
+        credentials: The secrets `fn` reads, by name or reference
+            (`sverify.io.Secret`), so reports list them (#778). Read one
+            inside `fn` with `Secret(name).value()`. Default: none.
     Returns:
         The source.
 
@@ -590,7 +600,9 @@ def from_query(
         node.refresh()
         ```
     """
-    return _Query(fn, cursor_on, name, schema)
+    out = _Query(fn, cursor_on, name, schema)
+    out.credentials = declared(credentials)
+    return out
 
 
 class _Frame(Source):
@@ -603,7 +615,13 @@ class _Frame(Source):
         return None if data is None else Batch(data, kind="snapshot")
 
 
-def from_frame(fn: Callable[[], Any], *, name: str, schema: pa.Schema | None = None) -> Source:
+def from_frame(
+    fn: Callable[[], Any],
+    *,
+    name: str,
+    schema: pa.Schema | None = None,
+    credentials: str | Secret | Sequence[str | Secret] | None = None,
+) -> Source:
     """A source that reads the whole table on every refresh: `fn()` returns
     it. Each read is diffed against the last, so the nodes reading it get
     the exact change and nothing is assumed; a read that changes nothing is
@@ -616,6 +634,9 @@ def from_frame(fn: Callable[[], Any], *, name: str, schema: pa.Schema | None = N
         schema: The table's schema, if `fn()` may return None. Default:
             that of the first read.
 
+        credentials: The secrets `fn` reads, by name or reference
+            (`sverify.io.Secret`), so reports list them (#778). Read one
+            inside `fn` with `Secret(name).value()`. Default: none.
     Returns:
         The source.
 
@@ -629,7 +650,9 @@ def from_frame(fn: Callable[[], Any], *, name: str, schema: pa.Schema | None = N
         )
         ```
     """
-    return _Frame(fn, name, schema)
+    out = _Frame(fn, name, schema)
+    out.credentials = declared(credentials)
+    return out
 
 
 class _Files(Source):
@@ -692,6 +715,7 @@ def from_files(
     name: str,
     schema: pa.Schema | None = None,
     filesystem: Any = None,
+    credentials: str | Secret | Sequence[str | Secret] | None = None,
 ) -> Source:
     """A source that reads the files dropped in a directory: each refresh
     reads the files that are new since the last, and appends their rows.
@@ -712,7 +736,12 @@ def from_files(
             one with credentials. Default: the one `path`'s URI names, with
             its default credentials (environment, profile, role).
 
+        credentials: The secrets `filesystem` was built with, by name or
+            reference (`sverify.io.Secret`), so reports list them (#778).
+            Default: none.
     Returns:
         The source.
     """
-    return _Files(path, format, name, schema, filesystem)
+    out = _Files(path, format, name, schema, filesystem)
+    out.credentials = declared(credentials)
+    return out

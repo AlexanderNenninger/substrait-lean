@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import threading
+import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -42,6 +43,7 @@ except ImportError as e:  # pragma: no cover - pyarrow built without Flight
         "sverify.io.flight needs pyarrow with Flight: pip install 'sverify[flight]'"
     ) from e
 
+from sverify.io._secrets import Secret, as_secret
 from sverify.io._source import Batch, Source
 
 ASSUMES = (
@@ -77,8 +79,11 @@ class FlightSource(Source):
         schema: The table's schema. With it, contracts are proved without
             asking the server, and a log that starts empty works. Default:
             the first batch's.
-        token: A bearer token, sent as the `authorization` header. Default:
-            None.
+        secret: The bearer token, by name or reference (`sverify.io.Secret`,
+            such as `"env:FLIGHT_TOKEN"`), read at each connection and sent
+            as the `authorization` header. Default: None.
+        token: The bearer token's value. Deprecated: it travels with the
+            source; name it with `secret` instead. Default: None.
         timeout: Seconds a call may take. Default: 30.
 
     Examples:
@@ -115,11 +120,20 @@ class FlightSource(Source):
         *,
         name: str | None = None,
         schema: pa.Schema | None = None,
+        secret: str | Secret | None = None,
         token: str | None = None,
         timeout: float = 30.0,
     ):
         super().__init__(name or table, schema=schema, assumes=ASSUMES)
         self.location, self.table = location, table
+        self.secret = as_secret(secret, "FlightSource(secret=)")
+        if token is not None:
+            warnings.warn(
+                "FlightSource(token=) is deprecated: name the token with secret= "
+                "(such as secret='env:FLIGHT_TOKEN'), so no value travels with the source",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.token, self.timeout = token, timeout
         self._client: fl.FlightClient | None = None
         self._held: dict[int, pa.RecordBatch] = {}
@@ -130,13 +144,17 @@ class FlightSource(Source):
         state["_client"] = None
         return state
 
+    def __repr__(self) -> str:
+        return f"FlightSource({self.location!r}, {self.table!r})"
+
     def _get(
         self, after: int | None, until: int | None = None
     ) -> tuple[list[tuple[int, pa.RecordBatch]], int]:
         """The batches numbered in `(after, until]`, and the server's floor."""
         if self._client is None:
             self._client = fl.connect(self.location)
-        headers = [(b"authorization", f"Bearer {self.token}".encode())] if self.token else []
+        token = self.secret.value() if self.secret is not None else self.token
+        headers = [(b"authorization", f"Bearer {token}".encode())] if token else []
         options = fl.FlightCallOptions(headers=headers, timeout=self.timeout)
         ticket = {"table": self.table, "after": after, "until": until}
         try:
