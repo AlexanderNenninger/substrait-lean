@@ -77,7 +77,7 @@ def test_a_sum_in_sql_is_named_by_its_measure() -> None:
     SELECT customer_id, revenue, rank() OVER (ORDER BY revenue DESC) AS r FROM per
     """
     report = sv.verify(sql, tables={"orders": ORDERS}, requires={"orders": ["amount >= 0"]})
-    assert "assumes: sum(amount) may overflow to ±inf" in str(report)
+    assert "assumes: sum(amount) stays finite on finite inputs" in str(report)
     assert "$" not in str(report)
 
 
@@ -86,7 +86,7 @@ def test_aggregates_over_one_column_are_named_together() -> None:
         m=READINGS.temp_c.mean(), s=READINGS.temp_c.std(), lo=READINGS.temp_c.min()
     )
     report = sv.verify(expr, requires={"readings": [_.temp_c.between(-90, 60)]})
-    assert "assumes: mean(temp_c) or std(temp_c) may overflow to ±inf" in str(report)
+    assert "assumes: mean(temp_c) or std(temp_c) stays finite on finite inputs" in str(report)
 
 
 def test_a_decimal_cast_reads_as_the_cast() -> None:
