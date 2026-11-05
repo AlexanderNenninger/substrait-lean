@@ -57,6 +57,14 @@ def unscale (n : Nat) : Float :=
     let m := if m <<< sh == n then m else m + 1
     Float.scaleB (Float.ofNat m) ((sh : Int) - 1074)
 
+/-- `n` scaled units as a double, rounded down: its top 53 bits. -/
+def unscaleDown (n : Nat) : Float :=
+  let k := n.log2
+  if k ≤ 52 then Float.scaleB (Float.ofNat n) (-1074)
+  else
+    let sh := k - 52
+    Float.scaleB (Float.ofNat (n >>> sh)) ((sh : Int) - 1074)
+
 /-- A positive double as JSON, rounded up to 17 significant digits (Lean's
 `toJson` of a `Float` keeps six decimals, which would round a bound down). -/
 def upJson (f : Float) : Json :=
@@ -121,6 +129,12 @@ rules of `float-bounds/FloatBounds/Propagate.lean`:
   literal multiplies by the reciprocal (`fl(x · fl(1/y))`,
   polars-scalar-divisor): `(εa / lb)(1 + u)² + (3u + u²)(ma / lb) +
   (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`);
+* `abs`, negation: `εa` (`rule_abs`); `FLOOR`, `CEIL`, `ROUND`: `εa + 1`
+  (`rule_floor`, `rule_ceil`, `rule_round`); a cast to an integer: `εa + 2`
+  (`rule_trunc`); `sqrt` of `a ≥ εa`: `Δ (1 + u) + 2u (√ha + t)`,
+  `Δ = min(√εa, εa / (√(la − εa) + √la))` (`rule_sqrt`);
+* a comparison is exact where the ranges, widened by `ε`, do not straddle
+  (`rule_threshold`): a filter, `CASE` or key on it keeps the same rows;
 * `exp a`, `a ≤ ha`: `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + t)`
   (`rule_exp`): the platform's `libm` on both sides, trusted to one ulp
   (`NativeLink.exp`);
@@ -182,6 +196,23 @@ def hiOf (env : List AVal) (e : Expr) : Option Float := do
   let s := FloatCode.scaled hi
   return if s ≤ 0 then 0.0 else unscale s.natAbs
 
+/-- The range of `e` from the preconditions, as doubles: the low end rounded
+down, the high end up. -/
+def rangeOf (env : List AVal) (e : Expr) : Option (Float × Float) := do
+  let a := e.absD env []
+  guard a.intsOnly
+  let b ← a.int
+  let lo ← b.lo
+  let hi ← b.hi
+  let (l, h) := (FloatCode.scaled lo, FloatCode.scaled hi)
+  let lf := if 0 ≤ l then unscaleDown l.natAbs else -unscale l.natAbs
+  let hf := if 0 ≤ h then unscale h.natAbs else -unscaleDown h.natAbs
+  return (lf, hf)
+
+/-- `x < y` with room for the doubles' own rounding of both. -/
+def clearlyBelow (x y : Float) : Bool :=
+  x + (x.abs + y.abs) * Float.scaleB 1.0 (-40) + tinyF < y
+
 /-- The least `|e|` from the preconditions, where `0` is outside its range. -/
 def minAbsOf (env : List AVal) (e : Expr) : Option Float := do
   let a := e.absD env []
@@ -239,6 +270,16 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
   | .un .fneg a => exprEps engine env cols a
   | .un .itof a => (exprEps engine env cols a).bind fun (x, p) =>
     if x == 0.0 then some (0.0, p) else none
+  | .bin .lt a b | .bin .eq a b => do
+    -- `rule_threshold`: where the ranges, widened by `ε`, do not straddle, the
+    -- comparison has one outcome on both sides.
+    let (ea, pa) ← exprEps engine env cols a
+    let (eb, pb) ← exprEps engine env cols b
+    if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
+    let (la, ha) ← rangeOf env a
+    let (lb, hb) ← rangeOf env b
+    guard (clearlyBelow (ha + ea) (lb - eb) || clearlyBelow (hb + eb) (la - ea))
+    return (0.0, pa && pb)
   | e@(.bin f a b) => do
     let (ea, pa) ← exprEps engine env cols a
     let (eb, pb) ← exprEps engine env cols b
@@ -278,6 +319,27 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
       if ea == 0.0 && eb == 0.0 && extra == 0.0 then return (0.0, pa && pb && !inexact e)
       guard (ea == 0.0 && eb == 0.0)
       return (extra * u * (← resultMag env e), false)
+  | .un (.fmath .sqrt) a => do
+    -- `rule_sqrt`: correctly rounded on both sides.
+    let (ea, pa) ← exprEps engine env cols a
+    if ea == 0.0 then return (0.0, pa)
+    let (la, ha) ← rangeOf env a
+    guard (la - ea ≥ 0.0)
+    let s := Float.sqrt (la - ea) + Float.sqrt la
+    let d1 := Float.sqrt ea
+    let d := if s > 0.0 then min d1 (ea / s) else d1
+    let u := unitRound
+    return (d * (1.0 + u) + 2.0 * u * (Float.sqrt ha + tinyF), pa)
+  | .un .ffloor a | .un .fceil a | .un .fround a => do
+    -- `rule_floor`, `rule_ceil`, `rule_round`: a step of one.
+    let (ea, pa) ← exprEps engine env cols a
+    if ea == 0.0 then return (0.0, pa)
+    return (ea + 1.0, pa)
+  | .un .ftoi a => do
+    -- `rule_trunc`: each side within one of its input.
+    let (ea, pa) ← exprEps engine env cols a
+    if ea == 0.0 then return (0.0, pa)
+    return (ea + 2.0, pa)
   | .un (.fmath .exp) a => do
     -- `rule_exp`: the platform's `libm` on both sides, one ulp each.
     let (ea, pa) ← exprEps engine env cols a
@@ -291,6 +353,14 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
     if ea == 0.0 && extra == 0.0 then return (0.0, pa && !inexact e)
     if ea == 0.0 then return (extra * unitRound * (← resultMag env e), false)
     none
+  | .ifThen c@(.bin .lt a (.lit (.int 0))) t@(.un .fneg a₁) f => do
+    -- `abs` as the parser writes it: `rule_abs`, whatever the sign of `a`.
+    if a₁ == a && f == a then
+      let (ea, pa) ← exprEps engine env cols a
+      return (ea, pa)
+    let et ← exprEps engine env cols t
+    let ef ← exprEps engine env cols f
+    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps engine env cols c))
   | .ifThen c t f => do
     let et ← exprEps engine env cols t
     let ef ← exprEps engine env cols f
@@ -336,6 +406,27 @@ def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : Str
         | _ => if ea == 0.0 then some (0.0, false) else none
   | _ => none
 
+/-- Does every filter, sort key, `DISTINCT`, grouping key and measure filter
+of the plan read values that are the same on `engine` as on the reference,
+or a comparison whose outcome is (`rule_threshold`)? Then the engine keeps
+the same rows and groups, and the columns' bounds compare like with like. -/
+def rowsExact (engine : String) (cat : Catalog) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) : Rel → Bool
+  | .read _ | .values _ _ => true
+  | .filter r c => rowsExact engine cat A F T r &&
+      (colEps engine cat A F T r).any fun cs => exactP (exprEps engine (r.aeval cat A F T) cs c)
+  | .orderBy r keys => rowsExact engine cat A F T r &&
+      (colEps engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
+  | .distinct r => rowsExact engine cat A F T r &&
+      (colEps engine cat A F T r).any fun cs => cs.all exactP
+  | .fetch r _ _ | .emit r _ | .project r _ => rowsExact engine cat A F T r
+  | .aggregate r gs ms => rowsExact engine cat A F T r &&
+      (colEps engine cat A F T r).any fun cs =>
+        let env := r.aeval cat A F T
+        gs.all (fun g => exactP (exprEps engine env cs g)) &&
+          ms.all fun m => m.filter.all fun c => exactP (exprEps engine env cs c)
+  | _ => false
+
 /-- Does the plan read or write a single-precision column? Polars sums
 `Float32` in single precision (polars-sum-float), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
@@ -346,7 +437,10 @@ def epsJson (e : Float) : Json := upJsonZ (e * (1.0 + Float.scaleB 1.0 (-40)))
 
 /-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
 output column, how far the engine's value may be from one the reference
-allows, `{"abs": …, "proved": {"abs": …}}` (`null`: not bounded). -/
+allows, `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}` (`null`:
+not bounded). `rel` is `abs` over the least magnitude the reference's value
+may have, where its range leaves out zero: a difference of nearly equal
+values loses it, as cancellation loses relative accuracy. -/
 def epsilonByEngine (input : Json) (engines : List String) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
@@ -370,14 +464,52 @@ def epsilonByEngine (input : Json) (engines : List String) : Except String Json 
   let names := if plan.names.length == kinds.length then plan.names
     else (List.range kinds.length).map (s!"#{·}")
   let f32 := hasFp32 tj
+  -- The least magnitude of each column, for the relative bound.
+  let mins : List (Option Float) := (root.aeval cat A F T).map fun a => do
+    guard a.intsOnly
+    let b ← a.int
+    let (l, h) := (FloatCode.scaled (← b.lo), FloatCode.scaled (← b.hi))
+    if 0 < l then some (unscaleDown l.natAbs)
+    else if h < 0 then some (unscaleDown h.natAbs) else none
   return Json.mkObj <| engines.map fun engine =>
     let cols := colEps engine cat A F T root
     (engine, Json.mkObj <| ((names.zip kinds).zipIdx.filter (·.1.2 == .float)).map
       fun ((name, _), i) => match cols.bind (·.getD i none) with
-        | some (e, p) => (name, Json.mkObj [("abs", epsJson e),
-            ("proved", Json.mkObj [("abs", toJson (p && !f32))])])
+        | some (e, p) =>
+          let p := p && !f32
+          -- Relative to the reference's value, at least `m` in magnitude: a value
+          -- near zero (cancellation) has no relative bound.
+          match mins.getD i none with
+          | some m => (name, Json.mkObj [("abs", epsJson e), ("rel", epsJson (e / m)),
+              ("proved", Json.mkObj [("abs", toJson p), ("rel", toJson p)])])
+          | none => (name, Json.mkObj [("abs", epsJson e),
+              ("proved", Json.mkObj [("abs", toJson p)])])
         | none => (name, Json.mkObj [("abs", Json.null),
             ("proved", Json.mkObj [("abs", toJson false)])]))
+
+/-- `"rows_exact"` of a `--contract` request: per engine, whether the plan
+keeps the same rows and groups under each column's `ε` (`rowsExact`). Where
+it may not, a route needs a shim or a precondition on the threshold. -/
+def rowsExactByEngine (input : Json) (engines : List String) : Except String Json := do
+  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
+  let plan ← parseJsonPlan tj
+  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
+    parseJsonPlan
+  let tables : Tables := (plan :: requires).flatMap (·.tables)
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  let schemas : String → List AVal := fun t => match tables.lookup t with
+    | some (_, s) => schemaEnv s
+    | none => []
+  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
+  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
+  let A := fun t => tableEnv (schemas t) (preOf t)
+  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let root := plan.root.capReads caps
+  let T := Rel.keyedWindows cat A F (fun _ => [])
+  return Json.mkObj <| engines.map fun e => (e, toJson (rowsExact e cat A F T root))
 
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,

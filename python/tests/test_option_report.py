@@ -284,6 +284,45 @@ def test_depends_leave_out_what_reaches_no_output(tmp_path):
     assert ("fp.div", "rounding") not in depends
 
 
+def test_epsilon_through_scalar_rules_and_thresholds(monkeypatch):
+    """#568's rules beyond `+ - * / exp` (`Propagate.lean`): `abs` keeps `ε`,
+    `sqrt` of a value away from zero shrinks it, a column whose range leaves
+    out zero has a relative bound too, and a filter on a double is exact where
+    its threshold lies outside the value's range widened by `ε`."""
+    import sverify as sv
+    from sverify import contracts
+
+    seen: dict[str, str] = {}
+    run = contracts.run_checker
+
+    def spy(args, stdin):
+        out = run(args, stdin)
+        seen["out"] = out[1]
+        return out
+
+    monkeypatch.setattr(contracts, "run_checker", spy)
+    t = ibis.table({"k": "int64", "x": "float64", "y": "float64"}, name="t")
+    req = {"t": [ibis._.x.between(-1e6, 1e6), ibis._.y.between(1.0, 10.0), sv.max_rows(1_000_000)]}
+    agg = t.group_by("k").aggregate(s=t.x.sum(), m=t.y.mean())
+
+    def eps(expr):
+        sv.verify(expr, requires=req)
+        return json.loads(seen["out"])["epsilon_by_engine"]["duckdb"]
+
+    e = eps(agg.mutate(h=ibis._.s.abs(), r=ibis._.m.sqrt()))
+    assert e["h"]["abs"] == e["s"]["abs"] and e["h"]["proved"]["abs"] is True
+    assert 0 < e["r"]["abs"] < e["m"]["abs"] and e["r"]["proved"]["abs"] is True
+    # `m` is at least 1: a relative bound; `s` may be 0: none.
+    assert e["m"]["rel"] <= e["m"]["abs"] and e["m"]["proved"]["rel"] is True
+    assert "rel" not in e["s"]
+    # The mean is at least 1 - ε: `m > 0.5` keeps every group on both sides.
+    assert eps(agg.filter(ibis._.m > 0.5))["s"]["proved"]["abs"] is True
+    assert json.loads(seen["out"])["rows_exact"] == {"duckdb": True, "polars": True}
+    # `m > 5` may keep a group on one side and drop it on the other.
+    assert eps(agg.filter(ibis._.m > 5))["s"]["proved"]["abs"] is False
+    assert json.loads(seen["out"])["rows_exact"] == {"duckdb": False, "polars": False}
+
+
 def test_transfer_up_to_the_behaviour_order():
     """`SEQUENTIAL ⊑ ANY`: a proof that holds for any order of a double SUM
     holds where the engine adds them in one; Kahan's (`COMPENSATED`) is not
