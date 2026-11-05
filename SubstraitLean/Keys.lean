@@ -182,7 +182,9 @@ theorem emitKey_keyOf {m : List Nat} {row : Row} :
 /-- Every way of replacing each key column `c` by one of `σ c`. -/
 def variants (σ : Nat → List Nat) : List Nat → List (List Nat)
   | [] => [[]]
-  | c :: k => (σ c).flatMap fun p => (variants σ k).map (p :: ·)
+  | c :: k =>
+    let rest := variants σ k
+    (σ c).flatMap fun p => rest.map (p :: ·)
 
 theorem variants_keyOf {σ : Nat → List Nat} {row row' : Row} :
     ∀ {k k' : List Nat}, (∀ c ∈ k, ∀ p ∈ σ c, row'.getD p .null = row.getD c .null) →
@@ -413,8 +415,10 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
       dedup (((r.keys cat A F K).map (·.filter (!c.pinned.contains ·))).flatMap (eqVariants c))
   -- A key may use any copy of its columns (DataFusion copies join columns this way).
   | .project r es =>
-      ((r.keys cat A F K).filter (·.all (· < r.arity cat))).flatMap
-        (variants fun i => copyCols (r.arity cat) es i ++ linCols (r.arity cat) es (r.aeval cat A F .none) i)
+      let n := r.arity cat
+      let env := r.aeval cat A F .none
+      ((r.keys cat A F K).filter (·.all (· < n))).flatMap
+        (variants fun i => copyCols n es i ++ linCols n es env i)
   | .emit r m => (r.keys cat A F K).filterMap (emitKey m)
   | .cross a b => crossKeys (a.arity cat) (a.keys cat A F K) (b.keys cat A F K)
   | .join a b ty on =>
