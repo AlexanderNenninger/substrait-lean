@@ -76,6 +76,64 @@ Most facts also cite Spark's docs or its source at `v4.3.0`. Five findings are u
 [upstream/bugs](../../upstream/bugs/), and one a spec gap,
 [ST-16](../../upstream/bugs/ST-16.json).
 
+## Spark's tests
+
+Spark ships its SQL tests with their expected output at each release tag:
+the queries in `sql/core/src/test/resources/sql-tests/inputs/` and the golden
+files `results/*.sql.out` that `SQLQueryTestSuite` checks. Those under
+`results/` run with ANSI on, those under `results/nonansi/` with it off, in
+the time zone America/Los_Angeles. A fact's `engine-test` check links each
+case that pins its behaviour at `v4.3.0`, from its `-- !query` line to its
+last line of output, with a note on what it shows.
+
+`python -m sverify_dev.spark_tests` (`python/tools/sverify_dev/spark_tests.py`)
+clones the tests at the tag into `~/.cache/sverify/spark-tests` (a sparse
+clone, about 20 MB) and searches them; `check` checks that every link names a
+case of a golden file at the tag, and `replay` runs a golden file on the
+local `pyspark` and compares the output (it needs a JVM):
+
+```bash
+cd python
+uv run python -m sverify_dev.spark_tests search 'try_add\(' --file nonansi
+uv run python -m sverify_dev.spark_tests check
+```
+
+A replay against `Rel.eval`, as `sverify_dev.slt` does for DuckDB's
+sqllogictests, would need a lift of Spark's SQL, which sverify does not have.
+The golden files run each query once and sort the rows of a query without an
+`ORDER BY`, so they cannot show what varies between runs or partitionings
+(ties, the order of a sum); the [evidence table](#evidence-fact-by-fact) gives
+the reason for each fact with no case.
+
+Reading the tests corrected four facts: `FLOAT / FLOAT` is a `DOUBLE`
+([fp32](facts/spark-fp32.json)); under ANSI a string next to a `FLOAT`,
+`DOUBLE` or decimal is read as `DOUBLE`
+([implicit-casts](facts/spark-implicit-casts.json));
+`try_element_at(a, 0)` raises like `element_at`
+([try-variants](facts/spark-try-variants.json),
+[list-index](facts/spark-list-index.json)); and XML is a built-in source
+([io](facts/spark-io.json)).
+
+## Fuzzing the open deviations
+
+`python -m sverify_dev.spark_fuzz` (`python/tools/sverify_dev/spark_fuzz.py`)
+runs each open deviation's constructs on random rows that lean on the edges
+the fact names (bounds, zeros, NaN, ±inf, NULL, long decimals), under ANSI on
+and off, on both paths, and compares each result (its value, its type, or its
+error class) with a model of what the fact says. Aggregates run over many
+groups with `spark.sql.leafNodeDefaultParallelism` at 1, 2 and 3: Spark scans
+a local table in slices of consecutive rows, and the models of the sums,
+`avg`, the variances and the covariances follow the fact's algorithm slice by
+slice, then merge the partial results in any order. Where the construct has
+a DuckDB form, `Rel.eval` (the reference profile of sverify's lift) runs on
+the same rows, and the run counts the rows where Spark's value differs from
+it. The run writes [fuzz.json](fuzz.json): per target, the seed, the rows,
+the settings, the counts and any findings. It ran on homelab:
+
+```bash
+cd python && uv run python -m sverify_dev.spark_fuzz --rows 300 --seed 738
+```
+
 ## The Spark diff, as a table
 
 How Spark 4.3.0 compares with the reference, option by option, under ANSI

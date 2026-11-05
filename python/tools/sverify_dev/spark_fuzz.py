@@ -417,7 +417,7 @@ def _decimal_negate() -> list[Target]:
                 y = _D34.plus(f(x))
                 if abs(y) >= Decimal(10) ** (38 - s):
                     return Raise("NUMERIC_VALUE_OUT_OF_RANGE")
-                return y.quantize(Decimal(1).scaleb(-s))
+                return y.quantize(Decimal(1).scaleb(-s), context=Context(prec=100))
 
             return m
 
@@ -636,7 +636,7 @@ def _math_domain() -> list[Target]:
         b, x = row
         if b <= 0 or x <= 0:
             return None
-        return nd(np.log, x) / nd(np.log, b)
+        return nd(np.divide, nd(np.log, x), nd(np.log, b))
 
     def atan2(row: tuple, ansi: bool) -> Any:
         y, x = row
@@ -963,7 +963,8 @@ def _fp32() -> list[Target]:
         e = [0.1, 0.2, 16777216.0, 1.0, -1.0, 3e38, -3e38, 0.0, -0.0, math.inf, math.nan, 1e-45]
 
         def f() -> float:
-            return float(f32(pick(r, e, rand_double, 0.4)))
+            with np.errstate(all="ignore"):
+                return float(f32(pick(r, e, rand_double, 0.4)))
 
         return (
             f(),
@@ -1116,7 +1117,7 @@ _PATTERNS = [
     r"^(\s*)x",
     r"(é+)",
     r"([a-c]+)-(\d)",
-    r"(?<=a)b",
+    r"(?<=a)(b)",
 ]
 
 
@@ -2446,7 +2447,13 @@ def _group_batch(sp: Spark, t: Target, e: Expr, keys: list, groups: dict, want: 
             _finding(stats, t, e, setting, groups[g], v, w)
 
 
-def run(names: Sequence[str], n_rows: int, seed: int, sample: int) -> dict[str, Any]:
+def run(
+    names: Sequence[str],
+    n_rows: int,
+    seed: int,
+    sample: int,
+    save: Callable[[dict], None] | None = None,
+) -> dict[str, Any]:
     import pyspark
 
     all_targets = targets()
@@ -2462,9 +2469,14 @@ def run(names: Sequence[str], n_rows: int, seed: int, sample: int) -> dict[str, 
                 print(f"{name}[{k}] {t.fact}: {len(rows)} rows", flush=True)
                 if t.group:
                     rows.sort(key=lambda r: r[0])
-                    run_grouped(sp, t, rows, stats)
-                else:
-                    run_scalar(sp, t, rows, stats, sample, rng)
+                try:
+                    if t.group:
+                        run_grouped(sp, t, rows, stats)
+                    else:
+                        run_scalar(sp, t, rows, stats, sample, rng)
+                except Exception as e:  # noqa: BLE001 - a harness error stops this target only
+                    stats.findings.append({"harness": f"{type(e).__name__}: {e}"[:300]})
+                    print(f"  HARNESS {type(e).__name__}: {e}", flush=True)
                 out[f"{name}[{k}]"] = {
                     "fact": t.fact,
                     "seed": seed,
@@ -2485,6 +2497,8 @@ def run(names: Sequence[str], n_rows: int, seed: int, sample: int) -> dict[str, 
                     "seconds": round(time.monotonic() - t0, 1),
                     "note": t.note,
                 }
+                if save is not None:
+                    save(out)
                 print(f"  {stats.agree}/{stats.rows} agree, {len(stats.findings)} finding(s), "
                       f"Rel.eval differs on {stats.lean_differs}/{stats.lean_compared}", flush=True)  # fmt: skip
         out["_meta"] = {
@@ -2498,6 +2512,37 @@ def run(names: Sequence[str], n_rows: int, seed: int, sample: int) -> dict[str, 
     finally:
         sp.stop()
     return out
+
+
+def dry(names: Sequence[str], n_rows: int, seed: int) -> list[str]:
+    """Run every model on the targets' rows, without Spark: the models'
+    errors (a harness bug) as messages."""
+    errors = []
+    for name in names:
+        for k, t in enumerate(targets()[name]):
+            rows = [t.rows(random.Random(f"{seed}:{name}:{k}")) for _ in range(1)]
+            rng = random.Random(f"{seed}:{name}:{k}")
+            rows = [t.rows(rng) for _ in range(n_rows)]
+            for e in t.exprs:
+                for ansi in (True, False):
+                    try:
+                        if t.group:
+                            for extra in t.conf:
+                                n = int(extra.get("spark.sql.leafNodeDefaultParallelism", "2"))
+                                for s in _slices(len(rows), n):
+                                    vals = [
+                                        r[1] if len(r) == 2 else r[1:] for r in (rows[i] for i in s)
+                                    ]
+                                    e.model([vals], ansi)
+                        else:
+                            for r in rows:
+                                e.model(r, ansi)
+                    except Exception as ex:  # noqa: BLE001
+                        errors.append(
+                            f"{name}[{k}] {e.name} ansi={ansi}: {type(ex).__name__}: {ex}"
+                        )
+    print("\n".join(errors) or "every model ran")
+    return errors
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -2515,16 +2560,24 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--dry", action="store_true", help="run the models only, without Spark")
     args = parser.parse_args(argv)
     names = args.targets or list(targets())
     if args.list:
         for n, ts in targets().items():
             print(n, ", ".join(sorted({t.fact for t in ts})))
         return
-    result = run(names, args.rows, args.seed, args.sample)
+    if args.dry:
+        sys.exit(1 if dry(names, args.rows, args.seed) else 0)
     old = json.loads(args.out.read_text()) if args.out.is_file() else {}
-    old.update(result)
-    args.out.write_text(json.dumps(old, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def save(found: dict) -> None:
+        args.out.write_text(
+            json.dumps({**old, **found}, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+        )
+
+    result = run(names, args.rows, args.seed, args.sample, save)
+    save(result)
     n = sum(len(v["findings"]) for k, v in result.items() if k != "_meta")
     print(f"{n} finding(s) -> {args.out}")
 
