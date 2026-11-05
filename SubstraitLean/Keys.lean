@@ -14,7 +14,10 @@ sensor and timestamp, say), `Rel.keys` derives keys of a plan's output.
 * cross products: combine a key of each side;
 * joins: keep the left side's keys when the join condition determines a key
   of the right side (`a.ts = b.ts` with `ts` a key of `b`, or
-  `w1.ts = w0.ts + 60`), so each left row has at most one partner.
+  `w1.ts = w0.ts + 60`), so each left row has at most one partner;
+* inner joins and filters: a column their condition equates to another can
+  stand in for it in a key (`KeyOn.eqVariants`, #694), so a key survives from
+  either copy of a join column.
 
 `Rel.keys_sound` proves every derived key holds. Equality here is equality of
 values, so two NULLs count as equal: a stronger requirement than SQL `UNIQUE`.
@@ -205,6 +208,39 @@ theorem variants_inj {σ : Nat → List Nat} {r₁ r₂ r₁' r₂' : Row} :
       simp only [keyOf, List.map_cons, List.cons.injEq] at he ⊢
       exact ⟨hσ c (by simp) p hp he.1, variants_inj (fun c' hc' => hσ c' (by simp [hc'])) hk'' he.2⟩
 
+/-- The columns `e` ties to `c`, with `c` itself: on rows where `e` is TRUE,
+each determines `c` (`a.id = b.id`, or `$i + 1 = $j`). -/
+def Expr.eqPartners (e : Expr) (c : Nat) : List Nat :=
+  c :: e.eqCols.filterMap fun (i, j) => if i = c then some j else if j = c then some i else none
+
+/-- A key with any of its columns replaced by a column `e` ties it to: on rows
+where `e` holds, an inner join's two copies of its join column are one column
+(#694). -/
+def eqVariants (e : Expr) (k : List Nat) : List (List Nat) := variants e.eqPartners k
+
+theorem KeyOn.eqVariants {e : Expr} {k k' : List Nat} {rows : Relation} (hk : KeyOn k rows)
+    (ht : ∀ x ∈ rows, (e.eval x).isTrue = true) (hv : k' ∈ eqVariants e k) :
+    KeyOn k' rows := by
+  unfold KeyOn at *
+  refine hk.imp_of_mem fun {x y} hx hy hne heq => hne ?_
+  refine variants_inj (fun c _ p hp he => ?_) hv heq
+  simp only [Expr.eqPartners, List.mem_cons, List.mem_filterMap] at hp
+  rcases hp with rfl | ⟨⟨i, j⟩, hij, hp⟩
+  · exact he
+  · have hdet := Expr.eqCols_det (ht x hx) (ht y hy) (i, j) hij
+    simp only [] at hp
+    split at hp
+    · subst_vars
+      simp only [Option.some.injEq] at hp
+      subst hp
+      exact hdet.2 he
+    · split at hp
+      · subst_vars
+        simp only [Option.some.injEq] at hp
+        subst hp
+        exact hdet.1 he
+      · simp at hp
+
 def AVal.intOnly (a : AVal) : Bool := !a.null && !a.tt && !a.ff && !a.str
 
 theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.Mem v) :
@@ -291,6 +327,12 @@ def joinKeys (n : Nat) (on : Expr) (ka kb : List (List Nat)) : List (List Nat) :
 def windowKeys (part : List Nat) (n : Nat) (fns : List WinFn) : List (List Nat) :=
   fns.zipIdx.filterMap fun (f, t) => if f = .rowNumber then some (part ++ [n + t]) else none
 
+/-- The keys of an inner join also hold with a column replaced by one its
+condition equates it to; a left join's unmatched rows break the equality. -/
+def joinEqKeys : JoinType → Expr → List (List Nat) → List (List Nat)
+  | .inner, on, ks => dedup (ks.flatMap (eqVariants on))
+  | .left, _, ks => ks
+
 def crossKeys (n : Nat) (ka kb : List (List Nat)) : List (List Nat) :=
   (ka.filter (·.all (· < n))).flatMap fun k => kb.map fun k' => k ++ k'.map (n + ·)
 
@@ -299,14 +341,17 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .read t => K t
   | .values _ rows => if rows.length ≤ 1 then [[]] else []
   -- Columns the condition pins to a constant are redundant in a key.
-  | .filter r c => (r.keys cat A F K).map (·.filter (!c.pinned.contains ·))
+  -- Columns the condition equates stand in for each other (#694).
+  | .filter r c =>
+      dedup (((r.keys cat A F K).map (·.filter (!c.pinned.contains ·))).flatMap (eqVariants c))
   -- A key may use any copy of its columns (DataFusion copies join columns this way).
   | .project r es =>
       ((r.keys cat A F K).filter (·.all (· < r.arity cat))).flatMap
         (variants fun i => copyCols (r.arity cat) es i ++ linCols (r.arity cat) es (r.aeval cat A F .none) i)
   | .emit r m => (r.keys cat A F K).filterMap (emitKey m)
   | .cross a b => crossKeys (a.arity cat) (a.keys cat A F K) (b.keys cat A F K)
-  | .join a b _ on => joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K)
+  | .join a b ty on =>
+      joinEqKeys ty on (joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K))
   | .fetch r _ cnt => (if cnt.any (· ≤ 1) then [[]] else []) ++ r.keys cat A F K
   | .unionAll _ _ => []
   | .window r part _ fns =>
@@ -511,8 +556,10 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
         exact KeyOn.of_length_le_one ‹_›
       · simp at hk
   | .filter r c, hwf, k, hk => by
-      simp only [Rel.keys, List.mem_map] at hk
-      obtain ⟨k₀, hk₀, rfl⟩ := hk
+      simp only [Rel.keys, mem_dedup, List.mem_flatMap, List.mem_map] at hk
+      obtain ⟨_, ⟨k₀, hk₀, rfl⟩, hv⟩ := hk
+      refine KeyOn.eqVariants ?_ (fun x hx => by
+        simp only [eval, List.mem_filter] at hx; exact hx.2) hv
       have := keys_sound hcat hA hF hK hwf.1 k₀ hk₀
       unfold KeyOn at *
       simp only [eval]
@@ -556,9 +603,13 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       exact crossRows_key (eval_arity hcat hwf.1) hkr (keys_sound hcat hA hF hK hwf.1 ka hka)
         (keys_sound hcat hA hF hK hwf.2 kb hkb)
   | .join a b .inner on, hwf, k, hk => by
-      simp only [Rel.keys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
-        decide_eq_true_eq, List.mem_map] at hk
-      obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
+      simp only [Rel.keys, joinEqKeys, mem_dedup, List.mem_flatMap] at hk
+      obtain ⟨k₁, hk₁, hv⟩ := hk
+      refine KeyOn.eqVariants ?_ (fun x hx => by
+        simp only [eval, List.mem_filter] at hx; exact hx.2) hv
+      simp only [joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+        decide_eq_true_eq, List.mem_map] at hk₁
+      obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk₁
       have hA' := eval_arity hcat hwf.1
       simp only [eval, crossRows, List.filter_flatMap]
       exact flatMap_key (keys_sound hcat hA hF hK hwf.1 ka hka)
@@ -568,7 +619,7 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
           exact keyOf_append_left fun c hc => hA' x hx ▸ hkr c hc)
         (fun x hx => match_block (hA' x hx) (keys_sound hcat hA hF hK hwf.2.1 kb hkb))
   | .join a b .left on, hwf, k, hk => by
-      simp only [Rel.keys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+      simp only [Rel.keys, joinEqKeys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
       have hA' := eval_arity hcat hwf.1
