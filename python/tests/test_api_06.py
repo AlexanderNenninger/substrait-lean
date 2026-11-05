@@ -45,7 +45,7 @@ def con():
 
 def test_on_inferred_off_infers_and_assumes_nothing() -> None:
     off = _quiet(sv.verify, SUM, on_inferred="off")
-    assert not off.assumed and not off.inferred
+    assert not off.assumed and not off._inferred
     assert "SUM overflow" in [i.kind for i in off.errors]
     assert not off.proved
     # The other values assume the SUM fits, and check it at run time.
@@ -198,12 +198,19 @@ def test_verify_takes_the_query_positionally() -> None:
         sv.verify(transform=SUM)  # type: ignore[call-arg]
 
 
-def test_needed_text_is_a_property() -> None:
+def test_needed_text_is_a_field() -> None:
     expr = T.select(x=T.amount * 2)
     report = _quiet(sv.verify, expr)
-    assert report.needed and report.needed_text
-    assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in report.needed_text[0]
+    n = next(n for n in report.needs if "< 2**62" in n.label)
+    assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in n.text
     assert not hasattr(report, "needs_lines") and not hasattr(report, "needs_text")
+    with pytest.warns(DeprecationWarning, match=r"Report.needed is deprecated"):
+        assert report.needed == {"t": [m.label for m in report.needs]}
+    with pytest.warns(DeprecationWarning, match=r"Report.needed_text is deprecated"):
+        assert report.needed_text == report._needs_lines()
+    with pytest.warns(DeprecationWarning, match=r"Report.needed_conditions is deprecated"):
+        conds = report.needed_conditions
+    assert [repr(c) for c in conds["t"]] == [repr(m.condition) for m in report.needs]
 
 
 def test_equivalence_is_the_observation() -> None:

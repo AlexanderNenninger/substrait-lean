@@ -24,6 +24,7 @@ import ibis
 import pyarrow as pa
 import sqlglot as sg
 
+from sverify import _deprecated
 from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
@@ -686,10 +687,10 @@ class _TableSource(Pipeable, ABC):
     (`_table_id`, #516, #533), and the snapshot a refresh reads when no
     change is available (`_full`).
 
-    Subclasses implement `VersionedSource` and `_id_at`, and set `hi_slack`
+    Subclasses implement `VersionedSource` and `_id_at`, and set `_hi_slack`
     where the format's upper bounds are truncated."""
 
-    hi_slack = timedelta(0)
+    _hi_slack = timedelta(0)
     """How far a value may lie above a file's upper bound (`stats_facts`)."""
 
     def __init__(self, name: str, where: str | None):
@@ -773,7 +774,7 @@ class _TableSource(Pipeable, ABC):
         key = str(schema)
         new = {p: s for p, s in files.items() if (p, key) not in self._kept}
         if new:
-            kept = prune(new, schema, self.where, hi_slack=self.hi_slack)
+            kept = prune(new, schema, self.where, hi_slack=self._hi_slack)
             self._kept.update({(p, key): p in kept for p in new})
         keep = {p for p in files if self._kept[(p, key)]}
         if record:
@@ -792,7 +793,7 @@ class _TableSource(Pipeable, ABC):
         filtered = [] if self.where is None else [Fact(self.where, FILTER)]
         return (
             table_facts
-            + stats_facts(files, schema, source, hi_slack=self.hi_slack)
+            + stats_facts(files, schema, source, hi_slack=self._hi_slack)
             + rows_fact(files, source)
             + filtered
         )
@@ -806,3 +807,6 @@ class _TableSource(Pipeable, ABC):
         return SourceBatch.from_snapshot(
             since, end, rows, reason=reason, snapshot_facts=facts, schema=schema
         )
+
+
+_deprecated.add(_TableSource, {"hi_slack": "_hi_slack"})

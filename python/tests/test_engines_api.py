@@ -33,8 +33,8 @@ def _report(**kw):
 def test_report_to_sql_is_what_run_runs():
     report = _report()
     sql = report.to_sql()
-    assert report.plan is not None
-    assert sql == to_sql(written_plan(report.plan), DUCKDB)
+    assert report.internal_plan is not None
+    assert sql == to_sql(written_plan(report.internal_plan), DUCKDB)
     db = duckdb.connect()
     db.register("orders", pa.table({"id": [1, 2], "amount": [30, 5]}))
     assert db.sql(sql).fetchall() == [(1, 30)]

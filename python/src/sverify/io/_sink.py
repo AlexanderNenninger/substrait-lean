@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyarrow as pa
 
+from sverify import _deprecated
 from sverify._scan import Resident
 from sverify._state import DuckDBStore, arrow_of
 from sverify._unsupported import SverifyWarning
@@ -86,7 +87,7 @@ class SinkChange:
         return self._change
 
     @cached_property
-    def native(self) -> tuple[Resident, Resident] | None:
+    def _native(self) -> tuple[Resident, Resident] | None:
         """The state and the change as tables DuckDB holds, when the view
         keeps its state in DuckDB (`sverify._state.DuckDBStore`): the new
         state's rows (a DuckDB view), and the weighted change since the
@@ -211,9 +212,9 @@ class Sink:
     app_id: str
     location: str
     reproducible: Observation = PLAN_BOUND
-    view: IncrementalView | None = None
+    _view: IncrementalView | None = None
     _written: int | None = None
-    keeps_retired = False
+    _keeps_retired = False
     """Whether the sink keeps the rows a view drops from its state
     (`sverify.arrives_within`): it writes each change, and the whole table
     only when `SinkChange.replace`. A view with a sink that does not retires
@@ -317,7 +318,7 @@ class Sink:
 
     def _attach(self, view: IncrementalView) -> None:
         """Write `view` from now on."""
-        self.view = view
+        self._view = view
         view._sinks.append(self)
         self._written, self._pending = None, None
         if view.stored is not None and view.stored[0] == self.location:
@@ -357,7 +358,7 @@ class Sink:
 
     def _commit(self) -> SinkWrite:
         """Write the attached view's state, unless the sink has it."""
-        view = self.view
+        view = self._view
         if view is None:
             raise ValueError(f"no node is stored in {self.location}: node.write(sink) attaches one")
         contract = view_contract_record(view)
@@ -428,6 +429,10 @@ _UNREAD = object()
 """`_TableSink._read` before `contract` ran."""
 
 
+_deprecated.add(Sink, {"view": "_view", "keeps_retired": "_keeps_retired"})
+_deprecated.add(SinkChange, {"native": "_native"})
+
+
 class _TableSink[T](Sink, ABC):
     """What `DeltaSink` and `IcebergSink` share: the contract and epoch read
     back from the table (`contract`), the write (create or open the table,
@@ -489,7 +494,7 @@ class _TableSink[T](Sink, ABC):
 
     @abstractmethod
     def _write_native(self, table: T, created: bool, change: SinkChange) -> SinkWrite | None:
-        """Commit the files DuckDB writes (`change.native`): the state, if
+        """Commit the files DuckDB writes (`change._native`): the state, if
         `created`, else the change. None if only `_write_arrow` can write
         it. The version is filled in afterwards."""
 
@@ -580,7 +585,7 @@ class _TableSink[T](Sink, ABC):
             self._check(table, contract, read)
         table = self._opened(table, created, change)
         out = None
-        if change.native is not None and (created or not change.replace):
+        if change._native is not None and (created or not change.replace):
             out = self._write_native(table, created, change)
         if out is None:
             out = self._write_arrow(table, created, change)

@@ -1,5 +1,5 @@
 """The `sverify` command (#744, API review I1–I5): discovery, exit codes, the
-JSON document and its schema, the github, sarif and junit formats,
+JSON document and its schema, the github and sarif formats,
 `check --fix`, `refresh`, `explain`, the time budget and DuckDB's memory
 limit."""
 
@@ -473,25 +473,6 @@ def test_sarif(tmp_path, capsys):
         loc = r["locations"][0]["physicalLocation"]
         assert loc["artifactLocation"]["uri"] == str(path) and loc["region"]["startLine"] > 0
     assert "counterexample" in results[2]["properties"]
-
-
-def test_junit(tmp_path, capsys):
-    import xml.etree.ElementTree as ET
-
-    body = PROVED + NOT_PROVED.replace("paid", "late").replace("p =", "q =")
-    body += "\n\n@sv.transform()\ndef unused(t):\n    return t\n"
-    path = write(tmp_path, body)
-    code, out = run(capsys, "check", str(path), "--format", "junit")
-    assert code == 1
-    root = ET.fromstring(out)
-    [suite] = root.findall("testsuite")
-    assert (suite.get("tests"), suite.get("failures"), suite.get("skipped")) == ("4", "1", "1")
-    cases = {(str(c.get("classname")).rsplit("::", 1)[1], c.get("name")): c for c in suite}
-    assert cases[("paid", "ensures (_.amount > 10)")].find("failure") is None
-    failure = cases[("late", "(_.amount > 20)")].find("failure")
-    assert failure is not None and failure.get("type") == "may_be_false"
-    assert "counterexample" in (failure.text or "")
-    assert cases[("unused", "unchecked")].find("skipped") is not None
 
 
 def test_help_lists_the_exit_codes(capsys):

@@ -809,6 +809,8 @@ class _Stage:
             n += 1
             view_name = f"{name}_{n}"
         view = pipe.view(view_name, bound, resume=resume)
+        report = node.report
+        view.tie_free = report is not None and report.proved and report.deterministic
         prunable = {t for t, src in pipe.sources.items() if isinstance(src, _TableSource)}
         if implied is None and prunable:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
@@ -853,7 +855,7 @@ def _implied(pipe: Pipeline, query: ir.Table) -> dict[str, str]:
         report = verify(query, requires=requires, ensures=[], counterexamples=0, on_inferred="off")
     except Exception:  # noqa: BLE001 - a plan the checker cannot read implies nothing
         return {}
-    return report.implied
+    return report._implied
 
 
 @dataclass

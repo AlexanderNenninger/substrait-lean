@@ -143,6 +143,7 @@ reference:
       - testing.cases
       - testing.source
       - testing.installed_engines
+      - testing.FlightLog
 
   - title: Command line
     desc: >

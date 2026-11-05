@@ -41,7 +41,7 @@ the checker know that the engine does not?** The checker knows three things:
 
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
-| 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Public**, proved: `Report.guard_free`, `to_sql(…, guards=False)` |
+| 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Public**, proved: `to_sql(…, guards=False)`, for a plan whose report's internal `_guard_free` holds |
 | 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79), eager aggregation (#80) |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Public**, proved, including split keys (#74): `sverify.engines.run_sharded` |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
@@ -72,7 +72,7 @@ meets a contract.
   bounds a group's size.
 * `Rel.guardFree_sound`: the same, derived from `Rel.mayIssues` under the
   contract's preconditions. `substrait-check --contract` reports this as
-  `guard_free`, and `sverify.Report.guard_free` exposes it.
+  `guard_free`, which the report keeps as `_guard_free`.
 * `Rel.evalG_marks`: the same per expression. `Rel.marks` lists, per node,
   the expressions without abstract issues on the inputs `Rel.mayIssues`
   analyses them on (a filter's, join's or semi-join's condition, each of a
@@ -80,7 +80,7 @@ meets a contract.
   tree parallel to the plan. `Rel.evalG` runs those with unchecked functions
   and the rest with Lean's, and gives `Rel.eval` with no hypothesis on the
   other issues. `substrait-check --contract` reports the tree as
-  `unchecked`, and `sverify.Report.unchecked` exposes it.
+  `unchecked`, which the report keeps as `_unchecked`.
 
 To keep the `SUM` case apart, `Safety.lean` reports its issue as
 `Issue.sumWraps`, named "SUM overflow". `verify` assumes it away (inferred,
@@ -99,13 +99,13 @@ the abstract left join always allows padded rows. But `mayIssues_sound` is
 stated against `HasIssue`, so it does not cover them. Strengthening
 `HasIssue` to cover every evaluated row is a follow-up (#83).
 
-**Wiring.** `Report.guard_free`. `to_sql(plan, dialect, guards=False)` drops
+**Wiring.** `Report._guard_free`. `to_sql(plan, dialect, guards=False)` drops
 the division-by-zero `CASE`s, the `date_trunc` range check, Snowflake's
 row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
 `polars_engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
-`to_sql(plan, dialect, unchecked=report.unchecked)` drops the checks of the
+`to_sql(plan, dialect, unchecked=report._unchecked)` drops the checks of the
 expressions `unchecked` lists and keeps the others, and every aggregate's.
 The writer checks that the tree's nodes are the plan's, so a report on
 another plan raises `UnsupportedError`. In `SELECT a // b, a * b` with
@@ -264,7 +264,7 @@ form, whether the result is proved, and with split doubles where their
 bound is read (`float_bounds`), or exit code 5 with the reason. The
 schema of `__partials` is trusted. `sverify.partition.split` and
 `run_sharded(plan, shards, sharded=…, broadcast=…, keys=…, unique=…,
-float_order=…)` run the shards on Polars in parallel threads. `run_sharded`
+reproducible=…)` run the shards on Polars in parallel threads. `run_sharded`
 checks split keys and `unique` columns on the data before relying on them
 (`check_keys`, `check_unique`), comparing doubles by their bits as Lean
 does. `tests/test_partition.py` compares the sharded result
@@ -308,7 +308,7 @@ inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
 is well-formed, has the same arity and gives the same list of rows (not just
 the same bag). `substrait-check --contract` reports the rewritten plan as
 `optimized`, in Lean's written form, with the names of the rewrites applied
-(`rewrites`); `sverify.Report.optimized` and `Report.rewrites` expose them.
+(`rewrites`); the report keeps them as `_optimized` and `_rewrites`.
 Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
 `polars_engine.run`) only on data that meets the preconditions, as with
 `guards=False`.

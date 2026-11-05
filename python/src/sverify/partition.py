@@ -93,6 +93,7 @@ from typing import Any, Literal, overload
 import pyarrow as pa
 
 from sverify.engine import checker_failed, run_checker
+from sverify.observation import Observation, Within
 
 #: The table the combining plan reads the shards' results from.
 PARTIALS = "__partials"
@@ -468,9 +469,10 @@ def run_sharded(
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
-    float_order: FloatOrder = "exact",
+    reproducible: Observation | None = None,
     max_workers: int | None = None,
     tolerance: Literal[False] = False,
+    float_order: FloatOrder | None = None,
 ) -> pa.Table: ...
 
 
@@ -483,9 +485,10 @@ def run_sharded(
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
-    float_order: FloatOrder = "exact",
+    reproducible: Observation | None = None,
     max_workers: int | None = None,
     tolerance: Literal[True],
+    float_order: FloatOrder | None = None,
 ) -> Sharded: ...
 
 
@@ -497,18 +500,21 @@ def run_sharded(
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
-    float_order: FloatOrder = "exact",
+    reproducible: Observation | None = None,
     max_workers: int | None = None,
     tolerance: bool = False,
+    float_order: FloatOrder | None = None,
 ) -> pa.Table | Sharded:
     """The plan's result on all the data, computed shard by shard on Polars.
     This is `sverify.engines.run_sharded`.
 
     Each shard maps every table of `sharded` to its rows on that shard;
     `broadcast` holds the other tables. The result equals the plan's on the
-    concatenated shards, as a bag (row order is not kept), unless
-    `float_order="any"` was needed: sums of doubles then round as the split
-    makes them, within a proved tolerance that `tolerance=True` reports.
+    concatenated shards, as a bag (row order is not kept). `SUM` and `AVG`
+    of doubles round as the split makes them, so they are split only where
+    `reproducible` accepts doubles within a tolerance: within the proved
+    bound τ, which `tolerance=True` reports, or within a stated tolerance
+    that every row's τ meets.
 
     Before running, the split keys and `unique` column sets are checked on
     the data.
@@ -526,13 +532,18 @@ def run_sharded(
         unique: Keys of whole tables, as a mapping from table name to a list
             of column sets. They let windows run on each shard. Default:
             none.
-        float_order: `"exact"` (the default) refuses `SUM` and `AVG` of
-            doubles; `"any"` splits them anyway, within a proved tolerance.
+        reproducible: What the result must match, as `sv.equivalent(...)`
+            states it, the type `Report.run` and the sinks take. Its
+            `floats` decides the doubles: `"exact"` refuses `SUM` and `AVG`
+            of doubles; `"plan"` splits them within the proved bound τ;
+            `sv.within(...)` splits them and raises where a row's τ exceeds
+            the tolerance. Default None: exact.
         max_workers: The number of threads running shards in parallel.
             Default: `ThreadPoolExecutor`'s default.
         tolerance: Return a `Sharded`: the result, with the tolerance τ of
             each split double per row (see the module docstring). Default:
             False.
+        float_order: Deprecated: `"any"` is `reproducible=sv.equivalent(floats="plan")`.
 
     Returns:
         The plan's result, as an Arrow table, or with `tolerance=True` a
@@ -543,17 +554,21 @@ def run_sharded(
             split (`sverify.partition.NotShardable`, a `ValueError`, saying
             why); there are no shards; a shard's tables are not exactly
             `sharded`; rows with equal split keys are on two shards; a
-            `unique` column set has two equal rows; or `keys` or `unique`
-            name unknown columns.
+            `unique` column set has two equal rows; `keys` or `unique`
+            name unknown columns; or a row's τ exceeds the tolerance
+            `reproducible` states.
     """
     from sverify import polars_engine
+
+    floats = _floats(reproducible, float_order)
 
     if not shards:
         raise ValueError("run_sharded needs at least one shard")
     for k, shard in enumerate(shards):
         if set(shard) != set(sharded):
             raise ValueError(f"shard {k} has tables {sorted(shard)}, expected {sorted(sharded)}")
-    s = split(plan, sharded, keys=keys, unique=unique, float_order=float_order)
+    order: FloatOrder = "exact" if floats == "exact" else "any"
+    s = split(plan, sharded, keys=keys, unique=unique, float_order=order)
     common = dict(broadcast or {})
     if keys:
         check_keys(shards, keys)
@@ -570,4 +585,51 @@ def run_sharded(
         parts = list(pool.map(run, shards))
     partials = pa.concat_tables(parts)
     result = polars_engine.run(s.combine, {PARTIALS: partials})
-    return tolerances(s, partials, result) if tolerance else result
+    if not tolerance and not isinstance(floats, Within):
+        return result
+    out = tolerances(s, partials, result)
+    if isinstance(floats, Within):
+        _check_within(out, floats)
+    return out if tolerance else result
+
+
+def _floats(reproducible: Observation | None, float_order: FloatOrder | None) -> Any:
+    """The doubles `run_sharded` must match: `"exact"`, `"plan"` or a
+    `Within`, from `reproducible` or the deprecated `float_order`."""
+    if float_order is not None:
+        import warnings
+
+        if reproducible is not None:
+            raise TypeError("run_sharded takes reproducible= or float_order=, not both")
+        warnings.warn(
+            "run_sharded(float_order=...) is deprecated; write "
+            "reproducible=sv.equivalent(floats='plan') for 'any'",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return "exact" if float_order == "exact" else "plan"
+    return "exact" if reproducible is None else reproducible.floats
+
+
+def _check_within(sharded: Sharded, w: Within) -> None:
+    """Raise where a row's proved bound τ exceeds the tolerance `w`: the
+    split's value is then not known to be within `w` of Lean's."""
+    for col, taus in sharded.tolerance.items():
+        values = sharded.table.column(col).to_pylist()
+        for i, (tau, v) in enumerate(zip(taus, values, strict=True)):
+            if v is None or tau == 0:
+                continue
+            # The smallest magnitude Lean's value may have, for `rel` and
+            # `ulps` (both scale with it).
+            low = max(abs(v) - tau, 0.0) if math.isfinite(v) else math.inf
+            allowed = max(
+                w.abs or 0.0,
+                (w.rel or 0.0) * low,
+                (w.ulps or 0) * math.ulp(low) if math.isfinite(low) else 0.0,
+            )
+            if not tau <= allowed:
+                raise ValueError(
+                    f"run_sharded: {col!r} in row {i} is within {tau:.3g} of Lean's value, "
+                    f"which {w} does not cover; state a looser tolerance, or "
+                    "floats='plan' to accept the proved bound"
+                )

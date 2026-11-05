@@ -21,8 +21,8 @@ a code that `explain` expands.
 Every command takes `--format` (`--output-format`): `text` (the default) or
 `json`, one document in the format of `sverify/schemas/cli.schema.json`
 that embeds each node's `Report.to_json()`; `check` also writes `github`
-(workflow commands that annotate a pull request's lines), `sarif` (SARIF
-2.1.0, for code scanning) and `junit` (JUnit XML, for test reports).
+(workflow commands that annotate a pull request's lines) and `sarif`
+(SARIF 2.1.0, for code scanning).
 `--json` is `--format json`. `--timeout` (default 30 s, `SVERIFY_TIMEOUT`;
 0 turns it off) bounds proof, planning and checking, never a refresh moving
 data; `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`) is DuckDB's

@@ -17,6 +17,15 @@ import sverify as sv
 from sverify import engine, routes
 from sverify.errors import CheckerVersionError, VerificationError
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 ITEMS = ibis.table(
     {"sku": "int64", "price": "int64", "cost": "int64", "qty": "int64"}, name="items"
 )
@@ -171,7 +180,7 @@ def test_the_and_or_hint_appears_once_and_only_for_the_users_and() -> None:
     assert "AND or OR" not in str(report)
     t = ibis.table({"qty": "int64", "total": "int64"}, name="t")
     report = sv.verify(t.filter((t.qty != 0) & (t.total // t.qty > 1)))
-    assert [h for h in report.hints if "AND or OR" in h] == [
+    assert [h for h in report._hints if "AND or OR" in h] == [
         "`total // qty` is inside an AND or OR you wrote (`&` or `|`), and DuckDB and Polars "
         "evaluate both operands on every row, so a guard in the other operand does not keep it "
         "from raising. Guard the operation itself with `ibis.cases((_.qty != 0, _.total // "
@@ -336,7 +345,7 @@ def test_the_and_or_guard_proves_when_pasted() -> None:
     guarded = t.filter((t.qty != 0) & (per > 1))  # type: ignore[operator]
     report = sv.verify(guarded, requires=req, on_inferred="error")
     assert not any(i.kind == "division by zero" for i in report.errors)
-    assert not report.needed
+    assert not _needed(report)
 
 
 def test_the_window_hint_bounds_the_column_it_reads() -> None:
