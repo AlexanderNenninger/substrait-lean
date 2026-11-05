@@ -292,3 +292,60 @@ def test_report_only_gains_keys() -> None:
             assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
             for c_old, c_now in zip(old["ensures"], now["ensures"], strict=True):
                 assert set(c_old) <= set(c_now)
+
+
+# -- the quarantine table and the refresh report (#184) ----------------------------
+
+QUARANTINED = sorted(v for v in VERSIONS if (FORMATS / v / "quarantine").exists())
+
+
+def _quarantine_written(tmp_path: Path) -> tuple[Path, str]:
+    formats = pytest.importorskip("sverify_dev.formats")
+    out = tmp_path / "fixtures"
+    out.mkdir()
+    formats._write_quarantine(out)
+    return out / "quarantine", (out / "quarantine" / "refresh.json").read_text()
+
+
+def _check_quarantine_table(table: Path) -> None:
+    from deltalake import DeltaTable
+
+    from sverify._quarantine import RECORD_KEY, TABLE_SCHEMA, decode_row
+
+    schema = _schema("quarantine.schema.json")
+    dt = DeltaTable(str(table))
+    records = [json.loads(c[RECORD_KEY]) for c in dt.history() if RECORD_KEY in c]
+    assert records
+    for r in records:
+        jsonschema.validate(r, schema)
+    rows = dt.to_pyarrow_table()
+    assert set(TABLE_SCHEMA.names) <= set(rows.column_names)
+    row_schema = {**schema["$defs"]["row"], "$defs": schema["$defs"]}
+    for r in rows.to_pylist():
+        jsonschema.validate({**r, "quarantined_at": str(r["quarantined_at"])}, row_schema)
+        assert isinstance(decode_row(r["row"]), dict)
+
+
+@pytest.mark.parametrize("version", QUARANTINED)
+def test_quarantine_fixtures_read(version: str, tmp_path: Path) -> None:
+    """Each version's quarantine table and refresh report follow the schemas
+    and read with this version."""
+    folder = FORMATS / version / "quarantine"
+    table = tmp_path / "doubled_quarantine"
+    shutil.copytree(folder / "doubled_quarantine", table)
+    _check_quarantine_table(table)
+    _valid(json.loads((folder / "refresh.json").read_text()), "refresh.schema.json")
+
+
+def test_quarantine_formats_only_gain_keys(tmp_path: Path) -> None:
+    """The quarantine table and refresh report this version writes follow the
+    schemas and keep every key of an earlier version's."""
+    folder, text = _quarantine_written(tmp_path)
+    _check_quarantine_table(folder / "doubled_quarantine")
+    now = json.loads(text)
+    _valid(now, "refresh.schema.json")
+    assert now["outcome"] == "quarantined"
+    assert now["nodes"][0]["quarantined"] == 3
+    for version in QUARANTINED:
+        old = json.loads((FORMATS / version / "quarantine" / "refresh.json").read_text())
+        assert set(old) <= set(now) and set(old["nodes"][0]) <= set(now["nodes"][0])

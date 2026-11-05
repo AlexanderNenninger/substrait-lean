@@ -20,7 +20,7 @@ def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
     assert "needs: _.s.notnull() on t, inferred from `(_.n >= 0)` (a NULL result otherwise)" in str(
         report
     )
-    assumed = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0], on_inferred="silent")
+    assumed = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0], on_inferred="ignore")
     assert assumed.proved and "_.s.notnull()" in assumed.requires["t"]
 
 

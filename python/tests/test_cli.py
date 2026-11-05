@@ -430,3 +430,31 @@ def test_the_entry_point():
         [sys.executable, "-m", "sverify.cli", "--version"], capture_output=True, text=True
     )
     assert done.returncode == 0 and done.stdout.startswith("sverify ")
+
+
+QUARANTINE = """
+@sv.transform(
+    requires={"orders": [_.amount >= 20, _.amount < 1000, sv.unique("id")]},
+    ensures=[_.amount >= 20, sv.unique("id")],
+    on_violation="POLICY",
+)
+def paid(orders):
+    return orders.filter(orders.amount > 10)
+
+
+p = orders.pipe(paid)
+"""
+
+
+@pytest.mark.parametrize(
+    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 5, "held")]
+)
+def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
+    tmp_path, capsys, policy, code, status
+):
+    path = write(tmp_path, QUARANTINE.replace("POLICY", policy))
+    got, doc = run_json(capsys, "refresh", f"{path}:p")
+    assert got == code and doc["status"] == status and doc["outcome"] == status
+    assert doc["alert"] and "(_.amount >= 20)" in doc["alert"]
+    got, out = run(capsys, "refresh", f"{path}:p")
+    assert got == code and "### paid" in out

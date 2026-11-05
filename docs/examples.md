@@ -122,7 +122,7 @@ except PreconditionError as e:
 
 The other fix is a rewrite that no row needs the precondition for:
 `t.filter(t.qty != 0)` before the division, or a `CASE`.
-`on_inferred="warn"` or `"silent"` assumes the inferred preconditions and
+`on_inferred="warn"` or `"ignore"` assumes the inferred preconditions and
 checks them on the data as declared ones are.
 
 An `AND` or `OR` evaluates both operands, as DuckDB and Polars do (D19 in

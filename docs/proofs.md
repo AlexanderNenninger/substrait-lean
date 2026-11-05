@@ -45,6 +45,7 @@ and that the input rows meet the contract's preconditions.
 | Skipping files by their statistics changes no result | `Rel.eval_pruned`, `stats_prune`, `strStats_prune`, `prune_sound` | `Pruning.lean`, `TableFormat.lean` |
 | An implied predicate on a base table keeps every output row | `Rel.need_sound` | `Implied.lean` |
 | Contracts compose across a pipeline | `Rel.stack_sound`, `Rel.chain_sound` | `Compose.lean` |
+| The rows quarantine keeps meet every precondition and key | `Catalog.kept_sound`, `kept_pre`, `kept_keys` | `Quarantine.lean` |
 | Rewrites from contract facts and keys keep the result | `Rel.optimize_sound` | `Semantic.lean` |
 | A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum`, `StdModel.epsilon_avg`, `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
 | Sharded double sums are near the sequential sum | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
@@ -145,6 +146,7 @@ generators, then the trusted reading and writing.
 | `Keys.lean` | Derived keys and window tie-breaking |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |
 | `Compose.lean` | Composing contracts across a pipeline |
+| `Quarantine.lean` | The rows `on_violation="quarantine"` keeps |
 | `Completeness.lean` | The converse of contracts for the IoT example |
 | `Implied.lean` | Predicates a view implies on its base tables |
 
