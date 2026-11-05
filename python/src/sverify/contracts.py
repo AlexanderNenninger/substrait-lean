@@ -1116,6 +1116,10 @@ class Report:
     column, #568), as the checker computes it for this plan; None where it
     does not."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
+    """For a result not determined up to row order (`deterministic`), the
+    `sv.unique(...)` per input table that would determine it: the partition
+    (or grouping) and order columns of its windows and ordered aggregates."""
     on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
@@ -2356,6 +2360,8 @@ def infer_bounds(
     out = _observed(report, observed or Observation(), ensures, opened)
     out.stated = observed is not None
     out.on_inferred = _checked_on_inferred(on_inferred)
+    if not out.deterministic and not isinstance(transform, str):
+        out.ties = tie_keys(transform)
     if on_inferred == "warn" and out.inferred:
         warnings.warn(
             "assumed inferred precondition(s): "
@@ -2610,9 +2616,7 @@ def _null_preconditions(
     if not all(c.proved or c.label in proved for c in report.ensures if c.label in by_label):
         # Only where it proves every postcondition that failed on NULL alone.
         kept_for = {iss.expr for iss in source.values() if iss.expr in proved}
-        found = {
-            t: [x for x in cs if source[label(x)].expr in kept_for] for t, cs in found.items()
-        }
+        found = {t: [x for x in cs if source[label(x)].expr in kept_for] for t, cs in found.items()}
         found = {t: cs for t, cs in found.items() if cs}
         if not found:
             return report
@@ -2953,6 +2957,42 @@ def _origin(rel: Node, name: str) -> tuple[str, str] | None:
     if parent is not None and name in parent.schema:
         return _origin(parent, name)
     return None
+
+
+def tie_keys(expr: ir.Table) -> dict[str, list[str]]:
+    """The `sv.unique(...)` per input table that leaves no ties in the
+    ORDER BY of a window or of an ordered aggregate (`first`, `last`, …):
+    its partition (or grouping) and order columns, as labels (#655)."""
+    out: dict[str, list[str]] = {}
+
+    def add(fields: Sequence[Any]) -> None:
+        cols = [o for f in fields if (o := _value_origin(f)) is not None]
+        tables = {t for t, _c in cols}
+        if len(tables) != 1 or len(cols) != len(fields):
+            return
+        (t,) = tables
+        lab = label(unique(*dict.fromkeys(c for _t, c in cols)))
+        if lab not in out.setdefault(t, []):
+            out[t].append(lab)
+
+    def fields_of(values: Sequence[Any]) -> list[Any]:
+        found: list[Any] = []
+        for v in values:
+            v = getattr(v, "expr", v)
+            found += [f for f in v.find(ops.Field) if isinstance(f, ops.Field) and f not in found]
+        return found
+
+    for agg in expr.op().find(ops.Aggregate):
+        if not isinstance(agg, ops.Aggregate):
+            continue
+        for metric in agg.metrics.values():
+            order = getattr(metric, "order_by", None)
+            if order:
+                add(fields_of([*agg.groups.values(), *order]))
+    for win in expr.op().find(ops.WindowFunction):
+        if isinstance(win, ops.WindowFunction) and win.order_by:
+            add(fields_of([*win.group_by, *win.order_by]))
+    return out
 
 
 def _input_columns(rel: Node, names: Sequence[str]) -> list[tuple[str, str]]:

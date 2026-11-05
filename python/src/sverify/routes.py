@@ -222,6 +222,11 @@ class Route:
     bound_proved: bool | None = None
     """Whether the tolerance in `observation` rests on a bound Lean proves
     (`Report.epsilon`); False where it rests on a test; None without one."""
+    suggested: dict[str, list[str]] = field(default_factory=dict, compare=False)
+    """For a refusal, what to declare to make the plan verify, as condition
+    labels per input table: an `sv.unique(...)` that determines a result
+    with ties, an `sv.max_rows(n)` under which the plan's bound meets a
+    tolerance (#655)."""
 
     @property
     def refused(self) -> bool:
@@ -897,6 +902,69 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
 
 # -- choosing the route (D13) -------------------------------------------------
 
+
+def max_rows_fix(report: Report, engine: str, required: Observation | None) -> dict[str, list[str]]:
+    """The `sv.max_rows(N)` under which the plan's bound on its doubles
+    (`Report.epsilon`) meets the tolerance `required` states, by the input
+    table that has a row cap now: the bound grows linearly with the rows,
+    so `N` is the cap scaled by the tightest ratio of tolerance to bound
+    (#655). Empty where there is no stated tolerance, no single capped
+    input, or the bound already meets it; `sv.max_rows(0)` where no cap
+    does."""
+    from sverify.contracts import MaxRows
+
+    if required is None or not isinstance(required.floats, Within) or not report.epsilon:
+        return {}
+    caps = {t: c.n for t, cs in report.conditions.items() for c in cs if isinstance(c, MaxRows)}
+    if len(caps) != 1:
+        return {}
+    ((table, n0),) = caps.items()
+    ratio = None
+    for eps in report.epsilon.values():
+        bounds = _bounds(eps)
+        met = False
+        best = 0.0
+        for k, (v, _p) in bounds.items():
+            tol = getattr(required.floats, k)
+            if tol is None or not v:
+                continue
+            if v <= tol:
+                met = True
+            best = max(best, tol / v)
+        if met or not bounds or not any(v for v, _ in bounds.values()):
+            continue
+        ratio = best if ratio is None else min(ratio, best)
+    if ratio is None:
+        return {}
+    n = int(n0 * ratio)
+    return {table: [f"max_rows({n})"]}
+
+
+def _cap_text(found: Mapping[str, list[str]]) -> str:
+    """The sentence for a row cap `max_rows_fix` found."""
+    for t, labs in found.items():
+        for lab in labs:
+            if lab.startswith("max_rows("):
+                n = int(lab[len("max_rows(") : -1])
+                if n < 1:
+                    return f"; no row cap on {t} makes the plan's bound meet the tolerance"
+                return f"; or declare sv.max_rows({n:_}) on {t}, under which the bound meets it"
+    return ""
+
+
+def ties_fix(report: Report) -> str:
+    """How to make the report's result determined up to row order: the
+    `sv.unique(...)` it needs (`Report.ties`), or `TIES`."""
+    if not report.ties:
+        return TIES
+    def code(lab: str) -> str:
+        cols = lab.removeprefix("unique(").removesuffix(")").split(", ")
+        return f"sv.unique({', '.join(repr(c) for c in cols)})"
+
+    parts = [f"{', '.join(map(code, labs))} on {t}" for t, labs in report.ties.items()]
+    return "declare " + " and ".join(parts) + " in requires, so no rows tie in the ORDER BY"
+
+
 #: How to make a result determined up to row order.
 TIES = (
     "declare `unique(...)` on the partition (or grouping) and order columns of the input, "
@@ -1114,9 +1182,16 @@ def choose(
     if reproducible is not None:
         problems, rerun_evidence = reproducibility(report, e, reproducible)
         if problems:
-            ties = "" if det else f"; {TIES}"
+            ties = "" if det else f"; {ties_fix(report)}"
+            cap = max_rows_fix(report, e, reproducible)
             return replace(
-                refuse("a rerun must give the same result: " + "; ".join(problems) + ties),
+                refuse(
+                    "a rerun must give the same result: "
+                    + "; ".join(problems)
+                    + ties
+                    + _cap_text(cap)
+                ),
+                suggested={**report.ties, **cap},
                 reproducible=reproducible,
                 rerun_evidence=rerun_evidence,
             )
@@ -1151,7 +1226,8 @@ def choose(
         seen, held = observed(report)
         got = realization(e, depends, seen, report.epsilon, held)
         if got.problems:
-            return refuse("; ".join(got.problems))
+            cap = max_rows_fix(report, e, seen)
+            return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
         return Route(
             e,
             kind,
