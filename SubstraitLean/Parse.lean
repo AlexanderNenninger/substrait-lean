@@ -354,13 +354,13 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .pair _ _ => .other
   | .bin (.bbox2 n) _ _ => bbScalarKind n
   -- An empty or `NULL` list says nothing of its elements' kind.
-  | .bin .listPrepend x l => match l.kind cols with
+  | .bin (.listFn .prepend) x l => match l.kind cols with
     | .list .other | .other => .list (x.kind cols)
     | k => k
-  | .bin .listConcat a b => match a.kind cols with
+  | .bin (.listFn .concat) a b => match a.kind cols with
     | .list .other | .other => b.kind cols
     | k => k
-  | .bin .listPosition _ _ => .int
+  | .bin (.listFn .position) _ _ => .int
   -- One of the two values; a literal (`GREATEST(x, 0)`'s `0`) says less than
   -- the other one.
   | .bin .greatest a b | .bin .least a b =>

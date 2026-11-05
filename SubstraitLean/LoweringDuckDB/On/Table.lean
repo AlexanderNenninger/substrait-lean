@@ -149,10 +149,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.BinFn.greatest  => some (Substrait.duckdbOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.duckdbOn.least )
     | Substrait.BinFn.bbox2 a0 => some (Substrait.duckdbOn.bbox2 a0)
-    | Substrait.BinFn.listPrepend  => some (Substrait.duckdbOn.listPrepend )
-    | Substrait.BinFn.listConcat  => some (Substrait.duckdbOn.listConcat )
-    | Substrait.BinFn.listContains  => some (Substrait.duckdbOn.listContains )
-    | Substrait.BinFn.listPosition  => some (Substrait.duckdbOn.listPosition )⟩
+    | Substrait.BinFn.listFn a0 => some (Substrait.duckdbOn.listFn a0)⟩
 
 /-- How each construct is lowered (`--lowering-coverage`). -/
 def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
@@ -268,10 +265,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),
   ("BinFn.bbox2", "native", 0),
-  ("BinFn.listPrepend", "native", 0),
-  ("BinFn.listConcat", "native", 0),
-  ("BinFn.listContains", "native", 0),
-  ("BinFn.listPosition", "native", 0)]
+  ("BinFn.listFn", "native", 0)]
 
 theorem Substrait.duckdbOn.total : (Substrait.duckdbOn).Total :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),

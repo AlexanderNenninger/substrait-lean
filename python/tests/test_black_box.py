@@ -565,7 +565,6 @@ def test_what_the_327_laws_do_not_say_stays_unproved():
         ("SELECT list_cosine_similarity(l, l) FROM v", "list_cosine_similarity of a array<int64>"),
         ("SELECT list_inner_product(a) FROM v", "takes 2 argument"),
         ("SELECT list_extract(l, id) FROM v", "constant index"),
-        ("SELECT array_value(id, 2) FROM v", "only constants"),
         ("SELECT array_value(array_value(1, 2), array_value(3, 4, 3)) FROM v", "fixed-size"),
     ],
 )

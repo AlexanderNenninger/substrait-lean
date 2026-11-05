@@ -629,16 +629,16 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
     -- DuckDB's list functions (#812): a constant list or element takes its
     -- kind from the other operand.
-    | .listPrepend | .listConcat =>
+    | .listFn .prepend | .listFn .concat =>
       let kl := match wkind cols (.bin f a b), ctx with
         | .list .other, .list k => .list k
         | k, _ => k
       let ke := match f, kl with
-        | .listPrepend, .list k => if isConst a then k else wkind cols a
-        | .listPrepend, _ => wkind cols a
+        | .listFn .prepend, .list k => if isConst a then k else wkind cols a
+        | .listFn .prepend, _ => wkind cols a
         | _, _ => kl
       call (BinFn.anchor f) [writeExpr cols ke a, writeExpr cols kl b]
-    | .listContains | .listPosition =>
+    | .listFn .contains | .listFn .position =>
       let kl := match wkind cols a with
         | .list .other => .list (wkind cols b)
         | k => if isConst a then .list (wkind cols b) else k
@@ -815,9 +815,7 @@ def _root_.Substrait.Expr.nestedAccess : Expr → Bool
     (match f with | .structField _ | .listElement _ | .cardinality | .flatten => true | _ => false) ||
       a.nestedAccess
   | .bin f a b =>
-    (match f with
-      | .listPrepend | .listConcat | .listContains | .listPosition => true
-      | _ => false) || a.nestedAccess || b.nestedAccess
+    (match f with | .listFn _ => true | _ => false) || a.nestedAccess || b.nestedAccess
   | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
   | .hof _ _ _ => true
 

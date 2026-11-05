@@ -959,47 +959,16 @@ abbrev Substrait.duckdbOn.bbox2 : (name : String) →
   Substrait.BinEntry.native (Substrait.BinFn.bbox2 name)
     (Substrait.Lowering.bin_agree_of_eq (Substrait.duckdbOn.bbox2_native name))
 
-theorem Substrait.duckdbOn.listPrepend_native : ∀ (x y : Substrait.Value),
+theorem Substrait.duckdbOn.listFn_native : ∀ (op : Substrait.ListOp) (x y : Substrait.Value),
   Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.BinFn.listPrepend x y =
-    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.listPrepend x y := by
+      (Substrait.BinFn.listFn op) x y =
+    Substrait.Profile.bin Substrait.Profile.reference (Substrait.BinFn.listFn op) x y := by
   native_tac
 
-abbrev Substrait.duckdbOn.listPrepend : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.BinFn.listPrepend :=
-  Substrait.BinEntry.native Substrait.BinFn.listPrepend
-  (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.listPrepend_native)
-
-theorem Substrait.duckdbOn.listConcat_native : ∀ (x y : Substrait.Value),
-  Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.BinFn.listConcat x y =
-    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.listConcat x y := by
-  native_tac
-
-abbrev Substrait.duckdbOn.listConcat : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.BinFn.listConcat :=
-  Substrait.BinEntry.native Substrait.BinFn.listConcat
-  (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.listConcat_native)
-
-theorem Substrait.duckdbOn.listContains_native : ∀ (x y : Substrait.Value),
-  Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.BinFn.listContains x y =
-    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.listContains x y := by
-  native_tac
-
-abbrev Substrait.duckdbOn.listContains : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.BinFn.listContains :=
-  Substrait.BinEntry.native Substrait.BinFn.listContains
-  (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.listContains_native)
-
-theorem Substrait.duckdbOn.listPosition_native : ∀ (x y : Substrait.Value),
-  Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.BinFn.listPosition x y =
-    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.listPosition x y := by
-  native_tac
-
-abbrev Substrait.duckdbOn.listPosition : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.BinFn.listPosition :=
-  Substrait.BinEntry.native Substrait.BinFn.listPosition
-  (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.listPosition_native)
+abbrev Substrait.duckdbOn.listFn : (op : Substrait.ListOp) →
+  Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (Substrait.BinFn.listFn op) :=
+  fun op =>
+  Substrait.BinEntry.native (Substrait.BinFn.listFn op)
+    (Substrait.Lowering.bin_agree_of_eq (Substrait.duckdbOn.listFn_native op))
 

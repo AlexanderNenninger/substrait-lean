@@ -292,14 +292,14 @@ def nested : List FnRow := [
   { name := "filter", anchor := 405, group := "list.plain", ctor := some (.hof .filter),
     pretty := "FILTER" },
   -- DuckDB's list functions (#812), new functions run on DuckDB only (#271).
-  { name := "list_prepend", anchor := 406, group := "list.plain", ctor := some (.bin .listPrepend),
+  { name := "list_prepend", anchor := 406, group := "list.plain", ctor := some (.bin (.listFn .prepend)),
     reads := .plain, pretty := "LIST_PREPEND" },
-  { name := "list_concat", anchor := 407, group := "list.plain", ctor := some (.bin .listConcat),
+  { name := "list_concat", anchor := 407, group := "list.plain", ctor := some (.bin (.listFn .concat)),
     reads := .plain, pretty := "LIST_CONCAT" },
   { name := "list_contains", anchor := 408, group := "list.plain",
-    ctor := some (.bin .listContains), reads := .plain, pretty := "LIST_CONTAINS" },
+    ctor := some (.bin (.listFn .contains)), reads := .plain, pretty := "LIST_CONTAINS" },
   { name := "list_position", anchor := 409, group := "list.plain",
-    ctor := some (.bin .listPosition), reads := .plain, pretty := "LIST_POSITION" },
+    ctor := some (.bin (.listFn .position)), reads := .plain, pretty := "LIST_POSITION" },
   { name := "flatten", anchor := 410, group := "list.plain", ctor := some (.un .flatten),
     reads := .plain, pretty := "FLATTEN" }]
 

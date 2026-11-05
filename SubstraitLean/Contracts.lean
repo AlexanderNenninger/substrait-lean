@@ -1146,9 +1146,9 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
        intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || strMayEq a b,
        intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || strMayNe a b, false, none⟩
   -- A list, which the abstraction does not look into, or `NULL`.
-  | .pair, _, _ | .listPrepend, _, _ | .listConcat, _, _ => AVal.top
+  | .pair, _, _ => AVal.top
   -- Of lists, which the abstraction does not look into (#812).
-  | .listContains, _, _ | .listPosition, _, _ => AVal.top
+  | .listFn _, _, _ => AVal.top
   | .lt, a, b =>
       -- Two strings may compare either way; FALSE < TRUE.
       let s := a.str && b.str
@@ -2027,7 +2027,8 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case bbox2 n =>
     refine BlackBox.scalarAbs_mem fun hs => ?_
     cases v <;> cases w <;> simp_all [AVal.Mem]
-  case pair | listPrepend | listConcat | listContains | listPosition => exact AVal.mem_top _
+  case pair => exact AVal.mem_top _
+  case listFn => exact AVal.mem_top _
   case greatest =>
     exact pickAbs_sound (fun hx hy => by simpa [Value.ltB] using Bound.mem_greatest hx hy)
       (fun _ w hw => by cases w <;> simp_all [Value.ltB])
