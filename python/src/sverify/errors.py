@@ -1,11 +1,19 @@
 """The exceptions sverify raises.
 
+Every exception below derives from `SverifyError`, so
+`except sverify.errors.SverifyError` catches whatever sverify raises on
+purpose; each also keeps its built-in base (`ValueError`, `RuntimeError`).
+The same classes are importable where they are defined (`sverify.routes.RouteError`,
+`sverify.engines.Unsupported`); import them from here.
+
 * `VerificationError`: the checker could not prove a postcondition; `.report` says
   what it could establish. `CompositionError` is the case where one
   transform's precondition does not follow from what the transform feeding
   it guarantees.
 * `PreconditionError`, `PostconditionError`: a condition checked on the data
-  failed (an input, or an output in `on_unproved="runtime"` mode).
+  failed (an input, or an output in `on_unproved="runtime"` mode). A
+  `PreconditionError` names the table (`.source`) and the condition
+  (`.condition`), and holds up to ten of the rows that break it (`.rows`).
 * `NotIncremental`: a plan has no verified delta rules.
 * `SchemaError`: a source's schema changed in a way a contract proved
   against the old schema cannot follow.
@@ -36,7 +44,7 @@
   spec gap.
 """
 
-from sverify._unsupported import Unsupported
+from sverify._unsupported import SverifyError, Unsupported
 from sverify.contracts import (
     CompositionError,
     PostconditionError,
@@ -73,6 +81,7 @@ __all__ = [
     "RouteError",
     "SchemaError",
     "SqlError",
+    "SverifyError",
     "Unsupported",
     "UnverifiedRunError",
     "UnverifiedRunWarning",

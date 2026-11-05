@@ -12,7 +12,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import _functions
-from sverify.plan_json import Json, Unsupported, if_then, literal
+from sverify.plan_json import Json, Unsupported, if_then, int_range, literal
 from sverify.sql_lift._base import (
     DUCKDB,
     Column,
@@ -307,7 +307,24 @@ def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
     if t.is_null():
         t = dt.int32
     value, *options = [lf.to(e, t).json for e in es]
+    ints = [_int_of(o) for o in node.expressions]
+    if t.is_integer() and (span := int_range(ints)) is not None:
+        # `x IN (0, 1)` over integers is `x BETWEEN 0 AND 1`, NULLs included,
+        # and the checker reads a range as one (#691).
+        lo, hi = (options[ints.index(v)] for v in span)
+        both = [_fn("gte", [value, lo], dt.boolean), _fn("lte", [value, hi], dt.boolean)]
+        return E(_fn("and", both, dt.boolean), dt.boolean)
     return E({"singularOrList": {"value": value, "options": options}}, dt.boolean)
+
+
+def _int_of(node: sge.Expression) -> int | None:
+    """The value of an integer literal, `3` or `-3`; else None."""
+    neg = isinstance(node, sge.Neg)
+    lit = node.this if neg else node
+    if not (isinstance(lit, sge.Literal) and lit.is_int):
+        return None
+    v = int(lit.this)
+    return -v if neg else v
 
 
 def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:

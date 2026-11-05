@@ -158,7 +158,7 @@ jobs:
           cd "$RUNNER_TEMP"
           uv run --isolated --no-project \
             --with "sverify[all] @ file://$wheel" \
-            --with pytest --with hypothesis \
+            --with pytest --with hypothesis --with pyyaml \
             --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
 
@@ -257,7 +257,7 @@ jobs:
           cd "$RUNNER_TEMP"
           uv run --isolated --no-project --python ${{ matrix.python }} \
             --with "sverify[all] @ file://$wheel" \
-            --with pytest --with hypothesis \
+            --with pytest --with hypothesis --with pyyaml \
             --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
 

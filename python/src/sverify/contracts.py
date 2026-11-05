@@ -89,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
@@ -231,7 +232,12 @@ class Unique(TableCondition):
         from sverify._weighted import duplicate_keys
 
         if inserts.num_rows and (clash := duplicate_keys(new, self.cols, inserts)):
-            raise PreconditionError(f"{clash} inserted key(s) of {t} violate {self.label}")
+            raise PreconditionError(
+                f"{clash} inserted key(s) of {t} violate {self.label}",
+                source=t,
+                condition=self,
+                rows=_duplicate_rows(inserts, new, self.cols),
+            )
         return Discharged(t, self.label, ON_DATA)
 
 
@@ -249,6 +255,50 @@ def unique(*cols: str) -> Unique:
         A `Unique` condition, for `requires` or `ensures`.
     """
     return Unique(tuple(cols))
+
+
+@dataclass(frozen=True)
+class Key:
+    """A key whose columns are never NULL (see `key`): `unique(*cols)` and
+    `"col" IS NOT NULL` for each column, which it stands for in `requires`
+    and `ensures`.
+
+    Attributes:
+        cols: The key's column names, in the order given to `key`.
+    """
+
+    cols: tuple[str, ...]
+
+    @property
+    def conditions(self) -> list[Condition]:
+        """The conditions it stands for: the `unique` key, then each
+        column's NOT NULL, as SQL."""
+        quoted = ['"' + c.replace('"', '""') + '"' for c in self.cols]
+        return [Unique(self.cols), *(f"{q} IS NOT NULL" for q in quoted)]
+
+
+def key(*cols: str) -> Key:
+    """A primary key: at most one row per combination of `cols`, and no NULL
+    in any of them. `sv.key("id")` is `sv.unique("id")` and `'"id" IS NOT
+    NULL'`, which it stands for in the contract and the report.
+
+    Args:
+        *cols: The names of the key's columns.
+
+    Returns:
+        A `Key`, for `requires` or `ensures`.
+    """
+    if not cols:
+        raise ValueError("key() needs at least one column")
+    return Key(tuple(cols))
+
+
+def expand_keys(conds: Sequence[Condition]) -> list[Condition]:
+    """`conds` with each `key` replaced by the conditions it stands for."""
+    out: list[Condition] = []
+    for c in conds:
+        out += c.conditions if isinstance(c, Key) else [c]
+    return out
 
 
 @dataclass(frozen=True)
@@ -446,7 +496,9 @@ class MaxRows(TableCondition):
         from sverify._weighted import row_count
 
         if (n := row_count(new)) > self.n:
-            raise PreconditionError(f"{n - self.n} row(s) of {t} violate {self.label}")
+            raise PreconditionError(
+                f"{n - self.n} row(s) of {t} violate {self.label}", source=t, condition=self
+            )
         return Discharged(t, self.label, ON_DATA)
 
 
@@ -765,6 +817,7 @@ Condition = (
     | ir.BooleanValue
     | str
     | Unique
+    | Key
     | References
     | ArrivesWithin
     | MaxRows
@@ -1140,6 +1193,10 @@ class Report:
     found."""
     facts: dict[str, str] = field(default_factory=dict)
     """What the checker established about each output column."""
+    not_null: list[str] = field(default_factory=list)
+    """The output columns the checker proved never NULL, from what it
+    established about them (`facts`), in the output's order. A stored node
+    of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """False when rows may tie in the ORDER BY of a window or of an ordered
     aggregate (`first`, `last`, `group_concat`; without an `order_by` every
@@ -1382,7 +1439,10 @@ class Report:
                 if n := violations(table, c):
                     raise PreconditionError(
                         f"{n} row(s) of {t} violate {label(c)}: refused before the run"
-                        + self._source(t, c)
+                        + self._source(t, c),
+                        source=t,
+                        condition=c,
+                        rows=violating_rows(table, c),
                     )
         if self.assumed and self.plan is not None:
             # The proved DuckDB translation checks each assumption as it runs:
@@ -1702,6 +1762,25 @@ class Report:
                 )
         return out
 
+    @property
+    def needed_conditions(self) -> dict[str, list[Condition]]:
+        """`needs` as conditions, per input table, ready for `requires=`: Ibis
+        deferreds for an Ibis transform (`_.qty < 9 * 10**18`, or
+        `_.qty.isnull() | (_.qty < 9 * 10**18)` where `qty` may be NULL, as
+        the inferred bound lets NULL pass), SQL strings for a SQL one. A
+        bound with no Ibis form goes as its SQL, which an Ibis transform
+        reads too. Empty unless `on_inferred="error"`.
+
+            report = sv.verify(expr)
+            if not report.proved:
+                report = sv.verify(expr, requires=report.needed_conditions)
+        """
+        out: dict[str, list[Condition]] = {}
+        for n in self.needs:
+            cond = _needed_deferred(n) if self.dialect == "ibis" else None
+            out.setdefault(n.table, []).append(cond if cond is not None else n.sql)
+        return out
+
     def needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Deprecated: `needed_text` lists every needed precondition."""
         warnings.warn(
@@ -2005,7 +2084,7 @@ TIES_HINT = (
 )
 
 
-class VerificationError(Exception):
+class VerificationError(SverifyError):
     """A postcondition, or the absence of runtime errors, could not be proved.
 
     Import it from `sverify.errors`. The message's first line counts what
@@ -2071,7 +2150,7 @@ class UnverifiedRunError(VerificationError, RouteError):
         Exception.__init__(self, f"refused on {route.engine}: {route.reason}")
 
 
-class PreconditionError(Exception):
+class PreconditionError(SverifyError):
     """Input data violates a precondition.
 
     Import it from `sverify.errors`. Raised when a contracted transformation
@@ -2080,10 +2159,34 @@ class PreconditionError(Exception):
     precondition does not hold on the rows. The message says how many rows
     violate which condition, for example
     "2 row(s) of orders violate (_.amount >= 0)".
+
+    Attributes:
+        source: The input or source table the condition is on (None when
+            the error is about several, an assumed `SUM` among them).
+        condition: The condition as stated in `requires` (an Ibis deferred,
+            a SQL string, a `unique` key, ...) or as inferred, an `Inferred`
+            whose text is its SQL; None as for `source`.
+        rows: Up to `ROWS_SHOWN` (10) of the rows that break it, as an Arrow
+            table with the input's columns; None where the condition is on
+            the table as a whole (`max_rows`, `rows_per`) or the rows could
+            not be fetched.
     """
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        source: str | None = None,
+        condition: Condition | None = None,
+        rows: pa.Table | None = None,
+    ):
+        super().__init__(message)
+        self.source = source
+        self.condition = condition
+        self.rows = rows
 
-class PostconditionError(Exception):
+
+class PostconditionError(SverifyError):
     """Output data violates a postcondition (only raised by runtime checks).
 
     Import it from `sverify.errors`. Raised with `on_unproved="runtime"`,
@@ -2324,6 +2427,41 @@ class Needed:
     `_.qty.notnull()`. `sql` is the form for a SQL contract."""
     issue: Issue | None
     """The runtime error it rules out, and where (`Report.inferred_from`)."""
+
+
+def _sql_value(value: str) -> Any:
+    """The Python value of a SQL literal `Needed.value` gives: an integer,
+    a double, a decimal, a date or a timestamp; None for anything else."""
+    if re.fullmatch(r"-?\d+", value):
+        return int(value)
+    if re.fullmatch(r"-?\d+\.\d+", value):
+        return Decimal(value)
+    try:
+        if (m := re.fullmatch(r"DATE '(.+)'", value)) is not None:
+            return date.fromisoformat(m[1])
+        if (m := re.fullmatch(r"TIMESTAMP '(.+)'", value)) is not None:
+            return datetime.fromisoformat(m[1])
+        x = float(value)
+    except ValueError:
+        return None
+    return x if math.isfinite(x) else None
+
+
+def _needed_deferred(n: Needed) -> Deferred | None:
+    """`n` as an Ibis deferred, letting NULL pass where its SQL does; None
+    where it has no such form."""
+    if n.column is None or n.op is None:
+        return None
+    col: Any = ibis._[n.column]
+    if n.op == "IS NOT NULL":
+        return col.notnull()
+    v = _sql_value(n.value or "")
+    if v is None:
+        return None
+    ops_ = {">=": col >= v, ">": col > v, "<=": col <= v, "<": col < v, "<>": col != v}
+    cmp = ops_[n.op]
+    nulls = '"' + n.column.replace('"', '""') + '" IS NULL OR '
+    return col.isnull() | cmp if n.sql.startswith(nulls) else cmp
 
 
 def _nice(x: int, up: bool) -> tuple[int, str]:
@@ -2684,7 +2822,7 @@ def requires_by_input(
         return {}
     if not isinstance(requires, Mapping):
         conds: list[Any] = (
-            [requires] if isinstance(requires, str | TableCondition) else list(requires)
+            [requires] if isinstance(requires, str | TableCondition | Key) else list(requires)
         )
         if len(inputs) != 1:
             raise error(
@@ -2692,7 +2830,7 @@ def requires_by_input(
                 f"are {len(inputs)} ({', '.join(inputs) or 'none'}); key them by {kind}, "
                 "as requires={name: [...]}"
             )
-        return {inputs[0]: conds}
+        return {inputs[0]: expand_keys(conds)}
     for key in requires:
         if key in inputs:
             continue
@@ -2703,7 +2841,7 @@ def requires_by_input(
             f"requires: unknown {kind} {key!r}; the inputs are: {', '.join(inputs) or 'none'}"
             + hint
         )
-    return dict(requires)
+    return {t: expand_keys(cs) for t, cs in requires.items()}
 
 
 def default_counterexamples() -> int:
@@ -2868,7 +3006,7 @@ def verify(
     return infer_bounds(
         transform,
         requires=requires_by_input(requires, inputs),
-        ensures=ensures,
+        ensures=expand_keys(ensures),
         tables=tables,
         counterexamples=default_counterexamples() if counterexamples is None else counterexamples,
         params=bound,
@@ -3671,6 +3809,11 @@ def _verify_once(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
+        not_null=[
+            f["name"]
+            for f in out["facts"]
+            if f["name"] in dtypes and f.get("abstract", {}).get("null") is False
+        ],
         deterministic=out["deterministic"],
         windows_total=out.get("windows_total", out["deterministic"]),
         tie_places=tie_places(out),
@@ -4292,6 +4435,57 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     return _count(count)
 
 
+ROWS_SHOWN = 10
+"""How many violating rows a `PreconditionError` carries (`.rows`)."""
+
+
+def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) -> pa.Table | None:
+    """Up to `limit` rows of the bound `table` where `cond` is not TRUE, or
+    for `unique`, the rows of a repeated key; None for a condition on the
+    table as a whole, or if the rows cannot be fetched (they only go into an
+    error, which says how many rows break the condition either way)."""
+    try:
+        if isinstance(cond, Unique):
+            cols = list(cond.cols)
+            counts = table.group_by(cols).aggregate(__sverify_n=table.count())
+            dup = counts.filter(counts["__sverify_n"] > 1).select(cols)
+            return table.semi_join(dup, cols).limit(limit).to_pyarrow()
+        if isinstance(cond, TableCondition):
+            return None
+        if isinstance(cond, str):
+            backend: Any = ibis.get_backend(table)
+            sql = ibis.to_sql(table, dialect=backend.name)
+            query = (
+                f'SELECT * FROM ({sql}) AS "t" WHERE NOT coalesce(({cond}), FALSE) LIMIT {limit}'
+            )
+            # Fetch every row, as `violations` does, so that the connection
+            # is free for the next query (DuckDB 2 refuses work on a
+            # connection with a result left unread).
+            import pyarrow
+
+            cur = backend.raw_sql(query)
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+            return pyarrow.Table.from_pylist(rows, schema=table.schema().to_pyarrow())
+        bad = table.filter(~resolve(cond, table).fill_null(ibis.literal(False)))
+        return bad.limit(limit).to_pyarrow()
+    except Exception:
+        return None
+
+
+def _duplicate_rows(
+    inserts: pa.Table, new: pa.Table | Any, cols: Sequence[str], limit: int = ROWS_SHOWN
+) -> pa.Table | None:
+    """Up to `limit` inserted rows whose key `cols` occurs more than once in
+    the `new` table (None if they cannot be fetched)."""
+    try:
+        from sverify._weighted import duplicate_key_rows
+
+        return duplicate_key_rows(new, cols, inserts, limit)
+    except Exception:
+        return None
+
+
 @dataclass(frozen=True)
 class Fact:
     """What table metadata says about every row of a table, as a SQL
@@ -4419,7 +4613,12 @@ def discharge(
             todo = [c for c in todo if label(c) not in proved]
     for c in todo:
         if n := violations(table, c, engine):
-            raise PreconditionError(f"{n} {what} violate {label(c)}")
+            raise PreconditionError(
+                f"{n} {what} violate {label(c)}",
+                source=name,
+                condition=c,
+                rows=violating_rows(table, c),
+            )
         out.append(Discharged(name, label(c), ON_DATA, isinstance(c, Inferred)))
     return out
 
@@ -4590,6 +4789,9 @@ class ViewContract:
     checked: list[Condition] = field(default_factory=list)
     """Postconditions that were not proved, which the view checks on every
     state (`on_unproved="runtime"`)."""
+    not_null: list[str] = field(default_factory=list)
+    """The columns the proved report shows never NULL (`Report.not_null`):
+    they hold in every state, as `guarantees` do."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -4618,6 +4820,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
+        list(prov.report.not_null) if prov and prov.report.proved else [],
     )
 
 
@@ -4654,7 +4857,7 @@ class ContractedTransform:
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
     ):
-        self.fn, self.ensures = fn, ensures
+        self.fn, self.ensures = fn, expand_keys(ensures)
         self.on_inferred = on_inferred
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
@@ -4674,6 +4877,40 @@ class ContractedTransform:
         last call: from metadata (`sverify.io` tables) or on the data."""
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
+
+    def to_substrait(
+        self,
+        format: Literal["json", "binary"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str | bytes:
+        """The verified plan of the last call, with its contract as
+        metadata: `Report.to_substrait` of `last_report`. A call proves the
+        contract for its inputs' schemas, so call the transform first, on
+        tables, sources or nodes; `Node.to_substrait` exports a node.
+
+        Args:
+            format: `"json"` (protobuf JSON, a string) or `"binary"` (the
+                serialized `substrait.Plan`).
+            shims: What to do at a spec gap the proof depends on (see
+                `Report.to_substrait`).
+
+        Returns:
+            The plan, as protobuf JSON or bytes.
+
+        Raises:
+            sverify.errors.ExportError: The transform has not been called
+                yet, its report is not proved, or the plan has no
+                conforming Substrait form that keeps the proof.
+        """
+        from sverify.substrait_export import ExportError
+
+        if self.last_report is None:
+            raise ExportError(
+                f"{self.name} has not been called yet: call it on tables, sources or "
+                "nodes first, which proves its contract for their schemas"
+            )
+        return self.last_report.to_substrait(format, shims=shims)
 
     def _verify(
         self,

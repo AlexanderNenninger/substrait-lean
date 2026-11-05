@@ -6,6 +6,12 @@
 // does not know it ignores it, as Substrait allows for an optimization.
 // `sverify.substrait_export` builds the same messages at run time;
 // `tests/test_substrait_export.py` checks that they match this file.
+//
+// Compatibility within 1.x (docs/stability.md): the package and type URL
+// stay; a field keeps its number and type; a new field takes a new number;
+// a field no longer written is `reserved` by number and name. A change that
+// breaks these rules goes in a new package, `v2`. `tests/test_formats.py`
+// holds the fields 1.0 fixes, and reads the exports of every release.
 syntax = "proto3";
 
 package io.sverify.substrait.v1;

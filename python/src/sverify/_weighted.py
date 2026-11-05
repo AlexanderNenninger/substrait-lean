@@ -241,6 +241,25 @@ def duplicate_keys(
     return out.column("d")[0].as_py()
 
 
+def duplicate_key_rows(
+    table: pa.Table | Native, cols: Sequence[str], among: pa.Table | None, limit: int
+) -> pa.Table:
+    """Up to `limit` rows whose key `cols` occurs more than once in
+    `table`: rows of `table`, or with `among`, rows of `among` (inserted
+    rows). Keys are equal as rows are (NULLs equal)."""
+    key = ", ".join(map(_q, cols))
+    dup = f"SELECT {key} FROM t GROUP BY {key} HAVING count(*) > 1"
+    same = " AND ".join(f"d.{_q(c)} IS NOT DISTINCT FROM r.{_q(c)}" for c in cols)
+    rows = "t" if among is None else "a"
+    query = (
+        f"SELECT r.* FROM {rows} r WHERE EXISTS (SELECT 1 FROM ({dup}) d WHERE {same}) "
+        f"LIMIT {limit}"
+    )
+    if among is None:
+        return _sql(query, t=table)
+    return _sql(query, t=table, a=among)
+
+
 _ONE = "__sverify_one"
 
 

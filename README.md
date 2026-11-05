@@ -96,6 +96,8 @@ SQL string ─► SQLGlot lift ────────────────�
   the engine tiers (DuckDB is Tier 1).
 * [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
   citations, and related tools.
+* [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
+  a running pipeline reads, the contracts proved, and the Python API.
 
 ## The Lean project
 

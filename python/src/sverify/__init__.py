@@ -37,8 +37,11 @@ DataFusion and Spark.
   earlier row of another table, with operators Lean verifies.
 
 Engines, SQL dialects and plans are in `sverify.engines`, the exceptions in
-`sverify.errors`.
+`sverify.errors`. `__version__` is the installed version.
 """
+
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _version
 
 import sverify.sql  # noqa: F401 - before `sql` below, which a first import of it would replace
 from sverify.asof import asof_join
@@ -47,6 +50,7 @@ from sverify.contracts import (
     Report,
     approx,
     arrives_within,
+    key,
     max_rows,
     references,
     rows_per,
@@ -73,6 +77,7 @@ __all__ = [
     "equivalent",
     "from_substrait",
     "group",
+    "key",
     "max_rows",
     "references",
     "rows_per",
@@ -82,3 +87,15 @@ __all__ = [
     "verify",
     "within",
 ]
+
+try:
+    __version__: str = _version("sverify")
+except _PackageNotFoundError:  # a source tree without an install
+    __version__ = "0+unknown"
+
+
+def __dir__() -> list[str]:
+    """The public names, `__all__` and `__version__`: the submodules
+    (`sverify.io`, `sverify.errors`, ...) stay importable but out of tab
+    completion."""
+    return sorted([*__all__, "__version__"])

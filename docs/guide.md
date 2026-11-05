@@ -338,17 +338,37 @@ except VerificationError as e:
 * Preconditions describe data that comes from outside. On a source, they
   are checked on the data when the node is first refreshed and then on each
   batch (`PreconditionError`), or proved from the table's metadata; on Ibis
-  tables bound to data (`sv.connect()`), at call time.
+  tables bound to data (`sv.connect()`), at call time. The error carries
+  the table (`e.source`), the condition as stated or inferred
+  (`e.condition`) and up to ten of the rows that break it, as an Arrow
+  table (`e.rows`; None for `max_rows` and `rows_per`)
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)):
+
+  ```python
+  try:
+      node.refresh()
+  except PreconditionError as e:
+      log.error("%s breaks %s", e.source, e.condition)
+      quarantine.write(e.rows)
+  ```
 * Unproved postconditions raise `VerificationError`. With
   `on_unproved="runtime"` they are checked on the output data instead
   (`PostconditionError`): on bound tables at call time, on a node at every
   refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
   `on_unproved="warn"` you get a warning.
+* Every exception sverify raises on purpose derives from
+  `sverify.errors.SverifyError`, and keeps its built-in base (`ValueError`,
+  `RuntimeError`); import the exceptions from `sverify.errors`
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
   those facts; arithmetic, `CASE`, `COALESCE`, joins and `UNION ALL` carry
   them through. Schemas count: a non-nullable column is never NULL.
+  `x IN (0, 1)`, and `isin([0, 1])`, of integers that fill a range is
+  read as `x BETWEEN 0 AND 1`, so a column known to lie in `[0, 1]` meets
+  it ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  `report.not_null` lists the output columns the checker shows are never NULL.
 * Relations between columns: join and filter conditions such as
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
@@ -371,8 +391,9 @@ except VerificationError as e:
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key). Every Arrow column is nullable, so
-  `sv.unique("id")` leaves `id` able to be NULL: a postcondition or sink that
-  needs `id` NOT NULL also states `_.id.notnull()` in `requires`.
+  `sv.unique("id")` leaves `id` able to be NULL. `sv.key("id")` is a
+  primary key: `sv.unique("id")` and `'"id" IS NOT NULL'`, which the report
+  lists in its place ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 * Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
@@ -708,6 +729,12 @@ The report's parts come as data and as the lines `str(report)` prints:
   runtime error, assumption and note.
 - `Issue.suggested` gives the preconditions that rule an issue out, per
   table, which `Issue.hint` states in words.
+- `Report.needs` gives the preconditions the proof needs, one `Needed` each
+  (table, column, comparison, bound, SQL), and `Report.needed_conditions`
+  the same as conditions ready for `requires=`, in the transform's language:
+  Ibis deferreds (`_.qty.isnull() | (_.qty != 0)`, NULL passing as the
+  inferred bound lets it) or SQL strings
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.
@@ -977,11 +1004,15 @@ tables. A table format plays four roles:
   processes refresh the same `DeltaSink`, the second to commit an epoch
   raises `ConcurrentWriteError` and writes nothing; its next refresh
   recovers.
-  The `ensures` you state become NOT NULL columns (`_.id.notnull()`) and
-  CHECK constraints (Delta) or table properties (Iceberg); a column the
-  plan proves non-NULL but `ensures` leaves out stays nullable, and the commit records the plan hash, the
-  source versions and the contract. A job that reads the table gets its
-  preconditions from them. After the first write, `DeltaSink` MERGEs each
+  The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
+  or table properties (Iceberg). The NOT NULL columns are those `ensures`
+  states (`_.id.notnull()`) and those the proved report shows are never NULL
+  (`report.not_null`, [#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  The commit records the plan hash, the
+  source versions and the contract (`sverify.io.Contract`, in the format of
+  [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json),
+  which every 1.x release reads: [stability.md](stability.md#the-formats)).
+  A job that reads the table gets its preconditions from them. After the first write, `DeltaSink` MERGEs each
   change in one commit, and `IcebergSink` writes it as one snapshot of
   position delete files and a data file of the new rows.
   `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
@@ -1419,12 +1450,23 @@ A refusal raises `sverify.errors.ExportError`, which names the reason and
 the gap. So does an unproved report, a plan verified under an engine's
 profile, and a function outside Substrait's YAMLs.
 
+`node.to_substrait()` and `transform.to_substrait()` export the report of
+a node and of a transform's last call
+([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+A node's plan is its last transform's: a contracted node upstream is a
+table of that transform's name, and the contract's `requires` on it are
+what that node guarantees. Export each node to cover a pipeline.
+
 The contract travels in the plan's `advanced_extensions.optimization` as an
 `io.sverify.substrait.v1.Contract` message
 ([`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto)),
 which a consumer that does not know it ignores. It holds the preconditions
 (declared, inferred and assumed) and the postconditions, each in your terms
-and as a Substrait plan of one boolean column, and a manifest:
+and as a Substrait plan of one boolean column, and a manifest
+([`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json)).
+Within 1.x the message and the manifest only gain fields, and
+`sv.from_substrait` reads every earlier 1.x export
+([stability.md](stability.md#the-substrait-contract-message)):
 
 | Key | What it holds |
 |---|---|
