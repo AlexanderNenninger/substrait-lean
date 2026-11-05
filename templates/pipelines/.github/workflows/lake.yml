@@ -4,7 +4,10 @@
 # The environment holds the stage's credentials: `staging` writes only
 # staging/, `production` the production tables (README, "Stages and
 # credentials"). Its variables and secrets are read here, the one place
-# that maps them.
+# that maps them. The cloud stores log in through OIDC, so no long-lived
+# key is stored for them: a stored key reaches the job only for the store
+# that needs it (R2 has no OIDC federation), and the Tailscale client only
+# for MinIO (docs/for-enterprise.md).
 name: lake
 
 on:
@@ -37,19 +40,23 @@ jobs:
       SVERIFY_AWS_ROLE: ${{ vars.SVERIFY_AWS_ROLE }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_ENDPOINT_URL: ${{ vars.AWS_ENDPOINT_URL }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ vars.SVERIFY_STORE == 'r2' && secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ vars.SVERIFY_STORE == 'r2' && secrets.AWS_SECRET_ACCESS_KEY || '' }}
       SVERIFY_GCP_PROVIDER: ${{ vars.SVERIFY_GCP_PROVIDER }}
       SVERIFY_GCP_SERVICE_ACCOUNT: ${{ vars.SVERIFY_GCP_SERVICE_ACCOUNT }}
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       AZURE_STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}
-      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      TS_OAUTH_CLIENT_ID: ${{ vars.SVERIFY_STORE == 'minio' && secrets.TS_OAUTH_CLIENT_ID || '' }}
+      TS_OAUTH_SECRET: ${{ vars.SVERIFY_STORE == 'minio' && secrets.TS_OAUTH_SECRET || '' }}
       TS_TAGS: ${{ vars.TS_TAGS }}
       OPENBAO_ADDR: ${{ vars.OPENBAO_ADDR }}
       OPENBAO_ROLE: ${{ vars.OPENBAO_ROLE }}
       OPENBAO_SECRETS: ${{ vars.OPENBAO_SECRETS }}
+      # Source tokens: one line per secret a source needs, from the
+      # environment's or the repository's secrets. A pipeline names it and
+      # never holds its value (docs/for-enterprise.md, "Source tokens").
+      # EXAMPLE_API_TOKEN: ${{ secrets.EXAMPLE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup

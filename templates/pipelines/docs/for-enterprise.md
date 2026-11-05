@@ -20,12 +20,19 @@ Tables go to `<bucket>/production/<table>` and `<bucket>/staging/pr-<n>/<table>`
 
 Create two GitHub environments (Settings, Environments): `staging` and
 `production`. Each gets its own variables below, so each stage's identity
-is a different role:
+is a different role, with the least it needs
+([#778](https://github.com/AlexanderNenninger/substrait-lean/issues/778)):
 
+- each role reads the pipelines' sources, and nothing else of the lake;
 - `staging`'s role writes only `<bucket>/staging/*`;
-- `production`'s role writes `<bucket>/production/*` and reads nothing
-  else. Restrict `production` to the `main` branch (Deployment branches)
-  and add required reviewers if each refresh needs an approval.
+- `production`'s role writes only `<bucket>/production/*`. Restrict
+  `production` to the `main` branch (Deployment branches) and add required
+  reviewers if each refresh needs an approval.
+
+A sink reads its own table back (its log holds the contract), so a role
+reads where it writes. A source on the web, such as Eurostat, needs no
+grant; a source in your lake needs a read grant on its prefix, listed as
+`<bucket>/sources/*` below.
 
 GitHub's OIDC token names the environment in its subject,
 `repo:<owner>/<repository>:environment:<name>`, so each role trusts only
@@ -38,9 +45,11 @@ its environment ([GitHub's OIDC docs](https://docs.github.com/en/actions/securit
 2. Create a role per environment. Trust policy condition:
    `token.actions.githubusercontent.com:sub` equals
    `repo:<owner>/<repository>:environment:staging` (or `production`).
-   Permissions: `s3:ListBucket` on the bucket with an `s3:prefix` condition,
-   and `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on
-   `arn:aws:s3:::my-lake/pipelines/staging/*` (or `production/*`).
+   Permissions: `s3:ListBucket` on the bucket with an `s3:prefix`
+   condition on the stage's and the sources' prefixes; `s3:GetObject` on
+   `arn:aws:s3:::my-lake/sources/*`; and `s3:GetObject`, `s3:PutObject`,
+   `s3:DeleteObject` on `arn:aws:s3:::my-lake/pipelines/staging/*` (or
+   `production/*`).
 3. Environment variables: `SVERIFY_AWS_ROLE` (the role's ARN) and
    `AWS_REGION`.
 
@@ -50,7 +59,8 @@ its environment ([GitHub's OIDC docs](https://docs.github.com/en/actions/securit
    `https://token.actions.githubusercontent.com`, attribute mapping
    `google.subject=assertion.sub`).
 2. A service account per environment, with `roles/storage.objectAdmin` on
-   the bucket under an IAM condition on the object name prefix, and
+   the bucket under an IAM condition on the stage's object name prefix,
+   `roles/storage.objectViewer` under one on the sources' prefix, and
    `roles/iam.workloadIdentityUser` for
    `principal://iam.googleapis.com/<pool>/subject/repo:<owner>/<repository>:environment:<name>`.
 3. Environment variables: `SVERIFY_GCP_PROVIDER` (the provider's full
@@ -62,7 +72,8 @@ its environment ([GitHub's OIDC docs](https://docs.github.com/en/actions/securit
    environment, with a federated credential for the subject
    `repo:<owner>/<repository>:environment:<name>`.
 2. The role Storage Blob Data Contributor on the container, with an ABAC
-   condition on the path prefix.
+   condition on the stage's path prefix, and Storage Blob Data Reader with
+   one on the sources' prefix.
 3. Environment variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and
    `AZURE_STORAGE_ACCOUNT_NAME`. `SVERIFY_BUCKET` is
    `az://<container>/pipelines`.
@@ -71,7 +82,9 @@ its environment ([GitHub's OIDC docs](https://docs.github.com/en/actions/securit
 
 R2 has no OIDC federation: create an R2 API token per environment, scoped
 to the bucket, and store it as the environment's secrets
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Environment variable
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. It is the one store with
+a stored key, and `lake.yml` passes it to a job only when `SVERIFY_STORE`
+is `r2`. Environment variable
 `AWS_ENDPOINT_URL`: `https://<account id>.r2.cloudflarestorage.com`.
 `SVERIFY_BUCKET` is `s3://<bucket>/pipelines`.
 
@@ -112,8 +125,42 @@ internet, and GitHub stores no MinIO key.
 4. MinIO: a user or policy per stage limited to its prefix.
 
 Vault works the same way as OpenBao (same API), and so does a cloud secret
-manager with OIDC login. Another zero-trust network or VPN takes
+manager with OIDC login. From the release after 0.7, a pipeline can also
+read OpenBao itself: `[tool.sverify.secrets.bao]` in `pyproject.toml` with
+`address`, `auth = "jwt"` and `role` logs in with the job's OIDC token
+(audience `openbao`), and `Secret("bao:kv/pipelines/production#access_key")`
+names a value. Another zero-trust network or VPN takes
 Tailscale's place if its client can join from a runner.
+
+## Source tokens
+
+A source behind a login, an API with a token say, gets its token from a
+secret of the environment (or of the repository, when both stages may use
+it). `lake.yml` maps each one to an environment variable of the same name,
+one line each, so a job sees only the secrets listed there:
+
+```yaml
+      EXAMPLE_API_TOKEN: ${{ secrets.EXAMPLE_API_TOKEN }}
+```
+
+The pipeline names the token and never holds its value: it reads it inside
+the source's function with `Secret("env:EXAMPLE_API_TOKEN").value()` and
+declares it with `credentials="env:EXAMPLE_API_TOKEN"`
+([#775](https://github.com/AlexanderNenninger/substrait-lean/issues/775),
+`sverify.io.Secret`, in the release after 0.7). Sverify's reports, contract
+records, exports and logs then show the name. A token in OpenBao, AWS
+Secrets Manager, Google Secret Manager or Azure Key Vault is named the same
+way (`bao:kv/pipelines/production#token`, `aws-sm:...`), and the job's OIDC
+identity reads it.
+
+## What each pipeline touches
+
+`sverify check` lists the credentials each node uses, by name, for reading
+or writing, and `refresh.json` records them per refresh (#778). A sink
+declared with the prefixes its credential may write,
+`Storage(name="production role", writes=[lake()])`, makes `sverify check`
+warn when a pipeline writes elsewhere, before the role's policy refuses
+the write at run time.
 
 ## Coming next: the cloud variants
 
