@@ -10,13 +10,15 @@ to it.
 
 ## The formats
 
-Jobs and tools read three formats that sverify writes:
+Jobs and tools read these formats that sverify writes:
 
 | Format | Where it lives | Version | Schema |
 |---|---|---|---|
 | The sink's contract record ([#734](https://github.com/AlexanderNenninger/substrait-lean/issues/734)) | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata ([#735](https://github.com/AlexanderNenninger/substrait-lean/issues/735)) | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
 | The report's JSON ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)) | `Report.to_json()`, read back by `Report.from_json()` | `format` in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
+| The quarantine table ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)) | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
+| The refresh report's JSON ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)) | `Refresh.to_json()` | `format` in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
 
 Within 1.x each format follows these rules:
 

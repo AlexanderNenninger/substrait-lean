@@ -59,7 +59,7 @@
       "examples": [
         "error",
         "warn",
-        "silent",
+        "ignore",
         "off"
       ]
     },
@@ -294,7 +294,7 @@
                   ]
                 },
                 "checked": {
-                  "description": "Checked on the output data instead (on_unproved=\"runtime\").",
+                  "description": "Checked on the output data instead (on_unproved=\"check\").",
                   "type": "boolean"
                 },
                 "ignores": {

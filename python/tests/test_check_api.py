@@ -91,7 +91,7 @@ def test_messages_are_the_lines_of_the_report() -> None:
     [assumed] = summed.assumed
     assert assumed.assumption.startswith("SUM of x fits 64 bits")
     assert f"assumes: {assumed.assumption}" in str(summed)
-    raising = sv.verify(t.select(r=t.x // 0), on_inferred="silent", counterexamples=0)
+    raising = sv.verify(t.select(r=t.x // 0), on_inferred="ignore", counterexamples=0)
     for issue in raising.errors:
         assert f"may fail: {issue.message}" in str(raising)
 

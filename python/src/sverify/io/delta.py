@@ -21,6 +21,7 @@ Feed.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import time
@@ -50,6 +51,8 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
+from sverify import _quarantine
+from sverify._quarantine import Policy
 from sverify._scan import Native, Scan, ScanSnapshot, local_path
 from sverify._weighted import WEIGHT, expanded, rows_of, weights_in
 from sverify.contracts import Fact
@@ -291,6 +294,11 @@ class DeltaSource(_TableSource):
         name: The table's name in the plans that read it. Default: the last
             part of `uri`, with dots replaced by underscores (`a.b` →
             `a_b`), or the table's name for `uc://catalog.schema.table`.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition on this source, for transforms that set no
+            `on_violation` of their own: `"error"`, `"quarantine"` or
+            `"hold"` (see `sverify.transform`). Default: None,
+            `"error"`.
 
     Attributes:
         uri: The table's location.
@@ -338,8 +346,10 @@ class DeltaSource(_TableSource):
         storage_options: Options = None,
         where: str | None = None,
         name: str | None = None,
+        on_violation: Policy | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
+        self.on_violation = _quarantine.check_policy(on_violation)
         super().__init__(name or _basename(self.uri), where)
 
     def _id_at(self, version: int | None) -> str:
@@ -816,6 +826,37 @@ class DeltaSink(_TableSink[DeltaTable]):
     def _version(self) -> int | None:
         dt = self._table()
         return None if dt is None else dt.version()
+
+    def _quarantine_default(self) -> DeltaSink | None:
+        if _is_catalog(self.uri):
+            return None
+        return DeltaSink(
+            self.uri.rstrip("/") + "_quarantine",
+            storage_options=self.storage_options,
+            name=self.name + "_quarantine",
+        )
+
+    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None:
+        write_deltalake(
+            self.uri,
+            rows,
+            mode="overwrite",
+            schema_mode="overwrite",
+            commit_properties=CommitProperties(
+                custom_metadata={_quarantine.RECORD_KEY: json.dumps(record)}
+            ),
+            storage_options=resolve(self.storage_options),
+        )
+
+    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None:
+        dt = self._table()
+        if dt is None:
+            return None
+        for c in _history(dt):
+            if _quarantine.RECORD_KEY in c:
+                record = _quarantine.read_record(json.loads(c[_quarantine.RECORD_KEY]))
+                return dt.to_pyarrow_table(), record
+        return None
 
     def _open(self) -> DeltaTable | None:
         return self._table()
