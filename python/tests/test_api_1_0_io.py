@@ -165,7 +165,7 @@ def test_a_custom_sink_overrides_contract() -> None:
     sink = New("doubled")
     _quiet(_quiet(doubled, orders).write(sink).refresh)
     c = sink.contract()
-    assert c is not None and c.view == "doubled"
+    assert c is not None and c.node == "doubled"
 
 
 # -- E3: maintain's names ------------------------------------------------------------

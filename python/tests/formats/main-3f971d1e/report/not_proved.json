@@ -1,0 +1,173 @@
+{
+  "assumed": [],
+  "deterministic": true,
+  "dialect": "ibis",
+  "ensures": [
+    {
+      "kind": "fail",
+      "level": "error",
+      "message": {
+        "text": "NOT proved: it may be FALSE on some rows"
+      },
+      "properties": {
+        "approx": false,
+        "checked": false,
+        "counterexample": {
+          "columns": {
+            "": [
+              "id",
+              "d"
+            ],
+            "orders": [
+              "id",
+              "qty",
+              "total"
+            ]
+          },
+          "output": [
+            [
+              0,
+              -5
+            ]
+          ],
+          "tables": {
+            "orders": [
+              [
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "text": "orders(id, qty, total) = [(0, 0, 0)] gives (id, d) = [(0, -5)]"
+        },
+        "detail": null,
+        "ignores": [],
+        "label": "(_.d >= 0)",
+        "needs": [
+          {
+            "label": "\"total\" IS NULL OR \"total\" >= 5",
+            "table": "orders"
+          }
+        ],
+        "nullable": [],
+        "reads": [
+          "d"
+        ],
+        "value": "TRUE or FALSE"
+      },
+      "ruleId": "may_be_false"
+    },
+    {
+      "kind": "fail",
+      "level": "error",
+      "message": {
+        "text": "NOT proved: the preconditions do not make it a key: `id` comes from orders.id: declare `sv.unique('id')` in the requires of 'orders'"
+      },
+      "properties": {
+        "approx": false,
+        "checked": false,
+        "counterexample": {
+          "columns": {
+            "": [
+              "id",
+              "d"
+            ],
+            "orders": [
+              "id",
+              "qty",
+              "total"
+            ]
+          },
+          "output": [
+            [
+              2,
+              -5
+            ],
+            [
+              2,
+              -5
+            ]
+          ],
+          "tables": {
+            "orders": [
+              [
+                2,
+                0,
+                0
+              ],
+              [
+                2,
+                0,
+                0
+              ]
+            ]
+          },
+          "text": "orders(id, qty, total) = [(2, 0, 0), (2, 0, 0)] gives (id, d) = [(2, -5), (2, -5)]"
+        },
+        "detail": "the preconditions do not make it a key: `id` comes from orders.id: declare `sv.unique('id')` in the requires of 'orders'",
+        "ignores": [],
+        "label": "unique(id)",
+        "needs": [],
+        "nullable": [
+          "id"
+        ],
+        "reads": [
+          "id"
+        ],
+        "value": "not shown to be a key"
+      },
+      "ruleId": "not_a_key"
+    }
+  ],
+  "equivalence": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "facts": {
+    "d": "an integer in [-5, 994]",
+    "id": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 2,
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "needs": [],
+  "not_null": [
+    "d"
+  ],
+  "on_inferred": "error",
+  "output": {
+    "d": "int64",
+    "id": "int64"
+  },
+  "params": [],
+  "proved": false,
+  "requires": {
+    "orders": [
+      "(_.total >= 0)",
+      "(_.total < 1000)"
+    ]
+  },
+  "rewrites": [],
+  "routes": {},
+  "rows": null,
+  "semantics": "reference",
+  "sverify": "0.5.0",
+  "ties": {
+    "needs": [],
+    "places": []
+  },
+  "transfer": null,
+  "verdict": "NOT proved: 2 of 2 postconditions not proved"
+}
