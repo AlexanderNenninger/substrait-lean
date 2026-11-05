@@ -75,7 +75,8 @@ keeps signs exact: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`.
 
 ## Sharded `SUM` and `AVG` (stage 5)
 
-`--shard` and `sverify.engines.run_sharded` with `float_order="any"` add each
+`--shard` with `float_order="any"`, and `sverify.engines.run_sharded` with a
+`reproducible=` that accepts a tolerance on doubles, add each
 shard's doubles, then the partial sums (`floatPartial`, `floatCombine` in
 `SubstraitLean/Partition.lean`), where the reference adds all of them in one
 pass. [`Shard.lean`](../float-bounds/FloatBounds/Shard.lean) bounds the

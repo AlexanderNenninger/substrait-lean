@@ -47,7 +47,7 @@ def guards(n: int) -> None:
     t = ibis.table({"a": "int64", "b": "int64"}, name="t")
     expr = t.filter(t.a % t.b != 0).select(q=t.a // t.b, m=t.a % t.b, s=t.a * 3 + t.b)
     report = sv.verify(expr, requires={"t": [_.a >= 0, _.a <= 10**6, _.b >= 1, _.b <= 1000]})
-    assert report.guard_free, str(report)
+    assert report._guard_free, str(report)
     rng = np.random.default_rng(0)
     data = {"t": pa.table({"a": rng.integers(0, 10**6, n), "b": rng.integers(1, 1000, n)})}
     p = plan_json(connect(), expr)
@@ -90,7 +90,7 @@ def group_by_fd(n: int) -> None:
         .agg(rev=line.l_price.sum())
     )
     report = sv.verify(expr, requires={"ord": [sv.unique("o_orderkey")]})
-    assert report.optimized is not None and report.rewrites, str(report)
+    assert report._optimized is not None and report._rewrites, str(report)
     rng = np.random.default_rng(0)
     m = n // 4
     data = {
@@ -108,7 +108,7 @@ def group_by_fd(n: int) -> None:
     p = json.loads(plan_json(connect(), expr))
     for name, run in [("polars", polars_engine.run), ("duckdb", duckdb_engine.run)]:
         as_written = median_ms(lambda run=run: run(p, data))
-        rewritten = median_ms(lambda run=run: run(report.optimized, data))
+        rewritten = median_ms(lambda run=run: run(report._optimized, data))
         print(
             f"group-fd {name:7} {n:>9} rows: {as_written:8.1f} ms as written, {rewritten:8.1f} ms"
             f" by key ({as_written / rewritten:.1f}x)"
@@ -124,7 +124,7 @@ def eager(n: int) -> None:
         .agg(rev=line.l_price.sum(), n=line.l_price.count())
     )
     report = sv.verify(expr, requires={"ord": [sv.unique("o_orderkey")]})
-    assert report.optimized is not None and report.rewrites, str(report)
+    assert report._optimized is not None and report._rewrites, str(report)
     rng = np.random.default_rng(0)
     m = n // 4
     data = {
@@ -138,7 +138,7 @@ def eager(n: int) -> None:
     p = json.loads(written_plan(plan_json(connect(), expr)))
     for name, run in [("polars", polars_engine.run), ("duckdb", duckdb_engine.run)]:
         as_written = median_ms(lambda run=run: run(p, data))
-        rewritten = median_ms(lambda run=run: run(report.optimized, data))
+        rewritten = median_ms(lambda run=run: run(report._optimized, data))
         print(
             f"eager    {name:7} {n:>9} rows: {as_written:8.1f} ms as written, {rewritten:8.1f} ms"
             f" aggregated first ({as_written / rewritten:.1f}x)"

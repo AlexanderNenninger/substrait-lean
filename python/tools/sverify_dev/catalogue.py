@@ -370,15 +370,15 @@ def probe_contract(
     # SQL names its tables: `verify` needs their schemas.
     inputs = tables(schemas, q.dataset, profile) if isinstance(query, str) else None
     report = sverify.verify(query, requires=requires, ensures=ensures, tables=inputs)
-    out: dict[str, Any] = {"proved": report.proved, "guard_free": report.guard_free}
-    if not report.windows_total:
+    out: dict[str, Any] = {"proved": report.proved, "guard_free": report._guard_free}
+    if not report._windows_total:
         # Rows may tie in a window, and the engine breaks the ties its own way.
         out["deterministic"] = False
     if unproved := [c.label for c in report.unproved]:
         out["unproved"] = unproved
     if errors := [str(i) for i in report.errors]:
         out["may_fail"] = errors
-    if inferred := [f"{t}: {label(c)}" for t, cs in report.inferred.items() for c in cs]:
+    if inferred := [f"{t}: {label(c)}" for t, cs in report._inferred.items() for c in cs]:
         # Preconditions `verify` inferred (#655): the contract needs them too.
         out["inferred"] = inferred
     if (bad := requires_hold(con, requires)) is not None:

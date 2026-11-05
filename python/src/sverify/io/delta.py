@@ -345,7 +345,7 @@ class DeltaSource(_TableSource):
         ```
     """
 
-    hi_slack = TIMESTAMP_SLACK
+    _hi_slack = TIMESTAMP_SLACK
 
     def __init__(
         self,
@@ -755,7 +755,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         ```
     """
 
-    keeps_retired = True
+    _keeps_retired = True
     # Writes MERGE the change; it overwrites only on `SinkChange.replace`.
     _create_errors = (DeltaError,)
     _commit_errors = (CommitFailedError,)
@@ -988,7 +988,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         return SinkWrite(mode, None, contract, *done, contract.checks)
 
     def _write_arrow(self, table: DeltaTable, created: bool, change: SinkChange) -> SinkWrite:
-        assert self.view is not None
+        assert self._view is not None
         dt, contract, schema, missing = table, change.contract, change.schema, self._missing
         options = resolve(self.storage_options)
         commit = self._commit_properties(contract)
@@ -999,7 +999,7 @@ class DeltaSink(_TableSink[DeltaTable]):
             if missing:
                 dt.alter.add_constraint(missing)
             self._check(dt, contract, read)
-            inserted, deleted = self._merge(dt, schema, change.change, self.view.state, commit)
+            inserted, deleted = self._merge(dt, schema, change.change, self._view.state, commit)
         else:
             mode = "created" if created else "overwrite"
             # The rows may come from another plan, with other columns: the
@@ -1053,9 +1053,9 @@ class DeltaSink(_TableSink[DeltaTable]):
         name); its `operationMetrics` are a write's and, for a change, those
         delta-rs's MERGE records, so the history reads the same whatever the
         storage (#453)."""
-        assert change.native is not None
+        assert change._native is not None
         started = time.monotonic()
-        rows, delta = change.native
+        rows, delta = change._native
         schema = change.schema
         actions: list[AddAction | RemoveAction] = []
         copied = 0

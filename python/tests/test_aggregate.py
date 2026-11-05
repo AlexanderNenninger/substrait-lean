@@ -340,7 +340,7 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
         assert report.proved, str(report)
         assert not report.issues and not report.assumed and not report.warnings
-        assert not any(h.startswith("SUM of") for h in report.hints)
+        assert not any(h.startswith("SUM of") for h in report._hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
     report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
     assert report.proved and not report.issues, str(report)
@@ -353,8 +353,8 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     assert any(
         "it is in [0, 2], so a group's sum fits 64 bits for up to "
         "4,611,686,018,427,387,903 rows" in h
-        for h in report.hints
-    ), report.hints
+        for h in report._hints
+    ), report._hints
 
 
 def test_an_assumed_sum_names_its_column():
@@ -370,7 +370,7 @@ def test_an_assumed_sum_names_its_column():
     )
     report = sv.verify(g, requires={"sales": [_.amount_cents >= 0]})
     assumed = "SUM of `amount_cents` fits 64 bits in every group"
-    assert any(h.startswith("SUM of `amount_cents`: bound it") for h in report.hints)
+    assert any(h.startswith("SUM of `amount_cents`: bound it") for h in report._hints)
     assert "assumes: SUM of amount_cents fits 64 bits in every group" in str(report)
     assert assumed in report._repr_markdown_()
     assert "$" not in str(report) + report._repr_markdown_()
@@ -845,8 +845,8 @@ def test_unordered_group_concat_proves_only_what_holds_for_every_order():
     report = sv.verify(expr, ensures=[_.s == "a,b"])
     assert not report.proved
     assert report.ensures[0].ignores == ("elements",)
-    assert [p.op for p in report.tie_places] == ["aggregate"]
-    assert "STRING_AGG" in report.tie_places[0].what
+    assert [p.op for p in report._tie_places] == ["aggregate"]
+    assert "STRING_AGG" in report._tie_places[0].what
     rows = [(1, "a", 1), (1, "b", 2), (2, None, 3), (1, None, 4)]
     con = connect()
     con.create("t", P.schema(), rows)

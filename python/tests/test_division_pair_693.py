@@ -15,7 +15,7 @@ REQUIRES = {"t": [_.x.between(-1000, 1000), _.d.between(1, 10)]}
 
 
 def hints(expr, semantics: Semantics = "reference"):
-    return sv.verify(expr, requires=REQUIRES, semantics=semantics).hints
+    return sv.verify(expr, requires=REQUIRES, semantics=semantics)._hints
 
 
 def test_floor_division_and_modulus_on_the_same_operands_get_a_hint():
@@ -43,7 +43,7 @@ def test_sql_does_not_get_the_hint():
         tables={"t": t},
         requires={"t": ["x BETWEEN -1000 AND 1000"]},
     )
-    assert not report.hints
+    assert not report._hints
 
 
 def test_the_guides_table():

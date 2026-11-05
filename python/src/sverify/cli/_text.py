@@ -64,7 +64,9 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
     if report.rows is not None:
         guarantees.append(f"at most {report.rows:,} rows")
     checks: list[str] = []
-    needed = report.needed
+    needed: dict[str, list[str]] = {}
+    for n in report.needs:
+        needed.setdefault(n.table, []).append(n.label)
     for table, conds in report.requires.items():
         if sources is not None and table not in sources:
             continue
@@ -78,8 +80,8 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
     ]
     not_proved += [f"{n.table} needs {plain(n.label)} ({_needed_why(n)})" for n in report.needs]
     not_proved += [f"may fail: {i.message}" for i in report.errors]
-    if report.transfer:
-        not_proved.append(f"Substrait allows more at {len(report.transfer)} option(s)")
+    if report._transfer:
+        not_proved.append(f"Substrait allows more at {len(report._transfer)} option(s)")
     if report.floats_unmet:
         not_proved.append(f"doubles: {report.floats_unmet}")
     return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}

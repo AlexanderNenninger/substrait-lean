@@ -186,9 +186,11 @@ def _issue_needs(i: Issue) -> list[Json]:
     """The preconditions that rule an issue out: those suggested per table,
     then those the inference found whose table it does not name
     (`"table": null`)."""
-    out = suggested_json(i.suggested)
+    from sverify.contracts import _labels_by_table
+
+    out = suggested_json(_labels_by_table(i.needs))
     seen = {n["label"] for n in out}
-    return out + [{"table": None, "label": x} for x in i.needs if x not in seen]
+    return out + [{"table": None, "label": x} for x in i._labels if x not in seen]
 
 
 def assumed_json(i: Issue) -> Json:
@@ -202,7 +204,7 @@ def assumed_json(i: Issue) -> Json:
 
 
 def issue(d: Mapping[str, Any]) -> Issue:
-    from sverify.contracts import Issue
+    from sverify.contracts import Issue, _needed
 
     p = d.get("properties") or {}
     rule = d["ruleId"]
@@ -214,9 +216,11 @@ def issue(d: Mapping[str, Any]) -> Issue:
         column=p.get("column"),
         constant=p.get("constant", False),
         under_and_or=p.get("under_and_or", False),
-        needs=tuple(n["label"] for n in p.get("needs") or ()),
+        _labels=tuple(n["label"] for n in p.get("needs") or ()),
         shown=p.get("shown"),
-        suggested={t: tuple(labs) for t, labs in suggested(p.get("needs")).items()},
+        needs=[
+            _needed(t, lab, "sql") for t, labs in suggested(p.get("needs")).items() for lab in labs
+        ],
     )
 
 
@@ -344,18 +348,18 @@ def to_json(report: Report) -> Json:
         "proved": report.proved,
         "verdict": report.verdict,
         "semantics": report.semantics,
-        "dialect": report.dialect,
-        "on_inferred": report.on_inferred,
+        "dialect": report._dialect,
+        "on_inferred": report._on_inferred,
         "equivalence": equivalence_json(report.observation),
         "deterministic": report.deterministic,
         "rows": report.rows,
-        "params": list(report.params),
+        "params": list(report._params),
         "requires": {t: list(labs) for t, labs in report.requires.items()},
         "inferred": {
             t: [
                 {"label": label(c), "sql": str(c), "column": getattr(c, "column", None)} for c in cs
             ]
-            for t, cs in report.inferred.items()
+            for t, cs in report._inferred.items()
         },
         "ensures": [checked_json(c) for c in report.ensures],
         "issues": [issue_json(i) for i in report.issues],
@@ -366,13 +370,13 @@ def to_json(report: Report) -> Json:
         "output": {k: str(v) for k, v in report.output.items()},
         "routes": {e: route_json(r) for e, r in report.routes.items()},
         "ties": {
-            "places": [dataclasses.asdict(t) for t in report.tie_places],
+            "places": [dataclasses.asdict(t) for t in report._tie_places],
             "needs": suggested_json(report.ties),
         },
-        "rewrites": list(report.rewrites),
-        "implied": dict(report.implied),
-        "transfer": None if report.transfer is None else [dict(f) for f in report.transfer],
-        "floats_on": {e: list(ps) for e, ps in report.floats_on.items()},
+        "rewrites": list(report._rewrites),
+        "implied": dict(report._implied),
+        "transfer": None if report._transfer is None else [dict(f) for f in report._transfer],
+        "floats_on": {e: list(ps) for e, ps in report._floats_on.items()},
     }
 
 
@@ -411,27 +415,27 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         facts=dict(d.get("facts") or {}),
         not_null=list(d.get("not_null", [])),
         deterministic=d.get("deterministic", True),
-        windows_total=d.get("deterministic", True),
-        tie_places=[TiePlace(**t) for t in ties.get("places", [])],
+        _windows_total=d.get("deterministic", True),
+        _tie_places=[TiePlace(**t) for t in ties.get("places", [])],
         issues=issues,
-        inferred=inferred,
-        implied=dict(d.get("implied") or {}),
+        _inferred=inferred,
+        _implied=dict(d.get("implied") or {}),
         assumed=[issue(i) for i in d.get("assumed", [])],
-        params=list(d.get("params", [])),
-        hints=list(dict.fromkeys(i.hint for i in issues if i.hint)),
-        rewrites=list(d.get("rewrites", [])),
+        _params=list(d.get("params", [])),
+        _hints=list(dict.fromkeys(i.hint for i in issues if i.hint)),
+        _rewrites=list(d.get("rewrites", [])),
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
         observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
-        floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
+        _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
-        transfer=d.get("transfer"),
+        _transfer=d.get("transfer"),
         output=_output(d.get("output") or {}),
-        dialect=d.get("dialect", "ibis"),
+        _dialect=d.get("dialect", "ibis"),
         ties=suggested(ties.get("needs")),
         # 0.6 wrote "silent" for what is now "ignore".
-        on_inferred=_on_inferred(d.get("on_inferred")),
-        inferred_from=inferred_from,
+        _on_inferred=_on_inferred(d.get("on_inferred")),
+        _inferred_from=inferred_from,
     )
 
 

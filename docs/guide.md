@@ -400,8 +400,8 @@ except VerificationError as e:
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first:
   `verify` proves the postconditions that hold for every order of the ties,
-  `report.deterministic` is `False` and `report.tie_places` names the
-  window ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+  `report.deterministic` is `False`, `str(report)` names the window and
+  `report.ties` the key that would close it ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
   A key on the partition and order columns makes the order total, which
   facts such as `prev_ts < ts` and a rerun that must give the same rows
   need.
@@ -592,7 +592,7 @@ build on it like on any other precondition of a source.
   assumes nothing: each overflow, a `SUM`'s included, fails the proof, and
   its hint names the bound to state.
 
-For what it does not infer, the report's `hint:` lines (`Report.hints`) name
+For what it does not infer, the report's `hint:` lines name
 the bound to add. An integer `SUM` gets the range Lean knows for the column it
 adds up and the largest group whose sum then fits 64 bits, or a bound to add
 when the column has none:
@@ -672,8 +672,7 @@ assert not report.assumed and not report.errors
 * An aggregate grouping by all of a bound's columns has groups of at most
   that many rows (`Rel.groupRows_sound`), which bounds its integer and
   decimal `SUM`s.
-* `Report.relations` lists each relation of the plan with the bound on its
-  rows and, for an aggregate, on the rows of a group.
+* `Report.rows` is the bound on the result's rows.
 * It is checked on the data at call time (a `GROUP BY` of the columns, with
   NULLs as one key), or proved from a row count of a Delta or Iceberg table
   of at most `n` rows. Incremental views refuse it until batches are checked
@@ -700,8 +699,8 @@ print(report)
 ```
 
 Sverify proves each suggestion before showing it, by proving the
-postcondition again with it added. `Report.suggestions` has them as code,
-per postcondition and table, for editors and language servers
+postcondition again with it added. `Report.suggestions` has them as
+`Needed` records, per postcondition, for editors and language servers
 ([test_suggestions.py](../python/tests/test_suggestions.py)).
 
 ### Checking without running
@@ -718,8 +717,8 @@ def unit_price(orders):
 
 
 report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
-print(report.proved, report.needed)
-# False {'orders': ['(_.qty != 0)']}
+print(report.proved, [n.label for n in report.needs])
+# False ['(_.qty != 0)']
 print(report.ensures[0].message)
 # NOT proved: it may be FALSE or NULL on some rows
 print(report.route("duckdb").cls)
@@ -733,14 +732,17 @@ The report's parts come as data and as the lines `str(report)` prints:
 - `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
   `Report.notes` are the report's lines for each postcondition, possible
   runtime error, assumption and note.
-- `Issue.suggested` gives the preconditions that rule an issue out, per
-  table, which `Issue.hint` states in words.
-- `Report.needs` gives the preconditions the proof needs, one `Needed` each
-  (table, column, comparison, bound, SQL), and `Report.needed_conditions`
-  the same as conditions ready for `requires=`, in the transform's language:
-  Ibis deferreds (`_.qty.isnull() | (_.qty != 0)`, NULL passing as the
-  inferred bound lets it) or SQL strings
+- `Report.needs` gives the preconditions the proof needs, one `Needed` each:
+  table, column, comparison, bound, SQL, the runtime error it rules out,
+  the fixes in words (`text`) and the `condition` ready for `requires=`, in
+  the transform's language: an Ibis deferred (`_.qty.isnull() | (_.qty != 0)`,
+  NULL passing as the inferred bound lets it) or a SQL string
   ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  `Issue.needs` holds the same records for one runtime error, which
+  `Issue.hint` states in words.
+- `Report.suggested_requires` is the whole `requires=` mapping: the stated
+  preconditions and the inferred ones, ready to pass to `verify` again or
+  to paste into the decorator.
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.
@@ -837,10 +839,8 @@ proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
   app;
 - `sarif`: a SARIF 2.1.0 log for code scanning
   (`github/codeql-action/upload-sarif`), one rule per code, with
-  `explain`'s text;
-- `junit`: JUnit XML, one test case per postcondition proved and per
-  finding, for the test reports of GitLab, Jenkins, Buildkite or Azure
-  DevOps ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+  `explain`'s text
+  ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
 
 The codes are snake case (`may_be_false`), as the report's `reason` and
 issue `kind` write them; `explain` reads kebab case too. The exit codes are:
@@ -1293,7 +1293,7 @@ deletes, so the source holds the server's window of rows. A restarted job
 resumes at the cursor its sink recorded, unless the server dropped batches
 since; then it reads the whole log again. The report states what this assumes: the server numbers batches in
 order of arrival, never changes one, and drops only whole batches below its
-floor. `FlightLog()` is a small in-memory server that keeps such a log
+floor. `sverify.testing.FlightLog()` is a small in-memory server that keeps such a log
 (`keep=` batches per table, or `drop(table, below=n)`), the one
 [the tests](../python/tests/test_io_flight.py) run against. With `schema=`, a
 `FlightSource` proves contracts without asking the server, and `token=`
@@ -1301,7 +1301,8 @@ sends a bearer token:
 
 ```python
 import pyarrow.flight as fl
-from sverify.io.flight import FlightLog, FlightSource
+from sverify.io.flight import FlightSource
+from sverify.testing import FlightLog
 
 log = FlightLog(keep=10_000)  # on 127.0.0.1, at a free port
 location = f"grpc://127.0.0.1:{log.port}"
@@ -1563,8 +1564,8 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   column of the source, under filters and projections that read only their
   own row. Calendar units (weeks, months) and time zones other than UTC for
   hours and days keep every bucket, and the report says why.
-- Retention needs a sink that keeps what the state drops: `DeltaSink` does
-  (`Sink.keeps_retired`). With a sink that may rewrite its whole table, such
+- Retention needs a sink that keeps what the state drops: `DeltaSink` does.
+  A custom sink that does sets `keeps_retired = True`. With a sink that may rewrite its whole table, such
   as `sink_from`, the node keeps every bucket. A node without a sink holds
   only its open buckets.
 - A restarted job resumes from the sink with every bucket, takes the
@@ -1688,12 +1689,14 @@ list every fact). What to do about one:
 - Run on the other engine, or pass `route="translated"` (or another) to see
   why that one fails.
 
-`deterministic=True` asks for the deterministic profile, which fixes the
-order of ties
+`report.run(..., reproducible=sv.equivalent())`, like a sink's
+`reproducible=`, asks for the deterministic profile, which fixes the order of
+ties
 ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)):
 it refuses a plan whose result is not determined up to row order, and the
 reason names each window, ordered aggregate or `LIMIT` where ties stay open
-(`report.tie_places`), with the `sv.unique(...)` that would close them.
+(`str(report)`), with the `sv.unique(...)` that would close them
+(`report.ties`).
 Without it the plan runs with the engine's own order of the ties, which every
 proof covers. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
 shows a transfer and a refusal, and D13 in
@@ -1729,7 +1732,7 @@ the same observation as `sv.equivalent(floats="plan")`, which
 2.2e-04)` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks
-either against the plan's bound on each engine (`report.floats_on`); where
+either against the plan's bound on each engine; where
 no engine meets it, the plan is not proved, and the report's `observes:`
 line gives the plan's bound, the reason per engine and a tolerance that
 would do ([example 5](examples.md#5-doubles-within-the-plans-bound)).
@@ -1758,7 +1761,7 @@ It is the plan the checker verified, written for Substrait 0.106:
 - each call declares its YAML's URN and its compound name (`add:i64_i64`),
   and states its output type (`_substrait_extensions.json`, generated from
   the YAMLs by `python -m sverify_dev.substrait_extensions --write`);
-- each option the proof depends on (`report.depends`) is pinned in the
+- each option the proof depends on is pinned in the
   call's options at the reference's behaviour: `overflow`, `rounding`,
   `division_type`, `on_division_by_zero` and the rest the YAMLs list;
 - a plan verified with `semantics="substrait"` goes out as it is, since its
@@ -2012,19 +2015,20 @@ joins with a broadcast table are concatenated; `COUNT`, integer `SUM`, `MIN`
 and `MAX` combine in two phases; with split keys (`keys={"orders":
 ["region"]}`, as a partition column guarantees), aggregates grouped by the
 key, co-partitioned joins and tie-free windows run per shard. `SUM` and
-`AVG` of doubles split with `float_order="any"`, and `tolerance=True` returns
-a proved bound per row on how far each is from the one-pass sum
+`AVG` of doubles split where `reproducible=` accepts doubles within a
+tolerance, as a sink's `reproducible=` states it:
+`sv.equivalent(floats="plan")` accepts the proved bound, and
+`sv.equivalent(floats=sv.within(abs=...))` raises where a row's bound exceeds
+the tolerance. `tolerance=True` returns the proved bound per row on how far
+each is from the one-pass sum
 ([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg-stage-5)).
-Anything else raises `NotShardable` with the reason. When a report says `guard_free`,
-`to_sql(..., guards=False)` leaves out the per-row overflow checks. And
-`sv.verify(...).optimized` is the transformation rewritten with what the
-preconditions establish, with `rewrites` naming the changes (a `DISTINCT`
-over a key goes, a filter the preconditions imply goes, a left join on a NOT
-NULL foreign key becomes an inner join, an unread join to a dimension goes);
-it replaces the original on data that meets the preconditions
-([Contracts](how-it-works.md#contracts) under How it works lists them).
-[docs/optimizations.md](optimizations.md) compares these with what the
-engines already do.
+Anything else raises `NotShardable` with the reason. The checker also proves
+where the per-row overflow checks can go, and rewrites the transformation
+with what the preconditions establish (a `DISTINCT` over a key goes, a filter
+the preconditions imply goes, a left join on a NOT NULL foreign key becomes an
+inner join, an unread join to a dimension goes); the report keeps both
+internally, and [docs/optimizations.md](optimizations.md) describes them and
+compares them with what the engines already do.
 
 ### Testing with pytest
 

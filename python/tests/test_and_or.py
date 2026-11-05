@@ -31,7 +31,7 @@ def test_an_error_under_and_is_reported_with_the_case_rewrite():
     assert not report.proved
     [issue] = report.errors
     assert issue.kind == "division by zero" and issue.under_and_or
-    assert any("inside an AND or OR" in h and "CASE" in h for h in report.hints)
+    assert any("inside an AND or OR" in h and "CASE" in h for h in report._hints)
 
 
 def test_the_inferred_precondition_names_the_and():
@@ -39,8 +39,8 @@ def test_the_inferred_precondition_names_the_and():
     comes from a guard under `AND`."""
     report = verify(GUARDED_BY_AND, tables={"t": T}, requires=REQUIRES)
     assert report.proved
-    assert report.inferred
-    assert any("inside an AND or OR" in h for h in report.hints)
+    assert report._inferred
+    assert any("inside an AND or OR" in h for h in report._hints)
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
@@ -92,7 +92,7 @@ def test_an_aggregate_filter_under_and_evaluates_both_operands():
     [div] = [i for i in off.errors if i.kind == "division by zero"]
     assert div.under_and_or
     report = verify(sql, tables={"t": T}, requires=REQUIRES)
-    assert report.proved and report.inferred
+    assert report.proved and report._inferred
     con = connect()
     put_table(con, "t", pa.table({"x": [0, 2, 5]}))
     with pytest.raises(PreconditionError, match="refused before the run"):

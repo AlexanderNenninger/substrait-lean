@@ -337,7 +337,7 @@ class _Checker:
         # `report.ensures` is in the order of the conditions given, each
         # with its condition (`CheckedCondition.condition`).
         results = iter(report.ensures)
-        needed = report.needed
+        needed = report.needs
         res.needed = _needed(report, self, m)
         res.may_fail = [str(i) for i in report.errors]
         res.deterministic = report.deterministic

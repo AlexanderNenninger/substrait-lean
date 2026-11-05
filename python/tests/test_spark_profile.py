@@ -110,7 +110,7 @@ def test_a_session_without_ansi_is_refused(report: sv.Report) -> None:
     assert _engine_settings.differences("spark", values) == []
     values["spark.sql.ansi.enabled"] = "false"
     with pytest.raises(EngineSettingsError, match="spark.sql.ansi.enabled.*spark.conf.set"):
-        routes.check_settings("spark", values, report.depends)
+        routes.check_settings("spark", values, report._depends)
 
 
 def test_a_legacy_setting_refuses_only_the_plans_it_changes() -> None:

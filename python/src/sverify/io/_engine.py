@@ -16,7 +16,7 @@ Arrow path writes. The rows never pass through Python:
   delta-rs writes them.
 
 The change is the sum of the view's changes since the state the sink wrote
-(`IncrementalView.changes_since`), which `SinkChange.native` hands to DuckDB.
+(`IncrementalView.changes_since`), which `SinkChange._native` hands to DuckDB.
 """
 
 from __future__ import annotations
