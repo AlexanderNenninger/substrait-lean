@@ -11,10 +11,8 @@ import warnings
 from pathlib import Path
 
 import ibis
-import jsonschema
 import pyarrow as pa
 import pytest
-import yaml
 from ibis import _
 
 import sverify as sv
@@ -22,6 +20,10 @@ from sverify import odcs
 from sverify.cli import main
 from sverify.contracts import Key, MaxRows, References, RowsPer, Unique, label
 from sverify.io import StaticSource
+
+# The wheel's tests install only what the Wheels workflow lists.
+jsonschema = pytest.importorskip("jsonschema")
+yaml = pytest.importorskip("yaml")
 
 SCHEMA = json.loads(
     (Path(__file__).parent / "standards" / f"odcs-json-schema-{odcs.ODCS_VERSION}.json").read_text()
