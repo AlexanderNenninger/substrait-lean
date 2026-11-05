@@ -1239,9 +1239,8 @@
    "proved": false,
    "guard_free": false,
    "may_fail": [
-    "overflow: DECIMAL_22_6((($6 * 10000) - $7))",
-    "overflow: DECIMAL_22_6(IF (DECIMAL_22_6((($6 * 10000) - $7)) < 0) THEN (0 - DECIMAL_22_6((($6 * 10000) - $7))) ELSE DECIMAL_22_6((($6 * 10000) - $7)))",
-    "division by zero: (DECIMAL_TO_DOUBLE_6(DECIMAL_22_6(IF (DECIMAL_22_6((($6 * 10000) - $7)) < 0) THEN (0 - DECIMAL_22_6((($6 * 10000) - $7))) ELSE DECIMAL_22_6((($6 * 10000) - $7)))) /. DECIMAL_TO_DOUBLE_6($7))"
+    "overflow: DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)) < 0) THEN (0 - DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales))) ELSE DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)))",
+    "division by zero: DECIMAL_TO_DOUBLE_6(DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)) < 0) THEN (0 - DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales))) ELSE DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)))) / DECIMAL_TO_DOUBLE_6(avg_monthly_sales)"
    ]
   },
   "verified_sql": {

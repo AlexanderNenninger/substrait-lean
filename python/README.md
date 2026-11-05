@@ -188,7 +188,10 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it may be FALSE on some rows)
+# 1 of 1 postcondition not proved, 1 precondition needed (e.report has the details)
+#   ...
+#   not proved: (_.total > 5): it may be FALSE on some rows ...
+#     would hold with `(_.amount >= 5)` in the requires of 'orders'
 ```
 
 The [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) go on from here: SQL, inferred
