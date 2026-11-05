@@ -178,7 +178,7 @@ def test_preconditions_are_checked_on_data():
 
 
 def test_runtime_fallback_checks_unproved_postconditions():
-    @sv.transform(ensures=[_.amount < 100], on_unproved="runtime")
+    @sv.transform(ensures=[_.amount < 100], on_unproved="check")
     def passthrough(orders):
         return orders.select(orders.amount)
 
@@ -198,7 +198,7 @@ def test_checks_on_data_do_not_warn_through_pandas():
         schema = ibis.schema({"id": "int64", "amount": "int64"})
         con.create("orders_479", schema, [(1, 30), (1, 300)])
 
-        @sv.transform(ensures=[_.amount < 100], on_unproved="runtime")
+        @sv.transform(ensures=[_.amount < 100], on_unproved="check")
         def passthrough(orders):
             return orders.select("id", "amount")
 
@@ -370,7 +370,7 @@ SAMPLES = ibis.table(
 def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
     # Inferred (#244), needed by default (#655); without inference, the
     # issue's hint names them.
-    assert sv.verify(expr, on_inferred="silent").proved
+    assert sv.verify(expr, on_inferred="ignore").proved
     assert not sv.verify(expr).proved
     report = sv.verify(expr, on_inferred="off")
     [issue] = report.errors

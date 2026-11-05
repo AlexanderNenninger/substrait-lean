@@ -352,7 +352,7 @@ except VerificationError as e:
       quarantine.write(e.rows)
   ```
 * Unproved postconditions raise `VerificationError`. With
-  `on_unproved="runtime"` they are checked on the output data instead
+  `on_unproved="check"` they are checked on the output data instead
   (`PostconditionError`): on bound tables at call time, on a node at every
   refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
   `on_unproved="warn"` you get a warning.
@@ -539,10 +539,10 @@ code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …).
 
 `on_inferred` takes four values: `"error"` (the default) needs the bound in
 `requires`, `"warn"` assumes it with an `InferredPreconditionWarning`,
-`"silent"` assumes it without one, and `"off"` infers nothing:
+`"ignore"` assumes it without one, and `"off"` infers nothing:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="ignore")
 def twice_assumed(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
@@ -816,6 +816,10 @@ lands, the document says `"format": "provisional"`. The exit codes are:
 | 2 | refused: a construct outside sverify's model (`sverify.errors.Unsupported`) |
 | 3 | budget exceeded: time or memory |
 | 4 | error |
+| 5 | `refresh` completed, and rows of a node's sources are quarantined (`on_violation="quarantine"`) or a node held its batch (`on_violation="hold"`); the JSON's `status` says which |
+
+With 5, `refresh` prints `Refresh.alert()` after the summary, and its
+JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 
 `--timeout` (default 30 s, or `SVERIFY_TIMEOUT`; 0 turns it off) bounds
 proof, planning and checking. A refresh moving data has no time limit:
@@ -977,7 +981,7 @@ another aggregate or a window are recomputed and diffed. Contracted
 nodes keep their guarantees in every state: their preconditions on the
 sources are checked in full once, then only on each batch.
 
-A node whose transform has `on_unproved="runtime"` checks the postconditions
+A node whose transform has `on_unproved="check"` checks the postconditions
 Lean could not prove on its output at every refresh: on the full result the
 first time, then on the rows each batch inserts, before its sink commits. A
 violation raises `PostconditionError`, and the refresh writes nothing. The
@@ -986,7 +990,7 @@ downstream may assume only the proved ones, so such a node is stored with
 `.write` before another transform reads it:
 
 ```python
-@sv.transform(ensures=[_.amount < 1_000], on_unproved="runtime")
+@sv.transform(ensures=[_.amount < 1_000], on_unproved="check")
 def capped(orders):
     return orders.select(orders.id, orders.amount)
 
@@ -1041,6 +1045,107 @@ and its message says which rows failed what:
 customers.apply(sv.Changes(inserts=[("dan", "Oslo")]))
 print(c.refresh().summary())
 # cities: changes from orders v1, customers v1→v2 (change feed)
+```
+
+### Bad rows: quarantine and hold
+
+A batch that breaks a precondition on a source raises `PreconditionError` by
+default, and the refresh commits nothing. `on_violation` on the transform, or
+on the source, chooses otherwise
+([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)):
+
+- `"quarantine"` sets the rows that break a precondition aside, with the
+  reason, and the node runs on the others.
+- `"hold"` commits nothing for the batch and holds the node at its
+  versions. The next refresh reads the batch again, so a fix upstream lets it
+  through.
+- `"error"` is the default.
+
+The transform's setting holds over the source's. Where two transforms fused
+into one node state the same condition, the stricter setting holds: error,
+then hold, then quarantine.
+
+```python
+from deltalake import write_deltalake
+
+write_deltalake(
+    "lake/raw_orders",
+    pa.table({"id": [1, 2, 3, 3], "customer": ["ada", "bob", "cy", "dee"], "amount": [30, -5, 7, 8]}),
+)
+
+
+@sv.transform(
+    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    ensures=[_.amount >= 0, sv.unique("id")],
+    on_violation="quarantine",
+)
+def clean(orders):
+    return orders.select("id", "customer", "amount")
+
+
+raw = DeltaSource("lake/raw_orders", name="orders")
+node = raw.pipe(clean).write(DeltaSink("lake/clean"))
+r = node.refresh()
+print(r)
+# clean:
+#   computed
+# ...
+#   quarantine: orders: 3 row(s) quarantined (1 × (_.amount >= 0), 2 × unique(id)), 3 in quarantine at lake/clean_quarantine
+# ...
+r.outcome           # "quarantined"
+node.quarantined()  # the rows set aside, with _conditions, _reason, _source_version
+```
+
+Which rows are set aside is a function of the source's rows alone, so a
+refresh batch by batch and a recompute agree:
+
+- A row on which a row condition is FALSE or NULL (ranges, NOT NULL, value
+  sets, inferred bounds).
+- Among the other rows, every row of a key that occurs more than once
+  (`sv.unique`, `sv.key`): both copies of a repeated `id`, the one the node
+  held before included. The rule needs no order between rows, so it gives the
+  same answer under every profile ([D24](core-semantics.md)).
+- `max_rows`, `arrives_within` and the other conditions on a table as a whole
+  have no rule for which rows break them. A batch that breaks one holds the
+  node, as `"hold"` does, and the report says why.
+
+Every precondition holds on the rows kept: `Catalog.kept_sound` in
+[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule,
+so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
+reads. The batch checks then run on the kept rows as on any batch, and a row
+the rule let through by mistake would raise.
+[`tests/test_quarantine.py`](../python/tests/test_quarantine.py) compares
+every refresh of random batches with the rule.
+
+A fix upstream releases rows. A delete or an update of a row set aside takes
+it out of the quarantine, and the updated row is judged again. A key that is
+on one row again lets that row through. The report counts what each refresh
+set aside, released and saw deleted upstream.
+
+A stored node writes the rows it sets aside to a table next to its sink: the
+sink's URI, or Iceberg identifier, with `_quarantine` appended.
+`.write(sink, quarantine=DeltaSink(...))` names another one, and
+`quarantine=False` keeps the rows in memory. The table has one row per
+distinct row set aside: the source, the row as JSON, its copies, the
+conditions it breaks, the reason, the source version that set it aside, when,
+and the node. Each write records the node's epoch and source versions, and
+is written before the node's sink, so the table never lags the data it
+explains. Its format is stable within 1.x ([stability](stability.md)).
+
+`Refresh.outcome` is `"ok"`, `"quarantined"` (rows are set aside) or
+`"held"` (a node skipped a batch), for a job's exit code. `Refresh.alert()`
+gives a short Markdown text for whoever is on call: what broke, how many
+rows, a few examples, where they are, and what to do. `Refresh.to_json()`
+gives the whole refresh as JSON
+([`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json)).
+
+A change to the schema that a contract cannot follow raises `SchemaError`,
+and its message names the column, the version and the contract:
+
+```text
+`orders.id` became nullable at v12, and the new rows have NULLs in it; `paid`
+requires _.id.notnull(). Fix the upstream, or handle NULLs in `paid` (e.g.
+`.fill_null(0)`) and relax `requires`.
 ```
 
 ### Delta Lake and Iceberg

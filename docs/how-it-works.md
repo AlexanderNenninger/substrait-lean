@@ -388,7 +388,7 @@ run. Contracts take `engine=` for their runtime checks on data too:
 ```python
 view = IncrementalView(con, query, "v", engine="duckdb")
 
-@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", check_engine="duckdb")
+@sv.transform(ensures=[_.amount < 100], on_unproved="check", check_engine="duckdb")
 def passthrough(orders): ...
 ```
 

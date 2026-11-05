@@ -189,11 +189,11 @@ def _(mo):
     | `on_unproved=` | what happens when a postcondition is not proved |
     |:---|:---|
     | `"error"` (default) | `VerificationError`; nothing runs |
-    | `"runtime"` | the pipeline runs and the condition is checked on the output; a violation raises `PostconditionError` |
+    | `"check"` | the pipeline runs and the condition is checked on the output; a violation raises `PostconditionError` |
     | `"warn"` | a warning, and the pipeline runs |
 
     Take a table with a NULL in it and the condition `amount < 100`, which
-    nothing bounds, so it is not proved. With `"runtime"` the pipeline runs
+    nothing bounds, so it is not proved. With `"check"` the pipeline runs
     and the condition is checked on the output.
     """)
     return
@@ -212,7 +212,7 @@ def _(display, ibis, sv):
 def _(PostconditionError, con, mo, sv):
     from ibis import _
 
-    @sv.transform(ensures=[_.amount < 100], on_unproved="runtime")
+    @sv.transform(ensures=[_.amount < 100], on_unproved="check")
     def passthrough(orders):
         return orders.select("id", "amount")
 
@@ -260,7 +260,7 @@ def _(mo):
     Keys and relations between columns come next. Not tracked yet: relations
     that need more than a column plus a constant (`a < 2 * b`), what is
     inside a string and counts across rows. For those,
-    `on_unproved="runtime"` checks the condition on the data.
+    `on_unproved="check"` checks the condition on the data.
 
     ## Keys
 

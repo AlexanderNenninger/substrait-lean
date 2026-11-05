@@ -274,7 +274,7 @@ def test_rollup_contract_is_proved():
         g,
         requires={"s": [_.cpu >= 0, _.cpu <= 1000]},
         ensures=[_.mx.notnull(), _.mx <= 1000, _.lo <= _.mx, _.avg.notnull()],
-        on_inferred="silent",  # the truncated ts's bound
+        on_inferred="ignore",  # the truncated ts's bound
     )
     assert report.proved, str(report)
     assert report.facts["mx"] == "an integer in [0, 1000]"
