@@ -159,7 +159,7 @@ jobs:
       # a test the wheel fails shows up before the tag.
       - name: Test installed wheel
         env:
-          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') }}
+          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') && !startsWith(github.base_ref, 'release/') }}
         run: |
           fast=()
           if [ "$FAST" = true ]; then fast=(--fast); fi
