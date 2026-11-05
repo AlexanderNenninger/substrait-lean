@@ -55,6 +55,11 @@ class Setting:
     """The facts probed under it."""
     affects: str = ""
     """What it changes, for the message."""
+    options: tuple[str, ...] = ()
+    """The choice-table options it changes. A plan that depends on none of
+    them, or states the behaviour at each (`"stated"` in its dependency
+    report, as a sort's NULLS LAST), does not rely on the setting, and the
+    run only warns. Empty: every plan relies on it."""
 
 
 _R15 = tuple(
@@ -87,6 +92,7 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             ("duckdb-F2",),
             "where NULLs sort in a key without a placement (null_order), and in "
             "FIRST/LAST(... ORDER BY) and list_sort",
+            ("null_order", "list_null_order"),
         ),
         Setting(
             "default_order",
@@ -94,6 +100,7 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             "refuse",
             (),
             "the direction of a sort key without one",
+            ("null_order", "list_null_order"),
         ),
         Setting(
             "integer_division",
@@ -101,6 +108,7 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             "refuse",
             ("duckdb-F1",),
             "whether `/` of integers divides as integers (division_type)",
+            ("division_type",),
         ),
         Setting(
             "error_on_division_by_zero",
@@ -110,6 +118,7 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             "what a division by zero gives (on_division_by_zero): `//` and `%` give NULL "
             "instead of raising; deprecated in DuckDB 2.0.0, still read and still in "
             "effect there",
+            ("on_division_by_zero",),
         ),
         Setting(
             "ieee_floating_point_ops",
@@ -117,6 +126,7 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             "refuse",
             ("duckdb-R4", "duckdb-R5", *_R15),
             "NaN and ±inf from double operations (nan_creation)",
+            ("nan_creation", "float_overflow"),
         ),
         Setting(
             "default_collation",
@@ -226,6 +236,25 @@ def differences(engine: str, values: Mapping[str, Any] | None = None) -> list[tu
         for s in SETTINGS.get(engine, ())
         if s.name in found and _norm(found[s.name]) not in s.expected
     ]
+
+
+def relies(setting: Setting, depends: list[dict] | None) -> bool:
+    """Whether a plan that depends on `depends` (None: unknown) relies on
+    `setting`."""
+    if not setting.options or depends is None:
+        return True
+    return any(d["option"] in setting.options and not d.get("stated") for d in depends)
+
+
+def restore(engine: str, setting: Setting) -> str:
+    """How the user puts a setting back."""
+    if engine == "duckdb":
+        v = setting.expected[0]
+        value = f"'{v}'" if isinstance(v, str) else str(v).lower()
+        return f"SET GLOBAL {setting.name} = {value}"
+    if engine == "polars" and setting.name == "engine_affinity":
+        return 'pl.Config.set_engine_affinity("streaming")'
+    return f"set {setting.name} back to {setting.expected[0]!r}"
 
 
 def describe(engine: str, setting: Setting, value: Any) -> str:

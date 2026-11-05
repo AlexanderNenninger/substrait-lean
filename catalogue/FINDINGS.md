@@ -398,22 +398,22 @@ Over the 131 queries that verify (some only as DOUBLE):
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 10 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 8 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 4 |
-| polars: refused: first is not yet supported on Polars; see #271 | 3 |
-| snowflake: refused: first is not yet supported on snowflake; see #271 | 3 |
+| polars: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see | 3 |
+| snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
 | duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
 | polars: error: divide by zero (1 row(s)) | 2 |
-| polars: refused: max of doubles is not yet supported on Polars; see #271 | 2 |
-| snowflake: refused: MAX of doubles is not yet supported on snowflake; see #271 | 2 |
+| polars: refused: max of doubles is not yet supported on Polars; DuckDB runs it (see #271, https://github.com/Alexander | 2 |
+| snowflake: refused: MAX of doubles is not yet supported on snowflake; DuckDB runs it (see #271, https://github.com/Alexan | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
-| polars: refused: quantile_cont is not yet supported on Polars; see #271 | 2 |
-| snowflake: refused: quantile_cont is not yet supported on snowflake; see #271 | 2 |
+| polars: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
+| snowflake: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
 | duckdb: differs | 2 |
-| polars: refused: regexp_replace is not yet supported on Polars; see #271 | 1 |
-| snowflake: refused: regexp_replace is not yet supported on snowflake; see #271 | 1 |
-| polars: refused: corr is not yet supported on Polars; see #271 | 1 |
-| snowflake: refused: corr is not yet supported on snowflake; see #271 | 1 |
-| polars: refused: md5 is not yet supported on Polars; see #271 | 1 |
-| snowflake: refused: md5 is not yet supported on snowflake; see #271 | 1 |
+| polars: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not r | 1 |
+| snowflake: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does no | 1 |
+| polars: refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https:// | 1 |
+| snowflake: refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https | 1 |
+| polars: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it y | 1 |
+| snowflake: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run i | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency

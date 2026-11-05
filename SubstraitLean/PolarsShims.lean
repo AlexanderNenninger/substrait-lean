@@ -603,13 +603,3 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
   Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Polars.written_faithful
 
 end Substrait
-
-/-! Every theorem the Polars rows name (`Profile.polars.obs`) is one. -/
-open Lean Elab Command in
-run_cmd do
-  for (_, o, r) in Substrait.Profile.polars.obs do
-    if let .proved thm _ := (r : Substrait.ObsRow).evidence then
-      let n := thm.toName
-      unless (← getEnv).contains (`Substrait ++ n) || (← getEnv).contains n ||
-          Substrait.floatBoundsTheorems.contains thm do
-        throwError "Profile.polars.obs at {o}: no theorem {thm}"

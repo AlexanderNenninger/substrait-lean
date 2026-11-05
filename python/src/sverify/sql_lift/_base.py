@@ -330,7 +330,11 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
         raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
+    for node in tree.find_all(*_NONDETERMINISTIC):
+        raise Unsupported(_nondeterministic(node))
     for f in tree.find_all(sge.Anonymous):
+        if f.name.lower() in _NONDETERMINISTIC_NAMES:
+            raise Unsupported(_nondeterministic(f))
         if f.name.lower() not in _KNOWN:
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
     _check_aliases(tree, schemas)
@@ -541,6 +545,37 @@ def _digits(t: Any) -> tuple[int, int]:
 
 def _numeric(t: Any) -> bool:
     return t.is_integer() or t.is_float64() or t.is_decimal()
+
+
+#: Functions whose value differs between runs: no proof covers their result.
+_NONDETERMINISTIC = (
+    sge.CurrentTimestamp,
+    sge.CurrentDate,
+    sge.CurrentTime,
+    sge.CurrentDatetime,
+    sge.Rand,
+    sge.Uuid,
+)
+_NONDETERMINISTIC_NAMES = frozenset(
+    {
+        "now",
+        "today",
+        "get_current_timestamp",
+        "get_current_time",
+        "transaction_timestamp",
+        "random",
+        "uuid",
+        "gen_random_uuid",
+        "setseed",
+    }
+)
+
+
+def _nondeterministic(node: sge.Expression) -> str:
+    return (
+        f"{_shown(node)} gives another value on every run, so no proof covers its "
+        "result: pass the value in as a column or a constant"
+    )
 
 
 def _shown(node: sge.Expression) -> str:
@@ -1368,7 +1403,7 @@ class _Lift:
             return E(_fn("not", [_bool_json(self, e)], dt.boolean), dt.boolean)
         rule = RULES.get(type(node))
         if rule is None:
-            raise Unsupported(f"{type(node).__name__} ({_shown(node)}) is not supported yet")
+            raise Unsupported(f"{_shown(node)} is not supported yet")
         return rule(self, node, lambda n: self.expr(n, scope, bound), scope)
 
     def column(self, node: sge.Column, scope: list[Column]) -> E:

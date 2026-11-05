@@ -31,7 +31,7 @@ from sverify.io._common import (
     sink_schema,
     view_contract_record,
 )
-from sverify.observation import Observation
+from sverify.observation import PLAN_BOUND, Observation
 
 if TYPE_CHECKING:
     from sverify.incremental import IncrementalView
@@ -151,9 +151,11 @@ class Sink:
         reproducible: What a rerun of a state must reproduce
             (`sv.equivalent(...)`, #444 D20): the sink commits each epoch
             once, so a rerun has to give the same rows up to this. Default:
-            rows as a multiset with exact values. A sink whose consumers
-            accept doubles within a tolerance states it, for example
-            `sv.equivalent(floats=sv.within(rel=1e-12))`.
+            rows as a multiset, doubles within the bound the checker proves
+            for the plan (`Report.epsilon`, `sv.equivalent(floats="plan")`),
+            other values exact. A sink whose consumers need the same bits
+            on a rerun states `sv.equivalent()`; one with a fixed tolerance
+            states it, for example `sv.equivalent(floats=sv.within(rel=1e-12))`.
 
     Attributes:
         name: The stored table's name in the plans that read it.
@@ -207,7 +209,7 @@ class Sink:
     name: str
     app_id: str
     location: str
-    reproducible: Observation = Observation()
+    reproducible: Observation = PLAN_BOUND
     view: IncrementalView | None = None
     _written: int | None = None
     keeps_retired = False

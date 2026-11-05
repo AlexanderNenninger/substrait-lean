@@ -73,8 +73,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: regexp_replace is not yet supported on Polars; see #271",
-   "snowflake": "refused: regexp_replace is not yet supported on snowflake; see #271"
+   "polars": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   },
   "contract": {
    "proved": true,
@@ -234,8 +234,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: first is not yet supported on Polars; see #271",
-   "snowflake": "refused: first is not yet supported on snowflake; see #271"
+   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "fin-bollinger": {
@@ -254,8 +254,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: max of doubles is not yet supported on Polars; see #271",
-   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; see #271"
+   "polars": "refused: max of doubles is not yet supported on Polars; DuckDB runs it (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; DuckDB runs it (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "fin-log-returns": {
@@ -340,8 +340,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: quantile_cont is not yet supported on Polars; see #271",
-   "snowflake": "refused: quantile_cont is not yet supported on snowflake; see #271"
+   "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/2",
+   "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issue"
   }
  },
  "h2o-groupby-q7": {
@@ -385,8 +385,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "differs",
-   "polars": "refused: corr is not yet supported on Polars; see #271",
-   "snowflake": "refused: corr is not yet supported on snowflake; see #271"
+   "polars": "refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   },
   "contract": {
    "proved": true,
@@ -530,8 +530,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "differs",
-   "polars": "refused: first is not yet supported on Polars; see #271",
-   "snowflake": "refused: first is not yet supported on snowflake; see #271"
+   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "iot-latest-reading": {
@@ -570,8 +570,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: max of doubles is not yet supported on Polars; see #271",
-   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; see #271"
+   "polars": "refused: max of doubles is not yet supported on Polars; DuckDB runs it (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; DuckDB runs it (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "iot-event-correlation": {
@@ -697,8 +697,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: md5 is not yet supported on Polars; see #271",
-   "snowflake": "refused: md5 is not yet supported on snowflake; see #271"
+   "polars": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "dbt-union-sources": {
@@ -839,8 +839,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: quantile_cont is not yet supported on Polars; see #271",
-   "snowflake": "refused: quantile_cont is not yet supported on snowflake; see #271"
+   "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/2",
+   "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issue"
   }
  },
  "pa-zscore-outliers": {
@@ -1075,7 +1075,7 @@
  "ts-local-day-revenue": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "AtTimeZone (orders.order_ts AT TIME ZONE 'Europe/Berlin') is not supported yet",
+  "detail": "orders.order_ts AT TIME ZONE 'Europe/Berlin' is not supported yet",
   "native": "runs"
  },
  "ts-overlapping-bookings": {
@@ -1652,8 +1652,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: first is not yet supported on Polars; see #271",
-   "snowflake": "refused: first is not yet supported on snowflake; see #271"
+   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
+   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "win-top-n-per-group": {

@@ -72,7 +72,7 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused
     assert "a rerun must give the same result" in exact.reason
-    assert "total is within abs=0.001, rel=1e-10 (not proved) between runs" in exact.reason
+    assert "total is within abs=0.001, rel=1e-10 (tested) between runs" in exact.reason
     assert exact.reproducible == sv.equivalent()
     # `deterministic=True` asks for exact values too.
     assert routes.choose(report, "polars", deterministic=True).refused
@@ -143,14 +143,22 @@ def mean_amount(orders):
 
 def test_a_sink_states_what_a_rerun_must_reproduce(monkeypatch, tmp_path) -> None:
     """A sink commits each epoch once: by default a rerun must reproduce
-    exact values; a sink that accepts a tolerance says so."""
+    doubles within the plan's bound, which this plan has none of (no row
+    cap); a sink that asks exact values or accepts a tolerance says so."""
     _tables(monkeypatch, {"floats": {"rel": 1e-12}})
     monkeypatch.setattr(
         routes, "plan_options", lambda plan: [{"group": None, "option": "sum_order"}]
     )
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7)])
-    exact = mean_amount(orders).write(DeltaSink(str(tmp_path / "exact")))
-    with pytest.raises(RouteError, match="exact: a rerun must give the same result"):
+    unbounded = mean_amount(orders).write(DeltaSink(str(tmp_path / "unbounded")))
+    with pytest.raises(RouteError, match="no bound on the plan's doubles"):
+        unbounded.refresh(engine="polars")
+    exact = mean_amount(orders).write(
+        DeltaSink(str(tmp_path / "exact"), reproducible=sv.equivalent())
+    )
+    with pytest.raises(
+        RouteError, match=r"mean_amount \(stored as exact\): a rerun must give the same result"
+    ):
         exact.refresh(engine="polars")
     with pytest.raises(Exception):  # noqa: B017 - nothing was written
         DeltaTable(str(tmp_path / "exact"))

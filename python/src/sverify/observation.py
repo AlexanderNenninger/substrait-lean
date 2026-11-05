@@ -1,7 +1,7 @@
 """Postconditions that name the observation (#444, decisions D11, D12 and
 D18 of `docs/core-semantics.md`).
 
-An observation `q` says which differences between two results a consumer
+An observation says which differences between two results a consumer
 ignores: the order of the rows, the last bits of a double, the sign of a
 zero, a timestamp's sub-millisecond digits, the Unicode normal form of a
 string. A transformation states it in its `ensures`:
@@ -13,15 +13,17 @@ string. A transformation states it in its `ensures`:
         ]
     )
 
-An engine's result then counts as correct when it is equal, up to `q`, to a
+An engine's result then counts as correct when it is equal, up to the
+observation, to a
 result the reference allows. Without `equivalent`, rows are a multiset and
 every value is exact.
 
-`q` is a product of components, each a short chain from exact to coarse.
-`q'` refines `q` (`q'.refines(q)`) when it is at least as fine on every
+An observation is a product of components, each a short chain from exact
+to coarse. One refines another (`a.refines(b)`) when it is at least as fine
+on every
 component, so refinement is a partial order (D18). Every other condition in
-`ensures` must not tell `q`-equal results apart: `dependencies` names the
-components a condition reads that `q` ignores (D12).
+`ensures` must not tell results equal up to the observation apart:
+`dependencies` names the components a condition reads that it ignores (D12).
 """
 
 from __future__ import annotations
@@ -136,7 +138,7 @@ def within(abs: float | None = None, rel: float | None = None, ulps: int | None 
     return Within(abs, rel, ulps)
 
 
-Floats = Literal["exact"] | Within
+Floats = Literal["exact", "plan"] | Within
 
 
 @dataclass(frozen=True)
@@ -149,7 +151,10 @@ class Observation:
     `"ties permuted"`: the order counts up to permutations of rows that tie
     in the sort (an engine's run-to-run variation, `tie_order`)."""
     floats: Floats = "exact"
-    """`"exact"` or a tolerance (`within`)."""
+    """`"exact"`, a tolerance (`within`), or `"plan"`: within the bound the
+    checker computes for the plan (`Report.epsilon`, its `ε` per double
+    column), whatever it is. `"plan"` is the default of a sink's
+    `reproducible`, and of a run whose postconditions name no observation."""
     zeros: Exactness = "exact"
     """`"canon"`: `-0.0` equals `0.0`, and every NaN equals every other."""
     timestamps: Precision = "ns"
@@ -172,9 +177,10 @@ class Observation:
                     f"equivalent's {name} must be one of {', '.join(map(repr, allowed))}, "
                     f"not {getattr(self, name)!r}"
                 )
-        if self.floats != "exact" and not isinstance(self.floats, Within):
+        if self.floats not in ("exact", "plan") and not isinstance(self.floats, Within):
             raise ValueError(
-                f"equivalent's floats must be 'exact' or sv.within(...), not {self.floats!r}"
+                "equivalent's floats must be 'exact', 'plan' or sv.within(...), "
+                f"not {self.floats!r}"
             )
 
     # -- the refinement order (D18) ------------------------------------------
@@ -193,9 +199,14 @@ class Observation:
             return levels.index(getattr(self, name)) > levels.index(getattr(other, name))
 
         mine, theirs = self.floats, other.floats
-        floats = isinstance(mine, Within) and (
-            not isinstance(theirs, Within) or not mine.refines(theirs)
-        )
+        # exact refines everything; `"plan"` (the plan's ε, unknown here)
+        # refines only itself; a tolerance refines a larger one.
+        if mine == "exact" or mine == theirs:
+            floats = False
+        elif mine == "plan" or theirs != "plan" and not isinstance(theirs, Within):
+            floats = True
+        else:
+            floats = theirs == "plan" or not mine.refines(theirs)  # type: ignore[union-attr]
         return [
             name
             for name, levels in _COMPONENTS
@@ -317,7 +328,7 @@ def _order_key(v: Any) -> tuple:
 
 
 def from_json(q: Mapping[str, Any] | None) -> Observation:
-    """An observation as the checker writes it (`q` of a choices row, D15):
+    """An observation as the checker writes it (a choices row's `"observation"`, D15):
     component levels, a float tolerance as `{"abs", "rel", "ulps"}`; an
     absent component is exact, rows and elements included."""
     q = dict(q or {})
@@ -341,6 +352,11 @@ def _sortable(t: pa.DataType) -> bool:
 EXACT = Observation(rows="sequence")
 #: The default when `ensures` names none: rows as a multiset, values exact.
 EXACT_MULTISET = Observation()
+#: Rows as a multiset, doubles within the plan's bound (`Report.epsilon`),
+#: other values exact: what a sink's rerun must reproduce by default, and
+#: what a run checks the engine against where `ensures` names no
+#: observation and no postcondition reads such a double.
+PLAN_BOUND = Observation(floats="plan")
 
 
 def equivalent(
@@ -365,8 +381,10 @@ def equivalent(
         rows: `"multiset"` (the default) ignores the order of the rows;
             `"sequence"` observes it, and needs a plan whose result is
             sorted on a total order.
-        floats: `"exact"` (the default) or a tolerance, `sv.within(abs=…,
-            rel=…, ulps=…)`.
+        floats: `"exact"` (the default), a tolerance, `sv.within(abs=…,
+            rel=…, ulps=…)`, or `"plan"`: within the bound the checker
+            computes for the plan (`Report.epsilon`), the default of a
+            sink's `reproducible`.
         zeros: `"canon"` makes `-0.0` equal `0.0` and every NaN equal.
         timestamps: The finest precision observed: `"ms"` ignores
             microseconds and nanoseconds. Default `"ns"`, every digit.
@@ -404,7 +422,7 @@ def split(ensures: Sequence[Any]) -> tuple[Observation | None, list[Any]]:
 # -- which conditions depend on what the observation ignores (D12) -----------
 
 
-#: The component a column's type falls under, where `q` may coarsen it.
+#: The component a column's type falls under, where an observation may coarsen it.
 def _component(dtype: Any) -> str | None:
     if dtype.is_floating():
         return "floats"

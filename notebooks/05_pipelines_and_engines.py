@@ -1029,10 +1029,10 @@ def _(mo):
     `node.refresh(engine=..., route="auto")` choose how it reaches the
     engine, and refuse the plan with the reason where nothing does (D13 in
     [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)).
-    The route names the plan's class on the engine: `refines` (every result
-    the engine gives, the reference allows), `shim` (after a proved
-    translation), `approx` (within the plan's float bound) or
-    `refines_up_to` an observation. Before the plan runs, its preconditions
+    The route names the plan's class on the engine: `exact` (every result
+    the engine gives, the reference allows), `observed` (equal under an
+    observation the postcondition states, a float tolerance included),
+    `shim` (after a proved translation) or `refused`. Before the plan runs, its preconditions
     are checked on the data. We take the join to Polars:
     """)
     return
@@ -1051,9 +1051,9 @@ def _(con, mo, sv):
 def _(mo):
     mo.md(r"""
     A stored node also needs a rerun to reproduce its result, since its sink
-    commits each epoch once: rows as a multiset with exact values by
-    default, or what the sink states, such as
-    `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`
+    commits each epoch once. The sink states what that means: exact bits
+    (`reproducible=sv.equivalent()`), or doubles within a tolerance,
+    `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`,
     for a `SUM` of doubles, which Polars's streaming engine may add in
     another order each run. A refresh whose route cannot meet that is
     refused. The

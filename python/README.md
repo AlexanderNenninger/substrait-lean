@@ -23,8 +23,9 @@ every possible input, or says why it can't ([what is proved](https://github.com/
 * A route takes the proof to the engine. `route="auto"` runs the plan on
   DuckDB or Polars natively, through the reference's proved translation, or
   by a check that the engine's choices are within the proof's, and names
-  the plan's class there: it refines the reference, needs a proved shim, is
-  within a float bound, or agrees up to an observation. Where no route
+  the plan's class there: exact, equal under an observation the
+  postcondition states (a float tolerance is one), or exact or observed
+  after a proved shim. Where no route
   applies, the plan is refused with the reason
   ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB and
   Polars are characterized fact by fact, with the evidence for each
@@ -142,7 +143,7 @@ orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
 )
 def big_orders(orders):
@@ -156,6 +157,7 @@ big.refresh(engine="polars", route="auto")  # updated from the changes alone, on
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 print(big_orders.last_report)
 # requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 1000000000)
 # requires orders: unique(id)
 # ensures (_.doubled >= 22): proved
 ```

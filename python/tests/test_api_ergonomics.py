@@ -29,7 +29,7 @@ def test_an_unknown_requires_table_without_a_close_match():
 
 
 def test_a_list_of_requires_is_on_the_only_input():
-    report = sv.verify(S.mutate(c=_.a + 1), requires=[_.a >= 0], ensures=[_.c > 0])
+    report = sv.verify(S.mutate(c=_.a + 1), requires=[_.a >= 0, _.a < 1000], ensures=[_.c > 0])
     assert report.proved
     assert report.requires["s"][0] == "(_.a >= 0)"
 
@@ -48,7 +48,7 @@ def test_transform_requires_an_unknown_parameter():
 
 
 def test_transform_takes_a_list_of_requires_for_one_parameter():
-    @sv.transform(requires=[_.a >= 0], ensures=[_.c > 0])
+    @sv.transform(requires=[_.a >= 0, _.a < 1000], ensures=[_.c > 0])
     def plus(t):
         return t.mutate(c=t.a + 1)
 
@@ -122,18 +122,21 @@ def test_connection_public_attributes_are_generic():
         ("TRUE or FALSE", "it may be FALSE on some rows"),
         ("FALSE", "it is FALSE on every row"),
         ("TRUE or NULL", "it may be NULL on some rows, where a column it reads is NULL"),
-        ("TRUE, FALSE or NULL", "it may be FALSE or NULL on some rows, where"),
+        # NULL is not the only way to fail: no NOT NULL advice (#655).
+        ("TRUE, FALSE or NULL", "it may be FALSE or NULL on some rows"),
     ],
 )
 def test_why_a_condition_is_unproved(value, why):
     assert CheckedCondition("c", False, value).why.startswith(why)
 
 
-def test_a_nullable_column_suggests_not_null():
-    t = ibis.table({"a": "int64"}, name="t")
+def test_a_nullable_column_suggests_not_null_only_where_null_alone_fails():
+    t = ibis.table({"a": "int64", "s": "string"}, name="t")
     report = sv.verify(t.select(b=t.a), ensures=[_.b >= 0], counterexamples=0)
     assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
-    assert "`!int64`" in str(report) and ".notnull()" in str(report)
+    assert ".notnull()" not in str(report)
+    only_null = sv.verify(t.select(n=t.s.length()), ensures=[_.n >= 0], counterexamples=0)
+    assert only_null.needed == {"t": ["_.s.notnull()"]}
 
 
 # #440: ibis.param in a transformation

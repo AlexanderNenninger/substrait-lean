@@ -47,7 +47,7 @@ orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
 )
 def big_orders(orders):
@@ -98,14 +98,18 @@ postcondition. Here a filter makes it hold:
 
 ```python
 fixed = orders_t.filter(orders_t.amount > 4).select(orders_t.id, total=orders_t.amount + 1)
-assert sv.verify(fixed, requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5]).proved
+bounded = {"orders": [_.amount >= 0, _.amount < 1_000_000_000]}
+assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).proved
 ```
 
 `report.issues` lists runtime errors that may happen (division by zero,
 overflow at the declared width, bad casts); an error makes `proved` False.
-Sverify infers the bounds that rule most of them out (`amount * 2` gets
-`(_.amount < 2**62) (inferred)` in `requires`), checks them on the data, and
-`infer=False` turns that off. For the rest, `report.hints` names the bound to
+Sverify infers the bounds that rule most of them out (`amount * 2` needs
+`_.amount < 2**62`) and, by default (`on_inferred="error"`), reports each
+under `needs:` (`report.needed`) until `requires` states it or the
+transformation no longer needs it (filter those rows first, or a CASE);
+`on_inferred="warn"` or `"silent"` assumes it and checks it on the data, and
+`infer=False` turns inference off. For the rest, `report.hints` names the bound to
 add, and an unproved comparison with a constant comes with the precondition
 that proves it (`report.suggestions`). An integer `SUM` that may overflow is
 listed in `report.assumed` and checked on the data while the job runs; a row

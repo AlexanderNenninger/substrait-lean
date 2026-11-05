@@ -46,7 +46,7 @@ from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
-from sverify.observation import Observation
+from sverify.observation import PLAN_BOUND, Observation
 from sverify.steps import Step, as_transform
 
 if TYPE_CHECKING:
@@ -282,7 +282,8 @@ class Node:
         *,
         engine: Any = "duckdb",
         audit: bool = False,
-        route: RouteKind | Literal["auto"] | None = None,
+        route: RouteKind | Literal["auto"] = "auto",
+        unverified: bool = False,
         reproducible: Observation | None = None,
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
@@ -293,12 +294,14 @@ class Node:
 
         A stored node's sink commits each state once, by its epoch, so a
         rerun must reproduce its rows up to the sink's `reproducible` (rows
-        as a multiset with exact values by default): a node whose result is
+        as a multiset, doubles within the plan's bound and other values
+        exact by default): a node whose result is
         not determined up to row order, or whose engine varies between runs
         more than that, is refused before anything runs (#444, D10, D20).
-        With `route`, each node's proof is also taken to `engine` by a route
-        (`sverify.routes.choose`, D13), or the refresh is refused;
-        `StageRefresh.route` records it.
+        Each node with a contract is refused unless its report is proved,
+        or `unverified=True` (`Report.run`); its proof is taken to `engine`
+        by a route (`sverify.routes.choose`, D13), or the refresh is
+        refused. `StageRefresh.route` records it.
 
         Each node is refreshed once per call, upstream first, against each
         source's latest version when the call starts, and every stored node
@@ -313,10 +316,13 @@ class Node:
                 may differ from one refresh to the next.
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.
-            route: None (the default) runs each plan as before; `"auto"`
-                chooses a route for each node with a contract; `"native"`,
-                `"reference"`, `"transfer"` or `"recheck"` takes that one or
-                refuses.
+            route: `"auto"` (the default) chooses a route for each node
+                with a contract; `"native"`, `"reference"`, `"transfer"` or
+                `"recheck"` takes that one or refuses.
+            unverified: Refresh nodes whose contract is not proved anyway;
+                their route is `"unverified"`, with what was not proved, and
+                an `UnverifiedRunWarning` says so. Default False: such a
+                node refuses the refresh.
             reproducible: What a rerun must reproduce for every node
                 (`sv.equivalent(...)`, D20), over each sink's own. Default
                 None: a stored node needs its sink's, another node nothing.
@@ -334,9 +340,10 @@ class Node:
                 contract, proved against the old schema, cannot follow.
             sverify.errors.AuditError: With `audit`, a batch disagrees with
                 recomputation; nothing was applied.
-            sverify.errors.RouteError: A stored node's result is not
-                determined up to row order, or, with `route`, no route takes
-                a node's proof to `engine`; nothing was refreshed.
+            sverify.errors.RouteError: A node's contract is not proved, a
+                stored node's result is not determined up to row order, or
+                no route takes a node's proof to `engine`; nothing was
+                refreshed.
 
         Examples:
             With `r` from the `Node` example:
@@ -348,7 +355,11 @@ class Node:
             ```
         """
         return group(self).refresh(
-            engine=engine, audit=audit, route=route, reproducible=reproducible
+            engine=engine,
+            audit=audit,
+            route=route,
+            unverified=unverified,
+            reproducible=reproducible,
         )
 
     def status(self) -> Status:
@@ -895,7 +906,8 @@ class Group:
         *,
         engine: Any = "duckdb",
         audit: bool = False,
-        route: RouteKind | Literal["auto"] | None = None,
+        route: RouteKind | Literal["auto"] = "auto",
+        unverified: bool = False,
         reproducible: Observation | None = None,
     ) -> Refresh:
         """Refresh every node against the same source versions (each
@@ -909,6 +921,8 @@ class Group:
                 applying it. Default False.
             route: How each node's proof reaches `engine`; see
                 `Node.refresh`.
+            unverified: Refresh nodes whose contract is not proved anyway;
+                see `Node.refresh`.
             reproducible: What a rerun must reproduce; see `Node.refresh`.
 
         Returns:
@@ -922,12 +936,12 @@ class Group:
                 contract cannot follow.
             sverify.errors.AuditError: With `audit`, a batch disagrees with
                 recomputation; nothing was applied.
-            sverify.errors.RouteError: A stored node is not determined up to
-                row order, or no route takes a node's proof to `engine`;
-                nothing was refreshed.
+            sverify.errors.RouteError: A node's contract is not proved, a
+                stored node is not determined up to row order, or no route
+                takes a node's proof to `engine`; nothing was refreshed.
         """
         order = self._order()
-        chosen = _routes(order, engine, route, reproducible)
+        chosen = _routes(order, engine, route, reproducible, unverified)
         for n in order:
             if isinstance(n, _Stored) and n._stage is None:
                 _continue_versions(n)
@@ -1004,16 +1018,21 @@ def _proof(node: Node) -> Report | None:
 def _routes(
     order: Sequence[Node],
     engine: Any,
-    route: RouteKind | Literal["auto"] | None,
+    route: RouteKind | Literal["auto"],
     reproducible: Observation | None = None,
+    unverified: bool = False,
 ) -> dict[int, Route]:
     """Each node's route to `engine` (by `id`), checked before anything runs.
 
-    What a rerun must reproduce (`q_det`, D20): a stored node's sink commits
-    each epoch once, so it needs the sink's `reproducible` (rows as a
-    multiset with exact values by default), or `reproducible` where the
+    A node whose contract is not proved is refused, or, with `unverified`,
+    runs by the route `"unverified"` with a warning. What a rerun must
+    reproduce (D20): a stored node's sink commits each epoch once,
+    so it needs the sink's `reproducible` (rows as a multiset, doubles
+    within the plan's bound, by default), or `reproducible` where the
     refresh states one; another node needs `reproducible`, or nothing. The
-    engine's run-to-run variation must refine it, with or without `route`."""
+    engine's run-to-run variation must refine it, on every route."""
+    import warnings
+
     from sverify import routes
 
     out: dict[int, Route] = {}
@@ -1022,20 +1041,21 @@ def _routes(
         report = _proof(n)
         if report is None:
             continue
+        name = _display(n)
         needed = reproducible
         if needed is None and isinstance(n, _Stored):
-            needed = n.sink.reproducible if hasattr(n.sink, "reproducible") else Observation()
-        if route is None:
+            needed = getattr(n.sink, "reproducible", PLAN_BOUND)
+        if unverified and not routes.verified(report):
             if needed is not None:
                 problems, _ = routes.reproducibility(report, e, needed)
                 if problems:
-                    hint = "" if report.deterministic else f"; {TIES}"
+                    hint = "" if report.deterministic else f"; {routes.ties_fix(report)}"
                     raise routes.RouteError(
                         routes.Route(
                             e,
                             None,
                             report.semantics,
-                            f"{n.name}: a rerun must give the same result: "
+                            f"{name}: a rerun must give the same result: "
                             + "; ".join(problems)
                             + hint,
                             report.deterministic,
@@ -1043,19 +1063,30 @@ def _routes(
                             reproducible=needed,
                         )
                     )
+            chosen = routes.unverified(report, engine)
+            warnings.warn(
+                f"refreshing {name} on {e} unverified: {chosen.reason}",
+                routes.UnverifiedRunWarning,
+                stacklevel=4,
+            )
+            out[id(n)] = chosen
             continue
         chosen = routes.choose(report, engine, route, reproducible=needed)
         if chosen.refused:
-            raise routes.RouteError(replace(chosen, reason=f"{n.name}: {chosen.reason}"))
+            raise routes.RouteError(replace(chosen, reason=f"{name}: {chosen.reason}"))
         out[id(n)] = chosen
     return out
 
 
-#: How to make a result determined up to row order.
-TIES = (
-    "declare `unique(...)` on the partition (or grouping) and order columns of the input, "
-    "or give first(), last() and windows a total order"
-)
+def _display(n: Node) -> str:
+    """How a refusal names a node: by the transform that made it, and, for
+    a stored node, where it is stored."""
+    if isinstance(n, _Stored):
+        made = n._query()
+        made_by = getattr(made, "name", None)
+        if made_by and made_by != n.name:
+            return f"{made_by} (stored as {n.name})"
+    return n.name
 
 
 def group(*nodes: Node) -> Group:
