@@ -1,0 +1,58 @@
+# Run each pull request's pipelines against the real sources into
+# staging/pr-<n>/ and link a preview catalog from the pull request. The
+# `staging` environment's credentials write only staging/. When the pull
+# request closes, its staging data goes.
+name: preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
+jobs:
+  preview:
+    # A fork's pull request gets no credentials and no write access.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write # the data branch
+      id-token: write # OIDC, for enterprise
+      pull-requests: write
+      actions: write # start the pages workflow
+    uses: ./.github/workflows/lake.yml
+    secrets: inherit
+    with:
+      environment: staging
+      stage: staging/pr-${{ github.event.pull_request.number }}
+      run: |
+        n=${{ github.event.pull_request.number }}
+        python scripts/lake.py check --out check.json > /dev/null || true
+        status=0
+        python scripts/lake.py refresh --out refresh.json || status=$?
+        python scripts/lake.py catalog --out "_data/$STAGE/site" --stage "$STAGE" \
+          --check check.json --refresh refresh.json --title "Preview of #$n" \
+          --banner "Preview of pull request #$n: staging data, deleted when it closes."
+        scripts/publish-data.sh "Preview of #$n"
+        gh workflow run pages.yml --ref "${{ github.event.repository.default_branch }}"
+        python scripts/lake.py preview --refresh refresh.json --pr "$n" > preview.md
+        scripts/sticky-comment.sh "$n" "<!-- sverify-preview -->" preview.md
+        exit $status
+
+  cleanup:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      id-token: write
+      actions: write
+    uses: ./.github/workflows/lake.yml
+    secrets: inherit
+    with:
+      environment: staging
+      stage: staging/pr-${{ github.event.pull_request.number }}
+      run: |
+        python scripts/lake.py drop
+        rm -rf "_data/$STAGE"
+        scripts/publish-data.sh "Drop the preview of #${{ github.event.pull_request.number }}"
+        gh workflow run pages.yml --ref "${{ github.event.repository.default_branch }}"

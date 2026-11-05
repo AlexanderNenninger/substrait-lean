@@ -1,0 +1,52 @@
+# After each refresh: a failed one (not proved, refused, over budget, an
+# error) opens an issue with the reason and what to do, or adds to the open
+# one; a refresh that succeeds closes it. The GitHub app notifies you, and
+# `@claude fix this` in the issue starts the loop again (README, "Using
+# Claude").
+name: alerts
+
+on:
+  workflow_run:
+    workflows: [refresh]
+    types: [completed]
+
+permissions:
+  actions: read
+  issues: write
+
+jobs:
+  alert:
+    if: github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      LABEL: pipeline-alert
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: lake-production
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - run: |
+          gh label create "$LABEL" --color B60205 --description "A refresh failed" 2>/dev/null || true
+          open=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ "$CONCLUSION" = success ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "Recovered: $RUN_URL"
+            fi
+            exit 0
+          fi
+          if [ ! -s alert.md ]; then
+            printf '<!-- sverify-alert -->\nThe refresh failed before sverify ran: %s\n' "$RUN_URL" > alert.md
+          elif ! grep -q "$RUN_URL" alert.md; then
+            printf '\nRun: %s\n' "$RUN_URL" >> alert.md
+          fi
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file alert.md
+          else
+            gh issue create --title "Refresh failed" --label "$LABEL" --body-file alert.md
+          fi

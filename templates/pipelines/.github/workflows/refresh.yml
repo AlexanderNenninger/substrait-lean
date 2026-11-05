@@ -1,0 +1,37 @@
+# Refresh the production tables from `main`, then rebuild the catalog. Runs
+# on a schedule and by hand (Actions, refresh, Run workflow: the GitHub app
+# has the button too). The `production` environment is the only one whose
+# credentials write production tables; give it required reviewers to
+# approve each run.
+name: refresh
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      id-token: write
+      actions: write
+    uses: ./.github/workflows/lake.yml
+    secrets: inherit
+    with:
+      environment: production
+      stage: production
+      run: |
+        python scripts/lake.py check --out check.json > /dev/null || true
+        status=0
+        python scripts/lake.py refresh --out refresh.json --alert alert.md || status=$?
+        python scripts/lake.py catalog --out _data/site --stage production \
+          --check check.json --refresh refresh.json --title "${GITHUB_REPOSITORY#*/}"
+        scripts/publish-data.sh "Refresh $(date -u +%Y-%m-%dT%H:%MZ)" "${{ vars.SVERIFY_SQUASH_AFTER || '30' }}"
+        gh workflow run pages.yml --ref main
+        exit $status
