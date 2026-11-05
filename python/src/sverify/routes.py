@@ -41,9 +41,12 @@ Each engine profile records the engine versions its facts were probed at
 (`EngineVersionError`) until the probes are re-run.
 
 A plan whose result is not determined up to row order
-(`Report.deterministic`) is reported by default, and refused where a rerun
-must give the same result: `choose(..., deterministic=True)`, for
-incremental refreshes and idempotent sinks (D10).
+(`Report.deterministic`) runs natively, with the engine's own order of the
+ties: the reference allows every order, and the proofs hold for each (D24).
+Where a rerun must give the same result, the deterministic profile applies:
+`choose(..., deterministic=True)`, an incremental refresh or a sink's
+`reproducible=` (D10, D20). It refuses such a plan and names each place where
+ties stay open (`Report.tie_places`).
 """
 
 from __future__ import annotations
@@ -1009,9 +1012,11 @@ def reproducibility(
     `required` (what a rerun must reproduce, D20).
 
     The result must be determined up to row order (`Report.deterministic`):
-    an open choice in it (ties in an ORDER BY, a LIMIT without one) fails
-    every requirement. Then, on each option the plan depends on, the
-    engine's run-to-run variation (the `"rerun_observation"` column of its
+    the deterministic profile fixes the order of ties (D24), so an open
+    choice (ties in an ORDER BY, a LIMIT without one) fails every
+    requirement, and the problem names each place (`Report.tie_places`).
+    Then, on each option the plan depends on, the engine's run-to-run
+    variation (the `"rerun_observation"` column of its
     choices, `"rerun"` from an older checker, component
     levels as in an observation, `{}` where it is exact; `{"floats": {"bound":
     "plan"}}` for a summation order that varies between runs, bounded by the
@@ -1027,8 +1032,10 @@ def reproducibility(
     problems: list[str] = []
     if not report.deterministic:
         problems.append(
-            "the result is not determined up to row order (ties in an ORDER BY, or a LIMIT "
-            "without one), so no rerun is sure to reproduce it"
+            "the result is not determined up to row order: the deterministic profile needs a "
+            "total order (D24), and ties stay open at "
+            + ("; ".join(map(str, report.tie_places)) or "an ORDER BY or a LIMIT")
+            + ", so no rerun is sure to reproduce it"
         )
     if depends is None:
         depends = (
@@ -1207,7 +1214,8 @@ def choose(
             )
     if not det:
         notes.append(
-            "an open choice (ties in an ORDER BY) leaves the result undetermined up to row order"
+            "ties stay open (D24): the engine picks their order, every proof holds for any "
+            "pick, and a rerun may pick another"
         )
     if report.observation.rows == "sequence" and not _sorted_root(plan):
         return refuse(

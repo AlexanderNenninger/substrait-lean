@@ -153,7 +153,7 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     assert report.proved and not report.deterministic
     r = routes.choose(report, "duckdb")
     assert r.kind == "reference" and not r.deterministic
-    assert any("open choice" in w for w in r.warnings)
+    assert any("ties stay open" in w for w in r.warnings)
     strict = routes.choose(report, "duckdb", deterministic=True)
     assert strict.refused and "rerun must give the same result" in strict.reason
 

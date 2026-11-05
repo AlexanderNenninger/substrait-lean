@@ -534,7 +534,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs (Lean's rows: null_at_extreme, tie_order)",
+   "duckdb": "runs (Lean's rows: null_at_extreme)",
    "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
    "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
@@ -880,7 +880,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs (Lean's rows: tie_order)",
+   "duckdb": "runs",
    "polars": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
    "snowflake": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }

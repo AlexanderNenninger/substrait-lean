@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import functools
 import json
 import math
 import random
@@ -428,9 +429,10 @@ def _first_line(e: BaseException | str) -> str:
 #: other rows than the plan: Ibis's or DuckDB's meaning differs from the
 #: reference's (`degenerate_statistic`: DuckDB's CORR is NaN where the
 #: reference's is NULL, `duckdb-corr`; `null_at_extreme`: Ibis's `argmax`
-#: keeps a NULL, upstream/bugs/IB-3.json), or the engine orders ties its own
-#: way (`tie_order`).
-NATIVE_DIFFERS = ("duration_vs_interval", "degenerate_statistic", "null_at_extreme", "tie_order")
+#: keeps a NULL, upstream/bugs/IB-3.json). An engine's own order of ties is
+#: none of these: the reference allows every order (D24), and the
+#: comparison accepts any (`lean_choices`).
+NATIVE_DIFFERS = ("duration_vs_interval", "degenerate_statistic", "null_at_extreme")
 
 
 def native_differs(q: Query) -> list[str]:
@@ -460,12 +462,38 @@ def lean_reference(plan: str, data: dict[str, pa.Table]) -> list[tuple]:
     return lean_values(json.dumps(inline_tables(json.loads(plan), rows)))
 
 
+def lean_choices(plan: str, data: dict[str, pa.Table]) -> list[list[tuple]] | None:
+    """`Rel.evalChoices`'s rows of the plan over the synthetic tables: the
+    values every order of the ties allows (D24), with values as `_code`
+    writes them; None where the data leaves a choice it does not list."""
+    from sverify.testing import inline_tables
+    from sverify.testing import lean_choices as choices
+
+    rows = {n: [tuple(r.values()) for r in t.to_pylist()] for n, t in data.items()}
+    return choices(json.dumps(inline_tables(json.loads(plan), rows)))
+
+
+def _same(a: object, b: object) -> bool:
+    """Two values as `_normalized` compares them."""
+    return _normalized([(a,)]) == _normalized([(b,)])
+
+
+def _allowed(rows: list[tuple] | None, choices: list[list[tuple]]) -> bool:
+    """Whether the rows are a result every-order evaluation allows."""
+    from sverify.testing import allows_rows
+
+    if rows is None:
+        return False
+    return allows_rows([tuple(_code(v) for v in r) for r in rows], choices, _same)
+
+
 def probe_engines(
     con: Connection,
     plan: str,
     reference: list[tuple] | None,
     lean: Callable[[], list[tuple]] | None = None,
     why: str = "",
+    choices: Callable[[], list[list[tuple]] | None] | None = None,
 ) -> dict[str, str]:
     """Run Lean's written plan on each engine and compare with DuckDB's own
     rows of the query (`reference`, None if DuckDB failed).
@@ -474,10 +502,13 @@ def probe_engines(
     on the synthetic tables; with a FETCH or a window, where ties make the
     native choice of rows legitimately differ, with each other, row for row
     where the order matters), `differs`, `refused: …` (the translation
-    refuses the plan) or `error: …`. Where DuckDB's own rows rightly differ
-    (`lean`, for the pitfalls `why`), rows that differ from them are compared
-    with Lean's own instead (`lean_reference`): `runs (Lean's rows: why)`
-    if they agree. Snowflake is `sql` or `sql (tie_free)`
+    refuses the plan) or `error: …`. Rows that differ from DuckDB's own
+    where an ordered aggregate's ties are open (`choices`, `lean_choices`)
+    are `runs` when both are results some order allows (D24). Where
+    DuckDB's own rows rightly differ (`lean`, for the pitfalls `why`), rows
+    that differ from them are compared with Lean's own instead
+    (`lean_reference`, or `lean_choices` where ties are open):
+    `runs (Lean's rows: why)` if they agree. Snowflake is `sql` or `sql (tie_free)`
     (SQL written and parsed with sqlglot, not run) or `refused: …`."""
     import sqlglot
 
@@ -518,7 +549,15 @@ def probe_engines(
             )
         else:
             ok = _canonical(got) == _canonical(reference)
-            if not ok and lean is not None:
+            open_ = choices() if not ok and choices is not None else None
+            if open_ is not None and any(c[0] != "v" for row in open_ for c in row):
+                # Ties left open: any order's result is allowed (D24).
+                if _allowed(got, open_) and _allowed(reference, open_):
+                    ok = True
+                elif _allowed(got, open_) and why:
+                    out[engine] = f"runs (Lean's rows: {why})"
+                    continue
+            elif not ok and lean is not None:
                 coded = [tuple(_code(v) for v in r) for r in got]
                 if _canonical(coded) == _canonical(lean()):
                     out[engine] = f"runs (Lean's rows: {why})"
@@ -588,7 +627,14 @@ def probe_profile(
     try:
         why = native_differs(q)
         lean = (lambda: lean_reference(plan, data)) if why else None
-        engines = probe_engines(con, written_plan(plan), reference, lean, ", ".join(why))
+        engines = probe_engines(
+            con,
+            written_plan(plan),
+            reference,
+            lean,
+            ", ".join(why),
+            functools.cache(lambda: lean_choices(plan, data)),
+        )
     except ValueError as e:
         # `--write` refuses what no engine runs yet (decimals, #27).
         detail = _first_line(e).split("rejects the plan: ")[-1].strip("[]'\"")
