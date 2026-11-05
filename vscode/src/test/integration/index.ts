@@ -80,7 +80,7 @@ export async function run(): Promise<void> {
     vscode.languages.getDiagnostics(uri).find((d) => d.code === "unknown-column" && d.range.start.line === req.line && d.message.includes("am_")) ?? undefined,
   ).catch(() => undefined);
   out.push(`live check of the typed column: ${live ? live.message : "(none)"}`);
-  await vscode.commands.executeCommand("undo");
+  await editor.edit((e) => e.delete(new vscode.Range(req, req.translate(0, 4))));
 
   const ens = find(doc, "ensures=[_.total > 5]");
   const at = ens.translate(0, "ensures=[".length);
@@ -93,7 +93,8 @@ export async function run(): Promise<void> {
   out.push("completion after `sv.` in ensures:", ...helpers.map((i) => `  ${i.label}: ${i.detail}`));
   assert.ok(helpers.some((i) => i.label === "equivalent"));
   assert.ok(!helpers.some((i) => i.label === "references"));
-  await vscode.commands.executeCommand("undo");
+  await editor.edit((e) => e.delete(new vscode.Range(at, at.translate(0, 3))));
+  assert.ok(!doc.getText().includes("_.am_") && !doc.getText().includes("sv._"), "the edits are gone");
 
   // A second check, warm: save the file.
   const t1 = Date.now();
