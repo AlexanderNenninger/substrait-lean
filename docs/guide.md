@@ -960,7 +960,11 @@ integer `//` and `%` floor, so `-7 % 2` is `1`, and the plan states
 `division_type: FLOOR` on each, which Polars runs natively and the other
 engines refuse; a zero divisor and integer overflow still raise, so `verify`
 infers the same preconditions as under the reference
-([core-semantics.md](core-semantics.md#polars-as-a-profile)). Until
+([core-semantics.md](core-semantics.md#polars-as-a-profile)).
+`semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
+under ANSI mode: the same values as the reference, and doubles that overflow
+are ±inf with no precondition, so the plan runs on Spark natively
+([core-semantics.md](core-semantics.md#spark-as-a-profile)). Until
 #411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
 joins of every kind, subqueries and CTEs, GROUP BY with grouping sets,
 windows, set operations, ORDER BY, LIMIT, CASE, CAST, and the numeric,
@@ -1708,8 +1712,8 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars) |
-| `translated` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
+| `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars, `semantics="spark"` on Spark) |
+| `translated` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
 | `transfer` | the plan was verified under another profile, and at every option the proof depends on, the engine's choices are within that profile's |
 | `recheck` | the checker proves the plan again under the engine's profile |
 
