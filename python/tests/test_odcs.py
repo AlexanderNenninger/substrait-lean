@@ -125,7 +125,7 @@ def test_export_marks_checked_and_declared_rules():
     @sv.transform(
         requires={"orders": REQUIRES},
         ensures=[_.amount > 10, _.amount > 20],
-        on_unproved="runtime",
+        on_unproved="check",
     )
     def checked(orders):
         return orders.filter(orders.amount > 10)
