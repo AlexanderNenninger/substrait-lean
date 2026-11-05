@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/substrait-manifest.schema.json",
+  "title": "sverify Substrait contract manifest",
+  "description": "The `manifest` of the `io.sverify.substrait.v1.Contract` message that Report.to_substrait attaches to an exported plan (substrait_contract.proto), as protobuf's JSON form of its google.protobuf.Struct: every number is a double. Format 1. Within 1.x the manifest only gains optional keys, and readers ignore keys they do not know (docs/stability.md). docs/guide.md, \"Exporting to Substrait\", says what each key holds.",
+  "type": "object",
+  "required": ["format", "sverify", "substrait", "extension_urns", "profile", "class", "observation"],
+  "properties": {
+    "format": {"description": "The version of this format.", "const": 1},
+    "sverify": {"description": "The version of sverify that exported the plan.", "type": "string"},
+    "substrait": {"description": "The Substrait version the plan is written for, as `major.minor.patch`.", "type": "string"},
+    "extension_urns": {"type": "array", "items": {"type": "string"}},
+    "profile": {
+      "description": "The profile the plan was verified under. 1.x may add values.",
+      "type": "string",
+      "examples": ["reference", "substrait"]
+    },
+    "class": {
+      "description": "exact, observed (equal up to `observation`) or assumed (with annotated choices). 1.x may add values.",
+      "type": "string",
+      "examples": ["exact", "observed", "assumed"]
+    },
+    "evidence": {
+      "description": "proved, or tested where IEEE 754's default rounding stands in for an option. 1.x may add values.",
+      "type": "string",
+      "examples": ["proved", "tested"]
+    },
+    "shims_mode": {"type": "string", "examples": ["apply", "annotate", "refuse"]},
+    "observation": {"description": "What the postconditions observe, as sv.equivalent prints it.", "type": "string"},
+    "observation_components": {
+      "description": "The observation's components (rows, floats, ...), each as text.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "pinned": {"$ref": "#/$defs/rows"},
+    "unexercised": {"$ref": "#/$defs/rows"},
+    "up_to": {"$ref": "#/$defs/rows"},
+    "shims": {"$ref": "#/$defs/rows"},
+    "assumptions": {"$ref": "#/$defs/rows"},
+    "deterministic": {"type": "boolean"},
+    "rows": {"description": "At most this many output rows, or null.", "type": ["number", "null"]},
+    "params": {"type": "array", "items": {"type": "string"}},
+    "output": {
+      "description": "The output's columns with their Ibis types.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "checker_contract": {
+      "description": "The checker's entries for the table conditions (keys, ensures_keys, references, max_rows, rows_per), which sv.from_substrait sends back to the checker.",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "rows": {
+      "description": "One object per option or gap, with at least the option's group or the gap.",
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  }
+}

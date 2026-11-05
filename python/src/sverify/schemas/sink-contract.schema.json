@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/sink-contract.schema.json",
+  "title": "sverify sink contract record",
+  "description": "What a sverify sink records with each commit (sverify.io.Contract.to_json): in a Delta commit's commitInfo under the key `sverify`, in an Iceberg table's property `sverify.contract`, or wherever a sink of your own stores it. Format 1. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). A record without `format` was written before 0.5 and is format 1.",
+  "type": "object",
+  "required": ["view", "plan", "sources", "epoch", "not_null", "checks", "unique"],
+  "properties": {
+    "format": {
+      "description": "The version of this format. Absent in records written before 0.5, which read as 1.",
+      "const": 1
+    },
+    "view": {
+      "description": "The stored node's name.",
+      "type": "string"
+    },
+    "plan": {
+      "description": "sha256 of the plan as Lean wrote it, in hex.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sources": {
+      "description": "The version of every source table the state was computed from, by source name.",
+      "type": "object",
+      "additionalProperties": {"type": "integer"}
+    },
+    "epoch": {
+      "description": "The sum of the source versions: identifies the commit for exactly-once writes.",
+      "type": "integer"
+    },
+    "not_null": {
+      "description": "Columns the node proves NOT NULL.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "checks": {
+      "description": "The other row conditions the node proves, as SQL, by constraint name (`sverify_1`, ...).",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "unique": {
+      "description": "Column sets the node proves unique.",
+      "type": "array",
+      "items": {"type": "array", "items": {"type": "string"}}
+    },
+    "digests": {
+      "description": "A content digest of each static table (StaticSource) the node read, by source name.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "cursors": {
+      "description": "The cursor of each source whose cursors last across processes (Source.restore), at its version in `sources`, as sverify.io._common.cursor_json encodes it: JSON values, and other values tagged as {\"$cursor\": <type>, \"value\": ...}.",
+      "type": "object"
+    },
+    "table_ids": {
+      "description": "The id of each source table that has one (a Delta table's metaData.id), at its version in `sources`.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "additionalProperties": true
+}
