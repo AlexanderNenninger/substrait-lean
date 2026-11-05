@@ -73,6 +73,9 @@ print(report.run(con).to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}]
 ```
 
+`report.run` refuses a report that did not prove (`report.proved` is False)
+with a `RouteError`; `report.run(con, unverified=True)` runs it anyway.
+
 The SQL is DuckDB's dialect, read with sverify's reference semantics
 (`semantics="duckdb"` reads it as DuckDB computes it). `//` is integer
 division, and `/` would give a double.
@@ -145,8 +148,11 @@ print(declared.routes["polars"])
 # reference: verified under the reference; the translation to polars is ... [shim, proved]
 ```
 
-Polars's integer division floors, and the reference's truncates, so the
-translation writes a shim, proved in Lean (`SubstraitLean/PolarsShims.lean`).
+SQL's `//` truncates under the reference and Polars's integer division floors,
+so the translation writes a shim, proved in Lean
+(`SubstraitLean/PolarsShims.lean`). Ibis's `//` is `FloorDivide` and floors under
+every semantics, and its `%` truncates under the reference
+([the table](guide.md#integer-division-in-ibis-and-sql)).
 The [realizability table](realizability.md) lists every option's class on
 each engine.
 
@@ -189,7 +195,7 @@ one that accepts the plan's float bound is not:
 
 ```python
 from sverify.io import DeltaSink
-from sverify.routes import RouteError
+from sverify.errors import RouteError
 
 readings = StaticSource(pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}), name="readings")
 

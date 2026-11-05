@@ -80,6 +80,14 @@ Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substr
 Work on DataFusion, Spark and Snowflake is paused until the generated lowerings land
 ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
 [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+DataFusion is not installed by default (the `datafusion` extra adds it).
+
+Polars refuses what only DuckDB runs so far, with "see #271": the functions
+that [`SUPPORT` and `WINDOW_SUPPORT`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/_support.py)
+list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `first`, `last`,
+`string_agg`, `median`, the quantiles, `mode`, `arg_min`, `arg_max`, the covariances,
+`corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles
+([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)).
 
 ```bash
 pip install sverify                # or: uv add sverify
@@ -90,7 +98,9 @@ The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
 `datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
 `flight`, `testing`, or `all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
-builds from the sdist, which needs [elan](https://github.com/leanprover/elan).
+builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
+starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
+Contributors with a built checker set `SVERIFY_PREBUILT_CHECK=<path to substrait-check>`, and an editable install links it instead.
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
@@ -200,7 +210,7 @@ def test_big_orders():
     assert_contract(node)  # the contract is proved
     data = {"orders": [(1, "ada", 30), (2, "bob", 5)]}
     assert_contract(node, data=data, expected=[(1, 60)])  # and holds on these rows
-    assert_engines_agree(node, data)  # DuckDB, Polars and DataFusion agree
+    assert_engines_agree(node, data)  # every installed engine agrees
 
 
 test_big_orders()

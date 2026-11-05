@@ -3267,7 +3267,48 @@ def _verify_once(
     report.hints += and_or_hints(report.issues)
     if not isinstance(transform, str):
         report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
+        if semantics != "polars":
+            report.hints += division_hints(transform)
     return report, out["inferred"], schemas
+
+
+DIVISION_HINT = (
+    "Ibis `//` floors and `%` truncates, so `({a} // {b}) * {b} + {a} % {b} == {a}` "
+    "fails for negative {a}: bound {a} below by 0 in `requires`, or write the plan in SQL, "
+    "where `//` truncates (guide: 'Integer division in Ibis and SQL')"
+)
+
+
+def division_hints(transform: ir.Table) -> list[str]:
+    """For each integer `a // b` and `a % b` the Ibis expression applies to the
+    same operands: that the pair does not split `a` for negative values
+    (#693)."""
+    import ibis.expr.operations as ops
+
+    node = transform.op()
+    mods = {
+        (m.left, m.right)
+        for m in node.find(ops.Modulus)
+        if isinstance(m, ops.Modulus) and m.dtype.is_integer()  # pyrefly: ignore
+    }
+    hints: list[str] = []
+    for d in node.find(ops.FloorDivide):
+        if isinstance(d, ops.FloorDivide) and d.dtype.is_integer() and (d.left, d.right) in mods:
+            hint = DIVISION_HINT.format(a=_ibis_text(d.left), b=_ibis_text(d.right))
+            if hint not in hints:
+                hints.append(hint)
+    return hints
+
+
+def _ibis_text(node: Any) -> str:
+    """An operand as the user wrote it, as far as it is a column or literal."""
+    import ibis.expr.operations as ops
+
+    if isinstance(node, ops.Field):
+        return node.name
+    if isinstance(node, ops.Literal):
+        return str(node.value)
+    return "the operand"
 
 
 def rounding_hints(
