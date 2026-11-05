@@ -2068,7 +2068,6 @@ class Report:
         `ensures`, or rows as a multiset with exact values (`observation`)."""
         return self.observation
 
-
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
