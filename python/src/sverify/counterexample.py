@@ -194,7 +194,9 @@ def evaluate(plan: dict, tables: Mapping[str, list[tuple]]) -> list[tuple]:
     # Imported here: `sverify.testing` imports `sverify.contracts`, which imports this.
     from sverify.testing import inline_tables, lean_values
 
-    return lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), tables)))
+    return lean_values(
+        json.dumps(inline_tables(json.loads(json.dumps(plan)), tables)), rows_only=True
+    )
 
 
 def search(
