@@ -22,6 +22,16 @@ too. New in 0.7.0, in the entry "Breaking: sources, sinks and the top level of
   deprecation period.
 - Renamed keywords and methods on sources and sinks warn and name the new
   form.
+- SQL from `node.to_sql(dialect)` and `report.to_sql(dialect)`; one way to
+  run on Spark (`sverify.engines.run`); `con.create`, `con.rows`, `con.get`
+  and `con.put` replace the table helpers; `substrait_json` lifts under the
+  reference semantics by default.
+- The `sverify` command's exit codes, flags (`check --fix/--diff/--full`,
+  `--format`) and JSON (format 1 of `schemas/cli.schema.json`) change before
+  1.x freezes them.
+
+Names deprecated in 0.6.0 and 0.7.0 still work with a `DeprecationWarning`
+that names the replacement; they go in 0.8, since 0.6.0 never reached PyPI.
 
 ### Coverage targets for 1.0
 
@@ -132,6 +142,113 @@ Spark SQL to 7 kB, and the catalogue's largest Snowflake statement from
 547 kB to 16 kB. `Rel.evalI_bindArgs` and `Rel.raises_bindArgs` prove
 that the plan computes the same rows and raises the same errors on every
 engine.
+
+### Breaking: SQL from a node or a report, one way to run on Spark, `Connection` methods (api-review F1 to F4)
+
+From the API review before 1.0
+([#795](https://github.com/AlexanderNenninger/substrait-lean/pull/795),
+`api-review/PROPOSAL.md` F1 to F4). The deprecated names still work in
+0.7 with a `DeprecationWarning` that names the replacement, and go in 0.8.
+
+- `node.to_sql(dialect)` and `report.to_sql(dialect)` write the plan a proof
+  checked as DuckDB, Snowflake or Spark SQL (`"duckdb"`, `"snowflake"`,
+  `"spark"`, or a `Dialect`), with its run-time checks. They refuse a plan
+  that is not proved (`UnverifiedRunError`), as `refresh` and `run` do, and a
+  report's `deterministic` lets windows run without a row-order tiebreak.
+  Before, the way to SQL was `to_sql(json.loads(node.internal_plan), dialect)`.
+- `con.create(name, schema, rows)` and `con.rows(name)` replace
+  `sverify.engines.create_table(con, name, schema, rows)` and
+  `table_rows(con, name)`, which warn.
+- `Connection.arrow` and `Connection.ibis` are deprecated: `con.get(name)`,
+  `con.rows(name)` and `con.put(name, table)` read and write the tables, and
+  `con.table(name).get_backend()` is the Ibis backend, for SQL of your own.
+- `sverify.engines.run(con, plan, "spark")`, or a Spark session as the
+  engine, is the one way to run a plan on Spark; `run_spark(plan, tables)`
+  warns. A window without a row order runs on Spark when the contract
+  states its order key (`sv.unique(...)`), through `node.to_sql("spark")`
+  or `report.to_sql("spark")`; `run` takes no tie flag.
+- `sverify.engines.substrait_json(con, sql)` now lifts the SQL under the
+  reference semantics, as `sv.verify` and `sv.sql` do. Pass
+  `semantics="duckdb"` for what DuckDB computes, the old default.
+- The API reference documents `Dialect` by its fields (`name`, `guards`,
+  `finite`, `decimals`). Its SQL-writing methods, subclasses of it, and the
+  plan layer (`to_sql`, `substrait_json`, `written_plan`,
+  `run_substrait_json`, `delta_plans`) are outside the 1.x promise
+  ([docs/stability.md](docs/stability.md)).
+
+Migration:
+
+```python
+# before
+from sverify.engines import SNOWFLAKE, create_table, run_spark, table_rows, to_sql
+create_table(con, "orders", schema, rows)
+table_rows(con, "orders")
+to_sql(json.loads(node.internal_plan), SNOWFLAKE)
+run_spark(plan, {"orders": orders_table})
+con.ibis.raw_sql("SELECT 1")
+
+# after
+con.create("orders", schema, rows)
+con.rows("orders")
+node.to_sql("snowflake")
+run(con, plan, "spark")  # con holds the orders table
+con.table("orders").get_backend().raw_sql("SELECT 1")
+```
+
+### `round(x, d)` follows DuckDB 2.0 where the result overflows
+
+`round(x, d)` with a negative `d` gives `x` itself where the rounded value
+would overflow, as DuckDB 2.0 does (`round(1.5e308, -308)` is `1.5e308`),
+where the model gave 0, DuckDB 1.4's answer. The Polars and SQL writers
+follow, and the engine fact `duckdb-round-digits-2` supersedes
+`duckdb-R15-round-digits`, whose probes missed the case.
+
+### Faster rows in and out of a connection
+
+`con.create`, `con.rows` and the row lists a refresh reads build and read
+Arrow tables column by column, without a dictionary per row: 100,000 rows of
+four columns go into a table in 22 ms (88 ms before) and out in 71 ms (92 ms
+before), with a quarter and three fifths of the Python memory.
+
+### Breaking: the `sverify` command before 1.0 (API review I1–I5)
+
+The command 0.6.0 shipped (#744) changes its exit codes, flags and JSON
+before 1.x freezes them
+([#797](https://github.com/AlexanderNenninger/substrait-lean/pull/797)):
+
+- Exit codes: 0 proved (a refresh committed every row), 1 not proved,
+  2 usage error (argparse's too), 3 unsupported or refused, 4 time or
+  memory budget exceeded, 5 a refresh quarantined rows or held a node,
+  6 error. In 0.6.0, 2 was refused, 3 budget, 4 error. `sverify --help`
+  lists them.
+- `sverify suggest <file> [--apply]` is `sverify check <file> --diff` (show)
+  and `--fix` (write, then check again).
+- `sverify explain <file>:<node>` is `sverify check <file>:<node> --full`;
+  `explain` takes codes only.
+- Codes are snake case (`may_be_false`), as the report writes them, each with
+  a level; `explain` still reads kebab case.
+- `--format text|json|github|sarif|junit` (`--output-format`; `--json` is
+  `--format json`). `github` writes workflow commands that annotate a pull
+  request's lines, `sarif` a SARIF 2.1.0 log for code scanning, `junit` a
+  test report
+  ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+- The JSON is format 1 of `schemas/cli.schema.json`: each node's `name`,
+  `nodes`, `status`, `summary` (its third key is `not_proved`), `links` and
+  `report`, the node's `Report.to_json()`. The 0.6.0 keys `verdict`,
+  `problems`, `needs` and `facts` come from the embedded report.
+- `sverify contract export` (#791) follows the same exit codes.
+- `import sverify` loads its names on first use: `sverify --help`,
+  `--version` and `explain` take 0.1 s, down from 1.3 s.
+
+### The checker's slow cases
+
+- The checker's abstract evaluation no longer evaluates a projection's or an
+  aggregate's input once per expression, which grew exponentially with the
+  plan's depth: TPC-DS q36 took 56 s per proof and takes 0.8 s, and the
+  catalogue's 55 contracts 110 s and 5 s
+  ([#825](https://github.com/AlexanderNenninger/substrait-lean/issues/825)).
+  A decimal cast's bounds, each table's description and a plan with
+  `VALUES` cost less too.
 
 ## 0.6.0 (2026-11-05, tagged, not published)
 
