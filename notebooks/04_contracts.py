@@ -76,9 +76,8 @@ def _():
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
-        on_inferred="silent",
     )
     def doubled(orders):
         return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
@@ -114,10 +113,11 @@ def _(mo):
       postcondition. The verdicts are in `.last_report`.
     * The first table of the report holds the verdicts. The second holds
       everything Lean established about each output column, asked for or not.
-    * The report also lists `amount < 2**62`, marked as inferred. Doubling
-      the largest 64-bit integer overflows and the reference raises, so
-      `amount * 2` needs an upper bound on `amount`. Sverify works out the
-      weakest one and treats it like the preconditions you wrote: it is
+    * `amount < 1_000_000_000` is there for `amount * 2`. Doubling the
+      largest 64-bit integer overflows and the reference raises, so the
+      plan needs an upper bound on `amount`. Without one, Sverify works out
+      the weakest, `amount < 2**62`, and reports the plan as not proved
+      until you declare a bound (D23). Like every precondition, it is
       checked on your data, or proved from table metadata.
 
     `sv.verify(expr, requires=..., ensures=...)` does the same for an
@@ -129,13 +129,13 @@ def _(mo):
     can be NULL and which values it can hold. This is abstract interpretation,
     and each operator updates the descriptions.
 
-    * The preconditions make `amount >= 0` and the inferred `amount < 2**62`
+    * The preconditions make `amount >= 0` and `amount < 1_000_000_000`
       TRUE on every input row, so `amount` is a non-NULL integer in
-      `[0, 2⁶² - 1]`. (`NULL >= 0` is NULL, which is not TRUE.)
+      `[0, 10⁹ - 1]`. (`NULL >= 0` is NULL, which is not TRUE.)
     * The filter `amount > 10` keeps the rows where that is TRUE, so `amount`
       is a non-NULL integer ≥ 11 afterwards.
-    * `amount * 2` is then an integer ≥ 22 and below 2⁶³, which fits in 64
-      bits and is never NULL.
+    * `amount * 2` is then an integer in `[22, 2·10⁹ - 2]`, which fits in
+      64 bits and is never NULL.
 
     A postcondition is proved when its description allows only TRUE.
     """)
@@ -483,9 +483,8 @@ def _(mo):
       `-2⁶³`), which an error allows.
     * An integer `SUM` leaving 64 bits. Sverify rules it out where the plan
       bounds a group's rows (a `FETCH` count) and `requires` bounds the
-      column. Elsewhere it assumes each sum fits, as it assumes inferred
-      bounds, and the job checks it on the data while it runs
-      (`Report.assumed`).
+      column. Elsewhere it assumes each sum fits, and the job checks it on
+      the data before the run (`Report.assumed`).
 
     Lean's model computes with exact integers, and `SubstraitLean/Safety.lean`
     lists, for every operation of a plan, which of these can happen. Theorem
@@ -536,11 +535,16 @@ def _(VARIANTS, mo):
 @app.cell(hide_code=True)
 def _(VARIANTS, mo, sv, variant):
     _report = sv.verify(VARIANTS[variant.value])
-    _summary = (
-        mo.callout(mo.md("Lean proves this cannot fail, on any data."), kind="success")
-        if not _report.errors
-        else mo.callout(mo.md("Lean cannot rule out a runtime error."), kind="warn")
-    )
+    if _report.errors:
+        _summary = mo.callout(mo.md("Lean cannot rule out a runtime error."), kind="warn")
+    elif _report.needed:
+        _needs = ", ".join(f"`{c}`" for cs in _report.needed.values() for c in cs)
+        _summary = mo.callout(
+            mo.md(f"Lean proves this cannot fail once you declare {_needs} in `requires`."),
+            kind="warn",
+        )
+    else:
+        _summary = mo.callout(mo.md("Lean proves this cannot fail, on any data."), kind="success")
     mo.vstack([_summary, mo.md(_report._repr_markdown_())])
     return
 
@@ -573,9 +577,10 @@ def _(mo):
     A contracted transformation has to be proved free of runtime errors, and
     correctness on the inputs that happen to arrive does not count. We pass
     `infer=False` to `ratio` to see the error itself: by default Sverify
-    infers the precondition `(_.n != 0)` and checks it on each batch before
-    the run, so `report.run` and `refresh` refuse a batch with `n = 0` with a
-    `PreconditionError` and nothing runs
+    works out the precondition `(_.n != 0)` and reports the plan as not
+    proved until you declare it in `requires`. Declared, it is checked on
+    each batch before the run, so `report.run` and `refresh` refuse a batch
+    with `n = 0` with a `PreconditionError` and nothing runs
     ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
     A `SUM` that may overflow, or an operation on doubles that may overflow
     to ±∞, does not block the proof: the assumption is listed in

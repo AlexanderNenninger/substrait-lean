@@ -1544,3 +1544,24 @@ refinement with the other components (D18, item 4). Tolerances differ from
 the other observations only in how they compose, by adding their `ε`, and
 the checker's propagation of `ε` through a plan handles that. A separate
 `approx` class told the user nothing the observation did not.
+
+### D23. Inferred preconditions are errors by default
+
+A precondition sverify infers to rule out a runtime error (`total // qty`
+needs `qty != 0`, `amount * 2` needs `amount < 2**62`) is a checking error by
+default: `verify` reports the plan as not proved and names the precondition,
+where it came from, and the fixes, which are to declare it in `requires` or
+to rewrite the plan so no row needs it (filter those rows first, or a `CASE`).
+`on_inferred=` chooses: `"error"` (the default), `"warn"` (assumed, checked
+on the data before each run, with a warning) or `"silent"` (assumed and
+checked, as before #655).
+
+Why: an assumed precondition is checked on each batch, and a batch that
+breaks one is refused before the run (#604). An inferred precondition is
+therefore a run-time error the user never asked for: a job that refuses
+data because of a bound nobody wrote down. Declaring it puts the decision
+with the user, and the declared form documents it.
+
+`SUM`s assumed to fit 64 bits and operations on doubles assumed to stay
+finite (`Report.assumed`) are not inferred preconditions: they keep their
+checks on the data.

@@ -267,9 +267,8 @@ Ibis expression). Each call proves the postconditions before it returns:
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
-    on_inferred="silent",  # by default ("error"), it reports the bound under `needs:`
 )
 def doubled(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
@@ -277,19 +276,20 @@ def doubled(orders):
 expr = doubled(orders)
 print(doubled.last_report)
 # requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 1000000000)
 # requires orders: _.id.notnull()
-# requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 # ensures id IS NOT NULL: proved
 # known about the output:
 #   id: any integer
-#   doubled: an integer ≥ 22
+#   doubled: an integer in [22, 1999999998]
 ```
 
 Lean worked out that `doubled` is at least 22: the filter keeps only
-`amount > 10`, and doubling preserves that. Sverify inferred the bound that
-keeps `amount * 2` within 64 bits ([Inferred bounds](#inferred-bounds)). A
+`amount > 10`, and doubling preserves that. The bound on `amount` keeps
+`amount * 2` within 64 bits, and caps `doubled`; without a bound, the
+report names the one the plan needs ([Inferred bounds](#inferred-bounds)). A
 postcondition that doesn't follow is refused, with what *is* known:
 
 ```python
@@ -397,8 +397,9 @@ except VerificationError as e:
 # could not prove: no runtime error (division by zero: (amount - 1) // (amount - 30)), ...
 ```
 
-Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
-and proves `share` ([Inferred bounds](#inferred-bounds)).
+Without `infer=False`, the report names the precondition the plan needs,
+`(_.amount != 30)`; declare it in `requires`, and `share` is proved
+([Inferred bounds](#inferred-bounds)).
 
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
@@ -407,8 +408,8 @@ wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
 or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316)),
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
-`requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
-assumes inferred bounds, and the job checks it on the data before the run
+`requires` bounds the column. Elsewhere sverify assumes the sum fits, and
+the job checks it on the data before the run
 (`Report.assumed`; an error with `infer=False`). The same holds for an
 operation on finite doubles that may overflow to `±∞`, which the reference
 raises on ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
@@ -432,21 +433,20 @@ print(per_line.run(gcon).to_pylist())
 A guard inside an `AND` or `OR` protects nothing, since DuckDB and Polars
 evaluate both operands (D19 of [core-semantics.md](core-semantics.md)), and
 neither does a guard in one column of a `SELECT` for a division in another.
-Sverify then infers the precondition `n != 0`, checks it on each batch
-before the run, and says where the error sits:
+The report then needs the precondition `n != 0`, and says where the error
+sits:
 
 ```python
 mixed = sv.verify(
-    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n),
-    on_inferred="silent",
+    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
 )
 print(mixed)
-# requires lines: (_.total >= -9 * 10**18) (inferred from total // n)
-# requires lines: (_.n != 0) (inferred from total // n)
+# needs: (_.total >= -9 * 10**18) and (_.n != 0) on lines, inferred from `total // n` ...
 # hint: `total // n` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both operands ...
 ```
 
-`mixed.run(gcon)` refuses this batch, whose second row has `n = 0`, with a
+Declared in `requires`, `n != 0` is checked on each batch before the run,
+and `run` refuses this batch, whose second row has `n = 0`, with a
 `PreconditionError`. Guard the operation itself,
 `ibis.cases((_.n != 0, _.total // _.n))`, and no precondition is needed.
 A constant subexpression that raises, such as `1 // 0 = 1` in a later
@@ -459,23 +459,41 @@ while it plans the query
 An overflow at the declared width is an error (#202), so `amount * 2` on a
 `BIGINT` needs a bound on `amount`. Sverify infers it (#244): for each `+`,
 `-`, `*` by a constant, negation, `abs` and timestamp truncation that may
-leave its range, it works out the range each input column must stay in, and
-adds it to `requires` as if you had written it:
+leave its range, it works out the range each input column must stay in. By
+default the plan is not proved until you declare it, and the report says
+where it came from and how to fix it
+([D23](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
 def twice(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
-twice(orders)
-print(twice.last_report)
+try:
+    twice(orders)
+except VerificationError as e:
+    print(str(e).splitlines()[0])
+# could not prove: without the precondition (_.amount < 2**62) on orders, inferred from `amount * 2` (overflow otherwise): declare it in requires ...
+```
+
+Declare `_.amount < 2**62`, or a tighter bound your data keeps, or filter
+the rows out first. `on_inferred="warn"` assumes the bound with an
+`InferredPreconditionWarning`, and `"silent"` assumes it without one:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
+def twice_assumed(orders):
+    return orders.select(orders.id, twice=orders.amount * 2)
+
+twice_assumed(orders)
+print(twice_assumed.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.twice >= 0): proved
 # ...
 ```
 
-An inferred bound is a precondition like the rest. It is checked on the
+An assumed bound is a precondition like the rest. It is checked on the
 data at call time and on every refresh, or proved from Delta and Iceberg
 file statistics, and refresh reports list it as
 `orders: (_.amount < 2**62) (inferred, checked on data)`. Downstream nodes
@@ -523,8 +541,8 @@ samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name
 per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
     cpu=samples.cpu.sum()
 )
-print(sv.verify(per_minute, on_inferred="silent"))
-# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred from ts.truncate('minute'))
+print(sv.verify(per_minute))
+# needs: (_.ts >= datetime(1, 1, 1)) on samples, inferred from `ts.truncate('minute')` ...
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
