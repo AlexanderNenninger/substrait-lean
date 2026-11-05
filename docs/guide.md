@@ -1435,25 +1435,26 @@ and interval joins are follow-ups in #294.
 ### Engines and SQL
 
 ```python
-import json
+from sverify.engines import run
 
-from sverify.engines import SNOWFLAKE, create_table, run, to_sql  # also DUCKDB, SPARK
-
-plan = c.internal_plan                         # the plan Lean checked
 c.refresh(engine="polars")                     # or "duckdb" (the default), "datafusion", "spark"
+snowflake_sql = c.to_sql("snowflake")          # or "duckdb", "spark"; Unsupported says why
 con = sv.connect()                             # or run a plan on tables of your own
-create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
-             [(2, "bob", 5), (3, "cy", 50)])
-create_table(con, "customers", ibis.schema({"name": "string", "city": "string"}),
-             [("ada", "Paris"), ("cy", "Rome")])
-run(con, plan, "polars")
-snowflake_sql = to_sql(json.loads(plan), SNOWFLAKE)  # or sverify.engines.Unsupported, saying why
+con.create("orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+           [(2, "bob", 5), (3, "cy", 50)])
+con.create("customers", ibis.schema({"name": "string", "city": "string"}),
+           [("ada", "Paris"), ("cy", "Rome")])
+run(con, c.internal_plan, "polars")
 ```
+
+`Node.to_sql` and `Report.to_sql` write the plan a proof checked as DuckDB,
+Snowflake or Spark SQL, with its run-time checks, and refuse a plan that is
+not proved, as `refresh` and `run` refuse it.
 
 `refresh(engine=...)` picks where a node's plans run; `sv.connect(engine=...)`
 and `engine=` on a transform pick where checks on data run.
-`sverify.engines.run_spark(plan, tables)` runs the Spark SQL on a local
-session or one you pass (the `spark` extra). The generated SQL assumes
+`run(con, plan, "spark")` runs the Spark SQL on a local session, and
+`run(con, plan, session)` on one you pass (the `spark` extra). The generated SQL assumes
 the following about the warehouse:
 
 * Snowflake: time columns are `TIMESTAMP_NTZ`, strings have no
@@ -1463,8 +1464,8 @@ the following about the warehouse:
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
 * Both have no row order, so sorts, `LIMIT` and windows are refused unless
-  you pass `deterministic=True` (justified by a report's `deterministic`), and
-  so is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
+  the report is `deterministic` (a key on the order columns in the
+  contract, which `to_sql` reads from the report), and so is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
   the additions. Snowflake has no interval type, so interval-valued
   expressions are refused there.
 
@@ -1841,21 +1842,22 @@ reads the settings the plan will run under and compares them:
 - Another engine version warns (`EngineVersionWarning`), and another major
   version is refused (`EngineVersionError`) until the probes are re-run.
 
-`con.ibis` is the connection's Ibis DuckDB backend, for SQL of your own,
-such as `con.ibis.raw_sql("SELECT current_setting('threads')")`. Sverify
+`lines.get_backend()`, the backend of a table of the connection, is its Ibis
+DuckDB backend, for SQL of your own, such as
+`lines.get_backend().raw_sql("SELECT current_setting('threads')")`. Sverify
 runs plans on a cursor of its own, so a plain `SET` there leaves sverify's
 runs alone, and a `SET GLOBAL` reaches them, which the check sees:
 
 ```python
 from sverify.errors import EngineSettingsError
 
-gcon.ibis.raw_sql("SET GLOBAL integer_division = true")
+lines.get_backend().raw_sql("SET GLOBAL integer_division = true")
 try:
     per_line.run(gcon, "duckdb", route="auto")
 except EngineSettingsError as e:
     print(e)
 # duckdb's integer_division is True, and the facts of semantics="duckdb" hold under False (duckdb-F1): ...
-gcon.ibis.raw_sql("SET GLOBAL integer_division = false")
+lines.get_backend().raw_sql("SET GLOBAL integer_division = false")
 ```
 
 ### Sharding and other optimizations

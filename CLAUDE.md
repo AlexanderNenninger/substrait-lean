@@ -375,10 +375,12 @@ research goes there, whoever does it.
   can't recover; never guess a date or version.
 - `evidence` is the strongest check in `provenance`: `docs` < `source` <
   `engine_test` (the engine's own tests with an expected result, at the
-  release tag: DuckDB's sqllogictests, Polars's unit tests; method
-  `engine-test`, or `replay` through `sverify_dev.slt`) < `probe` (probes,
-  repros) < `fuzz` < `proof`. Research goes in that
-  order, the cheaper kinds first.
+  release tag: DuckDB's sqllogictests, Polars's unit tests, Spark's golden
+  files; method `engine-test`, or `replay` through `sverify_dev.slt`) <
+  `probe` (probes, repros) < `fuzz` < `proof`. Research goes in that
+  order, the cheaper kinds first. For Spark, `sverify_dev.spark_tests`
+  searches the golden files and checks the links, and `sverify_dev.spark_fuzz`
+  fuzzes the open deviations against a model of each fact.
 - `rows` names the rows of the engine choice tables the fact settles: a
   function group of `Functions.lean`, one of its options, and only the types
   its checks covered. `python -m sverify_dev.facts --coverage <engine>` lists

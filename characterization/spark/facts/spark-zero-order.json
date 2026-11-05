@@ -14,7 +14,21 @@
       "group": "cmp",
       "option": "zero_sign",
       "types": [
-        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "agg.order",
+      "option": "zero_sign",
+      "types": [
         "fp64"
       ]
     },
@@ -22,9 +36,9 @@
       "group": "agg.order",
       "option": "zero_sign",
       "types": [
-        "fp32",
-        "fp64"
-      ]
+        "fp32"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -51,7 +65,7 @@
   ],
   "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key and an aggregate's result are never -0.0. Spark's grouping is native; `min`, `max`, `greatest`, `least` and a sorted column need the zero canonicalised where it is observed.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -103,6 +117,22 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "zero_order[0], zero_order[1]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 5784 of 5784 results as the fact says.",
+        "zero_order[0]: 300 rows, `min(x)`, `max(x)`, `count(DISTINCT x)`, 984 of 984 results as the fact says; zero_order[1]: 300 rows, `a = b`, `a < b`, `a <=> b`, `greatest(a, b)`, 4800 of 4800 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

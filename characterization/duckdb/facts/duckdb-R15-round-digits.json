@@ -85,5 +85,6 @@
   "issues": [
     242,
     335
-  ]
+  ],
+  "superseded_by": "duckdb-round-digits-2"
 }

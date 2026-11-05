@@ -16,7 +16,6 @@ from ibis import _
 import sverify as sv
 from sverify.engine import (
     connect,
-    create_table,
     put_table,
     run_checker,
     run_substrait_json,
@@ -55,10 +54,10 @@ tables = st.tuples(
 def test_lean_semantics_match_duckdb(sql, rows):
     r, s = rows
     con = connect()
-    create_table(con, "r", R, r)
-    create_table(con, "s", S, s)
+    con.create("r", R, r)
+    con.create("s", S, s)
     expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": r, "s": s})
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": r, "s": s})
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)
     assert canonical(duckdb_rows(json.dumps(plan))) == canonical(lean)
@@ -67,9 +66,10 @@ def test_lean_semantics_match_duckdb(sql, rows):
 def test_limit_offset_takes_the_right_number_of_rows():
     con = connect()
     rows = [(i, i, i) for i in range(6)]
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     plan = inline_tables(
-        json.loads(substrait_json(con, "SELECT a FROM r LIMIT 3 OFFSET 4")), {"r": rows}
+        json.loads(substrait_json(con, "SELECT a FROM r LIMIT 3 OFFSET 4", semantics="duckdb")),
+        {"r": rows},
     )
     assert lean_rows(json.dumps(plan)) == duckdb_rows(json.dumps(plan)) == [(4,), (5,)]
 
@@ -106,7 +106,7 @@ def test_written_plans_run_on_datafusion(sql):
         schema=pa.schema([("v", pa.float64()), ("w", pa.float64()), ("name", pa.string())]),
     )
     put_table(con, "f", table)
-    plan = substrait_json(con, sql)
+    plan = substrait_json(con, sql, semantics="duckdb")
     got = run_substrait_json(con, written(plan)).to_pylist()
     want = duckdb_sql(con, sql).to_pylist()
     assert canonical(tuple(r.values()) for r in got) == canonical(tuple(r.values()) for r in want)

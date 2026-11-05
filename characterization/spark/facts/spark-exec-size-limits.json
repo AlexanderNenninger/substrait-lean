@@ -23,11 +23,11 @@
     ]
   },
   "description": [
-    "`DECIMAL` precision is at most 38; `DECIMAL(39,0)` raises `DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION` when the query is analysed, and a value past its precision raises (ANSI) or is NULL (spark-decimal-arith). A string or binary is a byte array indexed by `int`, so it holds less than 2 GB; an array holds at most `Integer.MAX_VALUE - 15` elements; a row must fit a task's memory. Past those, Spark raises (e.g. `COLLECTION_SIZE_LIMIT_EXCEEDED`)."
+    "`DECIMAL` precision is at most 38; `DECIMAL(39,0)` raises `DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION` when the query is analysed, and a value past its precision raises (ANSI) or is NULL (spark-decimal-arith): `NUMERIC_VALUE_OUT_OF_RANGE` when it fits 38 digits but not the type, `NUMERIC_OUT_OF_SUPPORTED_RANGE` when its text has more than 38 digits before the point (a long fraction is rounded to the type first). A string or binary is a byte array indexed by `int`, so it holds less than 2 GB; an array holds at most `Integer.MAX_VALUE - 15` elements; a row must fit a task's memory. Past those, Spark raises (e.g. `COLLECTION_SIZE_LIMIT_EXCEEDED`)."
   ],
   "reference": "The reference caps decimals at 38 digits and raises past them; it has no limit on string, blob or list lengths.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -68,6 +68,58 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/literals.sql.out#L173-L186",
+          "note": "a 40-digit integer literal raises `DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION` (`maxPrecision` 38)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/decimalArithmeticOperations.sql.out#L163-L185",
+          "note": "`(5e36BD + 0.1) + 5e36BD` past `decimal(38,1)` raises `NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION` with ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/decimalArithmeticOperations.sql.out#L121-L126",
+          "note": "the same query with ANSI off is NULL, a `decimal(38,1)`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark evidence session",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/api/src/main/scala/org/apache/spark/sql/types/Decimal.scala#L669-L680",
+          "note": "text with more than 38 digits in its integral part is no decimal (`null`, then `NUMERIC_OUT_OF_SUPPORTED_RANGE` under ANSI)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/api/src/main/scala/org/apache/spark/sql/types/Decimal.scala#L694-L703",
+          "note": "`fromStringANSI` raises `outOfDecimalTypeRangeError` for it"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "size_limits[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 964 of 964 results as the fact says.",
+        "size_limits[0]: 300 rows, `CAST(x AS DECIMAL(38,2))`, 964 of 964 results as the fact says (raised: NUMERIC_OUT_OF_SUPPORTED_RANGE 8, NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION 22).",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ]
 }
