@@ -1676,6 +1676,93 @@ runs the exports in `tests/test_substrait_export.py` and gives the
 reference's results; it does not know Substrait's `variance` or
 `shift_left` yet.
 
+### ODCS contracts
+
+The [Open Data Contract Standard](https://bitol-io.github.io/open-data-contract-standard/)
+(ODCS, Bitol, Linux Foundation AI & Data) describes a dataset's contract in
+YAML: its schema, quality rules, descriptions and owners. Sverify writes a
+node's contract as ODCS and reads ODCS contracts as conditions
+([#791](https://github.com/AlexanderNenninger/substrait-lean/issues/791)).
+It writes ODCS v3.2.0 (`sverify.odcs.ODCS_VERSION`), and the tests validate
+every export against that release's JSON schema
+([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
+[test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
+`pip install 'sverify[odcs]'`. JSON needs nothing.
+
+```python
+import pyarrow as pa
+import sverify as sv
+from ibis import _
+from sverify import odcs
+from sverify.io import StaticSource
+
+shop_orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1000, sv.key("id")]},
+    ensures=[_.amount > 10, _.amount < 1000, sv.key("id")],
+)
+def paid_orders(orders):
+    """Paid orders over ten."""
+    return orders.filter(orders.amount > 10)
+
+odcs.write(shop_orders.pipe(paid_orders), "paid.odcs.yaml", descriptions={"id": "the order's id"})
+
+# Another team reads the contract and builds on it.
+paid_contract = odcs.read("paid.odcs.yaml")
+
+@sv.transform(requires={"paid": paid_contract.conditions()}, ensures=[_.doubled > 20])
+def doubled_paid(paid):
+    return paid.select(paid.id, doubled=paid.amount * 2)
+
+print(doubled_paid.check(paid=paid_contract.schema()).proved)
+# True
+```
+
+```bash
+sverify contract export pipelines/orders.py:paid --format odcs -o paid.odcs.yaml
+```
+
+The export is one schema object named after the node, with a property per
+column. Each sverify term maps to its ODCS field:
+
+| Sverify | ODCS |
+|---------|------|
+| a column the node proves NOT NULL | `required: true` |
+| `sv.key(...)`, the first key whose columns are all NOT NULL | `primaryKey`, `primaryKeyPosition` |
+| `sv.unique(col)` | `unique: true` |
+| `sv.unique(a, b)` | a `duplicateValues` rule on the object, `arguments.properties`, `mustBe: 0` |
+| `_.col.isin([...])` | an `invalidValues` rule, `arguments.validValues`, `mustBe: 0` |
+| `sv.max_rows(n)` | a `rowCount` rule, `mustBeLessOrEqualTo: n` |
+| `sv.rows_per(cols, n)` | a `sql` rule counting the keys with more than `n` rows |
+| `sv.references(col, to=...)` | a `foreignKey` relationship on the property |
+| any other row condition, such as a range | a `sql` rule, `SELECT COUNT(*) FROM {object} WHERE NOT COALESCE(<condition>, FALSE)`, `mustBe: 0` |
+| the transform's docstring, `descriptions=` | `description` |
+
+Every flag and rule carries a custom property `sverify` (vendor
+`sverify`) with its `status`: `proved` by the checker, `checked` on the
+data at every refresh (`on_unproved="check"`), or `declared` and
+neither. Its `label` is the condition as the transform states it. The
+document's own `sverify` property names the node, the sha256 of its plan
+(as the sink's [contract record](stability.md) has it) and whether the
+whole contract is proved. Sverify's conditions hold where they are TRUE, so
+the SQL rules count a NULL against the condition, and a value set marks its
+column `required`.
+
+`odcs.read` takes a file, the text or a dict of ODCS 3.0 to 3.2 and gives
+the conditions of each schema object (`conditions(table)`) and its columns
+as an Ibis schema (`schema(table)`), for `requires` on an input or
+`ensures` on a node. It reads the fields of the table above, `enum`, the
+bounds in `logicalTypeOptions`, `nullValues` and `missingValues` rules,
+and any `sql` rule of the form `SELECT COUNT(*) FROM {object} WHERE <rows
+that break it>` that must be 0. ODCS leaves NULLs to `required`, so on a
+column that may be NULL a rule on values lets NULL through. The rules it
+cannot read (free text, another engine's rules, patterns, thresholds other
+than 0, shares of rows, lower bounds on the row count) are listed in
+`unread`, each with the reason, and `read` warns with
+`odcs.UnreadRuleWarning`; `strict=True` raises instead. A round trip, ODCS
+to sverify and back, keeps every rule sverify reads.
+
 ### Reproducible sinks
 
 A stored node's sink commits each epoch once, so a rerun must give the same

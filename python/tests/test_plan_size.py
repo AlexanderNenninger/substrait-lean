@@ -20,6 +20,6 @@ def test_measures():
     }}}}]}  # fmt: skip
     # project, read, its two columns, the call and its two arguments
     assert plan_nodes(plan) == 7
-    nodes, depth = sql_size("SELECT CASE WHEN a THEN CASE WHEN b THEN 1 END END FROM t", "duckdb")
+    tokens, depth = sql_size("SELECT CASE WHEN a THEN CASE WHEN b THEN 1 END END FROM t", "duckdb")
     assert depth == 2
-    assert nodes > 6
+    assert tokens == 14
