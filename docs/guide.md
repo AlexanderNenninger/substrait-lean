@@ -179,7 +179,7 @@ for p in first["duplicate_payments"].preconditions:
     print(p)
 # transactions: unique(txn_id) (checked on data)
 # transactions: (_.amount_cents >= 0) (Delta constraint)
-# transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v1)
+# transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v1)
 
 # A late duplicate of transaction 3 arrives, and transaction 2 is reversed.
 t = DeltaTable(lake / "transactions")
@@ -303,9 +303,10 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it may be FALSE on some rows)
-# ...
-#   total: an integer ≥ 1
+# 1 of 1 postcondition not proved, 1 precondition needed (e.report has the details)
+#   ...
+#   not proved: (_.total > 5): it may be FALSE on some rows ...
+#     would hold with `(_.amount >= 5)` in the requires of 'orders'
 ```
 
 * Conditions are Ibis expressions (`_.amount >= 0`) or SQL snippets
@@ -367,7 +368,7 @@ except VerificationError as e:
   `x IN (0, 1)`, and `isin([0, 1])`, of integers that fill a range is
   read as `x BETWEEN 0 AND 1`, so a column known to lie in `[0, 1]` meets
   it ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
-  `report.not_null` lists the output columns Lean shows are never NULL.
+  `report.not_null` lists the output columns the checker shows are never NULL.
 * Relations between columns: join and filter conditions such as
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
@@ -436,8 +437,10 @@ def share(orders):
 try:
     share(orders)
 except VerificationError as e:
-    print(str(e).splitlines()[0])
-# could not prove: no runtime error (division by zero: (amount - 1) // (amount - 30)), ...
+    print(e)
+# 1 possible runtime error (e.report has the details)
+#   may fail: division by zero: amount // (amount - 30)
+#     hint: state `(_.amount != 30)` in the requires of 'orders'
 ```
 
 Without `infer=False`, the report names the precondition the plan needs,
@@ -485,7 +488,7 @@ mixed = sv.verify(
 )
 print(mixed)
 # needs: (_.total >= -9 * 10**18) and (_.n != 0) on lines, inferred from `total // n` ...
-# hint: `total // n` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both operands ...
+# hint: `total // n` is inside an AND or OR you wrote (`&` or `|`), and DuckDB and Polars evaluate both operands ...
 ```
 
 Declared in `requires`, `n != 0` is checked on each batch before the run,
@@ -515,8 +518,9 @@ def twice(orders):
 try:
     twice(orders)
 except VerificationError as e:
-    print(str(e).splitlines()[0])
-# could not prove: without the precondition (_.amount < 2**62) on orders, inferred from `amount * 2` (overflow otherwise): declare it in requires ...
+    print(e)
+# 1 precondition needed (e.report has the details)
+#   needs: (_.amount < 2**62) on orders, inferred from `amount * 2` (overflow otherwise): declare it in requires ...
 ```
 
 Declare `_.amount < 2**62`, or a tighter bound your data keeps, or filter

@@ -17,7 +17,7 @@ Calling `doubled(orders)` builds the Ibis expression as usual. Before it is
 returned, `substrait-check --contract` tries to *prove* every postcondition
 from the preconditions, the column types and the transformation itself
 (`contract_sound` in `SubstraitLean/Contracts.lean`). An unproved
-postcondition raises `VerificationError` that says what Lean could establish,
+postcondition raises `VerificationError` that says what the checker could establish,
 unless `on_unproved` asks for a runtime check or a warning instead.
 
 Preconditions are assumptions about data that comes from outside, so when the
@@ -95,6 +95,7 @@ from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
     Connection,
     Engine,
+    checker_failed,
     connect,
     connection_of,
     create_table,
@@ -638,7 +639,7 @@ def rows_per(cols: Sequence[str], at_most: int) -> RowsPer:
 
 @dataclass(frozen=True)
 class RelationRows:
-    """What Lean bounds a relation of the transformation's plan by (see
+    """What the checker bounds a relation of the transformation's plan by (see
     `Report.relations`)."""
 
     op: str
@@ -707,9 +708,16 @@ def _relax(expr: ir.BooleanValue, rel: float) -> ir.BooleanValue:
                 if bound_above:
                     return e < k + d if strict else e <= k + d
                 return e > k - d if strict else e >= k - d
+        what = (
+            "it compares two columns"
+            if isinstance(node, ops.Comparison)
+            and not isinstance(node.left, ops.Literal)
+            and not isinstance(node.right, ops.Literal)
+            else f"it is a {node.__class__.__name__}"
+        )
         raise TypeError(
-            "approx relaxes comparisons of a column with a number, combined with AND and OR; "
-            f"it cannot relax {node.__class__.__name__}"
+            f"{what}; sv.approx relaxes comparisons of a column with a number, "
+            "combined with & and |, such as sv.approx(_.mean >= 0)"
         )
 
     return go(expr.op())
@@ -739,7 +747,39 @@ def approx(cond: Any, rel: float = 1e-6) -> Approx:
     """
     if isinstance(cond, str):
         raise TypeError("approx takes an Ibis condition, not SQL; write the slack in the SQL")
+    if isinstance(cond, Deferred):
+        _check_approx(cond)
     return Approx(cond, rel)
+
+
+def _check_approx(cond: Deferred) -> None:
+    """Whether `approx` can relax `cond`, checked when it is called (#687):
+    `cond` is resolved on a table of doubles with the columns it names."""
+    from ibis.common.deferred import Attr, Just
+
+    names: list[str] = []
+
+    def walk(r: Any) -> None:
+        if isinstance(r, Deferred):
+            r = r._resolver
+        if isinstance(r, Attr) and isinstance(r.name, Just) and isinstance(r.name.value, str):
+            names.append(r.name.value)
+        for slot in getattr(r, "__slots__", ()):
+            v = getattr(r, slot, None)
+            for x in v if isinstance(v, tuple | list) else (v,):
+                if hasattr(x, "__slots__"):
+                    walk(x)
+
+    walk(cond)
+    try:
+        table = ibis.table({n: "float64" for n in dict.fromkeys(names)}, name="t")
+        expr = cond.resolve(table)
+    except Exception:  # noqa: BLE001 - checked again when verified
+        return
+    try:
+        _relax(expr, 1e-6)
+    except TypeError as e:
+        raise TypeError(f"sv.approx({label(cond)}): {e}") from None
 
 
 Semantics = Literal["reference", "duckdb", "polars", "substrait"]
@@ -850,9 +890,9 @@ class CheckedCondition:
     label: str
     """The condition as written, e.g. "(_.amount >= 0)" or "unique(id)"."""
     proved: bool
-    """Whether Lean proved it."""
+    """Whether the checker proved it."""
     value: str
-    """What Lean established about the condition, e.g. "TRUE or NULL"."""
+    """What the checker established about the condition, e.g. "TRUE or NULL"."""
     counterexample: Counterexample | None = None
     """For an unproved condition: inputs meeting the preconditions on which
     it fails, if the search (`sverify.counterexample`) found one."""
@@ -862,7 +902,7 @@ class CheckedCondition:
     node at every refresh before its sink commits."""
     suggested: dict[str, list[Condition]] = field(default_factory=dict)
     """For an unproved condition: preconditions on the inputs, per table,
-    under which Lean proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
+    under which the checker proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
     Never assumed: adding them is the author's choice."""
     ignores: tuple[str, ...] = ()
     """The components of the observation (`sv.equivalent`) the condition
@@ -882,6 +922,10 @@ class CheckedCondition:
     """The condition as it was given in `ensures` (a SQL string, an Ibis
     expression, `unique(...)`, …), to pair the result with it; None for a
     report not built by `verify` or a transform."""
+    detail: str | None = None
+    """Why it is not proved, in the user's terms, where the report found
+    more than the checker's value says (`_key_reasons`, `_null_reasons`,
+    #688): `why` reads it first."""
 
     @property
     def reason(self) -> UnprovedReason | None:
@@ -925,38 +969,28 @@ class CheckedCondition:
 
     @property
     def why(self) -> str:
-        """Why it is not proved, in words: what Lean found the condition may
+        """Why it is not proved, in words: what the checker found the condition may
         be on a row that meets the preconditions, and, where it may be NULL,
         how to rule that out."""
+        if self.detail is not None:
+            return self.detail
         if self.value == "not shown to be a key":
-            m = re.fullmatch(r"unique\((.*)\)", self.label)
-            cols = ", ".join(repr(c) for c in m[1].split(", ")) if m else "..."
-            return (
-                "the preconditions do not make it a key: add "
-                f"sv.unique({cols}) on the input it comes from to requires"
-            )
+            return "the preconditions do not make it a key"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if "TRUE" not in parts and parts == {"FALSE"}:
             return "it is FALSE on every row"
         bad = [v for v in ("FALSE", "NULL") if v in parts]
         if not bad:
-            return f"Lean only knows it is {self.value}"
+            return f"the checker only knows it is {self.value}"
         why = f"it may be {' or '.join(bad)} on some rows"
         if bad != ["NULL"]:
             # NULL is one way among others to fail: making a column NOT NULL
             # does not prove it.
             pass
         elif self.nullable is None:
-            why += (
-                ", where a column it reads is NULL: declare the column NOT NULL in the schema "
-                "(`!int64`) or add `_.<column>.notnull()` to `requires`"
-            )
+            why += ", where a column it reads is NULL"
         elif self.nullable:
-            col = self.nullable[0]
-            why += (
-                f", where {', '.join(self.nullable)} is NULL: declare it NOT NULL in the "
-                f"schema (`!int64`) or add `_.{col}.notnull()` to `requires`"
-            )
+            why += f", where {', '.join(self.nullable)} is NULL"
         return why
 
     @property
@@ -1123,6 +1157,12 @@ class Issue:
     """The preconditions that rule it out, as labels per input table
     (`{"orders": ("(_.qty != 0)",)}`), where the inference found them: what
     `hint` says to state in `requires`, as data. Empty where it found none."""
+    hint_needs: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    """The preconditions per input table that `hint` proposes, as code; a
+    hint is shown only where a proof with them rules the issue out
+    (`_confirm_hints`, #688)."""
+    unconfirmed: str | None = field(default=None, repr=False, compare=False)
+    """The hint to show instead where a proof does not confirm `hint`."""
 
     @property
     def what(self) -> str:
@@ -1148,7 +1188,7 @@ class Issue:
 
 @dataclass
 class Report:
-    """What Lean proved about a transformation, returned by `verify` and kept
+    """What the checker proved about a transformation, returned by `verify` and kept
     in `ContractedTransform.last_report`.
 
     `str(report)` lists each postcondition with its status, the possible
@@ -1160,14 +1200,14 @@ class Report:
     """The preconditions that were assumed, as labels, per input table."""
     ensures: list[CheckedCondition]
     """Each postcondition, in the order given: its label, whether it was
-    proved, what Lean established about it, and a counterexample if one was
+    proved, what the checker established about it, and a counterexample if one was
     found."""
     facts: dict[str, str] = field(default_factory=dict)
-    """What Lean established about each output column."""
+    """What the checker established about each output column."""
     not_null: list[str] = field(default_factory=list)
-    """The output columns Lean proved never NULL, from what it established
-    about them (`facts`), in the output's order. A stored node of a proved
-    report writes them as NOT NULL columns."""
+    """The output columns the checker proved never NULL, from what it
+    established about them (`facts`), in the output's order. A stored node
+    of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """False when rows may tie in the ORDER BY of a window or of an ordered
     aggregate (`first`, `last`, `group_concat`; without an `order_by` every
@@ -1183,7 +1223,7 @@ class Report:
     """Where the plan leaves the order of ties open (D24), one entry per
     window, ordered aggregate or `LIMIT`; empty when `deterministic`."""
     issues: list[Issue] = field(default_factory=list)
-    """Runtime errors, SUM overflows among them, Lean could not rule out; when
+    """Runtime errors, SUM overflows among them, the checker could not rule out; when
     empty, the transformation provably runs without them."""
     guard_free: bool = False
     """The only issues are assumed ones (`SUM`s that may overflow, double
@@ -1298,13 +1338,13 @@ class Report:
     comparison on a double whose threshold lies within `ε` of its range may
     flip. None where the checker does not say."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
+    """The language of the transformation: the report names functions and
+    writes code in it."""
     ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
-    language: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
-    """The language of the transform the report is about: an Ibis
-    expression or SQL. `needed_conditions` writes the conditions in it."""
     on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
@@ -1718,7 +1758,7 @@ class Report:
         """
         out: dict[str, list[Condition]] = {}
         for n in self.needs:
-            cond = _needed_deferred(n) if self.language == "ibis" else None
+            cond = _needed_deferred(n) if self.dialect == "ibis" else None
             out.setdefault(n.table, []).append(cond if cond is not None else n.sql)
         return out
 
@@ -1734,7 +1774,7 @@ class Report:
         return (
             f"{both} on {table}{where}: declare {it} in requires (each run then checks "
             f"{it} on the data), or rewrite so no row needs {it} (`{table}.filter({cond})` "
-            f"first, or a CASE); on_inferred='warn' or 'silent' assumes {it}"
+            f"first, or a CASE); on_inferred='warn' assumes {it} instead"
         )
 
     def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
@@ -1782,7 +1822,7 @@ class Report:
         prints them after "note: ": that rows may tie in an `ORDER BY`
         (`deterministic` is False, `ties` says which keys would help), and
         that the proof holds for the `params` given only."""
-        out = [] if self.deterministic else [TIES_HINT]
+        out = [] if self.deterministic else [self._ties_hint()]
         if self.params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self.params)}")
         return out
@@ -1834,8 +1874,60 @@ class Report:
             return [*self.hints, OVERFLOW_HINT]
         return self.hints
 
+    @property
+    def verdict(self) -> str:
+        """The report's first line: "proved", or "NOT proved: " and what is
+        missing, counted ("1 of 2 postconditions not proved, 1 possible
+        runtime error")."""
+        return "proved" if self.proved else f"NOT proved: {', '.join(self._counts())}"
+
+    def _counts(self) -> list[str]:
+        """What keeps the plan from being proved, counted."""
+
+        def n(k: int, one: str, many: str | None = None) -> str:
+            return f"{k} {one if k == 1 else many or one + 's'}"
+
+        out = []
+        if unproved := self.unproved:
+            out.append(f"{len(unproved)} of {n(len(self.ensures), 'postcondition')} not proved")
+        if ignored := [c for c in self.ensures if c.proved and c.ignores]:
+            out.append(
+                f"{n(len(ignored), 'postcondition')} "
+                f"{'depends' if len(ignored) == 1 else 'depend'} on what the observation ignores"
+            )
+        if self.errors:
+            out.append(n(len(self.errors), "possible runtime error"))
+        if needed := sum(len(v) for v in self.needed.values()):
+            out.append(n(needed, "precondition") + " needed")
+        if self.transfer:
+            out.append(n(len(self.transfer), "option") + " where Substrait allows more")
+        if self.floats_unmet:
+            out.append("no engine's doubles meet the observation")
+        return out or ["see the report"]
+
+    def _ties_hint(self) -> str:
+        """The note on ties (#688): where the order is open, and the key
+        that closes it, where one on an input reaches the ORDER BY."""
+        from sverify._user_text import named
+
+        out = TIES_HINT.format(_ORDERED.get(self.dialect, _ORDERED["ibis"]))
+        plan = json.loads(self.plan) if self.plan else None
+        places = [named(t.what, plan) for t in self.tie_places]
+        if places and all(places):
+            out += f" ({'; '.join(dict.fromkeys(p for p in places if p))})"
+        if self.ties:
+            keys = " and ".join(
+                f"{', '.join(f'`{k}`' for k in ks)} in the requires of {t!r}"
+                for t, ks in self.ties.items()
+            )
+            return f"{out}. For a reproducible result, declare {keys}"
+        return (
+            f"{out}. For a reproducible result, order by columns that are unique there; "
+            "no key on an input that sverify follows reaches them"
+        )
+
     def __str__(self) -> str:
-        lines = []
+        lines = [self.verdict]
         needed = self.needed
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self.inferred.get(table, [])}
@@ -1907,7 +1999,8 @@ class Report:
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
             facts.insert(0, f"| (rows) | at most {self.rows:,} |")
-        note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
+        note = [f"**{self.verdict}**", ""]
+        note += [] if self.deterministic else [f"> ⚠️ {self._ties_hint()}", ""]
         if self.params:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
         if inferred:
@@ -1941,21 +2034,26 @@ PARAMS_NOTE = "proved for these parameter values only"
 #: How a report marks a postcondition `on_unproved="runtime"` checks on data.
 DATA_CHECK = "checked on the output data"
 
+#: The functions whose order of ties is open, in each input language.
+_ORDERED = {
+    "ibis": "first(), last(), group_concat(), mode(), argmin() or argmax()",
+    "sql": "FIRST, LAST, STRING_AGG, MODE, ARG_MIN or ARG_MAX",
+}
+
 TIES_HINT = (
-    "rows may tie in the ORDER BY of a window, of a LIMIT or of first(), last(), "
-    "group_concat(), mode(), argmin() or argmax(), so the engine decides their order and a "
-    "rerun may give other rows. The postconditions are proved for every order (D24); for a "
-    "reproducible result, declare `unique(...)` on the partition (or grouping) and order "
-    "columns of the input."
+    "rows may tie in the ORDER BY of a window, of a LIMIT or of {}, so the engine "
+    "decides their order and a rerun may give other rows. The postconditions are "
+    "proved for every order"
 )
 
 
 class VerificationError(SverifyError):
     """A postcondition, or the absence of runtime errors, could not be proved.
 
-    Import it from `sverify.errors`. The message names each unproved
-    postcondition with what Lean established about it, and each possible
-    runtime error, followed by the full report.
+    Import it from `sverify.errors`. The message's first line counts what
+    is missing; then one line per finding: each needed precondition, each
+    unproved postcondition with what the checker established about it, and
+    each possible runtime error with its hint. `report` holds the rest.
 
     Attributes:
         report: The `Report` of the failed proof.
@@ -1963,10 +2061,36 @@ class VerificationError(SverifyError):
 
     def __init__(self, report: Report):
         self.report = report
-        problems = [f"{c.label} ({c.why})" for c in report.unproved]
-        problems += [f"no runtime error ({i})" for i in report.errors]
-        problems += [f"without the precondition {n}" for n in report.needs_lines()]
-        super().__init__(f"could not prove: {', '.join(problems)}\n{report}")
+        super().__init__(error_text(report))
+
+
+def error_text(report: Report) -> str:
+    """A `VerificationError`'s message (#687): what is missing, counted, and
+    one line per finding with its hint, each hint once; `e.report` has the
+    full report."""
+    lines = [f"{', '.join(report._counts())} (e.report has the details)"]
+    lines += [f"  needs: {n}" for n in report.needs_lines()]
+    for c in report.ensures:
+        if not c.proved:
+            line = f"  not proved: {c.label}: {c.why}"
+            if c.counterexample is not None:
+                line += f" (counterexample: {c.counterexample})"
+            lines.append(line)
+            if c.suggested:
+                lines.append(f"    {_would_hold(c)}")
+        elif c.ignores:
+            lines.append(f"  not proved: {c.label}: {_observation.why(c.ignores)}")
+    hints: list[str] = []
+    for i in report.errors:
+        lines.append(f"  may fail: {i.message}")
+        if i.hint and i.hint not in hints:
+            hints.append(i.hint)
+            lines.append(f"    hint: {i.hint}")
+    lines += [f"  hint: {h}" for h in report._hints() if h not in hints]
+    lines += [f"  {_transfer_failure(f)}" for f in report.transfer or ()]
+    if report.floats_unmet:
+        lines.append(f"  doubles: {report.floats_unmet}")
+    return "\n".join(lines)
 
 
 class PreconditionError(SverifyError):
@@ -2009,7 +2133,7 @@ class PostconditionError(SverifyError):
     """Output data violates a postcondition (only raised by runtime checks).
 
     Import it from `sverify.errors`. Raised with `on_unproved="runtime"`,
-    when a postcondition Lean could not prove fails on the output rows. The
+    when a postcondition the checker could not prove fails on the output rows. The
     message says how many output rows violate which condition.
     """
 
@@ -2508,7 +2632,7 @@ def _why_hint(why: str, show: Callable[[str], str]) -> str:
     m = re.fullmatch(r"(it divides by|it reads|its base is) (.+)(, which .*)", why)
     if m:
         why = f"{m[1]} `{show(m[2])}`{m[3]}"
-    return f"no bound on an input column rules it out: {why}"
+    return f"sverify found no bound on an input column that rules it out: {why}"
 
 
 def _hint(
@@ -2552,7 +2676,9 @@ def label(cond: Condition) -> str:
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
-        return repr(cond)
+        from sverify._user_text import deferred_text
+
+        return deferred_text(cond)
     return getattr(cond, "__name__", repr(cond))
 
 
@@ -2928,7 +3054,7 @@ def infer_bounds(
         out.floats_on = _routes.floats_on(out)
     out.on_inferred = _checked_on_inferred(on_inferred)
     if not out.deterministic and not isinstance(transform, str):
-        out.ties = tie_keys(transform)
+        out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
     if on_inferred == "warn" and out.inferred:
         warnings.warn(
             "assumed inferred precondition(s): "
@@ -3100,15 +3226,28 @@ def _infer_bounds(
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
         return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
 
+    def finish(report: Report, schemas: Mapping[str, Any], widened) -> Report:
+        """The reasons and hints each confirmed by a proof (#688)."""
+
+        def proves(cond: Condition) -> bool:
+            again = _verify_once(transform, widened, [cond], tables, 0, params, inputs, semantics)
+            return all(e.proved for e in again[0].ensures)
+
+        report = _confirm_suggestions(report, requires, once)
+        report = _key_reasons(transform, report, requires, ensures, schemas, inputs, once)
+        report = _null_reasons(transform, report, ensures, proves)
+        return _confirm_hints(report, requires, once)
+
     if not infer:
-        return _confirm_suggestions(once(requires, counterexamples)[0], requires, once)
+        report, _raw, schemas = once(requires, counterexamples)
+        return finish(report, schemas, requires)
     # Counterexamples only for the final proof.
     report, raw, schemas = once(requires, 0)
     extra = {
         t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
     }
     if extra:
-        guarded = and_or_hints(report.issues)
+        guarded = and_or_hints(report.issues, transform)
         widened = {t: list(cs) for t, cs in requires.items()}
         _merge(widened, extra)
         first = report.issues
@@ -3127,7 +3266,9 @@ def _infer_bounds(
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
     report = _null_preconditions(transform, report, requires, ensures, inputs, once)
-    report = _confirm_suggestions(report, requires, once)
+    widened = {t: list(cs) for t, cs in requires.items()}
+    _merge(widened, report.inferred)
+    report = finish(report, schemas, widened)
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
     # runs: the row caps (#219) and the bounds do not rule them out.
@@ -3197,6 +3338,165 @@ def _null_preconditions(
     again.inferred_from = {**report.inferred_from, **source}
     again.hints = report.hints
     return again
+
+
+def _confirm_hints(report: Report, requires, once) -> Report:
+    """`report` with only the hints a proof confirms (#688): each possible
+    runtime error whose hint proposes preconditions is verified again with
+    them added to `requires` (and to what was inferred), and its hint is
+    dropped if the error remains."""
+    tried: dict[str, set[tuple[str, str]]] = {}
+    issues = []
+    for i in report.issues:
+        if i.hint_needs:
+            key = repr(sorted((t, sorted(label(c) for c in cs)) for t, cs in i.hint_needs.items()))
+            if key not in tried:
+                widened = {t: list(cs) for t, cs in requires.items()}
+                _merge(widened, report.inferred)
+                _merge(widened, i.hint_needs)
+                again = once(widened, 0)[0]
+                tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
+            if (i.kind, i.expr) in tried[key]:
+                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, suggested={})
+        issues.append(i)
+    return replace(report, issues=issues)
+
+
+def _key_sources(
+    transform: Transform, cols: Sequence[str], schemas: Mapping[str, Any]
+) -> tuple[str, list[str]] | None:
+    """The input table and its columns an output key comes from: traced
+    through an Ibis expression, or for SQL, the one input with every column
+    of the same name."""
+    if isinstance(transform, str):
+        origins = [_sql_origin(transform, c, schemas) for c in cols]
+    else:
+        origins = [_origin(transform.op(), c) for c in cols]
+    if any(o is None for o in origins) or len({o[0] for o in origins if o}) != 1:
+        return None
+    return origins[0][0], [o[1] for o in origins if o]  # type: ignore[index]
+
+
+def _sql_origin(sql: str, col: str, schemas: Mapping[str, Any]) -> tuple[str, str] | None:
+    """The input table and column a SQL query's output column passes on
+    unchanged (SQLGlot's lineage), if there is one."""
+    import sqlglot.expressions as exp
+    from sqlglot.lineage import lineage
+
+    try:
+        schema = {t: {c: str(d) for c, d in sch.items()} for t, sch in schemas.items()}
+        root = lineage(col, sql, schema=schema, dialect="duckdb")
+        nodes = list(root.walk())
+    except Exception:  # noqa: BLE001 - no lineage, no origin
+        return None
+    leaves = [n for n in nodes if not n.downstream]
+    for n in nodes:
+        e = n.expression.this if isinstance(n.expression, exp.Alias) else n.expression
+        if not isinstance(e, exp.Column | exp.Table):
+            return None
+    if len(leaves) != 1 or not isinstance(leaves[0].source, exp.Table):
+        return None
+    table = leaves[0].source.name
+    return (table, leaves[0].name.split(".")[-1]) if table in schemas else None
+
+
+def _key_reasons(
+    transform: Transform,
+    report: Report,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    schemas: Mapping[str, Any],
+    inputs: Collection[str] | None,
+    once: Callable[..., Any],
+) -> Report:
+    """`report` with the reason each unproved `unique(...)` is not a key, in
+    terms of the input it comes from (#688): declare the input's key where
+    that proves it (checked), say the key is lost on the way where it is
+    already declared, or that no key on an input reaches the column."""
+    keys = {label(c): c for c in ensures if isinstance(c, Unique)}
+    ensured = []
+    for c in report.ensures:
+        key = keys.get(c.label)
+        if c.proved or key is None:
+            ensured.append(c)
+            continue
+        src = _key_sources(transform, key.cols, schemas)
+        out = ", ".join(f"`{x}`" for x in key.cols)
+        if src is None:
+            reason = (
+                f"{out} {'is' if len(key.cols) == 1 else 'are'} computed, or "
+                f"{'comes' if len(key.cols) == 1 else 'come'} from several inputs, "
+                "and no key on an input makes it a key here"
+            )
+        else:
+            t, base = src
+            want = unique(*base)
+            where = ", ".join(f"{t}.{b}" for b in base)
+            stated = {label(x) for x in requires.get(t, [])}
+            came = f"{out} {'comes' if len(key.cols) == 1 else 'come'} from {where}"
+            if want.label in stated:
+                reason = (
+                    f"{came}, whose key {want.label} is lost on the way: a join, a union "
+                    "or an UNNEST can repeat a value"
+                )
+            elif inputs is not None and t not in inputs:
+                reason = f"{came}, which has no key on it"
+            else:
+                widened = {k: list(v) for k, v in requires.items()}
+                _merge(widened, report.inferred)
+                widened.setdefault(t, []).append(want)
+                again = once(widened, 0)[0]
+                if any(e.label == c.label and e.proved for e in again.ensures):
+                    code = "sv.unique(" + ", ".join(repr(b) for b in base) + ")"
+                    reason = f"{came}: declare `{code}` in the requires of {t!r}"
+                else:
+                    reason = (
+                        f"{came}, and a key there does not make it one here: a join or a "
+                        "union can repeat a value"
+                    )
+        ensured.append(replace(c, detail=f"the preconditions do not make it a key: {reason}"))
+    return replace(report, ensures=ensured)
+
+
+def _null_reasons(
+    transform: Transform,
+    report: Report,
+    ensures: Sequence[Condition],
+    proves: Callable[[Condition], bool],
+) -> Report:
+    """`report` with a way out for each postcondition that fails only on
+    NULL (#688): allowing NULL in the column that is NULL, as code in the
+    transformation's language, where the checker proves the condition so
+    relaxed."""
+    conds = {label(c): c for c in ensures if not isinstance(c, TableCondition)}
+    ensured = []
+    for c in report.ensures:
+        cond = conds.get(c.label)
+        parts = set(c.value.replace(" or ", ", ").split(", "))
+        if c.proved or cond is None or c.detail or "FALSE" in parts or "NULL" not in parts:
+            ensured.append(c)
+            continue
+        cols = c.nullable if c.nullable is not None else _reads(cond, report.output) or ()
+        for col in [x for x in cols if "NULL" in report.facts.get(x, "NULL")]:
+            if isinstance(cond, str) and isinstance(transform, str):
+                relaxed: Condition = f"({cond}) OR {col} IS NULL"
+                code = relaxed
+            elif isinstance(cond, Deferred):
+                relaxed = cond | getattr(ibis._, col).isnull()
+                code = label(relaxed)
+            else:
+                continue
+            if proves(relaxed):
+                c = replace(
+                    c,
+                    detail=(
+                        f"it may be NULL on some rows, where {col} is NULL: to allow that, "
+                        f"state `{code}`"
+                    ),
+                )
+                break
+        ensured.append(c)
+    return replace(report, ensures=ensured)
 
 
 def _confirm_suggestions(report: Report, requires, once) -> Report:
@@ -3276,12 +3576,32 @@ def _verify_once(
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t, c), c, lift(c))) for t, c in req_conds]
+
+    def query(where: str, n: int, table: Transform, c: Condition) -> Transform:
+        """`condition_query`, with an Ibis error named by the condition it
+        is in (#687)."""
+        from ibis.common.exceptions import IbisError
+
+        try:
+            return condition_query(table, c, lift(c))
+        except IbisError as e:
+            msg = f"{where} condition {n}, {label(c)}, does not type-check: {e}"
+            try:
+                err = type(e)(msg)
+            except Exception:  # noqa: BLE001 - an error class with another signature
+                err = TypeError(msg)
+            raise err from e
+
+    req_plans = []
+    for t, cs in requires.items():
+        for n, c in enumerate(cs, start=1):
+            if not isinstance(c, TableCondition):
+                req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
     ens_plans = []
-    for c in ensures:
+    for n, c in enumerate(ensures, start=1):
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(output(c), c, lift(c)))
+        p = plan(query("ensures", n, output(c), c))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)
@@ -3320,7 +3640,7 @@ def _verify_once(
         contract["profile"] = semantics
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
-        raise ValueError(f"substrait-check --contract failed: {stderr.strip()}")
+        raise checker_failed("--contract", stderr)
     out = json.loads(stdout)
     if semantics in _PROFILE_REQUESTS and out.get("profile") != semantics:
         raise ValueError(
@@ -3378,16 +3698,31 @@ def _verify_once(
                 CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
             )
         checked[-1].condition = c
-    from sverify._user_text import user_expr
+    from sverify import _user_text
 
-    dialect = "sql" if isinstance(transform, str) else "ibis"
+    dialect: _user_text.Dialect = "sql" if isinstance(transform, str) else "ibis"
+    seen = _user_text.columns(transform_plan)
+    temporal = {
+        c for sch in [*schemas.values(), result] for c, t in sch.items() if t.is_timestamp()
+    }
+
+    def shown(e: str, measure: bool = False) -> str | None:
+        n = _user_text.named(e, transform_plan, measure, seen)
+        return None if n is None else _user_text.pretty(n, dialect, temporal)
 
     def show(e: str) -> str:
-        return user_expr(e, transform_plan, dialect) or e
+        return shown(e) or e
 
+    raw_issues = [
+        i
+        for i in out["issues"]
+        # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
+        # semantics allows it, as DuckDB gives ±∞.
+        if semantics == "reference" or i["kind"] != INFINITE
+    ]
     report = Report(
         semantics=semantics,
-        language=dialect,
+        dialect=dialect,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
@@ -3399,45 +3734,17 @@ def _verify_once(
         deterministic=out["deterministic"],
         windows_total=out.get("windows_total", out["deterministic"]),
         tie_places=tie_places(out),
-        issues=[
-            Issue(
-                i["kind"],
-                i["expr"],
-                # Lean keeps the IEEE value of an overflow to ±∞ (#575), and
-                # a report counts it as a `SUM` overflow: assumed with `infer`,
-                # an error without.
-                i["error"] or i["kind"] == INFINITE,
-                CONSTANT_HINT
-                if i.get("constant")
-                else _hint(i["bound"], schemas, assumable, show)
-                if i["error"]
-                else INFINITE_HINT
-                if i["kind"] == INFINITE
-                else None,
-                _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
-                i.get("constant", False),
-                i.get("under_and_or", False),
-                tuple(
-                    label(c)
-                    for cs in _render_needs(i["bound"]["needs"], schemas).values()
-                    for c in cs
-                )
-                if i["bound"] and i["bound"].get("why") is None
-                else (),
-                user_expr(i["expr"], transform_plan, dialect),
-                {
-                    t: tuple(label(c) for c in cs)
-                    for t, cs in _render_needs(i["bound"]["needs"], schemas).items()
-                    if cs
-                }
-                if i["error"] and i["bound"] and i["bound"].get("why") is None
-                else {},
-            )
-            for i in out["issues"]
-            # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
-            # semantics allows it, as DuckDB gives ±∞.
-            if semantics == "reference" or i["kind"] != INFINITE
-        ],
+        issues=_issues(
+            raw_issues,
+            # Ibis's `//` and `%` floor, and the producer writes them in the
+            # reference's form (`floorDivOf`), as does a FLOOR option.
+            floor=dialect == "ibis" or '"FLOOR"' in json.dumps(transform_plan),
+            hint=lambda b: _hint(b, schemas, assumable, show),
+            needs=lambda b: _render_needs(b["needs"], schemas),
+            column=lambda e: _sum_column(transform, e),
+            shown=shown,
+            guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
+        ),
         guard_free=out["guard_free"],
         unchecked=out.get("unchecked"),
         optimized=out["optimized"],
@@ -3462,12 +3769,171 @@ def _verify_once(
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
-    report.hints += and_or_hints(report.issues)
+    report.hints += and_or_hints(report.issues, transform)
     if not isinstance(transform, str):
         report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
         if semantics != "polars":
             report.hints += division_hints(transform)
     return report, out["inferred"], schemas
+
+
+def _guess_bounds(
+    shown: str, schemas: Mapping[str, ibis.Schema], assumable: Container[str], dialect: str
+) -> dict[str, list[Condition]]:
+    """Bounds on the input columns an expression names, wide enough for
+    most data: timestamps and dates in [1900, 2200), integers within ±10⁹,
+    doubles and decimals within ±10⁶.
+    A hint proposes them only where a proof confirms they rule its issue
+    out (`_confirm_hints`, #688)."""
+    names = set(re.findall(r"(?<![\w.'\"])([A-Za-z_]\w*)\b(?!\s*\()", shown))
+    names |= set(re.findall(r"\w+\(([A-Za-z_]\w*)\)", shown))
+    out: dict[str, list[Condition]] = {}
+    for t, schema in schemas.items():
+        if t not in assumable:
+            continue
+        for col, dtype in schema.items():
+            if col not in names:
+                continue
+            q = f'"{col}"' if not col.isidentifier() else col
+            if dtype.is_timestamp() or dtype.is_date():
+                ctor, sql = ("datetime", "TIMESTAMP") if dtype.is_timestamp() else ("date", "DATE")
+                lo, hi = (datetime, datetime) if ctor == "datetime" else (date, date)
+                conds: list[Condition] = (
+                    [getattr(ibis._, col) >= lo(1900, 1, 1), getattr(ibis._, col) < hi(2200, 1, 1)]
+                    if dialect == "ibis"
+                    else [f"{q} >= {sql} '1900-01-01'", f"{q} < {sql} '2200-01-01'"]
+                )
+            elif dtype.is_integer():
+                conds = (
+                    [getattr(ibis._, col) >= -1_000_000_000, getattr(ibis._, col) <= 1_000_000_000]
+                    if dialect == "ibis"
+                    else [f"{q} >= -1000000000", f"{q} <= 1000000000"]
+                )
+            elif dtype.is_floating() or dtype.is_decimal():
+                conds = (
+                    [getattr(ibis._, col) >= -1_000_000, getattr(ibis._, col) <= 1_000_000]
+                    if dialect == "ibis"
+                    else [f"{q} >= -1000000", f"{q} <= 1000000"]
+                )
+            else:
+                continue
+            out.setdefault(t, []).extend(conds)
+    return out
+
+
+def _merged_bound(bounds: Sequence[dict | None]) -> dict | None:
+    """One inference result for the issues reported as one (`_issues`): the
+    bounds each needs, the tightest per column, where every one has bounds;
+    else the first reason none does."""
+    if len(bounds) == 1:
+        return bounds[0]
+    found = [b for b in bounds if b is not None]
+    if len(found) < len(bounds):
+        return next((b for b in found if b["why"] is not None), None)
+    if why := next((b for b in found if b["why"] is not None), None):
+        return why
+    ranges: dict[tuple[str, int], dict] = {}
+    other: list[dict] = []
+    for b in found:
+        for n in b["needs"]:
+            if "lo" not in n and "hi" not in n:
+                if n not in other:
+                    other.append(n)
+                continue
+            have = ranges.setdefault((n["table"], n["col"]), {**n})
+            for k, pick in (("lo", max), ("hi", min)):
+                vals = [int(v) for v in (have.get(k), n.get(k)) if v is not None]
+                have[k] = str(pick(vals)) if vals else None
+    return {
+        "why": None,
+        "split": any(b["split"] for b in found),
+        "needs": [*ranges.values(), *other],
+    }
+
+
+def _issues(
+    raw: Sequence[dict],
+    floor: bool,
+    hint: Callable[[dict | None], str | None],
+    needs: Callable[[dict], Mapping[str, Sequence[Inferred]]],
+    column: Callable[[str], str | None],
+    shown: Callable[..., str | None],
+    guess: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
+) -> list[Issue]:
+    """The checker's issues, one per expression the user wrote and kind
+    (#687): the sub-expressions of an expression that may overflow, and the
+    branches of the reference's form of a floor division (`_user_text.fold`),
+    are reported as the expression, with the bounds that rule out all of
+    them."""
+    from sverify._user_text import fold
+
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for kind in dict.fromkeys(i["kind"] for i in raw):
+        members = [i for i in raw if i["kind"] == kind]
+        for i, key in zip(members, fold([i["expr"] for i in members], floor), strict=True):
+            groups.setdefault((kind, key), []).append(i)
+    out = []
+    for (kind, expr), members in groups.items():
+        error = any(i["error"] for i in members) or kind == INFINITE
+        constant = any(i.get("constant", False) for i in members)
+        bound = _merged_bound([i["bound"] for i in members])
+        if constant:
+            text = CONSTANT_HINT
+        elif any(i["error"] for i in members):
+            text = hint(bound)
+        else:
+            text = INFINITE_HINT if kind == INFINITE else None
+        code: Mapping[str, Sequence[Condition]] = (
+            needs(bound) if bound and bound.get("why") is None else {}
+        )
+        named_as = expr
+        if m := re.fullmatch(r"TO_DECIMAL_(\d+)\(.*\)", expr):
+            # A double's cast to a decimal: the precision is the cast's
+            # around it, `DECIMAL_p_s(TO_DECIMAL_s(x))`.
+            outer = re.compile(rf"DECIMAL_(\d+)_{m[1]}\({re.escape(expr)}\)")
+            if found := next((x for i in raw if (x := outer.search(i["expr"]))), None):
+                named_as = found[0]
+        user = shown(named_as, kind in ("SUM overflow", INFINITE))
+        fallback = None
+        # The inference does not reach the columns (a window's value, a cast):
+        # bounds on the columns the expression names, if a proof confirms
+        # them (#688).
+        guessed = (
+            guess(user) if error and not constant and bound and bound.get("why") and user else {}
+        )
+        if guessed:
+            code, fallback = guessed, text
+            text = (
+                "bound the columns it reads: state "
+                + " and ".join(
+                    f"{', '.join(f'`{label(c)}`' for c in cs)} in the requires of {t!r}"
+                    for t, cs in guessed.items()
+                )
+                + " (or tighter bounds your data keeps)"
+            )
+        out.append(
+            Issue(
+                kind,
+                expr,
+                # Lean keeps the IEEE value of an overflow to ±∞ (#575), and
+                # a report counts it as a `SUM` overflow: assumed with
+                # `infer`, an error without.
+                error,
+                text,
+                column(expr) if kind == "SUM overflow" else None,
+                constant,
+                any(i.get("under_and_or", False) for i in members),
+                tuple(label(c) for cs in code.values() for c in cs) if not fallback else (),
+                user,
+                # The inference's preconditions, as data; a guess is not one.
+                {t: tuple(label(c) for c in cs) for t, cs in code.items() if cs}
+                if error and not fallback
+                else {},
+                hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
+                unconfirmed=fallback,
+            )
+        )
+    return out
 
 
 DIVISION_HINT = (
@@ -3573,6 +4039,8 @@ def _origin(rel: Node, name: str) -> tuple[str, str] | None:
     on unchanged, if there is one."""
     if isinstance(rel, ops.UnboundTable | ops.DatabaseTable):
         return rel.name, name
+    if isinstance(rel, ops.SelfReference):
+        return _origin(rel.parent, name) if name in rel.parent.schema else None
     values = getattr(rel, "values", None)
     if isinstance(rel, ops.Aggregate):
         values = {**rel.groups, **rel.metrics}
@@ -3582,6 +4050,39 @@ def _origin(rel: Node, name: str) -> tuple[str, str] | None:
     if parent is not None and name in parent.schema:
         return _origin(parent, name)
     return None
+
+
+def _confirmed_ties(
+    transform: ir.Table,
+    requires: Mapping[str, Sequence[Condition]],
+    report: Report,
+    tables: Mapping[str, ibis.Schema | ir.Table] | None,
+    params: list[str],
+    inputs: Collection[str] | None,
+    semantics: Semantics,
+) -> dict[str, list[str]]:
+    """`tie_keys`, where declaring them makes the result determined (#688):
+    a key the checker cannot follow to the ORDER BY (through a join, say) is
+    not suggested."""
+    keys = tie_keys(transform)
+    stated = {t: {label(c) for c in cs} for t, cs in requires.items()}
+    keys = {
+        t: [k for k in ks if k not in stated.get(t, set())]
+        for t, ks in keys.items()
+        if inputs is None or t in inputs
+    }
+    keys = {t: ks for t, ks in keys.items() if ks}
+    if not keys:
+        return {}
+    widened = {t: list(cs) for t, cs in requires.items()}
+    _merge(widened, report.inferred)
+    for t, ks in keys.items():
+        for k in ks:
+            cols = re.fullmatch(r"unique\((.*)\)", k)
+            if cols:
+                widened.setdefault(t, []).append(unique(*cols[1].split(", ")))
+    again = _infer_bounds(transform, widened, [], tables, 0, params, False, inputs, semantics)
+    return keys if again.deterministic else {}
 
 
 def tie_keys(expr: ir.Table) -> dict[str, list[str]]:
@@ -3654,35 +4155,67 @@ SUM_BOUND = 1_000_000_000
 
 #: What a report suggests for an error under `AND`/`OR` (#604, D19).
 AND_OR_HINT = (
-    "`{}` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both "
-    "operands on every row, so a guard in the other operand does not keep it "
+    "`{}` is inside an AND or OR you wrote (`{}`), and DuckDB and Polars evaluate "
+    "both operands on every row, so a guard in the other operand does not keep it "
     "from raising. Guard the operation itself with {} (a boolean CASE is "
     "evaluated whole, as AND and OR are), or state the guard as a precondition"
 )
 
-
-def and_or_hints(issues: Sequence[Issue]) -> list[str]:
-    """`AND_OR_HINT` for each error under `AND`/`OR`, once per expression."""
-    seen = dict.fromkeys(i.shown or i.expr for i in issues if i.error and i.under_and_or)
-    return [_and_or_hint(e) for e in seen]
+_IDENT = re.compile(r"(?<![\w.'\"])([A-Za-z_]\w*)\b(?!\s*\()")
 
 
-def _and_or_hint(e: str) -> str:
+def _user_and_or(transform: Transform) -> list[set[str]]:
+    """The columns each AND or OR the user wrote reads: Ibis's `&`, `|`
+    (not those the producer writes, such as in a floor division), or SQL's
+    `AND`, `OR` (every column, as the SQL is not walked)."""
+    if isinstance(transform, str):
+        return [set[str]()] if re.search(r"\b(AND|OR)\b", transform, re.IGNORECASE) else []
+    found: list[set[str]] = []
+    for op in transform.op().find((ops.And, ops.Or, ops.Xor)):
+        found.append({str(f.name) for f in op.find(ops.Field)})
+    # Ibis splits a filter's `&` into its predicates.
+    for op in transform.op().find(ops.Filter):
+        if len(op.predicates) > 1:
+            found.append({str(f.name) for p in op.predicates for f in p.find(ops.Field)})
+    return found
+
+
+def and_or_hints(issues: Sequence[Issue], transform: Transform | None = None) -> list[str]:
+    """`AND_OR_HINT` for each error under an `AND`/`OR` the user wrote, once
+    per expression (#688): the checker also counts those the producer
+    writes."""
+    dialect = "sql" if isinstance(transform, str) else "ibis"
+    held = _user_and_or(transform) if transform is not None else [set()]
+    seen = []
+    for i in issues:
+        e = i.shown or i.expr
+        if not (i.error and i.under_and_or) or e in seen:
+            continue
+        cols = set(_IDENT.findall(e))
+        if any(not reads or cols <= reads for reads in held):
+            seen.append(e)
+    return [_and_or_hint(e, dialect) for e in seen]
+
+
+def _and_or_hint(e: str, dialect: str = "ibis") -> str:
     """`AND_OR_HINT` for one operation, with the guard written out where it
     is a division: `ibis.cases((_.qty != 0, _.total // _.qty))`."""
     m = re.fullmatch(r"(\w+) (//|/|%) (\w+)", e)
+    op = "&` or `|" if dialect == "ibis" else "AND` or `OR"
     if m and not m[3].isdigit():
-        a, op, b = m.groups()
+        a, div, b = m.groups()
         guard = (
-            f"`ibis.cases((_.{b} != 0, _.{a} {op} _.{b}))` in Ibis, "
-            f"`CASE WHEN {b} <> 0 THEN {a} {'/' if op == '//' else op} {b} END` in SQL"
+            f"`ibis.cases((_.{b} != 0, _.{a} {div} _.{b}))`"
+            if dialect == "ibis"
+            else f"`CASE WHEN {b} <> 0 THEN {a} {div} {b} END`"
         )
     else:
         guard = (
-            "a CASE that is not boolean, e.g. `ibis.cases((_.x != 0, 10 // _.x)) > 1` "
-            "in Ibis, `(CASE WHEN x <> 0 THEN 10 // x END) > 1` in SQL"
+            f"`ibis.cases((<guard>, {e}))`"
+            if dialect == "ibis"
+            else f"`CASE WHEN <guard> THEN {e} END`"
         )
-    return AND_OR_HINT.format(e, guard)
+    return AND_OR_HINT.format(e, op, guard)
 
 
 def overflow_hints(
@@ -4695,7 +5228,7 @@ def transform(
             from `sverify.errors` (see `ContractedTransform.__call__`).
 
     Examples:
-        A contract that holds, on a source, and what Lean worked out about
+        A contract that holds, on a source, and what the checker worked out about
         the output:
 
         ```python

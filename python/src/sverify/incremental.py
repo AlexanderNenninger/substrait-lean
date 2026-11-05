@@ -114,6 +114,7 @@ from sverify.contracts import (
 from sverify.engine import (
     Connection,
     Engine,
+    checker_failed,
     plan_json,
     put_table,
     read_tables,
@@ -178,7 +179,7 @@ def delta_plans(plan_json: str) -> list[str]:
     if code == 3:
         raise NotIncremental(err.strip())
     if code != 0:
-        raise ValueError(f"substrait-check --delta failed: {err.strip()}")
+        raise checker_failed("--delta", err)
     return out.splitlines()
 
 

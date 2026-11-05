@@ -14,7 +14,10 @@ sensor and timestamp, say), `Rel.keys` derives keys of a plan's output.
 * cross products: combine a key of each side;
 * joins: keep the left side's keys when the join condition determines a key
   of the right side (`a.ts = b.ts` with `ts` a key of `b`, or
-  `w1.ts = w0.ts + 60`), so each left row has at most one partner.
+  `w1.ts = w0.ts + 60`), so each left row has at most one partner;
+* inner joins and filters: a column their condition equates to another can
+  stand in for it in a key (`KeyOn.eqVariants`, #694), so a key survives from
+  either copy of a join column.
 
 `Rel.keys_sound` proves every derived key holds. Equality here is equality of
 values, so two NULLs count as equal: a stronger requirement than SQL `UNIQUE`.
@@ -205,6 +208,39 @@ theorem variants_inj {σ : Nat → List Nat} {r₁ r₂ r₁' r₂' : Row} :
       simp only [keyOf, List.map_cons, List.cons.injEq] at he ⊢
       exact ⟨hσ c (by simp) p hp he.1, variants_inj (fun c' hc' => hσ c' (by simp [hc'])) hk'' he.2⟩
 
+/-- The columns `e` ties to `c`, with `c` itself: on rows where `e` is TRUE,
+each determines `c` (`a.id = b.id`, or `$i + 1 = $j`). -/
+def Expr.eqPartners (e : Expr) (c : Nat) : List Nat :=
+  c :: e.eqCols.filterMap fun (i, j) => if i = c then some j else if j = c then some i else none
+
+/-- A key with any of its columns replaced by a column `e` ties it to: on rows
+where `e` holds, an inner join's two copies of its join column are one column
+(#694). -/
+def eqVariants (e : Expr) (k : List Nat) : List (List Nat) := variants e.eqPartners k
+
+theorem KeyOn.eqVariants {e : Expr} {k k' : List Nat} {rows : Relation} (hk : KeyOn k rows)
+    (ht : ∀ x ∈ rows, (e.eval x).isTrue = true) (hv : k' ∈ eqVariants e k) :
+    KeyOn k' rows := by
+  unfold KeyOn at *
+  refine hk.imp_of_mem fun {x y} hx hy hne heq => hne ?_
+  refine variants_inj (fun c _ p hp he => ?_) hv heq
+  simp only [Expr.eqPartners, List.mem_cons, List.mem_filterMap] at hp
+  rcases hp with rfl | ⟨⟨i, j⟩, hij, hp⟩
+  · exact he
+  · have hdet := Expr.eqCols_det (ht x hx) (ht y hy) (i, j) hij
+    simp only [] at hp
+    split at hp
+    · subst_vars
+      simp only [Option.some.injEq] at hp
+      subst hp
+      exact hdet.2 he
+    · split at hp
+      · subst_vars
+        simp only [Option.some.injEq] at hp
+        subst hp
+        exact hdet.1 he
+      · simp at hp
+
 def AVal.intOnly (a : AVal) : Bool := !a.null && !a.tt && !a.ff && !a.str
 
 theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.Mem v) :
@@ -291,6 +327,12 @@ def joinKeys (n : Nat) (on : Expr) (ka kb : List (List Nat)) : List (List Nat) :
 def windowKeys (part : List Nat) (n : Nat) (fns : List WinFn) : List (List Nat) :=
   fns.zipIdx.filterMap fun (f, t) => if f = .rowNumber then some (part ++ [n + t]) else none
 
+/-- The keys of an inner join also hold with a column replaced by one its
+condition equates it to; a left join's unmatched rows break the equality. -/
+def joinEqKeys : JoinType → Expr → List (List Nat) → List (List Nat)
+  | .inner, on, ks => dedup (ks.flatMap (eqVariants on))
+  | .left, _, ks => ks
+
 def crossKeys (n : Nat) (ka kb : List (List Nat)) : List (List Nat) :=
   (ka.filter (·.all (· < n))).flatMap fun k => kb.map fun k' => k ++ k'.map (n + ·)
 
@@ -299,14 +341,17 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .read t => K t
   | .values _ rows => if rows.length ≤ 1 then [[]] else []
   -- Columns the condition pins to a constant are redundant in a key.
-  | .filter r c => (r.keys cat A F K).map (·.filter (!c.pinned.contains ·))
+  -- Columns the condition equates stand in for each other (#694).
+  | .filter r c =>
+      dedup (((r.keys cat A F K).map (·.filter (!c.pinned.contains ·))).flatMap (eqVariants c))
   -- A key may use any copy of its columns (DataFusion copies join columns this way).
   | .project r es =>
       ((r.keys cat A F K).filter (·.all (· < r.arity cat))).flatMap
         (variants fun i => copyCols (r.arity cat) es i ++ linCols (r.arity cat) es (r.aeval cat A F .none) i)
   | .emit r m => (r.keys cat A F K).filterMap (emitKey m)
   | .cross a b => crossKeys (a.arity cat) (a.keys cat A F K) (b.keys cat A F K)
-  | .join a b _ on => joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K)
+  | .join a b ty on =>
+      joinEqKeys ty on (joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K))
   | .fetch r _ cnt => (if cnt.any (· ≤ 1) then [[]] else []) ++ r.keys cat A F K
   | .unionAll _ _ => []
   | .window r part _ fns =>
@@ -511,8 +556,10 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
         exact KeyOn.of_length_le_one ‹_›
       · simp at hk
   | .filter r c, hwf, k, hk => by
-      simp only [Rel.keys, List.mem_map] at hk
-      obtain ⟨k₀, hk₀, rfl⟩ := hk
+      simp only [Rel.keys, mem_dedup, List.mem_flatMap, List.mem_map] at hk
+      obtain ⟨_, ⟨k₀, hk₀, rfl⟩, hv⟩ := hk
+      refine KeyOn.eqVariants ?_ (fun x hx => by
+        simp only [eval, List.mem_filter] at hx; exact hx.2) hv
       have := keys_sound hcat hA hF hK hwf.1 k₀ hk₀
       unfold KeyOn at *
       simp only [eval]
@@ -556,9 +603,13 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       exact crossRows_key (eval_arity hcat hwf.1) hkr (keys_sound hcat hA hF hK hwf.1 ka hka)
         (keys_sound hcat hA hF hK hwf.2 kb hkb)
   | .join a b .inner on, hwf, k, hk => by
-      simp only [Rel.keys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
-        decide_eq_true_eq, List.mem_map] at hk
-      obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
+      simp only [Rel.keys, joinEqKeys, mem_dedup, List.mem_flatMap] at hk
+      obtain ⟨k₁, hk₁, hv⟩ := hk
+      refine KeyOn.eqVariants ?_ (fun x hx => by
+        simp only [eval, List.mem_filter] at hx; exact hx.2) hv
+      simp only [joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+        decide_eq_true_eq, List.mem_map] at hk₁
+      obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk₁
       have hA' := eval_arity hcat hwf.1
       simp only [eval, crossRows, List.filter_flatMap]
       exact flatMap_key (keys_sound hcat hA hF hK hwf.1 ka hka)
@@ -568,7 +619,7 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
           exact keyOf_append_left fun c hc => hA' x hx ▸ hkr c hc)
         (fun x hx => match_block (hA' x hx) (keys_sound hcat hA hF hK hwf.2.1 kb hkb))
   | .join a b .left on, hwf, k, hk => by
-      simp only [Rel.keys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+      simp only [Rel.keys, joinEqKeys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
       have hA' := eval_arity hcat hwf.1
@@ -948,6 +999,125 @@ theorem window_orderFree {part : List Nat} {sort : List SortKey} {fns : List Win
     WinFn.wholeValue_perm (List.all_eq_true.mp hf f hfm) part hp' x)]
   exact hp'.map _
 
+/-! ## Tie-free window functions
+
+`RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
+order give rows that tie the same value: each depends on how many rows of the
+partition sort strictly before, or no later than, the row, and on the
+partition's size, none of which depends on how the ties are arranged
+(#679, the API critique's 2.1). -/
+
+/-- Is `f` the same for every arrangement of the ties of the window order
+`sort`: order-free, or a rank over `sort` itself? -/
+def WinFn.tieFree (sort : List SortKey) : WinFn → Bool
+  | .rank s | .denseRank s | .percentRank s | .cumeDist s => decide (s = sort)
+  | f => f.orderFree
+
+/-- The value of a tie-free function at `x`, from the whole sorted input `all`. -/
+def WinFn.sortedValue (part : List Nat) (sort : List SortKey) (all : List Row) (x : Row) :
+    WinFn → Value
+  | .rank _ => .int (((all.filter (samePart part x)).filter fun y => !sortLe sort x y).length + 1)
+  | .denseRank _ => .int ((dedup (((all.filter (samePart part x)).filter fun y => !sortLe sort x y).map
+      fun y => sort.map (y.getD ·.col .null))).length + 1)
+  | .percentRank _ =>
+    let n := (all.filter (samePart part x)).length
+    if n ≤ 1 then floatRatio 0 1
+    else floatRatio ((all.filter (samePart part x)).filter fun y => !sortLe sort x y).length (n - 1)
+  | .cumeDist _ => floatRatio ((all.filter (samePart part x)).filter fun y => sortLe sort y x).length
+      (all.filter (samePart part x)).length
+  | f => f.wholeValue part all x
+
+theorem WinFn.value_tieFree {f : WinFn} {sort : List SortKey} (hf : f.tieFree sort = true)
+    (part : List Nat) {b a : List Row} {x : Row} (hb : ∀ y ∈ b, sortLe sort y x = true)
+    (ha : ∀ y ∈ a, sortLe sort x y = true) :
+    f.value part b a x = f.sortedValue part sort (b ++ x :: a) x := by
+  have hrefl := (sortLe_totalPre sort).refl x
+  -- The rows strictly before `x` are those of `b` that are not its peers.
+  have hless : ((b ++ x :: a).filter (samePart part x)).filter (fun y => !sortLe sort x y) =
+      (b.filter (samePart part x)).filter (fun y => !peer sort x y) := by
+    have h1 : (a.filter (samePart part x)).filter (fun y => !sortLe sort x y) = [] :=
+      List.filter_eq_nil_iff.mpr fun y hy => by simp [ha y (List.mem_filter.mp hy).1]
+    have h2 : (b.filter (samePart part x)).filter (fun y => !sortLe sort x y) =
+        (b.filter (samePart part x)).filter (fun y => !peer sort x y) :=
+      List.filter_congr fun y hy => by simp [peer, hb y (List.mem_filter.mp hy).1]
+    simp only [List.filter_append, List.filter_cons, samePart_refl, ↓reduceIte, hrefl,
+      Bool.not_true, Bool.false_eq_true, h1, h2, List.append_nil]
+  have hle : ((b ++ x :: a).filter (samePart part x)).filter (fun y => sortLe sort y x) =
+      b.filter (samePart part x) ++ x :: (a.filter (samePart part x)).filter (peer sort x) := by
+    simp only [List.filter_append, List.filter_cons, samePart_refl, ↓reduceIte, hrefl]
+    congr 1
+    · exact List.filter_eq_self.mpr fun y hy => hb y (List.mem_filter.mp hy).1
+    · congr 1
+      refine List.filter_congr fun y hy => ?_
+      simp [peer, ha y (List.mem_filter.mp hy).1]
+  have hlen : ((b ++ x :: a).filter (samePart part x)).length =
+      (b.filter (samePart part x)).length + 1 + (a.filter (samePart part x)).length := by
+    simp [List.filter_append, samePart_refl]; omega
+  cases f with
+  | rank s =>
+    simp only [WinFn.tieFree, decide_eq_true_eq] at hf; subst hf
+    simp only [WinFn.value, WinFn.valueIn, WinFn.sortedValue, hless]
+  | denseRank s =>
+    simp only [WinFn.tieFree, decide_eq_true_eq] at hf; subst hf
+    simp only [WinFn.value, WinFn.valueIn, WinFn.sortedValue, hless]
+  | percentRank s =>
+    simp only [WinFn.tieFree, decide_eq_true_eq] at hf; subst hf
+    simp only [WinFn.value, WinFn.valueIn, WinFn.sortedValue, hless, hlen]
+  | cumeDist s =>
+    simp only [WinFn.tieFree, decide_eq_true_eq] at hf; subst hf
+    simp only [WinFn.value, WinFn.valueIn, WinFn.sortedValue, hle, hlen, List.length_append,
+      List.length_cons]
+    congr 1; omega
+  | agg m s fr => exact WinFn.value_orderFree (by simpa [WinFn.tieFree] using hf) part b a x
+  | rowNumber | lag _ _ _ | lead _ _ _ | ntile _ | firstValue _ _ _ | lastValue _ _ _
+  | nthValue _ _ _ _ => simp [WinFn.tieFree, WinFn.orderFree] at hf
+
+theorem WinFn.sortedValue_perm {f : WinFn} {sort : List SortKey} (hf : f.tieFree sort = true)
+    (part : List Nat) {all all' : List Row} (h : all.Perm all') (x : Row) :
+    f.sortedValue part sort all x = f.sortedValue part sort all' x := by
+  have hp := (h.filter (samePart part x))
+  cases f with
+  | rank s => simp only [WinFn.sortedValue, (hp.filter _).length_eq]
+  | denseRank s =>
+    simp only [WinFn.sortedValue,
+      (dedup_perm_of_mem fun y => ((hp.filter _).map _).mem_iff).length_eq]
+  | percentRank s => simp only [WinFn.sortedValue, hp.length_eq, (hp.filter _).length_eq]
+  | cumeDist s => simp only [WinFn.sortedValue, hp.length_eq, (hp.filter _).length_eq]
+  | agg m s fr => exact WinFn.wholeValue_perm (by simpa [WinFn.tieFree] using hf) part h x
+  | rowNumber | lag _ _ _ | lead _ _ _ | ntile _ | firstValue _ _ _ | lastValue _ _ _
+  | nthValue _ _ _ _ => simp [WinFn.tieFree, WinFn.orderFree] at hf
+
+theorem windowRows_tieFree {part : List Nat} {sort : List SortKey} {fns : List WinFn}
+    (hf : fns.all (WinFn.tieFree sort) = true) :
+    ∀ (pre l : List Row), (pre ++ l).Pairwise (sortLe sort · · = true) →
+      windowRows part fns pre l = l.map fun x => x ++ fns.map (·.sortedValue part sort (pre ++ l) x)
+  | _, [], _ => rfl
+  | pre, x :: l, hs => by
+    simp only [windowRows, List.map_cons]
+    rw [windowRows_tieFree hf (pre ++ [x]) l (by simpa using hs)]
+    simp only [List.append_assoc, List.cons_append, List.nil_append]
+    have hs' := hs
+    rw [List.pairwise_append, List.pairwise_cons] at hs'
+    congr 1
+    exact congrArg (x ++ ·) (List.map_congr_left fun f hfm =>
+      WinFn.value_tieFree (List.all_eq_true.mp hf f hfm) part
+        (fun y hy => hs'.2.2 y hy x (List.mem_cons_self ..)) hs'.2.1.1)
+
+/-- **Ties don't matter** when every window function is tie-free: any sorted
+arrangement `s` of the input gives the same rows as `Rel.eval`'s stable sort. -/
+theorem window_tieFree {part : List Nat} {sort : List SortKey} {fns : List WinFn}
+    {rows : Relation} (hf : fns.all (WinFn.tieFree sort) = true) {s : List Row}
+    (hp : s.Perm rows) (hs : s.Pairwise (sortLe sort · · = true)) :
+    (windowRows part fns [] s).Perm (windowEval part sort fns rows) := by
+  unfold windowEval
+  have hp' : s.Perm (rows.mergeSort (sortLe sort)) := hp.trans (List.mergeSort_perm rows _).symm
+  have hms := List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total rows
+  rw [windowRows_tieFree hf [] s (by simpa using hs), windowRows_tieFree hf [] _ (by simpa using hms)]
+  simp only [List.nil_append]
+  rw [List.map_congr_left fun x _ => congrArg (x ++ ·) (List.map_congr_left fun f hfm =>
+    WinFn.sortedValue_perm (List.all_eq_true.mp hf f hfm) part hp' x)]
+  exact hp'.map _
+
 /-! ## Windows partitioned by every column
 
 `ROW_NUMBER() OVER (PARTITION BY` every column`)` numbers the copies of each
@@ -1058,12 +1228,13 @@ def Measure.totalIn (cat : Catalog) (A : String → List AVal) (F : String → L
 
 /-- Does the window over `r` order its partitions totally: do its partition
 and sort columns contain a derived key of its input, are its functions
-order-free, or does its partition cover every column? -/
+tie-free (`window_tieFree`: order-free, or ranks over the window's order),
+or does its partition cover every column? -/
 def Rel.windowTotalAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (r : Rel) (part : List Nat) (sort : List SortKey)
     (fns : List WinFn) : Bool :=
   (r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-    fns.all WinFn.orderFree || (List.range (r.arity cat)).all (· ∈ part)
+    fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part)
 
 /-- Does the `FETCH` over an `ORDER BY` on `keys` of `i` take rows the plan
 fixes: do the sort's columns contain a key of its input? -/
@@ -1073,7 +1244,7 @@ def Rel.fetchTotalAt (cat : Catalog) (A : String → List AVal) (F : String → 
 
 /-- Is every window deterministic: do its partition and sort columns contain
 a derived key of its input (`Rel.window_deterministic`), or are its functions
-order-free (`window_orderFree`), or does its partition cover every column
+tie-free (`window_tieFree`), or does its partition cover every column
 (`Rel.window_allColumns`)? -/
 def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool

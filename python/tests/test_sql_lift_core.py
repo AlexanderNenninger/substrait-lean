@@ -234,14 +234,16 @@ def test_an_unproved_ensures_names_the_condition():
 
 
 def test_the_semantics_changes_what_the_contract_can_prove():
-    # DuckDB's `/` by zero is inf, so a zero divisor is never an error there;
-    # the reference raises on one, which `verify` reports. Both raise on
-    # `inf / inf`, which would be NaN (#257). An overflow to `±inf` is the
-    # reference's precondition only (#575): DuckDB's semantics allows it.
+    # DuckDB's `/` by zero is inf, and `inf / inf` NaN, so neither is an error
+    # there: the lift's `CASE` gives the NaN, and `verify` sees that it guards
+    # the division (#702). The reference raises on both (#257), which `verify`
+    # reports. An overflow to `±inf` is the reference's precondition only
+    # (#575): DuckDB's semantics allows it.
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
     duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="duckdb", t=t)
     ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
-    assert [i.kind for i in sv.verify(duck, infer=False).issues] == ["domain error"]
+    assert [i.kind for i in sv.verify(duck, infer=False).issues] == []
+    assert "domain error" in [i.kind for i in sv.verify(ref, infer=False).issues]
     assert "overflow to infinity" in [i.kind for i in sv.verify(ref, infer=False).issues]
     assert any("zero" in str(i) for i in sv.verify(ref, infer=False).issues)
 
@@ -387,3 +389,62 @@ def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
     db.register("tab2", tab2)
     with pytest.raises(duckdb.OutOfRangeException):
         db.sql(query).fetchall()
+
+
+DOUBLES = {"t": {"r": "DOUBLE", "p": "DOUBLE", "q": "BIGINT", "g": "BIGINT"}}
+
+
+@pytest.mark.parametrize("op", ["+", "-", "*", "/"])
+def test_duckdb_double_arithmetic_raises_nothing(op):
+    """DuckDB gives NaN for `inf - inf`, `0 * inf` and `inf / inf`, and the
+    lift writes that NaN as a `CASE` around the operation; `verify` sees
+    that the `CASE` guards it (#702). The reference raises there."""
+    sql = f"SELECT r {op} p AS y, q {op} p AS z FROM t"
+    duck = sv.verify(sql, tables=DOUBLES, semantics="duckdb", counterexamples=0)
+    ref = sv.verify(sql, tables=DOUBLES, counterexamples=0)
+    assert duck.errors == []
+    assert "domain error" in [i.kind for i in ref.errors]
+
+
+def test_a_guard_on_both_sides_rules_out_the_nan():
+    """A `CASE` whose condition is an `AND` leaves its `ELSE` branch with
+    alternatives (#702): one side or the other is not TRUE."""
+    guarded = "SELECT CASE WHEN r <> 0 AND p <> 0 THEN r * p END AS y FROM t"
+    assert sv.verify(guarded, tables=DOUBLES, counterexamples=0).errors == []
+    # Only `inf * 0` is ruled out; `0 * inf` still raises in the reference.
+    half = (
+        "SELECT CASE WHEN (r = 'inf'::DOUBLE OR r = '-inf'::DOUBLE) AND p = 0 THEN 0"
+        " ELSE r * p END AS y FROM t"
+    )
+    assert [i.kind for i in sv.verify(half, tables=DOUBLES, counterexamples=0).errors] == [
+        "domain error"
+    ]
+
+
+@pytest.mark.parametrize("expr", ["q * r", "r + p", "r / (p + 1)", "r * 0.125", "(r + p) / 2"])
+def test_double_arithmetic_keeps_its_sign(expr):
+    """Rounding keeps the sign (#441): a sum or product of non-negative
+    doubles, and a quotient of one by a positive one, is at least 0."""
+    report = sv.verify(
+        f"SELECT {expr} AS y FROM t",
+        tables=DOUBLES,
+        semantics="duckdb",
+        requires={"t": ["q >= 1 AND q <= 10", "r >= 0 AND r <= 10", "p >= 0 AND p <= 10"]},
+        ensures=["y >= 0"],
+        counterexamples=0,
+    )
+    assert report.proved, report
+
+
+def test_a_sum_of_non_negative_products_is_non_negative():
+    """A dbt `accepted_range(min_value: 0)` on revenue: `sum(qty * price)`
+    of non-negative factors (#441, sverify-dbt's sample project)."""
+    report = sv.verify(
+        "SELECT g, sum(q * r) FILTER (WHERE p > 1) AS revenue FROM t GROUP BY g",
+        tables=DOUBLES,
+        semantics="duckdb",
+        requires={"t": ["q >= 1 AND q <= 1000", "r >= 0 AND r <= 10000"]},
+        ensures=["revenue IS NULL OR revenue >= 0"],
+        counterexamples=0,
+    )
+    assert report.proved, report

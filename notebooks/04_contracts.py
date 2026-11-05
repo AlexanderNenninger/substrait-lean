@@ -605,7 +605,8 @@ def _(VerificationError, ibis, mo, sv):
     try:
         ratio(_t)
     except VerificationError as _e:
-        _err = str(_e).splitlines()[0]
+        # The first line counts what is missing; the next names it.
+        _err = (str(_e).splitlines()[1:] or [str(_e)])[0].strip()
     safe_ratio(_t)
     mo.vstack(
         [
@@ -927,7 +928,8 @@ def _(CompositionError, VerificationError, doubled_paid, ibis, mo, paid, sv, ups
     except CompositionError as _e:
         _out = mo.callout(mo.md(f"CompositionError: {str(_e).splitlines()[0]}"), kind="danger")
     except VerificationError as _e:
-        _out = mo.callout(mo.md(f"VerificationError: {str(_e).splitlines()[0]}"), kind="danger")
+        _first = (str(_e).splitlines()[1:] or [str(_e)])[0].strip()
+        _out = mo.callout(mo.md(f"VerificationError: {_first}"), kind="danger")
     _out
     return
 

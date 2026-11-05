@@ -10,7 +10,7 @@
   (`.rows`).
 - `sv.key("id")` states a primary key: `sv.unique("id")` and
   `'"id" IS NOT NULL'`.
-- `report.not_null` lists the output columns Lean shows are never NULL, and
+- `report.not_null` lists the output columns the checker shows are never NULL, and
   a stored node writes them as NOT NULL columns and records them in its
   contract, with those `ensures` states.
 - `report.needed_conditions` gives `report.needs` as conditions ready for

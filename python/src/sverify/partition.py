@@ -92,7 +92,7 @@ from typing import Any, Literal, overload
 
 import pyarrow as pa
 
-from sverify.engine import run_checker
+from sverify.engine import checker_failed, run_checker
 
 #: The table the combining plan reads the shards' results from.
 PARTIALS = "__partials"
@@ -251,7 +251,7 @@ def split(
     if code == 5:
         raise NotShardable(err.strip())
     if code != 0:
-        raise ValueError(f"substrait-check --shard failed: {err.strip()}")
+        raise checker_failed("--shard", err)
     j = json.loads(out)
     return Split(j["mode"], j["proved"], j["partial"], j["combine"], j.get("float_bounds"))
 

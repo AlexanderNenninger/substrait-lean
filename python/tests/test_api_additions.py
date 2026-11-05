@@ -261,7 +261,7 @@ def test_needed_conditions_of_sql_are_sql():
     sql = "SELECT total // qty AS u FROM orders"
     tables = {"orders": ibis.schema({"qty": "int64", "total": "int64"})}
     r = sv.verify(sql, tables=tables)
-    assert r.language == "sql"
+    assert r.dialect == "sql"
     conds = r.needed_conditions
     assert set(conds) == {"orders"} and all(isinstance(c, str) for c in conds["orders"])
     assert '"qty" IS NULL OR "qty" <> 0' in conds["orders"]

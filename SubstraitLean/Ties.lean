@@ -736,8 +736,10 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
         exact KeyOn.of_length_le_one (h.length_eq ▸ ‹_›)
       · simp at hk
   | .filter r c, hwf, k, hk, _, ⟨i, hi, rfl⟩ => by
-      simp only [Rel.keys, List.mem_map] at hk
-      obtain ⟨k₀, hk₀, rfl⟩ := hk
+      simp only [Rel.keys, mem_dedup, List.mem_flatMap, List.mem_map] at hk
+      obtain ⟨_, ⟨k₀, hk₀, rfl⟩, hv⟩ := hk
+      refine KeyOn.eqVariants ?_ (fun x hx => by
+        simp only [List.mem_filter] at hx; exact hx.2) hv
       have := keys_sound_all hcat hA hF hK hwf.1 k₀ hk₀ hi
       unfold KeyOn at *
       rw [List.pairwise_filter]
@@ -780,9 +782,14 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
         (keys_sound_all hcat hA hF hK hwf.1 ka hka hx)
         (keys_sound_all hcat hA hF hK hwf.2 kb hkb hy)).perm h.symm fun h => Ne.symm h
   | .join a b .inner on, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
-      simp only [Rel.keys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
-        decide_eq_true_eq, List.mem_map] at hk
-      obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
+      simp only [Rel.keys, joinEqKeys, mem_dedup, List.mem_flatMap] at hk
+      obtain ⟨k₁, hk₁, hv⟩ := hk
+      refine KeyOn.eqVariants ?_ (fun u hu => by
+        have := h.subset hu
+        simp only [List.mem_filter] at this; exact this.2) hv
+      simp only [joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+        decide_eq_true_eq, List.mem_map] at hk₁
+      obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk₁
       have hA' := orderAllowed_arity hcat hwf.1 hx
       refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
       show KeyOn _ _
@@ -794,7 +801,7 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
           exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc)
         (fun u hu => match_block (hA' u hu) (keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy))
   | .join a b .left on, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
-      simp only [Rel.keys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+      simp only [Rel.keys, joinEqKeys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
       have hA' := orderAllowed_arity hcat hwf.1 hx

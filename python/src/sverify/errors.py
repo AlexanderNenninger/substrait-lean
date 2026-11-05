@@ -6,7 +6,7 @@ purpose; each also keeps its built-in base (`ValueError`, `RuntimeError`).
 The same classes are importable where they are defined (`sverify.routes.RouteError`,
 `sverify.engines.Unsupported`); import them from here.
 
-* `VerificationError`: Lean could not prove a postcondition; `.report` says
+* `VerificationError`: the checker could not prove a postcondition; `.report` says
   what it could establish. `CompositionError` is the case where one
   transform's precondition does not follow from what the transform feeding
   it guarantees.

@@ -80,13 +80,21 @@ def test_inferred_preconditions_prove_the_plan(expr, conds):
         (T.select(r=T.x / T.y), "no single bound rules it out"),
         # An offset from the start or from the end: two incomparable ranges.
         (T.select(r=T.s.substr(T.a)), "no single bound rules it out"),
-        (T.select(r=T.big + T.big), "no single bound rules it out"),
     ],
 )
 def test_choices_are_suggested_not_assumed(expr, hint):
     report = verify(expr, counterexamples=0)
     assert not report.proved
     assert any(i.hint and i.hint.startswith(hint) for i in report.errors), report.errors
+
+
+def test_a_hint_no_proof_confirms_is_dropped():
+    """#688: the inference's candidate for `big + big` on DECIMAL(38, 2),
+    `big >= -5 * 10**35`, still overflows at the bound (`-10**36` does not
+    fit), so the report shows no hint."""
+    report = verify(T.select(r=T.big + T.big), counterexamples=0)
+    [issue] = report.errors
+    assert issue.hint is None
 
 
 G = T.group_by("s")
@@ -120,13 +128,17 @@ def test_a_global_count_divisor_gets_no_bound():
     """Without groups an empty input has a COUNT of 0, which no column rules out."""
     report = verify(T.aggregate(r=T.x.sum() / T.b.count()), counterexamples=0)
     [issue] = [i for i in report.errors if i.kind == "division by zero"]
-    assert issue.hint is not None and issue.hint.startswith("no bound on an input column")
+    assert issue.hint is not None and issue.hint.startswith(
+        "sverify found no bound on an input column"
+    )
 
 
 def test_a_computed_divisor_gets_no_bound():
     report = verify(T.select(r=T.a % (T.b * T.b)), counterexamples=0, infer=False)
     [issue] = [i for i in report.errors if i.kind == "division by zero"]
-    assert issue.hint is not None and issue.hint.startswith("no bound on an input column")
+    assert issue.hint is not None and issue.hint.startswith(
+        "sverify found no bound on an input column"
+    )
 
 
 @transform(requires={"orders": [_.qty >= 0]}, ensures=[])
