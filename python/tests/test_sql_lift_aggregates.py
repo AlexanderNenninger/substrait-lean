@@ -107,7 +107,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT var_pop(customer) FROM orders", "variance of"),
         ("SELECT corr(customer, amount) FROM orders", "corr of"),
         (
-            "SELECT var_pop(amount) OVER (PARTITION BY customer) FROM orders",
+            "SELECT covar_pop(amount, qty) OVER (PARTITION BY customer) FROM orders",
             "over a window is not supported",
         ),
         ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),

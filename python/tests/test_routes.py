@@ -308,3 +308,23 @@ def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
     assert route(sv.within(abs=1e3), {"total": {"abs": 222.0, "proved": True}}).evidence == "proved"
     nested = {"total": {"rel": {"value": 1e-10, "proved": True}}}
     assert route(sv.within(rel=1e-9), nested).evidence == "proved"
+
+
+def test_rows_that_may_flip_under_the_bound_are_refused(monkeypatch, con) -> None:
+    """#568's threshold rule: where a filter, key or sort on a double may
+    keep other rows on the engine than on the reference (`rows_exact`), a
+    per-plan float bound does not carry over, and the route is refused."""
+    t = con.table("t")
+    _classed_tables(monkeypatch, [_row("sum_order", "approx", q={"floats": {"bound": "plan"}})])
+
+    def route(rows_exact):
+        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
+        report.depends = [{"group": None, "option": "sum_order"}]
+        report.epsilon = {"total": {"abs": 222.0, "proved": True}}
+        report.rows_exact = rows_exact
+        return routes.choose(report, "polars")
+
+    assert route({"polars": True}).cls == "observed"
+    assert route(None).cls == "observed"
+    r = route({"polars": False})
+    assert r.refused and "may keep other rows on polars" in r.reason

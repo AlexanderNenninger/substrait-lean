@@ -79,7 +79,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, overload
 
 import ibis
 import ibis.expr.operations as ops
@@ -1115,6 +1115,11 @@ class Report:
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
+    rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
+    """Per engine, whether every filter, key and sort of the plan keeps the
+    same rows and groups under the columns' `ε` (#568's threshold rule): a
+    comparison on a double whose threshold lies within `ε` of its range may
+    flip. None where the checker does not say."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
     """For a result not determined up to row order (`deterministic`), the
@@ -1129,6 +1134,78 @@ class Report:
     out: where it came from."""
     """The preconditions per input table, as conditions: `requires` and
     the bounds inferred (`inferred`). `check_inputs` checks them on data."""
+    postconditions: list[Condition] = field(default_factory=list, repr=False, compare=False)
+    """The postconditions, as conditions, in the order of `ensures`
+    (`to_substrait` ships them)."""
+
+    @overload
+    def to_substrait(
+        self,
+        format: Literal["json"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str: ...
+
+    @overload
+    def to_substrait(
+        self,
+        format: Literal["binary"],
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> bytes: ...
+
+    def to_substrait(
+        self,
+        format: Literal["json", "binary"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str | bytes:
+        """The verified plan for any conforming Substrait consumer, with its
+        contract as metadata (#664).
+
+        Every function call names its YAML's URN, its compound name and its
+        output type (Substrait 0.106). Every option the proof depends on
+        (`depends`) is pinned in the call's options at the reference's
+        behaviour. Where Substrait has no option for a choice the proof uses
+        (a spec gap, `upstream/bugs/ST-*.json`), `shims` decides: `"apply"`
+        rewrites the plan into well-specified Substrait, `"annotate"` keeps
+        it and records the choice in the metadata as an assumption the
+        consumer must honour, and `"refuse"` refuses the export. A gap where
+        the reference raises needs no shim in any mode: the preconditions,
+        which travel with the plan, rule those inputs out.
+
+        The contract travels in the plan's `advanced_extensions` as an
+        `io.sverify.substrait.v1.Contract`: `requires` (declared, inferred
+        and assumed) and `ensures`, each in your terms and as a Substrait
+        plan, and a manifest (the profile, the pinned options, the shims and
+        assumptions, the observation the result holds up to, the Substrait
+        version and extension URNs, sverify's version). `sv.from_substrait`
+        reads it back and proves the contract again.
+
+        Args:
+            format: `"json"` (protobuf JSON, a string) or `"binary"` (the
+                serialized `substrait.Plan`).
+            shims: What to do at a spec gap the proof depends on.
+
+        Returns:
+            The plan, as protobuf JSON or bytes.
+
+        Raises:
+            sverify.errors.ExportError: The report is not proved,
+                or the plan has no conforming Substrait form that keeps the
+                proof; the message names the reason and the gap.
+        """
+        from sverify import substrait_export
+
+        return substrait_export.export(self, format, shims=shims)
+
+    def substrait_contract(
+        self, *, shims: Literal["apply", "annotate", "refuse"] = "apply"
+    ) -> dict:
+        """The contract `to_substrait` embeds, as JSON, for a sidecar file."""
+        from sverify import substrait_export
+
+        return substrait_export.contract_json(self, shims=shims)
 
     def check_inputs(self, con: Connection) -> None:
         """Check the preconditions (`requires`, the inferred bounds among
@@ -1973,6 +2050,13 @@ def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
     return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
 
 
+def _not_null_condition(col: str) -> Inferred:
+    """`col IS NOT NULL` (a divisor's `COUNT` of the column)."""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    sql = '"' + col.replace('"', '""') + '"'
+    return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
+
+
 def _suggested(
     bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
 ) -> dict[str, list[Condition]]:
@@ -1987,8 +2071,9 @@ def _suggested(
 def _render_needs(
     needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
 ) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}` or `{table, col,
-    ne}` (column positions, integer codes as strings), per table."""
+    """The conditions of a list of `{table, col, lo, hi}`, `{table, col,
+    ne}` or `{table, col, not_null}` (column positions, integer codes as
+    strings), per table."""
     out: dict[str, list[Inferred]] = {}
     for n in needs:
         schema = schemas.get(n["table"])
@@ -1996,7 +2081,9 @@ def _render_needs(
             continue
         col = list(schema)[n["col"]]
         have = out.setdefault(n["table"], [])
-        if "ne" in n:
+        if n.get("not_null"):
+            new = [_not_null_condition(col)] if schema[col].nullable else []
+        elif "ne" in n:
             c = _ne_condition(col, schema[col], int(n["ne"]))
             new = [] if c is None else [c]
         else:
@@ -2428,7 +2515,7 @@ def _observed(
 def _open_columns(expr: ir.Table) -> dict[str, str]:
     """The output columns of aggregates whose value the reference leaves
     open: `"picks"` for `first`, `last` or `arbitrary` without an order,
-    `"elements"` for `collect` without one."""
+    `"elements"` for `collect` or `group_concat` without one."""
     out: dict[str, str] = {}
     for agg in expr.op().find(ops.Aggregate):
         if not isinstance(agg, ops.Aggregate):
@@ -2440,7 +2527,7 @@ def _open_columns(expr: ir.Table) -> dict[str, str]:
                 or isinstance(metric, ops.Arbitrary)
             ):
                 out[name] = "picks"
-            elif isinstance(metric, ops.ArrayCollect) and not metric.order_by:
+            elif isinstance(metric, ops.ArrayCollect | ops.GroupConcat) and not metric.order_by:
                 out[name] = "elements"
     names = set(expr.columns)
     return {n: why for n, why in out.items() if n in names}
@@ -2874,9 +2961,11 @@ def _verify_once(
         plan=json.dumps(transform_plan),
         depends=out.get("depends"),
         epsilon=out.get("epsilon"),
+        rows_exact=out.get("rows_exact"),
         contract=contract,
         transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
+        postconditions=list(ensures),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)

@@ -247,6 +247,20 @@ to the difference `Δ` of the exact results. With `|a| ≤ ma`, `|b| ≤ mb`:
 | `a · b` (`rule_mul`) | `(ma εb + mb εa + εa εb)(1 + u) + 2u (ma mb + tiny)` |
 | `a / b`, `b` the same on both sides, `|b| ≥ lb > 0` (`rule_div`) | `(εa / lb)(1 + u) + 2u (ma / lb + tiny)` |
 | Polars's `a / b` by a literal, `fl(a · fl(1/b))` (`rule_div_recip`) | `(εa / lb)(1 + u)² + (3u + u²) ma / lb + (u (1 + u)(ma + εa) + 2u) tiny` |
+| `abs a`, `-a` (`rule_abs`) | `εa` |
+| `FLOOR`, `CEIL`, `ROUND` (`rule_floor`, `rule_ceil`, `rule_round`) | `εa + 1` |
+| a cast to an integer, by truncation (`rule_trunc`) | `εa + 2` |
+| `sqrt a`, `a ≥ εa` on both sides (`rule_sqrt`) | `Δ (1 + u) + 2u (√ha + tiny)`, `Δ = min(√εa, εa / (√(la − εa) + √la))` |
+
+A comparison is exact where the ranges of its sides, widened by their `ε`,
+do not meet (`rule_threshold`): a filter, `CASE` condition, grouping key or
+sort key on it keeps the same rows on both sides. Where they meet, the rows
+may differ, and no column's bound below or after it is marked proved.
+
+Each column whose range leaves out zero also has a relative bound, `ε`
+over the least magnitude of the reference's value. A difference of nearly
+equal values has a range that reaches zero, so it gets none: cancellation
+loses relative accuracy, and the report does not claim it.
 
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's

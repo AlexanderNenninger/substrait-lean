@@ -814,7 +814,7 @@ def test_group_concat_follows_its_order(rows):
 
 def test_group_concat_is_determined_by_a_key():
     """Ties make the order the engine's, unless the group and order columns
-    contain a key (`Rel.windowsTotal`); without `order_by` it is refused, and
+    contain a key (`Rel.windowsTotal`); without `order_by` every row ties, and
     other engines refuse it for now (#271)."""
     expr = P.group_by("k").aggregate(s=P.x.group_concat(",", order_by=P.o))
     assert not sv.verify(expr).deterministic
@@ -825,8 +825,26 @@ def test_group_concat_is_determined_by_a_key():
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
             run_plan(con, written, engine)
-    with pytest.raises(Exception, match="engine's order"):
-        to_substrait_json(P.group_by("k").aggregate(s=P.x.group_concat(",")))
+    unordered = P.group_by("k").aggregate(s=P.x.group_concat(","))
+    assert not sv.verify(unordered).deterministic
+    assert not sv.verify(unordered, requires={"t": [sv.unique("k", "o")]}).deterministic
+    assert sv.verify(unordered, requires={"t": [sv.unique("k")]}).deterministic
+
+
+def test_unordered_group_concat_proves_nothing_about_the_order():
+    """Without `order_by` the order of the strings is open: no postcondition
+    is proved until conditions are proved over every order (D1), the report
+    names the open elements, and DuckDB joins the strings of each group in
+    the input's order."""
+    expr = P.group_by("k").aggregate(s=P.x.group_concat(","))
+    report = sv.verify(expr, ensures=[_.s == "a,b"])
+    assert not report.proved
+    assert "undetermined" in report.ensures[0].value
+    rows = [(1, "a", 1), (1, "b", 2), (2, None, 3), (1, None, 4)]
+    con = connect()
+    create_table(con, "t", P.schema(), rows)
+    got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
+    assert sorted((r["k"], r["s"]) for r in got) == [(1, "a,b"), (2, None)]
 
 
 # #53: exact quantiles, the mode and arg_min/arg_max, which need every value

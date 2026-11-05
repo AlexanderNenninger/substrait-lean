@@ -45,6 +45,7 @@ def test_the_top_level_is_small():
         "asof_join",
         "connect",
         "equivalent",
+        "from_substrait",
         "group",
         "max_rows",
         "references",

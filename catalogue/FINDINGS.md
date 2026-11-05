@@ -267,18 +267,18 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DuckDB runs the SQL | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 7 | 0 | 0 | 0 | 7 | 6 | 7 | 6 |
-| finance | 18 | 16 | 0 | 2 | 0 | 16 | 3 | 15 | 3 |
-| h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 9 | 6 |
-| iot | 12 | 12 | 0 | 0 | 0 | 12 | 10 | 11 | 8 |
+| finance | 18 | 18 | 0 | 0 | 0 | 16 | 15 | 18 | 3 |
+| h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 10 | 6 |
+| iot | 12 | 12 | 0 | 0 | 0 | 12 | 10 | 12 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 11 | 0 | 3 | 0 | 14 | 10 | 11 | 9 |
-| product | 13 | 11 | 0 | 2 | 0 | 13 | 9 | 10 | 9 |
+| product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 13 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 14 | 0 | 1 | 0 | 15 | 14 | 14 | 9 |
-| tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 0 | 8 | 0 |
-| tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
+| tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 8 | 8 | 0 |
+| tpch | 22 | 22 | 0 | 0 | 0 | 22 | 22 | 22 | 6 |
 | windows | 13 | 13 | 0 | 0 | 0 | 13 | 12 | 13 | 5 |
-| **all** | 139 | 131 | 0 | 8 | 0 | 137 | 79 | 127 | 68 |
+| **all** | 139 | 135 | 0 | 4 | 0 | 137 | 122 | 135 | 68 |
 
 ### Feature frequency
 
@@ -378,42 +378,37 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `stddev_var` | 2 | 2 | partial | grouped, of doubles or integers, with each engine's own algorithm (#54); not over windows |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
-| `rows_frame` | 1 | 1 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
-| `string_agg` | 1 | 1 | partial | STRING_AGG with an ORDER BY of columns (DuckDB only so far, #271); without one the order is the engine's, which is refused |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 
 ### Why engines refuse verified queries
 
-Over the 131 queries that verify (some only as DOUBLE):
+Over the 135 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
 | snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
 | snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 22 |
-| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 15, "scale": | 22 |
-| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 10 |
-| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 8 |
-| snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 4 |
+| snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 5 |
 | polars: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see | 3 |
 | snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
-| duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
-| polars: error: divide by zero (1 row(s)) | 2 |
+| polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
+| snowflake: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
 | polars: refused: max of doubles is not yet supported on Polars; DuckDB runs it (see #271, https://github.com/Alexander | 2 |
 | snowflake: refused: MAX of doubles is not yet supported on snowflake; DuckDB runs it (see #271, https://github.com/Alexan | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
 | polars: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
 | snowflake: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
-| duckdb: differs | 2 |
 | polars: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not r | 1 |
 | snowflake: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does no | 1 |
 | polars: refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https:// | 1 |
 | snowflake: refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https | 1 |
 | polars: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it y | 1 |
 | snowflake: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run i | 1 |
+| polars: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run | 1 |
+| snowflake: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not  | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency

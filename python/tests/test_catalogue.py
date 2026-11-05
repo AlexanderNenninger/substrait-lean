@@ -73,11 +73,6 @@ def con():
     return connect()
 
 
-#: Pitfalls under which DuckDB running the query's own SQL gives another answer
-#: than the plan.
-NATIVE_DIFFERS = {"duration_vs_interval", "degenerate_statistic", "null_at_extreme"}
-
-
 @pytest.mark.slow
 @pytest.mark.parametrize("query", QUERIES, ids=lambda q: q.id)
 def test_status_holds(con, query):
@@ -85,7 +80,7 @@ def test_status_holds(con, query):
     assert got == STATUS[query.id]
     # Where a pitfall makes DuckDB's own answer differ, the engines differ
     # from it rightly (they run the plan Lean checked).
-    if any(p.split(":")[0] in NATIVE_DIFFERS for p in query.pitfalls):
+    if cat.native_differs(query):
         return
     for engine, result in cat.effective(got).get("engines", {}).items():
         assert result != "differs", f"{engine} disagrees with DuckDB's own rows"

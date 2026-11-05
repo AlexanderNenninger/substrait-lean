@@ -267,9 +267,8 @@ Ibis expression). Each call proves the postconditions before it returns:
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
-    on_inferred="silent",  # by default ("error"), it reports the bound under `needs:`
 )
 def doubled(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
@@ -277,19 +276,20 @@ def doubled(orders):
 expr = doubled(orders)
 print(doubled.last_report)
 # requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 1000000000)
 # requires orders: _.id.notnull()
-# requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 # ensures id IS NOT NULL: proved
 # known about the output:
 #   id: any integer
-#   doubled: an integer ≥ 22
+#   doubled: an integer in [22, 1999999998]
 ```
 
 Lean worked out that `doubled` is at least 22: the filter keeps only
-`amount > 10`, and doubling preserves that. Sverify inferred the bound that
-keeps `amount * 2` within 64 bits ([Inferred bounds](#inferred-bounds)). A
+`amount > 10`, and doubling preserves that. The bound on `amount` keeps
+`amount * 2` within 64 bits, and caps `doubled`; without a bound, the
+report names the one the plan needs ([Inferred bounds](#inferred-bounds)). A
 postcondition that doesn't follow is refused, with what *is* known:
 
 ```python
@@ -352,6 +352,20 @@ except VerificationError as e:
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
   `first_txn < duplicate_txn` follow.
+* Conditions kept whole (#597): each precondition and filter condition, of
+  any shape, is also a fact about each row, as stated. A postcondition that
+  restates one is proved where the plan keeps it: through projections that
+  keep its columns (renamed or not), filters, sorts, limits, joins and
+  `UNION ALL`s whose inputs all have it. The right side of a left join loses
+  it, since its padded rows are NULL. Under a filter or in a `CASE` branch,
+  a disjunct that cannot be TRUE drops out, and the rest narrows the columns:
+  with `(_.a <= 0) | (_.b < 0)` in `requires`, `t.filter(_.a > 0)` gives
+  `b <= -1`, and so does the branch `ifelse(_.a > 0, ..., ...)`. A NULL
+  disjunct is not TRUE either, so the columns need not be NOT NULL.
+  Implications written `ifelse(_.a > 0, _.b < 0, True)` work the same way.
+  Comparisons between columns other than `x - y` against a constant,
+  products and facts through aggregates are later steps of #597
+  ([tests](../python/tests/test_relational_preconditions.py)).
 * Keys: `sv.unique("user_id", "ts")` says there is at most one row per
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
@@ -397,8 +411,9 @@ except VerificationError as e:
 # could not prove: no runtime error (division by zero: (amount - 1) // (amount - 30)), ...
 ```
 
-Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
-and proves `share` ([Inferred bounds](#inferred-bounds)).
+Without `infer=False`, the report names the precondition the plan needs,
+`(_.amount != 30)`; declare it in `requires`, and `share` is proved
+([Inferred bounds](#inferred-bounds)).
 
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
@@ -407,8 +422,8 @@ wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
 or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316)),
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
-`requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
-assumes inferred bounds, and the job checks it on the data before the run
+`requires` bounds the column. Elsewhere sverify assumes the sum fits, and
+the job checks it on the data before the run
 (`Report.assumed`; an error with `infer=False`). The same holds for an
 operation on finite doubles that may overflow to `±∞`, which the reference
 raises on ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
@@ -432,21 +447,20 @@ print(per_line.run(gcon).to_pylist())
 A guard inside an `AND` or `OR` protects nothing, since DuckDB and Polars
 evaluate both operands (D19 of [core-semantics.md](core-semantics.md)), and
 neither does a guard in one column of a `SELECT` for a division in another.
-Sverify then infers the precondition `n != 0`, checks it on each batch
-before the run, and says where the error sits:
+The report then needs the precondition `n != 0`, and says where the error
+sits:
 
 ```python
 mixed = sv.verify(
-    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n),
-    on_inferred="silent",
+    lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
 )
 print(mixed)
-# requires lines: (_.total >= -9 * 10**18) (inferred from total // n)
-# requires lines: (_.n != 0) (inferred from total // n)
+# needs: (_.total >= -9 * 10**18) and (_.n != 0) on lines, inferred from `total // n` ...
 # hint: `total // n` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both operands ...
 ```
 
-`mixed.run(gcon)` refuses this batch, whose second row has `n = 0`, with a
+Declared in `requires`, `n != 0` is checked on each batch before the run,
+and `run` refuses this batch, whose second row has `n = 0`, with a
 `PreconditionError`. Guard the operation itself,
 `ibis.cases((_.n != 0, _.total // _.n))`, and no precondition is needed.
 A constant subexpression that raises, such as `1 // 0 = 1` in a later
@@ -459,23 +473,41 @@ while it plans the query
 An overflow at the declared width is an error (#202), so `amount * 2` on a
 `BIGINT` needs a bound on `amount`. Sverify infers it (#244): for each `+`,
 `-`, `*` by a constant, negation, `abs` and timestamp truncation that may
-leave its range, it works out the range each input column must stay in, and
-adds it to `requires` as if you had written it:
+leave its range, it works out the range each input column must stay in. By
+default the plan is not proved until you declare it, and the report says
+where it came from and how to fix it
+([D23](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
 def twice(orders):
     return orders.select(orders.id, twice=orders.amount * 2)
 
-twice(orders)
-print(twice.last_report)
+try:
+    twice(orders)
+except VerificationError as e:
+    print(str(e).splitlines()[0])
+# could not prove: without the precondition (_.amount < 2**62) on orders, inferred from `amount * 2` (overflow otherwise): declare it in requires ...
+```
+
+Declare `_.amount < 2**62`, or a tighter bound your data keeps, or filter
+the rows out first. `on_inferred="warn"` assumes the bound with an
+`InferredPreconditionWarning`, and `"silent"` assumes it without one:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0], on_inferred="silent")
+def twice_assumed(orders):
+    return orders.select(orders.id, twice=orders.amount * 2)
+
+twice_assumed(orders)
+print(twice_assumed.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.twice >= 0): proved
 # ...
 ```
 
-An inferred bound is a precondition like the rest. It is checked on the
+An assumed bound is a precondition like the rest. It is checked on the
 data at call time and on every refresh, or proved from Delta and Iceberg
 file statistics, and refresh reports list it as
 `orders: (_.amount < 2**62) (inferred, checked on data)`. Downstream nodes
@@ -523,8 +555,8 @@ samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name
 per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
     cpu=samples.cpu.sum()
 )
-print(sv.verify(per_minute, on_inferred="silent"))
-# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred from ts.truncate('minute'))
+print(sv.verify(per_minute))
+# needs: (_.ts >= datetime(1, 1, 1)) on samples, inferred from `ts.truncate('minute')` ...
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
@@ -1228,6 +1260,84 @@ The bound grows with the row cap and the values: for a `SUM` of `n` values
 of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
 `AVG` that divided by `n` (`2.2e-4` above, with `n = M = 10⁶`). Tighter
 `requires` give a tighter bound ([float-bounds.md](float-bounds.md)).
+
+### Exporting to Substrait
+
+`report.to_substrait(format="json" | "binary")` returns a verified plan for
+any conforming Substrait consumer, with the conditions under which its proof
+holds ([#664](https://github.com/AlexanderNenninger/substrait-lean/issues/664)).
+It is the plan the checker verified, written for Substrait 0.106:
+
+- each call declares its YAML's URN and its compound name (`add:i64_i64`),
+  and states its output type (`_substrait_extensions.json`, generated from
+  the YAMLs by `python -m sverify_dev.substrait_extensions --write`);
+- each option the proof depends on (`report.depends`) is pinned in the
+  call's options at the reference's behaviour: `overflow`, `rounding`,
+  `division_type`, `on_division_by_zero` and the rest the YAMLs list;
+- a plan verified with `semantics="substrait"` goes out as it is, since its
+  proof holds for every choice Substrait allows.
+
+Where the proof uses a choice Substrait cannot state, a spec gap
+([upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)),
+the export handles it in one of these ways:
+
+| Gap | Handling |
+|---|---|
+| ST-1, ST-2, ST-5, ST-9 (overflow), ST-11, ST-12 | none needed: the reference raises there, and the preconditions, which travel with the plan, rule those inputs out (`unexercised` in the manifest) |
+| ST-9 (rounding of doubles) | IEEE 754's default rounding, which `fp64` follows; recorded with evidence `tested` |
+| ST-3, ST-4, ST-6 | a shim, by `shims` |
+| ST-7 | none needed: the writer states every sort key's direction |
+| ST-8 | none needed where no decimal `+`, `-` or `*` reduces its scale; otherwise by `shims` |
+| ST-10 | refused in every mode: `upper` and `lower` of non-ASCII text |
+
+`shims` takes three values, applied to every gap alike:
+
+- `"apply"` (the default) rewrites the plan into well-specified Substrait,
+  so that every conforming consumer gives the reference's result. A
+  `variance` or `std_dev` of too few values is NULL (ST-3). An equality of
+  doubles is `x + 0.0 = y + 0.0 OR (is_nan(x) AND is_nan(y))`, a double
+  grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
+  sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
+  and the two zeros are one (ST-4). A cast of a double to an integer
+  truncates first (ST-6). A gap the plan meets where no shim applies yet,
+  such as an ordering comparison of doubles, refuses the export.
+- `"annotate"` keeps the plan as written and records each choice in the
+  manifest as an assumption the consumer must honour (`assumptions`, class
+  `assumed`).
+- `"refuse"` refuses the export at any such gap.
+
+A refusal raises `sverify.errors.ExportError`, which names the reason and
+the gap. So does an unproved report, a plan verified under an engine's
+profile, and a function outside Substrait's YAMLs.
+
+The contract travels in the plan's `advanced_extensions.optimization` as an
+`io.sverify.substrait.v1.Contract` message
+([`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto)),
+which a consumer that does not know it ignores. It holds the preconditions
+(declared, inferred and assumed) and the postconditions, each in your terms
+and as a Substrait plan of one boolean column, and a manifest:
+
+| Key | What it holds |
+|---|---|
+| `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
+| `extension_urns` | the YAMLs the plan's calls come from |
+| `profile` | the profile the plan was verified under |
+| `class` | `exact`, `observed` (equal up to `observation`) or `assumed` (with annotated choices) |
+| `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
+| `observation` | what the postconditions observe (`sv.equivalent`) |
+| `pinned` | each pinned option, its values and the calls that state it |
+| `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
+| `deterministic`, `rows`, `params`, `output` | as in the report |
+
+`report.substrait_contract()` returns the same contract as JSON, for a
+sidecar file. `sv.from_substrait(exported)` reads a plan back, in either
+format, and proves its contract again with the checker; the report it
+returns has the same postconditions and verdict.
+[Example 10](examples.md#10-a-verified-plan-for-any-substrait-consumer)
+exports a plan and shows the three modes. DataFusion's Substrait consumer
+runs the exports in `tests/test_substrait_export.py` and gives the
+reference's results; it does not know Substrait's `variance` or
+`shift_left` yet.
 
 ### Reproducible sinks
 

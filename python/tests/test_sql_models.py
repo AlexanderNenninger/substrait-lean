@@ -123,7 +123,7 @@ def test_refused_sql_says_what_is_refused():
     @sv.transform()
     def money(orders):
         return sv.sql(
-            "SELECT var_samp(CAST(amount AS DOUBLE)) OVER (ORDER BY amount) AS m FROM orders",
+            "SELECT corr(CAST(amount AS DOUBLE), 1.0) OVER (ORDER BY amount) AS m FROM orders",
             orders=orders,
         )
 

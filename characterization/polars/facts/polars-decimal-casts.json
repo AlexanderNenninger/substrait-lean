@@ -1,0 +1,137 @@
+{
+  "id": "polars-decimal-casts",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Decimal casts: half to even, correctly rounded to double, truncated to integer",
+  "verdict": "a smaller scale and a double round half to even; to a double correctly rounded; to an integer truncates; past the precision raises",
+  "area": "decimals",
+  "options": [
+    "decimal_rescale",
+    "float_to_int",
+    "cast_failure"
+  ],
+  "rows": [
+    {
+      "group": "dec.arith",
+      "option": "decimal_rescale",
+      "types": [
+        "decimal"
+      ]
+    }
+  ],
+  "constructs": [
+    "cast",
+    "to_physical"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "A decimal cast to a smaller scale rounds half to even (1.050 at scale 1 is 1.0, 1.150 is 1.2). A double cast to `Decimal(p, s)` is `x · 10ˢ` in doubles, rounded half to even (0.625 is 0.62, 0.125 is 0.12, -0.375 is -0.38), with the double `10ˢ` exact only up to `s = 22`; NaN and ±∞ raise.",
+    "A decimal cast to `Float64` is correctly rounded: one division where the unscaled value and `10ˢ` are exact doubles, else the decimal's text through Rust's float parser. A decimal cast to an integer truncates toward zero, and raises outside the integer's range (strict) or is NULL (`strict=False`).",
+    "A cast to a smaller precision raises where the value does not fit (strict) or is NULL. `to_physical` gives the unscaled value as an `Int128` (1.25 at scale 2 is 125), and `Int128` arithmetic wraps silently (2¹²⁶ · 2 is -2¹²⁷)."
+  ],
+  "reference": "`decimal_rescale: TIE_AWAY_FROM_ZERO` (`roundDiv10`, `UnFn.dround`); a double to a decimal is `x · 10ˢ` rounded once to a double, then half away from zero (`FloatCode.toDecimal?`); a decimal to a double is correctly rounded (`FloatCode.ofDecimal`); to an integer truncates (`UnFn.dtrunc`). The translation shims the halves (`decimal_round_half_away`, `round_half_away` on the double product) and refuses a double cast to more than 22 decimal places.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session polars-decimals)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "decimal-rounding"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "decimal-from-double"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "decimal-to-double"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "cast-decimal-to-int"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "decimal-narrow-precision"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "decimal-unscaled"
+        },
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "int128-wrap"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python), macOS arm64. `decimal-to-double` takes values whose unscaled value, as a double, divided by 10²⁰ rounds twice; Polars gives the nearest double for each."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars --diff (session polars-decimals)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-rounding"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-from-double"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-to-double"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-narrow-precision"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "decimal-unscaled"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "int128-wrap"
+        }
+      ],
+      "notes": "Streaming gives what in memory gives on each observation."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "session polars-decimals",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/decimal.rs#L557-L566",
+          "note": "dec128_to_f64: x as f64 / 10^s where both are exact (|x| ≤ 2^53, s ≤ 22), else parse_dec128, the decimal's text through Rust's float parser."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/decimal.rs#L597-L608",
+          "note": "f64_to_dec128: (x * POW10_F64[s]).round_ties_even(); 'TODO: correctly rounded result. This rounds multiple times.'"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/decimal.rs#L613-L626",
+          "note": "dec128_rescale: div_128_pow10_round to a smaller scale (half to even), checked multiplication to a larger one, then the precision check."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/decimal.rs#L545-L547",
+          "note": "dec128_to_i128: div_128_pow10_trunc, truncation toward zero."
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    27
+  ]
+}

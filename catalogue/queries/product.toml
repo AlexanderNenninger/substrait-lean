@@ -64,6 +64,18 @@ q = j.group_by("signup_day").aggregate(
     d7=j.user_id.nunique(where=j.day == j.signup_day + ibis.interval(days=7)),
 ).mutate(d1_rate=_.d1.cast("float64") / _.users, d7_rate=_.d7.cast("float64") / _.users)
 '''
+# Every user has an id, so each signup day counts at least one user and the rates'
+# divisions cannot be by zero (D21).
+requires = '''
+{
+    'users': [_.user_id.notnull(), _.signup_ts.between(ibis.timestamp('2000-01-01'), ibis.timestamp('2100-01-01'))],
+}
+'''
+ensures = '''
+[
+    _.users >= 1,
+]
+'''
 
 [[query]]
 id = "pa-first-touch"
@@ -147,10 +159,10 @@ intent = "Flag readings more than three standard deviations from their sensor's 
 domain = "iot"
 source = { name = "Polars user guide: window functions over groups", url = "https://docs.pola.rs/user-guide/expressions/window-functions/", licence = "MIT" }
 features = ["window_partition_agg", "avg", "stddev_var", "math_funcs", "filter", "arithmetic_float"]
-pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0", "float_nan: NaN readings"]
+pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0; NULLIF makes its z-scores NULL", "float_nan: NaN readings"]
 ibis = '''
 w = ibis.window(group_by="sensor_id")
-z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w)
+z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w).nullif(0)
 q = readings.mutate(z=z).filter(_.z.abs() > 3)
 '''
 

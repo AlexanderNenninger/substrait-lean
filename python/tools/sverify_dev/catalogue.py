@@ -48,6 +48,7 @@ import re
 import sys
 import tomllib
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -272,13 +273,17 @@ def synthetic(
     where the schema gives one (so filters on literals match), integer
     columns from 0..5 (so joins on keys match), and are NULL one time in ten
     unless listed in `not_null`. A column listed in `keys` holds distinct
-    integers instead, and is never NULL."""
+    integers instead, and is never NULL. A table listed in `rows` has that
+    many rows instead (a table of fixed size, such as TPC-H's 25 nations)."""
     ds = schemas["datasets"][dataset]
     pools = ds.get("values", {})
     keys = set(ds.get("keys", []))
     not_null = set(ds.get("not_null", [])) | keys
+    sizes = ds.get("rows", {})
+    default_rows = rows
     out = {}
     for name, cols in ds["tables"].items():
+        rows = sizes.get(name, default_rows)
         rng = random.Random(f"{seed}/{dataset}/{name}")
         arrow = tables(schemas, dataset, profile)[name].schema().to_pyarrow()
         data: dict[str, list] = {}
@@ -358,6 +363,7 @@ def probe_contract(
     DuckDB's profile), and whether the synthetic tables meet the
     preconditions."""
     import sverify
+    from sverify.contracts import label
 
     requires, ensures = contract(q, schemas, profile)
     # SQL names its tables: `verify` needs their schemas.
@@ -371,6 +377,9 @@ def probe_contract(
         out["unproved"] = unproved
     if errors := [str(i) for i in report.errors]:
         out["may_fail"] = errors
+    if inferred := [f"{t}: {label(c)}" for t, cs in report.inferred.items() for c in cs]:
+        # Preconditions `verify` inferred (#655): the contract needs them too.
+        out["inferred"] = inferred
     if (bad := requires_hold(con, requires)) is not None:
         out["data"] = f"violates the preconditions: {bad}"
     return out
@@ -415,7 +424,49 @@ def _first_line(e: BaseException | str) -> str:
     return (text.splitlines() or [type(e).__name__])[0][:200]
 
 
-def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> dict[str, str]:
+#: Pitfalls under which DuckDB running the query's own SQL rightly gives
+#: other rows than the plan: Ibis's or DuckDB's meaning differs from the
+#: reference's (`degenerate_statistic`: DuckDB's CORR is NaN where the
+#: reference's is NULL, `duckdb-corr`; `null_at_extreme`: Ibis's `argmax`
+#: keeps a NULL, upstream/bugs/IB-3.json), or the engine orders ties its own
+#: way (`tie_order`).
+NATIVE_DIFFERS = ("duration_vs_interval", "degenerate_statistic", "null_at_extreme", "tie_order")
+
+
+def native_differs(q: Query) -> list[str]:
+    """The query's pitfalls under which DuckDB's own rows may rightly differ."""
+    tags = [p.split(":")[0].strip() for p in q.pitfalls]
+    return [t for t in NATIVE_DIFFERS if t in tags]
+
+
+def _code(v: object) -> object:
+    """A value as `substrait-check` prints it: timestamps in microseconds,
+    dates in days, intervals in microseconds (`SubstraitLean/Float.lean`)."""
+    if isinstance(v, dt.datetime):
+        return (v - dt.datetime(1970, 1, 1)) // dt.timedelta(microseconds=1)
+    if isinstance(v, dt.date):
+        return (v - dt.date(1970, 1, 1)).days
+    if isinstance(v, dt.timedelta):
+        return v // dt.timedelta(microseconds=1)
+    return v
+
+
+def lean_reference(plan: str, data: dict[str, pa.Table]) -> list[tuple]:
+    """`Rel.eval`'s rows of the plan over the synthetic tables, with values
+    as `_code` writes them."""
+    from sverify.testing import inline_tables, lean_values
+
+    rows = {n: [tuple(r.values()) for r in t.to_pylist()] for n, t in data.items()}
+    return lean_values(json.dumps(inline_tables(json.loads(plan), rows)))
+
+
+def probe_engines(
+    con: Connection,
+    plan: str,
+    reference: list[tuple] | None,
+    lean: Callable[[], list[tuple]] | None = None,
+    why: str = "",
+) -> dict[str, str]:
     """Run Lean's written plan on each engine and compare with DuckDB's own
     rows of the query (`reference`, None if DuckDB failed).
 
@@ -423,7 +474,10 @@ def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> 
     on the synthetic tables; with a FETCH or a window, where ties make the
     native choice of rows legitimately differ, with each other, row for row
     where the order matters), `differs`, `refused: …` (the translation
-    refuses the plan) or `error: …`. Snowflake is `sql` or `sql (tie_free)`
+    refuses the plan) or `error: …`. Where DuckDB's own rows rightly differ
+    (`lean`, for the pitfalls `why`), rows that differ from them are compared
+    with Lean's own instead (`lean_reference`): `runs (Lean's rows: why)`
+    if they agree. Snowflake is `sql` or `sql (tie_free)`
     (SQL written and parsed with sqlglot, not run) or `refused: …`."""
     import sqlglot
 
@@ -464,6 +518,11 @@ def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> 
             )
         else:
             ok = _canonical(got) == _canonical(reference)
+            if not ok and lean is not None:
+                coded = [tuple(_code(v) for v in r) for r in got]
+                if _canonical(coded) == _canonical(lean()):
+                    out[engine] = f"runs (Lean's rows: {why})"
+                    continue
         out[engine] = "runs" if ok else "differs"
     try:
         text = plan_sql(json.loads(plan), SNOWFLAKE)
@@ -493,7 +552,8 @@ def probe_profile(
     `producer`. `native` says whether DuckDB runs the query itself (Ibis's
     own DuckDB SQL for an expression) on the synthetic tables, verified or
     not."""
-    for name, table in synthetic(schemas, q.dataset, profile).items():
+    data = synthetic(schemas, q.dataset, profile)
+    for name, table in data.items():
         put_table(con, name, table)
     try:
         query = build(q, schemas, profile)
@@ -526,7 +586,9 @@ def probe_profile(
         detail = _first_line((lines or [out])[-1])
         return {"checker": "rejected", "detail": detail, "native": ran}
     try:
-        engines = probe_engines(con, written_plan(plan), reference)
+        why = native_differs(q)
+        lean = (lambda: lean_reference(plan, data)) if why else None
+        engines = probe_engines(con, written_plan(plan), reference, lean, ", ".join(why))
     except ValueError as e:
         # `--write` refuses what no engine runs yet (decimals, #27).
         detail = _first_line(e).split("rejects the plan: ")[-1].strip("[]'\"")
@@ -546,7 +608,9 @@ def probe_profile(
         # `proved` (no runtime error either) is stronger.
         ok = "unproved" not in c and "data" not in c and c.get("deterministic", True)
         result["verified_sql"] = {
-            "duckdb": "yes" if ok and result["engines"].get("duckdb") == "runs" else "no"
+            "duckdb": "yes"
+            if ok and result["engines"].get("duckdb", "").startswith("runs")
+            else "no"
         }
     return result
 

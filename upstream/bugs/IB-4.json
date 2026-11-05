@@ -1,0 +1,27 @@
+{
+  "id": "IB-4",
+  "project": "ibis",
+  "version": "12.0.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on 12.0.0 with DuckDB 2.0.0. Not yet checked against Ibis main.",
+  "summary": "`ibis.window(preceding=10, following=-1)` compiles to `ROWS BETWEEN 10 preceding AND -1 following`. The SQL standard and DuckDB take only non-negative offsets, so DuckDB refuses the query; the signed offset means `1 PRECEDING`.",
+  "repro": "For `t = ibis.table({'s': 'string', 'm': 'timestamp', 'v': 'int64'}, name='t')`, `ibis.to_sql(t.mutate(a=t.v.mean().over(ibis.window(group_by='s', order_by='m', preceding=10, following=-1))), dialect='duckdb')` writes `ROWS BETWEEN 10 preceding AND -1 following`, and DuckDB raises `Invalid Input Error: Window ROWS FOLLOWING expression cannot be negative`. `preceding=-2` writes `-2 preceding` likewise.",
+  "handling": "sverify's Ibis producer reads a negative constant offset as the same number of rows on the other side (`following=-1` is `1 PRECEDING`, `windows._bound`), so the catalogue's `fin-volume-spike` verifies and runs; its `native` status (Ibis's own DuckDB SQL) stays an error.",
+  "found_by": "catalogue probe of fin-volume-spike",
+  "issues": [],
+  "files": [
+    "python/src/sverify/ibis_substrait/windows.py",
+    "python/tests/test_windows.py"
+  ],
+  "facts": [],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "duckdb": "2.0.0"
+      },
+      "note": "ibis.to_sql and DuckDB's error, from the catalogue probe"
+    }
+  ]
+}

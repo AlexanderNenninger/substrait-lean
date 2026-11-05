@@ -250,8 +250,12 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
         -- The same carried through the arithmetic, per engine.
         let byEngine := (Epsilon.epsilonByEngine j ["duckdb", "polars"]).toOption.getD
           (Lean.Json.mkObj [])
+        -- Per engine, whether filters, keys and sorts keep the same rows under ε.
+        let rowsExact := (Epsilon.rowsExactByEngine j ["duckdb", "polars"]).toOption.getD
+          (Lean.Json.mkObj [])
         match underProfile j (report.json |>.setObjVal! "depends" depends
-            |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine)
+            |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
+            |>.setObjVal! "rows_exact" rowsExact)
             report.allProved with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>

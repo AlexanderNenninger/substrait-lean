@@ -20,24 +20,24 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| fin-running-balance | [Running account balance](https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view) | ✓ | ND |  |
-| fin-velocity-check | [Card velocity in the last hour](https://risingwave.com/blog/transaction-velocity-fraud-sql/) | ✓ | ND |  |
-| fin-impossible-travel | [Impossible travel](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection) | ✓ | NDS |  |
-| fin-duplicate-payments | [Duplicate payments](https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7) | ✓ | NDS |  |
-| fin-structuring | [Structuring: repeated deposits just below a threshold](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | ND |  |
-| fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✓ | ND |  |
-| fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✓ | ND |  |
-| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✓ | D |  |
-| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✓ | ND |  |
-| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | NDS |  |
-| fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | N |  |
+| fin-running-balance | [Running account balance](https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view) | ✓ | NPD |  |
+| fin-velocity-check | [Card velocity in the last hour](https://risingwave.com/blog/transaction-velocity-fraud-sql/) | ✓ | NPD |  |
+| fin-impossible-travel | [Impossible travel](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection) | ✓ | NPDS |  |
+| fin-duplicate-payments | [Duplicate payments](https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7) | ✓ | NPDS |  |
+| fin-structuring | [Structuring: repeated deposits just below a threshold](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | NPD |  |
+| fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✓ | NPD |  |
+| fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✓ | NPD |  |
+| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✓ | PD |  |
+| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✓ | NPD |  |
+| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | NPDS |  |
+| fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | NPD |  |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✓ | ND |  |
-| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | N | `stddev_var` |
+| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✓ | ND |  |
 | fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✓ | ND |  |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | NPD |  |
 | fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | NPD |  |
 | fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✓ | NPD |  |
-| fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | ✗ | — | `rows_frame` |
+| fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | ✓ | PD |  |
 
 ## h2o
 
@@ -48,7 +48,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | ND |  |
 | h2o-groupby-q7 | [H2O groupby q7: max v1 minus min v2 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
 | h2o-groupby-q8 | [H2O groupby q8: largest two v3 by id6](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
-| h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | N |  |
+| h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | ND |  |
 | h2o-groupby-q10 | [H2O groupby q10: sum and count by six keys](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPD |  |
 | h2o-join-q1 | [H2O join q1: inner join with a small table on an integer key](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | NPDS |  |
 | h2o-join-q3 | [H2O join q3: left join with a medium table](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | NPDS |  |
@@ -64,7 +64,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✓ | NPDS |  |
 | iot-counter-increase | [Increase of a counter with resets](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation) | ✓ | NPDS |  |
 | iot-gapfill-locf | [Hourly averages with last observation carried forward](https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/) | ✓ | NPD |  |
-| iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✓ | N |  |
+| iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✓ | ND |  |
 | iot-latest-reading | [Latest reading per device](https://questdb.com/docs/query/sql/latest-on/) | ✓ | NPDS |  |
 | iot-change-detection | [Keep only state changes](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | NPDS |  |
 | iot-consecutive-threshold | [Alert on three consecutive high readings](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | NPDS |  |
@@ -104,15 +104,15 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | pa-funnel-ordered | [Ordered conversion funnel](https://cube.dev/blog/sql-queries-for-funnel-analysis) | ✓ | NPDS |  |
 | pa-cohort-retention | [Monthly cohort retention matrix](https://www.holistics.io/blog/calculate-cohort-retention-analysis-with-sql/) | ✓ | NPDS |  |
-| pa-day-n-retention | [Day-1 and day-7 retention](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | NS |  |
+| pa-day-n-retention | [Day-1 and day-7 retention](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | NPDS |  |
 | pa-first-touch | [First-touch attribution of purchases](https://github.com/dbt-labs/segment) | ✓ | NPDS |  |
 | pa-repeat-purchase-rate | [Repeat purchase rate](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | NPDS |  |
 | pa-users-without-orders | [Users who never ordered](https://www.postgresql.org/docs/current/functions-subquery.html) | ✓ | NPDS |  |
 | pa-market-basket | [Products bought together](https://oneuptime.com/blog/post/2026-03-31-clickhouse-market-basket-analysis/view) | ✓ | NPDS |  |
 | pa-median-order-value | [Median order value per status](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✓ | ND |  |
-| pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✗ | N | `stddev_var` |
+| pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✓ | ND |  |
 | pa-histogram | [Histogram of order amounts](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | NPDS |  |
-| pa-string-agg | [Products of each order as a list](https://modern-sql.com/feature/listagg) | ✗ | N | `string_agg` |
+| pa-string-agg | [Products of each order as a list](https://modern-sql.com/feature/listagg) | ✓ | ND |  |
 | pa-ntile-free-spenders | [Spend deciles with percent rank](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | NPD |  |
 | pa-cumulative-signups | [Cumulative signups per day](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | NPDS |  |
 
@@ -149,41 +149,41 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| tpcds-q03 | [TPC-DS Q3: brand revenue for a manufacturer in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q07 | [TPC-DS Q7: promotional item averages for a demographic](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q27 | [TPC-DS Q27: item averages per state with subtotals](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
+| tpcds-q03 | [TPC-DS Q3: brand revenue for a manufacturer in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q07 | [TPC-DS Q7: promotional item averages for a demographic](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q27 | [TPC-DS Q27: item averages per state with subtotals](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
+| tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | NPD |  |
 
 ## tpch
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| tpch-q01 | [TPC-H Q1: pricing summary report](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q02 | [TPC-H Q2: minimum cost supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NDS |  |
-| tpch-q03 | [TPC-H Q3: shipping priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q04 | [TPC-H Q4: order priority checking](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NDS |  |
-| tpch-q05 | [TPC-H Q5: local supplier volume](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q06 | [TPC-H Q6: forecasting revenue change](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q07 | [TPC-H Q7: volume shipping](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q08 | [TPC-H Q8: national market share](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q09 | [TPC-H Q9: product type profit measure](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q10 | [TPC-H Q10: returned item reporting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q11 | [TPC-H Q11: important stock identification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NDS |  |
-| tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NDS |  |
-| tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NDS |  |
-| tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
-| tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NDS |  |
-| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | ND |  |
+| tpch-q01 | [TPC-H Q1: pricing summary report](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q02 | [TPC-H Q2: minimum cost supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPDS |  |
+| tpch-q03 | [TPC-H Q3: shipping priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q04 | [TPC-H Q4: order priority checking](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPDS |  |
+| tpch-q05 | [TPC-H Q5: local supplier volume](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q06 | [TPC-H Q6: forecasting revenue change](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q07 | [TPC-H Q7: volume shipping](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q08 | [TPC-H Q8: national market share](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q09 | [TPC-H Q9: product type profit measure](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q10 | [TPC-H Q10: returned item reporting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q11 | [TPC-H Q11: important stock identification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPDS |  |
+| tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPDS |  |
+| tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPDS |  |
+| tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
+| tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPDS |  |
+| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | NPD |  |
 
 ## windows
 

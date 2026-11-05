@@ -1,9 +1,10 @@
 # Examples
 
-Nine short examples, each a step up from the one before: a contract proved
+Ten short examples, each a step up from the one before: a contract proved
 and run, SQL, the preconditions Sverify infers, routes to Polars, tolerances
 for doubles, reproducible sinks, engine profiles, Substrait's own semantics,
-and a plan checked under Polars's. The inputs are a few rows in memory. Every block runs as written,
+a plan checked under Polars's, and the export of a verified plan to any
+Substrait consumer. The inputs are a few rows in memory. Every block runs as written,
 in order: `python/tests/test_readme.py` runs them and checks each printed
 line against the comment under it.
 
@@ -76,32 +77,50 @@ The SQL is DuckDB's dialect, read with sverify's reference semantics
 (`semantics="duckdb"` reads it as DuckDB computes it). `//` is integer
 division, and `/` would give a double.
 
-## 3. Preconditions Sverify infers, checked before the run
+## 3. The preconditions a plan needs, declared and checked before the run
 
-Leave out `requires`, and Sverify infers the preconditions under which the
-plan cannot fail: here that `qty` is never zero. `report.run` checks them on
-the data first, and refuses a batch that breaks one before anything runs
-([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+Leave out `requires`, and Sverify works out the preconditions under which
+the plan cannot fail: here that `qty` is never zero, and that `total` stays
+far enough from the smallest integer for the division not to overflow. It
+reports the plan as not proved and asks you to declare them
+([D23](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
 
 ```python
 from sverify.errors import PreconditionError
 
 t = con.table("orders")
-print(sv.verify(t.select(t.id, unit=t.total // t.qty)))
+undeclared = sv.verify(t.select(t.id, unit=t.total // t.qty))
+print(undeclared.proved)
+# False
+print(undeclared)
 # needs: (_.total >= -9 * 10**18) and (_.qty != 0) on orders, inferred from `total // qty` (overflow or division by zero otherwise): declare them in requires ...
 # ...
-unchecked = sv.verify(t.select(t.id, unit=t.total // t.qty), on_inferred="silent")
-print(unchecked)
-# requires orders: (_.total >= -9 * 10**18) (inferred from total // qty)
-# requires orders: (_.qty != 0) (inferred from total // qty)
-# ...
+```
+
+Declare them, here as `qty != 0` and `total >= 0`, and the plan is proved.
+`report.run` checks the declared preconditions on the data first, and
+refuses a batch that breaks one before anything runs
+([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)):
+
+```python
+declared = sv.verify(
+    t.select(t.id, unit=t.total // t.qty),
+    requires={"orders": [_.qty != 0, _.total >= 0]},
+)
+print(declared.proved)
+# True
 con.put("orders", pa.table({"id": [4], "qty": [0], "total": [10]}))
 try:
-    unchecked.run(con)
+    declared.run(con)
 except PreconditionError as e:
     print(e)
 # 1 row(s) of orders violate (_.qty != 0): refused before the run
 ```
+
+The other fix is a rewrite that no row needs the precondition for:
+`t.filter(t.qty != 0)` before the division, or a `CASE`.
+`on_inferred="warn"` or `"silent"` assumes the inferred preconditions and
+checks them on the data as declared ones are.
 
 An `AND` or `OR` evaluates both operands, as DuckDB and Polars do (D19 in
 [core-semantics.md](core-semantics.md)), so `(qty != 0) & (total // qty > 1)`
@@ -120,9 +139,9 @@ included), `shim` (after a proved translation) or `refused`
 
 ```python
 con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 250, 30]}))
-print(unchecked.run(con, "polars", route="auto").to_pylist())
+print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
-print(unchecked.routes["polars"])
+print(declared.routes["polars"])
 # reference: verified under the reference; the translation to polars is ... [shim, proved]
 ```
 
@@ -222,7 +241,9 @@ print(filtered.routes["polars"])
 # transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on ...
 
 divided = sv.verify(
-    t.select(t.id, unit=t.total // t.qty), semantics="duckdb", on_inferred="silent"
+    t.select(t.id, unit=t.total // t.qty),
+    requires={"orders": [_.qty != 0, _.total >= 0]},
+    semantics="duckdb",
 )
 try:
     divided.run(con, "polars", route="transfer")
@@ -307,6 +328,53 @@ does not hold there, and DuckDB refuses the plan. A zero divisor and integer
 overflow raise under `Profile.polars` as under the reference, so `verify`
 infers the same preconditions. [core-semantics.md](core-semantics.md#polars-as-a-profile)
 says which choices the profile takes from Polars.
+
+## 10. A verified plan for any Substrait consumer
+
+`report.to_substrait()` returns the plan the checker verified, written for
+any conforming consumer of Substrait 0.106: each call names its YAML's URN,
+its compound name and its output type, and each option the proof depends on
+is pinned at the reference's behaviour. The contract travels with it, and
+`sv.from_substrait` proves it again:
+
+```python
+from sverify.errors import ExportError
+
+unit = sv.verify(
+    t.select(t.id, unit=t.total // t.qty),
+    requires={"orders": [_.qty > 0, _.total >= 0]},
+    ensures=[_.unit >= 0],
+)
+exported = unit.to_substrait()  # protobuf JSON; "binary" for bytes
+manifest = unit.substrait_contract()["manifest"]
+print([(p["group"], p["option"], p["values"]) for p in manifest["pinned"]])
+# [('int.arith', 'overflow', ['ERROR']), ('int.div', 'overflow', ['ERROR']), ('int.div', 'on_division_by_zero', ['ERROR']), ('int.div', 'on_domain_error', ['ERROR', 'NULL'])]
+print(sv.from_substrait(exported).proved)
+# True
+```
+
+Where Substrait has no option for a choice the proof uses, a spec gap,
+`shims` decides. A standard deviation of one value is NULL in the
+reference, and Substrait leaves it open
+([ST-3](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)):
+
+```python
+spread = sv.verify(t.group_by("qty").aggregate(spread=t.total.std()))
+print([s["shim"] for s in spread.substrait_contract()["manifest"]["shims"]])
+# ['variance and std_dev: if count(x) < 2 (1 for POPULATION) then NULL']
+print([a["text"] for a in spread.substrait_contract(shims="annotate")["manifest"]["assumptions"]])
+# ["the consumer gives NULL at agg.var's stat_degenerate"]
+try:
+    spread.to_substrait(shims="refuse")
+except ExportError as e:
+    print(e)
+# refused for Substrait: agg.var's stat_degenerate: Substrait allows NULL, NAN, ERROR where the proof uses NULL (ST-3, upstream/bugs/ST-3.json); export with shims='apply' or 'annotate'
+```
+
+`"apply"`, the default, rewrites the plan so that every conforming consumer
+gives the reference's result; `"annotate"` leaves the plan as written and
+ships the choice as an assumption; `"refuse"` refuses. The
+[guide](guide.md#exporting-to-substrait) lists what the export carries.
 
 ## Where next
 

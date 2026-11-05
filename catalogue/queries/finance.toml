@@ -201,6 +201,18 @@ q = ticks.group_by(["symbol", _.ts.truncate("m").name("minute")]).aggregate(
     volume=_.size.sum(),
 )
 '''
+# A trade has a positive size, so a minute's volume is positive and the division
+# cannot be by zero (D21: the reference raises there; the precondition rules it out).
+requires = '''
+{
+    'ticks': [_.size > 0, _.size <= 1_000_000_000, _.price.isnull() | _.price.between(0, 1e9), _.ts >= ibis.timestamp('2000-01-01')],
+}
+'''
+ensures = '''
+[
+    _.volume > 0,
+]
+'''
 
 [[query]]
 id = "fin-ohlc"
