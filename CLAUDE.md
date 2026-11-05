@@ -66,7 +66,7 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 - **Don't start** if the 1-minute load average is above 8, or if less than
   6 GB is available (the `available` column of `free -g`).
 - **Cap the workers:** the poe test tasks use `pytest -n auto`, which takes
-  every core. Set `PYTEST_XDIST_AUTO_NUM_WORKERS=6` so a run leaves half the
+  every core. Set `PYTEST_XDIST_AUTO_NUM_WORKERS=4` so a run fits the 8 GB cap (6 workers peaked over it after #729; 4 peak at 7.8 GB) and leaves the
   box free.
 - **Run under `nice -n 10`** so interactive use of the box stays responsive.
 - **Long-running jobs that aren't QA** (a full sqllogictest replay, fuzzing)
