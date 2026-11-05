@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/quarantine.schema.json",
+  "title": "sverify quarantine table",
+  "description": "The rows a node sets aside under on_violation=\"quarantine\" (#184), in a Delta or Iceberg table next to the node's sink. `record` is what each write records: in a Delta commit's commitInfo under the key `sverify.quarantine`, in an Iceberg snapshot's summary under the same key, as JSON text. `row` describes one row of the table. Format 1. Within 1.x the format only gains optional keys and columns, and readers ignore those they do not know (docs/stability.md).",
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": ["format", "node", "epoch", "sources"],
+      "properties": {
+        "format": {"description": "The version of this format.", "const": 1},
+        "node": {"description": "The stored node whose rows these are.", "type": "string"},
+        "epoch": {"description": "The node's state the table matches: the sum of `sources`, as the sink's contract record's `epoch`.", "type": "integer"},
+        "sources": {"description": "The version of every source of the node's stage, by name.", "type": "object", "additionalProperties": {"type": "integer"}}
+      }
+    },
+    "row": {
+      "type": "object",
+      "required": ["source", "row", "copies", "conditions", "reason", "source_version", "set_aside_at", "node"],
+      "properties": {
+        "source": {"description": "The source's name in the node.", "type": "string"},
+        "row": {"description": "The row as a JSON object of its columns. Datetimes, dates, times, decimals and bytes are {\"$cursor\": <type>, \"value\": <text>}, as the sink's record encodes cursors; NaN and the infinities are {\"$cursor\": \"double\", \"value\": \"NaN\" | \"Infinity\" | \"-Infinity\"}.", "type": "string"},
+        "copies": {"description": "How many identical copies of the row are set aside.", "type": "integer", "minimum": 1},
+        "conditions": {"description": "The labels of the preconditions the row breaks, as `requires` states them, or the inferred condition's SQL.", "type": "array", "items": {"type": "string"}},
+        "reason": {"description": "One line on why, such as \"breaks (_.amount >= 0)\" or \"id = 7 is on 2 rows\".", "type": "string"},
+        "source_version": {"description": "The source version that set the row aside.", "type": "integer"},
+        "set_aside_at": {"description": "When, in UTC (a timestamp column of the table).", "type": "string"},
+        "node": {"description": "The node, as in the record.", "type": "string"}
+      }
+    }
+  },
+  "$ref": "#/$defs/record"
+}

@@ -511,6 +511,34 @@ class SchemaChange:
         the views read was dropped or retyped."""
         return not self.dropped and not self.retyped
 
+    def explain(
+        self, t: str, start: int, end: int, views: Sequence[str], requires: Sequence[Condition]
+    ) -> list[str]:
+        """What changed that the contracts of `views` cannot follow, column by
+        column, with the version and what to do (#184)."""
+        when = f"at v{end}" if end == start + 1 else f"between v{start} and v{end}"
+        who = " and ".join(f"`{v}`" for v in views)
+        out = []
+        for c in self.nullable:
+            stated = [label(r) for r in requires if c in label(r)]
+            need = f"requires {', '.join(stated)}" if stated else "was proved with it NOT NULL"
+            out.append(
+                f"`{t}.{c}` became nullable {when}, and the new rows have NULLs in it; {who} "
+                f"{need}. Fix the upstream, or handle NULLs in {who} (e.g. `.fill_null(0)`) "
+                "and relax `requires`."
+            )
+        out += [
+            f"`{t}.{c}` was dropped {when}; {who} reads it. Restore it upstream, or change "
+            f"{who} not to read it."
+            for c in self.dropped
+        ]
+        out += [
+            f"`{t}.{c}` changed type {when} ({change}); {who} was proved for the old type. "
+            f"Fix the upstream, or cast it in {who} and state the contract for the new type."
+            for c, change in self.retyped.items()
+        ]
+        return out
+
     def __str__(self) -> str:
         parts = []
         if self.added:
@@ -1628,7 +1656,7 @@ class Pipeline:
     def _rules(self, t: str) -> tuple[list[Condition], list[Unique]]:
         """The row conditions and keys on `t` that a split applies."""
         conds = self.requires.get(t, [])
-        rows = [c for c in conds if not isinstance(c, TableCondition)]
+        rows: list[Condition] = [c for c in conds if not isinstance(c, TableCondition)]
         return rows, [c for c in conds if isinstance(c, Unique)]
 
     def _judge(self, t: str, entries: Sequence[_quarantine.Entry]) -> bool:
@@ -1935,6 +1963,7 @@ class Pipeline:
         whole: dict[str, pa.Table | Native] = {}
         report: list[SourceRefresh] = []
         moved: dict[str, _quarantine.Moves] = {}
+        evolutions: dict[str, tuple[SchemaChange, int, int]] = {}
         for t, src in self.sources.items():
             start = self.versions[t]
             pin = (until or {}).get(t)
@@ -1970,6 +1999,7 @@ class Pipeline:
                         schema=str(evolved),
                     )
                     rebuild[t] = (snap, entry)
+                    evolutions[t] = (evolved, start, batch.end)
                     versions[t] = batch.end
                     snapshot_facts[t] = batch.snapshot_facts
                     report.append(entry)
@@ -2040,9 +2070,26 @@ class Pipeline:
             )
         replan = self._reading(set(rebuild))
         if bad := [v.name for v in replan if v.contracted]:
+            why = [
+                line
+                for t, (ev, a, b) in sorted(evolutions.items())
+                for line in ev.explain(
+                    t,
+                    a,
+                    b,
+                    [v.name for v in self._reading({t}) if v.contracted],
+                    self.requires.get(t, []),
+                )
+            ]
             raise SchemaError(
-                f"the schema of {', '.join(sorted(rebuild))} changed incompatibly; views "
-                f"{bad} have contracts proved against the old schema: build the pipeline again"
+                "\n".join(
+                    [
+                        *why,
+                        f"The schema of {', '.join(sorted(rebuild))} changed incompatibly; views "
+                        f"{bad} have contracts proved against the old schema: build the pipeline "
+                        "again.",
+                    ]
+                )
             )
         incremental = {t: n for t, n in versions.items() if t not in rebuild}
         try:

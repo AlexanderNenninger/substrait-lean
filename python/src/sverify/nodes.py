@@ -74,8 +74,13 @@ class Sink(Protocol):
     """
 
     name: str
+    location: str
 
     def _attach(self, view: IncrementalView) -> None: ...
+
+    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
+
+    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None: ...
 
     def _commit(self) -> SinkWrite: ...
 

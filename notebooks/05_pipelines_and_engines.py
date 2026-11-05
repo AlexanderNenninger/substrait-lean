@@ -687,6 +687,162 @@ def _(base, by_city, by_location, display, mo, presses, state):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### When the data breaks the contract
+
+    A refused batch stops the report until someone fixes the feed. For a
+    few bad rows among thousands, you may rather set them aside and let the
+    rest through. With `on_violation="quarantine"` on the transform (or on
+    the source), the refresh sets aside the rows that break a precondition,
+    with the reason, and the node runs on the others
+    ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)).
+    A row is set aside when a row condition is not TRUE on it, or when
+    another row shares its key: both rows of a repeated `id` go, so the rule
+    needs no order between them. Every precondition holds on the rows that
+    stay (`Catalog.kept_sound` in
+    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean)),
+    so `paid`'s proof holds as before. We feed a Delta table an order with a
+    negative amount and one with an id that exists already:
+    """)
+    return
+
+
+@app.cell
+def _(lake, pa, sv):
+    from deltalake import write_deltalake as _write
+    from ibis import _
+    from sverify.io import DeltaSink as _DeltaSink
+    from sverify.io import DeltaSource
+
+    _orders_uri = str(lake / "raw_orders")
+    _write(
+        _orders_uri,
+        pa.table({"id": [1, 2, 3], "customer": ["ada", "bob", "cy"], "amount": [30, 5, 0]}),
+        configuration={"delta.enableChangeDataFeed": "true"},
+    )
+
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, sv.unique("id")]},
+        ensures=[_.amount >= 0, sv.unique("id")],
+        on_violation="quarantine",
+    )
+    def clean(orders):
+        return orders.select("id", "customer", "amount")
+
+    clean_orders = DeltaSource(_orders_uri, name="orders").pipe(clean)
+    clean_orders = clean_orders.write(_DeltaSink(str(lake / "clean")))
+    clean_orders.refresh()
+    _write(
+        _orders_uri,
+        pa.table({"id": [4, 5, 2], "customer": ["dee", "eve", "fay"], "amount": [12, -5, 9]}),
+        mode="append",
+    )
+    flagged = clean_orders.refresh()
+    print(flagged.summary())
+    return clean_orders, flagged
+
+
+@app.cell(hide_code=True)
+def _(clean_orders, flagged, mo):
+    mo.md(
+        f"The refresh completed (`outcome` is `{flagged.outcome!r}`). Order 4 went "
+        "through. Order 5 breaks `amount >= 0`. Order 2 is now on two rows, so both "
+        "copies are set aside, the one `clean` held before included, until the feed "
+        "says which is right. The rows sit in a Delta table next to the sink, "
+        "`clean_quarantine`, with the reason and the source version, and "
+        "`clean_orders.quarantined()` returns them. A scheduled job posts "
+        "`flagged.alert()` to whoever is on call, for example as a GitHub issue:\n\n"
+        f"{flagged.alert()}\n\n"
+        f"`clean` now holds:\n\n```text\n{clean_orders.to_pandas().sort_values('id')}\n```"
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The fix comes from upstream: the feed deletes the wrong order 2 and
+    corrects the amount of order 5. The next refresh releases the rows set
+    aside, and they flow into `clean` and everything that reads it:
+    """)
+    return
+
+
+@app.cell
+def _(clean_orders, lake):
+    from deltalake import DeltaTable as _DeltaTable
+
+    _dt = _DeltaTable(str(lake / "raw_orders"))
+    _dt.delete("id = 2 AND customer = 'fay'")
+    _DeltaTable(str(lake / "raw_orders")).update(updates={"amount": "5"}, predicate="id = 5")
+    fixed = clean_orders.refresh()
+    print(fixed.summary())
+    print(fixed.outcome, len(clean_orders.quarantined()))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    `on_violation="skip_batch"` holds the node at its versions instead: the
+    refresh commits nothing for the batch, says why (`outcome` is
+    `"held"`), and reads the batch again next time. The default,
+    `"raise"`, is what the buttons above do.
+
+    A change to the schema breaks a contract in another way. Say the feed's
+    owner lets `id` be NULL, and the next version has an order without one.
+    `clean` was proved with `id` NOT NULL, so the refresh refuses, and the
+    message names the column, the version and the contract:
+    """)
+    return
+
+
+@app.cell
+def _(lake, pa):
+    import sverify as _sv
+    from deltalake import write_deltalake as _write2
+    from ibis import _ as _d
+    from sverify.errors import SchemaError
+    from sverify.io import DeltaSource as _DeltaSource
+
+    _uri = str(lake / "events")
+    _strict = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            ("customer", pa.string()),
+            ("amount", pa.int64()),
+        ]
+    )
+    _write2(_uri, pa.Table.from_pylist([{"id": 1, "customer": "ada", "amount": 30}], _strict))
+
+    @_sv.transform(requires={"orders": [_d.amount >= 0]}, ensures=[_d.id.notnull()])
+    def keyed(orders):
+        return orders.select("id", "amount")
+
+    _node = _DeltaSource(_uri, name="orders").pipe(keyed)
+    _node.refresh()
+    _loose = pa.schema([("id", pa.int64()), ("customer", pa.string()), ("amount", pa.int64())])
+    _write2(
+        _uri,
+        pa.Table.from_pylist(
+            [
+                {"id": 1, "customer": "ada", "amount": 30},
+                {"id": None, "customer": "bob", "amount": 4},
+            ],
+            _loose,
+        ),
+        mode="overwrite",
+        schema_mode="overwrite",
+    )
+    try:
+        _node.refresh()
+    except SchemaError as _e:
+        print(f"SchemaError: {_e}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Why the guarantees survive every batch
 
     Whoever reads `base` relies on its guarantees on the hundredth batch as

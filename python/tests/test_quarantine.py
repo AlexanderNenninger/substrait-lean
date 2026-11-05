@@ -14,6 +14,7 @@ import math
 from collections import Counter
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -35,7 +36,7 @@ def table(rows) -> pa.Table:
     return pa.Table.from_pylist([dict(zip(SCHEMA.names, r, strict=True)) for r in rows], SCHEMA)
 
 
-def make(policy="quarantine", keys=True):
+def make(policy: Any = "quarantine", keys: bool = True) -> Any:
     requires = [_.amount >= 0] + ([sv.unique("id")] if keys else [])
 
     @sv.transform(
@@ -84,9 +85,7 @@ def histories(draw):
 
 @pytest.mark.parametrize("keys", [True, False])
 @given(history=histories())
-@settings(
-    max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow]
-)
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 def test_refresh_keeps_the_rows_the_rule_keeps(keys, history):
     first, batches = history
     orders = StaticSource(table(first), name="orders")
@@ -152,7 +151,7 @@ def test_reports_say_what_was_set_aside():
     assert q.by_condition == {"(_.amount >= 0)": 1, "unique(id)": 2}
     assert q.examples is not None and q.examples.num_rows == 3
     assert r.outcome == "quarantined"
-    assert "3 row(s) of orders set aside" in str(r)
+    assert "orders: 3 row(s) set aside" in str(r)
     alert = r.alert()
     assert alert is not None and "(_.amount >= 0)" in alert and "| id | amount |" in alert
     doc = json.loads(r.to_json())
@@ -226,7 +225,8 @@ def test_skip_batch_holds_the_node_until_the_source_is_fixed():
     entry = r[node.name]
     assert r.outcome == "held" and entry.held is not None
     assert "violate (_.amount >= 0)" in entry.held and "orders@v0" in entry.held
-    assert entry.held_error.rows.num_rows == 1
+    assert isinstance(entry.held_error, PreconditionError)
+    assert entry.held_error.rows is not None and entry.held_error.rows.num_rows == 1
     assert bag(node.to_arrow()) == Counter({(1, 30): 1})
     assert node.versions == {"orders": 0}
     # The next refresh reads the batch again; fixed, it goes through.
@@ -261,7 +261,8 @@ def test_a_condition_without_a_row_rule_holds_under_quarantine():
     node.refresh()
     orders.apply(Changes(inserts=table([(2, 1), (3, 1)])))
     r = node.refresh()
-    assert r.outcome == "held" and "max_rows(2)" in r[node.name].held
+    held = r[node.name].held
+    assert r.outcome == "held" and held is not None and "max_rows(2)" in held
 
 
 # -- the quarantine table ------------------------------------------------------------
@@ -328,3 +329,54 @@ def test_rows_round_trip_through_json(value):
     assert _quarantine.decode_row(_quarantine.encode_row(value)) == value
     nan = _quarantine.decode_row(_quarantine.encode_row({"n": math.nan}))
     assert math.isnan(nan["n"])
+
+
+# -- a breaking upstream change -------------------------------------------------------
+
+
+def test_a_breaking_schema_change_names_the_column_version_and_contract(tmp_path):
+    from _pipelines import make_orders, paid
+    from sverify.errors import SchemaError
+
+    src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
+    node = paid(src)
+    node.refresh()
+    nullable = pa.schema([("id", pa.int64()), ("customer", pa.string()), ("amount", pa.int64())])
+    rows = pa.Table.from_pylist(
+        [
+            {"id": 1, "customer": "ada", "amount": 5},
+            {"id": None, "customer": "cy", "amount": 3},
+        ],
+        nullable,
+    )
+    write_deltalake(src.uri, rows, mode="overwrite", schema_mode="overwrite")
+    with pytest.raises(SchemaError) as e:
+        node.refresh()
+    first = str(e.value).splitlines()[0]
+    assert first.startswith("`orders.id` became nullable at v2, and the new rows have NULLs")
+    assert "`paid` requires _.id.notnull(), unique(id)" in first
+    assert "handle NULLs in `paid`" in first
+
+
+def test_the_quarantine_table_next_to_an_iceberg_sink(tmp_path):
+    pytest.importorskip("pyiceberg")
+    from pyiceberg.catalog.sql import SqlCatalog
+
+    from sverify.io import IcebergSink
+
+    cat = SqlCatalog("q", uri=f"sqlite:///{tmp_path}/catalog.db", warehouse=f"file://{tmp_path}")
+    cat.create_namespace("db")
+    orders = StaticSource(table([(1, 30), (2, -5)]), name="orders")
+    node = orders.pipe(make()).write(IcebergSink(cat, "db.paid"))
+    node.refresh()
+    q = cat.load_table("db.paid_quarantine")
+    rows = q.scan().to_arrow().to_pylist()
+    assert [_quarantine.decode_row(r["row"]) for r in rows] == [{"id": 2, "amount": -5}]
+    snap = q.current_snapshot()
+    assert snap is not None and snap.summary is not None
+    record = json.loads(snap.summary[_quarantine.RECORD_KEY])
+    assert record["node"] == "paid" and record["format"] == 1
+    # Fixed upstream: the table empties.
+    orders.apply(Changes(deletes=table([(2, -5)])))
+    node.refresh()
+    assert cat.load_table("db.paid_quarantine").scan().to_arrow().num_rows == 0

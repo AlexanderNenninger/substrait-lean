@@ -34,10 +34,10 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
 from sverify._weighted import (
     WEIGHT,
+    _call,
     _indices,
     _q,
     _sql,
@@ -259,7 +259,7 @@ def apply_keys(pool: pa.Table, keys: Sequence[Any]) -> _Split:
             for r, n in zip(bad.to_pylist(), [n for n in counts if n > 1], strict=True):
                 conditions.append([k.label])
                 reasons.append(f"{_show_key(r, k.cols)} is on {n} rows")
-        ok = ok.filter(pc.invert(mask))
+        ok = ok.filter(_call("invert", mask))
     bad = concat(bad_parts) if bad_parts else pool.slice(0, 0)
     return _Split(ok, bad, conditions, reasons)
 
@@ -274,7 +274,7 @@ def split_rows(con: Any, rows: pa.Table, row_conds: Sequence[Any]) -> _Split:
     mask = pa.array([bool(f) for f in fails], pa.bool_())
     bad_fails = [f for f in fails if f]
     return _Split(
-        rows.filter(pc.invert(mask)),
+        rows.filter(_call("invert", mask)),
         rows.filter(mask),
         bad_fails,
         [_row_reason(f) for f in bad_fails],
@@ -396,7 +396,7 @@ def split_batch(
             rest.append(w + take)
         deletes = deletes.set_column(
             deletes.num_columns - 1, WEIGHT, pa.array(rest, pa.int64())
-        ).filter(pc.not_equal(pa.array(rest, pa.int64()), 0))
+        ).filter(_call("not_equal", pa.array(rest, pa.int64()), 0))
     first = split_rows(con, inserts, row_conds)
     if keys:
         key_labels = {k.label for k in keys}
@@ -502,16 +502,16 @@ class QuarantineReport:
 
     def __str__(self) -> str:
         what = ", ".join(f"{n} × {c}" for c, n in self.by_condition.items())
-        parts = [
-            f"{self.set_aside} row(s) of {self.source} set aside" + (f" ({what})" if what else "")
-        ]
+        parts = []
+        if self.set_aside:
+            parts.append(f"{self.set_aside} row(s) set aside" + (f" ({what})" if what else ""))
         if self.released:
             parts.append(f"{self.released} released")
         if self.deleted:
             parts.append(f"{self.deleted} deleted upstream")
         where = f" in {self.table}" if self.table else ""
         parts.append(f"{self.held} held{where}")
-        return ", ".join(parts)
+        return f"{self.source}: " + ", ".join(parts)
 
     def to_dict(self) -> dict[str, Any]:
         """The report as JSON values, for `Refresh.to_json`."""
