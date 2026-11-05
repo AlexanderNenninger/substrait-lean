@@ -2056,7 +2056,7 @@ def _quantile() -> list[Target]:
     exprs.append(
         Expr("median", "median(x)", cont(0.5), "double", None, lambda g, a: any(c(g, x) for x in a))
     )
-    return [Target("spark-quantile", "g INT, x INT", rows, exprs, group=True)]
+    return [Target("spark-quantile", "g INT, x BIGINT", rows, exprs, group=True)]
 
 
 def _nonfinite() -> list[Target]:
