@@ -147,34 +147,23 @@ jobs:
         if: runner.os == 'macOS'
         run: mkdir wheelhouse && cp dist/*.whl wheelhouse/
 
-      # Test the installed wheel, not the source tree: copy the tests out so
-      # `sverify` can only come from the wheel. The tests also need the
-      # maintainer tooling, which the wheel leaves out (`python/tools`).
+      # Test the installed wheel, not the source tree: `wheel_tests.sh`
+      # copies the tests out so `sverify` can only come from the wheel (CI's
+      # `outside-repo` job runs the same script on every pull request).
       #
       # A pull request runs the fast set (`poe test`'s: no `slow` tests, a
       # tenth of the Hypothesis examples): it checks the packaging, and CI's
       # `test` jobs run the whole suite on the same code from source. A
-      # release, the nightly and the weekly run test the whole suite here.
+      # release, the nightly and the weekly run test the whole suite here,
+      # and so does a release's version-bump pull request (`release-*`), so
+      # a test the wheel fails shows up before the tag.
       - name: Test installed wheel
         env:
-          FAST: ${{ github.event_name == 'pull_request' }}
+          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') }}
         run: |
-          cp -r python/tests "$RUNNER_TEMP/tests"
-          cp -r python/tools "$RUNNER_TEMP/tools"
-          export PYTHONPATH="$RUNNER_TEMP/tools"
-          wheel=$(ls "$PWD"/wheelhouse/*.whl)
-          cd "$RUNNER_TEMP"
-          select=()
-          if [ "$FAST" = true ]; then
-            export SVERIFY_PROFILE=dev
-            select=(-m "not slow")
-          fi
-          uv run --isolated --no-project \
-            --with "sverify[all] @ file://$wheel" \
-            --with pytest --with hypothesis --with pyyaml \
-            --with "pyiceberg[sql-sqlite]" \
-            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
-            "${select[@]}" tests
+          fast=()
+          if [ "$FAST" = true ]; then fast=(--fast); fi
+          bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl ${fast[@]+"${fast[@]}"}
 
       # Without extras the wheel has no DataFusion, and needs none on DuckDB.
       - name: Run the installed wheel without DataFusion
@@ -185,7 +174,7 @@ jobs:
           import importlib.util
           import pyarrow as pa
           import sverify as sv
-          from sverify.io import StaticSource
+          from sverify.io import Changes, StaticSource
 
           assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
           t = StaticSource(pa.table({"a": [1, 5]}), name="t")
@@ -318,22 +307,9 @@ jobs:
         env:
           FULL: ${{ matrix.full }}
         run: |
-          cp -r python/tests "$RUNNER_TEMP/tests"
-          cp -r python/tools "$RUNNER_TEMP/tools"
-          export PYTHONPATH="$RUNNER_TEMP/tools"
-          wheel=$(ls "$PWD"/wheelhouse/*.whl)
-          cd "$RUNNER_TEMP"
-          select=()
-          if [ "$FULL" != true ]; then
-            export SVERIFY_PROFILE=dev
-            select=(-m "not slow")
-          fi
-          uv run --isolated --no-project --python ${{ matrix.python }} \
-            --with "sverify[all] @ file://$wheel" \
-            --with pytest --with hypothesis --with pyyaml \
-            --with "pyiceberg[sql-sqlite]" \
-            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
-            "${select[@]}" tests
+          fast=()
+          if [ "$FULL" != true ]; then fast=(--fast); fi
+          bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl --python ${{ matrix.python }} ${fast[@]+"${fast[@]}"}
 
       - name: Run the installed wheel without DataFusion
         run: |
@@ -343,7 +319,7 @@ jobs:
           import importlib.util
           import pyarrow as pa
           import sverify as sv
-          from sverify.io import StaticSource
+          from sverify.io import Changes, StaticSource
 
           assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
           t = StaticSource(pa.table({"a": [1, 5]}), name="t")
