@@ -93,7 +93,7 @@ def engines(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
     """Rows from Polars and DuckDB (on the timestamps DuckDB has)."""
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     out = {"polars": micros(run_plan(con, plan, "polars"))}
     if all(v is None or DUCKDB_MIN <= v < MAX for v in values):
         out["duckdb"] = micros(run_plan(con, plan, "duckdb"))
@@ -108,7 +108,9 @@ def lean_and_duckdb(sql: str, values: list[int | None]) -> tuple[list, list]:
     columns = [c.cast(pa.int64()) if pa.types.is_timestamp(c.type) else c for c in out.columns]
     out = pa.table(columns, names=out.column_names)
     expected = [tuple(x.values()) for x in out.to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": [(v,) for v in values]})
+    plan = inline_tables(
+        json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": [(v,) for v in values]}
+    )
     return lean_values(json.dumps(plan)), expected
 
 
@@ -178,7 +180,7 @@ def test_calendar_truncation_outside_nanoseconds_fails(unit, ts):
     put_table(con, "r", pa.table({"ts": pa.array([ts], pa.timestamp("us"))}))
     if ts >= DUCKDB_MIN:
         with pytest.raises(duckdb.Error, match="date_trunc"):
-            run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")
+            run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "duckdb")
 
 
 T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")

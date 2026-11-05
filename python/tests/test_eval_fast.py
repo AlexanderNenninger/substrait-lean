@@ -15,7 +15,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from sverify.engine import connect, create_table, run_checker, substrait_json
+from sverify.engine import connect, run_checker, substrait_json
 from sverify.testing import inline_tables, lean_values
 
 T = pa.schema([("i", pa.int64()), ("j", pa.int64()), ("s", pa.string())])
@@ -82,10 +82,10 @@ def both(plan: str) -> tuple[tuple[int, str, str], tuple[int, str, str]]:
 @given(sql=queries(), rows=tables)
 def test_fast_evaluator_agrees_with_spec(sql, rows):
     con = connect()
-    create_table(con, "t", T)
-    create_table(con, "u", U)
+    con.create("t", T)
+    con.create("u", U)
     try:
-        plan = substrait_json(con, sql)
+        plan = substrait_json(con, sql, semantics="duckdb")
     except Exception:  # noqa: BLE001 - outside the lift
         return
     inlined = json.dumps(inline_tables(json.loads(plan), rows))
@@ -121,8 +121,8 @@ FROM dates d RIGHT JOIN (
 def test_hash_join_on_thousands_of_rows():
     con = connect()
     for name, schema in SLOW_SCHEMAS.items():
-        create_table(con, name, schema)
-    plan = inline_tables(json.loads(substrait_json(con, SLOW_SQL)), SLOW_TABLES)
+        con.create(name, schema)
+    plan = inline_tables(json.loads(substrait_json(con, SLOW_SQL, semantics="duckdb")), SLOW_TABLES)
     start = time.perf_counter()
     rows = lean_values(json.dumps(plan))
     took = time.perf_counter() - start

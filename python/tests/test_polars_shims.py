@@ -21,7 +21,7 @@ import sverify as sv
 from _repo import needs_repo
 from sverify import _polars_shims as shims
 from sverify import polars_engine
-from sverify.engine import connect, create_table, run_plan, substrait_json, written_plan
+from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_rows, lean_values
 
@@ -40,7 +40,7 @@ def rows_of(table) -> list[tuple]:
 def lean_and_polars(schema, rows, sql: str, doubles: bool = False) -> tuple[list, list]:
     """`Rel.eval`'s rows and Polars's for `sql` under the reference."""
     con = connect()
-    create_table(con, "r", schema, rows)
+    con.create("r", schema, rows)
     plan = written_plan(substrait_json(con, sql, "reference"))
     inlined = json.dumps(inline_tables(json.loads(plan), {"r": rows}))
     lean = lean_values(inlined) if doubles else lean_rows(inlined)
@@ -104,15 +104,15 @@ def test_division_and_modulus_match_lean():
 
 def test_division_guards():
     con = connect()
-    create_table(con, "r", INTS, [(0, MIN, -1)])
+    con.create("r", INTS, [(0, MIN, -1)])
     plan = written_plan(substrait_json(con, "SELECT a // b AS q FROM r", "reference"))
     with pytest.raises(polars_engine.Overflow):
         run_plan(con, plan, "polars")
-    create_table(con, "r", INTS, [(0, 1, 0)])
+    con.create("r", INTS, [(0, 1, 0)])
     with pytest.raises(polars_engine.DivisionByZero):
         run_plan(con, plan, "polars")
     # Without the guards Polars's own value is left: a verified plan has none.
-    assert polars_engine.run(plan, {"r": con.arrow["r"]}, guards=False)["q"].to_pylist() == [None]
+    assert polars_engine.run(plan, {"r": con._arrow["r"]}, guards=False)["q"].to_pylist() == [None]
 
 
 # --- Integer arithmetic: native, with the overflow guard ------------------------
@@ -123,12 +123,12 @@ def test_integer_arithmetic_is_native_and_guarded():
     lean, polars = lean_and_polars(INTS, rows, "SELECT a + b, a - b, a * b FROM r")
     assert lean == polars
     con = connect()
-    create_table(con, "r", INTS, [(0, MAX, 1)])
+    con.create("r", INTS, [(0, MAX, 1)])
     plan = written_plan(substrait_json(con, "SELECT a + b AS s FROM r", "reference"))
     with pytest.raises(polars_engine.IntegerOverflow):
         run_plan(con, plan, "polars")
     # Polars wraps (polars-int-arith): what the guard is for.
-    out = polars_engine.run(plan, {"r": con.arrow["r"]}, guards=False)
+    out = polars_engine.run(plan, {"r": con._arrow["r"]}, guards=False)
     assert out["s"].to_pylist() == [MIN]
 
 
@@ -172,13 +172,13 @@ def test_ungrouped_sum_of_nothing_is_null(where):
 
 def test_sum_overflow_is_guarded_with_or_without_the_other_guards():
     con = connect()
-    create_table(con, "r", INTS, GROUPED[:2])
+    con.create("r", INTS, GROUPED[:2])
     plan = written_plan(substrait_json(con, "SELECT g, SUM(a) AS s FROM r GROUP BY g", "reference"))
     for guards in (True, False, {"SUM overflow"}):
         with pytest.raises(polars_engine.SumOverflow, match="SUM leaves 64 bits"):
-            polars_engine.run(plan, {"r": con.arrow["r"]}, guards=guards)
+            polars_engine.run(plan, {"r": con._arrow["r"]}, guards=guards)
     # Not assumed: no check, and the sum outside 64 bits is NULL.
-    out = polars_engine.run(plan, {"r": con.arrow["r"]}, guards=set())
+    out = polars_engine.run(plan, {"r": con._arrow["r"]}, guards=set())
     assert out["s"].to_pylist() == [None]
 
 
@@ -215,12 +215,12 @@ def test_float_sum_of_nothing_is_null():
 
 def test_float_sum_of_both_infinities_is_guarded():
     con = connect()
-    create_table(con, "r", FLOATS, [(1, math.inf), (1, -math.inf)])
+    con.create("r", FLOATS, [(1, math.inf), (1, -math.inf)])
     plan = written_plan(substrait_json(con, "SELECT g, SUM(x) AS s FROM r GROUP BY g", "reference"))
     with pytest.raises(polars_engine.DomainError, match="would make a NaN"):
-        polars_engine.run(plan, {"r": con.arrow["r"]})
+        polars_engine.run(plan, {"r": con._arrow["r"]})
     # polars-nonfinite-aggregates: NaN, where the reference raises.
-    out = polars_engine.run(plan, {"r": con.arrow["r"]}, guards=False)
+    out = polars_engine.run(plan, {"r": con._arrow["r"]}, guards=False)
     assert math.isnan(out["s"].to_pylist()[0])
 
 
@@ -233,9 +233,9 @@ def test_overflow_to_infinity_is_checked_when_assumed(sql):
     """#575: the reference assumes finite doubles give finite results; the
     report lists it, and the run checks it on the data."""
     con = connect()
-    create_table(con, "r", FLOATS, [(1, 1e308), (1, 1e308)])
+    con.create("r", FLOATS, [(1, 1e308), (1, 1e308)])
     plan = written_plan(substrait_json(con, sql, "reference"))
-    tables = {"r": con.arrow["r"]}
+    tables = {"r": con._arrow["r"]}
     # Checked by the default guards, by name, and without guards, as a
     # `SUM`'s overflow is (`Issue.assumed`).
     for guards in (True, {"overflow to infinity"}, False):
@@ -296,11 +296,11 @@ def test_an_unspecified_direction_is_ascending_with_nulls_last():
     the model's default `SortKey`. Lean's parser refuses it until step 1c, so
     the plan with the stated direction is the oracle."""
     con = connect()
-    create_table(con, "r", INTS, SORTABLE)
+    con.create("r", INTS, SORTABLE)
     plan = json.loads(
         written_plan(substrait_json(con, "SELECT g, a FROM r ORDER BY a", "reference"))
     )
-    stated = rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    stated = rows_of(polars_engine.run(plan, {"r": con._arrow["r"]}))
     keys = [
         s
         for s in _find(plan, "sorts")
@@ -314,7 +314,7 @@ def test_an_unspecified_direction_is_ascending_with_nulls_last():
                 k.pop("direction", None)
             else:
                 k["direction"] = unspecified
-        assert rows_of(polars_engine.run(plan, {"r": con.arrow["r"]})) == stated
+        assert rows_of(polars_engine.run(plan, {"r": con._arrow["r"]})) == stated
     assert [a for _, a in stated][-2:] == [None, None]
 
 
@@ -333,7 +333,7 @@ def test_avg_of_integers_in_the_declared_type_matches_lean():
     """`AggFn.iavg`: an `AVG` of integers whose output type is an integer,
     which a producer states (no lift writes it from SQL)."""
     con = connect()
-    create_table(con, "r", INTS, GROUPED)
+    con.create("r", INTS, GROUPED)
     plan = json.loads(
         written_plan(substrait_json(con, "SELECT g, AVG(a) AS m FROM r GROUP BY g", "reference"))
     )
@@ -342,7 +342,7 @@ def test_avg_of_integers_in_the_declared_type_matches_lean():
     measure["arguments"][0]["value"] = arg["cast"]["input"]
     measure["outputType"] = {"i64": {"nullability": "NULLABILITY_NULLABLE"}}
     lean = lean_rows(json.dumps(inline_tables(plan, {"r": GROUPED})))
-    polars = rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    polars = rows_of(polars_engine.run(plan, {"r": con._arrow["r"]}))
     assert lean == polars
     assert dict(polars)[3] == -1  # (-7 + 2 + 2) / 3, truncated toward zero
     assert dict(polars)[2] is None
@@ -404,7 +404,7 @@ def test_md5_is_refused_on_polars_with_the_reason():
     """G1: no Polars expression computes `md5`; the engine support table
     (`_support.SUPPORT`) refuses it before the run, with #271."""
     con = connect()
-    create_table(con, "r", STRINGS, TEXTS)
+    con.create("r", STRINGS, TEXTS)
     t = ibis.table(STRINGS, name="r")
     plan = written_plan(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
     with pytest.raises(polars_engine.Unsupported, match="see #271"):
@@ -577,12 +577,12 @@ def test_integer_powers_match_lean():
     rows = [(0, a, b) for a in (-3, -1, 0, 2, 3) for b in (0, 1, 2, 31, 39)]
     rows += [(1, a, b) for a in (-1, 0, 1) for b in (63, 64, 65, 200)]
     con = connect()
-    create_table(con, "r", INTS, rows)
+    con.create("r", INTS, rows)
     sql = "SELECT pow(a, b) AS p FROM r"
     plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
     plan = json.loads(written_plan(json.dumps(plan)))
     lean = lean_rows(json.dumps(inline_tables(plan, {"r": rows})))
-    assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    assert lean == rows_of(polars_engine.run(plan, {"r": con._arrow["r"]}))
 
 
 #: Days from 0001-01-01 to 9999-12-31 at month ends and leap days.
@@ -651,12 +651,12 @@ def test_double_division_is_within_two_ulps_and_the_remainder_exact(n):
 
 def test_a_subnormal_divisor_is_refused():
     con = connect()
-    create_table(con, "r", FLOATS, [(0, 1.0), (1, 2.0)])
+    con.create("r", FLOATS, [(0, 1.0), (1, 2.0)])
     plan = written_plan(substrait_json(con, "SELECT x / 1e-310 AS q FROM r", "reference"))
     with pytest.raises(polars_engine.SubnormalDivisor):
         run_plan(con, plan, "polars")
     # Without the check, the reciprocal overflows: 1 / 1e-310 is inf.
-    out = polars_engine.run(plan, {"r": con.arrow["r"]}, guards=set())
+    out = polars_engine.run(plan, {"r": con._arrow["r"]}, guards=set())
     assert math.isinf(out["q"].to_pylist()[0])
 
 
@@ -665,11 +665,11 @@ def test_a_difference_of_zeros_is_the_one_zero():
     computes `0.0 - x` as `-x`; the sum and difference go through `canon`."""
     rows = [(0, 0.0), (1, 0.0), (2, 0.0)]
     con = connect()
-    create_table(con, "r", FLOATS, rows)
+    con.create("r", FLOATS, rows)
     plan = written_plan(
         substrait_json(con, "SELECT 0.0 - x AS a, x + 0.0 AS b FROM r", "reference")
     )
-    out = polars_engine.run(plan, {"r": con.arrow["r"]})
+    out = polars_engine.run(plan, {"r": con._arrow["r"]})
     assert all(math.copysign(1.0, v) == 1.0 for c in ("a", "b") for v in out[c].to_pylist())
     assert pl.LazyFrame({"x": [0.0] * 3}).select(pl.lit(0.0) - pl.col("x")).collect(
         engine="in-memory"
@@ -704,12 +704,12 @@ def test_native_variances_match_lean(measure):
 
 def test_variance_of_an_infinity_is_guarded():
     con = connect()
-    create_table(con, "r", FLOATS, [(1, math.inf), (1, 1.0)])
+    con.create("r", FLOATS, [(1, math.inf), (1, 1.0)])
     plan = written_plan(
         substrait_json(con, "SELECT g, VAR_POP(x) AS v FROM r GROUP BY g", "reference")
     )
     with pytest.raises(polars_engine.DomainError, match="infinity"):
-        polars_engine.run(plan, {"r": con.arrow["r"]})
+        polars_engine.run(plan, {"r": con._arrow["r"]})
 
 
 def test_array_agg_of_nothing_is_null():
@@ -718,9 +718,9 @@ def test_array_agg_of_nothing_is_null():
     t = ibis.table(schema, name="r")
     plan = written_plan(to_substrait_json(t.group_by("g").agg(l=t.a.collect()).order_by("g")))
     con = connect()
-    create_table(con, "r", schema, rows)
+    con.create("r", schema, rows)
     lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
-    polars = rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    polars = rows_of(polars_engine.run(plan, {"r": con._arrow["r"]}))
     assert lean == polars
     assert polars[0][1] is None
 
@@ -740,9 +740,9 @@ def test_native_bit_aggregates_match_lean(op):
     expr = t.group_by("g").agg(m=getattr(t.a, op)()).order_by("g")
     plan = written_plan(to_substrait_json(expr))
     con = connect()
-    create_table(con, "r", schema, rows)
+    con.create("r", schema, rows)
     lean = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
-    assert lean == rows_of(polars_engine.run(plan, {"r": con.arrow["r"]}))
+    assert lean == rows_of(polars_engine.run(plan, {"r": con._arrow["r"]}))
 
 
 def test_a_fractional_power_of_minus_infinity_is_refused():
@@ -753,11 +753,11 @@ def test_a_fractional_power_of_minus_infinity_is_refused():
     lf = pl.LazyFrame({"x": [-math.inf, -0.0, 4.0]})
     assert math.isnan(lf.select(pl.col("x").pow(0.5)).collect(engine="streaming").item(0, 0))
     con = connect()
-    create_table(con, "r", FLOATS, [(0, -math.inf), (1, 4.0)])
+    con.create("r", FLOATS, [(0, -math.inf), (1, 4.0)])
     plan = written_plan(substrait_json(con, "SELECT power(x, 0.5) AS p FROM r", "reference"))
     with pytest.raises(polars_engine.DomainError, match="NaN"):
         run_plan(con, plan, "polars")
-    create_table(con, "r", FLOATS, [(1, -0.0), (2, 4.0)])
+    con.create("r", FLOATS, [(1, -0.0), (2, 4.0)])
     out = run_plan(con, plan, "polars")["p"].to_pylist()
     assert out == [0.0, 2.0] and math.copysign(1.0, out[0]) == 1.0
 
@@ -900,7 +900,7 @@ def test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not():
 def test_min_and_max_of_doubles_match_lean_and_duckdb(sql):
     lean, polars = lean_and_polars(FLOATS, EXTREMES, sql, doubles=True)
     con = connect()
-    create_table(con, "r", FLOATS, EXTREMES)
+    con.create("r", FLOATS, EXTREMES)
     plan = written_plan(substrait_json(con, sql, "reference"))
     duck = rows_of(run_plan(con, plan, "duckdb"))
     assert _same(sorted(lean, key=repr), sorted(polars, key=repr)), (lean, polars)

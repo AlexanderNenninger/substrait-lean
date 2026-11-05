@@ -9,7 +9,7 @@ import pytest
 from _repo import needs_repo
 from _sql_lift import TABLES
 from sverify._polars_shims import SHIMS
-from sverify.engine import connect, create_table, run_plan, written_plan
+from sverify.engine import connect, run_plan, written_plan
 from sverify.sql_lift import lift
 from sverify_dev import realizability
 
@@ -128,7 +128,7 @@ def test_clustered_is_a_sort():
     assert "SORT_DIRECTION_CLUSTERED" in text
     orders = TABLES["orders"]
     con = connect("duckdb")
-    create_table(con, "orders", orders.schema, [tuple(r.values()) for r in orders.to_pylist()])
+    con.create("orders", orders.schema, [tuple(r.values()) for r in orders.to_pylist()])
     prices = run_plan(con, written_plan(text), "duckdb").column("price").to_pylist()
     assert sorted(prices, key=lambda p: (p is None, p)) == sorted(
         orders.column("price").to_pylist(), key=lambda p: (p is None, p)

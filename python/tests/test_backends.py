@@ -34,7 +34,6 @@ from hypothesis import strategies as st
 from sverify import polars_engine
 from sverify.engine import (
     connect,
-    create_table,
     put_table,
     run_plan,
     written_plan,
@@ -133,7 +132,7 @@ def order_dependent(r: Rel) -> bool:
 def con():
     con = connect()
     for table in coverage.TABLES:
-        create_table(con, table.get_name(), table.schema())
+        con.create(table.get_name(), table.schema())
     for name, table in coverage.MEMTABLES.items():
         put_table(con, name, table)
     return con
@@ -272,14 +271,13 @@ def test_connections_share_one_duckdb_database():
     database per connection left one thread pool each until then."""
     psutil = pytest.importorskip("psutil")
     from sverify import connect
-    from sverify.engines import table_rows
     from sverify_dev.examples import create_tables
 
     a, b = connect(), connect()
     create_tables(a, [(1, "ada", 3)])
     create_tables(b, [(2, "bob", 5)])
-    assert table_rows(a, "orders") == [(1, "ada", 3)]
-    assert table_rows(b, "orders") == [(2, "bob", 5)]
+    assert a.rows("orders") == [(1, "ada", 3)]
+    assert b.rows("orders") == [(2, "bob", 5)]
     before = psutil.Process().num_threads()
     cons = [connect() for _ in range(20)]
     for con in cons:
