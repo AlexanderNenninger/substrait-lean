@@ -16,7 +16,7 @@ Jobs and tools read three formats that sverify writes:
 |---|---|---|---|
 | The sink's contract record ([#734](https://github.com/AlexanderNenninger/substrait-lean/issues/734)) | a Delta commit's `commitInfo` under the key `sverify`; an Iceberg table's property `sverify.contract`, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata ([#735](https://github.com/AlexanderNenninger/substrait-lean/issues/735)) | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
-| The report's JSON ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)) | `Report.to_json()` | `format` in the document | to come with #736 |
+| The report's JSON ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)) | `Report.to_json()`, read back by `Report.from_json()` | `format` in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
 
 Within 1.x each format follows these rules:
 
@@ -38,7 +38,8 @@ Each release writes fixtures of the formats it writes into
 `python -m sverify_dev.formats`. [`tests/test_formats.py`](../python/tests/test_formats.py)
 reads every fixture, checks it against its schema, and reads it with the
 API a job uses: a sink resumes from the Delta table and reads its contract,
-and `sv.from_substrait` reads each export and proves its contract again.
+`sv.from_substrait` reads each export and proves its contract again, and
+`Report.from_json` reads each report back to the same document.
 The fixtures of 0.4.0 were written by the release on PyPI.
 
 ### The Substrait contract message

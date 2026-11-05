@@ -744,6 +744,13 @@ The report's parts come as data and as the lines `str(report)` prints:
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.
+- `report.to_json()` writes the report as a versioned JSON document for CI
+  jobs and tools: the verdict, each postcondition with its reason and
+  counterexample, the issues, the needs, the facts and the routes, in the
+  format of [`report.schema.json`](../python/src/sverify/schemas/report.schema.json).
+  `sv.Report.from_json(text)` reads it back into a `Report` with the same
+  verdict ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736),
+  [stability](stability.md)).
 
 The counterexample search tries 200 inputs per unproved postcondition. The
 `SVERIFY_COUNTEREXAMPLES` environment variable sets that budget for
