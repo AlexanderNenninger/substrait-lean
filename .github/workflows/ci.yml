@@ -447,8 +447,8 @@ jobs:
   # The pipeline template (templates/pipelines/, #771), as a repository of
   # its own: its tests run its workflows' steps (check, refresh twice, the
   # catalog, a refresh the data refuses) on the recorded Eurostat response
-  # with this checkout's sverify; its skills must match the package's, and
-  # actionlint checks its workflows.
+  # with this checkout's sverify; a warning flags skills that differ from
+  # the package's, and actionlint checks its workflows.
   template:
     needs: [changes, checker]
     if: needs.changes.outputs.code == 'true'
@@ -471,7 +471,11 @@ jobs:
           git -C "$repo" -c user.name=ci -c user.email=ci@localhost commit --quiet -m "Use this template"
           py="$PWD/python"
           cd "$repo"
-          uv run --locked --project "$py" python scripts/sync-skills.py --check
+          # A PR that changes a skill shouldn't have to edit the template's
+          # copy too: warn, and test with the package's skills.
+          uv run --locked --project "$py" python scripts/sync-skills.py --check \
+            || { echo "::warning::templates/pipelines/.claude/skills differ from the package's; run scripts/sync-skills.py there"; \
+                 uv run --locked --project "$py" python scripts/sync-skills.py; }
           uv run --locked --project "$py" ruff check .
           uv run --locked --project "$py" ruff format --check .
           uv run --locked --project "$py" python -m pytest -q -p no:cacheprovider
