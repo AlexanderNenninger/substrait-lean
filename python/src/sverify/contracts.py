@@ -75,7 +75,9 @@ import re
 import warnings
 import weakref
 from collections import Counter
-from collections.abc import Callable, Collection, Container, Mapping, Sequence
+from collections.abc import Callable, Collection, Container, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -4744,6 +4746,48 @@ def register_view(table: ir.Table, contract: ViewContract) -> None:
         _register(table.op(), contract.provenance)
 
 
+@dataclass
+class Collected:
+    """One call of a contracted transform while `collecting`: what it was
+    applied to and the report of its proof, recorded instead of raised."""
+
+    transform: ContractedTransform
+    """The transform called."""
+    node: bool
+    """Whether the call built a `sverify.Node` (on sources or nodes)."""
+    report: Report | None = None
+    """The report of the postconditions' proof; None while it runs (or if
+    it never finished)."""
+    links: list[CompositionError] = field(default_factory=list)
+    """Preconditions on another transform's result that its guarantees do
+    not imply."""
+    params: dict[str, str] = field(default_factory=dict)
+    """For each input table the report names, the transform's parameter
+    that reads it (`requires` is keyed by parameter)."""
+
+
+_COLLECTING: ContextVar[list[Collected] | None] = ContextVar("sverify_collecting", default=None)
+
+
+@contextmanager
+def collecting() -> Iterator[list[Collected]]:
+    """Within the block, contracted transforms record their proofs in the
+    list it yields, one `Collected` per call, instead of raising
+    `VerificationError` or `CompositionError`, and `refresh` refuses to
+    run. `sverify.cli.discover` imports a pipeline's file this way."""
+    out: list[Collected] = []
+    token = _COLLECTING.set(out)
+    try:
+        yield out
+    finally:
+        _COLLECTING.reset(token)
+
+
+def is_collecting() -> bool:
+    """Whether a `collecting` block is open."""
+    return _COLLECTING.get() is not None
+
+
 class ContractedTransform:
     """A transformation with a contract; see `transform`.
 
@@ -4892,7 +4936,13 @@ class ContractedTransform:
         )
         return True
 
-    def _link(self, param: str, value: ir.Table, conds: list[Condition]) -> _Abstraction:
+    def _link(
+        self,
+        param: str,
+        value: ir.Table,
+        conds: list[Condition],
+        entry: Collected | None = None,
+    ) -> _Abstraction:
         """Discharge this transformation's preconditions on a derived input by
         proving them from what produced it (assume-guarantee composition).
         Returns, as `assumptions`, what may be assumed about the input."""
@@ -4929,7 +4979,11 @@ class ContractedTransform:
         )
         if self.on_unproved == "warn":
             warnings.warn(str(error), stacklevel=4)
-        elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
+        elif self.on_unproved == "runtime" and self._check_on_data(value, param, unproved):
+            pass
+        elif entry is not None:
+            entry.links.append(error)
+        else:
             raise error
         return out
 
@@ -5050,6 +5104,10 @@ class ContractedTransform:
         at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
+        entry = None
+        if (collected := _COLLECTING.get()) is not None:
+            entry = Collected(self, node)
+            collected.append(entry)
         result = self.fn(*args, **kwargs)
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}
@@ -5072,7 +5130,7 @@ class ContractedTransform:
                 if self.check_requires:
                     self._check_on_data(value, param, conds)
                 continue
-            link = self._link(param, value, conds)
+            link = self._link(param, value, conds, entry)
             _merge(external, link.external)
             unproved_links += link.unproved_links
             if op in placeholders:  # the same input under two parameters
@@ -5105,19 +5163,24 @@ class ContractedTransform:
                 self._check_on_data(value, param, conds)
         checked: list[Condition] = []
         if not report.proved and raise_unproved:
-            if self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in
             # "runtime" mode the engine raises them if they happen.
-            elif self.on_unproved == "runtime" and (node or is_bound(result)):
+            if self.on_unproved == "runtime" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
                 checked = [c for c in self.ensures if label(c) in unproved]
                 report = self.last_report = _marked_checked(report)
                 for c in [] if node else checked:
                     if n := violations(result, c, self.engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
+            elif entry is not None:
+                pass  # collected: the caller reads the report
+            elif self.on_unproved == "warn":
+                warnings.warn(str(VerificationError(report)), stacklevel=3)
             else:
                 raise VerificationError(report)
+        if entry is not None:
+            entry.report = report
+            entry.params = {t: p for t, (p, _) in {**bound_inputs, **plain}.items()}
         _merge(external, abstraction.external)
         _merge(external, base)
         proved = {c.label for c in report.ensures if c.proved}

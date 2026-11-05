@@ -23,7 +23,7 @@ dynamic: false
 # promises, how its result is built, stored and kept up to date, where its
 # tables live, where it runs, how to test it, what can go wrong. The public
 # API is the top-level names plus `sverify.io`, `sverify.engines`,
-# `sverify.testing` and `sverify.errors`;
+# `sverify.testing`, `sverify.errors` and `sverify.cli`;
 # everything else is internal (CHANGELOG.md, 0.2.0). `Node`'s results
 # (`Refresh`, `Status`, `Group`) live in `sverify.nodes` and are documented
 # because users hold them, not because they are imported.
@@ -140,6 +140,17 @@ reference:
       - testing.cases
       - testing.source
       - testing.installed_engines
+
+  - title: Command line
+    desc: >
+      The `sverify` command (`sverify.cli`): `check`, `suggest`, `refresh`
+      and `explain` a pipeline's file from a shell, a CI job or an agent.
+    contents:
+      - cli.main
+      - cli.discover
+      - cli.summary
+      - cli.Discovery
+      - cli.Checked
 
   - title: Errors
     desc: What sverify raises, and when (`sverify.errors`).
