@@ -154,10 +154,12 @@ jobs:
       # A pull request runs the fast set (`poe test`'s: no `slow` tests, a
       # tenth of the Hypothesis examples): it checks the packaging, and CI's
       # `test` jobs run the whole suite on the same code from source. A
-      # release, the nightly and the weekly run test the whole suite here.
+      # release, the nightly and the weekly run test the whole suite here,
+      # and so does a release's version-bump pull request (`release-*`), so
+      # a test the wheel fails shows up before the tag.
       - name: Test installed wheel
         env:
-          FAST: ${{ github.event_name == 'pull_request' }}
+          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') }}
         run: |
           cp -r python/tests "$RUNNER_TEMP/tests"
           cp -r python/tools "$RUNNER_TEMP/tools"

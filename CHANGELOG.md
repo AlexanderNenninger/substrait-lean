@@ -1,6 +1,139 @@
 # Changelog
 
-## 0.6.0 (2026-11-05)
+## 0.7.0 (2026-11-05)
+
+0.6.0 was tagged but never published: two tests the release ran against the
+installed wheel read repository files the wheel doesn't have, so nothing
+reached PyPI. 0.7.0 is the first release of 0.6.0's changes (the 0.6.0
+section below), of 0.5.0's, and of these. It is also the first release of
+`sverify-dbt`, at the same version. A release's version-bump pull request now
+runs the whole wheel test, so a failure like this shows before the tag.
+
+### Breaking changes
+
+Upgrading from 0.4.0, read the 0.6.0 and 0.5.0 sections' breaking changes
+too. New in 0.7.0, in the entry "Breaking: sources, sinks and the top level of
+1.x" below:
+
+- `StaticSource(table, name=...)` and `sverify.testing.source(..., name=...)`
+  need `name=`, and `version` is keyword-only.
+- `SourceBatch.kind`, `SourceRefresh.mode` and `SinkWrite.mode` are
+  snake_case (`"change_feed"`, `"snapshot_diff"`, `"row_level"`), with no
+  deprecation period.
+- Renamed keywords and methods on sources and sinks warn and name the new
+  form.
+
+### Coverage targets for 1.0
+
+`docs/coverage-targets.md` lists the SQL and Ibis constructs sverify 1.0 covers, by area, with the ones skipped and the reason for each ([#743](https://github.com/AlexanderNenninger/substrait-lean/issues/743)). `python -m sverify_dev.coverage --targets` prints the share covered, 27 of 60 on 2026-11-05.
+
+### A template repository for pipelines on GitHub
+
+- `templates/pipelines/` holds the contents of a template repository for
+  data engineering on your phone
+  ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)):
+  workflows that prove each pull request's pipelines and comment the
+  contract in plain words (`check`), run them on staging data with a
+  preview catalog (`preview`), refresh `main`'s on a schedule in a
+  `production` environment (`refresh`), publish a catalog to GitHub Pages
+  with DuckDB-WASM (`pages`) and open an issue when a refresh fails
+  (`alerts`). Tables go to a `data` branch by default, or to your bucket
+  through OIDC for enterprise. A worked pipeline keeps Eurostat's
+  `nama_10_gdp` up to date, and `CLAUDE.md` with sverify's skills teaches
+  Claude Code the loop. CI runs the template's steps on a recorded Eurostat
+  response against every change to sverify.
+
+### ODCS contracts
+
+`sverify.odcs` writes a node's contract as an Open Data Contract Standard
+document (ODCS v3.2.0) and reads ODCS contracts as conditions
+([#791](https://github.com/AlexanderNenninger/substrait-lean/issues/791)).
+The export maps NOT NULL columns to `required`, keys to `primaryKey` and
+`unique`, value sets, ranges and row caps to quality rules, and the
+docstring to descriptions; each rule carries a `sverify` custom property
+saying whether it is proved, checked on the data or declared. `odcs.read`
+gives the conditions for `requires` or `ensures` and lists, with a warning,
+every rule it cannot read. `sverify contract export <file>:<node> --format
+odcs` writes it from the command line. YAML needs the new extra
+`sverify[odcs]`.
+
+### Breaking: sources, sinks and the top level of 1.x
+
+From the API review before 1.0 (`api-review/PROPOSAL.md`, items 11 and 12).
+Each old form below still works in this release with a `DeprecationWarning`
+that names the new one, except the snake_case values.
+
+Sources and sinks (E2–E5):
+
+- `contract(version=None)` reads the recorded contract on every source and
+  sink: `DeltaSource`, `IcebergSource` (where `version` is a snapshot's
+  sequence number, read from the metadata log), `DeltaSink`, `IcebergSink`
+  and a `Sink` of your own. `Sink.committed()` is deprecated; a custom sink
+  overrides `contract()`, and one that still overrides `committed()` works
+  with a warning.
+- `DeltaSource.contract(version)` reads the contract recorded up to
+  `version`. Before, it returned the latest one, because delta-rs's history
+  of a table loaded at an older version lists the latest commits
+  ([DL-2](upstream/bugs/DL-2.json)).
+- `DeltaSink.maintain(vacuum_retention=)` and
+  `IcebergSink.maintain(snapshot_retention=, min_snapshots=)` take the
+  constructors' names; `vacuum=` and `expire=` are deprecated. Every
+  retention takes a `timedelta` or an ISO 8601 duration such as `"P7D"`.
+- `StaticSource(table, name=..., version=...)` and
+  `sverify.testing.source(rows, schema, name=...)` need `name=`, and
+  `version` is keyword-only: two sources named `"table"` in one pipeline
+  would collide.
+- `SourceBatch.kind`, `SourceRefresh.mode` and `SinkWrite.mode` are
+  snake_case: `"change_feed"`, `"snapshot_diff"`, `"row_level"`. Code that
+  matches `"change feed"`, `"snapshot diff"` or `"row-level"` changes; the
+  printed reports read as before.
+
+The top level (A1–A4, A6):
+
+- `Changes` is `sverify.io.Changes`, beside `StaticSource`, and
+  `sv.from_substrait(data)` is `sv.Report.from_substrait(data)`, beside
+  `Report.from_json`.
+
+  ```python
+  from sverify.io import Changes  # was: sv.Changes
+
+  orders.apply(Changes(inserts=[(3, "cy", 50)]))
+  report = sv.Report.from_substrait(exported)  # was: sv.from_substrait
+  ```
+- `sv.rows_per("customer", "day", at_most=3)` takes its columns as `unique`
+  and `key` do; `rows_per(["customer", "day"], 3)` is deprecated.
+- `sv.arrives_within("ts", "PT15M")` takes the lateness as a `timedelta` or
+  an ISO 8601 duration; `days=`, `hours=`, `minutes=` and `seconds=` are
+  deprecated.
+- `sv.approx(cond, rel=, abs=, ulps=)` takes the tolerances of `sv.within`;
+  the comparison moves by the largest of them, and by `rel=1e-6` when none
+  is given.
+- `sv.sql(query, name="orders")` names the chained table, the word every
+  source uses; `as_=` is deprecated. `semantics` is typed as `Semantics`.
+- A transform's report is `transform.report`, as a node's is
+  `node.report`; `last_report` is deprecated, and `last_preconditions`
+  (the refresh report says how each precondition was established).
+
+### Repeated terms written once
+
+A term a written plan computes in several places, `CASE` branches among
+them, is now computed once as a column when the plan evaluates it on every
+row anyway (#821, `Expr.repeated` in `SubstraitLean/Bind.lean`). Ibis's
+`find` with a start drops from 66 kB of Snowflake SQL to 3 kB, and
+`day_of_week.full_name()` from 11 kB to 2 kB on DuckDB and Spark.
+
+### Smaller written SQL
+
+Sverify binds the arguments that its guards would copy to columns before it
+writes a plan (`SubstraitLean/Bind.lean`, #821): a nested date or double
+operation, or an aggregate's argument, is computed once in a projection
+below and read by name. The `month end` query of #821 drops from 51 kB of
+Spark SQL to 7 kB, and the catalogue's largest Snowflake statement from
+547 kB to 16 kB. `Rel.evalI_bindArgs` and `Rel.raises_bindArgs` prove
+that the plan computes the same rows and raises the same errors on every
+engine.
+
+## 0.6.0 (2026-11-05, tagged, not published)
 
 0.5.0 was tagged but never published: a Spark test ran out of memory in the
 release's wheel tests, so nothing reached PyPI. 0.6.0 is the first release of
