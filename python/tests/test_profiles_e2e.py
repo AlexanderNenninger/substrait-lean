@@ -10,9 +10,10 @@ Most rows wait for the Lean side: the class, `q` and shim columns of
 the option dependency report (3c). Those are expected failures while the
 checker has no classes, and strict ones: they must pass once it does.
 Rows that also wait for step 1c (`UNSPECIFIED` sort keys, open choices
-proved over every pick), #575 (`±∞` as an error of the reference) or
-`Profile.polars` contracts are expected failures without strictness, with
-the reason.
+proved over every pick) or #575 (`±∞` as an error of the reference) are
+expected failures without strictness, with the reason. The F rows check
+`Profile.polars` (`SubstraitLean/PolarsProfile.lean`): a plan whose `%`
+floors runs natively on Polars and is refused on DuckDB.
 """
 
 from __future__ import annotations
@@ -118,7 +119,7 @@ def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
     assert route_of(report, "duckdb").kind == "reference"
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").kind == "reference"
     assert route_of(report, "polars").cls == "shim"
 
@@ -135,7 +136,7 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
     run_both(report, con)
     for e in ENGINES:
         assert route_of(report, e).kind == "reference"
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
 
 
 @classes
@@ -151,14 +152,14 @@ def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
     report = sv.verify(t.group_by("k").aggregate(total=t.i.sum()))
     assert report.proved and [i.what for i in report.assumed] == ["i"]
     run_both(report, con)
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
     assert any("sum_empty_null" in s for s in route_of(report, "polars").shims)
     present = sv.verify(t.group_by("k").aggregate(total=t.i.sum()), requires={"t": [_.i.notnull()]})
     assert present.proved, str(present)
     run_both(present, con)
     for e in ENGINES:
-        assert route_of(present, e).cls == "refines"
+        assert route_of(present, e).cls == "exact"
     # The plan reads every column of `t`: the bad batch has them all.
     bad = sv.connect()
     rows = con.get("t").slice(0, 2)
@@ -184,7 +185,7 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     out = run_both(report, good)
     assert all(math.isfinite(z) for z in out["polars"].column("z").to_pylist())
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
     bad = sv.connect()
     bad.put("u", pa.table({"x": [1e200], "y": [1e200]}))
     for e in ENGINES:
@@ -216,11 +217,11 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
         assert report.proved, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
-    assert route_of(rounded, "duckdb").cls == "refines"
+    assert route_of(rounded, "duckdb").cls == "exact"
     assert route_of(rounded, "polars").cls == "shim"
     assert mean.epsilon, "the plan's bound on the mean"
-    assert route_of(mean, "duckdb").cls in ("refines", "approx")
-    assert route_of(mean, "polars").cls == "approx"
+    assert route_of(mean, "duckdb").cls in ("exact", "observed")
+    assert route_of(mean, "polars").cls == "observed"
 
 
 # -- B: observations ---------------------------------------------------------
@@ -251,8 +252,8 @@ def test_b1_float_aggregates_within_a_tolerance(con) -> None:
         assert report.epsilon, "the plan's bound on the doubles"
         data = con if tolerance.abs is not None else _non_negative(con)
         run_both(report, data)
-        assert route_of(report, "polars").cls == "approx", tolerance
-        assert route_of(report, "duckdb").cls in ("refines", "approx")
+        assert route_of(report, "polars").cls == "observed", tolerance
+        assert route_of(report, "duckdb").cls in ("exact", "observed")
     tight = sv.verify(
         t.group_by("k").aggregate(total=t.x.sum()),
         requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
@@ -288,8 +289,8 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     canon = sv.verify(expr, ensures=[sv.equivalent(zeros="canon")])
     out = run_both(canon, z)
     assert sorted(out["polars"].column("n").to_pylist()) == [1, 2, 2]
-    assert route_of(canon, "polars").cls == "refines_up_to"
-    assert route_of(canon, "duckdb").cls in ("refines", "refines_up_to")
+    assert route_of(canon, "polars").cls == "observed"
+    assert route_of(canon, "duckdb").cls in ("exact", "observed")
 
 
 # -- C: order and NULLs ------------------------------------------------------
@@ -306,7 +307,7 @@ def test_c1_explicit_nulls_first(con) -> None:
     out = run_both(report, con)
     assert out["polars"].column("k").to_pylist()[:2] == [None, None]
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
 
 
 @waits_for(
@@ -328,7 +329,7 @@ def test_c2_unspecified_null_order(con) -> None:
     )
     out = run_both(report, con)
     assert out["polars"].column("k").to_pylist()[-2:] == [None, None]
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
 
 
@@ -354,7 +355,7 @@ def test_c4_join_on_keys_with_nulls(con) -> None:
     out = run_both(report, con)
     assert None not in out["polars"].column("k").to_pylist()
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
 
 
 # -- D: open options ---------------------------------------------------------
@@ -378,7 +379,7 @@ def test_d1_open_picks_and_element_order(con) -> None:
     run_both(report, con, sv.equivalent(elements="multiset"))
     for e in ENGINES:
         assert route_of(report, e).kind == "reference"
-        assert route_of(report, e).cls in ("refines", "refines_up_to")
+        assert route_of(report, e).cls in ("exact", "observed")
     reads = sv.verify(expr, requires=req, ensures=[q, _.f == _.mx, _.l[0] <= _.mx])
     assert {c.label: c.ignores for c in reads.ensures} == {
         "(_.f == _.mx)": ("picks",),
@@ -410,31 +411,110 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
         2,
         None,
     ]
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
 
 
 # -- F: routes between profiles ----------------------------------------------
 
 
-@waits_for(
-    "a contract checked under Polars's own choices: `--contract` transfers the reference's "
-    "proof to Substrait only, and Polars's `%` floors where the reference truncates"
-)
+def _floor_report(con, **kw) -> sv.Report:
+    """`i % j` and `i // j` verified under `Profile.polars`, whose integer `%`
+    and `//` floor (`SubstraitLean/PolarsProfile.lean`)."""
+    t = con.table("t")
+    return sv.verify(
+        t.select("k", m=t.i % t.j, q=t.i // t.j),
+        requires={"t": [_.i.between(-100, 100), _.j.between(-100, 100), _.j != 0]},
+        semantics="polars",
+        **kw,
+    )
+
+
 def test_f1_verified_under_polars_runs_natively(con) -> None:
-    """Route (a): a plan verified under `Profile.polars` runs natively."""
+    """Route (a): a plan verified under `Profile.polars` runs natively. Its
+    `%` floors, as Polars's does: the plan states `division_type: FLOOR`,
+    the checker reads it as the floored remainder, and Polars runs its own
+    `%` and `//`, with no shim."""
+    report = _floor_report(con)
+    assert report.proved and report.semantics == "polars", str(report)
+    assert '"FLOOR"' in (report.plan or "")
+    # Lean writes the calls back as they were, so Polars sees them.
+    assert '"FLOOR"' in sv.engine.written_plan(report.plan or "")
+    out = report.run(con, "polars", route="auto")
+    r = report.routes["polars"]
+    assert (r.kind, r.profile, r.cls) == ("native", "polars", "exact")
+    assert not r.shims
+    pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
+    assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
+    assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
+
+
+def test_f1b_floor_plan_is_refused_on_duckdb(con) -> None:
+    """The same plan on DuckDB: DuckDB's `%` truncates and it has no `FLOOR`,
+    so the plan is refused there, with the reason. Verified under the
+    reference, the same expression truncates and runs on both."""
+    report = _floor_report(con)
+    r = routes.choose(report, "duckdb")
+    assert r.refused and "division_type FLOOR" in r.reason and "duckdb" in r.reason, r
+    with pytest.raises(RouteError, match="refused on duckdb: integer // and %"):
+        report.run(con, "duckdb", route="auto")
+    t = con.table("t")
+    ref = sv.verify(
+        t.select("k", m=t.i % t.j),
+        requires={"t": [_.i.between(-100, 100), _.j.between(-100, 100), _.j != 0]},
+    )
+    assert ref.proved and '"FLOOR"' not in (ref.plan or "")
+    out = ref.run(con, "duckdb", route="auto")
+    assert sorted(out.column("m").to_pylist()) == sorted(
+        int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
+    )
+
+
+def test_f1c_polars_contract_reads_floored_values(con) -> None:
+    """A postcondition that holds only of the floored remainder: with a
+    positive divisor it is never negative. Proved under `Profile.polars`; not
+    under the reference, where `-7 % 2` is `-1`."""
+    t = con.table("t")
+    expr = t.select(m=t.i % 2)
+    req = {"t": [_.i.between(-100, 100)]}
+    polars = sv.verify(expr, requires=req, ensures=[_.m >= 0], semantics="polars")
+    assert polars.proved, str(polars)
+    reference = sv.verify(expr, requires=req, ensures=[_.m >= 0])
+    assert not reference.proved
+    out = polars.run(con, "polars", route="auto")
+    assert min(out.column("m").to_pylist()) >= 0
+
+
+def test_f1d_zero_divisor_is_a_precondition_under_polars(con) -> None:
+    """Polars gives NULL for `i % 0`; `Profile.polars` raises there, as the
+    reference does (D21), so `verify` infers `j != 0` and checks it on the
+    data before the run. With no bounds on `i` and `j` the floored remainder
+    cannot overflow, which the range analysis sees."""
+    t = con.table("t")
+    report = sv.verify(t.select(m=t.i % t.j), semantics="polars", on_inferred="silent")
+    assert report.proved, str(report)
+    assert report.inferred == {"t": ['"j" IS NULL OR "j" <> 0']}, report.inferred
+    bad = sv.connect()
+    bad.put("t", con.get("t").set_column(2, "j", pa.array([0] * 7, pa.int64())))
+    with pytest.raises(PreconditionError, match="refused before the run"):
+        report.run(bad, "polars", route="auto")
+
+
+def test_f1e_recheck_targets_polars(con) -> None:
+    """Route (d): the checker proves a reference plan again under
+    `Profile.polars`. The plan's `%` states no `FLOOR`, so it truncates, which
+    the translation to Polars shims."""
     t = con.table("t")
     report = sv.verify(
         t.select("k", m=t.i % t.j),
         requires={"t": [_.i.between(-100, 100), _.j.between(-100, 100), _.j != 0]},
-        semantics="polars",
     )
-    assert report.proved and report.semantics == "polars"
-    out = report.run(con, "polars", route="auto")
-    r = report.routes["polars"]
-    assert (r.kind, r.profile, r.cls) == ("native", "polars", "refines")
-    assert sorted(out.column("m").to_pylist(), key=lambda v: (v is None, v)) == sorted(
-        i % j for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
+    ok, why = routes.recheck(report, "polars")
+    assert ok, why
+    out = report.run(con, "polars", route="recheck")
+    assert report.routes["polars"].kind == "recheck"
+    assert sorted(out.column("m").to_pylist()) == sorted(
+        int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
 
 
@@ -454,17 +534,20 @@ def test_f2_duckdb_plan_transfers_to_polars(con) -> None:
     assert report.proved, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
-    assert (r.kind, r.cls) == ("transfer", "refines"), r
+    assert (r.kind, r.cls) == ("transfer", "exact"), r
     out = run_both(report, big)
     assert math.inf in out["polars"].column("z").to_pylist()
 
 
 # Needs the engines' choices (the transfer check), not their classes: it holds
 # from the DuckDB and Polars tables on (#587).
-def test_f3_duckdb_null_order_is_refused_on_polars(con) -> None:
-    """Route (c) fails: a sort read with DuckDB's default NULL order,
-    verified under `Profile.duckdb`; Polars puts NULLs first, and the
-    re-check under `Profile.polars` fails too. Refused, with the reason."""
+def test_f3_duckdb_null_order_fails_the_transfer_and_is_rechecked(con) -> None:
+    """Route (c) fails: a sort read with DuckDB's NULL order, verified under
+    `Profile.duckdb`; Polars puts NULLs first, so the transfer check fails on
+    `null_order`. The lift states `NULLS LAST`, which Polars's translation
+    writes as an argument, so the re-check under `Profile.polars` proves it
+    (route d), and the run puts the NULLs last. With route="transfer" the
+    plan is refused, with the reason."""
     t = con.table("t")
     report = sv.verify(
         "SELECT k FROM t ORDER BY k",
@@ -474,12 +557,16 @@ def test_f3_duckdb_null_order_is_refused_on_polars(con) -> None:
     )
     assert report.proved, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
-    r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused"
-    assert any(f["option"] == "null_order" for f in r.failures), r.failures
-    assert "transfer check fails on" in r.reason and "Profile.polars" in r.reason
+    refused = routes.choose(report, "polars", route="transfer")
+    assert refused.refused and refused.cls == "refused"
+    assert any(f["option"] == "null_order" for f in refused.failures), refused.failures
+    assert "transfer check fails on" in refused.reason and "null_order" in refused.reason
     with pytest.raises(RouteError, match="refused on polars"):
-        report.run(con, "polars", route="auto")
+        report.run(con, "polars", route="transfer")
+    r = routes.choose(report, "polars")
+    assert (r.kind, r.profile) == ("recheck", "polars"), r
+    out = report.run(con, "polars", route="auto")
+    assert out.column("k").to_pylist()[-2:] == [None, None]
 
 
 @pytest.mark.skipif(
@@ -519,7 +606,7 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
     assert report.routes["duckdb"].kind == "reference"
     r = routes.choose(report, "polars")
     assert r.refused and r.cls == "refused" and "#271" in r.reason
-    with pytest.raises(RouteError, match="md5 is not yet supported on polars"):
+    with pytest.raises(RouteError, match=r"hexdigest\('md5'\) \(SQL md5\) runs on duckdb only"):
         report.run(con, "polars", route="auto")
 
 
@@ -532,6 +619,6 @@ def test_h1_engine_versions(con, monkeypatch: pytest.MonkeyPatch) -> None:
         r = routes.choose(report, "polars")
     assert r.kind == "reference" and any("2.2.0" in w for w in r.warnings)
     monkeypatch.setattr(routes, "installed_version", lambda e: "3.0.0" if e == "polars" else None)
-    with pytest.raises(routes.EngineVersionError, match="re-run the probes"):
+    with pytest.raises(routes.EngineVersionError, match="install a 2.x release of polars"):
         report.run(con, "polars", route="auto")
     assert routes.choose(report, "duckdb").kind == "reference"

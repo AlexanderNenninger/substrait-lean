@@ -89,7 +89,7 @@
       "checker: count: option overflow is not supported": 5
     },
     "arithmetic": {
-      "checker: modulus: option on_domain_error is not supported": 11,
+      "checker: modulus: option on_domain_error is not supported": 12,
       "checker: unsupported function shift_right_unsigned/N": 10,
       "checker: sum: option overflow is not supported": 6,
       "checker: acosh: option on_domain_error is not supported": 5,
@@ -112,7 +112,6 @@
       "checker: cos of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: divide: option overflow = [SATURATE] is not supported (the model does [ERROR])": 1,
       "checker: exp of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
-      "checker: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])": 1,
       "checker: power of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: sin of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: std_dev: option rounding = [TRUNCATE] is not supported (the model does [TIE_TO_EVEN])": 1,

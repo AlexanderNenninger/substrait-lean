@@ -51,8 +51,32 @@ SUPPORT: dict[str, frozenset[str]] = {
 _REASONS = {
     ("ntile", "datafusion"): "DataFusion's NTILE does not deal out buckets as SQL does",
 }
-#: What a refusal calls a function, where its name is not what users wrote.
-_LABELS = {"sverify_pair": "covariance and correlation"}
+#: Where #271 is, for refusals: an engine that does not run a function yet.
+ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
+#: The end of a refusal of what only DuckDB runs.
+DUCKDB_ONLY = f"DuckDB runs it ({ISSUE_271})"
+
+#: What a refusal calls a function: the Ibis and SQL names users write,
+#: where the plan's name differs (#655).
+_LABELS = {
+    "sverify_pair": "covariance and correlation (Ibis cov, corr)",
+    "quantile_cont": "median() or quantile() (SQL median, quantile_cont)",
+    "quantile_disc": "quantile() (SQL quantile_disc)",
+    "regexp_extract": "re_extract() (SQL regexp_extract)",
+    "regexp_replace": "re_replace() (SQL regexp_replace)",
+    "first": "first() (SQL first)",
+    "last": "last() (SQL last)",
+    "mode": "mode() (SQL mode)",
+    "median": "median() (SQL median)",
+    "string_agg": "group_concat() (SQL string_agg)",
+    "array_agg": "collect() (SQL array_agg, list)",
+    "arg_min": "argmin() (SQL arg_min)",
+    "arg_max": "argmax() (SQL arg_max)",
+    "covar_samp": "cov() (SQL covar_samp)",
+    "covar_pop": "cov(how='pop') (SQL covar_pop)",
+    "md5": "hexdigest('md5') (SQL md5)",
+    "sha256": "hexdigest('sha256') (SQL sha256)",
+}
 
 
 def supported(name: str, engine: str) -> bool:
@@ -68,8 +92,31 @@ def refusal(name: str, engine: str) -> str:
     if reason := _REASONS.get((name, engine.lower())):
         return reason
     label = _LABELS.get(name, name)
-    verb = "are" if " and " in label else "is"
-    return f"{label} {verb} not yet supported on {engine}; see #271"
+    runs = sorted(SUPPORT.get(name, ENGINES))
+    where = " and ".join(runs)
+    return (
+        f"{label} runs on {where} only: run it with engine={runs[0]!r} "
+        f"({engine} does not run it yet; {ISSUE_271})"
+    )
+
+
+def floors(call: Any) -> bool:
+    """Does the call state `division_type` = `FLOOR`: Polars's `//` and `%`
+    of integers, which only a plan verified under `Profile.polars` states?"""
+    return any(
+        isinstance(o, dict)
+        and o.get("name") == "division_type"
+        and (o.get("preference") or [None])[0] == "FLOOR"
+        for o in call.get("options", [])
+    )
+
+
+def floor_refusal(engine: str) -> str:
+    """Why `engine` refuses a call that states `division_type` = `FLOOR`."""
+    return (
+        f"integer // and % with division_type FLOOR (Polars's, semantics='polars') run on "
+        f"polars only; {engine} truncates: verify with semantics='reference' to run on {engine}"
+    )
 
 
 #: The nodes that call a function by its anchor.
@@ -90,6 +137,8 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                     name = fns.get(call.get("functionReference", 0))
                     if name is not None and not supported(name, engine):
                         raise err(refusal(_plan_read.base_name(name), engine))
+                    if engine.lower() != "polars" and floors(call):
+                        raise err(floor_refusal(engine))
             for v in node.values():
                 walk(v)
         elif isinstance(node, list):

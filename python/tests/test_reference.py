@@ -22,7 +22,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engine import substrait_json as lift_json
-from sverify.errors import PreconditionError
+from sverify.errors import PreconditionError, RouteError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.sql_lift import lift
@@ -264,9 +264,9 @@ def test_double_division_by_zero_may_fail():
 
     report = sv.verify(ref("SELECT x / y AS q FROM f"), infer=False)
     assert [str(i) for i in report.errors] == [
-        "division by zero: ($0 /. $1)",
-        "domain error: ($0 /. $1)",
-        "overflow to infinity: ($0 /. $1)",
+        "division by zero: x / y",
+        "domain error: x / y",
+        "overflow to infinity: x / y",
     ]
     duckdb = sv.verify("SELECT x / y AS q FROM f", tables={"f": f}, semantics="duckdb")
     assert "division by zero" not in [i.kind for i in duckdb.errors]
@@ -344,11 +344,13 @@ def test_integer_division_by_zero_may_ask_for_null(op):
 
 
 @pytest.mark.parametrize(
-    ("division_type", "accepted"), [(None, True), ("TRUNCATE", True), ("FLOOR", False)]
+    ("division_type", "expected"),
+    [(None, [(-1,), (1,)]), ("TRUNCATE", [(-1,), (1,)]), ("FLOOR", [(1,), (1,)])],
 )
-def test_modulus_takes_an_explicit_truncate(division_type, accepted):
+def test_modulus_takes_an_explicit_truncate(division_type, expected):
     """`modulus`'s remainder takes the dividend's sign, `division_type` =
-    TRUNCATE, which a plan may also state; FLOOR is not modelled (#209 R3)."""
+    TRUNCATE, which a plan may also state; with FLOOR it takes the divisor's,
+    as Polars's does (`Profile.polars`, `SubstraitLean/PolarsProfile.lean`)."""
     con = connect()
     put_table(con, "i", pa.table({"a": pa.array([-7, 7], pa.int64())}))
     plan = json.loads(substrait_json(con, "SELECT a % 2 AS m FROM i"))
@@ -359,11 +361,8 @@ def test_modulus_takes_an_explicit_truncate(division_type, accepted):
                     {"name": "division_type", "preference": [division_type]}
                 ]
     code, out, err = run_checker((), json.dumps(plan))
-    if not accepted:
-        assert code != 0 and "division_type" in out + err
-        return
     assert code == 0, err or out
-    assert lean_values(json.dumps(inline_tables(plan, {"i": [(-7,), (7,)]}))) == [(-1,), (1,)]
+    assert lean_values(json.dumps(inline_tables(plan, {"i": [(-7,), (7,)]}))) == expected
 
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -739,15 +738,21 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     tables = {"f": con.table("f")}
     duck = sv.verify(sql, tables=tables, semantics="duckdb")
     assert INFINITE not in [i.kind for i in duck.issues + duck.assumed]
-    assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
+    # Not proved either (`x * y` may be 0 · inf): run with unverified=True.
+    with pytest.warns(UserWarning, match="unverified"):
+        out = duck.run(con, engine, unverified=True)
+    assert out.column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
-    # Refused before the run: the assumption is checked on the data first,
-    # on Polars as on DuckDB.
-    with pytest.raises(PreconditionError, match="stays finite.*refused before the run"):
+    # Not proved (`x * y` may be 0 · inf), so refused unless asked (#655);
+    # then refused before the run: the assumption is checked on the data
+    # first, on Polars as on DuckDB.
+    with pytest.raises(RouteError, match="not verified: may fail: domain error: x \\* y"):
         ref.run(con, engine)
+    with pytest.raises(PreconditionError, match="may overflow to ±inf.*refused before the run"):
+        ref.run(con, engine, unverified=True)
     with pytest.raises(Exception, match="overflow"):
-        ref.run(con, engine, check_inputs=False)
+        ref.run(con, engine, check_inputs=False, unverified=True)
 
 
 def test_bounds_rule_out_overflow_to_infinity():

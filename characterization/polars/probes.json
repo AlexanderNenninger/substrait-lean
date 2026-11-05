@@ -249,7 +249,7 @@
       {
        "row": "[-128]",
        "polars": "ok -128",
-       "lean": "ok 128"
+       "lean": "error Substrait.Issue.wraps"
       }
      ]
     },
@@ -433,7 +433,9 @@
     "on_division_by_zero": "NULL"
    },
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "FLOOR"
+   ],
    "candidates": {
     "TRUNCATE": {
      "differ": 26,
@@ -461,29 +463,8 @@
      ]
     },
     "FLOOR": {
-     "differ": 121,
-     "examples": [
-      {
-       "row": "[0, 0]",
-       "polars": "ok None",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, -1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 2]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     }
    }
   },
@@ -735,7 +716,7 @@
       {
        "row": "[-32768]",
        "polars": "ok -32768",
-       "lean": "ok 32768"
+       "lean": "error Substrait.Issue.wraps"
       }
      ]
     },
@@ -919,7 +900,9 @@
     "on_division_by_zero": "NULL"
    },
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "FLOOR"
+   ],
    "candidates": {
     "TRUNCATE": {
      "differ": 25,
@@ -947,29 +930,8 @@
      ]
     },
     "FLOOR": {
-     "differ": 121,
-     "examples": [
-      {
-       "row": "[0, 0]",
-       "polars": "ok None",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, -1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 2]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     }
    }
   },
@@ -1221,7 +1183,7 @@
       {
        "row": "[-2147483648]",
        "polars": "ok -2147483648",
-       "lean": "ok 2147483648"
+       "lean": "error Substrait.Issue.wraps"
       }
      ]
     },
@@ -1405,7 +1367,9 @@
     "on_division_by_zero": "NULL"
    },
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "FLOOR"
+   ],
    "candidates": {
     "TRUNCATE": {
      "differ": 26,
@@ -1433,29 +1397,8 @@
      ]
     },
     "FLOOR": {
-     "differ": 121,
-     "examples": [
-      {
-       "row": "[0, 0]",
-       "polars": "ok None",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, -1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 2]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     }
    }
   },
@@ -1891,7 +1834,9 @@
     "on_division_by_zero": "NULL"
    },
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "FLOOR"
+   ],
    "candidates": {
     "TRUNCATE": {
      "differ": 25,
@@ -1919,29 +1864,8 @@
      ]
     },
     "FLOOR": {
-     "differ": 121,
-     "examples": [
-      {
-       "row": "[0, 0]",
-       "polars": "ok None",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, -1]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      },
-      {
-       "row": "[0, 2]",
-       "polars": "ok 0",
-       "lean": "refused error: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     }
    }
   },

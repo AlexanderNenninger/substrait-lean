@@ -203,10 +203,16 @@ reference's proof carries over when the transfer check passes on the
 transformation: Substrait allows only behaviours the reference allows at every
 option it meets (`Rel.transfer_of_transferB`). Where it does not, no
 postcondition or key is proved under Substrait, and `"transfer"` names the
-options. Engine profiles are not checked under yet: their requests get the
+options. Under Polars's profile the report is the reference's of the plan as
+parsed: a plan states Polars's choices (`division_type: FLOOR`), which the
+parser reads as their templates, and `Polars.elaborate_eq` proves that
+evaluating those under the reference is evaluating the calls under
+`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). DuckDB's profile is
+reached through its lift (`semantics="duckdb"`); its requests get the
 reference's report, which says so. -/
 def underProfile (j : Json) (report : Json) (proved : Bool) : Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
+  if name == "polars" then return (report.setObjVal! "profile" "polars", proved)
   unless name == "substrait" do return (report.setObjVal! "profile" "reference", proved)
   let tj ← j.getObjVal? "transform"
   let plan ← ContractCheck.parseJsonPlan tj

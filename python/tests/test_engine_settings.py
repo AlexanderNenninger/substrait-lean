@@ -9,6 +9,7 @@ from collections.abc import Iterator
 
 import pyarrow as pa
 import pytest
+from ibis import _
 
 import sverify as sv
 from sverify import _duckdb, _engine_settings, routes
@@ -59,8 +60,6 @@ def test_the_defaults_are_the_profiles() -> None:
 @pytest.mark.parametrize(
     ("name", "value", "named"),
     [
-        ("default_null_order", "'nulls_first'", "default_null_order is 'NULLS_FIRST'"),
-        ("default_order", "'desc'", "default_order is 'DESC'"),
         ("integer_division", "true", "integer_division is True"),
         ("error_on_division_by_zero", "false", "error_on_division_by_zero is False"),
         ("default_collation", "'nocase'", "default_collation is 'nocase'"),
@@ -77,12 +76,36 @@ def test_a_duckdb_setting_a_choice_depends_on_refuses(
     con, duckdb_global, name: str, value: str, named: str
 ) -> None:
     t = con.table("t")
-    report = sv.verify(t.select("k", j=t.i + 1))
+    report = sv.verify(t.select("k", j=t.i // 2), requires={"t": [_.i.between(-100, 100)]})
     duckdb_global(name, value)
-    with pytest.raises(EngineSettingsError, match=named):
+    with pytest.raises(EngineSettingsError, match=f"{named}.*which this plan relies on"):
         report.run(con, "duckdb", route="auto")
-    # Without a route, the run is as before; the user's setting is theirs.
-    report.run(con, "duckdb")
+    # #655: the message says how to restore it.
+    with pytest.raises(EngineSettingsError, match=f"restore it with `SET GLOBAL {name} = "):
+        report.run(con, "duckdb")
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "named"),
+    [
+        ("default_null_order", "'nulls_first'", "default_null_order is 'NULLS_FIRST'"),
+        ("default_order", "'desc'", "default_order is 'DESC'"),
+        ("integer_division", "true", "integer_division is True"),
+    ],
+)
+def test_a_setting_the_plan_does_not_rely_on_warns(
+    con, duckdb_global, name: str, value: str, named: str
+) -> None:
+    """#655: a sort states its NULLS LAST, and the written SQL spells it out,
+    so the session's default null order changes nothing the plan relies on."""
+    t = con.table("t")
+    report = sv.verify(
+        t.order_by(t.i).select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]}
+    )
+    duckdb_global(name, value)
+    with pytest.warns(EngineSettingsWarning, match=f"{named}.*this plan does not rely on it"):
+        report.run(con, "duckdb")
+    assert report.routes["duckdb"].kind == "reference"
 
 
 def test_a_session_set_on_another_cursor_is_not_seen(con) -> None:
@@ -106,7 +129,7 @@ def test_a_global_only_setting_is_seen_from_any_cursor(con) -> None:
     other.execute("SET default_null_order = 'nulls_first'").fetchall()
     try:
         t = con.table("t")
-        with pytest.raises(EngineSettingsError, match="default_null_order"):
+        with pytest.warns(EngineSettingsWarning, match="default_null_order"):
             sv.verify(t.select("k")).run(con, "duckdb", route="auto")
     finally:
         other.execute("RESET GLOBAL default_null_order").fetchall()
@@ -162,7 +185,7 @@ def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
 
 def test_polars_engine_affinity(con, affinity) -> None:
     t = con.table("t")
-    report = sv.verify(t.select("k", j=t.i + 1))
+    report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
     affinity("streaming")
     report.run(con, "polars", route="auto")
     affinity("in-memory")

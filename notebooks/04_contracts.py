@@ -78,6 +78,7 @@ def _():
     @sv.transform(
         requires={"orders": [_.amount >= 0, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
+        on_inferred="silent",
     )
     def doubled(orders):
         return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)

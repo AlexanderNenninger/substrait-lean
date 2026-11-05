@@ -41,6 +41,7 @@ from substrait.plan_pb2 import Plan
 from sverify import _duckdb, _support
 from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
+from sverify._support import DUCKDB_ONLY
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
 
@@ -305,7 +306,7 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
     (`substrait_json`) with `semantics`."""
     if isinstance(query, str):
         return substrait_json(con, query, semantics)
-    return to_substrait_json(query)
+    return to_substrait_json(query, semantics)
 
 
 def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
@@ -671,13 +672,14 @@ def _check_datafusion_plan(plan: dict) -> None:
                     raise sql.Unsupported("DataFusion's AVG has no integer result")
             c = node.get("cast")
             if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
-                raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; see #271")
+                raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; " + DUCKDB_ONLY)
             f = node.get("scalarFunction")
             fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
             if isinstance(f, dict) and fname == "round" and len(f.get("arguments", [])) == 2:
                 # DataFusion's `round(x · 10ᵈ) / 10ᵈ` is not DuckDB's (#335).
                 raise sql.Unsupported(
-                    "round(x, d) is DuckDB's (#335) and not yet supported on DataFusion; see #271"
+                    "round(x, d) is DuckDB's (#335) and not yet supported on DataFusion; "
+                    + DUCKDB_ONLY
                 )
             if isinstance(f, dict) and fname == "substring":
                 left = any(

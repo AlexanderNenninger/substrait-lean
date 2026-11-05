@@ -450,8 +450,12 @@ def Profile.reference.table : ProfileTable where
     (none, "on_division_by_zero", .asked ["ERROR", "NULL"] ["ERROR"]),
     (some "fp.div", "on_division_by_zero", .asked ["ERROR", "IEEE", "NULL", "LIMIT"] ["ERROR"]),
     -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
-    -- `TRUNCATE`. `FLOOR` is not modelled yet (#209 R3).
+    -- `TRUNCATE`. Integer `//` and `%` floor when the plan asks (`FLOOR`,
+    -- Polars's, `Expr.floorDivOf`, `SubstraitLean/PolarsProfile.lean`); the
+    -- remainder of doubles does not (#209 R3).
     (none, "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
+    (some "int.div", "division_type", .asked ["TRUNCATE", "FLOOR"] ["TRUNCATE"]),
+    (some "int.mod", "division_type", .asked ["TRUNCATE", "FLOOR"] ["TRUNCATE"]),
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "shift_range", .oneOf ["DROP_BITS"]),
     (none, "decimal_rescale", .oneOf ["TIE_AWAY_FROM_ZERO"]),
@@ -509,10 +513,10 @@ def Profile.reference.table : ProfileTable where
 
 /-- Option ids and Substrait names are unique; each option's behaviours are
 distinct, and its YAML values and extra behaviours are in its core. -/
-example : (options.map (·.id)).Nodup := by decide +kernel
-example : (options.filterMap (·.substrait)).Nodup := by decide +kernel
+example : (options.map (·.id)).Nodup := nodup_of_nodupB (by decide +kernel)
+example : (options.filterMap (·.substrait)).Nodup := nodup_of_nodupB (by decide +kernel)
 example : options.all fun o =>
-    o.core.Nodup && o.yaml.all o.core.contains && o.extra.all (o.core.contains ·.1) := by
+    nodupB o.core && o.yaml.all o.core.contains && o.extra.all (o.core.contains ·.1) := by
   decide +kernel
 /-- Every group's options are options. -/
 example : Functions.groups.all fun (_, os) => os.all fun o => (OptionSpec.find? o).isSome := by

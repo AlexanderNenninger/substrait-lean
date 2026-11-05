@@ -779,6 +779,15 @@ class CheckedCondition:
     reference does not carry to an engine whose result is only equal up to
     the observation. Empty for a condition the observation keeps."""
 
+    reads: tuple[str, ...] | None = None
+    """The output columns the condition reads; None where that is not
+    known (every column)."""
+    approx: bool = False
+    """The condition is `sv.approx(...)`: it allows for rounding."""
+    nullable: tuple[str, ...] | None = None
+    """Of the columns it reads, those the report says may be NULL; None
+    where that is not known."""
+
     @property
     def portable(self) -> bool:
         """Proved, and independent of what the observation ignores."""
@@ -789,6 +798,13 @@ class CheckedCondition:
         """Why it is not proved, in words: what Lean found the condition may
         be on a row that meets the preconditions, and, where it may be NULL,
         how to rule that out."""
+        if self.value == "not shown to be a key":
+            m = re.fullmatch(r"unique\((.*)\)", self.label)
+            cols = ", ".join(repr(c) for c in m[1].split(", ")) if m else "..."
+            return (
+                "the preconditions do not make it a key: add "
+                f"sv.unique({cols}) on the input it comes from to requires"
+            )
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if "TRUE" not in parts and parts == {"FALSE"}:
             return "it is FALSE on every row"
@@ -796,10 +812,20 @@ class CheckedCondition:
         if not bad:
             return f"Lean only knows it is {self.value}"
         why = f"it may be {' or '.join(bad)} on some rows"
-        if "NULL" in bad:
+        if bad != ["NULL"]:
+            # NULL is one way among others to fail: making a column NOT NULL
+            # does not prove it.
+            pass
+        elif self.nullable is None:
             why += (
                 ", where a column it reads is NULL: declare the column NOT NULL in the schema "
                 "(`!int64`) or add `_.<column>.notnull()` to `requires`"
+            )
+        elif self.nullable:
+            col = self.nullable[0]
+            why += (
+                f", where {', '.join(self.nullable)} is NULL: declare it NOT NULL in the "
+                f"schema (`!int64`) or add `_.{col}.notnull()` to `requires`"
             )
         return why
 
@@ -841,8 +867,8 @@ _DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
 
 #: How a report explains an operation it assumes stays finite (#575).
 FINITE_ASSUMED = (
-    "stays finite where its inputs are (inferred; checked on the data while "
-    "the job runs, which raises if it gives ±∞)"
+    "may overflow to ±inf on finite inputs; assumed it does not (inferred; "
+    "checked on the data before the run, which is refused if it does)"
 )
 
 #: The kind of an operation on finite doubles that may give `±∞` (#575).
@@ -880,7 +906,23 @@ def _assumption(issue: Issue) -> str:
     """How a report names an assumed issue."""
     if _sum(issue):
         return f"SUM of {issue.what} {_sum_assumed(issue)}"
-    return f"{issue.expr} {FINITE_ASSUMED}"
+    return f"{issue.shown or issue.expr} {FINITE_ASSUMED}"
+
+
+def _cause(issue: Issue) -> str:
+    """What makes an issue happen, where its kind does not say: a domain
+    error of a double SUM or addition is NaN from +inf plus -inf."""
+    if issue.kind != "domain error" or issue.shown is None:
+        return ""
+    m = re.fullmatch(r"(?:sum|avg|mean)\((\w+)\)", issue.shown)
+    if m:
+        return (
+            f" (NaN where {m[1]} holds both +inf and -inf: bound it in requires, "
+            f"e.g. `_.{m[1]}.between(-1e300, 1e300)`)"
+        )
+    if re.search(r" [-+] ", issue.shown):
+        return " (NaN from +inf minus +inf: bound the columns in requires)"
+    return ""
 
 
 def _sum_assumed(issue: Issue) -> str:
@@ -927,14 +969,21 @@ class Issue:
     """The operation sits inside an operand of an `AND` or `OR`, which
     evaluates both operands (#604, D19): a guard in the other operand does
     not keep it from raising. The report suggests a `CASE` (`AND_OR_HINT`)."""
+    needs: tuple[str, ...] = field(default=(), repr=False, compare=False)
+    """The preconditions that rule it out, as labels, where the inference
+    found them (`infer_bounds` assumes them)."""
+    shown: str | None = None
+    """The operation in the user's terms: column names and the Ibis or SQL
+    operator (`total // qty`, `sum(x)`); None where the plan does not say
+    which columns `expr` reads."""
 
     @property
     def what(self) -> str:
         """The column, or else the expression, a report names the issue by."""
-        return self.column or self.expr
+        return self.column or self.shown or self.expr
 
     def __str__(self) -> str:
-        return f"{self.kind}: {self.expr}"
+        return f"{self.kind}: {self.shown or self.expr}"
 
 
 @dataclass
@@ -1038,6 +1087,10 @@ class Report:
     observation: Observation = field(default_factory=Observation)
     """What the result's consumer observes (`sv.equivalent` in `ensures`,
     #444): rows as a multiset and exact values when `ensures` names none."""
+    stated: bool = field(default=False, repr=False, compare=False)
+    """Whether `ensures` names the observation (`sv.equivalent`). Where it
+    does not, a run accepts doubles within the plan's bound (`epsilon`) on
+    the columns no postcondition reads (`sverify.routes.observed`)."""
     depends: list[dict] | None = field(default=None, repr=False, compare=False)
     """The options of the profile the proof depends on (`docs/core-semantics.md`,
     step 3c), as the checker reports them: `{"group", "option",
@@ -1063,6 +1116,17 @@ class Report:
     column, #568), as the checker computes it for this plan; None where it
     does not."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
+    """For a result not determined up to row order (`deterministic`), the
+    `sv.unique(...)` per input table that would determine it: the partition
+    (or grouping) and order columns of its windows and ordered aggregates."""
+    on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
+    """What the inferred preconditions (`inferred`) do to the proof
+    (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
+    not proved (`needed`)."""
+    inferred_from: dict[str, Issue] = field(default_factory=dict, repr=False, compare=False)
+    """For each inferred precondition (by label), the runtime error it rules
+    out: where it came from."""
     """The preconditions per input table, as conditions: `requires` and
     the bounds inferred (`inferred`). `check_inputs` checks them on data."""
 
@@ -1084,6 +1148,7 @@ class Report:
                 if n := violations(table, c):
                     raise PreconditionError(
                         f"{n} row(s) of {t} violate {label(c)}: refused before the run"
+                        + self._source(t, c)
                     )
         if self.assumed and self.plan is not None:
             # The proved DuckDB translation checks each assumption as it runs:
@@ -1101,12 +1166,31 @@ class Report:
                     f"the batch breaks an assumed precondition, {broken}: refused before the run"
                 ) from e
 
+    def _source(self, table: str, c: Condition) -> str:
+        """Where a precondition the data breaks came from, and what to do,
+        for one the report inferred."""
+        lab = label(c)
+        if lab not in {label(x) for x in self.inferred.get(table, [])}:
+            return ""
+        issue = self.inferred_from.get(lab)
+        where = f" ({issue.kind} otherwise)" if issue is not None else ""
+        what = f" from `{issue.what}`{where}" if issue is not None else ""
+        return (
+            f". The precondition was inferred{what}: drop those rows before the transform, "
+            f"`{table}.filter({lab})`, and compute on the rest; or guard the "
+            "operation with a CASE; or state the precondition in requires as a fact "
+            "about your data"
+            if issue is not None
+            else f". The precondition was inferred: drop those rows first, `{table}.filter({lab})`"
+        )
+
     def run(
         self,
         con: Connection,
         engine: Engine | Any = None,
         *,
-        route: RouteKind | Literal["auto"] | None = None,
+        route: RouteKind | Literal["auto"] = "auto",
+        unverified: bool = False,
         deterministic: bool = False,
         reproducible: Observation | None = None,
         check_inputs: bool = True,
@@ -1119,26 +1203,37 @@ class Report:
         runs on `engine` as `sverify.engines.run` runs a plan, with the
         meaning `Rel.eval` gives it.
 
-        With `route`, the run first chooses how the proof reaches the engine
+        A plan that is not proved (`proved` is False) is refused, with what
+        was not proved in the message; `unverified=True` runs it anyway, and
+        says so: a warning (`UnverifiedRunWarning`), the route `"unverified"`
+        in `routes`, and `sverify.verified: false` in the result's schema
+        metadata.
+
+        The run first chooses how the proof reaches the engine
         (`sverify.routes.choose`, #444): `"auto"` takes the plan natively
         where it was verified under the engine's profile, through the
         reference's translation where it was verified under the reference,
         by the option-wise transfer check, or by a re-check under the
         engine's profile, and refuses it otherwise. The route goes into
-        `routes`.
+        `routes`. Where `ensures` names no observation (`sv.equivalent`),
+        the engine's doubles may differ from the reference's within the
+        plan's bound (`epsilon`), except in the columns a postcondition
+        reads.
 
         Args:
             con: The connection whose tables the plan reads (`sv.connect()`).
             engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
                 Spark session. Default: the connection's engine.
-            route: None (the default) runs the plan without choosing a
-                route; `"auto"` chooses one; `"native"`, `"reference"`,
-                `"transfer"` or `"recheck"` takes that one or refuses.
-            deterministic: With `route`, require a rerun to reproduce the
-                result exactly (`reproducible=sv.equivalent()`, D10).
-            reproducible: With `route`, what a rerun must reproduce
-                (`q_det`, D20): the engine's run-to-run variation must
-                refine it. Default None: determinism is only reported.
+            route: `"auto"` (the default) chooses a route; `"native"`,
+                `"reference"`, `"transfer"` or `"recheck"` takes that one or
+                refuses.
+            unverified: Run a plan that is not proved, without a route.
+                Default False: such a plan is refused.
+            deterministic: Require a rerun to reproduce the result exactly
+                (`reproducible=sv.equivalent()`, D10).
+            reproducible: What a rerun must reproduce (D20): the
+                engine's run-to-run variation must refine it. Default None:
+                determinism is only reported.
             check_inputs: Check the preconditions (`requires`, the inferred
                 bounds among them) and the assumed `SUM`s on the tables of
                 `con` before the run, and refuse a batch that breaks one
@@ -1159,9 +1254,10 @@ class Report:
         Raises:
             ValueError: The report has no plan (it was not made by
                 `verify`), or `engine` is unknown.
-            sverify.routes.RouteError: No route takes the plan to `engine`,
-                or, with `streaming="require"`, a node of its Polars plan
-                runs on the in-memory engine.
+            sverify.routes.RouteError: The plan is not proved (and
+                `unverified` is False), no route takes it to `engine`, or,
+                with `streaming="require"`, a node of its Polars plan runs
+                on the in-memory engine.
             sverify.routes.EngineVersionError: The engine's major version is
                 not the one its profile's facts were probed at.
             sverify.errors.PreconditionError: With `check_inputs`, a
@@ -1178,18 +1274,26 @@ class Report:
                 tables={"t": con.table("t")},
                 ensures=[sv.unique("host")],
             )
-            if report.proved:
-                result = report.run(con)
+            result = report.run(con)  # refused if report.proved is False
             ```
         """
+        from sverify import routes
+
         if self.plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
         kind: str | None = None
         target = engine if engine is not None else con.engine
         chosen = None
-        if route is not None:
-            from sverify import routes
-
+        if unverified and not routes.verified(self):
+            chosen = routes.unverified(self, target)
+            self.routes[chosen.engine] = chosen
+            kind = chosen.kind
+            warnings.warn(
+                f"running on {chosen.engine} unverified: {chosen.reason}",
+                routes.UnverifiedRunWarning,
+                stacklevel=2,
+            )
+        else:
             chosen = routes.choose(
                 self,
                 target,
@@ -1209,7 +1313,21 @@ class Report:
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
         finite = self.semantics == "reference" or kind == "reference"
-        return run_plan(con, written_plan(self.plan), engine, finite=finite)
+        out = run_plan(con, written_plan(self.plan), engine, finite=finite)
+        if kind == "unverified":
+            meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
+            out = out.replace_schema_metadata(meta)
+        return out
+
+    def _assumed(self) -> list[Issue]:
+        """The assumptions a report shows: not those about an operation
+        that may raise a division by zero anyway."""
+        raising = {i.expr for i in self.errors if i.kind == "division by zero"}
+        return [i for i in self.assumed if i.expr not in raising]
+
+    def _inferred_note(self, lab: str) -> str:
+        issue = self.inferred_from.get(lab)
+        return " (inferred)" if issue is None else f" (inferred from {issue.what})"
 
     def _streaming(self, con: Connection, chosen: Any, streaming: str) -> None:
         """Record the in-memory nodes of the plan's Polars streaming plan in
@@ -1246,7 +1364,48 @@ class Report:
         an observation (`sv.equivalent`), no postcondition depends on what
         it ignores. Under `semantics="substrait"`, the reference's proof
         also carries over (`transfer` is empty)."""
-        return all(c.portable for c in self.ensures) and not self.errors and not self.transfer
+        return (
+            all(c.portable for c in self.ensures)
+            and not self.errors
+            and not self.transfer
+            and not self.needed
+        )
+
+    @property
+    def needed(self) -> dict[str, list[str]]:
+        """With `on_inferred="error"`, the preconditions the proof needs that
+        `requires` does not state, as labels per input table (the bounds
+        `infer_bounds` found, `inferred`); empty otherwise."""
+        if self.on_inferred != "error":
+            return {}
+        return {t: [label(c) for c in cs] for t, cs in self.inferred.items() if cs}
+
+    def needs_text(self, table: str, labs: Sequence[str]) -> str:
+        """Needed preconditions on one table that come from one operation,
+        where they come from, and the fixes."""
+        issues = [i for lab in labs if (i := self.inferred_from.get(lab)) is not None]
+        kinds = " or ".join(dict.fromkeys(i.kind for i in issues))
+        where = f", inferred from `{issues[0].what}` ({kinds} otherwise)" if issues else ""
+        both = " and ".join(labs)
+        it = "it" if len(labs) == 1 else "them"
+        cond = labs[0] if len(labs) == 1 else " & ".join(labs)
+        return (
+            f"{both} on {table}{where}: declare {it} in requires (each run then checks "
+            f"{it} on the data), or rewrite so no row needs {it} (`{table}.filter({cond})` "
+            f"first, or a CASE); on_inferred='warn' or 'silent' assumes {it}"
+        )
+
+    def needs_lines(self, needed: Mapping[str, Sequence[str]] | None = None) -> list[str]:
+        """`needs_text` for each table and operation (`needed` by default;
+        `inferred`, as labels, for a warning)."""
+        out = []
+        for t, labs in (self.needed if needed is None else needed).items():
+            groups: dict[str, list[str]] = {}
+            for lab in labs:
+                issue = self.inferred_from.get(lab)
+                groups.setdefault(issue.what if issue else lab, []).append(lab)
+            out += [self.needs_text(t, g) for g in groups.values()]
+        return out
 
     @property
     def errors(self) -> list[Issue]:
@@ -1290,11 +1449,15 @@ class Report:
 
     def __str__(self) -> str:
         lines = []
+        needed = self.needed
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self.inferred.get(table, [])}
             lines += [
-                f"requires {table}: {c}" + (" (inferred)" if c in inferred else "") for c in conds
+                f"requires {table}: {c}" + (self._inferred_note(c) if c in inferred else "")
+                for c in conds
+                if c not in needed.get(table, ())
             ]
+        lines += [f"needs: {n}" for n in self.needs_lines()]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved: {c.why}"
             if c.ignores:
@@ -1306,9 +1469,11 @@ class Report:
                 lines.append(f"  counterexample: {c.counterexample}")
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
-        lines += [f"assumes: {_assumption(i)}" for i in self.assumed]
+        lines += [f"assumes: {_assumption(i)}" for i in self._assumed()]
         for i in self.errors:
-            lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _assumable(i) else ""))
+            lines.append(
+                f"may fail: {i}{_cause(i)}" + (f" ({RUNTIME_CHECK})" if _assumable(i) else "")
+            )
             if i.hint:
                 lines.append(f"  hint: {i.hint}")
         lines += [f"hint: {h}" for h in self._hints()]
@@ -1343,16 +1508,24 @@ class Report:
             rows.append(f"| `{c.label}` | {status(c)} |")
             if c.suggested:
                 rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
+        for n in self.needs_lines():
+            rows.append(f"| needs | ❌ {n.replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
             note = f" ({RUNTIME_CHECK})" if _assumable(i) else ""
-            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')}{note} |")
+            rows.append(
+                f"| runtime | ❌ may fail: {(str(i) + _cause(i)).replace('|', '\\|')}{note} |"
+            )
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
-        inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
+        inferred = [
+            f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs if not self.needed
+        ]
         inferred += [
-            f"SUM of `{i.what}` {_sum_assumed(i)}" if _sum(i) else f"`{i.expr}` {FINITE_ASSUMED}"
-            for i in self.assumed
+            f"SUM of `{i.what}` {_sum_assumed(i)}"
+            if _sum(i)
+            else f"`{i.shown or i.expr}` {FINITE_ASSUMED}"
+            for i in self._assumed()
         ]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
@@ -1414,6 +1587,7 @@ class VerificationError(Exception):
         self.report = report
         problems = [f"{c.label} ({c.why})" for c in report.unproved]
         problems += [f"no runtime error ({i})" for i in report.errors]
+        problems += [f"without the precondition {n}" for n in report.needs_lines()]
         super().__init__(f"could not prove: {', '.join(problems)}\n{report}")
 
 
@@ -1832,17 +2006,30 @@ def _render_needs(
     return {t: cs for t, cs in out.items() if cs}
 
 
+def _why_hint(why: str, show: Callable[[str], str]) -> str:
+    """Why no bound on an input column rules an issue out, from the
+    inference's reason (`SubstraitLean/Infer.lean`), in the user's terms."""
+    m = re.fullmatch(r"it divides by (.+), which the inference does not look into", why)
+    if m and re.fullmatch(r"-?0(\.0*)?d?", m[1]):
+        return "it divides by the constant 0, so every row it reaches raises: change the divisor"
+    m = re.fullmatch(r"(it divides by|it reads|its base is) (.+)(, which .*)", why)
+    if m:
+        why = f"{m[1]} `{show(m[2])}`{m[3]}"
+    return f"no bound on an input column rules it out: {why}"
+
+
 def _hint(
     bound: dict | None,
     schemas: Mapping[str, ibis.Schema],
     assumable: Container[str],
+    show: Callable[[str], str] = lambda e: e,
 ) -> str | None:
     """What a report suggests for one overflow, from what the inference
     found (`SubstraitLean/Infer.lean`)."""
     if bound is None:
         return None
     if bound["why"] is not None:
-        return f"no bound on an input column rules it out: it comes from {bound['why']}"
+        return _why_hint(bound["why"], show)
     conds = _render_needs(bound["needs"], schemas)
     if not conds:
         return None
@@ -1991,6 +2178,7 @@ def verify(
     params: Mapping[ir.Scalar, Any] | None = None,
     infer: bool = True,
     semantics: Semantics | None = None,
+    on_inferred: OnInferred = "error",
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -2055,6 +2243,13 @@ def verify(
             reference holds there where Substrait allows nothing more at
             the options the plan meets, and `Report.transfer` names the
             options where it allows more.
+        on_inferred: What a precondition sverify infers does (`infer`):
+            `"error"` (the default), the plan is not proved without it, and
+            the report says where it came from and how to state it
+            (`Report.needed`); `"warn"`, it is assumed, checked on the data
+            before each run, and a warning names it
+            (`InferredPreconditionWarning`); `"silent"`, it is assumed and
+            checked without a warning.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -2117,6 +2312,7 @@ def verify(
         params=bound,
         infer=infer,
         semantics=_checked_semantics(semantics),
+        on_inferred=on_inferred,
     )
 
 
@@ -2131,6 +2327,7 @@ def infer_bounds(
     infer: bool = True,
     inputs: Collection[str] | None = None,
     semantics: Semantics = "reference",
+    on_inferred: OnInferred = "silent",
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -2160,9 +2357,37 @@ def infer_bounds(
     _merge(conditions, report.inferred)
     report.conditions = conditions
     opened = {} if report.windows_total or isinstance(transform, str) else _open_columns(transform)
-    if observed is None and not opened:
-        return report
-    return _observed(report, observed or Observation(), ensures, opened)
+    out = _observed(report, observed or Observation(), ensures, opened)
+    out.stated = observed is not None
+    out.on_inferred = _checked_on_inferred(on_inferred)
+    if not out.deterministic and not isinstance(transform, str):
+        out.ties = tie_keys(transform)
+    if on_inferred == "warn" and out.inferred:
+        warnings.warn(
+            "assumed inferred precondition(s): "
+            + "; ".join(
+                n.split(": declare")[0]
+                for n in out.needs_lines(
+                    {t: [label(c) for c in cs] for t, cs in out.inferred.items()}
+                )
+            ),
+            InferredPreconditionWarning,
+            stacklevel=3,
+        )
+    return out
+
+
+OnInferred = Literal["error", "warn", "silent"]
+
+
+class InferredPreconditionWarning(UserWarning):
+    """A precondition sverify inferred is assumed (`on_inferred="warn"`)."""
+
+
+def _checked_on_inferred(v: str) -> OnInferred:
+    if v not in ("error", "warn", "silent"):
+        raise ValueError(f"on_inferred must be 'error', 'warn' or 'silent', not {v!r}")
+    return v  # type: ignore[return-value]
 
 
 def _observed(
@@ -2179,6 +2404,11 @@ def _observed(
     checked = [
         replace(
             c,
+            reads=None if (r := _reads(cond, report.output)) is None else tuple(r),
+            approx=isinstance(cond, Approx),
+            nullable=None
+            if r is None or any(c not in report.facts for c in r)
+            else tuple(c for c in r if "NULL" in report.facts[c]),
             ignores=tuple(
                 _observation.dependencies(
                     observed,
@@ -2314,13 +2544,22 @@ def _infer_bounds(
         guarded = and_or_hints(report.issues)
         widened = {t: list(cs) for t, cs in requires.items()}
         _merge(widened, extra)
+        first = report.issues
         report = once(widened, counterexamples)[0]
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
+        report.inferred_from = {
+            label(c): i
+            for cs in extra.values()
+            for c in cs
+            for i in reversed(first)
+            if label(c) in i.needs
+        }
         # An inferred precondition that a guard under AND/OR would have made
         # unnecessary with a CASE (#604): say so.
         report.hints += [h for h in guarded if h not in report.hints]
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
+    report = _null_preconditions(transform, report, requires, ensures, inputs, once)
     report = _confirm_suggestions(report, requires, once)
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
@@ -2328,6 +2567,69 @@ def _infer_bounds(
     report.assumed = [i for i in report.issues if _assumable(i)]
     report.issues = [i for i in report.issues if not _assumable(i)]
     return report
+
+
+#: The kind an inferred `IS NOT NULL` names as its source (#655).
+NULL_KIND = "a NULL result"
+
+
+def _null_preconditions(
+    transform: Transform,
+    report: Report,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    inputs: Collection[str] | None,
+    once: Callable[..., Any],
+) -> Report:
+    """`report` with the `IS NOT NULL` preconditions that prove a
+    postcondition failing only on NULL (`TRUE or NULL`), inferred like the
+    bounds (#655): for each column it reads that passes on an input
+    column, `_.<column>.notnull()` on that input, kept if the postcondition
+    is then proved. A postcondition that may also be FALSE gets none."""
+    if isinstance(transform, str):
+        return report
+    found: dict[str, list[Condition]] = {}
+    source: dict[str, Issue] = {}
+    by_label = {label(c): c for c in ensures if not isinstance(c, TableCondition)}
+    root = transform.op()
+    for c in report.ensures:
+        cond = by_label.get(c.label)
+        if c.proved or cond is None:
+            continue
+        if set(c.value.replace(" or ", ", ").split(", ")) != {"TRUE", "NULL"}:
+            continue
+        for t, base in _input_columns(root, _reads(cond, report.output) or []):
+            if inputs is not None and t not in inputs:
+                continue
+            new = getattr(ibis._, base).notnull()
+            if label(new) in {label(x) for x in [*requires.get(t, []), *found.get(t, [])]}:
+                continue
+            found.setdefault(t, []).append(new)
+            source[label(new)] = Issue(NULL_KIND, c.label, False, shown=c.label)
+    if not found:
+        return report
+    widened = {t: list(cs) for t, cs in requires.items()}
+    _merge(widened, report.inferred)
+    _merge(widened, found)
+    again = once(widened, 0)[0]
+    proved = {e.label for e in again.ensures if e.proved}
+    if not all(c.proved or c.label in proved for c in report.ensures if c.label in by_label):
+        # Only where it proves every postcondition that failed on NULL alone.
+        kept_for = {iss.expr for iss in source.values() if iss.expr in proved}
+        found = {t: [x for x in cs if source[label(x)].expr in kept_for] for t, cs in found.items()}
+        found = {t: cs for t, cs in found.items() if cs}
+        if not found:
+            return report
+        widened = {t: list(cs) for t, cs in requires.items()}
+        _merge(widened, report.inferred)
+        _merge(widened, found)
+        again = once(widened, 0)[0]
+    inferred = {t: list(cs) for t, cs in report.inferred.items()}
+    _merge(inferred, found)
+    again.inferred = inferred
+    again.inferred_from = {**report.inferred_from, **source}
+    again.hints = report.hints
+    return again
 
 
 def _confirm_suggestions(report: Report, requires, once) -> Report:
@@ -2359,13 +2661,9 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
-    if semantics in _PROFILE_REQUESTS and (
-        isinstance(transform, str)
-        or any(isinstance(c, str) for cs in requires.values() for c in cs)
-        or any(isinstance(c, str) for c in ensures)
-    ):
+    if semantics in _PROFILE_REQUESTS and isinstance(transform, str):
         raise ValueError(
-            f"semantics={semantics!r} checks Ibis transformations and conditions; "
+            f"semantics={semantics!r} checks Ibis transformations; "
             "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
         )
     schemas = {
@@ -2378,8 +2676,14 @@ def _verify_once(
     for name, schema in schemas.items():
         create_table(con, name, schema)
 
+    def lift(query: Any) -> Semantics:
+        # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
+        # under the reference where the profile has no lift of its own.
+        own = not (isinstance(query, str) and semantics in _PROFILE_REQUESTS)
+        return semantics if own else "reference"
+
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query, semantics))
+        return json.loads(plan_json(con, query, lift(query)))
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
@@ -2408,12 +2712,12 @@ def _verify_once(
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t, c), c, semantics)) for t, c in req_conds]
+    req_plans = [plan(condition_query(table_ref(t, c), c, lift(c))) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(output(c), c, semantics))
+        p = plan(condition_query(output(c), c, lift(c)))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)
@@ -2509,6 +2813,13 @@ def _verify_once(
             checked.append(
                 CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
             )
+    from sverify._user_text import user_expr
+
+    dialect = "sql" if isinstance(transform, str) else "ibis"
+
+    def show(e: str) -> str:
+        return user_expr(e, transform_plan, dialect) or e
+
     report = Report(
         semantics=semantics,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
@@ -2526,7 +2837,7 @@ def _verify_once(
                 i["error"] or i["kind"] == INFINITE,
                 CONSTANT_HINT
                 if i.get("constant")
-                else _hint(i["bound"], schemas, assumable)
+                else _hint(i["bound"], schemas, assumable, show)
                 if i["error"]
                 else INFINITE_HINT
                 if i["kind"] == INFINITE
@@ -2534,6 +2845,14 @@ def _verify_once(
                 _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
                 i.get("constant", False),
                 i.get("under_and_or", False),
+                tuple(
+                    label(c)
+                    for cs in _render_needs(i["bound"]["needs"], schemas).values()
+                    for c in cs
+                )
+                if i["bound"] and i["bound"].get("why") is None
+                else (),
+                user_expr(i["expr"], transform_plan, dialect),
             )
             for i in out["issues"]
             # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
@@ -2642,6 +2961,62 @@ def _origin(rel: Node, name: str) -> tuple[str, str] | None:
     return None
 
 
+def tie_keys(expr: ir.Table) -> dict[str, list[str]]:
+    """The `sv.unique(...)` per input table that leaves no ties in the
+    ORDER BY of a window or of an ordered aggregate (`first`, `last`, …):
+    its partition (or grouping) and order columns, as labels (#655)."""
+    out: dict[str, list[str]] = {}
+
+    def add(fields: Sequence[Any]) -> None:
+        cols = [o for f in fields if (o := _value_origin(f)) is not None]
+        tables = {t for t, _c in cols}
+        if len(tables) != 1 or len(cols) != len(fields):
+            return
+        (t,) = tables
+        lab = label(unique(*dict.fromkeys(c for _t, c in cols)))
+        if lab not in out.setdefault(t, []):
+            out[t].append(lab)
+
+    def fields_of(values: Sequence[Any]) -> list[Any]:
+        found: list[Any] = []
+        for v in values:
+            v = getattr(v, "expr", v)
+            found += [f for f in v.find(ops.Field) if isinstance(f, ops.Field) and f not in found]
+        return found
+
+    for agg in expr.op().find(ops.Aggregate):
+        if not isinstance(agg, ops.Aggregate):
+            continue
+        for metric in agg.metrics.values():
+            order = getattr(metric, "order_by", None)
+            if order:
+                add(fields_of([*agg.groups.values(), *order]))
+    for win in expr.op().find(ops.WindowFunction):
+        if isinstance(win, ops.WindowFunction) and win.order_by:
+            add(fields_of([*win.group_by, *win.order_by]))
+    return out
+
+
+def _input_columns(rel: Node, names: Sequence[str]) -> list[tuple[str, str]]:
+    """The base table columns the output columns `names` of `rel` read:
+    the column itself where it is passed on, else the columns its value
+    reads that are passed on (`length(s)` reads `s`)."""
+    out: list[tuple[str, str]] = []
+    values = getattr(rel, "values", None)
+    if isinstance(rel, ops.Aggregate):
+        values = {**rel.groups, **rel.metrics}
+    for name in names:
+        if (o := _origin(rel, name)) is not None:
+            found = [o]
+        elif values is not None and name in values:
+            fields = [f for f in values[name].find(ops.Field) if isinstance(f, ops.Field)]
+            found = [o for f in fields if (o := _value_origin(f)) is not None]
+        else:
+            found = []
+        out += [o for o in found if o not in out]
+    return out
+
+
 def _value_origin(value: Node) -> tuple[str, str] | None:
     """The base table and column a value is, if it is a column passed on
     unchanged."""
@@ -2656,19 +3031,35 @@ SUM_BOUND = 1_000_000_000
 
 #: What a report suggests for an error under `AND`/`OR` (#604, D19).
 AND_OR_HINT = (
-    "`{}` is inside an AND or OR, which evaluates both operands, as DuckDB and "
-    "Polars do (D19): a guard in the other operand does not keep it from "
-    "raising. Guard the operation itself with a CASE that is not boolean, "
-    "e.g. `(CASE WHEN x <> 0 THEN 10 // x END) > 1`, in Ibis "
-    "`ibis.cases((_.x != 0, 10 // _.x)) > 1` (a boolean CASE is evaluated "
-    "whole, as AND/OR is); or state the guard as a precondition"
+    "`{}` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both "
+    "operands on every row, so a guard in the other operand does not keep it "
+    "from raising. Guard the operation itself with {} (a boolean CASE is "
+    "evaluated whole, as AND and OR are), or state the guard as a precondition"
 )
 
 
 def and_or_hints(issues: Sequence[Issue]) -> list[str]:
     """`AND_OR_HINT` for each error under `AND`/`OR`, once per expression."""
-    seen = dict.fromkeys(i.expr for i in issues if i.error and i.under_and_or)
-    return [AND_OR_HINT.format(e) for e in seen]
+    seen = dict.fromkeys(i.shown or i.expr for i in issues if i.error and i.under_and_or)
+    return [_and_or_hint(e) for e in seen]
+
+
+def _and_or_hint(e: str) -> str:
+    """`AND_OR_HINT` for one operation, with the guard written out where it
+    is a division: `ibis.cases((_.qty != 0, _.total // _.qty))`."""
+    m = re.fullmatch(r"(\w+) (//|/|%) (\w+)", e)
+    if m and not m[3].isdigit():
+        a, op, b = m.groups()
+        guard = (
+            f"`ibis.cases((_.{b} != 0, _.{a} {op} _.{b}))` in Ibis, "
+            f"`CASE WHEN {b} <> 0 THEN {a} {'/' if op == '//' else op} {b} END` in SQL"
+        )
+    else:
+        guard = (
+            "a CASE that is not boolean, e.g. `ibis.cases((_.x != 0, 10 // _.x)) > 1` "
+            "in Ibis, `(CASE WHEN x <> 0 THEN 10 // x END) > 1` in SQL"
+        )
+    return AND_OR_HINT.format(e, guard)
 
 
 def overflow_hints(
@@ -3161,8 +3552,10 @@ class ContractedTransform:
         engine: Engine | None,
         infer: bool = True,
         semantics: Semantics = "reference",
+        on_inferred: OnInferred = "error",
     ):
         self.fn, self.ensures = fn, ensures
+        self.on_inferred = on_inferred
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
         self.semantics = _checked_semantics(semantics)
@@ -3210,6 +3603,7 @@ class ContractedTransform:
             tag,
             inputs,
             infer,
+            self.on_inferred,
             self.semantics,
             ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
@@ -3227,6 +3621,9 @@ class ContractedTransform:
                 infer=infer,
                 inputs=inputs,
                 semantics=self.semantics,
+                # Only the postconditions' proof needs the user's bounds; the
+                # links' and conditions' proofs infer as before.
+                on_inferred=self.on_inferred if tag == "ensures" else "silent",
             )
         return self._cache[key]
 
@@ -3444,6 +3841,7 @@ def transform(
     infer: bool = True,
     strict: bool | None = None,
     semantics: Semantics = "reference",
+    on_inferred: OnInferred = "error",
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -3493,6 +3891,15 @@ def transform(
             runs (`Report.assumed`). With False, every such bound must be
             stated in `requires`: an overflow, a `SUM`'s included, fails the
             proof, and the report's hint names the bound to state.
+            With `on_inferred="error"` (the default), an inferred bound is
+            not assumed: the transformation needs it in `requires`
+            (`Report.needed`).
+        on_inferred: What a precondition sverify infers does, as
+            `verify`'s: `"error"` (the default), the contract is not proved
+            until `requires` states it or the transformation no longer
+            needs it; `"warn"`, it is assumed and checked on the data, with
+            an `InferredPreconditionWarning`; `"silent"`, the same without
+            the warning.
         strict: Deprecated alias of `infer`, with the opposite polarity:
             `strict=True` is `infer=False`.
         semantics: What the contract's SQL conditions mean in its proofs,
@@ -3581,6 +3988,7 @@ def transform(
             stacklevel=2,
         )
         infer = not strict
+    on_inferred = _checked_on_inferred(on_inferred)
     return lambda fn: ContractedTransform(
-        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics
+        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics, on_inferred
     )

@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 from sverify import _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
+from sverify._support import DUCKDB_ONLY
 from sverify.black_box import BlackBox
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -398,12 +399,12 @@ class Dialect:
     def float_to_int_or_null(self, x: str) -> str:
         """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
         zero, NULL for NaN, ±inf and values outside 64 bits."""
-        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
         or NULL where it does not fit."""
-        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""
@@ -470,12 +471,14 @@ class Dialect:
         """A time of day plus `0 ≤ micros` < a day, wrapping around midnight
         (`Time.timeOfDay` of the sum)."""
         raise Unsupported(
-            f"a time of day plus an interval is not yet supported on {self.name}; see #271"
+            f"a time of day plus an interval is not yet supported on {self.name}; " + DUCKDB_ONLY
         )
 
     def time_trunc(self, unit: str, t: str) -> str:
         """`Time.trunc` of a time of day, to a unit of an hour or less."""
-        raise Unsupported(f"truncating a time of day is not yet supported on {self.name}; see #271")
+        raise Unsupported(
+            f"truncating a time of day is not yet supported on {self.name}; " + DUCKDB_ONLY
+        )
 
     def time_of_day(self, ts: str) -> str:
         """`Time.timeOfDay`: the TIME of a timestamp."""
@@ -602,20 +605,20 @@ class Dialect:
         """`source` joined with the elements of its list column `lst`, as
         `alias(e, i)`: element and 1-based position, no row for a NULL or
         empty list (`Rel.unnest`, #94)."""
-        raise Unsupported(f"unnest is not yet supported on {self.name}; see #271")
+        raise Unsupported(f"unnest is not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     def list_lit(self, items: list[str], kind: Lst) -> str:
         """A list literal of the SQL items, of kind `kind` (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     def list_element(self, x: str, offset: int) -> str:
         """`UnFn.listElement`: zero-based, from the end for a negative offset,
         NULL out of range (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     def cardinality(self, x: str) -> str:
         """`UnFn.cardinality`: the number of elements, NULL ones included."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     def list_lt(self, a: str, b: str) -> str:
         """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
@@ -761,7 +764,7 @@ class Dialect:
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         """`AggFn.min`/`max` (`fn` is `MIN` or `MAX`) of the doubles of `v`, over
         the window `over` or the group: by their codes, NaN above `+∞` (#371)."""
-        raise Unsupported(f"{fn} of doubles is not yet supported on {self.name}; see #271")
+        raise Unsupported(f"{fn} of doubles is not yet supported on {self.name}; " + DUCKDB_ONLY)
 
     # Three-valued logic and comparisons (NULL-propagating)
 

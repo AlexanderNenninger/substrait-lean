@@ -656,7 +656,22 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .lt a (.lit (.int 0)))),
         ("then", writeExpr cols ctx (.un .fneg t))]]),
       ("else", writeExpr cols ctx e)])]
-  | .ifThen c t e => caseChain (writeExpr cols .bool c) (writeExpr cols ctx t) (writeExpr cols ctx e)
+  -- Integer `//` and `%` with `division_type` = `FLOOR`, as the parser reads
+  -- them (`Expr.floorDivOf`, `Expr.floorModOf`): written as those calls, so
+  -- that Polars runs its own `//` and `%` and the other engines refuse them.
+  | .ifThen c t e =>
+    let dflt := caseChain (writeExpr cols .bool c) (writeExpr cols ctx t) (writeExpr cols ctx e)
+    match c, t with
+    | .bin .lt a (.lit (.int 0)), .ifThen (.bin .lt (.lit (.int 0)) b) _ _ =>
+      let ka := if isConst a then wkind cols b else wkind cols a
+      let kb := if isConst b then wkind cols a else wkind cols b
+      let args := [writeExpr cols ka a, writeExpr cols kb b]
+      if Expr.ifThen c t e == Expr.floorDivOf a b then
+        callOpt (BinFn.anchor .idiv) args "division_type" "FLOOR"
+      else if Expr.ifThen c t e == Expr.floorModOf a b then
+        callOpt (BinFn.anchor .imod) args "division_type" "FLOOR"
+      else dflt
+    | _, _ => dflt
   | .hof f l b =>
     let kl := wkind cols l
     let elem := match kl with | .list k => k | _ => .other

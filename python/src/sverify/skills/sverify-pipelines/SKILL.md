@@ -21,6 +21,12 @@ aggregates and windows recompute only the groups and partitions a batch
 touches; others (left joins, `DISTINCT`, `LIMIT`) are recomputed and diffed.
 Needs the `delta` or `iceberg` extra.
 
+A node whose contract is not proved refuses the refresh (`RouteError`,
+"not verified: …"); `refresh(unverified=True)` runs it anyway and records
+the route `"unverified"`. A sink accepts doubles within the plan's proved
+bound by default (`sv.equivalent(floats="plan")`); `reproducible=sv.equivalent()`
+asks for the same bits on a rerun.
+
 ## Source, contracted transforms, sink
 
 ```python
@@ -58,7 +64,7 @@ DeltaTable(lake / "orders").alter.add_constraint({"non_negative": "amount >= 0"}
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, sv.unique("id")],
 )
 def big(orders):

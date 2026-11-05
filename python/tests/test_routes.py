@@ -64,12 +64,12 @@ def test_explicit_route_is_taken_or_refused(con) -> None:
         routes.choose(report, "duckdb", "sideways")  # type: ignore[arg-type]
 
 
-def test_without_route_run_is_unchanged(con) -> None:
+def test_run_chooses_a_route_by_default(con) -> None:
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
     duck.run(con, "duckdb")
-    assert duck.routes == {}
+    assert duck.routes["duckdb"].kind == "native"
 
 
 def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
@@ -96,7 +96,13 @@ def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
             "facts": ["division_type-fact"],
         },
     )
-    assert "int.mod's division_type: Profile.duckdb gives TRUNCATE, polars gives FLOOR" in r.reason
+    assert "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR" in r.reason
+    # #655: under "auto", the refusal leads with what to do. The re-check
+    # under `Profile.polars` proves this plan, so it is made to fail here.
+    assert routes.choose(duck, "polars").kind == "recheck"
+    monkeypatch.setattr(routes, "recheck", lambda report, e: (False, "not proved"))
+    auto = routes.choose(duck, "polars")
+    assert auto.reason.startswith("verify with semantics='reference' to run on polars")
     assert routes.choose(duck, "datafusion", "transfer").kind == "transfer"
     # The checker's own dependency report narrows the check.
     duck.depends = []
@@ -108,17 +114,36 @@ def test_transfer_without_tables_is_refused_with_the_reason(monkeypatch, con) ->
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
-    r = routes.choose(duck, "polars")
+    r = routes.choose(duck, "polars", "transfer")
     assert r.refused
     assert "no choices table" in r.reason
-    assert "not verified under the reference" in r.reason
+    # `auto` goes on to the re-check, which the checker proves under
+    # `Profile.polars` (the plan states its options, `PolarsProfile.lean`).
+    auto = routes.choose(duck, "polars")
+    assert (auto.kind, auto.profile) == ("recheck", "polars"), auto
 
 
 def test_unproved_plan_is_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i * t.i), infer=False)
     assert not report.proved
-    assert routes.choose(report, "duckdb").reason.startswith("the plan is not verified")
+    reason = routes.choose(report, "duckdb").reason
+    assert reason.startswith("not verified: may fail: overflow: i * i (see report.errors)")
+    assert "unverified=True" in reason
+
+
+def test_run_refuses_an_unproved_plan_unless_asked(con) -> None:
+    """#655: an unproved plan does not run silently; `unverified=True` runs
+    it, and the result, the routes and a warning say so."""
+    t = con.table("t")
+    report = sv.verify(t.select("k", j=t.i * t.i), infer=False)
+    with pytest.raises(routes.RouteError, match=r"refused on duckdb: not verified: may fail"):
+        report.run(con)
+    with pytest.warns(routes.UnverifiedRunWarning, match="running on duckdb unverified"):
+        out = report.run(con, unverified=True)
+    assert out.schema.metadata[b"sverify.verified"] == b"false"
+    assert report.routes["duckdb"].kind == "unverified"
+    assert "route on duckdb: unverified: not verified" in str(report)
 
 
 def test_determinism_is_reported_and_required_on_request() -> None:
@@ -153,7 +178,7 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     assert routes.check_version("datafusion", "1.0.0") is None
     with pytest.warns(routes.EngineVersionWarning, match="polars 2.2.0"):
         assert routes.check_version("polars", "2.2.0")
-    with pytest.raises(routes.EngineVersionError, match="re-run the probes"):
+    with pytest.raises(routes.EngineVersionError, match="needs its facts probed again"):
         routes.check_version("duckdb", "3.0.0")
     # The checker's profiles take precedence.
     monkeypatch.setattr(
@@ -218,7 +243,7 @@ def test_q_refinement_against_the_postcondition(monkeypatch, con) -> None:
     _classed_tables(monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"})])
     r = routes.choose(exact, "polars")
     assert r.refused and "observes its zeros" in r.reason and "sv.equivalent" in r.reason
-    assert routes.choose(canon, "polars").cls == "refines_up_to"
+    assert routes.choose(canon, "polars").cls == "observed"
     _classed_tables(
         monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"}, shim="canon")]
     )
@@ -234,7 +259,7 @@ def test_q_refinement_against_the_postcondition(monkeypatch, con) -> None:
     ):
         report.depends = [{"group": None, "option": "sum_order"}]
         r = routes.choose(report, "polars")
-        assert (r.cls == "approx") is ok, r
+        assert (r.cls == "observed") is ok, r
 
 
 def test_unsupported_functions_are_refused(con) -> None:
@@ -269,10 +294,10 @@ def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
         return routes.choose(report, "polars")
 
     both = {"total": {"abs": 222.0, "rel": 1e-10}, "k": {}}
-    assert route(sv.within(rel=1e-9), both).cls == "approx"
-    assert route(sv.within(abs=1e3), both).cls == "approx"
+    assert route(sv.within(rel=1e-9), both).cls == "observed"
+    assert route(sv.within(abs=1e3), both).cls == "observed"
     r = route(sv.within(rel=1e-15, abs=1.0), both)
-    assert r.refused and "total is within abs=222 (not proved), rel=1e-10 (not proved)" in r.reason
+    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.reason
     assert "no per-plan bound" in route(sv.within(rel=1e-9), None).reason
     # A bound is proved only where Lean says so; otherwise the route rests
     # on a test.
