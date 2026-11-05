@@ -315,7 +315,7 @@ theorem abs_sqrt_sub_sqrt_le_div {x y s : ℝ} (hx : 0 ≤ x) (hy : 0 ≤ y) (hs
 /-- **`sqrt`**, correctly rounded on both sides: inputs `a, a' ≥ 0` within `εa`
 whose square roots differ by at most `Δ` (`√εa`, or `εa / s`), with `a ≤ ha`:
 `Δ (1 + u) + 2u (√ha + tiny)`. -/
-theorem StdModel.rule_sqrt (M : StdModel) {a a' ha Δ : ℝ} (ha0 : 0 ≤ a) (hha : a ≤ ha)
+theorem StdModel.rule_sqrt (M : StdModel) {a a' ha Δ : ℝ} (hha : a ≤ ha)
     (hΔ : |√a' - √a| ≤ Δ) (hov : √ha + Δ ≤ maxFinite) :
     |M.fl (√a') - M.fl (√a)| ≤ Δ * (1 + u) + 2 * u * (√ha + tiny) := by
   have hF : |√a| ≤ √ha := by
