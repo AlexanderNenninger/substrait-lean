@@ -339,6 +339,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
+    _check_export_state(tree)
     catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
     }
@@ -1991,6 +1992,20 @@ def _check_intervals(query: str) -> None:
             and re.search(r"\bago\b", tok.text, re.I)
         ):
             raise Unsupported(f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet")
+
+
+def _check_export_state(tree: Any) -> None:
+    """DuckDB's `agg(x) EXPORT_STATE` gives the aggregate's state, which
+    SQLGlot reads as the alias `EXPORT_STATE` of the aggregate's value
+    (upstream/bugs/SG-9.json): refused."""
+    for a in tree.find_all(sge.Alias):
+        name = a.args.get("alias")
+        if (
+            isinstance(name, sge.Identifier)
+            and not name.quoted
+            and name.name.upper() == "EXPORT_STATE"
+        ):
+            raise Unsupported(f"{_shown(a)}: EXPORT_STATE is not supported")
 
 
 def _check_using_stars(tree: Any) -> None:

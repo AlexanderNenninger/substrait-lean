@@ -134,6 +134,9 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT list(cost ORDER BY id) FROM orders", "DECIMAL"),
         ("SELECT first(qty ORDER BY amount + 1) FROM orders", "ORDER BY a column only"),
         ("SELECT list(qty) OVER (ORDER BY id) FROM orders", "over a window"),
+        # SQLGlot reads EXPORT_STATE as an alias (upstream/bugs/SG-9.json).
+        ("SELECT first(qty ORDER BY id) EXPORT_STATE FROM orders", "EXPORT_STATE"),
+        ("SELECT sum(qty) export_state FROM orders", "EXPORT_STATE"),
     ],
 )
 def test_refusals_say_what(query, message):

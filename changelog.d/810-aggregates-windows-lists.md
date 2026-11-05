@@ -22,3 +22,7 @@ DuckDB's SQL for `first` and `last` (the Ibis producer's `first()`, `last()`
 and `arg_min`) is DuckDB's own `first(x ORDER BY …) FILTER (WHERE x IS NOT
 NULL)`, without gathering each group's values into a list: 4 times faster on
 5 million rows.
+
+`agg(x) EXPORT_STATE` is refused: SQLGlot reads `EXPORT_STATE` as the
+aggregate's alias, and the lift took the value for the state
+([SG-9](upstream/bugs/SG-9.json)).
