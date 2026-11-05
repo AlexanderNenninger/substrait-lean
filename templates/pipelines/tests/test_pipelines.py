@@ -148,3 +148,18 @@ def test_data_that_breaks_the_contract_fails_the_refresh(env, tmp_path):
     assert "pipelines/gdp.py:trade_openness_table" in alert
     assert "PreconditionError" in alert
     assert not (Path(env["SVERIFY_LAKE"]) / "gdp").exists()  # nothing written
+
+
+def test_stored_keys_reach_only_the_store_that_needs_them():
+    """The cloud stores log in through OIDC (#776): a stored key or the
+    Tailscale client's secret reaches a job only for the store that needs
+    it, and every other secret line in lake.yml is a commented example."""
+    text = (ROOT / ".github" / "workflows" / "lake.yml").read_text()
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if "secrets." in line and not line.strip().startswith("#")
+    ]
+    assert lines
+    for line in lines:
+        assert "vars.SVERIFY_STORE == 'r2'" in line or "vars.SVERIFY_STORE == 'minio'" in line, line

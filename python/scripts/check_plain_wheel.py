@@ -33,6 +33,9 @@ OPTIONAL = (
     "yaml",
     "opentelemetry",
     "openlineage",
+    "boto3",
+    "keyring",
+    "azure",
 )
 
 PIPELINE = textwrap.dedent(

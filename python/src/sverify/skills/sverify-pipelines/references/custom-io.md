@@ -183,23 +183,34 @@ print(big(orders).write(JsonLines("big.jsonl")).refresh().writes[0])  # a restar
 
 ## Credentials and storage
 
-sverify stores no credentials: it passes options to the library doing the
-I/O, and the contract a sink records holds none.
+sverify stores no credentials: a pipeline names them, and sverify reads the
+values when a table is opened. Reports, contract records, exports, logs and
+errors show names only. Never write a secret's value into a pipeline.
 
-* **Delta** (S3, GCS, Azure): delta-rs's default chain applies when no
-  options are given: environment variables (`AWS_REGION`,
-  `AWS_ACCESS_KEY_ID`, ...), `~/.aws` profiles, instance or pod roles.
-  Prefer it. Otherwise give `storage_options`: a `sverify.io.Storage`
-  shared by every table, holding a mapping or a function that returns fresh
-  options, called whenever a table is opened (so expiring tokens renew).
-  `repr` shows option names only.
-* **Iceberg** (REST, Glue, ...): the pyiceberg catalog holds them, from
-  `load_catalog` properties, `~/.pyiceberg.yaml` or `PYICEBERG_*` variables.
+* **The default chain first** (S3, GCS, Azure): with no options, delta-rs
+  reads environment variables (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, ...),
+  `~/.aws` profiles, instance or pod roles, or a CI job's OIDC login.
+* **A secret by name**: `sverify.io.Secret("env:NAME")`, `"file:/path"`,
+  `"bao:kv/path#field"` (OpenBao; `vault:` for Vault), `"aws-sm:id"`,
+  `"gcp-sm:projects/p/secrets/s"`, `"azure-kv:vault/name"`,
+  `"keychain:service/account"`, or a bare name that
+  `[tool.sverify.secrets.names]` in `pyproject.toml` maps (else the
+  environment variable: `flight-token` reads `FLIGHT_TOKEN`).
+* **Delta**: `storage_options=Storage(credentials="lake")` (the secret's
+  fields are the options), a mapping whose values are `Secret`s, or a
+  `Storage` holding a function that returns fresh options. `writes=` and
+  `reads=` declare the prefixes the credential may touch; `sverify check`
+  warns about a sink outside them.
+* **Flight**: `FlightSource(..., secret="flight-token")`.
+* **Iceberg** (REST, Glue, ...): the pyiceberg catalog holds them:
+  `load_catalog("lake", **Storage({"token": Secret("bao:kv/rest#token")}).options())`,
+  `~/.pyiceberg.yaml` or `PYICEBERG_*` variables.
 * **Files** (`from_files`): the filesystem `path`'s URI names, with its
   default chain, or `filesystem=` a `pyarrow.fs.FileSystem`.
-* **Your own source or sink**: take a `Storage` and call `options()` when
-  you connect, rather than literal keys, which travel with any pickled
-  object.
+* **Your own source or sink**: pass `credentials="name"` to `from_query`,
+  `from_frame`, `from_files` or `sink_from`, and read the value inside the
+  function with `Secret("name").value()`. `node.credentials()` lists each
+  table's credential by name, for reading or writing.
 
 ```python
 from sverify.io import DeltaSink, DeltaSource, Storage

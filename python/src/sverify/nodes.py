@@ -50,6 +50,8 @@ from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import _LOCAL_ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
+from sverify.io._credentials import CredentialUse
+from sverify.io._credentials import uses as credential_uses
 from sverify.observation import PLAN_BOUND, Observation
 from sverify.steps import Step, as_transform
 
@@ -609,6 +611,53 @@ class Node:
         walk(self._query())
         return out
 
+    def _stage_credentials(self) -> list[CredentialUse]:
+        """The credentials this node's own stage uses: its sources' and the
+        stored nodes' it reads, and its sink's."""
+        out: list[CredentialUse] = []
+        for leaf in self._leaves():
+            if isinstance(leaf, _Source):
+                out += credential_uses(leaf.source, "read")
+            elif isinstance(leaf, _Stored):
+                out += credential_uses(leaf.sink, "read")
+        if isinstance(self, _Stored):
+            out += credential_uses(self.sink, "write")
+            if self.quarantine_table is not None:
+                out += credential_uses(self.quarantine_table, "write")
+        return out
+
+    def credentials(self) -> list[CredentialUse]:
+        """The credentials a refresh of this node uses, by name, never a
+        value: for each table it reads or writes, which credential, for
+        reading or writing, and whether the table lies inside what the
+        credential may touch where that is known (`Storage(reads=,
+        writes=)`, #778). Upstream stored nodes' stages first.
+
+        Returns:
+            One `sverify.io.CredentialUse` per table and credential.
+
+        Examples:
+            ```python
+            for use in node.credentials():
+                print(use)   # reads orders (s3://lake/orders) with lake
+            ```
+        """
+        order: list[Node] = []
+
+        def visit(n: Node) -> None:
+            if any(n is o for o in order):
+                return
+            for leaf in n._leaves():
+                if isinstance(leaf, _Stored):
+                    visit(leaf)
+            order.append(n)
+
+        visit(self)
+        out: list[CredentialUse] = []
+        for n in order:
+            out += [u for u in n._stage_credentials() if u not in out]
+        return out
+
     def _refresh(
         self, pins: dict[int, int], engine: Any, audit: bool, route: Route | None = None
     ) -> StageRefresh:
@@ -621,6 +670,7 @@ class Node:
         sink = self.sink if isinstance(self, _Stored) else None
         target = self.quarantine_table if isinstance(self, _Stored) else None
         out = StageRefresh(self.name, None, route=route, transform=_made_by(self))
+        out.credentials = self._stage_credentials()
         first = self._stage is None
         try:
             if self._stage is None:
@@ -912,6 +962,9 @@ class StageRefresh:
     node it reads has no state yet; None if it took it."""
     held_error: Exception | None = None
     """The `PreconditionError` that held it, with `.rows`."""
+    credentials: list[CredentialUse] = field(default_factory=list)
+    """The credentials the node's stage used, by name, for reading its
+    sources and writing its sink (#778); never a value."""
 
     @property
     def outcome(self) -> str:
@@ -1013,6 +1066,7 @@ class StageRefresh:
                 "inserted": self.write.inserted,
                 "deleted": self.write.deleted,
             },
+            "credentials": [c.to_dict() for c in self.credentials],
         }
 
     def __str__(self) -> str:

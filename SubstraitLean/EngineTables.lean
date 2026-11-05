@@ -7,8 +7,9 @@ import SubstraitLean.SubstraitProfile
 /-!
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
 
-DuckDB's and Polars's choices and observation rows, from their facts
-(`characterization/duckdb/facts/`, `characterization/polars/facts/`), pinned to
+DuckDB's, Polars's and Spark's choices and observation rows, from their facts
+(`characterization/duckdb/facts/`, `characterization/polars/facts/`,
+`characterization/spark/facts/`), pinned to
 the versions those were probed at (D14). The rows cover the prototype slice:
 integer `+ - × /` and `%`, `SUM` and `AVG` of integers and doubles, double
 arithmetic, and an `ORDER BY`'s NULL order, clustering and ties, with what
@@ -319,6 +320,115 @@ def Profile.polars.obs : ObsTable := [
   (some "dec.div", "decimal_rescale", (ObsRow.shimmed "decimal_div_half_away"
     ["polars-decimal-arith"]).proved "Polars.decimal_div_half_away")]
 
+/-! ## Spark -/
+
+/-- Spark 4.3.0 under `sverify.sql.spark.SPARK_CONF`: ANSI mode on, `TIMESTAMP`
+as `TIMESTAMP_NTZ`, the session time zone UTC (spark-exec-settings). -/
+def Profile.spark.table : ProfileTable where
+  name := "spark"
+  version := "4.3.0"
+  choices := [
+    -- ANSI raises past the width (spark-int-arith, spark-int-abs).
+    (none, "overflow", .asked ["ERROR"] ["ERROR"]),
+    -- ANSI raises: `DIVIDE_BY_ZERO`, `REMAINDER_BY_ZERO`, for doubles too.
+    (none, "on_division_by_zero", .oneOf ["ERROR"]),
+    (some "fp.div", "on_division_by_zero", .oneOf ["ERROR"]),
+    -- `sqrt(-1)`, `asin(2)` are NaN; the logarithms of `x ≤ 0` are NULL
+    -- (spark-math-domain, ST-16).
+    (none, "on_domain_error", .oneOf ["NAN", "NULL"]),
+    (some "int.div", "on_domain_error", .any),
+    (some "int.pow", "on_domain_error", .any),
+    (none, "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
+    (some "int.div", "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
+    (some "int.mod", "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
+    (none, "min_mod_neg_one", .oneOf ["ZERO"]),
+    (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- `round(x)` rounds halves away from zero; `round(x, d)` rounds the
+    -- shortest decimal text, which the writer never calls (spark-round).
+    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
+    (none, "nan_creation", .oneOf ["NAN"]),
+    (none, "float_overflow", .oneOf ["INFINITY"]),
+    (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "nan_kind", .oneOf ["IEEE"]),
+    (none, "nan_order", .oneOf ["GREATEST"]),
+    (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- Partials per task, merged in the order the tasks finish.
+    (none, "sum_order", .oneOf ["ANY"]),
+    (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
+    (none, "quantile_interp", .oneOf ["LINEAR"]),
+    (none, "avg_int_result", .oneOf ["FP64"]),
+    (none, "empty_group_aggregates", .oneOf ["NULL"]),
+    -- First for an ascending key, last for a descending one.
+    (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_FIRST"]),
+    (none, "clustered", .oneOf ["ADJACENT"]),
+    (none, "tie_order", .oneOf ["ANY"]),
+    -- `first` after a shuffle: the first row of whichever partition comes
+    -- first (spark-first-last).
+    (none, "tie_pick", .oneOf ["ANY_ROW"]),
+    (none, "negative_start", .asked ["WRAP_FROM_END"] ["WRAP_FROM_END"]),
+    (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
+    (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
+    (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    -- `ROUND_HALF_UP` on `BigDecimal` (spark-decimal-arith).
+    (none, "decimal_rescale", .oneOf ["TIE_AWAY_FROM_ZERO"])] ++ uncharacterized prototypeSlice
+
+def Profile.spark.obs : ObsTable := [
+  (none, "overflow", (ObsRow.native ["spark-int-arith", "spark-int-abs"]).proved "Rel.spark_sound"),
+  -- A `BIGINT` partial sum raises by the order of the rows; the writer sums
+  -- exact `DECIMAL(38,0)` values (`Spark.partial_sums_fit`).
+  (some "agg.isum", "overflow", (ObsRow.shimmed "int_sum_decimal" ["spark-sum-int", "spark-exec-parallel"]).proved
+    "Spark.int_sum_decimal"),
+  (some "int.div", "overflow", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
+  (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved "Rel.spark_sound"),
+  (some "fp.div", "on_division_by_zero", .native ["spark-double-divide"]),
+  (none, "on_domain_error", (ObsRow.native ["spark-math-domain"]).proved "Rel.spark_sound"),
+  (none, "division_type", .native ["spark-int-modulus"]),
+  (some "int.div", "division_type", .native ["spark-int-divide"]),
+  (some "int.mod", "division_type", .native ["spark-int-modulus"]),
+  (none, "min_mod_neg_one", .native ["spark-int-modulus"]),
+  (none, "rounding", .native ["spark-double-arith"]),
+  (some "fp.round", "rounding", { ObsRow.native ["spark-round"] with
+    note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }),
+  (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
+  (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Polars.makes_infinite"),
+  -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
+  -- after `Dialect.canon`.
+  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"] with
+    shim := some "Dialect.canon" }).proved "Spark.one_zero"),
+  (none, "nan_kind", .upTo { zeros := .canon } ["spark-nan-sign"]),
+  (none, "nan_order", .native ["spark-nan-order"]),
+  (none, "nan_equality", .native ["spark-nan-equality"]),
+  -- Partial sums merged in the order the tasks finish: trees the reference
+  -- allows, within #85's bound, varying run to run with the partitioning.
+  (none, "sum_order", ({ ObsRow.approxWithin "plan" ["spark-sum-double", "spark-avg-double"] with
+    rerun := some { floats := .within "plan" },
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum"
+      ["spark-sum-double", "spark-avg-double", "spark-exec-parallel"] }).proved
+    "FloatBounds.StdModel.epsilon_sum"),
+  (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Spark.int_avg_decimal"),
+  (none, "empty_group_aggregates", .native ["spark-sum-int", "spark-sum-double"]),
+  -- Unstated, Spark puts NULLs first in an ascending key; the writer states
+  -- each key's placement (`Spark.null_order`).
+  (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Spark.null_order"),
+  (none, "clustered", .shimmed "sort on the keys" ["spark-clustered"]),
+  -- After a shuffle, ties come in the order the partitions' rows arrive.
+  (none, "tie_order", { ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with
+    rerun := some { rows := .tiesPermuted, elements := .multiset },
+    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }),
+  (none, "tie_pick", { ObsRow.native ["spark-first-last"] with
+    rerun := some { rows := .tiesPermuted },
+    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }),
+  -- Only starts from 1 reach Spark's `substring`, whose start 0 reads as 1
+  -- (`Dialect.substring` of the writer).
+  (none, "negative_start", .native ["spark-substring"]),
+  (none, "case_sensitivity", .native ["spark-match-functions"]),
+  (none, "string_positions", .native ["spark-strpos", "spark-substring"]),
+  (none, "null_join_keys", .native ["spark-null-keys"]),
+  (none, "stat_algo", ({ ObsRow.native ["spark-var-stddev", "spark-covar", "spark-corr"] with
+    rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
+  (none, "quantile_interp", .native ["spark-quantile"]),
+  (none, "decimal_rescale", .native ["spark-decimal-arith"])]
+
 /-! ## The engines -/
 
 /-- The options whose functions an engine computes row by row, or exactly
@@ -350,7 +460,8 @@ def withReruns (obs : ObsTable) : ObsTable :=
 /-- The engine profiles, under DuckDB's default settings. -/
 def engineTables : List (ProfileTable × ObsTable) :=
   [(Profile.duckdb.table {}, withReruns Profile.duckdb.obs),
-   (Profile.polars.table, withReruns Profile.polars.obs)]
+   (Profile.polars.table, withReruns Profile.polars.obs),
+   (Profile.spark.table, withReruns Profile.spark.obs)]
 
 /-- **Every DuckDB setting refines the core.** -/
 theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
@@ -359,6 +470,9 @@ theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).L
   cases e <;> cases i <;> decide +kernel
 
 theorem Profile.polars_le_core : Profile.polars.table.Le Profile.core.table :=
+  ProfileTable.le_of_leB (by decide +kernel)
+
+theorem Profile.spark_le_core : Profile.spark.table.Le Profile.core.table :=
   ProfileTable.le_of_leB (by decide +kernel)
 
 /-- `Allowed_duckdb ⊆ Allowed_core`, for every setting. -/
@@ -370,6 +484,11 @@ theorem Rel.allowed_duckdb_core (s : DuckDBSettings) {cat : Catalog} {r : Rel} {
 theorem Rel.allowed_polars_core {cat : Catalog} {r : Rel} {out : Relation}
     (h : r.AllowedP Profile.polars.table cat out) : r.AllowedP Profile.core.table cat out :=
   Rel.AllowedP_mono Profile.polars_le_core h
+
+/-- `Allowed_spark ⊆ Allowed_core`. -/
+theorem Rel.allowed_spark_core {cat : Catalog} {r : Rel} {out : Relation}
+    (h : r.AllowedP Profile.spark.table cat out) : r.AllowedP Profile.core.table cat out :=
+  Rel.AllowedP_mono Profile.spark_le_core h
 
 /-- An engine's observation rows: well-formed, at options of the catalogue,
 one per group and option. -/
@@ -479,7 +598,7 @@ def tablesJson : Json :=
         ("substrait", Json.mkObj [("engine", Json.null), ("yaml", toJson Profile.substrait.table.version)])] ++
       engineTables.map fun (t, _) => (t.name, Json.mkObj [
         ("engine", toJson t.name), ("versions", toJson [t.version]),
-        ("executes", toJson (if t.name == "polars" then "streaming" else "")),
+        ("executes", toJson (if t.name == "polars" then "streaming" else if t.name == "spark" then "batch" else "")),
         ("missing", Json.arr <| (t.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))
     |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs),

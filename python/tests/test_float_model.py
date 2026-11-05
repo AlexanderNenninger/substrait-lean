@@ -116,8 +116,8 @@ def test_exact_doubles_say_which_engines_give_them(con) -> None:
         r.select("k", y=r.x * 2), requires=REQ, ensures=[sv.equivalent(floats="exact")]
     )
     assert doubled.proved
-    assert doubled._floats_on == {"duckdb": [], "polars": []}
-    assert "duckdb, polars meet exact doubles" in str(doubled)
+    assert doubled._floats_on == {"duckdb": [], "polars": [], "spark": []}
+    assert "duckdb, polars, spark meet exact doubles" in str(doubled)
 
 
 # -- what routes and the manifest print ---------------------------------------

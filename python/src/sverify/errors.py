@@ -58,6 +58,8 @@ Setup:
 * `EngineSettingsError` (`engine_settings`), `EngineSettingsWarning`: an
   engine setting differs from the one its profile's facts were probed
   under.
+* `SecretError` (`secret_unreadable`): a secret could not be read (#775);
+  the message names it, never its value. A `LookupError`.
 
 Warnings:
 
@@ -90,6 +92,7 @@ from sverify.contracts import (
 from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncrementalError, SchemaError
 from sverify.io._common import ConcurrentWriteError
+from sverify.io._secrets import SecretError
 from sverify.routes import (
     EngineSettingsError,
     EngineSettingsWarning,
@@ -138,6 +141,7 @@ __all__ = [
     "PreconditionError",
     "RouteError",
     "SchemaError",
+    "SecretError",
     "SqlError",
     "SverifyError",
     "SverifyWarning",

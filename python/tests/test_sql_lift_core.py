@@ -277,7 +277,10 @@ def test_verify_states_and_takes_its_semantics():
     assert any("zero" in str(i) for i in ref.issues)
     assert not any("zero" in str(i) for i in duck.issues)
     with pytest.raises(ValueError, match="semantics must be"):
-        sv.verify(sql, tables={"t": t}, semantics="spark")  # type: ignore[arg-type]
+        sv.verify(sql, tables={"t": t}, semantics="sparkk")  # type: ignore[arg-type]
+    # Spark's profile reads Ibis transformations; SQL is DuckDB's.
+    with pytest.raises(ValueError, match="semantics='spark' checks Ibis transformations"):
+        sv.verify(sql, tables={"t": t}, semantics="spark")
 
 
 def test_transform_takes_a_semantics():
