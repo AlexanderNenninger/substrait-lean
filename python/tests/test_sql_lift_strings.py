@@ -36,6 +36,12 @@ QUERIES = [
     "SELECT id, customer || '!' AS a, concat(customer, '-', customer) AS b,"
     " replace(customer, 'a', 'A') AS r, repeat(customer, qty) AS t, left(customer, 2) AS f,"
     " upper(customer) AS u, lower(customer) AS lo FROM orders",
+    # Digests: lowercase hex of the UTF-8 bytes (#725), and the surrogate key
+    # dbt_utils.generate_surrogate_key writes.
+    "SELECT id, md5(customer) AS m, sha256(customer) AS s FROM orders",
+    "SELECT md5(cast(coalesce(cast(id AS TEXT), '_dbt_utils_surrogate_key_null_') || '-'"
+    " || coalesce(cast(customer AS TEXT), '_dbt_utils_surrogate_key_null_') AS TEXT)) AS k"
+    " FROM orders",
 ]
 
 
@@ -62,6 +68,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT id FROM orders WHERE customer LIKE customer", "not a constant"),
         ("SELECT substring(customer, 1, -1) FROM orders", "negative length"),
         ("SELECT customer || 1 FROM orders", "|| of a int32"),
+        ("SELECT sha2(customer, 512) FROM orders", "length other than 256"),
     ],
 )
 def test_refusals_say_what(query, message):
@@ -115,3 +122,19 @@ def test_the_written_plan_raises_out_of_range(start):
     plan = json.dumps(lift("SELECT substring(s, a, 2) AS x FROM t", {"t": SCHEMA_T}).plan)
     with pytest.raises(Exception, match="(?i)substring offset outside of supported range"):
         run_plan(con, written_plan(plan), "duckdb")
+
+
+def test_a_surrogate_key_is_never_null():
+    """`md5` of a string that is never NULL is never NULL: the `not_null`
+    test of a dbt surrogate key is proved (#725)."""
+    import sverify as sv
+
+    key = "md5(cast(coalesce(cast(id AS TEXT), '_n_') || '-' || coalesce(customer, '_n_') AS TEXT))"
+    report = sv.verify(
+        f"SELECT {key} AS k FROM orders",
+        tables=SCHEMAS,
+        semantics="duckdb",
+        ensures=["k IS NOT NULL"],
+        counterexamples=0,
+    )
+    assert report.proved
