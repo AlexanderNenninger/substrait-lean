@@ -125,11 +125,74 @@ PROFILES: Mapping[str, EngineProfile] = {
 #: The translation from the reference to each engine, with what makes it
 #: sound.
 TRANSLATIONS: Mapping[str, str] = {
-    "duckdb": "proved once: the DuckDB lowering (Lowering.lower_correct) and its writer",
-    "polars": "sverify.polars_engine's shims to the reference, tested against Rel.eval",
-    "datafusion": "the SQL writer's shims to the reference, tested against Rel.eval",
-    "spark": "the Spark SQL writer's shims to the reference, tested against Rel.eval",
+    "duckdb": "sverify's DuckDB lowering, proved for every plan, and its SQL writer",
+    "polars": "sverify's Polars translation, with shims where Polars differs from the "
+    "reference, tested against the reference",
+    "datafusion": "sverify's SQL writer, with shims where DataFusion differs from the "
+    "reference, tested against the reference",
+    "spark": "sverify's Spark SQL writer, with shims where Spark differs from the reference, "
+    "tested against the reference",
 }
+
+#: How a route line names a route without a class (#687).
+_KIND_TEXT: Mapping[str, str] = {
+    "reference": "verified under the reference",
+    "native": "verified under the engine's own semantics",
+    "transfer": "verified under another engine's semantics, which carries over",
+    "recheck": "verified again under the engine's own semantics",
+    "unverified": "unverified",
+}
+
+#: What each shim does, as a route line says it (#687); the names are the
+#: shims of `SubstraitLean/EngineTables.lean`.
+SHIM_TEXT: Mapping[str, str] = {
+    "int_div_trunc": "integer division rewritten to truncate",
+    "int_mod_trunc": "integer remainder rewritten to truncate",
+    "one_zero": "-0.0 written as 0.0",
+    "avg_int_declared": "the mean of integers cast to its declared type",
+    "column_divisor": "a division by a column guarded",
+    "round_half_away": "rounding rewritten to round half away from zero",
+    "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",
+    "decimal_div_half_away": "decimal division rewritten to round half away from zero",
+    "null_order": "NULLs sorted as the reference sorts them",
+    "strpos_chars": "string positions counted in characters",
+    "substring_wrap": "substring positions rewritten as the reference reads them",
+    "sum_empty_null": "a SUM of no rows written as NULL",
+}
+
+#: How a route line names what an observation ignores (#687).
+_IGNORES: Mapping[str, str] = {
+    "zeros": "-0.0 as 0.0",
+    "elements": "list elements in any order",
+}
+
+
+def _short(x: float) -> str:
+    """A bound to two significant digits: `2e-07` for 1.998e-07."""
+    return f"{float(f'{x:.2g}'):g}"
+
+
+def observed_text(obs: Observation) -> str:
+    """What an observed route's results agree with the reference up to, in
+    words: "doubles within abs=2e-07, rows in any order" (#687)."""
+    parts = []
+    # Rows are compared as a multiset unless the plan sorts them, for every
+    # class: a route line leaves them out.
+    for name in [n for n in obs.ignored() if n != "rows"]:
+        v = getattr(obs, name)
+        if name == "floats":
+            if isinstance(v, Within):
+                bounds = ", ".join(
+                    f"{k}={_short(b) if k != 'ulps' else b}"
+                    for k in ("abs", "rel", "ulps")
+                    if (b := getattr(v, k)) is not None
+                )
+                parts.append(f"doubles within {bounds}")
+            else:
+                parts.append("doubles within the plan's bound")
+        else:
+            parts.append(_IGNORES.get(name, f"{name} {v}"))
+    return ", ".join(parts) or "equal"
 
 
 class UnverifiedRunWarning(UserWarning):
@@ -233,13 +296,30 @@ class Route:
         return self.kind is None
 
     def __str__(self) -> str:
-        head = "refused" if self.kind is None else self.kind
-        out = f"{head}: {self.reason}"
-        if self.cls is not None and self.kind is not None:
-            seen = f" {self.observation}" if self.observation is not None else ""
-            out += f" [{self.cls}{seen}" + (f", {self.evidence}" if self.evidence else "") + "]"
+        """The class first, then what it means for this plan and the
+        evidence (#687): "shim (integer division …); evidence tested". The
+        long form is `reason`."""
+        if self.kind is None:
+            return f"refused: {self.reason}"
+        if self.kind == "unverified":
+            return f"unverified: {self.reason}"
+        out = self.cls or _KIND_TEXT.get(self.kind, self.kind)
+        if self.cls == "shim" and self.shims:
+            what = dict.fromkeys(
+                SHIM_TEXT.get(n, n.replace("_", " "))
+                for n in (x.split(": ", 1)[-1] for x in self.shims)
+            )
+            out += f" ({'; '.join(what)})"
+        if self.cls == "observed" and self.observation is not None:
+            out += f": {observed_text(self.observation)}"
+        if self.evidence:
+            out += f"; evidence {self.evidence}"
+        if self.cls and self.kind != "reference":
+            # How the proof reaches the engine, where it is not the
+            # translation from the reference.
+            out += f"; {self.kind}: {self.reason}"
         if not self.deterministic:
-            out += " (the result is not determined up to row order)"
+            out += "; the result is not determined up to row order"
         return out
 
 

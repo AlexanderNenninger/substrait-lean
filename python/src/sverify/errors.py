@@ -1,6 +1,6 @@
 """The exceptions sverify raises.
 
-* `VerificationError`: Lean could not prove a postcondition; `.report` says
+* `VerificationError`: the checker could not prove a postcondition; `.report` says
   what it could establish. `CompositionError` is the case where one
   transform's precondition does not follow from what the transform feeding
   it guarantees.

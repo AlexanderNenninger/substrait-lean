@@ -47,7 +47,7 @@ def test_native_and_reference(con) -> None:
         r = report.routes[engine]
         assert r.kind == "reference" and r.profile == "reference", r
         assert sorted(out.column("j").to_pylist()) == [-6, 3, 4]
-    assert "route on polars: reference" in str(report)
+    assert "route on polars: exact" in str(report)
     duck = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": t}, semantics="duckdb")
     assert routes.choose(duck, "duckdb").kind == "native"
 
@@ -225,7 +225,7 @@ def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
     )
     r = routes.choose(report, "polars")
     assert (r.kind, r.cls, r.evidence, r.shims) == ("reference", "shim", "tested", ("b: CASE",))
-    assert "[shim, tested]" in str(r)
+    assert str(r).startswith("shim (") and str(r).endswith("; evidence tested")
     _classed_tables(monkeypatch, [_row("a", "refines"), _row("b", "refused")])
     r = routes.choose(report, "polars")
     assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.reason

@@ -142,7 +142,7 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# reference: verified under the reference; the translation to polars is ... [shim, proved]
+# shim (integer division rewritten to truncate); evidence proved
 ```
 
 Polars's integer division floors, and the reference's truncates, so the
@@ -216,7 +216,7 @@ totals.refresh(engine="polars", route="auto")
 readings.apply(sv.Changes(inserts=[(1, 0.5)]))
 print(totals.refresh(engine="polars", route="auto"))
 # sums:
-#   route on polars: reference: ...
+#   route on polars: ...
 # ...
 #   view sums: 1 touched group(s) recomputed
 #   wrote sums from readings@v1: merge v2, 1 row(s) written, 1 deleted
@@ -238,7 +238,7 @@ t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on ...
+# exact; transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on ...
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -252,7 +252,7 @@ except RouteError as e:
 # refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
 divided.run(con, "polars", route="auto")
 print(divided.routes["polars"])
-# recheck: proved again under Profile.polars [exact]
+# exact; recheck: proved again under Profile.polars
 ```
 
 The transfer check fails on the division's options, so `route="auto"` goes on to the
@@ -313,7 +313,7 @@ print(parity.proved)
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
 print(parity.routes["polars"])
-# native: verified under Profile.polars [exact]
+# exact...; native: verified under Profile.polars
 print(sv.verify(s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0]).proved)
 # False
 try:

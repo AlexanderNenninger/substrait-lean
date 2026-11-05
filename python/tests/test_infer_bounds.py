@@ -150,7 +150,7 @@ def test_without_inference_the_hint_names_the_bound():
         # A sum's size depends on the group's.
         (
             T.group_by("id").aggregate(s=T.amount.sum()).select(x=_.s * 2),
-            "no bound on an input column rules it out: it reads the value "
+            "sverify found no bound on an input column that rules it out: it reads the value "
             "of an aggregate other than MIN or MAX",
         ),
     ],
