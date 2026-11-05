@@ -91,6 +91,9 @@ SHIMS: tuple[Shim, ...] = (
     Shim("decimal_div_half_away", "decimal_rescale",
          "TIE_AWAY_FROM_ZERO: AVG at scale s + 4, sverify_decimal_div",
          "mean is a Float64; / rounds half to even", "polars-decimal-arith", "expression"),
+    Shim("max_nan_greatest", "nan_order", "GREATEST: MAX of a group with a NaN is NaN",
+         "IGNORED: min and max skip NaN unless every value is NaN", "polars-min-max-nan",
+         "expression"),
 )  # fmt: skip
 
 GUARDS: tuple[Guard, ...] = (
@@ -333,3 +336,21 @@ def agg_makes_infinite(result: pl.Expr, values: pl.Expr) -> pl.Expr:
     """Do finite values give a `±∞` `SUM` or `AVG` (`Measure.makesInf`,
     #575)?"""
     return values.is_finite().all() & result.is_infinite()
+
+
+def min_ignore_nan(minimum: pl.Expr) -> pl.Expr:
+    """`MIN` of doubles from Polars's `min`, which skips NaN unless every
+    value is NaN (polars-min-max-nan): that agrees with NaN as the greatest
+    double (`nan_order = GREATEST`). `f64::min` may keep either zero
+    (polars-min-max-zero), so the result is read with one zero
+    (`Polars.min_ignore_nan`)."""
+    return one_zero(minimum)
+
+
+def max_nan_greatest(maximum: pl.Expr, has_nan: pl.Expr) -> pl.Expr:
+    """`MAX` of doubles from Polars's `max` and whether the group holds a NaN:
+    NaN if it does, as NaN is the greatest double (`nan_order = GREATEST`),
+    where Polars's `max` skips it (polars-min-max-nan); otherwise the `max`,
+    read with one zero (polars-min-max-zero, `Polars.max_nan_greatest`). NULL
+    without values, as Polars gives."""
+    return pl.when(has_nan).then(pl.lit(float("nan"))).otherwise(one_zero(maximum))

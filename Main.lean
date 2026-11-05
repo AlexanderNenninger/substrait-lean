@@ -166,6 +166,35 @@ def check (plan : Plan) (spec : Bool := false) : IO UInt32 := do
     IO.println s!"  {row}"
   return 0
 
+/-- `--eval-choices`: the rows with the values every order of the ties
+allows (`Rel.evalChoices`), as one JSON object: `{"rows": [...]}`, each
+cell `{"v": c}`, `{"any": [c, …]}`, `{"concat": {"sep": s, "classes":
+[[c, …], …]}}` or `{"collect": [[c, …], …]}` with `c` as `renderCell` writes
+it; `{"rows": null}` where the data leaves a choice it does not list. -/
+def evalChoices (plan : Plan) : IO UInt32 := do
+  let cat := plan.catalog
+  if let some (code, msg) := checkPlan plan then
+    IO.eprintln msg; return code
+  let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
+  let cellJson (k : Kind) : TieChoice → Lean.Json
+    | .val v => Lean.Json.mkObj [("v", renderCell k v)]
+    | .anyOf vs => Lean.Json.mkObj [("any", Lean.toJson (vs.map (renderCell k)))]
+    | .concat sep cs => Lean.Json.mkObj [("concat", Lean.Json.mkObj
+        [("sep", Lean.toJson sep), ("classes", Lean.toJson (cs.map (·.map (renderCell .str))))])]
+    | .collect cs =>
+      let ek := match k with | .list e => e | _ => .other
+      Lean.Json.mkObj [("collect", Lean.toJson (cs.map (·.map (renderCell ek))))]
+  let (panics, out) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
+    IO.lazyPure fun _ => match plan.root.evalChoices cat with
+      | some rows => Lean.Json.arr (rows.map fun row =>
+          Lean.Json.arr (row.zipIdx.map fun (c, i) => cellJson (kinds.getD i .other) c).toArray).toArray
+      | none => Lean.Json.null
+  if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
+    IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
+    return 1
+  IO.println (Lean.Json.mkObj [("rows", out)]).compress
+  return 0
+
 def write (df : Bool) (plan : Plan) : IO UInt32 := do
   -- Decimals (#27) are written back as Substrait's own calls and casts where
   -- that parses back to the same plan; DataFusion does not compute them as
@@ -270,6 +299,7 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
   let mode ← match flag with
     | "" => pure (check · false)
     | "--eval-spec" => pure (check · true)
+    | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
     | "--write" => pure (write false)
     | "--write-datafusion" => pure (write true)
@@ -402,11 +432,11 @@ def main (args : List String) : IO UInt32 := do
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
-        "--eval-spec", "--dependencies"].contains flag then
+        "--eval-spec", "--eval-choices", "--dependencies"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
