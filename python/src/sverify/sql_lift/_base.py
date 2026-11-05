@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import datetime as dt_
+import functools
 import re
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, localcontext
@@ -20,7 +21,6 @@ import sqlglot as sg
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 from sqlglot.errors import ErrorLevel
-from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
@@ -273,7 +273,10 @@ def _generated_avg(lf: _Lift, a: E) -> Measures | None:
 # Parsing and typing
 
 
+@functools.lru_cache(maxsize=1024)
 def _sql_type(dtype: Any) -> str:
+    """The DuckDB SQL type SQLGlot resolves an Ibis type's columns with,
+    once per type (it was a tenth of each lift's time)."""
     return DuckDBType.from_ibis(dtype).sql(DIALECT)
 
 
@@ -314,8 +317,9 @@ def expand_table_shorthand(query: str) -> str:
 
 def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
     """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
-    every name resolved (`qualify`) and typed (`annotate_types`) against the
-    tables `schemas` (Ibis schemas by table name).
+    every name resolved (`qualify`) against the tables `schemas` (Ibis
+    schemas by table name). SQLGlot's typing is not run: the lift types every
+    expression by the profile.
 
     Raises:
         Unsupported: SQLGlot cannot parse the query, or a name in it is not
@@ -350,7 +354,6 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             validate_qualify_columns=True,
             quote_identifiers=False,
         )
-        tree = annotate_types(tree, schema=catalog, dialect=DIALECT)
     except sg.errors.OptimizeError as e:
         raise Unsupported(f"cannot resolve the SQL's names: {str(e).splitlines()[0]}") from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
@@ -837,7 +840,11 @@ class _Lift:
             if method := join.args.get("method"):
                 # Not the inner join of its ON: an ASOF join keeps each left
                 # row's latest match, a POSITIONAL join pairs rows by position.
-                raise Unsupported(f"{str(method).upper()} JOIN is not supported yet")
+                rule = JOIN_METHODS.get(str(method).upper())
+                if rule is None:
+                    raise Unsupported(f"{str(method).upper()} JOIN is not supported yet")
+                rel, scope = rule(self, rel, scope, join)
+                continue
             right, cols = self.source(join.this)
             side, kind = (join.side or "").upper(), (join.kind or "").upper()
             on = join.args.get("on")
@@ -885,6 +892,8 @@ class _Lift:
         if isinstance(node, sge.Subquery):
             rel, cols = self.query(node.this)
             return rel, [Column(alias, c.name, c.type) for c in cols]
+        if (rule := SOURCES.get(type(node))) is not None:
+            return rule(self, node)
         raise Unsupported(f"FROM {_shown(node)} is not supported")
 
     def windows(
@@ -1492,6 +1501,14 @@ RULES: dict[type, Rule] = {}
 #: Rewrites of the parsed tree, before its functions are checked: the black
 #: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
 PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+#: The relations in FROM of other node types (`VALUES`), each area's: the
+#: relation and its columns, `rule(lf, node)`.
+SOURCES: dict[type, Callable[[_Lift, Any], tuple[Json, list[Column]]]] = {}
+
+#: The joins with a method (`ASOF`), by the method: the relation joined with
+#: `join`'s right side and its columns, `rule(lf, rel, scope, join)`.
+JOIN_METHODS: dict[str, Callable[[_Lift, Json, list[Column], Any], tuple[Json, list[Column]]]] = {}
 
 #: The aggregates of nodes of their own (the black boxes', #325), each also in
 #: `_AGGREGATES`: the Substrait function and output type of a measure, from

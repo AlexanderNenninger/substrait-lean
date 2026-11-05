@@ -40,9 +40,9 @@ not_in_subquery = { lean = "yes", description = "x NOT IN (SELECT …), with its
 exists_subquery = { lean = "yes", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "the Ibis producer writes a semi or anti join; DataFusion's Substrait producer cannot convert Exists" }
 scalar_subquery = { lean = "yes", description = "uncorrelated scalar subquery (x > (SELECT avg …))", note = "through the Ibis producer, where the checker proves at most one row; DataFusion's Substrait producer cannot convert it" }
 correlated_subquery = { lean = "no", description = "correlated scalar subquery", note = "as scalar_subquery; rewrite as a join with a grouped aggregate" }
-unnest = { lean = "no", description = "UNNEST / explode of lists", note = "DataFusion's Substrait producer has no Unnest" }
+unnest = { lean = "partial", description = "UNNEST / explode of lists", note = "Rel.unnest of a list column; Ibis pivot_longer as a UNION ALL (#804); DataFusion's Substrait producer has no Unnest" }
 pivot = { lean = "yes", description = "pivot with a fixed list of values (conditional aggregates)", note = "Ibis pivot_wider compiles to first_value, which is refused; write it as sum/max with where=" }
-unpivot = { lean = "partial", description = "unpivot / melt", note = "as a UNION ALL of projections only; Ibis pivot_longer compiles to UNNEST" }
+unpivot = { lean = "partial", description = "unpivot / melt", note = "as a UNION ALL of projections: SQL UNPIVOT, UNNEST of lists written out and Ibis pivot_longer are rewritten into one (#804)" }
 generate_series = { lean = "partial", description = "generate a spine of numbers or dates", note = "constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table" }
 
 [aggregation]

@@ -96,7 +96,56 @@ def _filter(op: Any) -> Json:
     return {"filter": {"input": input, "condition": chain("and", conds)}}
 
 
+def _pivot_longer(op: Any) -> Any | None:
+    """Ibis's `pivot_longer` (#804) as the `UNION ALL` it means: Ibis writes
+    a projection of `UNNEST([{name: 'q1', value: q1}, …])` read field by
+    field; here it is one branch per struct, each with the struct's fields
+    as columns, and the outer projection reads those columns. `None` for
+    any other projection."""
+    inner = op.parent
+    if not isinstance(inner, ops.Project):
+        return None
+    unnests = [(k, v) for k, v in inner.values.items() if isinstance(v, ops.Unnest)]
+    if len(unnests) != 1:
+        return None
+    name, unnest = unnests[0]
+    arr = unnest.arg.arg if isinstance(unnest.arg, ops.Cast) else unnest.arg
+    lt: Any = unnest.arg.to if isinstance(unnest.arg, ops.Cast) else unnest.arg.dtype
+    elem = lt.value_type
+    if not isinstance(arr, ops.Array) or not arr.exprs:
+        return None
+    structs: list[Any] = list(arr.exprs)
+    if not all(isinstance(s, ops.StructColumn) for s in structs):
+        return None
+    fields = list(structs[0].names)
+    if any(list(s.names) != fields for s in structs):
+        return None
+    pivoted = ops.Field(inner, name)
+    reads_struct = {
+        n for v in op.values.values() for n in v.find(ops.StructField) if n.arg == pivoted
+    }
+    base = inner.parent.to_expr()
+    others = {k: v.to_expr() for k, v in inner.values.items() if k != name}
+    col = {f: f"__{name}_{f}" for f in fields}
+    branches = []
+    for s in structs:
+        vals = {}
+        for f, v in zip(s.names, s.values, strict=True):
+            vals[col[f]] = v.to_expr().cast(elem.fields[f])
+        branches.append(base.select(**others, **vals))
+    union = ibis.union(*branches, distinct=False)
+    u = union.op()
+    swap: dict[Any, Any] = {sf: ops.Field(u, col[sf.field]) for sf in reads_struct}
+    swap.update({ops.Field(inner, k): ops.Field(u, k) for k in others})
+    values = {k: v.replace(swap) for k, v in op.values.items()}
+    if any(pivoted in v.find(ops.Field) for v in values.values()):
+        return None  # the struct read whole
+    return union.select(**{k: v.to_expr() for k, v in values.items()}).op()
+
+
 def _project(op: Any) -> Json:
+    if (unpivot := _pivot_longer(op)) is not None:
+        return rel(unpivot)
     input = rel(op.parent)
     values = list(op.values.values())
     wins = _window_functions(values)

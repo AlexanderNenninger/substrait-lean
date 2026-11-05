@@ -61,6 +61,29 @@ QUERIES = [
     "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
     " SELECT name, count(*) AS n FROM c GROUP BY name",
     "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
+    # #803: VALUES in FROM and as a CTE, typed across rows.
+    "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (NULL, 'c')) v(k, s)",
+    "SELECT o.id, m.label FROM orders o JOIN (VALUES ('ada', 1.5), ('bob', 2)) m(name, label)"
+    " ON m.name = o.customer",
+    "WITH m(name, grp) AS (VALUES ('ada', 'a'), ('cy', NULL)) SELECT c.name, m.grp"
+    " FROM customers c LEFT JOIN m ON m.name = c.name",
+    "SELECT col0 + col1 AS s FROM (VALUES (1, 2), (3, 4))",
+    # #804: UNPIVOT, and its UNNEST form, as a UNION ALL.
+    "SELECT id, k, v FROM orders UNPIVOT (v FOR k IN (amount, qty))",
+    "SELECT * FROM (SELECT id, qty, price FROM orders) UNPIVOT INCLUDE NULLS"
+    " (v FOR k IN (qty, price AS 'p'))",
+    "SELECT u.k, count(*) AS n FROM orders UNPIVOT (v FOR k IN (amount, qty)) AS u GROUP BY u.k",
+    "SELECT id, unnest(['amount', 'qty']) AS k, unnest([amount, qty]) AS v FROM orders",
+    "SELECT id, unnest([price, amount, NULL]) AS v FROM orders WHERE id > 2",
+    # #805: ASOF [LEFT] JOIN, each direction.
+    "SELECT a.id, b.id AS prev FROM orders a ASOF JOIN orders b"
+    " ON a.customer = b.customer AND a.placed > b.placed",
+    "SELECT a.id, b.id AS prev FROM orders a ASOF LEFT JOIN orders b"
+    " ON a.customer = b.customer AND a.placed >= b.placed",
+    "SELECT a.id, b.id AS next FROM orders a ASOF LEFT JOIN orders b ON b.placed > a.placed",
+    "SELECT o.id, p.amount AS above FROM orders o ASOF LEFT JOIN orders p ON o.amount < p.amount",
+    "SELECT a.id, b.id AS nxt FROM orders a ASOF JOIN orders b ON a.day < b.day"
+    " AND a.customer IS NOT DISTINCT FROM b.customer",
 ]
 
 
@@ -103,7 +126,13 @@ def test_sorts_put_nulls_last_unless_told():
         ),
         # Joins that are not the inner join of their ON, and a star SQLGlot
         # expands otherwise than DuckDB.
-        ("SELECT id FROM orders ASOF JOIN customers ON customer >= name", "ASOF JOIN"),
+        ("SELECT id FROM orders ASOF RIGHT JOIN customers ON customer >= name", "ASOF RIGHT"),
+        ("SELECT id FROM orders ASOF JOIN customers ON customer = name", "exactly one of"),
+        (
+            "SELECT * FROM orders UNPIVOT ((a, b) FOR k IN ((amount, qty), (price, cost)))",
+            "several value columns|only columns",
+        ),
+        ("SELECT * FROM (VALUES (1), (amount)) v(x)", "cannot resolve|computed"),
         ("SELECT id FROM orders POSITIONAL JOIN customers", "POSITIONAL JOIN"),
         # What SQLGlot hangs on a table.
         ("FROM orders o1, orders o2 SELECT count(*)", "with joins"),

@@ -63,7 +63,7 @@ TARGETS = [
         "VALUES in FROM",
         "in",
         "dbt mapping tables; catalogue values (Ibis memtables); replay ~80",
-        False,
+        True,
         sql="SELECT * FROM (VALUES (1, 'a'), (2, 'b')) v(k, s)",
         issue=803,
     ),
@@ -109,7 +109,7 @@ TARGETS = [
         "UNPIVOT",
         "in",
         "catalogue dbt-unpivot-longer, unpivot 2; Eurostat's wide tables (#771); dbt_utils.unpivot",
-        False,
+        True,
         sql="SELECT id, k, v FROM (SELECT id, qty, amount FROM t) "
         "UNPIVOT (v FOR k IN (qty, amount))",
         issue=804,
@@ -120,8 +120,8 @@ TARGETS = [
         "in",
         "catalogue asof_join 2 (through sverify.asof_join); time-weighted pattern (#765); "
         "replay 105",
-        False,
-        sql="SELECT a.id, b.id FROM t a ASOF JOIN t b ON a.name = b.name AND a.ts >= b.ts",
+        True,
+        sql="SELECT a.id, b.id AS b_id FROM t a ASOF JOIN t b ON a.name = b.name AND a.ts >= b.ts",
         issue=805,
     ),
     target(
