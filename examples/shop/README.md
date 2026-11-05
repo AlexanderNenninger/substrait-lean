@@ -1,8 +1,8 @@
 # shop: a sample dbt project for sverify-dbt
 
 A small DuckDB project over the catalogue's `app` data
-([`catalogue/schemas.toml`](../../../catalogue/schemas.toml)), with models
-written from its dbt queries ([`catalogue/queries/modelling.toml`](../../../catalogue/queries/modelling.toml)):
+([`catalogue/schemas.toml`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/catalogue/schemas.toml)), with models
+written from its dbt queries ([`catalogue/queries/modelling.toml`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/catalogue/queries/modelling.toml)):
 a conditional pivot (`dbt-pivot-conditional`), a pivot of counts
 (`dbt-pivot-wider`), an unpivot by `UNION ALL` (`dbt-unpivot-union`), a
 type-2 history and the point-in-time join to it (`dbt-scd2-from-updates`,
@@ -19,7 +19,7 @@ uv run dbt seed
 uv run dbt build --exclude selector:sverify_proved
 ```
 
-Run these here, in `dbt/examples/shop`; `profiles.yml` is beside
+Run these here, in `examples/shop`; `profiles.yml` is beside
 `dbt_project.yml`, and the database is `shop.duckdb`. The models cover each
 outcome: tests proved from the source tests, tests not proved, an enforced
 contract with a primary key, a model that needs a source test it lacks

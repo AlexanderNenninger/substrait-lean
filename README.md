@@ -2,23 +2,37 @@
 
 Sverify-dbt proves a dbt project's data tests and model contracts before
 the models run. It reads the project after `dbt compile`, checks each
-model's compiled SQL with [sverify](../python/README.md) against the tests on
+model's compiled SQL with [sverify](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md) against the tests on
 the models and sources it reads, and reports per model which tests hold on
 every run, which may fail and why, and which source tests would let it prove
 more. A test it proves can be left out of `dbt build`.
 
-It needs a sverify newer than 0.5.0, and reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
+It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
 other engines ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 The design is in [#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177).
 
-## Usage
+## Installation
 
-Sverify-dbt is not on PyPI yet. Install it from this repository, next to
-dbt-duckdb:
+Sverify-dbt needs a sverify newer than 0.5.0: it reads `Report.needs`,
+`CheckedCondition.reason` and `.condition`, and DuckDB type names in
+`verify(tables=...)`, which
+[substrait-lean#685](https://github.com/AlexanderNenninger/substrait-lean/pull/685) adds. Until a release has them,
+sverify comes from the substrait-lean commit in
+[`SVERIFY_COMMIT`](SVERIFY_COMMIT), which
+[`scripts/sverify.sh`](scripts/sverify.sh) checks out under `vendor/` and
+builds the checker of (it needs [elan](https://github.com/leanprover/elan)).
+Then `uv sync` installs it from there:
 
 ```bash
-pip install "sverify-dbt @ git+https://github.com/AlexanderNenninger/substrait-lean#subdirectory=dbt"
+eval "export $(scripts/sverify.sh | tail -1)"   # SVERIFY_PREBUILT_CHECK=...
+uv sync
 ```
+
+Once a release (or the [nightly](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) wheel) has
+these, `pyproject.toml` depends on `sverify>=<that version>`, and the
+`[tool.uv.sources]` entry, `SVERIFY_COMMIT` and the script go.
+
+## Usage
 
 Compile the project, then check it:
 
@@ -151,13 +165,13 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 ## Development
 
 ```bash
-cd dbt
+eval "export $(scripts/sverify.sh | tail -1)"
 uv sync
 uv run pytest
 ```
 
 The tests compile the sample project and a few small ones with dbt's own
 runner. CI runs them, then the check of `examples/shop`, and `dbt build`
-without the proved tests (the `dbt` job of
-[ci.yml](../.github/workflows/ci.yml)). [API-NOTES.md](API-NOTES.md) lists
+without the proved tests
+([ci.yml](.github/workflows/ci.yml)). [API-NOTES.md](API-NOTES.md) lists
 what building on sverify's public API showed.

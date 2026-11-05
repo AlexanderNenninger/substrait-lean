@@ -1658,7 +1658,7 @@ wheels = [
 [[package]]
 name = "sverify"
 version = "0.4.0"
-source = { editable = "../python" }
+source = { editable = "vendor/substrait-lean/python" }
 dependencies = [
     { name = "duckdb" },
     { name = "ibis-framework", extra = ["duckdb"] },
@@ -1729,7 +1729,7 @@ dev = [
 requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "sqlglot", specifier = ">=30.17.0" },
-    { name = "sverify", editable = "../python" },
+    { name = "sverify", editable = "vendor/substrait-lean/python" },
 ]
 
 [package.metadata.requires-dev]

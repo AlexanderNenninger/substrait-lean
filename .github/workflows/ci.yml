@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Lint, typecheck and tests, then the check of the sample project and
+# `dbt build` without the tests it proved. sverify comes from the
+# substrait-lean commit in SVERIFY_COMMIT (scripts/sverify.sh), whose checker
+# is built with lake and cached by that commit.
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      DBT: uv run --no-sync dbt --no-use-colors
+      SHOP: --project-dir examples/shop --profiles-dir examples/shop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pin
+        run: echo "commit=$(cat SVERIFY_COMMIT)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.elan
+            vendor/substrait-lean
+          key: sverify-${{ runner.os }}-${{ runner.arch }}-${{ steps.pin.outputs.commit }}
+      - name: Install elan
+        run: |
+          if [ ! -x ~/.elan/bin/lake ]; then
+            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+              | sh -s -- -y --default-toolchain none
+          fi
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Check out sverify and build its checker
+        run: scripts/sverify.sh | tail -1 >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --frozen
+      - run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+          uv run --no-sync pyrefly check
+      - run: uv run --no-sync pytest -q
+      - name: Check the sample project, and build it without the proved tests
+        run: |
+          $DBT deps $SHOP
+          $DBT compile $SHOP
+          uv run --no-sync sverify-dbt check examples/shop --selectors
+          $DBT seed $SHOP
+          $DBT build $SHOP --exclude selector:sverify_proved
+          $DBT test $SHOP --select selector:sverify_proved

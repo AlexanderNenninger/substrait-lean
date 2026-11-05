@@ -7,18 +7,18 @@ says what happened, what sverify-dbt did about it, and a proposed change.
 They were written against `main` at the 0.5.0 release (b87a8963). The
 VS Code extension keeps its own notes in `vscode/UX-NOTES.md`.
 
-The repros run in `dbt/` with `uv run python`, after `import ibis, sverify as sv,
-sverify.engines`; they show the behaviour before this PR.
+The repros run in this repository with `uv run python`, after `import ibis, sverify as sv,
+sverify.engines`; they show the behaviour before substrait-lean#685.
 
 ## Public API gaps
 
 Gaps in what sverify exports, with the signature sverify-dbt wanted. The
-first group is closed in the PR that adds sverify-dbt (#177), each a small
-documented addition with tests (`python/tests/test_report_data.py`,
+first group is closed in [substrait-lean#685](https://github.com/AlexanderNenninger/substrait-lean/pull/685) (issue [substrait-lean#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177)), each a small
+documented addition with tests (substrait-lean's `python/tests/test_report_data.py` and
 `test_sql_lift_core.py`) and sverify-dbt now uses it. The second group is
 larger, for an issue each.
 
-Closed in this PR:
+Closed in substrait-lean#685:
 
 | Note | Addition |
 |---|---|
@@ -30,23 +30,23 @@ Closed in this PR:
 | 19 | `CheckedCondition.condition`: the condition as given in `ensures` |
 | 22 | The checker's pipes close when it stops |
 
-Filed (larger than this PR; the checklist is #692):
+Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](https://github.com/AlexanderNenninger/substrait-lean/issues/692)):
 
 | Note | Issue | Wanted |
 |---|---|---|
-| 2 | #699 | `class ConditionError(Unsupported)` with `.condition` and `.reason`, raised before the proof; or `CheckedCondition.status == "unreadable"` and the rest proved |
-| 3 | #700 | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
-| 6 | #701 | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
-| 7, 8, 9 | #687, #702, #703 | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
-| 10, 11 | #703, #704 | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
-| 12 | #705 | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
-| 14 | #706 | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
-| 15 | #707 | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
-| 17 | #708 | A finite value set per string column in the range analysis (Lean) |
-| 18 | #441 | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
-| 20 | #709 | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
-| 21 | #710 | `Report.engine_version`, and a warning from `run` when the installed engine is another |
-| — | #688 | `CheckedCondition.suggested` as `Needed`-like records too: sverify-dbt still parses their SQL to write a dbt test (`mapping.as_dbt_test`) |
+| 2 | [substrait-lean#699](https://github.com/AlexanderNenninger/substrait-lean/issues/699) | `class ConditionError(Unsupported)` with `.condition` and `.reason`, raised before the proof; or `CheckedCondition.status == "unreadable"` and the rest proved |
+| 3 | [substrait-lean#700](https://github.com/AlexanderNenninger/substrait-lean/issues/700) | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
+| 6 | [substrait-lean#701](https://github.com/AlexanderNenninger/substrait-lean/issues/701) | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
+| 7, 8, 9 | [substrait-lean#687](https://github.com/AlexanderNenninger/substrait-lean/issues/687), [substrait-lean#702](https://github.com/AlexanderNenninger/substrait-lean/issues/702), [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703) | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
+| 10, 11 | [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703), [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704) | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
+| 12 | [substrait-lean#705](https://github.com/AlexanderNenninger/substrait-lean/issues/705) | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
+| 14 | [substrait-lean#706](https://github.com/AlexanderNenninger/substrait-lean/issues/706) | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
+| 15 | [substrait-lean#707](https://github.com/AlexanderNenninger/substrait-lean/issues/707) | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
+| 17 | [substrait-lean#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708) | A finite value set per string column in the range analysis (Lean) |
+| 18 | [substrait-lean#441](https://github.com/AlexanderNenninger/substrait-lean/issues/441) | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
+| 20 | [substrait-lean#709](https://github.com/AlexanderNenninger/substrait-lean/issues/709) | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
+| 21 | [substrait-lean#710](https://github.com/AlexanderNenninger/substrait-lean/issues/710) | `Report.engine_version`, and a warning from `run` when the installed engine is another |
+| — | [substrait-lean#688](https://github.com/AlexanderNenninger/substrait-lean/issues/688) | `CheckedCondition.suggested` as `Needed`-like records too: sverify-dbt still parses their SQL to write a dbt test (`mapping.as_dbt_test`) |
 
 ## Errors
 
@@ -72,7 +72,7 @@ Proposed: one `Unsupported`, exported from `sverify.errors`, that every
 refusal raises (the lift, the producer, the checker), with the others as
 aliases of it.
 
-Closed in this PR: `sverify.errors.Unsupported`. Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
+Closed in substrait-lean#685: `sverify.errors.Unsupported`. Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
 
 ### 2. A bad condition and an unreadable query raise the same error
 
@@ -123,7 +123,7 @@ Proposed: `CheckedCondition.reason`, an enum (`not_a_key`, `may_be_false`,
 `may_be_null`, `ties`, `observation`, `needs_precondition`), with `why` the
 current text built from it, so that a frontend phrases it in its own terms.
 
-Closed in this PR: `CheckedCondition.reason`; sverify-dbt words each reason from it (`_WHY`).
+Closed in substrait-lean#685: `CheckedCondition.reason`; sverify-dbt words each reason from it (`_WHY`).
 
 ### 5. `Report.needed` gives Ibis code; the SQL and the column are hidden
 
@@ -144,7 +144,7 @@ Proposed: `Report.needed` (or a new `Report.needs`) as a list of
 `Needed(table, column, op, bound, sql, label, issue)`, with `issue` the
 `Issue` it rules out (today `inferred_from[label]`).
 
-Closed in this PR: `Report.needs`; sverify-dbt writes the dbt test from its column, `op` and `value` (`mapping.dbt_test`).
+Closed in substrait-lean#685: `Report.needs`; sverify-dbt writes the dbt test from its column, `op` and `value` (`mapping.dbt_test`).
 
 ### 6. A condition proved with a needed precondition reads as proved
 
@@ -269,7 +269,7 @@ schema through Ibis's DuckDB backend (`ibis.duckdb.from_connection(...)`).
 Proposed: `tables=` accepts DuckDB type names (`{"orders": {"id": "BIGINT"}}`,
 or a `CREATE TABLE` column list), parsed with the query's `dialect`.
 
-Closed in this PR: `tables=` takes DuckDB's type names; sverify-dbt passes DuckDB's `DESCRIBE` of each input.
+Closed in substrait-lean#685: `tables=` takes DuckDB's type names; sverify-dbt passes DuckDB's `DESCRIBE` of each input.
 
 ### 14. Inputs must be bare names
 
@@ -308,7 +308,7 @@ Sverify-dbt writes `coalesce((expr), TRUE)`.
 
 Proposed: read `IS [NOT] TRUE/FALSE` (it is `coalesce` with a constant).
 
-Closed in this PR: the lift reads `IS [NOT] TRUE/FALSE`.
+Closed in substrait-lean#685: the lift reads `IS [NOT] TRUE/FALSE`.
 
 ### 17. Strings are known only by the exact condition
 
@@ -367,7 +367,7 @@ To pair a result with the condition passed, sverify-dbt matches
 `CheckedCondition.label` against the SQL string or `Unique.label`. Proposed:
 `CheckedCondition.condition`, the object as given.
 
-Closed in this PR: `CheckedCondition.condition`; sverify-dbt pairs results with its conditions by it.
+Closed in substrait-lean#685: `CheckedCondition.condition`; sverify-dbt pairs results with its conditions by it.
 
 ### 20. No schema of a query without a proof
 
@@ -390,5 +390,5 @@ A script that calls `verify` and exits with warnings on prints
 `sverify/engine.py:522`: the `substrait-check --serve` process's pipes are
 not closed. Proposed: close them in the `atexit` handler.
 
-Closed in this PR: `_Checker.close` closes the pipes.
+Closed in substrait-lean#685: `_Checker.close` closes the pipes.
 

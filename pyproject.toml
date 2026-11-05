@@ -19,8 +19,8 @@ dependencies = [
 sverify-dbt = "sverify_dbt.cli:main"
 
 [project.urls]
-Source = "https://github.com/AlexanderNenninger/substrait-lean/tree/main/dbt"
-Issues = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+Source = "https://github.com/AlexanderNenninger/sverify-dbt"
+Issues = "https://github.com/AlexanderNenninger/sverify-dbt/issues"
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -39,12 +39,15 @@ dev = [
 ]
 
 [tool.uv.sources]
-# The sverify of this checkout; `SVERIFY_PREBUILT_CHECK` links a built checker.
-sverify = { path = "../python", editable = true }
+# sverify at the commit in SVERIFY_COMMIT, which scripts/sverify.sh checks
+# out and builds the checker of; `SVERIFY_PREBUILT_CHECK` links it. Drop this
+# once a sverify release (or nightly) after 0.5.0 has the API sverify-dbt uses.
+sverify = { path = "vendor/substrait-lean/python", editable = true }
 
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+extend-exclude = ["vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
@@ -52,3 +55,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 [tool.pyrefly]
 project-includes = ["src", "tests"]
 search-path = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["vendor", "examples"]
