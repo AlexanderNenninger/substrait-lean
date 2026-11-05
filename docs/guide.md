@@ -355,6 +355,10 @@ except VerificationError as e:
   (`PostconditionError`): on bound tables at call time, on a node at every
   refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
   `on_unproved="warn"` you get a warning.
+* Every exception sverify raises on purpose derives from
+  `sverify.errors.SverifyError`, and keeps its built-in base (`ValueError`,
+  `RuntimeError`); import the exceptions from `sverify.errors`
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
@@ -718,6 +722,12 @@ The report's parts come as data and as the lines `str(report)` prints:
   runtime error, assumption and note.
 - `Issue.suggested` gives the preconditions that rule an issue out, per
   table, which `Issue.hint` states in words.
+- `Report.needs` gives the preconditions the proof needs, one `Needed` each
+  (table, column, comparison, bound, SQL), and `Report.needed_conditions`
+  the same as conditions ready for `requires=`, in the transform's language:
+  Ibis deferreds (`_.qty.isnull() | (_.qty != 0)`, NULL passing as the
+  inferred bound lets it) or SQL strings
+  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
 - `Report.route(engine)` gives the route a run would take and the plan's
   class on the engine (exact, observed, shim or refused) without running
   it. After a run, `report.routes` records the route taken.
@@ -1298,7 +1308,7 @@ you can rely on:
 | `exact` | every result the engine gives is one the proof covers |
 | `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
-| `refused` | none of the above: the run raises `sverify.routes.RouteError` and nothing runs |
+| `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs |
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
 or on tests and probes (`tested`). Before the plan runs, its preconditions,

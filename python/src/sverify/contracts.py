@@ -89,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
@@ -1301,6 +1302,9 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
+    language: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
+    """The language of the transform the report is about: an Ibis
+    expression or SQL. `needed_conditions` writes the conditions in it."""
     on_inferred: OnInferred = field(default="silent", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
@@ -1699,6 +1703,25 @@ class Report:
                 )
         return out
 
+    @property
+    def needed_conditions(self) -> dict[str, list[Condition]]:
+        """`needs` as conditions, per input table, ready for `requires=`: Ibis
+        deferreds for an Ibis transform (`_.qty < 9 * 10**18`, or
+        `_.qty.isnull() | (_.qty < 9 * 10**18)` where `qty` may be NULL, as
+        the inferred bound lets NULL pass), SQL strings for a SQL one. A
+        bound with no Ibis form goes as its SQL, which an Ibis transform
+        reads too. Empty unless `on_inferred="error"`.
+
+            report = sv.verify(expr)
+            if not report.proved:
+                report = sv.verify(expr, requires=report.needed_conditions)
+        """
+        out: dict[str, list[Condition]] = {}
+        for n in self.needs:
+            cond = _needed_deferred(n) if self.language == "ibis" else None
+            out.setdefault(n.table, []).append(cond if cond is not None else n.sql)
+        return out
+
     def needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
@@ -1927,7 +1950,7 @@ TIES_HINT = (
 )
 
 
-class VerificationError(Exception):
+class VerificationError(SverifyError):
     """A postcondition, or the absence of runtime errors, could not be proved.
 
     Import it from `sverify.errors`. The message names each unproved
@@ -1946,7 +1969,7 @@ class VerificationError(Exception):
         super().__init__(f"could not prove: {', '.join(problems)}\n{report}")
 
 
-class PreconditionError(Exception):
+class PreconditionError(SverifyError):
     """Input data violates a precondition.
 
     Import it from `sverify.errors`. Raised when a contracted transformation
@@ -1982,7 +2005,7 @@ class PreconditionError(Exception):
         self.rows = rows
 
 
-class PostconditionError(Exception):
+class PostconditionError(SverifyError):
     """Output data violates a postcondition (only raised by runtime checks).
 
     Import it from `sverify.errors`. Raised with `on_unproved="runtime"`,
@@ -2223,6 +2246,41 @@ class Needed:
     `_.qty.notnull()`. `sql` is the form for a SQL contract."""
     issue: Issue | None
     """The runtime error it rules out, and where (`Report.inferred_from`)."""
+
+
+def _sql_value(value: str) -> Any:
+    """The Python value of a SQL literal `Needed.value` gives: an integer,
+    a double, a decimal, a date or a timestamp; None for anything else."""
+    if re.fullmatch(r"-?\d+", value):
+        return int(value)
+    if re.fullmatch(r"-?\d+\.\d+", value):
+        return Decimal(value)
+    try:
+        if (m := re.fullmatch(r"DATE '(.+)'", value)) is not None:
+            return date.fromisoformat(m[1])
+        if (m := re.fullmatch(r"TIMESTAMP '(.+)'", value)) is not None:
+            return datetime.fromisoformat(m[1])
+        x = float(value)
+    except ValueError:
+        return None
+    return x if math.isfinite(x) else None
+
+
+def _needed_deferred(n: Needed) -> Deferred | None:
+    """`n` as an Ibis deferred, letting NULL pass where its SQL does; None
+    where it has no such form."""
+    if n.column is None or n.op is None:
+        return None
+    col: Any = ibis._[n.column]
+    if n.op == "IS NOT NULL":
+        return col.notnull()
+    v = _sql_value(n.value or "")
+    if v is None:
+        return None
+    ops_ = {">=": col >= v, ">": col > v, "<=": col <= v, "<": col < v, "<>": col != v}
+    cmp = ops_[n.op]
+    nulls = '"' + n.column.replace('"', '""') + '" IS NULL OR '
+    return col.isnull() | cmp if n.sql.startswith(nulls) else cmp
 
 
 def _nice(x: int, up: bool) -> tuple[int, str]:
@@ -3329,6 +3387,7 @@ def _verify_once(
 
     report = Report(
         semantics=semantics,
+        language=dialect,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},

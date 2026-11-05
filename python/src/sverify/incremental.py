@@ -68,6 +68,7 @@ from sverify import _linear, _retention, _semi, _touched
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, by_keys, store_for
+from sverify._unsupported import SverifyError
 from sverify._weighted import (
     WEIGHT,
     ChangeLog,
@@ -140,7 +141,7 @@ def _on_state(c: Condition) -> bool:
     return isinstance(c, TableCondition) and c.on_state
 
 
-class NotIncremental(Exception):
+class NotIncremental(SverifyError):
     """The plan is outside the fragment with verified delta rules.
 
     Raised by `sverify.engines.delta_plans` for a plan with an operator
@@ -439,7 +440,7 @@ Source = VersionedSource
 """The name the pipeline's internals use for `VersionedSource`."""
 
 
-class SchemaError(Exception):
+class SchemaError(SverifyError):
     """A source's new schema cannot be read in the old one, and a node
     reading it has a contract that was proved against the old one.
 
@@ -821,7 +822,7 @@ class RefreshReport:
         return "\n".join(lines)
 
 
-class AuditError(Exception):
+class AuditError(SverifyError):
     """In audit mode, the change feed or a view disagrees with recomputation.
 
     Raised by `refresh(audit=True)`, which compares each batch with the new

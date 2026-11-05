@@ -1,5 +1,11 @@
 """The exceptions sverify raises.
 
+Every exception below derives from `SverifyError`, so
+`except sverify.errors.SverifyError` catches whatever sverify raises on
+purpose; each also keeps its built-in base (`ValueError`, `RuntimeError`).
+The same classes are importable where they are defined (`sverify.routes.RouteError`,
+`sverify.engines.Unsupported`); import them from here.
+
 * `VerificationError`: Lean could not prove a postcondition; `.report` says
   what it could establish. `CompositionError` is the case where one
   transform's precondition does not follow from what the transform feeding
@@ -36,7 +42,7 @@
   spec gap.
 """
 
-from sverify._unsupported import Unsupported
+from sverify._unsupported import SverifyError, Unsupported
 from sverify.contracts import (
     CompositionError,
     PostconditionError,
@@ -72,6 +78,7 @@ __all__ = [
     "RouteError",
     "SchemaError",
     "SqlError",
+    "SverifyError",
     "Unsupported",
     "UnverifiedRunWarning",
     "VerificationError",

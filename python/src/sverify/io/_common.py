@@ -24,6 +24,7 @@ import ibis
 import pyarrow as pa
 import sqlglot as sg
 
+from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.steps import Pipeable
@@ -372,7 +373,7 @@ class Contract:
         return Contract(**{k: v for k, v in json.loads(text).items() if k in known})
 
 
-class ConcurrentWriteError(RuntimeError):
+class ConcurrentWriteError(SverifyError, RuntimeError):
     """Another writer committed to a sink between the moment this refresh
     read what the sink holds (`Sink.committed`) and its own commit: two
     processes refreshing the same sink (#517). This refresh's write was not

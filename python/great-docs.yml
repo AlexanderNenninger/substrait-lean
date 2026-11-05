@@ -144,6 +144,7 @@ reference:
   - title: Errors
     desc: What sverify raises, and when (`sverify.errors`).
     contents:
+      - errors.SverifyError
       - errors.VerificationError
       - errors.PreconditionError
       - errors.PostconditionError

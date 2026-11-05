@@ -239,3 +239,67 @@ def test_precondition_error_rows_of_a_sql_condition():
     assert e.value.rows.to_pylist() == [{"id": 2, "amount": -4}]
     # The connection is free for the next query.
     assert con.table("orders").count().to_pyarrow().as_py() == 2
+
+
+# -- needed_conditions ----------------------------------------------------------------
+
+
+def test_needed_conditions_prove_the_transform():
+    t = ibis.table({"qty": "int64", "total": "int64", "k": "!int64"}, name="orders")
+    expr = t.select(u=t.total // t.qty, v=t.k * 2)
+    r = sv.verify(expr)
+    assert not r.proved
+    conds = r.needed_conditions
+    assert set(conds) == {"orders"}
+    assert all(not isinstance(c, str) for c in conds["orders"])
+    # `qty` may be NULL: the bound lets NULL pass, as the inferred one does.
+    assert any("isnull" in repr(c) and "qty" in repr(c) for c in conds["orders"])
+    assert sv.verify(expr, requires=conds).proved
+
+
+def test_needed_conditions_of_sql_are_sql():
+    sql = "SELECT total // qty AS u FROM orders"
+    tables = {"orders": ibis.schema({"qty": "int64", "total": "int64"})}
+    r = sv.verify(sql, tables=tables)
+    assert r.language == "sql"
+    conds = r.needed_conditions
+    assert set(conds) == {"orders"} and all(isinstance(c, str) for c in conds["orders"])
+    assert '"qty" IS NULL OR "qty" <> 0' in conds["orders"]
+    assert sv.verify(sql, tables=tables, requires=conds).proved
+
+
+def test_needed_conditions_empty_when_assumed():
+    t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
+    r = sv.verify(t.select(u=t.total // t.qty), on_inferred="silent")
+    assert r.needed_conditions == {}
+
+
+# -- SverifyError --------------------------------------------------------------------
+
+
+def test_every_error_is_a_sverify_error():
+    import sverify.errors as errors
+
+    raised = [
+        getattr(errors, n)
+        for n in errors.__all__
+        if isinstance(getattr(errors, n), type)
+        and issubclass(getattr(errors, n), Exception)
+        and not issubclass(getattr(errors, n), Warning)
+    ]
+    assert errors.SverifyError in raised
+    for cls in raised:
+        assert issubclass(cls, errors.SverifyError), cls
+
+
+def test_errors_keep_their_builtin_bases_and_old_names():
+    import sverify.engines
+    import sverify.routes
+    from sverify.errors import ExportError, RouteError, SverifyError, Unsupported
+
+    assert issubclass(Unsupported, ValueError) and issubclass(RouteError, ValueError)
+    assert issubclass(ExportError, ValueError)
+    assert sverify.routes.RouteError is RouteError
+    assert sverify.engines.Unsupported is Unsupported
+    with pytest.raises(SverifyError):
+        sv.verify("SELECT nope(x) FROM t", tables={"t": ibis.schema({"x": "int64"})})

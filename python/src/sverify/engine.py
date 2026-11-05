@@ -42,6 +42,7 @@ from sverify import _duckdb, _support
 from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
 
@@ -351,7 +352,7 @@ def quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-class SqlError(ValueError):
+class SqlError(SverifyError, ValueError):
     """A SQL producer refused a query."""
 
 
@@ -431,7 +432,7 @@ def canonical(table: pa.Table) -> pa.Table:
 PROTOCOL = 1
 
 
-class CheckerVersionError(RuntimeError):
+class CheckerVersionError(SverifyError, RuntimeError):
     """The `substrait-check` binary speaks another protocol than this sverify:
     a stale build of the checker, or a checker newer than the package."""
 
