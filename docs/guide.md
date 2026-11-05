@@ -1339,13 +1339,32 @@ the tests validate every event and facet against it
 [test_openlineage.py](../python/tests/test_openlineage.py)).
 
 ```python
-from sverify import openlineage
+import tempfile
 
-node.refresh(lineage=openlineage.Lineage("http://marquez:5000", namespace="shop"))
-node.refresh(lineage="lineage/events.jsonl")  # a file, one event per line
-node.refresh(lineage="console")
-node.refresh(lineage=True)  # openlineage.yml and OPENLINEAGE_*, with sverify[openlineage]
+import pyarrow as pa
+import sverify as sv
+from ibis import _
+from sverify import openlineage
+from sverify.io import DeltaSink, StaticSource
+
+lake = tempfile.mkdtemp()
+shop_orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1000, sv.key("id")]},
+    ensures=[_.amount > 10, _.amount < 1000, sv.key("id")],
+)
+def paid_orders(orders):
+    return orders.filter(orders.amount > 10)
+
+paid_sink = DeltaSink(f"{lake}/paid")
+stored = shop_orders.pipe(paid_orders).write(paid_sink)
+stored.refresh(lineage=openlineage.Lineage("events.jsonl", namespace="shop"))
 ```
+
+The target is a file (JSON lines), `"console"`, a URL such as
+`"http://marquez:5000"`, or `True` for the OpenLineage client's
+configuration (`openlineage.yml`, `OPENLINEAGE_*`).
 
 ```bash
 sverify refresh pipelines/orders.py:paid --lineage http://marquez:5000
@@ -1405,12 +1424,15 @@ it (`producer`), and
   (`why_unverified` says why).
 
 ```python
-upstream = openlineage.read("lineage/events.jsonl").dataset(orders)
+# Another pipeline, in another repository, reads what `shop` wrote.
+upstream = openlineage.read("events.jsonl").dataset(paid_sink)
 
-@sv.transform(requires={"orders": upstream.requires}, ensures=[...])
-def paid(orders): ...
+@sv.transform(requires={"paid": upstream.requires}, ensures=[_.doubled > 20])
+def doubled_paid(paid):
+    return paid.select(paid.id, doubled=paid.amount * 2)
 
-paid.check(orders=upstream.schema)
+print(upstream.verified, doubled_paid.check(paid=upstream.schema).proved)
+# True True
 ```
 
 To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
@@ -1418,13 +1440,9 @@ To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
 `test_marquez_round_trip` runs against it when
 `SVERIFY_MARQUEZ_URL` is set. DataHub takes OpenLineage events at
 `/openapi/openlineage/api/v1/lineage` on its GMS, so its target is the
-GMS's URL with that prefix and a personal access token:
-
-```python
-lineage = openlineage.Lineage(
-    "http://datahub-gms:8080/openapi/openlineage", api_key=os.environ["DATAHUB_TOKEN"]
-)
-```
+GMS's URL with that prefix, such as
+`Lineage("http://datahub-gms:8080/openapi/openlineage", api_key=token)` with a
+personal access token.
 
 ### Time buckets: bounded state
 
