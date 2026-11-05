@@ -823,12 +823,19 @@ def run_plan(
     *,
     keep: Literal[False] = False,
     finite: bool = True,
+    tie_free: bool = False,
 ) -> pa.Table: ...
 
 
 @overload
 def run_plan(
-    con: Connection, plan_json: str, engine: Engine | Any = None, *, keep: bool, finite: bool = True
+    con: Connection,
+    plan_json: str,
+    engine: Engine | Any = None,
+    *,
+    keep: bool,
+    finite: bool = True,
+    tie_free: bool = False,
 ) -> pa.Table | Resident: ...
 
 
@@ -839,6 +846,7 @@ def run_plan(
     *,
     keep: bool = False,
     finite: bool = True,
+    tie_free: bool = False,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
@@ -863,6 +871,11 @@ def run_plan(
             doubles gives `±∞` (`Issue.infinite`, #575), the reference's
             precondition. Default: True; `Report.run` passes False for a
             plan verified with `semantics="duckdb"`, which allows `±∞`.
+        tie_free: On Spark, the plan's windows have no ties on data that
+            meets its preconditions (a proved report's `deterministic`), so
+            they run without a row-order tiebreak (`to_sql`'s
+            `deterministic`). Default: False; `Report.run` and a stored
+            node's refresh pass the report's fact.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -911,7 +924,9 @@ def run_plan(
         names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
         _rename_tables(plan, names)
         tables = {alias: con._arrow[t] for t, alias in names.items()}
-        return spark_engine.run(plan, tables, None if engine == "spark" else engine)
+        return spark_engine.run(
+            plan, tables, None if engine == "spark" else engine, deterministic=tie_free
+        )
     if engine == "datafusion":
         return run_substrait_json(con, datafusion_plan(plan_json))
     read = read_tables(json.loads(plan_json))

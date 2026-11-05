@@ -209,7 +209,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 <!-- slt:start -->
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
 |---|---:|---:|---:|---|---:|---:|---:|---|
-| [aggregate](aggregate.json) | 844 | 9 | 29 | both 16, engine 1, lean 12 | 1328 | 880 | 14 | lift 1287, checker 40 |
+| [aggregate](aggregate.json) | 807 | 5 | 14 | both 1, engine 1, lean 12 | 1380 | 880 | 14 | lift 1335, checker 44 |
 | [alter](alter.json) | 129 | 29 | 0 |  | 39 | 129 | 1 | lift 37, tables 2 |
 | [attach](attach.json) | 7 | 0 | 0 |  | 150 | 90 | 15 | lift 98, tables 52 |
 | [binder](binder.json) | 63 | 1 | 0 |  | 143 | 103 | 3 | lift 134, checker 9 |
@@ -222,34 +222,34 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [copy](copy.json) | 34 | 0 | 0 |  | 1023 | 874 | 337 | lift 1023 |
 | [copy_database](copy_database.json) | 1 | 0 | 0 |  | 26 | 11 | 0 | lift 22, tables 4 |
 | [create](create.json) | 14 | 0 | 0 |  | 9 | 2 | 2 | lift 9 |
-| [cte](cte.json) | 106 | 0 | 0 |  | 431 | 156 | 8 | lift 429, checker 2 |
-| [delete](delete.json) | 68 | 0 | 0 |  | 4 | 41 | 3 | lift 4 |
+| [cte](cte.json) | 122 | 0 | 0 |  | 420 | 151 | 8 | lift 418, checker 2 |
+| [delete](delete.json) | 79 | 0 | 0 |  | 4 | 30 | 3 | lift 4 |
 | [detailed_profiler](detailed_profiler.json) | 4 | 0 | 0 |  | 1 | 0 | 0 | lift 1 |
 | [error](error.json) | 0 | 0 | 0 |  | 11 | 53 | 2 | lift 11 |
 | [execution](execution.json) | 1 | 0 | 0 |  | 23 | 0 | 0 | lift 23 |
 | [explain](explain.json) | 3 | 0 | 0 |  | 3 | 5 | 0 | lift 3 |
 | [export](export.json) | 3 | 2 | 0 |  | 1 | 51 | 11 | lift 1 |
 | [extensions](extensions.json) | 0 | 0 | 0 |  | 408 | 9 | 7 | lift 408 |
-| [filter](filter.json) | 118 | 0 | 0 |  | 91 | 57 | 4 | lift 91 |
+| [filter](filter.json) | 120 | 0 | 0 |  | 89 | 57 | 4 | lift 87, checker 2 |
 | [function](function.json) | 1 | 0 | 0 |  | 4 | 0 | 0 | lift 4 |
-| [function/array](function__array.json) | 1 | 0 | 0 |  | 85 | 11 | 0 | lift 84, tables 1 |
+| [function/array](function__array.json) | 3 | 0 | 0 |  | 83 | 11 | 0 | lift 81, checker 1 |
 | [function/autocomplete](function__autocomplete.json) | 0 | 0 | 0 |  | 0 | 0 | 25 |  |
-| [function/blob](function__blob.json) | 0 | 0 | 0 |  | 72 | 4 | 0 | lift 72 |
-| [function/comparison](function__comparison.json) | 0 | 0 | 0 |  | 15 | 0 | 0 | lift 15 |
-| [function/date](function__date.json) | 29 | 0 | 0 |  | 199 | 361 | 0 | lift 199 |
+| [function/blob](function__blob.json) | 8 | 0 | 0 |  | 67 | 1 | 0 | lift 67 |
+| [function/comparison](function__comparison.json) | 7 | 2 | 0 |  | 8 | 0 | 0 | lift 8 |
+| [function/date](function__date.json) | 32 | 0 | 0 |  | 196 | 361 | 0 | lift 196 |
 | [function/enum](function__enum.json) | 0 | 0 | 0 |  | 0 | 24 | 0 |  |
-| [function/generic](function__generic.json) | 46 | 4 | 0 |  | 225 | 153 | 2 | lift 220, checker 4 |
+| [function/generic](function__generic.json) | 52 | 4 | 0 |  | 219 | 153 | 2 | lift 214, checker 4 |
 | [function/index](function__index.json) | 0 | 0 | 0 |  | 27 | 20 | 0 | lift 27 |
 | [function/interval](function__interval.json) | 4 | 0 | 0 |  | 33 | 131 | 0 | lift 33 |
-| [function/list](function__list.json) | 128 | 10 | 3 | engine 3 | 1768 | 1507 | 10 | lift 1680, tables 52 |
+| [function/list](function__list.json) | 16 | 0 | 3 | engine 3 | 1880 | 1507 | 10 | lift 1794, tables 52 |
 | [function/nested](function__nested.json) | 0 | 0 | 0 |  | 32 | 10 | 0 | lift 32 |
-| [function/numeric](function__numeric.json) | 50 | 0 | 5 | lean 5 | 230 | 199 | 0 | lift 230 |
+| [function/numeric](function__numeric.json) | 50 | 0 | 5 | lean 5 | 230 | 199 | 0 | lift 229, tables 1 |
 | [function/operator](function__operator.json) | 47 | 2 | 21 | lean 21 | 98 | 74 | 0 | lift 98 |
-| [function/string](function__string.json) | 264 | 0 | 7 | both 4, lean 3 | 1360 | 243 | 4 | lift 1301, checker 59 |
+| [function/string](function__string.json) | 272 | 0 | 7 | both 2, lean 5 | 1352 | 243 | 4 | lift 1259, checker 93 |
 | [function/table](function__table.json) | 0 | 0 | 0 |  | 10 | 7 | 0 | lift 10 |
 | [function/time](function__time.json) | 0 | 0 | 0 |  | 63 | 79 | 0 | lift 63 |
 | [function/timestamp](function__timestamp.json) | 18 | 0 | 0 |  | 330 | 242 | 18 | lift 330 |
-| [function/timetz](function__timetz.json) | 0 | 0 | 0 |  | 28 | 44 | 2 | lift 28 |
+| [function/timetz](function__timetz.json) | 0 | 0 | 0 |  | 28 | 44 | 2 | tables 27, lift 1 |
 | [function/tokenize](function__tokenize.json) | 0 | 0 | 0 |  | 0 | 0 | 2 |  |
 | [function/uuid](function__uuid.json) | 2 | 0 | 0 |  | 6 | 0 | 1 | lift 6 |
 | [function/variant](function__variant.json) | 0 | 0 | 0 |  | 92 | 48 | 8 | lift 92 |
@@ -260,39 +260,39 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [fuzz/int_overflow](fuzz__int_overflow.json) | 14062 | 0 | 0 |  | 0 | 0 | 0 |  |
 | [generated_columns](generated_columns.json) | 70 | 0 | 0 |  | 24 | 22 | 1 | lift 24 |
 | [index](index.json) | 368 | 5 | 0 |  | 115 | 126 | 5 | lift 68, tables 47 |
-| [insert](insert.json) | 29 | 0 | 1 | lean 1 | 2 | 14 | 0 | lift 2 |
-| [join](join.json) | 326 | 5 | 0 |  | 945 | 201 | 4 | lift 937, tables 6 |
+| [insert](insert.json) | 35 | 1 | 0 |  | 2 | 9 | 0 | lift 2 |
+| [join](join.json) | 366 | 11 | 0 |  | 903 | 203 | 4 | lift 895, tables 6 |
 | [json](json.json) | 1 | 0 | 0 |  | 0 | 0 | 121 |  |
 | [keywords](keywords.json) | 0 | 0 | 0 |  | 0 | 16 | 0 |  |
 | [limit](limit.json) | 2 | 0 | 0 |  | 5 | 7 | 1 | lift 5 |
 | [logging](logging.json) | 20 | 0 | 0 |  | 63 | 14 | 9 | lift 63 |
 | [merge](merge.json) | 34 | 0 | 0 |  | 21 | 8 | 0 | lift 21 |
 | [multi_file](multi_file.json) | 0 | 0 | 0 |  | 0 | 0 | 4 |  |
-| [optimizer](optimizer.json) | 355 | 25 | 5 | lean 5 | 467 | 462 | 14 | lift 429, checker 27 |
+| [optimizer](optimizer.json) | 556 | 41 | 8 | engine 1, lean 7 | 514 | 211 | 14 | lift 443, tables 43 |
 | [order](order.json) | 54 | 0 | 0 |  | 574 | 100 | 3 | lift 572, checker 2 |
 | [ordinality](ordinality.json) | 0 | 0 | 0 |  | 6 | 0 | 1 | lift 6 |
-| [overflow](overflow.json) | 66 | 0 | 58 | lean 58 | 18 | 10 | 0 | lift 15, checker 3 |
+| [overflow](overflow.json) | 68 | 0 | 58 | lean 58 | 16 | 10 | 0 | lift 13, checker 3 |
 | [parallelism](parallelism.json) | 829 | 0 | 0 |  | 18 | 1 | 6 | lift 16, checker 2 |
-| [parser](parser.json) | 202 | 2 | 4 | both 4 | 324 | 357 | 3 | lift 298, checker 26 |
+| [parser](parser.json) | 205 | 2 | 4 | both 4 | 321 | 357 | 3 | lift 295, checker 26 |
 | [peg_parser](peg_parser.json) | 47 | 3 | 0 |  | 40 | 54 | 60 | lift 40 |
 | [pg_catalog](pg_catalog.json) | 0 | 0 | 0 |  | 50 | 78 | 0 | lift 50 |
 | [pivot](pivot.json) | 3 | 0 | 0 |  | 80 | 39 | 1 | lift 80 |
 | [pragma](pragma.json) | 3 | 0 | 0 |  | 25 | 18 | 23 | lift 25 |
 | [prepared](prepared.json) | 21 | 0 | 0 |  | 16 | 1 | 0 | lift 16 |
 | [progress](progress.json) | 0 | 0 | 0 |  | 35 | 8 | 0 | lift 35 |
-| [projection](projection.json) | 105 | 5 | 0 |  | 86 | 56 | 0 | lift 80, checker 6 |
+| [projection](projection.json) | 106 | 6 | 0 |  | 85 | 56 | 0 | lift 79, checker 6 |
 | [returning](returning.json) | 16 | 0 | 0 |  | 1 | 0 | 0 | lift 1 |
 | [sample](sample.json) | 0 | 0 | 0 |  | 15 | 38 | 7 | lift 15 |
 | [secrets](secrets.json) | 0 | 0 | 0 |  | 16 | 14 | 3 | lift 16 |
-| [select](select.json) | 11 | 0 | 0 |  | 37 | 21 | 0 | lift 37 |
+| [select](select.json) | 14 | 0 | 0 |  | 34 | 21 | 0 | lift 34 |
 | [serialization](serialization.json) | 2 | 0 | 0 |  | 1 | 0 | 0 | tables 1 |
-| [setops](setops.json) | 80 | 0 | 0 |  | 26 | 146 | 0 | lift 26 |
+| [setops](setops.json) | 82 | 0 | 0 |  | 24 | 146 | 0 | lift 24 |
 | [settings](settings.json) | 6 | 1 | 0 |  | 712 | 85 | 7 | lift 712 |
 | [show_select](show_select.json) | 1 | 0 | 0 |  | 20 | 0 | 1 | lift 19, tables 1 |
-| [sql_export](sql_export.json) | 151 | 1 | 2 | engine 2 | 713 | 1169 | 8 | lift 706, tables 5 |
-| [storage](storage.json) | 3001 | 44 | 5 | both 5 | 1152 | 504 | 170 | lift 902, tables 138 |
+| [sql_export](sql_export.json) | 175 | 1 | 3 | engine 2, lean 1 | 688 | 1169 | 8 | lift 679, tables 5 |
+| [storage](storage.json) | 3018 | 44 | 5 | both 5 | 1134 | 505 | 170 | lift 884, tables 138 |
 | [storage_version](storage_version.json) | 0 | 0 | 0 |  | 5 | 0 | 0 | tables 5 |
-| [subquery](subquery.json) | 128 | 0 | 0 |  | 381 | 389 | 2 | lift 374, checker 7 |
+| [subquery](subquery.json) | 130 | 0 | 0 |  | 380 | 388 | 2 | lift 372, checker 7 |
 | [table_function](table_function.json) | 0 | 0 | 0 |  | 228 | 107 | 7 | lift 228 |
 | [timezone](timezone.json) | 0 | 0 | 0 |  | 0 | 0 | 21 |  |
 | [topn](topn.json) | 89 | 8 | 1 | lean 1 | 36 | 5 | 0 | tables 28, lift 8 |
@@ -300,27 +300,27 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [tpch](tpch.json) | 0 | 0 | 0 |  | 0 | 0 | 3 |  |
 | [transactions](transactions.json) | 74 | 0 | 0 |  | 27 | 235 | 2 | lift 18, tables 9 |
 | [trigger](trigger.json) | 223 | 0 | 0 |  | 51 | 19 | 1 | lift 50, tables 1 |
-| [types](types.json) | 13 | 5 | 0 |  | 83 | 35 | 0 | lift 76, checker 7 |
+| [types](types.json) | 14 | 5 | 0 |  | 82 | 35 | 0 | lift 75, checker 7 |
 | [types/alias](types__alias.json) | 0 | 0 | 0 |  | 0 | 22 | 0 |  |
-| [types/bignum](types__bignum.json) | 0 | 0 | 0 |  | 228 | 43 | 0 | lift 228 |
+| [types/bignum](types__bignum.json) | 0 | 0 | 0 |  | 228 | 43 | 0 | lift 218, tables 10 |
 | [types/bit](types__bit.json) | 0 | 0 | 0 |  | 80 | 59 | 0 | lift 80 |
 | [types/blob](types__blob.json) | 0 | 0 | 0 |  | 46 | 5 | 0 | lift 46 |
 | [types/date](types__date.json) | 7 | 0 | 0 |  | 192 | 10 | 0 | lift 156, checker 36 |
-| [types/decimal](types__decimal.json) | 1598 | 0 | 13 | both 1, lean 12 | 498 | 16 | 0 | checker 252, lift 246 |
+| [types/decimal](types__decimal.json) | 1599 | 0 | 12 | both 1, lean 11 | 498 | 16 | 0 | checker 253, lift 245 |
 | [types/enum](types__enum.json) | 2 | 0 | 0 |  | 1 | 192 | 1 | lift 1 |
-| [types/float](types__float.json) | 170 | 0 | 14 | both 12, engine 2 | 368 | 65 | 0 | lift 353, checker 15 |
+| [types/float](types__float.json) | 172 | 0 | 13 | both 12, engine 1 | 367 | 65 | 0 | lift 352, checker 15 |
 | [types/geo](types__geo.json) | 0 | 0 | 0 |  | 260 | 141 | 7 | lift 255, tables 5 |
 | [types/hugeint](types__hugeint.json) | 1 | 0 | 0 |  | 175 | 85 | 0 | lift 175 |
-| [types/interval](types__interval.json) | 42 | 0 | 1 | both 1 | 223 | 74 | 0 | lift 215, checker 8 |
-| [types/list](types__list.json) | 156 | 0 | 4 | lean 4 | 349 | 41 | 0 | lift 246, checker 99 |
+| [types/interval](types__interval.json) | 49 | 0 | 0 |  | 217 | 74 | 0 | lift 210, checker 7 |
+| [types/list](types__list.json) | 262 | 0 | 0 |  | 247 | 41 | 0 | lift 241, tables 4 |
 | [types/map](types__map.json) | 0 | 0 | 0 |  | 39 | 2 | 0 | lift 39 |
-| [types/nested](types__nested.json) | 88 | 7 | 5 | both 1, engine 3, lean 1 | 614 | 164 | 5 | lift 577, checker 31 |
+| [types/nested](types__nested.json) | 92 | 8 | 5 | both 1, engine 3, lean 1 | 610 | 164 | 5 | lift 574, checker 30 |
 | [types/null](types__null.json) | 6 | 1 | 0 |  | 2 | 21 | 0 | lift 2 |
-| [types/numeric](types__numeric.json) | 14 | 0 | 8 | both 1, engine 1, lean 6 | 359 | 37 | 0 | lift 326, checker 26 |
+| [types/numeric](types__numeric.json) | 14 | 0 | 6 | lean 6 | 361 | 37 | 0 | lift 283, tables 54 |
 | [types/string](types__string.json) | 7 | 0 | 0 |  | 1 | 0 | 0 | lift 1 |
-| [types/struct](types__struct.json) | 51 | 48 | 0 |  | 598 | 93 | 5 | lift 594, checker 4 |
-| [types/time](types__time.json) | 2 | 0 | 2 | both 1, lean 1 | 101 | 42 | 1 | lift 60, checker 41 |
-| [types/timestamp](types__timestamp.json) | 6 | 0 | 0 |  | 229 | 64 | 5 | lift 227, checker 2 |
+| [types/struct](types__struct.json) | 50 | 44 | 0 |  | 599 | 93 | 5 | lift 592, tables 4 |
+| [types/time](types__time.json) | 4 | 0 | 0 |  | 101 | 42 | 1 | lift 85, tables 10 |
+| [types/timestamp](types__timestamp.json) | 6 | 0 | 0 |  | 226 | 67 | 5 | lift 225, checker 1 |
 | [types/type](types__type.json) | 0 | 0 | 0 |  | 0 | 6 | 0 |  |
 | [types/uhugeint](types__uhugeint.json) | 2 | 0 | 0 |  | 125 | 21 | 0 | lift 125 |
 | [types/union](types__union.json) | 0 | 0 | 0 |  | 23 | 110 | 1 | lift 21, tables 2 |
@@ -328,7 +328,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [types/uuid](types__uuid.json) | 0 | 0 | 0 |  | 20 | 2 | 0 | lift 20 |
 | [types/variant](types__variant.json) | 1 | 0 | 0 |  | 322 | 5 | 14 | lift 322 |
 | [unnest](unnest.json) | 0 | 0 | 0 |  | 1 | 0 | 0 | lift 1 |
-| [update](update.json) | 87 | 0 | 0 |  | 9 | 166 | 0 | lift 9 |
+| [update](update.json) | 107 | 0 | 0 |  | 9 | 146 | 0 | lift 9 |
 | [upsert](upsert.json) | 91 | 0 | 0 |  | 30 | 30 | 2 | lift 30 |
 | [vacuum](vacuum.json) | 0 | 0 | 0 |  | 0 | 0 | 1 |  |
 | [variables](variables.json) | 0 | 0 | 0 |  | 3 | 14 | 0 | lift 3 |

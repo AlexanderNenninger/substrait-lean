@@ -163,8 +163,8 @@ def test_round_trip(case: str, fmt: Literal["json", "binary"]) -> None:
     assert again.deterministic == report.deterministic
     # The same plan: reading it back and writing it again gives the bytes.
     imp = read(out)
-    assert again.plan is not None
-    assert json.loads(again.plan) == imp.plan
+    assert again.internal_plan is not None
+    assert json.loads(again.internal_plan) == imp.plan
 
 
 def test_from_substrait_needs_the_contract() -> None:
@@ -283,8 +283,8 @@ def test_st6_cast_truncates_first() -> None:
 
     t = ibis.table({"x": "float64"}, name="t")
     report = _verify(t.select(i=_.x.cast("int32")), {"t": [_.x.between(-1000, 1000)]})
-    assert report.plan is not None
-    plan = json.loads(written_plan(report.plan))
+    assert report.internal_plan is not None
+    plan = json.loads(written_plan(report.internal_plan))
     typer = se._Typer(plan)
     typer.run()
     done = _substrait_shims.st6(typer, _substrait_shims.Builder(plan))

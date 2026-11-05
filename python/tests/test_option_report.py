@@ -159,7 +159,7 @@ def test_options_rows_for_python():
     assert ref[(None, "tie_order")]["q"] == {"rows": "multiset", "elements": "multiset"}
     assert ref[(None, "rounding")]["q"] == {}
     # Every engine row of the slice says how it relates to the reference.
-    for engine in ("duckdb", "polars"):
+    for engine in ("duckdb", "polars", "spark"):
         for r in tables["choices"][engine]:
             if r["choice"]["kind"] != "loose":
                 assert {"class", "q", "shim", "facts"} <= set(r), (engine, r)
@@ -317,10 +317,14 @@ def test_epsilon_through_scalar_rules_and_thresholds(monkeypatch):
     assert "rel" not in e["s"]
     # The mean is at least 1 - ε: `m > 0.5` keeps every group on both sides.
     assert eps(agg.filter(ibis._.m > 0.5))["s"]["proved"]["abs"] is True
-    assert json.loads(seen["out"])["rows_exact"] == {"duckdb": True, "polars": True}
+    assert json.loads(seen["out"])["rows_exact"] == {"duckdb": True, "polars": True, "spark": True}
     # `m > 5` may keep a group on one side and drop it on the other.
     assert eps(agg.filter(ibis._.m > 5))["s"]["proved"]["abs"] is False
-    assert json.loads(seen["out"])["rows_exact"] == {"duckdb": False, "polars": False}
+    assert json.loads(seen["out"])["rows_exact"] == {
+        "duckdb": False,
+        "polars": False,
+        "spark": False,
+    }
 
 
 def test_transfer_up_to_the_behaviour_order():

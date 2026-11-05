@@ -251,12 +251,16 @@ options. Under Polars's profile the report is the reference's of the plan as
 parsed: a plan states Polars's choices (`division_type: FLOOR`), which the
 parser reads as their templates, and `Polars.elaborate_eq` proves that
 evaluating those under the reference is evaluating the calls under
-`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). DuckDB's profile is
+`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). Under Spark's it is the reference's
+report: `Profile.spark` evaluates as the reference (`Profile.spark_eval`,
+`SubstraitLean/SparkProfile.lean`). DuckDB's profile is
 reached through its lift (`semantics="duckdb"`); its requests get the
 reference's report, which says so. -/
 def underProfile (j : Json) (report : Json) (proved : Bool) : Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
   if name == "polars" then return (report.setObjVal! "profile" "polars", proved)
+  -- Spark's profile evaluates as the reference (`Profile.spark_eval`).
+  if name == "spark" then return (report.setObjVal! "profile" "spark", proved)
   unless name == "substrait" do return (report.setObjVal! "profile" "reference", proved)
   let tj ← j.getObjVal? "transform"
   let plan ← ContractCheck.parseJsonPlan tj
@@ -292,10 +296,10 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
         -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
         let eps := (Epsilon.epsilon j).toOption.getD (Lean.Json.mkObj [])
         -- The same carried through the arithmetic, per engine.
-        let byEngine := (Epsilon.epsilonByEngine j ["duckdb", "polars"]).toOption.getD
+        let byEngine := (Epsilon.epsilonByEngine j ["duckdb", "polars", "spark"]).toOption.getD
           (Lean.Json.mkObj [])
         -- Per engine, whether filters, keys and sorts keep the same rows under ε.
-        let rowsExact := (Epsilon.rowsExactByEngine j ["duckdb", "polars"]).toOption.getD
+        let rowsExact := (Epsilon.rowsExactByEngine j ["duckdb", "polars", "spark"]).toOption.getD
           (Lean.Json.mkObj [])
         match underProfile j (report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
@@ -374,7 +378,7 @@ def blackBoxJson : Lean.Json :=
   let obj := Lean.Json.mkObj
   let ty : BlackBox.Ty → Lean.Json
     | .int => "int" | .double => "double" | .str => "str" | .bool => "bool" | .date => "date"
-    | .atom => "atom" | .doubles => "doubles" | .ints => "ints" | .any => "any"
+    | .atom => "atom" | .doubles => "doubles" | .ints => "ints" | .strs => "strs" | .any => "any"
   let law : BlackBox.Law → Lean.Json
     | .nonNull => Lean.Json.arr #["non_null"]
     | .atLeast k => Lean.Json.arr #["at_least", Lean.toJson k]

@@ -219,7 +219,7 @@ def test_isin_keeps_its_results():
     con.put("t", pa.table({"x": pa.array([0, 1, 2, None], pa.int64())}))
     t = ibis.table({"x": "int64"}, name="t")
     r = sv.verify(t.select(hit=t.x.isin([0, 1])))
-    assert r.plan is not None and "lte" in r.plan
+    assert r.internal_plan is not None and "lte" in r.internal_plan
     for engine in ("duckdb", "polars"):
         out = r.run(con, engine).column("hit").to_pylist()
         assert out == [True, True, False, None]
@@ -241,37 +241,49 @@ def test_precondition_error_rows_of_a_sql_condition():
     assert con.table("orders").count().to_pyarrow().as_py() == 2
 
 
-# -- needed_conditions ----------------------------------------------------------------
+# -- needs and suggested_requires ------------------------------------------------------
 
 
-def test_needed_conditions_prove_the_transform():
+def test_needs_conditions_prove_the_transform():
     t = ibis.table({"qty": "int64", "total": "int64", "k": "!int64"}, name="orders")
     expr = t.select(u=t.total // t.qty, v=t.k * 2)
     r = sv.verify(expr)
     assert not r.proved
-    conds = r.needed_conditions
-    assert set(conds) == {"orders"}
-    assert all(not isinstance(c, str) for c in conds["orders"])
+    assert {n.table for n in r.needs} == {"orders"}
+    assert all(not isinstance(n.condition, str) for n in r.needs)
     # `qty` may be NULL: the bound lets NULL pass, as the inferred one does.
-    assert any("isnull" in repr(c) and "qty" in repr(c) for c in conds["orders"])
-    assert sv.verify(expr, requires=conds).proved
+    assert any("isnull" in repr(n.condition) and "qty" in repr(n.condition) for n in r.needs)
+    assert all(n.text and n.issue is not None for n in r.needs)
+    assert set(r.suggested_requires) == {"orders"}
+    assert sv.verify(expr, requires=r.suggested_requires).proved
 
 
-def test_needed_conditions_of_sql_are_sql():
+def test_suggested_requires_keeps_the_stated_ones():
+    t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
+    expr = t.select(u=t.total // t.qty)
+    r = sv.verify(expr, requires={"orders": [_.total >= 0]})
+    conds = r.suggested_requires["orders"]
+    assert sv.contracts.label(conds[0]) == "(_.total >= 0)" and len(conds) == 2
+    assert sv.verify(expr, requires=r.suggested_requires).proved
+
+
+def test_needs_of_sql_are_sql():
     sql = "SELECT total // qty AS u FROM orders"
     tables = {"orders": ibis.schema({"qty": "int64", "total": "int64"})}
     r = sv.verify(sql, tables=tables)
-    assert r.dialect == "sql"
-    conds = r.needed_conditions
-    assert set(conds) == {"orders"} and all(isinstance(c, str) for c in conds["orders"])
-    assert '"qty" IS NULL OR "qty" <> 0' in conds["orders"]
-    assert sv.verify(sql, tables=tables, requires=conds).proved
+    assert r._dialect == "sql"
+    assert '"qty" IS NULL OR "qty" <> 0' in [n.condition for n in r.needs]
+    assert sv.verify(sql, tables=tables, requires=r.suggested_requires).proved
 
 
-def test_needed_conditions_empty_when_assumed():
+def test_needs_empty_when_assumed():
     t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
-    r = sv.verify(t.select(u=t.total // t.qty), on_inferred="ignore")
-    assert r.needed_conditions == {}
+    expr = t.select(u=t.total // t.qty)
+    r = sv.verify(expr, on_inferred="ignore")
+    assert r.needs == [] and r.proved
+    # The assumed bound is still in the mapping, so the contract says it.
+    assert sv.verify(expr, requires=r.suggested_requires).proved
+    assert sv.verify(expr, requires=r.suggested_requires)._inferred == {}
 
 
 # -- SverifyError --------------------------------------------------------------------
@@ -303,3 +315,13 @@ def test_errors_keep_their_builtin_bases_and_old_names():
     assert sverify.engines.Unsupported is Unsupported
     with pytest.raises(SverifyError):
         sv.verify("SELECT nope(x) FROM t", tables={"t": ibis.schema({"x": "int64"})})
+
+
+def test_needs_follow_the_fields_they_are_built_from():
+    t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
+    r = sv.verify(t.select(u=t.total // t.qty))
+    first = r.needs
+    first.clear()  # the caller's copy
+    assert r.needs and r.needs == r.needs
+    r._inferred = {}
+    assert r.needs == []

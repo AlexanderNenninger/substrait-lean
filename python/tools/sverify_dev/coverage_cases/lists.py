@@ -24,6 +24,16 @@ CASES: list[Case] = [
         lambda: t.select("id", xs=ibis.literal([1, 2], "array<int64>")),
     ),
     case("lists", "list column", V, lambda: ls.filter(ls.k > 0)),
+    # #804: Ibis writes it as the UNNEST of a list of structs; the producer
+    # writes the UNION ALL it means.
+    case(
+        "lists",
+        "pivot_longer",
+        V,
+        lambda: t.select("id", "amount", "qty").pivot_longer(
+            ibis.selectors.cols("amount", "qty"), names_to="k", values_to="v"
+        ),
+    ),
 ]
 
 REFUSED: dict[str, dict[str, str]] = {

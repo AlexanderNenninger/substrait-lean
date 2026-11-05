@@ -47,7 +47,7 @@ def verify(con, ensures):
 def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     absent = verify(con, [])
     plan = verify(con, [sv.equivalent(floats="plan")])
-    bound = routes.plan_bound(absent.epsilon)
+    bound = routes.plan_bound(absent._epsilon)
     assert isinstance(bound, Within) and bound.abs and bound.abs > 0
     stated = verify(con, [sv.equivalent(floats=sv.within(abs=bound.abs))])
 
@@ -56,8 +56,8 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     assert str(absent.observation) == f"equivalent(floats=plan, ≤ {bound.abs:.1e})"
     assert f"observes: equivalent(floats=plan, ≤ {bound.abs:.1e})" in str(absent)
     assert absent.proved and plan.proved and stated.proved
-    assert absent.floats_on == plan.floats_on == {}
-    assert all(not ps for ps in stated.floats_on.values())
+    assert absent._floats_on == plan._floats_on == {}
+    assert all(not ps for ps in stated._floats_on.values())
     assert f"the plan's bound on its doubles is {bound.abs:.1e}" in str(stated)
 
     runs = []
@@ -95,7 +95,7 @@ def test_plan_bound_equality_uses_the_bound() -> None:
 def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
     report = verify(con, [sv.equivalent(floats=tol)])
     assert not report.proved
-    assert report.floats_on and all(report.floats_on.values())
+    assert report._floats_on and all(report._floats_on.values())
     text = str(report)
     assert f"observes: equivalent(floats={tol}); the plan's bound on its doubles is " in text
     assert "NOT met: no engine meets the tolerance" in text
@@ -116,8 +116,8 @@ def test_exact_doubles_say_which_engines_give_them(con) -> None:
         r.select("k", y=r.x * 2), requires=REQ, ensures=[sv.equivalent(floats="exact")]
     )
     assert doubled.proved
-    assert doubled.floats_on == {"duckdb": [], "polars": []}
-    assert "duckdb, polars meet exact doubles" in str(doubled)
+    assert doubled._floats_on == {"duckdb": [], "polars": [], "spark": []}
+    assert "duckdb, polars, spark meet exact doubles" in str(doubled)
 
 
 # -- what routes and the manifest print ---------------------------------------

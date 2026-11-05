@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import ibis
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable
@@ -50,7 +51,7 @@ def _float_sum(con) -> sv.Report:
         t.group_by("k").aggregate(total=t.x.sum()),
         requires={"t": [_.x.between(0, 1e6), sv.max_rows(1_000_000)]},
     )
-    report.depends = [{"group": None, "option": "sum_order"}]
+    report._depends = [{"group": None, "option": "sum_order"}]
     return report
 
 
@@ -60,7 +61,7 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     exact values does not."""
     _tables(monkeypatch, {"floats": {"bound": "plan"}})
     report = _float_sum(con)
-    report.epsilon = {"total": {"abs": 1e-3, "rel": 1e-10, "proved": {"abs": True}}}
+    report._epsilon = {"total": {"abs": 1e-3, "rel": 1e-10, "proved": {"abs": True}}}
     ok = routes.choose(report, "polars", reproducible=sv.equivalent(floats=sv.within(abs=1e-2)))
     assert ok.kind == "translated" and ok.rerun_evidence == "proved"
     assert (
@@ -74,8 +75,8 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     assert "a rerun must give the same result" in exact.reason
     assert "total is within abs=0.001, rel=1e-10 (tested) between runs" in exact.reason
     assert exact.reproducible == sv.equivalent()
-    # `deterministic=True` asks for exact values too.
-    assert routes.choose(report, "polars", deterministic=True).refused
+    # `sv.equivalent()` asks for exact values too.
+    assert routes.choose(report, "polars", reproducible=sv.equivalent()).refused
     # Without a requirement, the route only reports.
     assert routes.choose(report, "polars").kind == "translated"
     with pytest.raises(RouteError, match="rerun must give the same result"):
@@ -130,7 +131,7 @@ def test_a_limit_without_order_by_is_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.limit(2))
     assert not report.deterministic
-    assert [p.op for p in report.tie_places] == ["fetch"]
+    assert [p.op for p in report._tie_places] == ["fetch"]
     with pytest.raises(RouteError, match="ties stay open at the fetch at relation 0"):
         report.run(con, "duckdb", route="auto", reproducible=sv.equivalent(rows="multiset"))
 
@@ -192,7 +193,7 @@ def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
         requires={"t": [_.x.between(0, 1e6), sv.max_rows(1_000_000)]},
         ensures=[sv.equivalent(floats=sv.within(abs=1e3, rel=1e-6))],
     )
-    assert report.epsilon, "the plan's bound on the sum"
+    assert report._epsilon, "the plan's bound on the sum"
     loose = sv.equivalent(floats=sv.within(abs=1.0, rel=1e-6))
     assert routes.choose(report, "polars", reproducible=loose).kind == "translated"
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
@@ -210,3 +211,15 @@ def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> N
     assert routes.choose(report, "polars", reproducible=sv.equivalent()).kind == "translated"
     r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
     assert r.refused and "rows" in r.reason
+
+
+def test_deterministic_is_deprecated():
+    t = ibis.table({"k": "int64"}, name="t")
+    report = sv.verify(t.select("k"))
+    con = sv.connect()
+    con.put("t", pa.table({"k": [1, 2]}))
+    with pytest.warns(DeprecationWarning, match=r"deterministic=\.\.\.\) is deprecated"):
+        out = report.run(con, "duckdb", deterministic=True)
+    assert sorted(out.column("k").to_pylist()) == [1, 2]
+    with pytest.warns(DeprecationWarning, match="reproducible=sv.equivalent"):
+        assert not routes.choose(report, "duckdb", deterministic=True).refused

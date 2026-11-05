@@ -278,6 +278,13 @@ class DuckDBDialect(Dialect):
         value = self.cast(f"date_part({self.str_lit(part)}, {ts})", "int")
         return f"(CASE WHEN {inside} THEN {value} END)"
 
+    def day_part(self, part: str, d: str) -> str:
+        # A DATE's own parts, which are its midnight's: no cast, and no
+        # second range check (chrono's days are `PART_MIN` to `PART_MAX`).
+        if part in ("hour", "minute", "second", "millisecond", "microsecond"):
+            return super().day_part(part, d)
+        return self.cast(f"date_part({self.str_lit(part)}, {d})", "int")
+
     def date_trunc(self, unit: str, ts: str) -> str:
         return ts if unit == "microsecond" else f"date_trunc({self.str_lit(unit)}, {ts})"
 
@@ -294,6 +301,12 @@ class DuckDBDialect(Dialect):
 
     def as_time(self, us: str) -> str:
         return f"make_timestamp({us})"
+
+    def date_time(self, d: str) -> str:
+        return f"CAST({d} AS TIMESTAMP)"
+
+    def epoch_us(self, ts: str) -> str:
+        return f"epoch_us({ts})"
 
     def date_add_days(self, d: str, n: str) -> str:
         # DATE + INTEGER is a DATE; a count beyond 32 bits leaves chrono's

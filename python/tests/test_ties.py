@@ -2,7 +2,7 @@
 open, and the deterministic profile fixes them.
 
 Under the reference a plan whose ties stay open is proved for every order
-and runs natively; under the deterministic profile (`deterministic=True`, a
+and runs natively; under the deterministic profile (`reproducible=sv.equivalent()`, a
 sink's `reproducible=`) it is refused, and the refusal names each place.
 `lean_choices` lists the values every order allows, and `allows_rows`
 accepts an engine's rows when they are one of them."""
@@ -106,7 +106,7 @@ def test_the_reference_proves_every_order_and_runs_natively() -> None:
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_the_deterministic_profile_refuses_open_ties_and_names_the_place(engine) -> None:
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
-    r = routes.choose(report, engine, deterministic=True)
+    r = routes.choose(report, engine, reproducible=sv.equivalent())
     assert r.refused
     assert "the window at relation" in r.reason
     assert "ROW_NUMBER() over rows that tie in PARTITION BY [$0] ORDER BY [$3]" in r.reason
@@ -115,13 +115,13 @@ def test_the_deterministic_profile_refuses_open_ties_and_names_the_place(engine)
 
 def test_the_deterministic_profile_takes_a_total_order() -> None:
     report = sv.verify(RANKED, requires={"t": [sv.unique("k", "o")]}, ensures=[_.rn >= 0])
-    assert report.deterministic and report.tie_places == []
-    assert not routes.choose(report, "duckdb", deterministic=True).refused
+    assert report.deterministic and report._tie_places == []
+    assert not routes.choose(report, "duckdb", reproducible=sv.equivalent()).refused
 
 
 def test_an_ordered_aggregate_is_named_too() -> None:
     report = sv.verify(T.group_by("k").aggregate(last=T.x.argmax(T.o)))
-    assert [p.op for p in report.tie_places] == ["aggregate"]
+    assert [p.op for p in report._tie_places] == ["aggregate"]
     r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
     assert r.refused and "the aggregate at relation" in r.reason
 
@@ -146,8 +146,8 @@ def test_ranks_over_the_window_order_are_tie_free(fn) -> None:
     so the result is determined without a key; `ROW_NUMBER` is not."""
     ranked = T.mutate(r=fn().over(ibis.window(group_by="k", order_by="o")))
     report = sv.verify(ranked)
-    assert report.deterministic and report.tie_places == []
-    assert not routes.choose(report, "duckdb", deterministic=True).refused
+    assert report.deterministic and report._tie_places == []
+    assert not routes.choose(report, "duckdb", reproducible=sv.equivalent()).refused
     numbered = T.mutate(r=ibis.row_number().over(ibis.window(group_by="k", order_by="o")))
     assert not sv.verify(numbered).deterministic
 
@@ -187,4 +187,4 @@ def test_a_key_through_a_join_breaks_the_ties_of_a_window() -> None:
     JOIN customers c ON c.customer_id = p.customer_id
     """
     report = sv.verify(q, tables=SQL_TABLES, requires=SQL_REQUIRES, ensures=["rn >= 1"])
-    assert report.deterministic and report.tie_places == []
+    assert report.deterministic and report._tie_places == []

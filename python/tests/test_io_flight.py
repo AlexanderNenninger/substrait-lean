@@ -15,7 +15,8 @@ from _pipelines import rows
 fl = pytest.importorskip("pyarrow.flight")
 
 from sverify.io import DeltaSink, DeltaSource  # noqa: E402
-from sverify.io.flight import FlightLog, FlightSource  # noqa: E402
+from sverify.io.flight import FlightSource  # noqa: E402
+from sverify.testing import FlightLog  # noqa: E402
 
 SAMPLES = pa.schema([("host", pa.string()), ("ts", pa.int64()), ("cpu", pa.float64())])
 
@@ -205,7 +206,7 @@ def test_an_empty_log_restores_to_no_rows(server):
     )
 
 
-def test_a_bearer_token():
+def test_a_bearer_token(monkeypatch):
     class Token(fl.ServerMiddlewareFactory):
         def start_call(self, info, headers):
             if "Bearer s3cret" not in headers.get("authorization", []):
@@ -215,8 +216,15 @@ def test_a_bearer_token():
     try:
         with pytest.raises(fl.FlightUnauthenticatedError):
             FlightSource(location(s), "samples", schema=SAMPLES).latest()
-        src = FlightSource(location(s), "samples", schema=SAMPLES, token="s3cret")
+        monkeypatch.setenv("SVERIFY_TEST_FLIGHT_TOKEN", "s3cret")
+        src = FlightSource(
+            location(s), "samples", schema=SAMPLES, secret="env:SVERIFY_TEST_FLIGHT_TOKEN"
+        )
         assert src.latest() == 0
+        assert "s3cret" not in repr(src)
+        with pytest.warns(DeprecationWarning, match="secret="):
+            old = FlightSource(location(s), "samples", schema=SAMPLES, token="s3cret")
+        assert old.latest() == 0
     finally:
         s.shutdown()
 

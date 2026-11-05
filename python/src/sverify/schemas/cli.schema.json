@@ -19,11 +19,12 @@
       "items": {"$ref": "#/$defs/item"}
     },
     "findings": {
-      "description": "check: what the check found wrong, one per postcondition not proved, needed precondition, possible runtime error, broken link or unchecked transform: the view the text, github, sarif and junit outputs print.",
+      "description": "check: what the check found wrong, one per postcondition not proved, needed precondition, possible runtime error, broken link or unchecked transform: the view the text, github and sarif outputs print.",
       "type": "array",
       "items": {"$ref": "#/$defs/finding"}
     },
     "unchecked": {"description": "check: the contracted transforms the file defines but never applies.", "type": "array", "items": {"type": "string"}},
+    "credentials": {"description": "check: the credentials each node's refresh uses, by name, never a value (#778): per table, which credential, for reading or writing, and whether the table lies inside the credential's scope (null when unknown).", "type": "array", "items": {"type": "object", "required": ["node", "table", "credential", "access"], "properties": {"node": {"type": "string"}, "table": {"type": "string"}, "credential": {"type": "string"}, "access": {"enum": ["read", "write"]}, "location": {"type": ["string", "null"]}, "in_scope": {"type": ["boolean", "null"]}}}},
     "error": {"description": "What stopped the command; null if nothing did.", "oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]},
     "budget": {
       "description": "check: the time budget and the time spent, in seconds.",

@@ -157,7 +157,7 @@ def test_issues_name_columns_and_operators(con) -> None:
 def test_the_and_or_hint_writes_out_the_guard(con) -> None:
     t = con.table("t")
     report = sv.verify(t.filter((t.qty != 0) & (t.total // t.qty > 1)))
-    (hint,) = [h for h in report.hints if "AND or OR" in h]
+    (hint,) = [h for h in report._hints if "AND or OR" in h]
     assert hint.startswith("`total // qty` is inside an AND or OR")
     assert "`ibis.cases((_.qty != 0, _.total // _.qty))`" in hint
     assert "D19" not in hint
@@ -202,8 +202,8 @@ def test_an_engine_refusal_names_the_users_function(con) -> None:
 
 def test_the_lift_quotes_the_sql(con) -> None:
     t = con.table("t")
-    with pytest.raises(Unsupported, match=r"^REGEXP_MATCHES\(t.s, 'x'\) is not supported yet"):
-        sv.verify("SELECT regexp_matches(s, 'x') AS m FROM t", tables={"t": t})
+    with pytest.raises(Unsupported, match=r"^TRANSLATE\(t.s, 'x', 'y'\) is not supported yet"):
+        sv.verify("SELECT translate(s, 'x', 'y') AS m FROM t", tables={"t": t})
 
 
 @pytest.mark.parametrize("call", ["now()", "current_timestamp", "random()"])

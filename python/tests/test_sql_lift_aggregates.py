@@ -87,6 +87,11 @@ QUERIES = [
     " last(day ORDER BY id) AS d FROM orders GROUP BY customer",
     "SELECT list(customer ORDER BY id) FILTER (WHERE id > 1) AS l, first(qty ORDER BY id) AS f,"
     " bool_or(qty > 3) AS b FROM orders WHERE id > 10",
+    # A key that is the alias of a constant: `qualify` writes its position
+    # (`GROUPING SETS ((1), ())`), which is the select list's first column.
+    "SELECT count(k) AS c, sum(k) AS s FROM (SELECT 7 AS k FROM orders"
+    " GROUP BY GROUPING SETS ((k), ())) s",
+    "SELECT 7 AS k, customer, count(*) AS n FROM orders GROUP BY ROLLUP (k, customer)",
 ]
 
 
@@ -127,6 +132,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
         ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
+        ("SELECT arg_max(id, amount, 2) FROM orders", "n best"),
         ("SELECT median(amount) OVER (PARTITION BY customer) FROM orders", "over a window"),
         ("SELECT string_agg(amount, ',') FROM orders", "cast it to VARCHAR"),
         ("SELECT string_agg(customer, customer) FROM orders", "constant separator"),

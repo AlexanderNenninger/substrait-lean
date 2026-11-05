@@ -10,13 +10,22 @@ from ibis import _
 import sverify as sv
 from sverify import routes
 
+
+def _needed(report):
+    """The labels of `report.needs` per input table."""
+    out: dict[str, list[str]] = {}
+    for n in report.needs:
+        out.setdefault(n.table, []).append(n.label)
+    return out
+
+
 T = ibis.table({"k": "string", "s": "string", "x": "float64"}, name="t")
 
 
 def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0])
     assert not report.proved
-    assert report.needed == {"t": ["_.s.notnull()"]}
+    assert _needed(report) == {"t": ["_.s.notnull()"]}
     assert "needs: _.s.notnull() on t, inferred from `(_.n >= 0)` (a NULL result otherwise)" in str(
         report
     )
@@ -26,7 +35,7 @@ def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
 
 def test_a_postcondition_that_may_be_false_gets_no_null_advice() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 1])
-    assert report.needed == {}
+    assert _needed(report) == {}
     line = next(x for x in str(report).splitlines() if x.startswith("ensures"))
     assert line == "ensures (_.n >= 1): NOT proved: it may be FALSE or NULL on some rows"
 
@@ -35,7 +44,7 @@ def test_ties_suggest_the_unique_that_determines_the_result() -> None:
     report = sv.verify(T.group_by("k").aggregate(f=T.x.first(order_by=T.x)))
     assert not report.deterministic
     assert report.ties == {"t": ["unique(k, x)"]}
-    r = routes.choose(report, "duckdb", deterministic=True)
+    r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
     assert r.refused and r.suggested == {"t": ["unique(k, x)"]}
     assert "declare sv.unique('k', 'x') on t in requires" in r.reason
 
@@ -64,7 +73,7 @@ def plan_report():
 
 
 def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report, plan_report) -> None:
-    rel = routes._bounds(mean_report.epsilon["m"])["rel"][0]
+    rel = routes._bounds(mean_report._epsilon["m"])["rel"][0]
     want = int(1000 * 1e-14 / rel)
     assert not mean_report.proved
     assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in str(

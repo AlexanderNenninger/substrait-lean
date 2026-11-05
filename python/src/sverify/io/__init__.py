@@ -19,6 +19,12 @@ versions the caller gives. Each table format is an extra:
 imported when first used. `Storage` holds object store options (credentials,
 region) shared by several tables.
 
+Credentials go by name (#775): a `Secret` names where a value lives
+(`"env:NAME"`, `"bao:kv/path#field"`, a cloud secret manager, the OS
+keychain, or a bare name the configuration maps), and the `Resolver` reads
+it when a table is opened. `Node.credentials()` and each refresh entry
+list them per table, for reading or writing (`CredentialUse`, #778).
+
 Your own sources and sinks:
 
 * A `Source` subclass implements `read(since)`, which returns the new rows
@@ -30,8 +36,8 @@ Your own sources and sinks:
   contract, so states are written exactly once across restarts.
   `sink_from(fn)` hands the whole table to a function.
 * `FlightSource` reads a table of a numbered batch log on an Arrow Flight
-  server, and `FlightLog` is a small server that keeps one
-  (`pip install 'sverify[flight]'`).
+  server (`pip install 'sverify[flight]'`); `sverify.testing.FlightLog` is
+  a small server that keeps one.
 * A table format with metadata and a change feed implements the full
   `VersionedSource` protocol: `Snapshot` and `SourceBatch` are what it
   returns.
@@ -44,19 +50,20 @@ from typing import TYPE_CHECKING, Any
 
 from sverify.incremental import Changes, Snapshot, SourceBatch, StaticSource, VersionedSource
 from sverify.io._common import Contract, SinkWrite
+from sverify.io._credentials import CredentialUse
+from sverify.io._secrets import Resolver, Secret, set_resolver
 from sverify.io._sink import Sink, SinkChange, sink_from
 from sverify.io._source import Batch, Source, from_files, from_frame, from_query
 from sverify.io._storage import Storage
 
 if TYPE_CHECKING:
     from sverify.io.delta import DeltaSink, DeltaSource
-    from sverify.io.flight import FlightLog, FlightSource
+    from sverify.io.flight import FlightSource
     from sverify.io.iceberg import IcebergSink, IcebergSource
 
 _MODULES = {
     "DeltaSink": "delta",
     "DeltaSource": "delta",
-    "FlightLog": "flight",
     "FlightSource": "flight",
     "IcebergSink": "iceberg",
     "IcebergSource": "iceberg",
@@ -64,6 +71,17 @@ _MODULES = {
 
 
 def __getattr__(name: str) -> Any:
+    if name == "FlightLog":
+        import warnings
+
+        warnings.warn(
+            "sverify.io.FlightLog is deprecated; import it from sverify.testing",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from sverify.io.flight import FlightLog
+
+        return FlightLog
     if name not in _MODULES:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     return getattr(importlib.import_module(f"sverify.io.{_MODULES[name]}"), name)
@@ -73,12 +91,14 @@ __all__ = [
     "Batch",
     "Changes",
     "Contract",
+    "CredentialUse",
     "DeltaSink",
     "DeltaSource",
-    "FlightLog",
     "FlightSource",
     "IcebergSink",
     "IcebergSource",
+    "Resolver",
+    "Secret",
     "Sink",
     "SinkChange",
     "SinkWrite",
@@ -91,5 +111,6 @@ __all__ = [
     "from_files",
     "from_frame",
     "from_query",
+    "set_resolver",
     "sink_from",
 ]

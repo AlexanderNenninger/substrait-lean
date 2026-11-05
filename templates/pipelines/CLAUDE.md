@@ -47,7 +47,10 @@ When asked for a pipeline or a change to one:
   imports the file. Use `if __name__ == "__main__":` for local runs.
 - Declare each source's schema, so `sverify check` reads no data.
 - Don't write credentials into files. Stores and their credentials come
-  from the environment (`SVERIFY_LAKE`, OIDC in the workflows).
+  from the environment (`SVERIFY_LAKE`, OIDC in the workflows). A source
+  that needs a token names it: a line in `.github/workflows/lake.yml` maps
+  the secret to an environment variable, and the pipeline reads it by
+  name (docs/for-enterprise.md, "Source tokens").
 - This session has no lake credentials: probe public sources only, and let
   the `preview` workflow run the pipeline.
 - Don't edit `_data/` or the `data` branch by hand; the workflows own them.

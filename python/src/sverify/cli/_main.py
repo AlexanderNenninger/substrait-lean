@@ -47,7 +47,7 @@ STATUS = {
 }
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
 FORMAT = 1
-FORMATS = ("text", "json", "github", "sarif", "junit")
+FORMATS = ("text", "json", "github", "sarif")
 
 
 class UsageError(Exception):
@@ -125,6 +125,7 @@ class Check:
         unchecked = d.unchecked if target is None else [t for t in d.unchecked if t == target]
         self.unchecked = unchecked
         self.error: dict[str, Any] | None = None
+        self._uses: list[tuple[str, Any]] | None = None
         if d.error is not None:
             self.code, kind = _classify(d.error)
             self.error = _error(kind, d.error)
@@ -155,9 +156,29 @@ class Check:
     def file(self) -> str:
         return str(self.d.path)
 
+    def credential_uses(self) -> list[tuple[str, Any]]:
+        """Per node variable, the credentials its refresh uses (#778), each
+        table and credential once."""
+        if self._uses is None:
+            self._uses = []
+            seen: set[Any] = set()
+            for var, node in self.d.nodes.items():
+                if self.target is not None and var != self.target:
+                    continue
+                try:
+                    got = node.credentials()
+                except Exception:  # noqa: BLE001 - a listing never fails a check
+                    continue
+                for u in got:
+                    if u not in seen:
+                        seen.add(u)
+                        self._uses.append((var, u))
+        return self._uses
+
     def findings(self) -> list[dict[str, Any]]:
         out = [f for c in self.checked for f in _findings.of(c)]
-        return out + [_findings.unchecked(t, self.d) for t in self.unchecked]
+        out += [_findings.unchecked(t, self.d) for t in self.unchecked]
+        return out + _findings.credentials(self.credential_uses())
 
     def document(self) -> dict[str, Any]:
         return {
@@ -166,6 +187,7 @@ class Check:
             "items": [_item(c) for c in self.checked],
             "findings": self.findings(),
             "unchecked": self.unchecked,
+            "credentials": [{"node": v, **u.to_dict()} for v, u in self.credential_uses()],
             "error": self.error,
             "budget": {"timeout": self.budget.seconds, "elapsed": round(self.budget.elapsed, 3)},
         }
@@ -192,6 +214,10 @@ class Check:
             if checks:
                 lines.append("  Each refresh checks on the data:")
                 lines += [f"    {k}: {'; '.join(v)}" for k, v in checks.items()]
+            uses = self.credential_uses()
+            if uses:
+                lines.append("  Credentials, by name:")
+                lines += [f"    {u}" for _, u in uses]
             shown = [f for f in findings if f["code"] != "unchecked"]
             if shown:
                 lines.append("  Not proved:")
@@ -235,10 +261,6 @@ class Check:
             return _formats.github(self.file, self.findings(), error)
         if fmt == "sarif":
             return _formats.sarif(self.file, _version(), self.findings(), error)
-        if fmt == "junit":
-            items = [(c.name, _findings.passed(c), _findings.of(c)) for c in self.checked]
-            unchecked = [_findings.unchecked(t, self.d) for t in self.unchecked]
-            return _formats.junit(self.file, items, unchecked, error)
         return self.text(full)
 
 
@@ -483,7 +505,7 @@ def parser() -> argparse.ArgumentParser:
         dest="format",
         choices=FORMATS,
         default="text",
-        help="text (the default), json, or for check: github (annotations), sarif, junit",
+        help="text (the default), json, or for check: github (annotations), sarif",
     )
     common.add_argument(
         "--json", dest="format", action="store_const", const="json", help="--format json"

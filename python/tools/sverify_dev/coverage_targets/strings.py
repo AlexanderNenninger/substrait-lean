@@ -30,7 +30,7 @@ TARGETS = [
         "regexp_matches, regexp_extract, regexp_replace",
         "in",
         "catalogue regex_replace (ClickBench q28, through Ibis); Eurostat flags; Ibis re_* verify",
-        False,
+        True,
         sql="SELECT regexp_matches(name, '^a'), regexp_extract(name, '([0-9]+)', 1), "
         "regexp_replace(name, ':', '') FROM t",
         issue=808,
@@ -40,7 +40,7 @@ TARGETS = [
         "split_part, string_split and concat_ws",
         "in",
         "dbt.split_part; concat_ws surrogate keys; Eurostat",
-        False,
+        True,
         sql="SELECT split_part(name, ' ', 1), concat_ws('-', name, region) "
         "FROM t JOIN u USING (name)",
         issue=808,
@@ -50,7 +50,7 @@ TARGETS = [
         "right, lpad and rpad",
         "in",
         "dbt.right; Ibis right, lpad, rpad verify",
-        False,
+        True,
         sql="SELECT right(name, 2), lpad(name, 5, '0') FROM t",
         issue=808,
     ),

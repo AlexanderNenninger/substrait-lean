@@ -65,6 +65,8 @@ import SubstraitLean.Observations
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
+import SubstraitLean.SparkShims
+import SubstraitLean.SparkProfile
 import SubstraitLean.SubstraitProfile
 import SubstraitLean.Transfer
 import SubstraitLean.Obligations

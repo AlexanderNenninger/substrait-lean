@@ -1,7 +1,7 @@
 """Findings: what a check found wrong, one per postcondition not proved,
 needed precondition, runtime error, broken link or unchecked transform,
 each with its code (`explain`), level and place in the file. The text
-output prints them; `--format github|sarif|junit` write them in those
+output prints them; `--format github|sarif` write them in those
 formats (#793)."""
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from sverify.cli import _explain
 
 if TYPE_CHECKING:
     from sverify.cli._discover import Checked, Discovery
+    from sverify.io._credentials import CredentialUse
 
 
 def line_of(c: Checked) -> int | None:
@@ -54,20 +55,13 @@ def of(c: Checked) -> list[dict[str, Any]]:
     for i in r.errors:
         extra = {"hint": i.hint} if i.hint else {}
         out.append(_finding(c, _explain.code_of(i.kind), f"may fail: {i.message}", **extra))
-    if r.transfer:
-        text = f"Substrait allows more at {len(r.transfer)} option(s)"
+    if r._transfer:
+        text = f"Substrait allows more at {len(r._transfer)} option(s)"
         out.append(_finding(c, "transfer", text))
     if r.floats_unmet:
         out.append(_finding(c, "floats", r.floats_unmet))
     out += [_finding(c, "composition", m) for m in c.links]
     return out
-
-
-def passed(c: Checked) -> list[str]:
-    """The postconditions proved, as labels: JUnit's passing test cases."""
-    if c.report is None:
-        return []
-    return [cond.label for cond in c.report.ensures if cond.portable]
 
 
 def unchecked(name: str, d: Discovery) -> dict[str, Any]:
@@ -81,3 +75,34 @@ def unchecked(name: str, d: Discovery) -> dict[str, Any]:
         "nodes": [],
         "line": getattr(code, "co_firstlineno", None),
     }
+
+
+def credentials(uses: list[tuple[str, CredentialUse]]) -> list[dict[str, Any]]:
+    """The findings of the credentials nodes use (#778): a table outside
+    its credential's scope, and credentials given as values."""
+    from sverify.io._credentials import INLINE
+
+    out = []
+    for var, u in uses:
+        if u.in_scope is False:
+            text = (
+                f"{u.access}s {u.table} ({u.location}) outside what {u.credential} may {u.access}"
+            )
+            code = "scope"
+        elif u.credential == INLINE:
+            text = f"{u.table}: credentials given as values; name them (Storage(credentials=...))"
+            code = "inline_credentials"
+        else:
+            continue
+        out.append(
+            {
+                "code": code,
+                "level": _explain.level_of(code),
+                "message": text,
+                "item": var,
+                "nodes": [var],
+                "line": None,
+                "table": u.table,
+            }
+        )
+    return out

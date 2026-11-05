@@ -71,6 +71,8 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.addMonths a0 a1 => some (Substrait.duckdbOn.addMonths a0 a1)
     | Substrait.UnFn.timeOfDay  => some (Substrait.duckdbOn.timeOfDay )
     | Substrait.UnFn.asTime  => some (Substrait.duckdbOn.asTime )
+    | Substrait.UnFn.dateTime  => some (Substrait.duckdbOn.dateTime )
+    | Substrait.UnFn.epochUs  => some (Substrait.duckdbOn.epochUs )
     | Substrait.UnFn.strftime a0 => some (Substrait.duckdbOn.strftime a0)
     | Substrait.UnFn.bucket a0 a1 => some (Substrait.duckdbOn.bucket a0 a1)
     | Substrait.UnFn.fmath Substrait.FMath.sqrt => some Substrait.duckdbOn.fmath_sqrt
@@ -188,6 +190,8 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.addMonths", "native", 0),
   ("UnFn.timeOfDay", "native", 0),
   ("UnFn.asTime", "native", 0),
+  ("UnFn.dateTime", "native", 0),
+  ("UnFn.epochUs", "native", 0),
   ("UnFn.strftime", "native", 0),
   ("UnFn.bucket", "native", 0),
   ("UnFn.fmath .sqrt", "hand-written schema: CASE WHEN #0 < lo(sqrt) THEN error('domain error', #0) ELSE fmath(#0) END", 0),

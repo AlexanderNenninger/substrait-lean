@@ -151,6 +151,12 @@ inductive UnFn where
   | timeOfDay
   /-- `CAST(n AS TIMESTAMP)` of microseconds since 1970-01-01: the same number. -/
   | asTime
+  /-- `CAST(d AS TIMESTAMP)` of a DATE (#807): its midnight, `d · 86400 · 10⁶`
+  microseconds. -/
+  | dateTime
+  /-- `epoch_us(ts)`, the microseconds since 1970-01-01 of a timestamp (#809):
+  the same number, as a `BIGINT`. -/
+  | epochUs
   /-- `strftime(ts, fmt)` for a format `Time.parseFormat` accepts. -/
   | strftime (fmt : String)
   /-- `date_bin(INTERVAL k, ts, origin)`: the start of `ts`'s `k`-microsecond
@@ -403,6 +409,8 @@ def UnFn.apply : UnFn → Value → Value
   | .addMonths m true, .int ts => .int (Time.addMonthsUs m ts)
   | .timeOfDay, .int ts => .int (Time.timeOfDay ts)
   | .asTime, .int n => .int n
+  | .dateTime, .int d => .int (d * Time.usPerDay)
+  | .epochUs, .int ts => .int ts
   | .strftime fmt, .int ts => .str (Time.strftime fmt ts)
   | .bucket k o, .int ts => .int (Time.bucket k o ts)
   | .fmath f, .int c => match f.apply c with

@@ -47,6 +47,8 @@ SUPPORT: dict[str, frozenset[str]] = {
     "list_contains": _DUCKDB,
     "list_position": _DUCKDB,
     "flatten": _DUCKDB,
+    # The lift's guards: `make_date` of columns raises outside the calendar (#809).
+    "sverify_raise": _DUCKDB,
     # Windows: DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
     "ntile": ENGINES - {"datafusion"},
     # Black boxes (#325).
@@ -76,6 +78,7 @@ _LABELS = {
     "sverify_pair": "covariance and correlation (Ibis cov, corr)",
     "quantile_cont": "median() or quantile() (SQL median, quantile_cont)",
     "quantile_disc": "quantile() (SQL quantile_disc)",
+    "sverify_raise": "a date from columns (Ibis ibis.date, SQL make_date)",
     "regexp_extract": "re_extract() (SQL regexp_extract)",
     "regexp_replace": "re_replace() (SQL regexp_replace)",
     "first": "first() (SQL first)",

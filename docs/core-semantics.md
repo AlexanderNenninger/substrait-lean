@@ -1084,6 +1084,55 @@ which the translation shims. Tested, and trusted: that Polars computes
 it against Python's floor division on random 64-bit values), and that the
 translation writes the stated calls as Polars's operators.
 
+### Spark as a profile
+
+`Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
+the profile `verify(semantics="spark")` checks under, and the one
+`--contract` takes with `"profile": "spark"` (#739). Its choices table,
+`Profile.spark.table` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)),
+records Spark 4.3.0 under `SPARK_CONF` (ANSI mode on, `TIMESTAMP_NTZ`, UTC)
+from its [facts](../characterization/spark/facts/). Option by option (D21):
+
+| Option | `Profile.spark` | Spark 4.3.0, ANSI | Why |
+|---|---|---|---|
+| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
+| `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../characterization/spark/facts/spark-int-arith.json), [int-divide](../characterization/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
+| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../characterization/spark/facts/spark-math-domain.json)) | tightened, as the reference; a verified plan never reaches them |
+| `avg_int_result` | the reference's | `FP64` ([avg-int](../characterization/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
+| `null_order` | the reference's | first for an ascending key ([null-order](../characterization/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
+| every other option | the reference's | the table | native, or the writer's shims |
+
+Spark's profile states no choice of its own in a plan, so `Profile.spark`
+evaluates as the reference (`Profile.spark_eval`), and the report of a
+`"profile": "spark"` request is the reference's, marked `"spark"`. What it
+adds is the route: a plan verified under it runs on Spark by `native`, and
+on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
+option the proof depends on. What is proved
+([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
+
+- `Spark.int_sum_decimal`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
+  on Spark raises as soon as a partial sum leaves 64 bits, which depends on
+  the order of the rows ([sum-int](../characterization/spark/facts/spark-sum-int.json));
+  the writer sums exact `DECIMAL(38,0)` values, and no partial sum of fewer
+  than 10¹⁸ 64-bit values leaves 38 digits, in any order.
+- `Spark.int_avg_decimal`, `Spark.null_order`, `Spark.one_zero`: the other
+  shims give the reference's value.
+- `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
+  writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
+  assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
+  error side (NaN, a `date_add` wrapped past 2³¹ days, SP-2) are where the
+  reference raises.
+- `Rel.allowed_spark_core`: `Allowed_spark ⊆ Allowed_core`.
+
+A run on Spark reads the session's settings (`sverify._engine_settings`):
+ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
+`escapedStringLiterals` refuse every run when they differ from `SPARK_CONF`;
+`legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss` and
+`legacy.percentileDiscCalculation` refuse the plans whose options they
+change. A run on another Spark version warns, and on another major version is
+refused (D14). Tested, and trusted: that Spark computes as the model says
+(`tests/test_spark_profile.py`, `tests/test_sql_spark.py`).
+
 ## The steps of #444
 
 Each step is a PR or a short stack, and each ends in a theorem.
@@ -1592,14 +1641,14 @@ so it runs natively.
 The deterministic profile is the reference with one order fixed: a stable
 sort (`List.mergeSort`) and rows in list order, as `Rel.eval` computes them
 (`Rel.eval_orderAllowed`). A consumer that needs a rerun to give the same
-rows asks for it, through `choose(deterministic=True)` or a sink's
+rows asks for it, through `run(reproducible=sv.equivalent())` or a sink's
 `reproducible=` ([D10](#d10-determinism),
 [D20](#d20-two-observations-per-output)). Engines read tables in an order of
 their own, so no shim reproduces list order on them. The deterministic
 profile needs a plan whose order is total, by a tie-break key or a
 uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
 refuses a plan without one. The refusal names each place where ties stay
-open (`Report.tie_places`).
+open (`str(report)`, with the keys that would close them in `Report.ties`).
 
 Why: `Rel.eval`'s one order leaked into four places
 ([#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)).
