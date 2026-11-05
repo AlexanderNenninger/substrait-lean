@@ -650,23 +650,29 @@ class Dialect:
         text = f"{sign}{digits[: len(digits) - k.s]}" + (f".{digits[-k.s :]}" if k.s else "")
         return self.cast(f"'{text}'", k)
 
-    def decimal_arith(self, op: str, a: str, b: str, sa: int, k: Dec) -> str:
-        """`a op b` of decimals or integers, exactly, as a `DECIMAL(p, s)`. A
-        product widens `a` (of scale `sa`) to 38 digits first, so that the
-        engine's own result type cannot overflow before the reference's."""
+    def decimal_arith(
+        self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
+    ) -> str:
+        """`a op b` of decimals or integers (of kinds `kinds`), exactly, as a
+        `DECIMAL(p, s)`. A product widens `a` (of scale `sa`) to 38 digits
+        first, so that the engine's own result type cannot overflow before the
+        reference's."""
         if op == "*":
             a = self.cast(a, Dec(38, sa))
         return self.cast(f"({a} {op} {b})", k)
 
-    def decimal_neg(self, a: str) -> str:
+    def decimal_neg(self, a: str, k: Dec | None = None) -> str:
+        """`-a` of a `DECIMAL` of type `k`, exactly."""
         return f"(-{a})"
 
-    def decimal_abs(self, a: str) -> str:
+    def decimal_abs(self, a: str, k: Dec | None = None) -> str:
+        """`|a|` of a `DECIMAL` of type `k`, exactly."""
         return f"ABS({a})"
 
-    def decimal_cast(self, a: str, k: Dec) -> str:
-        """A decimal, integer or double as a `DECIMAL(p, s)`, rounding half away
-        from zero to a smaller scale."""
+    def decimal_cast(self, a: str, k: Dec, src: Kind | None = None) -> str:
+        """A decimal, integer or double (`src`) as a `DECIMAL(p, s)`, rounding
+        half away from zero to a smaller scale; a double as `round(x · 10ˢ)`
+        in doubles (`FloatCode.toDecimal?`)."""
         return self.cast(a, k)
 
     def decimal_to_int(self, a: str) -> str:
@@ -4417,13 +4423,14 @@ class _Writer:
             case ("add" | "sub" | "mul") as op, [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 sa = ka.s if isinstance(ka, Dec) else 0
-                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k)
+                kinds = (ka, expr_kind(e.args[1], cols))
+                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, kinds)
             case "neg", [a]:
-                return d.decimal_neg(a)
+                return d.decimal_neg(a, k)
             case "abs", [a]:
-                return d.decimal_abs(a)
+                return d.decimal_abs(a, k)
             case "cast", [a]:
-                return d.decimal_cast(a, k)
+                return d.decimal_cast(a, k, expr_kind(e.args[0], cols))
             case "div", [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)

@@ -78,8 +78,9 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
         "Dialect.canon",
         "null_order",
         "sort on the keys",
+        "decimal_negate_sub",
     }
-    for name in ("int_sum_decimal", "int_avg_decimal", "null_order"):
+    for name in ("int_sum_decimal", "int_avg_decimal", "null_order", "decimal_negate_sub"):
         assert shims[name]["evidence"] == "proved"
         assert shims[name]["theorem"] == f"Spark.{name}"
     assert rows[(None, "overflow")]["theorem"] == "Rel.spark_sound"
@@ -195,3 +196,29 @@ def test_refresh_on_spark(spark, tmp_path) -> None:
     assert route is not None and (route.kind, route.engine) == ("native", "spark")
     rows = DeltaTable(str(tmp_path / "totals")).to_pyarrow_table().to_pylist()
     assert sorted((r["customer"], r["total"]) for r in rows) == [("ada", 12), ("bob", 2)]
+
+
+@pytest.mark.backend("spark")
+def test_a_run_over_the_same_table_does_not_send_it_again(spark, monkeypatch) -> None:
+    from sverify import spark_engine
+
+    sent: list[str] = []
+    create = spark.createDataFrame
+
+    def counted(data, schema=None):
+        sent.append(str(schema))
+        return create(data, schema)
+
+    monkeypatch.setattr(spark, "createDataFrame", counted)
+    con = sv.connect()
+    con.create("t", SCHEMA, [("a", 1, 1.0)])
+    t = con.table("t")
+    report = sv.verify(t.select("k", "i"))
+    for _run in range(2):
+        report.run(con, "spark")
+    assert len(sent) == 1
+    # A new table under the same name is sent again.
+    con.create("t", SCHEMA, [("b", 2, 2.0)])
+    assert report.run(con, "spark").to_pylist() == [{"k": "b", "i": 2}]
+    assert len(sent) == 2
+    assert spark_engine._VIEWS[spark]
