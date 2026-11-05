@@ -360,7 +360,10 @@ class Checked:
                 }
             )
             self._validate(i, site, cols)
-        if rec.error and (report is None or "VerificationError" not in rec.error):
+        flagged = any(d["subject"] == i and d["code"] == "unknown-column" for d in self.diagnostics)
+        if flagged and rec.error and "has no attribute" in rec.error:
+            pass  # the contract's unknown column, flagged where it is written
+        elif rec.error and (report is None or "VerificationError" not in rec.error):
             self.diagnostics.append(_diag(anchor, ERROR, rec.error, "error", i))
         if report is None:
             self.subjects.append({"kind": s.kind, "name": s.name, "range": list(anchor), "checked": False})

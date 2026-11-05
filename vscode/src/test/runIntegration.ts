@@ -8,7 +8,7 @@ import { runTests } from "@vscode/test-electron";
 
 async function main(): Promise<void> {
   const root = path.resolve(__dirname, "../..");
-  const mac = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron";
+  const mac = "/Applications/Visual Studio Code.app/Contents/MacOS/Code";
   const vscodeExecutablePath = process.env.VSCODE_PATH ?? (fs.existsSync(mac) ? mac : undefined);
   await runTests({
     vscodeExecutablePath,

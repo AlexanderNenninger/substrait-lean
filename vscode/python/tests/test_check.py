@@ -230,7 +230,9 @@ def test_sql_guard(orders):
     [needs] = diags(orders, "unit_price_sql", "needs")
     assert text_at(path, needs["range"]) == "amount // qty"
     [fix] = [f for f in needs["fixes"] if f["title"].startswith("Guard")]
-    assert 'sv.sql("select id, CASE WHEN qty <> 0 THEN amount // qty END as unit' in apply(path.read_text(), fix["edits"])
+    assert 'sv.sql("select id, CASE WHEN qty <> 0 THEN amount // qty END as unit' in apply(
+        path.read_text(), fix["edits"]
+    )
 
 
 def test_unknown_table(orders):

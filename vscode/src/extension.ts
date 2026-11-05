@@ -224,6 +224,14 @@ function onChange(state: State, e: vscode.TextDocumentChangeEvent): void {
     for (const l of result.lenses) {
       l.range = shiftRange(l.range, at, delta);
     }
+    for (const d of result.diagnostics) {
+      d.range = shiftRange(d.range, at, delta);
+      for (const f of d.fixes) {
+        for (const edit of f.edits) {
+          edit.range = shiftRange(edit.range, at, delta);
+        }
+      }
+    }
   }
   const problems = liveColumnProblems(e.document.getText(), result.sites);
   state.live.set(
