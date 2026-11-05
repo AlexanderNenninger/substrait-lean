@@ -346,15 +346,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   -- The body's kind over the element's.
   | .hof .transform l b => .list (b.kind [match l.kind cols with | .list k => k | _ => .other])
 
-/-- Renumber field references. -/
-def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
-  | .lit v => .lit v
-  | .field i => .field (f i)
-  | .un g a => .un g (a.mapFields f)
-  | .bin g a b => .bin g (a.mapFields f) (b.mapFields f)
-  | .ifThen c t e => .ifThen (c.mapFields f) (t.mapFields f) (e.mapFields f)
-  -- A lambda's body reads its parameter, not the row.
-  | .hof g l b => .hof g (l.mapFields f) b
+-- `Expr.mapFields` (renumbering field references) is in `Contracts.lean`.
 
 def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   match m.fn with

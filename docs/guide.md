@@ -352,6 +352,20 @@ except VerificationError as e:
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
   `first_txn < duplicate_txn` follow.
+* Conditions kept whole (#597): each precondition and filter condition, of
+  any shape, is also a fact about each row, as stated. A postcondition that
+  restates one is proved where the plan keeps it: through projections that
+  keep its columns (renamed or not), filters, sorts, limits, joins and
+  `UNION ALL`s whose inputs all have it. The right side of a left join loses
+  it, since its padded rows are NULL. Under a filter or in a `CASE` branch,
+  a disjunct that cannot be TRUE drops out, and the rest narrows the columns:
+  with `(_.a <= 0) | (_.b < 0)` in `requires`, `t.filter(_.a > 0)` gives
+  `b <= -1`, and so does the branch `ifelse(_.a > 0, ..., ...)`. A NULL
+  disjunct is not TRUE either, so the columns need not be NOT NULL.
+  Implications written `ifelse(_.a > 0, _.b < 0, True)` work the same way.
+  Comparisons between columns other than `x - y` against a constant,
+  products and facts through aggregates are later steps of #597
+  ([tests](../python/tests/test_relational_preconditions.py)).
 * Keys: `sv.unique("user_id", "ts")` says there is at most one row per
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
