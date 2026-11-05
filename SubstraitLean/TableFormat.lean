@@ -272,7 +272,7 @@ structure ColStats where
 NULL count is 0, and a number between the bounds unless every row is NULL. -/
 def ColStats.aval (s : ColStats) : AVal :=
   ⟨s.nulls != some 0, if s.rows.isSome && s.nulls == s.rows then none else some ⟨s.lo, s.hi⟩,
-   false, false, false⟩
+   false, false, false, none⟩
 
 /-- **Trusted:** the statistics describe column `c` of the file's rows. (A
 format that truncates maxima, like Delta for timestamps, is correct only
@@ -390,11 +390,11 @@ theorem prune_sound (e : Expr) :
 
 -- The join of known bounds is the least minimum and the greatest maximum.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨some 1, some 5, some 0, none⟩)] ==
-    ⟨false, some ⟨some 1, some 9⟩, false, false, false⟩
+    ⟨false, some ⟨some 1, some 9⟩, false, false, false, none⟩
 -- A file of NULLs adds NULL and no bound; a file without a maximum loses it.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨none, none, some 4, some 4⟩)] ==
-    ⟨true, some ⟨some 3, some 9⟩, false, false, false⟩
+    ⟨true, some ⟨some 3, some 9⟩, false, false, false, none⟩
 #guard tableStats [([], ⟨some 3, some 9, some 1, some 5⟩), ([], ⟨some 1, none, some 0, none⟩)] ==
-    ⟨true, some ⟨some 1, none⟩, false, false, false⟩
+    ⟨true, some ⟨some 1, none⟩, false, false, false, none⟩
 
 end Substrait
