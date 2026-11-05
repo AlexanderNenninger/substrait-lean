@@ -3,7 +3,6 @@ Spark's golden files and checks the facts' links to them, and the models of
 `sverify_dev.spark_fuzz` say what the facts say."""
 
 import json
-import math
 
 import pytest
 
