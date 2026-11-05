@@ -62,10 +62,9 @@ def memory_limit_from(arg: str | None) -> str | None:
         return None
     if not _SIZE.fullmatch(limit):
         raise ValueError(f"memory limit {limit!r}: give a size such as 512MB or 2GB")
-    os.environ["SVERIFY_MEMORY_LIMIT"] = limit
-    from sverify import _duckdb
+    from sverify._hooks import set_memory_limit
 
-    _duckdb.apply_limits()
+    set_memory_limit(limit)
     return limit
 
 

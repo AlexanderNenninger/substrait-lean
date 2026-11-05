@@ -394,7 +394,7 @@ def cmd_suggest(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
-    from sverify import nodes as _nodes
+    from sverify._hooks import planned
 
     path, target = split_target(args.target)
     if target is None:
@@ -411,22 +411,18 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     d = Discovery(path)
     budget.on_hard_stop = _partial(args, "refresh", d, target, budget)
     result: dict[str, Any] = {"file": str(path), "target": target, "nodes": [], "error": None}
-    token = _nodes._PLANNED.set(budget.disarm)
     try:
-        try:
-            with budget.armed():
-                load(path, d)
-                if d.error is not None:
-                    raise d.error
-                node = d.nodes.get(target)
-                if node is None:
-                    have = ", ".join(sorted(d.nodes)) or "none"
-                    raise LookupError(f"{path} has no node {target!r}; it has {have}")
-                # Proofs and planning end where `Group.refresh` has chosen
-                # its routes (`_PLANNED`): the data moves unbounded.
-                done = node.refresh(engine=args.engine, audit=args.audit)
-        finally:
-            _nodes._PLANNED.reset(token)
+        with planned(budget.disarm), budget.armed():
+            load(path, d)
+            if d.error is not None:
+                raise d.error
+            node = d.nodes.get(target)
+            if node is None:
+                have = ", ".join(sorted(d.nodes)) or "none"
+                raise LookupError(f"{path} has no node {target!r}; it has {have}")
+            # Proofs and planning end where `Group.refresh` has chosen its
+            # routes (`sverify._hooks.planned`): the data moves unbounded.
+            done = node.refresh(engine=args.engine, audit=args.audit)
     except BaseException as e:  # noqa: BLE001 - every outcome has an exit code
         if isinstance(e, KeyboardInterrupt | SystemExit):
             raise

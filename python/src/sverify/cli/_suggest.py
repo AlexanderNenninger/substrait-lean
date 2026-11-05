@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import Any as Needed  # `Report.needs` items
+
     from sverify.cli._discover import Checked
-    from sverify.contracts import Needed
 
 
 @dataclass

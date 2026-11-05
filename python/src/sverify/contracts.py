@@ -75,9 +75,7 @@ import re
 import warnings
 import weakref
 from collections import Counter
-from collections.abc import Callable, Collection, Container, Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -91,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._hooks import COLLECTING, Collected
 from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
@@ -4833,48 +4832,6 @@ def register_view(table: ir.Table, contract: ViewContract) -> None:
         _register(table.op(), contract.provenance)
 
 
-@dataclass
-class Collected:
-    """One call of a contracted transform while `collecting`: what it was
-    applied to and the report of its proof, recorded instead of raised."""
-
-    transform: ContractedTransform
-    """The transform called."""
-    node: bool
-    """Whether the call built a `sverify.Node` (on sources or nodes)."""
-    report: Report | None = None
-    """The report of the postconditions' proof; None while it runs (or if
-    it never finished)."""
-    links: list[CompositionError] = field(default_factory=list)
-    """Preconditions on another transform's result that its guarantees do
-    not imply."""
-    params: dict[str, str] = field(default_factory=dict)
-    """For each input table the report names, the transform's parameter
-    that reads it (`requires` is keyed by parameter)."""
-
-
-_COLLECTING: ContextVar[list[Collected] | None] = ContextVar("sverify_collecting", default=None)
-
-
-@contextmanager
-def collecting() -> Iterator[list[Collected]]:
-    """Within the block, contracted transforms record their proofs in the
-    list it yields, one `Collected` per call, instead of raising
-    `VerificationError` or `CompositionError`, and `refresh` refuses to
-    run. `sverify.cli.discover` imports a pipeline's file this way."""
-    out: list[Collected] = []
-    token = _COLLECTING.set(out)
-    try:
-        yield out
-    finally:
-        _COLLECTING.reset(token)
-
-
-def is_collecting() -> bool:
-    """Whether a `collecting` block is open."""
-    return _COLLECTING.get() is not None
-
-
 class ContractedTransform:
     """A transformation with a contract; see `transform`.
 
@@ -5192,7 +5149,7 @@ class ContractedTransform:
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
         entry = None
-        if (collected := _COLLECTING.get()) is not None:
+        if (collected := COLLECTING.get()) is not None:
             entry = Collected(self, node)
             collected.append(entry)
         result = self.fn(*args, **kwargs)

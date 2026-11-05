@@ -10,11 +10,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Literal
 
-from sverify.contracts import Collected, ContractedTransform, collecting
-from sverify.nodes import Node
+from sverify import ContractedTransform, Node
+from sverify._hooks import Collected, collecting
 
 if TYPE_CHECKING:
-    from sverify.contracts import Report
+    from sverify import Report
 
 Status = Literal["proved", "checked", "not_proved", "unfinished"]
 

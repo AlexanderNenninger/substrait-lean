@@ -9,7 +9,7 @@ from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from sverify.contracts import Report
+    from sverify import Report
 
 _OPS = {"==": "=", "!=": "≠", ">=": "≥", "<=": "≤"}
 

@@ -34,8 +34,7 @@ source versions.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable, Sequence
-from contextvars import ContextVar
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -58,11 +57,6 @@ if TYPE_CHECKING:
     from sverify.contracts import ContractedTransform, Report
     from sverify.io._common import Contract, SinkWrite
     from sverify.routes import Route, RouteKind
-
-
-#: Called by `Group.refresh` once the routes are chosen, before any data
-#: moves: `sverify.cli` ends the proof-and-planning time budget there (#744).
-_PLANNED: ContextVar[Callable[[], None] | None] = ContextVar("sverify_planned", default=None)
 
 
 class Sink(Protocol):
@@ -1032,7 +1026,7 @@ class Group:
                 row order, or no route takes a node's proof to `engine`;
                 nothing was refreshed.
         """
-        from sverify.contracts import is_collecting
+        from sverify._hooks import PLANNED, is_collecting
         from sverify.routes import checked_route
 
         if is_collecting():
@@ -1046,7 +1040,7 @@ class Group:
         route = checked_route(route)
         order = self._order()
         chosen = _routes(order, engine, route, reproducible, unverified)
-        if (planned := _PLANNED.get()) is not None:
+        if (planned := PLANNED.get()) is not None:
             planned()
         for n in order:
             if isinstance(n, _Stored) and n._stage is None:
