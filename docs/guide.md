@@ -1299,8 +1299,14 @@ list every fact). What to do about one:
 - Run on the other engine, or pass `route="reference"` (or another) to see
   why that one fails.
 
-`deterministic=True` refuses a plan whose result is not determined up to
-row order. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
+`deterministic=True` asks for the deterministic profile, which fixes the
+order of ties
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)):
+it refuses a plan whose result is not determined up to row order, and the
+reason names each window, ordered aggregate or `LIMIT` where ties stay open
+(`report.tie_places`), with the `sv.unique(...)` that would close them.
+Without it the plan runs with the engine's own order of the ties, which every
+proof covers. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
 shows a transfer and a refusal, and D13 in
 [core-semantics.md](core-semantics.md#d13-choosing-the-route) the rules
 behind them.
@@ -1423,7 +1429,9 @@ result. The sink states what "the same" means (`reproducible=`, D20 in
 [core-semantics.md](core-semantics.md)): `sv.equivalent()` asks for exact
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
-refused with a `RouteError`. Polars's streaming `SUM` of doubles may add in
+refused with a `RouteError`; so is a plan whose ties stay open, since the
+sink then needs the deterministic profile (D24), and the error names the
+place. Polars's streaming `SUM` of doubles may add in
 another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
 sink's `reproducible=sv.equivalent(floats=sv.within(abs=...))` for the
