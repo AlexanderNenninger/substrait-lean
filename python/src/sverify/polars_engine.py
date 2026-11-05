@@ -1739,10 +1739,10 @@ class Exprs:
         return Val(pl.when(y.is_not_null()).then(strip(y)), pl.String, found)
 
     def round_to(self, a: Val, digits: dict) -> Val:
-        """`ROUND(x, d)`, as `FloatCode.roundTo` (DuckDB's, #335): with
-        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` (`x` where that is not
-        finite), `round(x / m) · m` for `d < 0` (0 where that is not finite);
-        `±∞` and NaN stay."""
+        """`ROUND(x, d)`, as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
+        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m`
+        for `d < 0`, `x` where that is not finite; 0 for `d < 0` when `m` is
+        `±∞`. `±∞` and NaN stay."""
         if "literal" not in digits or literal(digits["literal"])[1] != pl.Int64:
             raise Unsupported("ROUND digits must be an integer literal")
         if a.dtype != pl.Float64:
@@ -1753,11 +1753,14 @@ class Exprs:
         except OverflowError:
             m = math.inf
         x, ml = a.expr, pl.lit(m, pl.Float64)
+        if d < 0 and math.isinf(m):
+            out = pl.when(x.is_null() | ~x.is_finite()).then(x).otherwise(pl.lit(0.0, pl.Float64))
+            return Val(canon(out), pl.Float64, a.issues)
         if d >= 0:
-            r, fallback = exact_div(shims.round_half_away(x * ml), ml), x
+            r = exact_div(shims.round_half_away(x * ml), ml)
         else:
-            r, fallback = shims.round_half_away(exact_div(x, ml)) * ml, pl.lit(0.0, pl.Float64)
-        out = pl.when(~x.is_finite()).then(x).when(~r.is_finite()).then(fallback).otherwise(r)
+            r = shims.round_half_away(exact_div(x, ml)) * ml
+        out = pl.when(~x.is_finite() | ~r.is_finite()).then(x).otherwise(r)
         return Val(canon(out), pl.Float64, a.issues)
 
 

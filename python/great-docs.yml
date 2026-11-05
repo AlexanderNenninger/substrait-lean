@@ -95,21 +95,20 @@ reference:
   - title: Engines and SQL
     desc: >
       Run a checked plan on DuckDB, Polars or Spark, or write it
-      as DuckDB, Snowflake or Spark SQL (`sverify.engines`).
+      as DuckDB, Snowflake or Spark SQL (`Node.to_sql`, `Report.to_sql`;
+      `sverify.engines`). `Dialect`'s SQL-writing methods change as functions
+      land, so they are left out; subclassing it is outside the 1.x promise.
     contents:
       - connect
       - engines.run
       - engines.ENGINES
       - engines.Connection
-      - engines.create_table
-      - engines.table_rows
-      - engines.to_sql
-      - engines.Dialect
+      - name: engines.Dialect
+        members: [name, guards, finite, decimals]
       - engines.DUCKDB
       - engines.SNOWFLAKE
       - engines.SPARK
       - engines.UnsupportedError
-      - engines.run_spark
       - engines.SPARK_CONF
       - engines.run_sharded
 
@@ -120,9 +119,13 @@ reference:
 
   - title: Plans
     desc: >
-      The low-level layer: Substrait plans, Lean's written form of them, and
-      the update plans of incremental maintenance (`sverify.engines`).
+      The low-level layer: Substrait plans, Lean's written form of them, the
+      SQL of a plan, and the update plans of incremental maintenance
+      (`sverify.engines`). They take sverify's internal plan, so they are
+      outside the 1.x promise and may change in a minor release; `Node.to_sql`,
+      `Report.to_sql` and `Report.to_substrait` are the stable way to a plan.
     contents:
+      - engines.to_sql
       - engines.substrait_json
       - engines.written_plan
       - engines.run_substrait_json

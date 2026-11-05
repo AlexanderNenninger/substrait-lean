@@ -53,7 +53,7 @@ class Unsupported(_Unsupported):
     """The plan is outside the Lean model, or the dialect cannot express it.
 
     Raised by `sverify.engines.to_sql`, and so by `sverify.engines.run` on
-    DuckDB and Spark and by `sverify.engines.run_spark`; the message says
+    DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
     `ValueError`, and of `sverify.errors.UnsupportedError`, which every refusal
@@ -74,9 +74,12 @@ class Dialect:
     subclasses override what their engine writes differently and raise
     `Unsupported` for what it cannot do.
 
-    Use one of the dialect objects rather than building one:
-    `sverify.engines.DUCKDB`, `sverify.engines.SNOWFLAKE` and
-    `sverify.engines.SPARK`. This is `sverify.engines.Dialect`.
+    Use one of the dialect objects: `sverify.engines.DUCKDB`,
+    `sverify.engines.SNOWFLAKE` and `sverify.engines.SPARK`. This is
+    `sverify.engines.Dialect`. Its fields (`name`, `guards`, `finite`,
+    `decimals`) are public; its SQL-writing methods change whenever a
+    function lands, so they and subclassing are outside the 1.x promise
+    (`docs/stability.md`).
 
     Attributes:
         name: The engine's name, used in `Unsupported` messages.
@@ -361,10 +364,10 @@ class Dialect:
         return f"ROUND({x})"
 
     def float_round_to(self, x: str, digits: int) -> str:
-        """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB's, #335): with
-        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` (`x` where that is not
-        finite), `round(x / m) · m` for `d < 0` (0 where that is not finite);
-        `±∞` and NaN stay."""
+        """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
+        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m`
+        for `d < 0`, `x` where that is not finite; 0 for `d < 0` when `m` is
+        `±∞`. `±∞` and NaN stay."""
         m = pow10(abs(digits))
         odd = f"({self.is_nan(x)} OR {self.is_inf(x)})"
         if math.isinf(m):
@@ -375,12 +378,10 @@ class Dialect:
         ml = self.float_lit(m)
         if digits >= 0:
             r = self.float_div(self.float_round(self.float_mul(x, ml)), ml)
-            fallback = x
         else:
             r = self.float_mul(self.float_round(self.float_div(x, ml)), ml)
-            fallback = self.float_lit(0.0)
         bad = f"({self.is_nan(r)} OR {self.is_inf(r)})"
-        return self.case_when(odd, x, self.case_when(bad, fallback, r))
+        return self.case_when(f"({odd} OR {bad})", x, r)
 
     def float_pow(self, a: str, b: str) -> str:
         """C's `pow`: IEEE results, no errors."""
@@ -633,6 +634,8 @@ class Dialect:
     # engine does too, with the hooks below, sets `decimals`.
 
     decimals: bool = False
+    """Whether the engine computes decimals exactly, as the reference does
+    (#27). A dialect without it refuses plans with decimal arithmetic."""
 
     def decimal_type(self, k: Dec) -> str:
         if not self.decimals:

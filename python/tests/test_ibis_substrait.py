@@ -21,7 +21,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, put_table
+from sverify.engine import connect, put_table
 from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.testing import EPOCH, canonical, duckdb_ibis, inline_tables, lean_values
 from sverify_dev.coverage import (
@@ -164,9 +164,9 @@ def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
     """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL."""
     expr = case.build()
     con = connect()
-    create_table(con, "t", T.schema(), t)
-    create_table(con, "u", U.schema(), u)
-    create_table(con, "l", L.schema(), lr)
+    con.create("t", T.schema(), t)
+    con.create("u", U.schema(), u)
+    con.create("l", L.schema(), lr)
     for name, table in MEMTABLES.items():
         put_table(con, name, table)
     out = duckdb_ibis(con, expr)
@@ -227,7 +227,7 @@ def test_mixed_comparisons_promote_the_integer(t):
     left = cond["scalarFunction"]["arguments"][0]["value"]
     assert left["cast"]["type"] == {"fp64": {"nullability": "NULLABILITY_NULLABLE"}}
     con = connect()
-    create_table(con, "t", T.schema(), t)
+    con.create("t", T.schema(), t)
     out = duckdb_ibis(con, expr)
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     plan = inline_tables(to_substrait(expr), {"t": t})

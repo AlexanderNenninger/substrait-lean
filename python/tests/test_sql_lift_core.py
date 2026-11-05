@@ -382,9 +382,9 @@ def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
         report = sv.verify(query, tables={"tab2": schema}, semantics=semantics, counterexamples=0)
         assert any("overflow" in str(i) for i in report.issues), report
     con = connect()
-    con.arrow["tab2"] = tab2
+    con._arrow["tab2"] = tab2
     with pytest.raises(Exception, match="out of range"):
-        run_plan(con, written_plan(substrait_json(con, query)))
+        run_plan(con, written_plan(substrait_json(con, query, semantics="duckdb")))
     db = duckdb.connect()
     db.register("tab2", tab2)
     with pytest.raises(duckdb.OutOfRangeException):

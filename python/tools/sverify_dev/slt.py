@@ -567,7 +567,6 @@ class Replay:
         """Mirror the DuckDB tables (and views, as tables) a query reads.
         Returns their rows, for inlining. Raises `OverflowError` past `cap`
         rows in all."""
-        from sverify.engine import table_rows
 
         known = {
             r[0]
@@ -580,7 +579,7 @@ class Replay:
         # DuckDB's identifiers are case-insensitive; the lift lowercases
         # unquoted ones.
         lower = {k.lower(): k for k in known}
-        for name in list(self.con.arrow):
+        for name in list(self.con._arrow):
             if name != ONE and name.lower() not in lower:
                 self.con.drop(name)  # dropped or renamed in DuckDB
                 self.synced.pop(name, None)
@@ -602,7 +601,7 @@ class Replay:
                     self.con.put(alias, table)
                 self.synced[name] = self.version
             for alias in {name, name.lower()}:
-                rows[alias] = table_rows(self.con, name)
+                rows[alias] = self.con.rows(name)
         total = sum(len(rows[n]) for n in {lower[r.lower()] for r in tables if r.lower() in lower})
         if cap is not None and total > cap:
             raise OverflowError(f"the query reads {total} rows, more than {cap}")
@@ -643,19 +642,18 @@ class Replay:
         each table, `MAX_ROWS` in all, mirrored in place of the full ones,
         and an outcome that compares with DuckDB's result on them (oracle A on
         less data) rather than with the test's, which was for the full ones."""
-        from sverify.engine import table_rows
 
         full = self.sync(tables, cap=None)
-        names = sorted({n for n in self.con.arrow if n != ONE and n in full})
+        names = sorted({n for n in self.con._arrow if n != ONE and n in full})
         distinct = sorted({n.lower() for n in names})
         keep = max(1, MAX_ROWS // max(1, len(distinct)))
         con = duckdb.connect()
         for name in names:
-            small = self.con.arrow[name].slice(0, keep)
+            small = self.con._arrow[name].slice(0, keep)
             self.con.put(name, small)
             self.synced.pop(name, None)  # the next query mirrors the full table again
             con.register(name, small)
-        rows = {name: table_rows(self.con, name) for name in names}
+        rows = {name: self.con.rows(name) for name in names}
         rows[ONE] = [(0,)]
         try:
             rel = con.sql(rec.sql)
@@ -776,9 +774,9 @@ class Replay:
         except Exception as e:  # noqa: BLE001 - a type Arrow or sverify cannot hold
             res.cls, res.reason = "refused", f"tables: {_clip(str(e), 200)}"
             return res
-        lower = {n.lower(): n for n in self.con.arrow}
+        lower = {n.lower(): n for n in self.con._arrow}
         schemas = {
-            t: ibis.Schema.from_pyarrow(self.con.arrow[lower[t.lower()]].schema)
+            t: ibis.Schema.from_pyarrow(self.con._arrow[lower[t.lower()]].schema)
             for t in tables
             if t.lower() in lower
         }

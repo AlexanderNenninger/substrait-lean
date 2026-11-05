@@ -1,0 +1,65 @@
+{
+  "id": "duckdb-round-digits-2",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`round(DOUBLE, d)`: an overflowing result keeps the input",
+  "verdict": "the reference (DuckDB 2.0's formula, #335)",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "round"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "DuckDB rounds to `d` digits: `round(x · 10^d) / 10^d` for `d ≥ 0` and `round(x / 10^-d) · 10^-d` below zero, and gives `x` itself where that is not finite (`round(1.5e308, -308)` is `1.5e308`). Below zero, when `10^-d` is infinite, every finite `x` gives 0 (`round(1.5e308, -309)` is 0). DuckDB 1.4.1 gave 0 wherever a negative `d` left no finite result, which `duckdb-R15-round-digits` recorded.",
+  "reference": "`FloatCode.roundTo` (`SubstraitLean/Float.lean`) follows DuckDB 2.0's formula, and the Polars and SQL writers write it.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "supersedes": [
+    "duckdb-R15-round-digits"
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "claude/api-to-sql-spark (#800)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1002-L1026"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v1.4.1/extension/core_functions/scalar/math/numeric.cpp"
+        }
+      ],
+      "notes": "v2.0.0's `RoundOperatorPrecision` returns 0 when the modifier is infinite and the input when the rounded value is infinite or NaN; v1.4.1 returned 0 in both cases for a negative precision."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "claude/api-to-sql-spark (#800); tests/test_numeric.py::test_round_to_digits_is_duckdbs found it with xs=[1.5e+308], d=-308",
+      "evidence": [
+        {
+          "sql": "SELECT round(1.5e308::DOUBLE, -308), round(-1.5e308::DOUBLE, -308), round(1.5e308::DOUBLE, -309), round(5e307::DOUBLE, -308), round(42.0::DOUBLE, -1000)",
+          "observed": "1.5e+308, -1.5e+308, 0.0, 1e+308, 0.0"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    242,
+    335
+  ]
+}

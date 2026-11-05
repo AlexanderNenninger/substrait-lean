@@ -116,6 +116,7 @@ from sverify.contracts import (
 from sverify.engine import (
     Connection,
     Engine,
+    arrow_rows,
     checker_failed,
     plan_json,
     put_table,
@@ -198,10 +199,6 @@ def _value_key(x: object) -> object:
 def row_key(row: Row) -> tuple:
     """Rows compare as the model compares them (see `_value_key`)."""
     return tuple(_value_key(x) for x in row)
-
-
-def arrow_rows(table: pa.Table) -> list[Row]:
-    return [tuple(r.values()) for r in table.to_pylist()]
 
 
 @dataclass

@@ -29,7 +29,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, put_table, run_plan, written_plan
+from sverify.engine import connect, put_table, run_plan, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import Unsupported
 from sverify.testing import canonical, duckdb_ibis, inline_tables, lean_values
@@ -41,7 +41,7 @@ def three_ways(rows: list[tuple], build) -> tuple[list, list, list]:
     """Lean's rows of `build(r)`, DuckDB's of the plan Lean writes, and
     DuckDB's of Ibis's own SQL."""
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expr = build(con.table("r"))
     plan = to_substrait_json(expr)
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
@@ -92,7 +92,7 @@ def test_the_evaluator_matches_re2(pattern, texts):
     first group, and replacing the first match and every match."""
     con = connect()
     rows = [(t,) for t in texts]
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     r = con.table("r")
     expr = r.select(
         m=r.s.re_extract(pattern, 0),
@@ -185,7 +185,7 @@ def test_lean_refuses_rows_whose_classes_differ_between_engines():
     Lean does not pick one, and DuckDB raises (#70)."""
     rows = [("é1",)]
     con = connect()
-    create_table(con, "r", R, rows)
+    con.create("r", R, rows)
     expr = con.table("r").select(x=_.s.re_extract(r"\w", 0))
     plan = to_substrait_json(expr)
     with pytest.raises(subprocess.CalledProcessError) as e:

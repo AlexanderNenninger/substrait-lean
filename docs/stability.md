@@ -98,6 +98,12 @@ The public API is what the [API reference](https://alexandernenninger.github.io/
 documents. Modules and names that start with an underscore, the maintainer
 tooling `sverify_dev`, and the printed text of a report (`str(report)`) are
 outside it; tools read the report through its attributes or its JSON.
+Two parts of `sverify.engines` are documented but outside it too, and may
+change in a minor release: the plan layer (`to_sql`, `substrait_json`,
+`written_plan`, `run_substrait_json`, `delta_plans`), which takes sverify's
+internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
+`Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
+to a plan's SQL and Substrait.
 
 The engines in the promise are DuckDB, Polars and Spark
 (`sverify.engines.Engine`). DataFusion (`engine="datafusion"`, the

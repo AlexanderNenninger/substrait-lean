@@ -17,7 +17,6 @@ from hypothesis import strategies as st
 import sverify as sv
 from _pipelines import connect_with, doubled, paid
 from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
-from sverify.engines import create_table, table_rows
 from sverify.errors import NotIncrementalError
 from sverify.incremental import IncrementalView, Pipeline
 from sverify.io import Changes
@@ -35,7 +34,7 @@ customers_row = st.tuples(names, st.sampled_from(["Paris", "Rome", None]))
 @st.composite
 def batch(draw, con, t, row):
     """Random inserts plus deletes of rows that currently exist."""
-    current = table_rows(con, t)
+    current = con.rows(t)
     deletes = draw(st.lists(st.sampled_from(current), unique_by=id, max_size=3)) if current else []
     # Deleting a row twice needs two copies of it.
     deletes = [r for i, r in enumerate(deletes) if deletes[: i + 1].count(r) <= current.count(r)]
@@ -103,7 +102,7 @@ def test_view_named_after_an_input_is_rejected():
     con = connect_with([(1, "ada", 30), (2, "bob", 5)], [])
     with pytest.raises(ValueError, match="is a table the view reads"):
         IncrementalView(con, PIPELINES["filter_project"], "orders")
-    assert table_rows(con, "orders") == [(1, "ada", 30), (2, "bob", 5)]
+    assert con.rows("orders") == [(1, "ada", 30), (2, "bob", 5)]
 
 
 @pytest.mark.parametrize("engine", ENGINES)
@@ -113,7 +112,7 @@ def test_deleting_a_missing_row_fails_and_rolls_back(engine):
     with pytest.raises(ValueError):
         view.apply({"orders": Changes(deletes=[(9, "zed", 1)])})
     assert view.rows() == view.recompute() == [(1, 60)]
-    assert table_rows(con, "orders") == [(1, "ada", 30)]
+    assert con.rows("orders") == [(1, "ada", 30)]
 
 
 EVENTS = ibis.table({"name": "string", "ts": "timestamp"}, name="events")
@@ -146,7 +145,7 @@ events_row = st.tuples(
 @given(data=st.data())
 def test_string_and_time_views_match_recompute(name, data):
     con = sv.connect()
-    create_table(con, "events", EVENTS.schema(), data.draw(st.lists(events_row, max_size=6)))
+    con.create("events", EVENTS.schema(), data.draw(st.lists(events_row, max_size=6)))
     view = IncrementalView(con, EVENT_VIEWS[name], "v")
     assert view.rows() == view.recompute()
     for _ in range(data.draw(st.integers(1, 3))):
