@@ -40,33 +40,48 @@ def test_ties_suggest_the_unique_that_determines_the_result() -> None:
     assert "declare sv.unique('k', 'x') on t in requires" in r.reason
 
 
-@pytest.fixture
-def mean_report():
+def _mean(ensures):
     con = sv.connect()
     con.put("t", pa.table({"k": ["a", "a"], "s": ["", ""], "x": [1.0, 2.0]}))
     t = con.table("t")
     return sv.verify(
         t.group_by("k").aggregate(m=t.x.mean()),
         requires={"t": [_.x.between(0, 1000), sv.max_rows(1000)]},
-        ensures=[sv.equivalent(floats=sv.within(rel=1e-14))],
+        ensures=ensures,
     )
 
 
-def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report) -> None:
+@pytest.fixture
+def mean_report():
+    """A tolerance below the plan's bound: not proved at verify (#689)."""
+    return _mean([sv.equivalent(floats=sv.within(rel=1e-14))])
+
+
+@pytest.fixture
+def plan_report():
+    """The plan's own bound, which every engine meets."""
+    return _mean([])
+
+
+def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report, plan_report) -> None:
     rel = routes._bounds(mean_report.epsilon["m"])["rel"][0]
     want = int(1000 * 1e-14 / rel)
+    assert not mean_report.proved
+    assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in str(
+        mean_report
+    )
     r = routes.choose(mean_report, "polars")
     assert r.refused and r.suggested == {"t": [f"max_rows({want})"]}
     assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in r.reason
     rerun = routes.choose(
-        mean_report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-15))
+        plan_report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-15))
     )
     assert rerun.refused and rerun.suggested == {"t": [f"max_rows({int(1000 * 1e-15 / rel)})"]}
 
 
-def test_no_row_cap_meets_a_tolerance_below_one_row(mean_report) -> None:
+def test_no_row_cap_meets_a_tolerance_below_one_row(plan_report) -> None:
     r = routes.choose(
-        mean_report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-20))
+        plan_report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-20))
     )
     assert r.suggested == {"t": ["max_rows(0)"]}
     assert "no row cap on t makes the plan's bound meet the tolerance" in r.reason

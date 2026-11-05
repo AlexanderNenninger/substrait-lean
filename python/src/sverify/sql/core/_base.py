@@ -15,6 +15,7 @@ from typing import Any, Literal
 from sverify import _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -47,14 +48,15 @@ LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"
 between integer and double arithmetic by it, so this module tracks it too."""
 
 
-class Unsupported(ValueError):
+class Unsupported(_Unsupported):
     """The plan is outside the Lean model, or the dialect cannot express it.
 
     Raised by `sverify.engines.to_sql`, and so by `sverify.engines.run` on
     DuckDB and Spark and by `sverify.engines.run_spark`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
-    `ValueError`. This is `sverify.engines.Unsupported`.
+    `ValueError`, and of `sverify.errors.Unsupported`, which every refusal
+    raises.
     """
 
 

@@ -34,7 +34,7 @@
     "The `nan_min` docstring names numpy's `nanmax` and gets numpy's NaN handling backwards: PL-10, a text fix.",
     "No upstream test pins NaN in `min` and `max` on the streaming engine; it may change between versions."
   ],
-  "reference": "`MAX`, `greatest` follow `nan_order: GREATEST`, so `max(1, NaN)` is NaN. The writer needs `nan_max` (or a sort) for `max` of doubles and a NaN check for `greatest`; 20 of 144 rows of `greatest` differ.",
+  "reference": "`MAX`, `greatest` follow `nan_order: GREATEST`, so `max(1, NaN)` is NaN. The Polars translation writes the shim `max_nan_greatest` for `MAX` of doubles (#697) and needs a NaN check for `greatest`; 20 of 144 rows of `greatest` differ.",
   "status": "open",
   "evidence": "probe",
   "provenance": [
@@ -154,6 +154,17 @@
           "note": "`test_min_max_horizontal_with_nan_28682`: min_horizontal(NaN, 20, 30) 20, max_horizontal 30, eager. No streaming test with NaN in min/max."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "manual-repro",
+      "checked_by": "session polars-minmax-doubles (#697)",
+      "evidence": [
+        {
+          "note": "Float64 column, streaming engine: [1.0, NaN, -1.0] min -1.0 max 1.0; [NaN, NULL] min and max NaN; [NULL, NULL] NULL; [NaN, inf] min and max inf. The same in select, group_by and `.over` (a window)."
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64; each `LazyFrame` collected with `engine=\"streaming\"`. The translation now runs `MIN` and `MAX` of doubles with the shim `max_nan_greatest` (`Polars.max_nan_greatest`, `Polars.min_ignore_nan`, `SubstraitLean/PolarsShims.lean`)."
     }
   ]
 }
