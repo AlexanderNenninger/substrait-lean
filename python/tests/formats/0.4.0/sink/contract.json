@@ -1,0 +1,23 @@
+{
+  "checks": {
+    "sverify_1": "doubled >= 0"
+  },
+  "cursors": {},
+  "digests": {
+    "orders": "72ab98a91b76ab1ace502fd00deeefd20de426b1d4c61229ee15e9ff3436b79a"
+  },
+  "epoch": 2,
+  "not_null": [
+    "id"
+  ],
+  "plan": "6fba77a6f07eae6853a377ca43d52e9a9e603f1221e7ed6e4f73e0ade72b0eaf",
+  "sources": {
+    "orders": 2
+  },
+  "unique": [
+    [
+      "id"
+    ]
+  ],
+  "view": "doubled"
+}

@@ -37,6 +37,7 @@ gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deploym
 - **`CHANGELOG.md`** gets the release's section from the fragments in `changelog.d/` (one file per PR; see its README), plus anything already under `## Unreleased`. Check them against what's merged since the last tag (`git log v<last>..origin/main --merges --oneline`). If the release breaks the public API, the section lists the moves.
 - **Pages** must be turned on with "GitHub Actions" as the source. If `build_type` isn't `workflow`, ask the user to turn it on. Its `github-pages` environment must also allow `v*` tags to deploy: GitHub's default allows only `main`, and the deploy then fails with "Tag … is not allowed to deploy to github-pages due to environment protection rules". If the `tag v*` policy is missing, ask the user before adding it with `gh api -X POST …/environments/github-pages/deployment-branch-policies -f name='v*' -f type=tag`.
 - **PyPI for sverify-dbt:** its first release needs a trusted publisher for the project `sverify-dbt` on PyPI (this repository, workflow `wheels.yml`, environment `pypi`), as `sverify` has; a pending publisher works before the project exists. Ask the user to add it if `pip index versions sverify-dbt` finds nothing and they haven't.
+- **Stability** ([docs/stability.md](../../../docs/stability.md)): every entry under "Breaking changes" has a migration note, what to write instead with an example, and a unit test of the old form; every soundness fix that refuses a proof names an engine fact or an upstream record. Within 1.x a break of the formats or a tightening of the reference semantics waits for 2.0, so hold back a PR that does either and tell the user.
 - **Version:** if the user gave none, propose one by [semver](https://semver.org) for 0.x: minor for new features or breaking changes, patch for fixes only.
 
 ## 2. Version-bump PR
@@ -50,9 +51,12 @@ git switch -c release-<version> origin/main
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
 #   changelog.d/*.md fragments (file-name order) under it, then git rm the fragments
 #   (keep changelog.d/README.md)
-cd python && uv lock && cd ..        # updates only sverify's own version in uv.lock
+cd python && uv lock && uv sync      # updates only sverify's own version in uv.lock
+uv run python -m sverify_dev.formats tests/formats/<version>   # the formats this release writes
+uv run pytest tests/test_formats.py && cd ..                     # every earlier release's still read
+git add python/tests/formats/<version>
 cd dbt && uv lock && cd ..           # sverify-dbt's and the sverify it pins
-git diff --stat                      # these five files, plus the removed fragments
+git diff --stat                      # these five files, the removed fragments and the fixtures
 git commit -am "Release <version>"
 git push -u origin release-<version>
 gh pr create --base main --title "Release <version>" --body "…"

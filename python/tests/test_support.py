@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
 from sverify import _support, black_box
 from sverify.sql import Unsupported
 
@@ -16,6 +17,7 @@ def lean_functions() -> set[str]:
     return set(re.findall(r'name := "([a-z0-9_]+)"', FUNCTIONS_LEAN.read_text()))
 
 
+@needs_repo
 def test_rows_are_functions_lean_writes() -> None:
     known = lean_functions() | black_box.NAMES
     assert set(_support.SUPPORT) <= known, set(_support.SUPPORT) - known

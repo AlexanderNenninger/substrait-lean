@@ -306,6 +306,10 @@ def not_null_column(sql: str) -> str | None:
     return None
 
 
+#: The version of the sink's contract record's format (`Contract.format`).
+CONTRACT_FORMAT = 1
+
+
 @dataclass
 class Contract:
     """What a sink records with each commit: which plan produced the data,
@@ -347,27 +351,47 @@ class Contract:
     `metaData.id`), at its version in `sources`. A table dropped and created
     again at the same location has a new id, and versions that start over:
     a state recorded from the old table is not one of the new table's."""
+    format: int = CONTRACT_FORMAT
+    """The version of the record's format (`CONTRACT_FORMAT`,
+    `sverify/schemas/sink-contract.schema.json`). It changes only with a
+    record a reader of the previous format cannot read, which 1.x never
+    writes (`docs/stability.md`); a record without it was written before
+    0.5 and reads as format 1."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
 
         Returns:
-            A JSON object with the contract's fields, keys sorted.
+            A JSON object with the contract's fields, keys sorted, in the
+            format of `sverify/schemas/sink-contract.schema.json`.
         """
         return json.dumps(self.__dict__, sort_keys=True)
 
     @staticmethod
     def from_json(text: str) -> Contract:
-        """A contract from what `to_json` wrote.
+        """A contract from what `to_json` wrote, by this version of sverify
+        or an earlier one. Keys this version does not know, which a later
+        1.x version may add, are left out.
 
         Args:
             text: The JSON `to_json` wrote.
 
         Returns:
             The contract.
+
+        Raises:
+            ValueError: The record's `format` is newer than this version
+                reads.
         """
+        data = json.loads(text)
+        fmt = data.get("format", 1)
+        if not isinstance(fmt, int) or fmt > CONTRACT_FORMAT:
+            raise ValueError(
+                f"the sink's contract record has format {fmt!r}, and this version of "
+                f"sverify reads format {CONTRACT_FORMAT} or older: upgrade sverify"
+            )
         known = Contract.__dataclass_fields__
-        return Contract(**{k: v for k, v in json.loads(text).items() if k in known})
+        return Contract(**{k: v for k, v in data.items() if k in known})
 
 
 class ConcurrentWriteError(RuntimeError):

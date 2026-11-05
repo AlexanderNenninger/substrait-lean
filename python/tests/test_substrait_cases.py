@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
 from sverify_dev import substrait_cases as sc
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -203,6 +204,7 @@ def _checkout() -> Path:
         pytest.skip(f"no checkout of substrait-io/substrait {sc.TAG}: {e}")
 
 
+@needs_repo
 def test_the_ledger_is_current():
     """The replay gives the ledger, and each disagreement is triaged."""
     root = _checkout()
@@ -220,6 +222,7 @@ def test_the_ledger_is_current():
     )
 
 
+@needs_repo
 def test_the_triage_names_its_record():
     """A triaged disagreement names an issue (`#n`) or an `ST` entry that
     exists; no line of the cases goes unread."""
