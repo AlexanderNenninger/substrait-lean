@@ -386,6 +386,28 @@ def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : Str
   | .distinct r => (colEps engine cat A F T r).map fun cs => keepIf (cs.all exactP) cs
   | .fetch r _ _ => colEps engine cat A F T r
   | .emit r m => (colEps engine cat A F T r).map fun cs => m.map (cs.getD · none)
+  | .cross a b => do
+    return (← colEps engine cat A F T a) ++ (← colEps engine cat A F T b)
+  | .join a b _ on => do
+    let cs := (← colEps engine cat A F T a) ++ (← colEps engine cat A F T b)
+    let env := a.aeval cat A F T ++ b.aeval cat A F T
+    return keepIf (exactP (exprEps engine env cs on)) cs
+  | .semi a b _ on => do
+    let ca ← colEps engine cat A F T a
+    let cs := ca ++ (← colEps engine cat A F T b)
+    let env := a.aeval cat A F T ++ b.aeval cat A F T
+    return keepIf (exactP (exprEps engine env cs on)) ca
+  | .unionAll a b => do
+    let ca ← colEps engine cat A F T a
+    let cb ← colEps engine cat A F T b
+    return (ca.zip cb).map fun
+      | (some (x, p), some (y, q)) => some (max x y, p && q)
+      | _ => none
+  | .window r part sort fns => (colEps engine cat A F T r).map fun cs =>
+      -- The window functions' values are not bounded here; the input's are kept.
+      keepIf ((part.all fun i => exactP (cs.getD i none)) &&
+          sort.all fun k => exactP (cs.getD k.col none)) cs ++
+        fns.map fun _ => none
   | .project r es => (colEps engine cat A F T r).map fun cs =>
       cs ++ es.map (exprEps engine (r.aeval cat A F T) cs)
   | .aggregate r gs ms => (colEps engine cat A F T r).map fun cs =>
@@ -419,13 +441,20 @@ def rowsExact (engine : String) (cat : Catalog) (A : String → List AVal)
       (colEps engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
   | .distinct r => rowsExact engine cat A F T r &&
       (colEps engine cat A F T r).any fun cs => cs.all exactP
-  | .fetch r _ _ | .emit r _ | .project r _ => rowsExact engine cat A F T r
+  | .fetch r _ _ | .emit r _ | .project r _ | .window r _ _ _ | .unnest r _ =>
+    rowsExact engine cat A F T r
+  | .cross a b | .unionAll a b => rowsExact engine cat A F T a && rowsExact engine cat A F T b
+  | .join a b _ on | .semi a b _ on =>
+    rowsExact engine cat A F T a && rowsExact engine cat A F T b &&
+      match colEps engine cat A F T a, colEps engine cat A F T b with
+      | some ca, some cb =>
+        exactP (exprEps engine (a.aeval cat A F T ++ b.aeval cat A F T) (ca ++ cb) on)
+      | _, _ => false
   | .aggregate r gs ms => rowsExact engine cat A F T r &&
       (colEps engine cat A F T r).any fun cs =>
         let env := r.aeval cat A F T
         gs.all (fun g => exactP (exprEps engine env cs g)) &&
           ms.all fun m => m.filter.all fun c => exactP (exprEps engine env cs c)
-  | _ => false
 
 /-- Does the plan read or write a single-precision column? Polars sums
 `Float32` in single precision (polars-sum-float), which no bound here covers. -/

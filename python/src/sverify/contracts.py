@@ -1115,6 +1115,11 @@ class Report:
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
+    rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
+    """Per engine, whether every filter, key and sort of the plan keeps the
+    same rows and groups under the columns' `ε` (#568's threshold rule): a
+    comparison on a double whose threshold lies within `ε` of its range may
+    flip. None where the checker does not say."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     ties: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
     """For a result not determined up to row order (`deterministic`), the
@@ -2946,6 +2951,7 @@ def _verify_once(
         plan=json.dumps(transform_plan),
         depends=out.get("depends"),
         epsilon=out.get("epsilon"),
+        rows_exact=out.get("rows_exact"),
         contract=contract,
         transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
