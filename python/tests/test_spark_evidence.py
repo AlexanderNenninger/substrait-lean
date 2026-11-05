@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("hypothesis")  # sverify_dev's dev dependencies
 
+from _repo import needs_repo  # noqa: E402
 from sverify_dev import spark_fuzz as fz  # noqa: E402
 from sverify_dev import spark_tests as st  # noqa: E402
 
@@ -107,6 +108,7 @@ def test_models_of_integer_facts():
     assert fz._substr_model("héllo", -6, 2) == "h"
 
 
+@needs_repo
 def test_every_target_names_a_spark_fact():
     known = {p.stem for p in (fz.OUT.parent / "facts").glob("spark-*.json")}
     for ts in fz.targets().values():
