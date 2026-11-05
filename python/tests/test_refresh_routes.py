@@ -26,7 +26,7 @@ def test_refresh_reports_the_route(tmp_path) -> None:
         out = node.refresh(engine=engine, route="auto")
         r = out["doubled"].route
         assert r is not None and r.kind == "reference" and r.engine == engine
-        assert f"route on {engine}: reference" in str(out)
+        assert f"route on {engine}: {r.cls}" in str(out)
     # "auto" is the default.
     plain = doubled(paid(orders)).refresh(engine="polars")
     assert plain["doubled"].route is not None and plain["doubled"].route.kind == "reference"

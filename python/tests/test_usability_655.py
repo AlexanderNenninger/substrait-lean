@@ -177,7 +177,7 @@ def test_null_and_key_hints(con) -> None:
     )
     text = str(report)
     assert "declare" not in text.split("ensures qty > 3")[1].split("\n")[0]
-    assert "add sv.unique('k') on the input it comes from to requires" in text
+    assert "`k` comes from t.k: declare `sv.unique('k')` in the requires of 't'" in text
     # FALSE is possible too, so NOT NULL alone would not prove it (#655).
     nullable = sv.verify(t.select("k", "qty"), ensures=[_.qty > 3])
     assert "where qty is NULL" not in str(nullable)
@@ -229,7 +229,7 @@ def test_a_route_names_its_class_and_observation(tmp_path) -> None:
     assert route.observation is not None
     assert isinstance(route.observation.floats, sv.observation.Within)
     assert route.bound_proved in (True, False)
-    assert f"[observed {route.observation}" in str(route)
+    assert str(route).startswith("observed: doubles within abs=")
 
 
 def test_rows_are_read_by_the_old_and_new_keys() -> None:

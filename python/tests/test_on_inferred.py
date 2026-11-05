@@ -95,7 +95,7 @@ def test_a_transform_raises_unless_told(con) -> None:
 
     with pytest.raises(
         VerificationError,
-        match=r"without the precondition \(_.amount < 2\*\*62\) on orders, inferred from "
+        match=r"needs: \(_.amount < 2\*\*62\) on orders, inferred from "
         r"`amount \* 2`",
     ):
         src.pipe(doubled)

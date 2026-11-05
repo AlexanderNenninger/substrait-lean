@@ -36,7 +36,7 @@ def _as_date(e: E) -> E:
         return E(literal(None, dt.date), dt.date, None)
     if v.time() != dt_.time():
         raise Unsupported(
-            f"comparing a DATE column with the timestamp {v} is not supported yet: Lean has "
+            f"comparing a DATE column with the timestamp {v} is not supported yet: sverify has "
             "no cast of a DATE column to a timestamp (#240)"
         )
     return E(literal(v.date(), dt.date), dt.date, v.date())
@@ -195,7 +195,7 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
         if micros % _DAY != 0:
             raise Unsupported(
                 "a DATE column plus an interval of hours or less is a TIMESTAMP, which needs a "
-                "cast Lean lacks (#240)"
+                "cast sverify lacks (#240)"
             )
         return E(_fn(name, [a.json, b.json], dt.date), dt.date, midnight=True)
     if a.type.is_time():
