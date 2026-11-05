@@ -6,7 +6,8 @@
 metadata with the sink's contract record, exports of `to_substrait` and
 reports as JSON.
 Each test reads every version's fixtures with this version, as a job would,
-and checks them against the schemas in `sverify/schemas/`. The tests that
+and checks what it read against the schemas in `sverify/schemas/`, which
+describe the current format; a fixture of an earlier format reads as it. The tests that
 write the formats afresh check that this version only adds keys."""
 
 from __future__ import annotations
@@ -56,29 +57,36 @@ def test_fixtures_exist() -> None:
 
 @pytest.mark.parametrize("version", VERSIONS)
 def test_sink_record_reads(version: str) -> None:
-    """Each version's record follows the schema, and reads as format 1."""
+    """Each version's record reads as the current format, which follows the
+    schema; a record of format 1 names the node `view`."""
     text = (FORMATS / version / "sink" / "contract.json").read_text()
-    _valid(json.loads(text), "sink-contract.schema.json")
     c = Contract.from_json(text)
-    assert c.format == 1
-    assert c.view == "doubled" and c.sources == {"orders": 2} and c.epoch == 2
+    _valid(json.loads(c.to_json()), "sink-contract.schema.json")
+    assert c.format == CONTRACT_FORMAT == 2
+    assert c.node == "doubled" and c.sources == {"orders": 2} and c.epoch == 2
     assert "id" in c.not_null and c.unique == [["id"]]
 
 
 @pytest.mark.parametrize("version", VERSIONS)
 def test_delta_sink_record(version: str, tmp_path: Path) -> None:
     """A `DeltaSource` reads the contract each version's `DeltaSink` committed,
-    and every commit's record follows the schema."""
+    under the key `sverify.contract` or, before 1.0, `sverify`, and every
+    commit's record reads as one that follows the schema."""
     from deltalake import DeltaTable
 
     from sverify.io import DeltaSource
+    from sverify.io.delta import LEGACY_METADATA_KEY, METADATA_KEY
 
     table = tmp_path / "doubled"
     shutil.copytree(FORMATS / version / "sink" / "delta" / "doubled", table)
-    records = [c["sverify"] for c in DeltaTable(str(table)).history() if "sverify" in c]
+    records = [
+        c.get(METADATA_KEY, c.get(LEGACY_METADATA_KEY))
+        for c in DeltaTable(str(table)).history()
+        if METADATA_KEY in c or LEGACY_METADATA_KEY in c
+    ]
     assert len(records) == 2
     for r in records:
-        _valid(json.loads(r), "sink-contract.schema.json")
+        _valid(json.loads(Contract.from_json(r).to_json()), "sink-contract.schema.json")
     expected = Contract.from_json((FORMATS / version / "sink" / "contract.json").read_text())
     assert DeltaSource(str(table)).contract() == expected
 
@@ -118,8 +126,8 @@ def test_iceberg_sink_record(version: str) -> None:
     meta = FORMATS / version / "sink" / "iceberg" / "doubled.metadata.json"
     t = StaticTable.from_metadata(str(meta))
     text = t.properties[iceberg.KEY]
-    _valid(json.loads(text), "sink-contract.schema.json")
     c = Contract.from_json(text)
+    _valid(json.loads(c.to_json()), "sink-contract.schema.json")
     assert c == Contract.from_json((FORMATS / version / "sink" / "contract.json").read_text())
     snapshot = t.current_snapshot()
     assert snapshot is not None and snapshot.summary is not None
@@ -131,7 +139,7 @@ def test_iceberg_sink_record(version: str) -> None:
 
 def test_sink_record_only_gains_keys(tmp_path: Path) -> None:
     """The record this version writes follows the schema and has every key
-    an earlier version's record has."""
+    an earlier version's record has, read as the current format."""
     from sverify.io import DeltaSink, DeltaSource, StaticSource
 
     formats = pytest.importorskip("sverify_dev.formats")
@@ -143,13 +151,15 @@ def test_sink_record_only_gains_keys(tmp_path: Path) -> None:
     _valid(now, "sink-contract.schema.json")
     assert now["format"] == CONTRACT_FORMAT
     for version in VERSIONS:
-        old = json.loads((FORMATS / version / "sink" / "contract.json").read_text())
-        assert set(old) <= set(now), f"keys of {version}'s record dropped: {set(old) - set(now)}"
+        text = (FORMATS / version / "sink" / "contract.json").read_text()
+        old = {k for k in json.loads(text) if k in Contract.__dataclass_fields__ or k == "view"}
+        old = {"node" if k == "view" else k for k in old} | {"format"}
+        assert old <= set(now), f"keys of {version}'s record dropped: {set(old) - set(now)}"
 
 
 def test_newer_record_refused() -> None:
     """A record of a format this version does not know is refused, and the
-    error says to upgrade; unknown keys of format 1 are left out."""
+    error says to upgrade; unknown keys are left out."""
     text = (FORMATS / VERSIONS[-1] / "sink" / "contract.json").read_text()
     data = json.loads(text)
     with pytest.raises(ValueError, match="upgrade sverify"):
@@ -201,6 +211,25 @@ def test_substrait_manifest_only_gains_keys() -> None:
     for version, case in EXPORTS:
         old = read((FORMATS / version / "substrait" / f"{case}.json").read_text()).manifest
         assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
+
+
+def test_substrait_manifest_of_format_1() -> None:
+    """A manifest of format 1, written before 1.0, reads with the names of
+    format 2 (`semantics`, `equivalence`); a newer format is refused."""
+    from sverify.substrait_export import FORMAT, _manifest
+
+    def text(v: str, c: str) -> str:
+        return (FORMATS / v / "substrait" / f"{c}.json").read_text()
+
+    olds = [(v, c) for v, c in EXPORTS if '"profile"' in text(v, c)]
+    assert olds, "no export of format 1 among the fixtures"
+    for v, c in olds:
+        m = read(text(v, c)).manifest
+        assert m["format"] == FORMAT == 2
+        assert "profile" not in m and "observation" not in m
+        assert m["semantics"] in ("reference", "substrait") and isinstance(m["equivalence"], str)
+    with pytest.raises(ValueError, match="upgrade sverify"):
+        _manifest({"format": FORMAT + 1})
 
 
 #: The fields of the contract messages as 1.0 fixes them: a field keeps its
@@ -261,7 +290,7 @@ def test_report_reads(version: str, case: str) -> None:
     _valid(doc, "report.schema.json")
     report = sv.Report.from_json(doc)
     assert report.proved == doc["proved"] and report.verdict == doc["verdict"]
-    assert [c.label for c in report.ensures] == [c["label"] for c in doc["ensures"]]
+    assert [c.label for c in report.ensures] == [c["properties"]["label"] for c in doc["ensures"]]
     assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]
     assert set(report.routes) == set(doc["routes"])
     now = json.loads(report.to_json())
@@ -292,6 +321,13 @@ def test_report_only_gains_keys() -> None:
             assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
             for c_old, c_now in zip(old["ensures"], now["ensures"], strict=True):
                 assert set(c_old) <= set(c_now)
+
+
+def test_report_of_format_1_refused() -> None:
+    """Format 1 of the report was on main before 1.0, in no release: a
+    reader says to write it again."""
+    with pytest.raises(ValueError, match="no release wrote"):
+        sv.Report.from_json({"format": 1})
 
 
 # -- the quarantine table and the refresh report (#184) ----------------------------
