@@ -839,10 +839,8 @@ proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
   app;
 - `sarif`: a SARIF 2.1.0 log for code scanning
   (`github/codeql-action/upload-sarif`), one rule per code, with
-  `explain`'s text;
-- `junit`: JUnit XML, one test case per postcondition proved and per
-  finding, for the test reports of GitLab, Jenkins, Buildkite or Azure
-  DevOps ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+  `explain`'s text
+  ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
 
 The codes are snake case (`may_be_false`), as the report's `reason` and
 issue `kind` write them; `explain` reads kebab case too. The exit codes are:

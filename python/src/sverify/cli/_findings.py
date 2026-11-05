@@ -1,7 +1,7 @@
 """Findings: what a check found wrong, one per postcondition not proved,
 needed precondition, runtime error, broken link or unchecked transform,
 each with its code (`explain`), level and place in the file. The text
-output prints them; `--format github|sarif|junit` write them in those
+output prints them; `--format github|sarif` write them in those
 formats (#793)."""
 
 from __future__ import annotations
@@ -61,13 +61,6 @@ def of(c: Checked) -> list[dict[str, Any]]:
         out.append(_finding(c, "floats", r.floats_unmet))
     out += [_finding(c, "composition", m) for m in c.links]
     return out
-
-
-def passed(c: Checked) -> list[str]:
-    """The postconditions proved, as labels: JUnit's passing test cases."""
-    if c.report is None:
-        return []
-    return [cond.label for cond in c.report.ensures if cond.portable]
 
 
 def unchecked(name: str, d: Discovery) -> dict[str, Any]:
