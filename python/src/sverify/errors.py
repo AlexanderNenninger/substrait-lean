@@ -23,6 +23,9 @@
   one its profile's facts were probed at (another major version refuses).
 * `EngineSettingsError`, `EngineSettingsWarning`: an engine setting differs
   from the one its profile's facts were probed under.
+* `ExportError`: a plan has no conforming Substrait form that keeps its
+  proof (`Report.to_substrait`, #664); the message names the reason and the
+  spec gap.
 """
 
 from sverify.contracts import (
@@ -41,6 +44,7 @@ from sverify.routes import (
     EngineVersionWarning,
     RouteError,
 )
+from sverify.substrait_export import ExportError
 
 __all__ = [
     "AuditError",
@@ -51,6 +55,7 @@ __all__ = [
     "EngineSettingsWarning",
     "EngineVersionError",
     "EngineVersionWarning",
+    "ExportError",
     "NotIncremental",
     "PostconditionError",
     "PreconditionError",
