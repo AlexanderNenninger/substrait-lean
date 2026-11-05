@@ -354,6 +354,12 @@ def _int_shift() -> list[Target]:
 
 
 def _pow(a: float, b: float) -> float:
+    """`StrictMath.pow`'s special cases, where C's `pow` differs: a NaN
+    exponent, or ±1 to an infinite power, gives NaN (C gives 1)."""
+    if b == 0:
+        return 1.0
+    if math.isnan(b) or (abs(a) == 1 and math.isinf(b)):
+        return math.nan
     return nd(np.power, a, b)
 
 
@@ -389,7 +395,7 @@ def _int_pow() -> list[Target]:
 
 # --- Targets: decimals ------------------------------------------------------
 
-_D34 = Context(prec=34, rounding=ROUND_HALF_UP)
+_D34 = Context(prec=34, rounding=ROUND_HALF_EVEN)  # MathContext.DECIMAL128
 #: Wide enough that no decimal here rounds (the default context keeps 28 digits).
 _EXACT = Context(prec=100)
 
@@ -418,10 +424,31 @@ def _decimal_negate() -> list[Target]:
                 (x,) = row
                 if x is None:
                     return None
-                y = _D34.plus(f(x))
+                y = f(x)
+                if y is not x:
+                    y = _D34.plus(y)
                 if y.copy_abs() >= Decimal(10) ** (38 - s):
                     return Raise("NUMERIC_VALUE_OUT_OF_RANGE")
                 return y.quantize(Decimal(1).scaleb(-s), context=Context(prec=100))
+
+            return m
+
+        def minus(s: int = s) -> Callable[[tuple, bool], Any]:
+            """`0 - x`: an INT 0 is `DECIMAL(10,0)`, so the result needs 39
+            digits and loses scale past 6 (`allowPrecisionLoss`), rounding
+            half up."""
+            t = s if s <= 6 else s - 1
+
+            def m(row: tuple, ansi: bool) -> Any:
+                x = row[0]
+                if x is None:
+                    return None
+                y = x.copy_negate().quantize(
+                    Decimal(1).scaleb(-t), rounding=ROUND_HALF_UP, context=_EXACT
+                )
+                if y.copy_abs() >= Decimal(10) ** (38 - t):
+                    return Raise("NUMERIC_VALUE_OUT_OF_RANGE") if ansi else None
+                return y
 
             return m
 
@@ -441,19 +468,19 @@ def _decimal_negate() -> list[Target]:
                     Expr(
                         f"abs decimal(38,{s})",
                         "abs(x)",
-                        model(Decimal.copy_abs),
+                        model(lambda x: x if x >= 0 else x.copy_negate()),
                         f"decimal(38,{s})",
                         "abs(x)",
                     ),
                     Expr(
                         f"0 - x decimal(38,{s})",
                         "0 - x",
-                        lambda row, ansi: None if row[0] is None else row[0].copy_negate(),
-                        None,
+                        minus(s),
+                        f"decimal(38,{min(s, 6) if s <= 6 else s - 1})",
                     ),
                 ],
                 ibis={"x": f"decimal(38,{s})"},
-                note="The model rounds to 34 significant digits half up (MathContext.DECIMAL128 as the fact states).",
+                note="-x rounds to 34 significant digits half to even (MathContext.DECIMAL128); abs negates negative values only; 0 - x at the scale of DECIMAL(10,0) - DECIMAL(38,s).",
             )
         )
     return found
@@ -469,6 +496,9 @@ def _size_limits() -> list[Target]:
     def model(row: tuple, ansi: bool) -> Any:
         x, s = row
         v = Decimal(x)
+        if len(v.as_tuple().digits) > 38:
+            # The text does not fit any Spark decimal.
+            return Raise("NUMERIC_OUT_OF_SUPPORTED_RANGE") if ansi else None
         # CAST(x AS DECIMAL(38, 2)): rounds half up to 2 places, then fits 38 digits or not.
         y = v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP, context=Context(prec=100))
         if y.copy_abs() >= Decimal(10) ** 36:
@@ -529,13 +559,14 @@ def _zero_divisor(f: Callable[..., float], cls: str) -> Callable[[tuple, bool], 
 
 
 def _pmod(row: tuple, ansi: bool) -> Any:
-    """`pmod` as the fact states it: `((a % b) + b) % b`."""
+    """`pmod` as `MathUtils.pmod`: `r = a % b`, then `(r + b) % b` if `r < 0`."""
     a, b = row
     if a is None or b is None:
         return None
     if b == 0:
         return Raise("REMAINDER_BY_ZERO") if ansi else None
-    return nd(np.fmod, nd(np.fmod, a, b) + b, b)
+    r = nd(np.fmod, a, b)
+    return nd(np.fmod, r + b, b) if r < 0 else r
 
 
 def _double_divide_mod() -> list[Target]:
@@ -580,23 +611,48 @@ def _one_double(r: random.Random) -> tuple:
     return (dbl(r, 0.5),)
 
 
+def _exact(name: str) -> Callable[[float], float]:
+    """The correctly rounded value of an mpmath function, at a precision
+    enough for the argument reduction of any double."""
+    import mpmath
+
+    fn = getattr(mpmath, name)
+
+    def f(x: float) -> float:
+        with mpmath.workprec(1200):
+            if name == "cbrt":  # mpmath's is the principal (complex) root below 0
+                return math.copysign(float(fn(abs(mpmath.mpf(x)))), x)
+            return float(fn(mpmath.mpf(x)))
+
+    return f
+
+
 def _elem(
-    f: Callable[[float], float], domain: Callable[[float], bool] | None = None
+    f: Callable[[float], float],
+    domain: Callable[[float], bool] | None = None,
+    exact: str | None = None,
 ) -> Callable[[tuple, bool], Any]:
+    """`f`'s value (numpy's) or, with `exact`, the correctly rounded value
+    where the argument and the result are finite and nonzero."""
+    ex = _exact(exact) if exact else None
+
     def m(row: tuple, ansi: bool) -> Any:
         (x,) = row
         if x is None:
             return None
         if domain is not None and not domain(x):
             return None
-        return nd(f, x)
+        v = nd(f, x)
+        if ex is not None and math.isfinite(x) and x != 0 and math.isfinite(v) and v != 0:
+            return ex(x)
+        return v
 
     return m
 
 
 def _elem_rounding() -> list[Target]:
     def pos(x: float) -> bool:
-        return x > 0
+        return not x <= 0  # NULL for x <= 0; NaN gives NaN
 
     def log2(x: float) -> float:
         return nd(np.log, x) / math.log(2) if x > 0 else math.nan
@@ -611,27 +667,56 @@ def _elem_rounding() -> list[Target]:
             "x DOUBLE",
             _one_double,
             [
-                Expr("exp", "exp(x)", _elem(np.exp), "double", "exp(x)", within_ulp(1)),
+                Expr(
+                    "exp", "exp(x)", _elem(np.exp, exact="exp"), "double", "exp(x)", within_ulp(1)
+                ),
                 Expr("sqrt", "sqrt(x)", _elem(np.sqrt), "double", None, same_double),
-                Expr("sin", "sin(x)", _elem(np.sin), "double", "sin(x)", within_ulp(1)),
-                Expr("cos", "cos(x)", _elem(np.cos), "double", "cos(x)", within_ulp(1)),
-                Expr("tan", "tan(x)", _elem(np.tan), "double", "tan(x)", within_ulp(1)),
-                Expr("atan", "atan(x)", _elem(np.arctan), "double", "atan(x)", within_ulp(1)),
-                Expr("cbrt", "cbrt(x)", _elem(np.cbrt), "double", "cbrt(x)", within_ulp(1)),
+                Expr(
+                    "sin", "sin(x)", _elem(np.sin, exact="sin"), "double", "sin(x)", within_ulp(1)
+                ),
+                Expr(
+                    "cos", "cos(x)", _elem(np.cos, exact="cos"), "double", "cos(x)", within_ulp(1)
+                ),
+                Expr(
+                    "tan", "tan(x)", _elem(np.tan, exact="tan"), "double", "tan(x)", within_ulp(1)
+                ),
+                Expr(
+                    "atan",
+                    "atan(x)",
+                    _elem(np.arctan, exact="atan"),
+                    "double",
+                    "atan(x)",
+                    within_ulp(1),
+                ),
+                Expr(
+                    "cbrt",
+                    "cbrt(x)",
+                    _elem(np.cbrt, exact="cbrt"),
+                    "double",
+                    "cbrt(x)",
+                    within_ulp(1),
+                ),
             ],
             ibis={"x": "float64"},
-            note="Model: numpy (the C library); the fact allows 1 ulp for java.lang.Math and none for sqrt.",
+            note="Model: the correctly rounded value (mpmath); the fact allows 1 ulp for java.lang.Math and StrictMath, none for sqrt.",
         ),
         Target(
             "spark-elem-rounding",
             "x DOUBLE",
             ln_rows,
             [
-                Expr("ln", "ln(x)", _elem(np.log, pos), "double", None, within_ulp(1)),
-                Expr("log10", "log10(x)", _elem(np.log10, pos), "double", None, within_ulp(1)),
+                Expr("ln", "ln(x)", _elem(np.log, pos, "log"), "double", None, within_ulp(1)),
+                Expr(
+                    "log10",
+                    "log10(x)",
+                    _elem(np.log10, pos, "log10"),
+                    "double",
+                    None,
+                    within_ulp(1),
+                ),
                 Expr("log2", "log2(x)", _elem(log2, pos), "double", None, within_ulp(1)),
             ],
-            note="log2 modelled as ln(x) / ln(2), two roundings, as the fact states.",
+            note="ln and log10 within 1 ulp of the correctly rounded value (mpmath); log2 modelled as ln(x) / ln(2), two roundings, as the fact states.",
         ),
     ]
 
@@ -806,19 +891,31 @@ def _zero_order() -> list[Target]:
     def rows(r: random.Random) -> tuple:
         return (r.randint(0, 40), r.choice([0.0, -0.0, 0.0, -0.0, 1.0, None]))
 
-    def first(vals: list) -> Any:
-        xs = [x for x in vals if x is not None]
-        return xs or None
+    def minmax(better: Callable[[float, float], bool]) -> Callable[[list, bool], Any]:
+        """`min`/`max` as `Least`/`Greatest` fold them: a value replaces the
+        buffer only when strictly better, so the first of equal zeros stays;
+        each slice in input order, the partials merged in any order."""
 
-    def minmax(f: Callable) -> Callable[[list, bool], Any]:
-        def m(vals: list, ansi: bool) -> Any:
-            xs = [x for x in vals if x is not None]
-            if not xs:
-                return None
-            best = f(xs)
-            return [x for x in xs if x == best]
+        def fold(xs: list) -> Any:
+            acc = None
+            for x in xs:
+                if x is not None and (acc is None or better(x, acc)):
+                    acc = x
+            return acc
+
+        def m(parts: list, ansi: bool) -> Any:
+            import itertools
+
+            partials = [p for p in (fold(q) for q in parts) if p is not None]
+            if not partials:
+                return [None]
+            return [fold(list(perm)) for perm in itertools.permutations(partials)]
 
         return m
+
+    def distinct(parts: list, ansi: bool) -> Any:
+        xs = {0.0 if x == 0 else x for q in parts for x in q if x is not None}
+        return [len(xs)]
 
     return [
         Target(
@@ -826,17 +923,16 @@ def _zero_order() -> list[Target]:
             "g INT, x DOUBLE",
             rows,
             [
-                Expr("min", "min(x)", minmax(min), "double", None, _one_of_zeros),
-                Expr("max", "max(x)", minmax(max), "double", None, _one_of_zeros),
-                Expr(
-                    "group key",
-                    "first(x) = 0.0 AND count(*) > 0",
-                    lambda vals, ansi: None if first(vals) is None else first(vals)[0] == 0.0,
-                    "boolean",
-                ),
+                Expr("min", "min(x)", minmax(lambda a, b: a < b), "double", None, _one_of_zeros),
+                Expr("max", "max(x)", minmax(lambda a, b: a > b), "double", None, _one_of_zeros),
+                Expr("count distinct", "count(DISTINCT x)", distinct, "bigint"),
             ],
             group=True,
-            note="min and max may return any of the equal zeros they saw, by task order; checked that the zero is one of the group's.",
+            conf=[
+                {"spark.sql.leafNodeDefaultParallelism": "1"},
+                {"spark.sql.leafNodeDefaultParallelism": "2"},
+            ],
+            note="min and max keep the first of equal zeros in each slice, the partials merged in either order (bit for bit); count(DISTINCT x) counts -0.0 and 0.0 once.",
         ),
         Target(
             "spark-zero-order",
@@ -861,7 +957,7 @@ def _zero_order() -> list[Target]:
 
 def _one_of_zeros(got: Any, allowed: Any) -> bool:
     if allowed is None or got is None:
-        return got is allowed
+        return got is None and allowed in (None, [None])
     return any(same_bits(got, a) for a in allowed)
 
 
@@ -1353,8 +1449,8 @@ def _cast_string() -> list[Target]:
         s = row[0].strip(_WS)
         if _INT_TEXT.match(s):
             v = int(s)
-        elif not ansi and re.match(r"^[+-]?\d+\.\d*$", s):
-            v = int(s.split(".")[0] or "0")
+        elif not ansi and (m := re.match(r"^([+-]?)(\d*)\.(\d*)$", s)) and (m[2] or m[3]):
+            v = int(m[1] + (m[2] or "0"))  # the fraction dropped: '1.5' is 1, '.5' is 0
         else:
             return Raise("CAST_INVALID_INPUT") if ansi else None
         if not fits(v, 32):
@@ -1655,31 +1751,42 @@ def _any_of(got: Any, allowed: Any) -> bool:
     return any(same_double(got, a) if isinstance(got, float) else got == a for a in allowed)
 
 
-def _welford(parts: list[list[float]]) -> tuple[float, float, float] | None:
-    """(n, avg, m2) after Welford per slice and Chan's merge."""
+def _welford(parts: list[list[float]]) -> list[tuple[float, float, float]]:
+    """Every (n, avg, m2) `CentralMomentAgg` can reach: Welford's update over
+    each slice in input order, then its merge of the partial buffers in any
+    order (an empty side leaves the other unchanged)."""
+    import itertools
+
     states = []
     for p in parts:
         n, avg, m2 = 0.0, 0.0, 0.0
         for x in p:
             if x is None:
                 continue
+            new_n = n + 1.0
             delta = x - avg
-            n += 1
-            delta_n = delta / n
-            avg += delta_n
-            m2 += delta * (delta - delta_n)
+            delta_n = delta / new_n
+            avg = avg + delta_n
+            m2 = m2 + delta * (delta - delta_n)
+            n = new_n
         states.append((n, avg, m2))
-    n, avg, m2 = 0.0, 0.0, 0.0
-    for n2, avg2, m22 in states:
-        if n2 == 0:
-            continue
-        nn = n + n2
-        delta = avg2 - avg if n > 0 else 0.0
-        delta_n = delta / nn
-        avg = avg + delta_n * n2
-        m2 = m2 + m22 + delta * delta_n * n * n2
-        n = nn
-    return (n, avg, m2) if n else None
+
+    def merge(a: tuple, b: tuple) -> tuple:
+        n1, avg1, m21 = a
+        n2, avg2, m22 = b
+        new_n = n1 + n2
+        delta = 0.0 if n1 == 0 or n2 == 0 else avg2 - avg1
+        delta_n = 0.0 if new_n == 0 else delta / new_n
+        avg = avg2 if n1 == 0 else avg1 if n2 == 0 else avg1 + delta_n * n2
+        return (new_n, avg, m21 + m22 + delta * delta_n * n1 * n2)
+
+    out = []
+    for perm in itertools.permutations(states):
+        acc = (0.0, 0.0, 0.0)
+        for st in perm:
+            acc = merge(acc, st)
+        out.append(acc)
+    return out
 
 
 def _aggregates() -> list[Target]:
@@ -1699,14 +1806,16 @@ def _aggregates() -> list[Target]:
 
     def var(sample: bool, sqrt: bool, legacy: Callable[[], bool]) -> Callable[[list, bool], Any]:
         def m(parts: list, ansi: bool) -> Any:
-            st = _welford(parts)
-            if st is None:
-                return [None]
-            n, _, m2 = st
-            if sample and n == 1:
-                return [math.nan if legacy() else None]
-            v = m2 / (n - 1 if sample else n)
-            return [nd(np.sqrt, v) if sqrt else v]
+            out = []
+            for n, _, m2 in _welford(parts):
+                if n == 0:
+                    out.append(None)
+                elif sample and n == 1:
+                    out.append(math.nan if legacy() else None)
+                else:
+                    v = nd(np.divide, m2, n - 1 if sample else n)
+                    out.append(nd(np.sqrt, v) if sqrt else v)
+            return out
 
         return m
 
