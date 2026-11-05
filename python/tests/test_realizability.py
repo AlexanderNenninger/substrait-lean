@@ -30,9 +30,10 @@ def test_doc_is_current(table):
 
 
 def test_engines_and_their_translations(table):
-    assert set(table) == {"duckdb", "polars"}
+    assert set(table) == {"duckdb", "polars", "spark"}
     assert table["duckdb"]["theorem"] == "Rel.duckdb_refines"
     assert table["polars"]["theorem"] == "Rel.polars_sound"
+    assert table["spark"]["theorem"] == "Rel.spark_sound"
     for e in table.values():
         assert e["version"]
         assert not [r for r in e["rows"] if r["case"] == "inconsistent"]
@@ -49,7 +50,7 @@ def _ids_exist(engine: str, ids: list[str]) -> list[str]:
                 missing.append(i)
         elif not any(
             (ROOT / "characterization" / e / "facts" / f"{i}.json").exists()
-            for e in (engine, "duckdb", "polars")
+            for e in (engine, "duckdb", "polars", "spark")
         ):
             missing.append(i)
     return missing
@@ -84,7 +85,11 @@ def test_every_row_names_real_facts(table):
 
 def test_shim_counts(table):
     """D9's measure: the shims per engine. A new one is a deliberate edit."""
-    assert {k: len(e["shims"]) for k, e in table.items()} == {"duckdb": 3, "polars": 14}
+    assert {k: len(e["shims"]) for k, e in table.items()} == {
+        "duckdb": 3,
+        "polars": 14,
+        "spark": 5,
+    }
 
 
 def test_polars_shims_match_the_python_table(table):

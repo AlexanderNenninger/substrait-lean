@@ -23,6 +23,15 @@ timestamps are refused (duckdb-time-zones). DuckDB's
 `dialect_compatibility_mode` and `regex_match_operator_semantics` wait on a
 check of DuckDB's source.
 
+Spark: a run reads the session's `spark.conf`: sverify's local session
+(`sverify.spark_engine.session`, which starts with `SPARK_CONF`) or the
+session passed as the engine. The facts were probed under ANSI mode, with
+`TIMESTAMP` as `TIMESTAMP_NTZ` and the session time zone UTC
+(spark-exec-settings); the writer's SQL relies on those and on
+`caseSensitive` and `escapedStringLiterals`, so a session that changes them
+refuses every run. The legacy statistics, decimal-precision and
+`percentile_disc` settings refuse only plans whose options they change.
+
 Polars: sverify runs the streaming engine (`collect(engine="streaming")`,
 #605); the in-memory engine is legacy. The check refuses an engine affinity
 that forces another engine (`pl.Config.set_engine_affinity("in-memory")`,
@@ -164,6 +173,70 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
             "the order of rows without an ORDER BY, which no route relies on",
         ),
     ),
+    "spark": (
+        Setting(
+            "spark.sql.ansi.enabled",
+            (True,),
+            "refuse",
+            ("spark-exec-settings", "spark-int-arith", "spark-int-divide", "spark-double-divide"),
+            "whether integer overflow, a zero divisor and a bad cast raise or give NULL or a "
+            "wrapped value (overflow, on_division_by_zero, cast_failure)",
+        ),
+        Setting(
+            "spark.sql.timestampType",
+            ("timestamp_ntz",),
+            "refuse",
+            ("spark-time-zones", "spark-type-names"),
+            "what TIMESTAMP means: an instant in the session time zone or a wall-clock time",
+        ),
+        Setting(
+            "spark.sql.session.timeZone",
+            ("utc", "etc/utc"),
+            "refuse",
+            ("spark-time-zones",),
+            "the wall clock the written SQL reads microseconds as (`unix_micros`, "
+            "`timestamp_micros`)",
+        ),
+        Setting(
+            "spark.sql.caseSensitive",
+            (True,),
+            "refuse",
+            ("spark-exec-settings",),
+            "whether columns `a` and `A` are one column",
+        ),
+        Setting(
+            "spark.sql.parser.escapedStringLiterals",
+            (False,),
+            "refuse",
+            ("spark-exec-settings",),
+            "how a backslash in a string literal reads",
+        ),
+        Setting(
+            "spark.sql.legacy.statisticalAggregate",
+            (False,),
+            "refuse",
+            ("spark-var-stddev", "spark-covar", "spark-corr"),
+            "whether a sample variance, covariance or correlation of one value is NULL or NaN "
+            "(stat_degenerate)",
+            ("stat_degenerate", "stat_algo"),
+        ),
+        Setting(
+            "spark.sql.decimalOperations.allowPrecisionLoss",
+            (True,),
+            "refuse",
+            ("spark-decimal-arith",),
+            "the scale of a decimal result past 38 digits (decimal_rescale)",
+            ("decimal_rescale",),
+        ),
+        Setting(
+            "spark.sql.legacy.percentileDiscCalculation",
+            (False,),
+            "refuse",
+            ("spark-quantile",),
+            "which value percentile_disc takes (quantile_interp)",
+            ("quantile_interp",),
+        ),
+    ),
     "polars": (
         Setting(
             "engine_affinity",
@@ -211,6 +284,36 @@ def _polars_reader() -> Callable[[str], Any]:
     return read
 
 
+def spark_values(spark: Any) -> dict[str, Any]:
+    """The settings of `SETTINGS["spark"]` in the session `spark`, with
+    Spark's defaults for those it does not set."""
+    return {s.name: spark.conf.get(s.name, _SPARK_DEFAULTS.get(s.name)) for s in SETTINGS["spark"]}
+
+
+#: Spark 4.3.0's defaults for the settings `SETTINGS["spark"]` reads (spark-exec-settings).
+_SPARK_DEFAULTS: Mapping[str, str] = {
+    "spark.sql.ansi.enabled": "true",
+    "spark.sql.timestampType": "TIMESTAMP_LTZ",
+    "spark.sql.caseSensitive": "false",
+    "spark.sql.parser.escapedStringLiterals": "false",
+    "spark.sql.legacy.statisticalAggregate": "false",
+    "spark.sql.decimalOperations.allowPrecisionLoss": "true",
+    "spark.sql.legacy.percentileDiscCalculation": "false",
+}
+
+
+def _spark_session() -> Any:
+    """The session a run on `"spark"` uses: sverify's local one, if it has
+    started (`sverify.spark_engine.session`); None before, when the run
+    starts it with `SPARK_CONF`."""
+    import sys
+
+    engine = sys.modules.get("sverify.spark_engine")
+    if engine is None or engine.session.cache_info().currsize == 0:
+        return None
+    return engine.session()
+
+
 _READERS: Mapping[str, Callable[[], Callable[[str], Any]]] = {
     "duckdb": _duckdb_reader,
     "polars": _polars_reader,
@@ -219,10 +322,14 @@ _READERS: Mapping[str, Callable[[], Callable[[str], Any]]] = {
 
 def current(engine: str) -> dict[str, Any]:
     """The settings of `engine` that its profile assumes, as the next run
-    will see them; empty for an engine without a profile."""
+    will see them; empty for an engine without a profile, and for Spark
+    before sverify's session starts (it starts with `SPARK_CONF`)."""
     settings = SETTINGS.get(engine, ())
     if not settings:
         return {}
+    if engine == "spark":
+        spark = _spark_session()
+        return {} if spark is None else spark_values(spark)
     read = _READERS[engine]()
     return {s.name: read(s.name) for s in settings}
 
@@ -254,6 +361,11 @@ def restore(engine: str, setting: Setting) -> str:
         return f"SET GLOBAL {setting.name} = {value}"
     if engine == "polars" and setting.name == "engine_affinity":
         return 'pl.Config.set_engine_affinity("streaming")'
+    if engine == "spark":
+        from sverify.sql.spark import SPARK_CONF
+
+        v = SPARK_CONF.get(setting.name, _SPARK_DEFAULTS.get(setting.name, setting.expected[0]))
+        return f'spark.conf.set("{setting.name}", "{v}")'
     return f"set {setting.name} back to {setting.expected[0]!r}"
 
 

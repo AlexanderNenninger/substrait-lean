@@ -270,6 +270,12 @@ class SparkDialect(Dialect):
     def day_interval(self, days: int) -> str:
         return f"INTERVAL {days} DAYS"
 
+    def float_extreme(self, fn: str, v: str, over: str) -> str:
+        # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever
+        # came first (spark-nan-order, spark-zero-order): the codes' order up
+        # to the zero, which `canon` makes the one zero (`Spark.one_zero`).
+        return self.canon(f"{fn}({v}) {over}" if over else f"{fn}({v})")
+
     def float_sum(self, v: str, o: str) -> str:
         pairs = f"collect_list(named_struct('o', {o}, 'v', {v})) FILTER (WHERE {v} IS NOT NULL)"
         values = f"transform(array_sort({pairs}), p -> p.v)"
