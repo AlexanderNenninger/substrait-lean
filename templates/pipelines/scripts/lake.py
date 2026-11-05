@@ -19,8 +19,9 @@ description, lineage, freshness, a chart and a query box (DuckDB-WASM).
 `preview` prints a pull request's preview comment, and `drop` deletes the
 current stage's tables (a closed pull request's).
 
-Each command exits with the worst exit code of the `sverify` runs: 0
-proved, 1 not proved, 2 refused, 3 budget exceeded, 4 error.
+Each command exits with the highest exit code of the `sverify` runs: 0
+proved, 1 not proved, 2 usage error, 3 unsupported or refused, 4 budget
+exceeded, 5 rows quarantined or a node held, 6 error.
 
 Only sverify's CLI (`sverify.cli.main`, in this process), its public
 `sverify.io` and delta-rs are used.
@@ -67,14 +68,14 @@ def sverify(*args: str) -> tuple[int, dict[str, Any]]:
         with contextlib.redirect_stdout(out):
             code = main([*args, "--json"])
     except SystemExit as e:  # argparse
-        code = e.code if isinstance(e.code, int) else 4
+        code = e.code if isinstance(e.code, int) else 2
     text = out.getvalue()
     # The JSON document is the last thing printed; a pipeline may print before it.
     start = text.find("{\n")
     try:
         doc = json.loads(text[start:] if start >= 0 else text)
     except json.JSONDecodeError:
-        doc = {"exit": code or 4, "error": {"code": "error", "type": "CLI", "message": text}}
+        doc = {"exit": code or 6, "error": {"code": "error", "type": "CLI", "message": text}}
     return code, doc
 
 
@@ -120,7 +121,15 @@ def annotate(level: str, file: str, line: int, title: str, message: str) -> None
 
 def comment(docs: list[dict[str, Any]], code: int) -> str:
     """The PR comment: the contract of every file in plain words."""
-    status = {0: "proved", 1: "not proved", 2: "refused", 3: "budget exceeded", 4: "error"}
+    status = {
+        0: "proved",
+        1: "not proved",
+        2: "usage error",
+        3: "unsupported",
+        4: "budget exceeded",
+        5: "quarantined",
+        6: "error",
+    }
     lines = ["<!-- sverify-check -->", f"## Contract: {status.get(code, 'error')}", ""]
     for doc in docs:
         items = doc.get("items", [])
@@ -139,9 +148,11 @@ def comment(docs: list[dict[str, Any]], code: int) -> str:
                 lines.append("Each refresh checks on the data:")
                 lines += [f"- {c}" for c in s["checks"]]
                 lines.append("")
-            if item.get("problems"):
+            found = [f for f in doc.get("findings", []) if f["item"] == label]
+            found = [f for f in found if f["code"] != "unchecked"]
+            if found:
                 lines.append("Not proved:")
-                for p in item["problems"]:
+                for p in found:
                     extra = (
                         f" Counterexample: `{p['counterexample']}`."
                         if "counterexample" in p
@@ -156,7 +167,7 @@ def comment(docs: list[dict[str, Any]], code: int) -> str:
             lines.append("")
     if code:
         lines.append(
-            f"{EXPLAIN} `sverify suggest <file> --apply` adds the preconditions a proof needs."
+            f"{EXPLAIN} `sverify check <file> --fix` adds the preconditions a proof needs."
         )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -168,10 +179,10 @@ def cmd_check(args: argparse.Namespace) -> int:
         doc.setdefault("file", file)
         docs.append(doc)
         codes.append(code)
-        for item in doc.get("items", []):
-            line = def_line(file, item["name"])
-            for p in item.get("problems", []):
-                annotate("error", file, line, f"sverify [{p['code']}]", p["message"])
+        for p in doc.get("findings", []):
+            line = p.get("line") or def_line(file, p["item"])
+            level = {"note": "notice"}.get(p["level"], p["level"])
+            annotate(level, file, line, f"sverify [{p['code']}]", p["message"])
         if err := doc.get("error"):
             annotate("error", file, 1, f"sverify [{err['code']}]", err["message"])
     code = worst(codes)
@@ -205,9 +216,8 @@ def alert(runs: list[dict[str, Any]]) -> str:
             f"`[{err.get('code', 'error')}]` {err.get('type', '')}: {err.get('message', '')}"
         )
         lines.append("")
-        for item in doc.get("items", []):
-            for p in item.get("problems", []):
-                lines.append(f"- {item['name']}: {p['message']} `[{p['code']}]`")
+        for p in doc.get("findings", []):
+            lines.append(f"- {p['item']}: {p['message']} `[{p['code']}]`")
         lines.append("")
     if any((r["result"].get("error") or {}).get("type") == "PreconditionError" for r in runs):
         lines += [
@@ -218,10 +228,12 @@ def alert(runs: list[dict[str, Any]]) -> str:
         ]
     lines += [
         "What to do:",
-        "- exit 1 (not proved) or 2 (refused): the data or the pipeline changed. "
-        "Run `sverify check` on the file, or comment `@claude fix this` here.",
-        "- exit 3 (budget): raise `SVERIFY_MEMORY_LIMIT` or the timeout.",
-        "- exit 4 (error): read the log of the run.",
+        "- exit 1 (not proved) or 3 (unsupported or refused): the data or the pipeline "
+        "changed. Run `sverify check` on the file, or comment `@claude fix this` here.",
+        "- exit 4 (budget): raise `SVERIFY_MEMORY_LIMIT` or the timeout.",
+        "- exit 5 (quarantined or held): rows broke a precondition and were set aside; "
+        "the alert above names them.",
+        "- exit 2 (usage) or 6 (error): read the log of the run.",
         "",
         f"{EXPLAIN} This issue closes on the next refresh that succeeds.",
     ]

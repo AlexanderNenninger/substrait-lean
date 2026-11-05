@@ -41,6 +41,22 @@ runs `static` only and its `qa` fails; retargeting it to main starts the full
 run (`.github/workflows/retarget.yml`). The header of
 `.github/workflows/ci.yml` has the details.
 
+### Runner slots
+
+GitHub runs at most 20 jobs at once for this repository, and a full CI run
+is about 25. Every push to a pull request queues a new run, so many open
+pull requests wait on each other.
+
+- Merge main into your branch only when the pull request conflicts, or when
+  the coordinator asks before merging it. Merging main after every push
+  restarts the whole run for nothing.
+- Push finished work in one push, not a commit at a time while CI runs.
+- The coordinator merges through batches: green pull requests merged into
+  one branch, one CI run, then merged into main. A push to main whose tree
+  a passing pull request run already tested runs `static` only (the header
+  of `ci.yml`). Docs builds on a pull request only when it changes a file
+  the site reads.
+
 ### Check capacity before expensive tasks
 
 Several agents often work at once, and together they have crashed the
@@ -359,10 +375,12 @@ research goes there, whoever does it.
   can't recover; never guess a date or version.
 - `evidence` is the strongest check in `provenance`: `docs` < `source` <
   `engine_test` (the engine's own tests with an expected result, at the
-  release tag: DuckDB's sqllogictests, Polars's unit tests; method
-  `engine-test`, or `replay` through `sverify_dev.slt`) < `probe` (probes,
-  repros) < `fuzz` < `proof`. Research goes in that
-  order, the cheaper kinds first.
+  release tag: DuckDB's sqllogictests, Polars's unit tests, Spark's golden
+  files; method `engine-test`, or `replay` through `sverify_dev.slt`) <
+  `probe` (probes, repros) < `fuzz` < `proof`. Research goes in that
+  order, the cheaper kinds first. For Spark, `sverify_dev.spark_tests`
+  searches the golden files and checks the links, and `sverify_dev.spark_fuzz`
+  fuzzes the open deviations against a model of each fact.
 - `rows` names the rows of the engine choice tables the fact settles: a
   function group of `Functions.lean`, one of its options, and only the types
   its checks covered. `python -m sverify_dev.facts --coverage <engine>` lists

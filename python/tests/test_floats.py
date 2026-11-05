@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engines import ENGINES, create_table, table_rows
+from sverify.engines import ENGINES
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
 
@@ -78,7 +78,7 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
     t = lambda m: dt.datetime(2024, 1, 1, 0, m)  # noqa: E731
     rows = st.lists(st.tuples(minutes.map(t), values), max_size=5, unique_by=lambda r: r[0])
     for name in ["s1", "s2"]:
-        create_table(con, name, s1.schema(), data.draw(rows))
+        con.create(name, s1.schema(), data.draw(rows))
     view = IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w", engine)
 
     def same(a, b):
@@ -89,7 +89,7 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
     for _step in range(data.draw(st.integers(1, 3))):
         changes = {}
         for name in ["s1", "s2"]:
-            current = table_rows(con, name)
+            current = con.rows(name)
             pick = st.lists(st.sampled_from(current), unique=True, max_size=2)
             gone = data.draw(pick) if current else []
             taken = {r[0] for r in current} - {r[0] for r in gone}
@@ -129,8 +129,8 @@ def test_column_comparisons_imply_not_null():
 def test_incremental_view_with_integer_constants(engine):
     con = sv.connect()
     t = lambda m: dt.datetime(2024, 5, 1, 7, m)  # noqa: E731
-    create_table(con, "hr", hr.schema(), [(1, t(0), 72.0), (1, t(10), -1.0)])
-    create_table(con, "sessions", sessions.schema(), [(1, t(0), t(30))])
+    con.create("hr", hr.schema(), [(1, t(0), 72.0), (1, t(10), -1.0)])
+    con.create("sessions", sessions.schema(), [(1, t(0), t(30))])
     view = IncrementalView(con, in_session(con.table("hr"), con.table("sessions")), "v", engine)
     view.apply({"hr": Changes(inserts=[(1, t(20), 160.0), (1, t(25), 0.0)])})
     assert [r[2] for r in view.rows()] == [72.0, 160.0]
@@ -143,7 +143,7 @@ def test_signed_zeros_are_one_row(engine):
     deletes it."""
     con = sv.connect()
     t = dt.datetime(2024, 1, 1)
-    create_table(con, "s1", s1.schema(), [(t, -0.0), (t, 1.0)])
+    con.create("s1", s1.schema(), [(t, -0.0), (t, 1.0)])
     table = con.table("s1")
     view = IncrementalView(con, table.filter(table.value >= 0), "v", engine)
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0), (t, 1.0)])
@@ -160,7 +160,7 @@ def test_computed_zeros_and_nans_are_canonical(engine):
     sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf, math.nan])}))
 
     def run(sql: str) -> list[tuple]:
-        plan = sv.engine.written_plan(sv.engine.substrait_json(con, sql))
+        plan = sv.engine.written_plan(sv.engine.substrait_json(con, sql, semantics="duckdb"))
         return [tuple(r.values()) for r in sv.engine.run_plan(con, plan, engine).to_pylist()]
 
     got = run("SELECT -x AS y FROM f WHERE -x >= 0")

@@ -102,6 +102,42 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/group-by.sql.out#L973-L982",
+          "note": "`collect_list` and `array_agg` of (1), (2), (1) give [1,2,1], the input order of one VALUES partition"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/listagg.sql.out#L20-L27",
+          "note": "`listagg(col2)` without WITHIN GROUP: the test checks only lengths and letter counts, not order; NULLs skipped, a group of NULLs gives NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/listagg.sql.out#L112-L117",
+          "note": "`listagg(col1) WITHIN GROUP (ORDER BY col2)` sorts: aabb"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/mode.sql.out#L28-L33",
+          "note": "`mode(salary)` over 17 distinct salaries returns 10563, one of the tie"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/mode.sql.out#L85-L90",
+          "note": "`mode(col, true)` over -10, 0, 10 returns the lowest, -10 (`mode(col)` gives 0)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/mode.sql.out#L213-L221",
+          "note": "`mode() WITHIN GROUP (ORDER BY salary)` gives the lowest of the tie, 5186, and `ORDER BY salary DESC` the highest, 11798"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/mode.sql.out#L190-L198",
+          "note": "`mode` of NULLs only is NULL"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
     }
   ]
 }

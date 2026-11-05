@@ -14,7 +14,6 @@
   "permissions": {
     "allow": [
       "Bash(sverify check:*)",
-      "Bash(sverify suggest:*)",
       "Bash(sverify explain:*)",
       "Bash(python scripts/lake.py check:*)",
       "Bash(python -m pytest:*)",

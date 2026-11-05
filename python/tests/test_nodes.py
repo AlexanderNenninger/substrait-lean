@@ -22,7 +22,7 @@ from _pipelines import (
 )
 from sverify import nodes
 from sverify.contracts import label, violations
-from sverify.engines import ENGINES, create_table, delta_plans
+from sverify.engines import ENGINES, delta_plans
 from sverify.errors import (
     CompositionError,
     PostconditionError,
@@ -54,7 +54,7 @@ def test_a_transform_on_a_source_builds_a_node(tmp_path):
     assert list(node.schema) == ["id", "customer", "doubled"]
     # Plain Ibis tables still give Ibis expressions.
     con = sv.connect()
-    create_table(con, "orders", ORDERS, [(1, "ada", 5)])
+    con.create("orders", ORDERS, [(1, "ada", 5)])
     assert not isinstance(doubled(paid(con.table("orders"))), sv.Node)
 
 
@@ -91,7 +91,7 @@ def test_a_node_and_an_ibis_table_do_not_mix(tmp_path):
         return a.union(b)
 
     con = sv.connect()
-    create_table(con, "orders", ORDERS, [])
+    con.create("orders", ORDERS, [])
     with pytest.raises(TypeError, match="StaticSource"):
         both(orders, con.table("orders"))
 
@@ -475,7 +475,7 @@ def test_runtime_postconditions_on_bound_tables_are_checked_in_a_view():
     """An eager result checked on its data when built is checked again on
     every batch of a view of it."""
     con = sv.connect()
-    create_table(con, "orders", ORDERS, [(1, "ada", 5)])
+    con.create("orders", ORDERS, [(1, "ada", 5)])
     pipe = sv.incremental.Pipeline(con)
     view = pipe.view("capped", capped(con.table("orders")))
     assert view.checked

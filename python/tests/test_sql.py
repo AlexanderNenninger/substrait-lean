@@ -38,7 +38,7 @@ from sverify.engine import (
     run_plan,
     substrait_json,
 )
-from sverify.engines import table_rows, written_plan
+from sverify.engines import written_plan
 from sverify.errors import PostconditionError, PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
@@ -713,7 +713,7 @@ def test_incremental_view_on_duckdb():
     view.apply({"orders": Changes(inserts=[(3, "ada", 1)], deletes=[(1, "ada", 30)])})
     assert view.rows() == view.recompute() == [(3, "Paris")]
     # The base table changed in `con` too.
-    assert sorted(table_rows(con, "orders")) == [(2, "bob", 5), (3, "ada", 1)]
+    assert sorted(con.rows("orders")) == [(2, "bob", 5), (3, "ada", 1)]
 
 
 def test_contract_checks_on_duckdb():
@@ -827,14 +827,13 @@ list_rows = st.lists(
 @settings(max_examples=30, deadline=None, suppress_health_check=list(HealthCheck))
 @given(rows=list_rows)
 def test_lists_run_on_duckdb_as_lean_says(build, rows):
-    from sverify.engine import create_table
     from sverify.testing import lean_values
 
     expr = build(LIST_T)
     plan = to_substrait_json(expr)
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"l": rows})))
     con = connect()
-    create_table(con, "l", LIST_T.schema(), rows)
+    con.create("l", LIST_T.schema(), rows)
     for engine in ("duckdb", "polars"):
         got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), engine).to_pylist()]
         if order_matters_of(plan):

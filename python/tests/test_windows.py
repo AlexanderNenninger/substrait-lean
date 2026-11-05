@@ -17,7 +17,6 @@ import sverify as sv
 from sverify.engine import (
     collect,
     connect,
-    create_table,
     run_checker,
     run_plan,
     run_substrait_json,
@@ -69,9 +68,9 @@ keyed_tables = st.lists(
 @given(rows=keyed_tables)
 def test_lean_semantics_match_duckdb(sql, rows):
     con = connect()
-    create_table(con, "r", SCHEMA, rows)
+    con.create("r", SCHEMA, rows)
     expected = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": rows})
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)
     assert duckdb_rows(json.dumps(plan)) == lean
@@ -80,9 +79,9 @@ def test_lean_semantics_match_duckdb(sql, rows):
 def test_written_window_plans_run_on_datafusion():
     con = connect()
     rows = [(1, 3, 10), (1, 1, 20), (2, 5, None), (1, 2, 30), (None, 4, 40)]
-    create_table(con, "r", SCHEMA, rows)
+    con.create("r", SCHEMA, rows)
     for sql in QUERIES:
-        code, written, err = run_checker(("--write",), substrait_json(con, sql))
+        code, written, err = run_checker(("--write",), substrait_json(con, sql, semantics="duckdb"))
         assert code == 0, err
         got = [tuple(r.values()) for r in run_substrait_json(con, written).to_pylist()]
         want = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
@@ -198,7 +197,7 @@ def test_strict_order_needs_an_offset():
 
 def test_windows_are_not_incremental():
     con = connect()
-    create_table(con, "readings", readings.schema(), [])
+    con.create("readings", readings.schema(), [])
     with pytest.raises(NotIncremental):
         IncrementalView(con, ibis.to_sql(with_neighbours(readings), dialect="duckdb"), "v")
 
@@ -242,13 +241,13 @@ any_tables = st.lists(
 
 def lean_and_duckdb(sql: str, rows: list[tuple]) -> tuple[list, list]:
     con = connect()
-    create_table(con, "r", SCHEMA, rows)
+    con.create("r", SCHEMA, rows)
     out = duckdb_sql(con, sql)
     expected = [
         tuple((round(v, 6) if v != 0 else 0.0) if isinstance(v, float) else v for v in r.values())
         for r in out.to_pylist()
     ]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": rows})
     return lean_values(json.dumps(plan)), expected
 
 
@@ -286,7 +285,7 @@ def test_ntile_on_every_engine(n, k):
     the buckets itself; DataFusion, whose NTILE differs, is refused."""
     con = connect()
     t = ibis.table({"t": "int64"}, name="w")
-    create_table(con, "w", t.schema(), [(i,) for i in range(n)])
+    con.create("w", t.schema(), [(i,) for i in range(n)])
     expr = t.select("t", b=ibis.ntile(k).over(order_by=t.t)).order_by("t")
     plan = json.dumps(to_substrait(expr))
     q, r = divmod(n, k)
@@ -311,27 +310,32 @@ def test_sliding_double_aggregates_are_refused():
     `--write-datafusion` refuses them; a running frame (from UNBOUNDED
     PRECEDING) is fine (#506)."""
     con = connect()
-    create_table(
-        con, "f", ibis.schema({"t": "int64", "v": "float64"}), [(1, 0.0), (2, None), (3, None)]
-    )
+    con.create("f", ibis.schema({"t": "int64", "v": "float64"}), [(1, 0.0), (2, None), (3, None)])
     sliding = (
         "SELECT t, AVG(v) OVER (ORDER BY t ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS a FROM f"
     )
     assert any(
         r["a"] != r["a"] for r in collect(con._datafusion_session.sql(sliding)).to_pylist()
     )  # NaN
-    assert run_checker((), substrait_json(con, sliding))[0] == 0
-    code, out, err = run_checker(("--write-datafusion",), substrait_json(con, sliding))
+    assert run_checker((), substrait_json(con, sliding, semantics="duckdb"))[0] == 0
+    code, out, err = run_checker(
+        ("--write-datafusion",), substrait_json(con, sliding, semantics="duckdb")
+    )
     assert code != 0 and "sliding frame" in out + err
     running = "SELECT t, AVG(v) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING) AS a FROM f"
-    assert run_checker(("--write-datafusion",), substrait_json(con, running))[0] == 0
+    assert (
+        run_checker(("--write-datafusion",), substrait_json(con, running, semantics="duckdb"))[0]
+        == 0
+    )
     stale = "SELECT t, MIN(v) OVER (ORDER BY t ROWS CURRENT ROW) AS m FROM f"
     assert [r["m"] for r in collect(con._datafusion_session.sql(stale)).to_pylist()] == [
         0.0,
         0.0,
         0.0,
     ]
-    assert run_checker(("--write-datafusion",), substrait_json(con, stale))[0] != 0
+    assert (
+        run_checker(("--write-datafusion",), substrait_json(con, stale, semantics="duckdb"))[0] != 0
+    )
 
 
 def test_window_sums_may_wrap():
@@ -380,7 +384,7 @@ RANGE_EXPRS = [
 def test_range_frames_match_duckdb(i, rows):
     expr = RANGE_EXPRS[i]
     con = connect()
-    create_table(con, "r", SCHEMA, rows)
+    con.create("r", SCHEMA, rows)
     expected = [tuple(r.values()) for r in duckdb_ibis(con, expr).to_pylist()]
     lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"r": rows})))
     assert canonical(lean) == canonical(expected)
@@ -452,7 +456,7 @@ def test_sliding_frames_and_expressions_match_duckdb(i, rows):
     rows = [(s, m, datetime(2026, 1, 1) + timedelta(minutes=m), v, q) for s, m, v, q in rows]
     expr = SLIDING_EXPRS[i]
     con = connect()
-    create_table(con, "w", W.schema(), rows)
+    con.create("w", W.schema(), rows)
     expected = _rounded(duckdb_ibis(con, expr).to_pylist())
     plan = to_substrait(expr)
     lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"w": rows})))
@@ -470,7 +474,7 @@ def test_negative_ibis_offsets_count_the_other_way():
     expr = R.select("s", "t", a=R.v.sum().over(w))
     rows = [(0, t, t * 2) for t in range(6)] + [(1, 0, 5), (1, 1, None)]
     con = connect()
-    create_table(con, "r", SCHEMA, rows)
+    con.create("r", SCHEMA, rows)
     sql = (
         "SELECT s, t, SUM(v) OVER (PARTITION BY s ORDER BY t "
         "ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING) AS a FROM r"

@@ -65,7 +65,9 @@ def con():
 def lean(con, query: str | ibis.Table) -> list[tuple]:
     """`Rel.eval`'s rows, decimals as `Decimal`s printed at their scale."""
     plan = json.loads(
-        substrait_json(con, query) if isinstance(query, str) else to_substrait_json(query)
+        substrait_json(con, query, semantics="duckdb")
+        if isinstance(query, str)
+        else to_substrait_json(query)
     )
     rows = lean_values(json.dumps(inline_tables(plan, ROWS)))
     return [tuple(str(v) if isinstance(v, D) else v for v in r) for r in rows]
@@ -233,7 +235,7 @@ def test_a_bounded_decimal_sum_over_capped_rows_is_proved_to_fit():
 def test_decimal_plans_are_written_but_not_for_datafusion(con):
     """Stage 2: decimal plans are written back as typed calls and casts for
     the engines; DataFusion does not compute decimals as the reference does."""
-    plan = substrait_json(con, "SELECT a + b AS r FROM t")
+    plan = substrait_json(con, "SELECT a + b AS r FROM t", semantics="duckdb")
     code, out, _ = run_checker(("--write",), plan)
     assert code == 0 and "decimal" in out
     code, _, err = run_checker(("--write-datafusion",), plan)
