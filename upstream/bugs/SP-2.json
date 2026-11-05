@@ -1,0 +1,35 @@
+{
+  "id": "SP-2",
+  "project": "spark",
+  "kind": "bug",
+  "version": "4.3.0",
+  "status": "filed",
+  "status_note": "Reproduces on Spark 4.3.0 in both ANSI modes, interpreted and codegen. Filed upstream as SPARK-59859 (open, 2026-09-29), which describes the same wrap for `date_add`, `date_sub`, `date ± int` and `try_add`.",
+  "upstream": [
+    "https://issues.apache.org/jira/browse/SPARK-59859"
+  ],
+  "summary": "`date_add(d, n)` adds the days as `Int`s with no overflow check (`DateAdd.nullSafeEval`: `start + d`), so a result past 2³¹ - 1 days wraps to a valid but wrong date: `date_add(DATE'2024-01-01', 2147483647)` is `-5877587-06-21`, with ANSI on or off. Adding months, intervals to timestamps and `timestampadd` raise `DATETIME_OVERFLOW` instead.",
+  "repro": "SELECT CAST(date_add(DATE'2024-01-01', 2147483647) AS STRING);\n-- -5877587-06-21 (spark.sql.ansi.enabled true or false)",
+  "handling": "The reference raises outside 0001-01-01 … 9999-12-31 (`date_range`, #251), so the Spark profile needs a range guard on the day count before `date_add`, or computes the date from `BIGINT` days. The fix upstream is `Math.addExact` with `DATETIME_OVERFLOW`, as SPARK-59859 proposes.",
+  "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, probe date-range-far",
+  "issues": [
+    738,
+    251
+  ],
+  "files": [
+    "characterization/spark/probes.json",
+    "characterization/spark/facts/spark-date-range.json"
+  ],
+  "facts": [
+    "spark-date-range"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
+      },
+      "note": "probe date-range-far, both ANSI modes, folded and codegen. Source at v4.3.0: datetimeExpressions.scala#L524-L545. JIRA search for \"date_add overflow\", \"date_add integer overflow\": SPARK-59859 (open), and SPARK-60910 for `datediff`."
+    }
+  ]
+}

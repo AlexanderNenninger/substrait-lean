@@ -1,0 +1,32 @@
+{
+  "id": "SP-4",
+  "project": "spark",
+  "kind": "bug",
+  "version": "4.3.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Spark 4.3.0 in both ANSI modes. The interpreted path (the optimizer folding a constant query) raises `INVALID_PARAMETER_VALUE.PATTERN`; with `ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs through whole-stage codegen, the same pattern raises a bare `java.util.regex.PatternSyntaxException`. No matching issue found.",
+  "summary": "An invalid constant regex (`'a' RLIKE '('`) raises `INVALID_PARAMETER_VALUE.PATTERN` on the interpreted path and a bare `java.util.regex.PatternSyntaxException: Unclosed group` without an error class on the codegen path, so the error a user sees depends on how the optimizer ran the query.",
+  "repro": "SET spark.sql.optimizer.excludedRules=org.apache.spark.sql.catalyst.optimizer.ConvertToLocalRelation,org.apache.spark.sql.catalyst.optimizer.ConstantFolding;\nSELECT s RLIKE '(' FROM VALUES ('a') AS t(s);\n-- java.util.regex.PatternSyntaxException: Unclosed group near index 1\nRESET spark.sql.optimizer.excludedRules;\nSELECT s RLIKE '(' FROM VALUES ('a') AS t(s);\n-- [INVALID_PARAMETER_VALUE.PATTERN]",
+  "handling": "sverify writes constant patterns it has checked (#50), so no plan reaches it; the probe records it under spark-regex. The fix upstream is to compile the constant pattern in codegen through the same helper that wraps the error.",
+  "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, probe string-regex-invalid",
+  "issues": [
+    738,
+    50
+  ],
+  "files": [
+    "characterization/spark/probes.json",
+    "characterization/spark/facts/spark-regex.json"
+  ],
+  "facts": [
+    "spark-regex"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
+      },
+      "note": "probe string-regex-invalid, both ANSI modes, folded and codegen. JIRA search for \"PatternSyntaxException codegen\", \"rlike PatternSyntaxException\", \"regexp invalid pattern codegen error class\": no match."
+    }
+  ]
+}
