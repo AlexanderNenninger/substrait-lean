@@ -397,3 +397,12 @@ theorem StdModel.core_corr_chan (P : Plan) (Pv Pw : VPlan) (hne : P.pairs ≠ []
 end FloatBounds
 
 end
+
+/-! The `stat_algo` theorems the core's DuckDB row names (`floatBoundsTheorems`
+in `SubstraitLean/EngineTables.lean`) are these. -/
+open Lean in
+run_cmd do
+  for thm in ["FloatBounds.StdModel.core_var_chan", "FloatBounds.StdModel.core_cov_chan",
+      "FloatBounds.StdModel.core_corr_chan"] do
+    unless (← getEnv).contains thm.toName do
+      throwError "no theorem {thm}"
