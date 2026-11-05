@@ -1754,7 +1754,7 @@ class Exprs:
             m = math.inf
         x, ml = a.expr, pl.lit(m, pl.Float64)
         if d < 0 and math.isinf(m):
-            out = pl.when(~x.is_finite()).then(x).otherwise(pl.lit(0.0, pl.Float64))
+            out = pl.when(x.is_null() | ~x.is_finite()).then(x).otherwise(pl.lit(0.0, pl.Float64))
             return Val(canon(out), pl.Float64, a.issues)
         if d >= 0:
             r = exact_div(shims.round_half_away(x * ml), ml)
