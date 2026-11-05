@@ -1234,9 +1234,7 @@ def choose(
                 rerun_evidence=rerun_evidence,
             )
         seen, held = observed(report)
-        got = realization(
-            e, depends, seen, report.epsilon, held, (report.rows_exact or {}).get(e)
-        )
+        got = realization(e, depends, seen, report.epsilon, held, (report.rows_exact or {}).get(e))
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
