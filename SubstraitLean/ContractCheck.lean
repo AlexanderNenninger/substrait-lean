@@ -183,6 +183,10 @@ structure Report where
   keeps every proof (it takes some rows of an allowed order) and the written
   SQL breaks its ties by input order; only a rerun may differ. -/
   windowsTotal : Bool := true
+  /-- Where the transformation leaves the order of ties open (D24): each
+  relation in the pre-order of `relations`, by its index, its operator and
+  what is open. Empty when `deterministic`. -/
+  tiePlaces : List (Nat × String × String) := []
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
@@ -292,6 +296,8 @@ def Report.json (r : Report) : Json :=
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
     ("windows_total", Lean.toJson r.windowsTotal),
+    ("tie_places", Json.arr (r.tiePlaces.map fun (i, op, what) => Json.mkObj
+      [("relation", Lean.toJson i), ("op", Lean.toJson op), ("what", Lean.toJson what)]).toArray),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
     ("relations", Json.arr (r.relations.map fun (op, d, n, g) =>
       Json.mkObj [("op", Lean.toJson op), ("depth", Lean.toJson d),
@@ -399,6 +405,39 @@ def relationBounds (cat : Catalog) (A : String → List AVal) (F : String → Li
       relationBounds cat A F K caps P (d + 1) a ++ relationBounds cat A F K caps P (d + 1) b
   here :: rest
 
+/-- The relations of `r` in pre-order, as `relationBounds` lists them. -/
+def preorder (r : Rel) : List Rel :=
+  r :: match r with
+    | .read _ | .values _ _ => []
+    | .filter i _ | .project i _ | .emit i _ | .fetch i _ _ | .window i _ _ _ | .orderBy i _
+    | .distinct i | .aggregate i _ _ | .unnest i _ => preorder i
+    | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => preorder a ++ preorder b
+
+/-- What the relation `r` leaves open of the order of ties, beyond its
+inputs: the checks of `Rel.windowsTotal` and `Rel.fetchesTotal` at `r`. -/
+def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) : Rel → List String
+  | .window r part sort fns =>
+    if Rel.windowTotalAt cat A F K r part sort fns then [] else
+      let fs := ", ".intercalate ((fns.filter (!·.orderFree)).map WinFn.render)
+      [s!"{fs} over rows that tie in PARTITION BY {part.map (s!"${·}")} ORDER BY " ++
+        s!"{sort.map (s!"${·.col}")}, with no key among those columns"]
+  | .aggregate r gs ms => (ms.filter fun m => !Measure.totalIn cat A F K r gs m).map fun m =>
+      s!"{m.render} over rows that tie in its ORDER BY, with no key among the group's and " ++
+        "the order's columns"
+  | .fetch (.orderBy i keys) _ _ =>
+    if Rel.fetchTotalAt cat A F K i keys then [] else
+      [s!"the rows it takes tie in ORDER BY {keys.map (s!"${·.col}")}, with no key among " ++
+        "those columns"]
+  | .fetch _ _ _ => ["the rows it takes have no ORDER BY"]
+  | _ => []
+
+/-- Where `r` leaves the order of ties open: each relation's index in
+`preorder r`, its operator and what is open. -/
+def tiePlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
+  (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map (i, opName n, ·)
+
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
 def issuesUnderAndOr (transform : Option Plan) (issues : List (Issue × Expr)) : List Expr :=
   match transform with
@@ -441,8 +480,6 @@ def check (input : Json) : Except String Report := do
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let perKey := rowsPer ((input.getObjVal? "rows_per").toOption.getD (.obj {}))
-  let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST, " ++
-    "STRING_AGG, MODE, ARG_MIN or ARG_MAX, and the engine orders them"
   let mut results : List (String × Bool × String) := []
   let mut suggestions : List Infer.Bounds := []
   for q in ensures do
@@ -451,9 +488,9 @@ def check (input : Json) : Except String Report := do
     let env := (q.root.capReads caps).aeval cat A F T
     let names := if q.names.length == env.length then q.names
       else (List.range env.length).map (s!"#{·}")
-    let total := q.root.windowsTotal cat A F inputKeys
-    results := results ++ names.zip (env.map fun a =>
-      if total then (a.certainlyTrue, a.render) else (false, tied))
+    -- Proved for every order of the ties (`contract_sound_all`, with
+    -- `Rel.orderAllowed_capReads` and `Rel.keyedWindows_soundAll`, D24).
+    results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
     suggestions := suggestions ++ (List.range env.length).map fun i =>
       let b := Infer.suggest cat A F T q.root i
       { b with needs := Infer.trim A b.needs }
@@ -473,13 +510,16 @@ def check (input : Json) : Except String Report := do
   -- `ORDER BY` on a key: otherwise a rerun may give other rows (D10).
   let windowsDet := transform.all (·.root.windowsTotal cat A F inputKeys)
   let deterministic := windowsDet && transform.all (·.root.fetchesTotal cat A F inputKeys)
+  let tiePlaces := match transform with
+    | some p => if p.root.checkWF cat then tiePlaces cat A F inputKeys p.root else []
+    | none => []
   let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
   let keys ← match transform with
     | some p =>
       if !p.root.checkWF cat then throw "the transformation plan is not well-formed"
       let derived := p.root.keys cat A F inputKeys
-      -- A key holds on whichever rows a `FETCH` takes: windows decide it.
-      pure (wanted.map fun k => (k, windowsDet && derived.any fun k' => k'.all (k.contains ·)))
+      -- A derived key holds on every order (`Rel.keys_sound_all`, D24).
+      pure (wanted.map fun k => (k, derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
   let raw := match transform with
     | some p => if p.root.checkWF cat then p.root.mayIssues cat A F T false else []
@@ -533,6 +573,7 @@ def check (input : Json) : Except String Report := do
     keys
     deterministic
     windowsTotal := windowsDet
+    tiePlaces
     issues
     rows
     relations

@@ -198,6 +198,7 @@ def _(READING, ibis, sv, three_high):
         three_high(readings_schema), ensures=[_.temperature > 30, sv.unique("device_id", "ts")]
     )
     assert not unkeyed.deterministic
+    assert [c.label for c in unkeyed.unproved] == ["unique(device_id, ts)"]
     return readings_schema, unkeyed
 
 
@@ -210,13 +211,14 @@ def _(mo, unkeyed):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Nothing is proved, not even `temperature > 30`, which is in the filter.
-    The verdict is undetermined: if a device can send two readings with the
-    same `ts`, which one is "previous" depends on how the engine breaks the
-    tie. The catalogue found this in 44 of its 139 queries (dedup, top-N,
-    `LAG` over equal timestamps; see its
-    [findings](../catalogue/FINDINGS.md)), and it is the most common way for
-    engines to disagree.
+    `temperature > 30` is proved: it holds whichever reading the engine takes
+    as the previous one. One alert per device and minute is not, and the
+    report warns that the result is not deterministic. If a device can send
+    two readings with the same `ts`, which one is "previous" depends on how
+    the engine breaks the tie, and a rerun may page you twice. The catalogue
+    found this in 44 of its 139 queries (dedup, top-N, `LAG` over equal
+    timestamps; see its [findings](../catalogue/FINDINGS.md)), and it is the
+    most common way for engines to disagree.
 
     The fix is to state what the source promises: at most one reading per
     device and minute. The sensor team can make that promise, and the job
