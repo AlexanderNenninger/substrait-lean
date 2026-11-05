@@ -1,5 +1,5 @@
 """The public API is `sverify`, `sverify.io`, `sverify.engines`,
-`sverify.testing`, `sverify.errors` and `sverify.cli`, and every name in it
+`sverify.testing`, `sverify.errors`, `sverify.cli` and `sverify.odcs`, and every name in it
 is documented: a class or function by its own docstring, any other value in
 its module's docstring."""
 
@@ -15,6 +15,7 @@ PUBLIC = [
     "sverify.testing",
     "sverify.errors",
     "sverify.cli",
+    "sverify.odcs",
 ]
 
 
