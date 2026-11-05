@@ -40,30 +40,92 @@ Engines, SQL dialects and plans are in `sverify.engines`, the exceptions in
 `sverify.errors`. `__version__` is the installed version.
 """
 
+import importlib as _importlib
+import sys as _sys
+import types as _types
 from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
 from importlib.metadata import version as _version
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+from typing import Any as _Any
 
-import sverify.sql  # noqa: F401 - before `sql` below, which a first import of it would replace
-from sverify.asof import asof_join
-from sverify.contracts import (
-    ContractedTransform,
-    Report,
-    approx,
-    arrives_within,
-    key,
-    max_rows,
-    references,
-    rows_per,
-    transform,
-    unique,
-    verify,
-)
-from sverify.engine import connect
-from sverify.incremental import Changes
-from sverify.nodes import Node, group
-from sverify.observation import equivalent, within
-from sverify.sql_model import sql
-from sverify.substrait_export import from_substrait
+if _TYPE_CHECKING:
+    from sverify.asof import asof_join
+    from sverify.contracts import (
+        ContractedTransform,
+        Report,
+        approx,
+        arrives_within,
+        key,
+        max_rows,
+        references,
+        rows_per,
+        transform,
+        unique,
+        verify,
+    )
+    from sverify.engine import connect
+    from sverify.incremental import Changes
+    from sverify.nodes import Node, group
+    from sverify.observation import equivalent, within
+    from sverify.sql_model import sql
+    from sverify.substrait_export import from_substrait
+
+# The public names, imported on first use (PEP 562): `import sverify` stays
+# cheap, and so do the command's `--help`, `--version` and `explain`, until
+# a name that needs Ibis is read.
+_LAZY = {
+    "asof_join": "sverify.asof",
+    "ContractedTransform": "sverify.contracts",
+    "Report": "sverify.contracts",
+    "approx": "sverify.contracts",
+    "arrives_within": "sverify.contracts",
+    "key": "sverify.contracts",
+    "max_rows": "sverify.contracts",
+    "references": "sverify.contracts",
+    "rows_per": "sverify.contracts",
+    "transform": "sverify.contracts",
+    "unique": "sverify.contracts",
+    "verify": "sverify.contracts",
+    "connect": "sverify.engine",
+    "Changes": "sverify.incremental",
+    "Node": "sverify.nodes",
+    "group": "sverify.nodes",
+    "equivalent": "sverify.observation",
+    "within": "sverify.observation",
+    "sql": "sverify.sql_model",
+    "from_substrait": "sverify.substrait_export",
+}
+
+
+def __getattr__(name: str) -> _Any:
+    """A public name, imported on first use; else a submodule
+    (`sverify.contracts`), as an eager import used to load them."""
+    if name in _LAZY:
+        value = getattr(_importlib.import_module(_LAZY[name]), name)
+        globals()[name] = value
+        return value
+    if name.startswith("__"):
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    try:
+        return _importlib.import_module(f"{__name__}.{name}")
+    except ModuleNotFoundError as e:
+        if e.name != f"{__name__}.{name}":
+            raise
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+
+
+class _Module(_types.ModuleType):
+    """`sverify` itself: `sverify.sql` stays the function `sql`, though the
+    package `sverify.sql` (the SQL writers) shares its name and its import
+    would set the attribute to the package."""
+
+    def __setattr__(self, name: str, value: _Any) -> None:
+        if name == "sql" and isinstance(value, _types.ModuleType):
+            return
+        super().__setattr__(name, value)
+
+
+_sys.modules[__name__].__class__ = _Module
 
 __all__ = [
     "Changes",
