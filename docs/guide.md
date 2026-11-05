@@ -767,9 +767,11 @@ shell, a CI job or an agent
 ```bash
 sverify check pipelines/orders.py            # prove every transform and node in the file
 sverify check pipelines/orders.py:paid       # one node or transform
-sverify suggest pipelines/orders.py --apply  # write the preconditions proofs need into requires=
+sverify check pipelines/orders.py --full     # with each node's full report
+sverify check pipelines/orders.py --diff     # the preconditions the proofs need, as a diff
+sverify check pipelines/orders.py --fix      # write them into requires=, then check again
 sverify refresh pipelines/orders.py:paid     # run a node and report what changed
-sverify explain may-be-false                 # what a [code] of check's output means
+sverify explain may_be_false                 # what a [code] of check's output means
 ```
 
 `check` imports the file without running it. Every contracted transform
@@ -781,7 +783,7 @@ directory with a `dbt_project.yml` goes to `sverify-dbt check`.
 
 The output starts with the contract in plain words, for a pull request's
 comment or a phone's screen: what the output guarantees, what each refresh
-checks on the data, and what is not proved, each problem with a code.
+checks on the data, and what is not proved, each finding with a code.
 
 ```text
 Contract of pipelines/orders.py
@@ -797,26 +799,41 @@ doubled (d): NOT proved: 1 precondition needed
 ```
 
 `sverify explain <code>` says what a code means and how to fix it, and
-`sverify explain <file>:<node>` prints the node's full report, so the
-default output stays short in an agent's context. `sverify suggest` shows
-the preconditions the proofs need (`Report.needs`) as a diff of the
-decorators' `requires=`; with `--apply` it writes them and checks the file
-again.
+`check --full` adds each node's full report, so the default output stays
+short in an agent's context. `check --diff` shows the preconditions the
+proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
+`check --fix` writes them and checks the file again.
 
-Every command takes `--json`, one document for tools with the same fields
-(`items`, each with its `status`, `summary`, `problems` and `needs`). Until
-the versioned report format
-([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736))
-lands, the document says `"format": "provisional"`. The exit codes are:
+`--format` (or `--output-format`) chooses the output:
+
+- `text`, the default, as above;
+- `json` (`--json` for short), one document for tools in the format of
+  [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json): the
+  exit code and its `status`, for each node its `status`, the plain words
+  (`summary`) and its report as `Report.to_json()` writes it, and the
+  `findings`, each with its code, level and line;
+- for `check`, `github`: GitHub's workflow commands, which annotate the
+  transform's line on a pull request in any repository and in the mobile
+  app;
+- `sarif`: a SARIF 2.1.0 log for code scanning
+  (`github/codeql-action/upload-sarif`), one rule per code, with
+  `explain`'s text;
+- `junit`: JUnit XML, one test case per postcondition proved and per
+  finding, for the test reports of GitLab, Jenkins, Buildkite or Azure
+  DevOps ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+
+The codes are snake case (`may_be_false`), as the report's `reason` and
+issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 
 | Code | Meaning |
 |------|---------|
-| 0 | proved, or every postcondition it does not prove is checked on the data at each refresh |
+| 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
-| 2 | refused: a construct outside sverify's model (`sverify.errors.Unsupported`) |
-| 3 | budget exceeded: time or memory |
-| 4 | error |
-| 5 | `refresh` completed, and rows of a node's sources are quarantined (`on_violation="quarantine"`) or a node held its batch (`on_violation="hold"`); the JSON's `status` says which |
+| 2 | usage error: a flag, a missing file, a node the file lacks |
+| 3 | unsupported or refused: a construct outside sverify's model (`sverify.errors.Unsupported`), or no route takes a proved node to the engine |
+| 4 | time or memory budget exceeded |
+| 5 | a refresh committed with rows quarantined, or held a node |
+| 6 | error: the file raised, I/O, a crash |
 
 With 5, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
@@ -826,7 +843,7 @@ proof, planning and checking. A refresh moving data has no time limit:
 `--memory-limit` (or `SVERIFY_MEMORY_LIMIT`, such as `2GB`) bounds it
 instead, as DuckDB's `memory_limit`, past which DuckDB spills to a
 temporary directory (`SVERIFY_SPILL_DIRECTORY`). Past either budget the
-call stops with code 3 before any sink commits, and reports what was
+call stops with code 4 before any sink commits, and reports what was
 proved before it ([test_cli.py](../python/tests/test_cli.py)).
 `sverify.cli.discover(path)` does what `check` does from Python.
 

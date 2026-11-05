@@ -143,4 +143,4 @@ class Budget:
         finally:
             sys.stdout.flush()
             sys.stderr.flush()
-            os._exit(3)
+            os._exit(4)  # the budget's exit code (`_main.BUDGET`)
