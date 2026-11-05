@@ -272,13 +272,13 @@ semi-structured data.
 | iot | 12 | 12 | 0 | 0 | 0 | 12 | 10 | 12 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 11 | 0 | 3 | 0 | 14 | 10 | 11 | 9 |
-| product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 12 | 9 |
+| product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 13 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 14 | 0 | 1 | 0 | 15 | 14 | 14 | 9 |
 | tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 8 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 22 | 22 | 6 |
 | windows | 13 | 13 | 0 | 0 | 0 | 13 | 12 | 13 | 5 |
-| **all** | 139 | 135 | 0 | 4 | 0 | 137 | 122 | 134 | 68 |
+| **all** | 139 | 135 | 0 | 4 | 0 | 137 | 122 | 135 | 68 |
 
 ### Feature frequency
 
@@ -407,7 +407,6 @@ Over the 135 queries that verify (some only as DOUBLE):
 | snowflake: refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https | 1 |
 | polars: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it y | 1 |
 | snowflake: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run i | 1 |
-| duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 1 |
 | polars: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run | 1 |
 | snowflake: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not  | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |

@@ -110,7 +110,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | pa-users-without-orders | [Users who never ordered](https://www.postgresql.org/docs/current/functions-subquery.html) | ✓ | NPDS |  |
 | pa-market-basket | [Products bought together](https://oneuptime.com/blog/post/2026-03-31-clickhouse-market-basket-analysis/view) | ✓ | NPDS |  |
 | pa-median-order-value | [Median order value per status](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✓ | ND |  |
-| pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✓ | N |  |
+| pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✓ | ND |  |
 | pa-histogram | [Histogram of order amounts](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | NPDS |  |
 | pa-string-agg | [Products of each order as a list](https://modern-sql.com/feature/listagg) | ✓ | ND |  |
 | pa-ntile-free-spenders | [Spend deciles with percent rank](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | NPD |  |
