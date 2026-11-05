@@ -1,6 +1,6 @@
 [project]
 name = "sverify-dbt"
-version = "0.4.0"
+version = "0.5.0"
 description = "Check a dbt project's tests and model contracts with sverify, before the models run"
 readme = "README.md"
 license = "MPL-2.0"
@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     # sverify-dbt is released with sverify, at its version
     # (.claude/skills/release-sverify/SKILL.md bumps both).
-    "sverify==0.4.0",
+    "sverify==0.5.0",
     # Rewrites the relations of each model's compiled SQL to its inputs' names.
     "sqlglot>=30.17.0",
     # Writes the selectors file (dbt depends on it too).
