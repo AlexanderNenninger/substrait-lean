@@ -49,12 +49,15 @@ def test_proved() -> None:
         orders.select("id", d=_.total * 2), requires=BOUNDED, ensures=[_.d >= 0, sv.unique("id")]
     )
     doc = _round_trip(report)
-    assert doc["format"] == report_json.FORMAT == 1
+    assert doc["format"] == report_json.FORMAT == 2
     assert doc["proved"] and doc["verdict"] == "proved"
-    assert [(c["label"], c["proved"], c["reason"]) for c in doc["ensures"]] == [
-        ("(_.d >= 0)", True, None),
-        ("unique(id)", True, None),
+    assert [
+        (c["properties"]["label"], c["ruleId"], c["level"], c["kind"]) for c in doc["ensures"]
+    ] == [
+        ("(_.d >= 0)", "proved", "none", "pass"),
+        ("unique(id)", "proved", "none", "pass"),
     ]
+    assert doc["equivalence"]["text"] and "observation" not in doc
     assert doc["facts"]["d"] and doc["output"] == {"id": "int64", "d": "int64"}
     assert doc["not_null"] == report.not_null
 
@@ -68,12 +71,13 @@ def test_unproved_with_reasons_and_counterexample() -> None:
     doc = _round_trip(report)
     assert not doc["proved"]
     d, key = doc["ensures"]
-    assert d["reason"] == "may_be_false" and d["message"].startswith("NOT proved")
-    assert key["reason"] == "not_a_key"
+    assert (d["ruleId"], d["level"], d["kind"]) == ("may_be_false", "error", "fail")
+    assert d["message"]["text"].startswith("NOT proved")
+    assert key["ruleId"] == "not_a_key"
     back = Report.from_json(json.dumps(doc))
     assert [c.reason for c in back.ensures] == ["may_be_false", "not_a_key"]
     if report.ensures[0].counterexample is not None:
-        assert d["counterexample"]["tables"]["orders"]
+        assert d["properties"]["counterexample"]["tables"]["orders"]
 
 
 def test_needs_and_issues() -> None:
@@ -85,14 +89,18 @@ def test_needs_and_issues() -> None:
         ("qty", "<>", "_.qty != 0")
     }
     by_code = {n["code"]: n for n in doc["needs"]}
-    assert by_code["_.qty != 0"]["issue"]["kind"] == "division by zero"
+    issue = by_code["_.qty != 0"]["issue"]
+    assert (issue["ruleId"], issue["level"]) == ("division_by_zero", "error")
     back = Report.from_json(json.dumps(doc))
     assert [n.code for n in back.needs] == [n.code for n in report.needs]
 
     summed = sv.verify(orders.aggregate(s=orders.total.sum()))
     doc = _round_trip(summed)
-    assert [i["kind"] for i in doc["assumed"]] == ["SUM overflow"]
-    assert doc["assumed"][0]["assumption"]
+    assert [(i["ruleId"], i["level"], i["kind"]) for i in doc["assumed"]] == [
+        ("sum_overflow", "note", "informational")
+    ]
+    assert doc["assumed"][0]["properties"]["assumption"]
+    assert [i.kind for i in Report.from_json(doc).assumed] == ["SUM overflow"]
 
 
 def test_routes_after_a_run() -> None:
@@ -108,6 +116,7 @@ def test_routes_after_a_run() -> None:
     assert set(doc["routes"]) == {"duckdb"}
     r = doc["routes"]["duckdb"]
     assert r["kind"] and r["class"] == "exact" and r["reason"]
+    assert r["semantics"] == "reference" and "profile" not in r
     assert Report.from_json(report.to_json()).routes["duckdb"].kind == r["kind"]
 
 
@@ -118,13 +127,29 @@ def test_tolerance_observation() -> None:
         ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
     )
     doc = _round_trip(report)
-    assert doc["observation"]["components"]["floats"] == {"abs": 1e-6, "rel": None, "ulps": None}
+    assert doc["equivalence"]["components"]["floats"] == {"abs": 1e-6, "rel": None, "ulps": None}
 
 
 def test_newer_format_refused_and_unknown_keys_ignored() -> None:
     doc = json.loads(sv.verify(orders.select("id"), requires=BOUNDED).to_json())
     with pytest.raises(ValueError, match="upgrade sverify"):
-        Report.from_json({**doc, "format": 2})
+        Report.from_json({**doc, "format": 3})
     later = {**doc, "added_in_1_9": True}
-    later["ensures"] = [{**c, "new_field": 1} for c in doc["ensures"]]
+    later["ensures"] = [
+        {**c, "new_field": 1, "properties": {**c["properties"], "new": 2}} for c in doc["ensures"]
+    ]
     assert json.loads(Report.from_json(later).to_json()) == doc
+
+
+def test_ties() -> None:
+    """One `ties` object: the places a tie is open and the keys that would
+    close them, as `needed` objects."""
+    w = ibis.window(group_by="qty", order_by="total")
+    report = sv.verify(orders.select("id", r=ibis.row_number().over(w)), requires=BOUNDED)
+    doc = _round_trip(report)
+    assert not doc["deterministic"]
+    assert [p["op"] for p in doc["ties"]["places"]] == ["window"]
+    assert {(n["table"], n["label"]) for n in doc["ties"]["needs"]} == {
+        (t, lab) for t, labs in report.ties.items() for lab in labs
+    }
+    assert "tie_places" not in doc and "hints" not in doc

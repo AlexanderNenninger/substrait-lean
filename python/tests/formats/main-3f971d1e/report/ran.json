@@ -3,21 +3,7 @@
   "deterministic": true,
   "dialect": "ibis",
   "ensures": [],
-  "facts": {
-    "d": "an integer in [0, 1998]",
-    "id": "any integer or NULL"
-  },
-  "floats_on": {},
-  "format": 1,
-  "hints": [],
-  "implied": {},
-  "inferred": {},
-  "issues": [],
-  "needs": [],
-  "not_null": [
-    "d"
-  ],
-  "observation": {
+  "equivalence": {
     "components": {
       "decimals": "exact",
       "elements": "sequence",
@@ -30,6 +16,19 @@
     },
     "text": "equivalent(floats=plan)"
   },
+  "facts": {
+    "d": "an integer in [0, 1998]",
+    "id": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 2,
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "needs": [],
+  "not_null": [
+    "d"
+  ],
   "on_inferred": "error",
   "output": {
     "d": "int64",
@@ -51,25 +50,27 @@
       "class": "exact",
       "deterministic": true,
       "engine": "duckdb",
+      "equivalence": null,
       "evidence": "tested",
       "failures": [],
       "fallbacks": [],
       "kind": "translated",
-      "observation": null,
-      "profile": "reference",
+      "needs": [],
       "reason": "verified under the reference; the translation to duckdb is sverify's DuckDB lowering, proved for every plan, and its SQL writer",
       "reproducible": null,
       "rerun_evidence": null,
+      "semantics": "reference",
       "shims": [],
-      "suggested": {},
       "warnings": []
     }
   },
   "rows": null,
   "semantics": "reference",
   "sverify": "0.5.0",
-  "tie_places": [],
-  "ties": {},
+  "ties": {
+    "needs": [],
+    "places": []
+  },
   "transfer": null,
   "verdict": "proved"
 }

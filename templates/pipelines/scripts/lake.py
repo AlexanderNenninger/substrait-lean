@@ -539,7 +539,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
                 "updated": freshness(last.get("timestamp")),
                 "schema": [(f.name, str(f.type)) for f in arrow.schema],
                 "contract": None if contract is None else json.loads(contract.to_json()),
-                "words": contract_words(contract.view, checks) if contract else None,
+                "words": contract_words(contract.node, checks) if contract else None,
                 "files": files,
                 "chart": chart_svg(arrow, meta["chart"]) if meta.get("chart") else "",
                 "chart_label": (meta.get("chart") or {}).get("label", ""),
