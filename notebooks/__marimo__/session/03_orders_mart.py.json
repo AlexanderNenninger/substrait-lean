@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "2ac23723c9995f3e8b7a98b40b330bcb"
+    "script_metadata_hash": "fe80b99c8b80d737f758f60c0c0bbc72"
   },
   "cells": [
     {
@@ -20,12 +20,12 @@
     },
     {
       "id": "MJUe",
-      "code_hash": "4b8e441c9787a80bb09ba7d4d9725655",
+      "code_hash": "2f99157bacf0979d7370c8d1c0983ec7",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 2. <a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 4. <a href=\"?file=04_contracts.py\">Contracts</a> \u2192</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 2. <a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a> \u00b7 4. <a href=\"?file=04_contracts.py\">Contracts</a> \u2192</span></span>"
           }
         }
       ],
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "3207de044e4a8a11719b9d6b0eb2dc6a",
+      "code_hash": "8d6ba4fc77e3ad5846b0948719d5cf84",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\n<strong>revenue per city and day</strong>. The regional managers' bonuses depend on\nit, so when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind every analytics team has, with one\nsubtlety: the city is the customer's city <em>when the order was placed</em>.\nCustomers move,\nso the city comes from a type-2 slowly changing dimension (dbt snapshots\nbuild these), and the join is a point-in-time join\n(<code>dbt-scd2-point-in-time</code> in the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query\ncatalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. Those run after the model has been\nbuilt, on the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. Better that it fails\nhere than in a regional manager's inbox.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\nrevenue per city and day. The regional managers' bonuses depend on it,\nso when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind most analytics teams have, with one\nsubtlety: the city is the customer's city when the order was placed.\nCustomers move, so the city comes from a type-2 slowly changing\ndimension (dbt snapshots build these), and the join is a point-in-time\njoin (<code>dbt-scd2-point-in-time</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. They run after the model is built,\non the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. We'd rather see that\nfailure here than in a regional manager's inbox.</span></span>"
           }
         }
       ],
@@ -46,12 +46,12 @@
     },
     {
       "id": "bkHC",
-      "code_hash": "8bf27d0d06dc231c2fbdff59e96ab354",
+      "code_hash": "cf4b29fee9d4f42353b9dc3af702b4b7",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-sources-two-delta-tables\">1. The sources: two Delta tables</h2>\n<span class=\"paragraph\"><code>customer_history</code> has one row per customer and version: <code>[valid_from,\nvalid_to)</code>, with <code>valid_to</code> NULL for the current one. Customer 1 moved\nfrom Paris to Lyon on 2 May, and takes their orders' revenue with them.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-sources-two-delta-tables\">1. The sources: two Delta tables</h2>\n<span class=\"paragraph\"><code>customer_history</code> has one row per customer and version: <code>[valid_from,\nvalid_to)</code>, with <code>valid_to</code> NULL for the current one. Customer 1 moved\nfrom Paris to Lyon on 2 May, and their later orders count for Lyon.</span></span>"
           }
         }
       ],
@@ -85,12 +85,12 @@
     },
     {
       "id": "Xref",
-      "code_hash": "60dd8ce137162818eaeb11901ecd93a7",
+      "code_hash": "ca9c49704d68805a914830748148cfe1",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-model-and-its-tests-as-a-contract\">2. The model, and its tests as a contract</h2>\n<span class=\"paragraph\">The join takes the history row whose range contains the order time.\nThe ranges are half-open, so an order at the instant of a move gets the\nnew city, and the current row's NULL <code>valid_to</code> means \"still valid\":\ntwo of the catalogue's pitfalls for this query.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-model-and-its-tests-as-a-contract\">2. The model, and its tests as a contract</h2>\n<span class=\"paragraph\">The join takes the history row whose range contains the order time.\nThe ranges are half-open, so an order at the instant of a move gets the\nnew city, and the current row's NULL <code>valid_to</code> means \"still valid\".\nThe catalogue lists both as pitfalls of this query.</span></span>"
           }
         }
       ],
@@ -111,12 +111,12 @@
     },
     {
       "id": "BYtC",
-      "code_hash": "30d9b524f553da1cde821f38288d9e2e",
+      "code_hash": "2d68e76439b28dfa9c93515ebc139f61",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">We check the first version, where <code>city</code> is the dimension's column as\nis:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">We check the first version, where <code>city</code> is the dimension's column\nas it is:</span></span>"
           }
         }
       ],
@@ -142,7 +142,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>_.city.notnull()</code></td>\n<td>\u274c TRUE or FALSE; fails on <code>orders(order_id, customer_id, order_ts, amount_cents) = [(0, 0, datetime.datetime(2024, 1, 1, 0, 0), 0)], history(customer_id, city, valid_from, valid_to) = [] gives (city, day, n_orders, revenue_cents) = [(None, 1704067200000000, 1, 0)]</code></td>\n</tr>\n<tr>\n<td><code>_.day.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(city, day)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.revenue_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: $2</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>city</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>day</code></td>\n<td>a timestamp \u2265 2000-01-01 00:00:00</td>\n</tr>\n<tr>\n<td><code>n_orders</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>revenue_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>NOT proved: 1 of 4 postconditions not proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">\u2139\ufe0f assumed (inferred): SUM of <code>amount_cents</code> fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)</span>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>_.city.notnull()</code></td>\n<td>\u274c it may be FALSE on some rows; fails on <code>orders(order_id, customer_id, order_ts, amount_cents) = [(0, 0, datetime.datetime(2024, 1, 1, 0, 0), 0)], history(customer_id, city, valid_from, valid_to) = [] gives (city, day, n_orders, revenue_cents) = [(None, 1704067200000000, 1, 0)]</code></td>\n</tr>\n<tr>\n<td><code>_.day.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(city, day)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.revenue_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>hint</td>\n<td>SUM of <code>amount_cents</code>: bound it in <code>requires</code> of orders, for example <code>_.amount_cents &lt;= 1_000_000_000</code>; then a group's sum fits 64 bits for up to 9,223,372,036 rows, and <code>sv.max_rows(9_223_372_036)</code> in <code>requires</code> of orders proves it, and so does <code>sv.rows_per(&lt;grouping columns&gt;, at_most=9_223_372_036)</code>; without a row bound, the job checks the sum as it runs</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>city</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>day</code></td>\n<td>a timestamp \u2265 2000-01-01 00:00:00</td>\n</tr>\n<tr>\n<td><code>n_orders</code></td>\n<td>an integer \u2265 1</td>\n</tr>\n<tr>\n<td><code>revenue_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -150,12 +150,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "b1ec6b20c27cf4c364092032decf3cf1",
+      "code_hash": "2934ef20fa5ec9034b9bcde940465b4f",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>not_null(city)</code> is refused, although <code>city</code> is NOT NULL in the\ndimension and every order in the sample data has a city. The checker\nknows what the data doesn't show: an order whose customer has no\nhistory row yet (a new customer whose snapshot hasn't run), or one\nplaced before the customer's first <code>valid_from</code>, matches nothing in the\nleft join, and its city is NULL. That's dbt's <code>relationships</code> test\nfailing in production after passing in CI.</span>\n<span class=\"paragraph\">The other tests are proved: the grouping columns are a key of an\naggregate's output, <code>revenue_cents &gt;= 0</code> follows from the precondition\non amounts (and the <code>fill_null</code> for an empty sum), and <code>day</code> is never\nNULL because <code>order_ts</code> isn't. The warning says an integer <code>SUM</code> over\nenough rows can leave 64 bits: DataFusion would then wrap around\nsilently, while sverify's DuckDB and Polars runners raise.</span>\n<span class=\"paragraph\">Someone has to decide what such an order counts as, and the dashboard's\nreaders would rather see an <code>unknown</code> row than revenue that silently\nvanished. So we say it:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>not_null(city)</code> is refused, although <code>city</code> is NOT NULL in the\ndimension and every order in the sample data has a city. The checker\nknows what the data doesn't show: an order whose customer has no history\nrow yet (a new customer whose snapshot hasn't run), or one placed before\nthe customer's first <code>valid_from</code>, matches nothing in the left join, and\nits city is NULL. That is dbt's <code>relationships</code> test failing in\nproduction after passing in CI.</span>\n<span class=\"paragraph\">The other tests are proved. The grouping columns are a key of an\naggregate's output, <code>revenue_cents &gt;= 0</code> follows from the precondition\non amounts (and the <code>fill_null</code> for an empty sum), and <code>day</code> is never\nNULL because <code>order_ts</code> isn't. The report assumes that each city's daily\n<code>SUM</code> fits 64 bits, since no contract can bound how many orders a group\nholds, and the job checks the sums while it runs. The hint names the\nbound and the row cap (<code>sv.max_rows</code>) that would prove it instead.</span>\n<span class=\"paragraph\">Someone has to decide what such an order counts as, and the dashboard's\nreaders would rather see an <code>unknown</code> row than revenue that vanished. So\nwe say it:</span></span>"
           }
         }
       ],
@@ -176,12 +176,12 @@
     },
     {
       "id": "nWHF",
-      "code_hash": "72477c7fe71be7f64eaaf034de8216f0",
+      "code_hash": "4601610cb5c547f4d784176b9e9d95f6",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"the-same-model-in-sql\">The same model in SQL</h3>\n<span class=\"paragraph\">If your team writes its models in SQL, <code>sv.verify</code> checks the SQL text\nagainst the same kind of contract (conditions can be SQL snippets too).\nThe SQL needs <code>coalesce</code> around the <code>SUM</code> for the same reason the Ibis\nneeds <code>fill_null</code>:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"the-same-model-in-sql\">The same model in SQL</h3>\n<span class=\"paragraph\">If your team writes models in SQL, <code>sv.verify</code> checks the SQL text\nagainst the same kind of contract, with conditions as SQL snippets. The\nSQL is DuckDB's dialect, which sverify plans with its own SQLGlot lift.\nIt needs <code>coalesce</code> around the <code>SUM</code> for the reason the Ibis version\nneeds <code>fill_null</code>:</span></span>"
           }
         }
       ],
@@ -202,19 +202,19 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "requires orders: amount_cents >= 0\nrequires orders: unique(order_id)\nensures city is not null: proved\nensures revenue_cents >= 0: proved\nensures unique(city, day): proved\nwarning: may wrap around: DATE_TRUNC_day($2)\nwarning: may wrap around: $3\nknown about the output:\n  city: a string\n  day: any integer\n  n_orders: an integer \u2265 0\n  revenue_cents: an integer \u2265 0\n",
+          "text": "NOT proved: 1 precondition needed\nrequires orders: amount_cents >= 0\nrequires orders: unique(order_id)\nneeds: (_.order_ts >= datetime(1, 1, 1)) on orders, inferred from `DATE_TRUNC_day($2)` (overflow otherwise): declare it in requires (each run then checks it on the data), or rewrite so no row needs it (`orders.filter((_.order_ts >= datetime(1, 1, 1)))` first, or a CASE); on_inferred='warn' assumes it instead\nensures city is not null: proved\nensures revenue_cents >= 0: proved\nensures unique(city, day): proved\nassumes: SUM of sum(amount_cents) fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)\nsemantics: reference\nknown about the output:\n  city: a string\n  day: a timestamp \u2265 0001-01-01 00:00:00\n  n_orders: an integer \u2265 1\n  revenue_cents: an integer \u2265 0\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
       "id": "ZHCJ",
-      "code_hash": "fe67bb4dcf9292d502a2a40aaca1c1db",
+      "code_hash": "0aebc3751e2aab94d4407d9ff155c311",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">(A SQL string can be verified, but nodes are built from Ibis\ntransforms, and that is how contracts travel from one step to the\nnext; that is why the job below uses the Ibis version.)</span>\n<h2 id=\"3-build-it-from-the-delta-tables\">3. Build it from the Delta tables</h2>\n<span class=\"paragraph\">Now we wire it up. The model reads both tables as sources, and calling\nit on them builds a node. A left join and an aggregate have no proven\ndelta rules yet, so the node is recomputed on each refresh, and its\nstatus says so:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The job below uses the Ibis version, because nodes are built from\ntransforms and contracts travel from one step to the next through them.</span>\n<h2 id=\"3-build-it-from-the-delta-tables\">3. Build it from the Delta tables</h2>\n<span class=\"paragraph\">Now we wire it up. The model reads both tables as sources, and piping\nthem into it builds a node. A left join and an aggregate have no proved\ndelta rules yet, so the node is recomputed on each refresh, and its\nstatus says so:</span></span>"
           }
         }
       ],
@@ -222,7 +222,7 @@
     },
     {
       "id": "ROlb",
-      "code_hash": "3e86a2a7a1fc564c267a7b7e6af6c062",
+      "code_hash": "284582eafb3d6af8ef2402bcf9372980",
       "outputs": [
         {
           "type": "data",
@@ -235,7 +235,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "daily_city_revenue: orders@v1, history@v0; recomputed (not incrementally maintainable (left join, fetch or window))\n",
+          "text": "daily_city_revenue: orders@v1, history@v0; recomputed (not incrementally maintainable (left join, fetch or window); no touched groups: the aggregate's input has no delta rules (not incrementally maintainable (left join, fetch or window)))\n",
           "mimetype": "text/plain"
         }
       ]
@@ -255,12 +255,12 @@
     },
     {
       "id": "TqIu",
-      "code_hash": "7ca41ffbbf18edd34814e93c38539602",
+      "code_hash": "8350fe40168e848e5d91ba7e3c4b7fc6",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Paris on 1 May, Lyon on 3 May: customer 1's orders follow the move.</span>\n<h2 id=\"4-same-answer-on-every-engine-unlike-the-sql-text\">4. Same answer on every engine, unlike the SQL text</h2>\n<span class=\"paragraph\">The same SQL text doesn't mean the same thing everywhere. Suppose\nsomeone adds an average order value as <code>revenue_cents / n_orders</code>:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Paris on 1 May, Lyon on 3 May: customer 1's orders follow the move.</span>\n<h2 id=\"4-same-answer-on-every-engine\">4. Same answer on every engine</h2>\n<span class=\"paragraph\">The same SQL text means different things on different engines. Suppose\nsomeone adds an average order value as <code>revenue_cents / n_orders</code>:</span></span>"
           }
         }
       ],
@@ -268,7 +268,7 @@
     },
     {
       "id": "Vxnm",
-      "code_hash": "4e1e4aebc33e1b91d5aba9481a614185",
+      "code_hash": "6e7c4c98b85558f777003a14cf5e0184",
       "outputs": [
         {
           "type": "data",
@@ -281,12 +281,12 @@
     },
     {
       "id": "DnEU",
-      "code_hash": "c5e2e1e6a8709c88a4c17ab5a1aaeaf6",
+      "code_hash": "e0149edbf03f256e8ea4b713548bbf79",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">DuckDB's <code>/</code> on integers gives a double, DataFusion's (and\nPostgreSQL's) truncates, Snowflake's gives a NUMBER with extra\ndecimals, and Spark's a double. A model moved from DuckDB in\ndevelopment to Snowflake in production changes its numbers without an\nerror, and the first to notice is whoever reconciles the dashboard with\nfinance. sverify's translations write out what the plan means instead\n(integer division truncates, on every engine), so the checked plan gives\nthe same rows on each, whichever <code>engine=</code> the node is refreshed with:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">DuckDB's <code>/</code> on integers gives a double, DataFusion's (and\nPostgreSQL's) truncates, Snowflake's gives a NUMBER with extra decimals,\nand Spark's gives a double. A model moved from DuckDB in development to\nSnowflake in production changes its numbers without an error, and\nwhoever reconciles the dashboard with finance notices first. Sverify's\ntranslations write out what the plan means (integer division truncates\non every engine), so the checked plan gives the same rows on each,\nwhichever <code>engine=</code> the node is refreshed with. DuckDB is the reference\nengine (Tier 1); see the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md\" rel=\"noopener noreferrer\" target=\"_blank\">engine tiers</a>\nfor the others:</span></span>"
           }
         }
       ],
@@ -294,7 +294,7 @@
     },
     {
       "id": "ulZA",
-      "code_hash": "11d1d683b07db0edb79ed9f6053fbe95",
+      "code_hash": "b626fae50d790e21a4e878d52839233e",
       "outputs": [
         {
           "type": "data",
@@ -307,12 +307,12 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "89ac66c4320e98f8e7ac0974d2bc1c58",
+      "code_hash": "a6cda9efc41205c6ace0ef7e7d9c2bef",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-the-next-day-a-move-and-a-new-customer\">5. The next day: a move and a new customer</h2>\n<span class=\"paragraph\">Overnight, the snapshot job records that customer 2 moved from Rome to\nMilan at 15:00 on 3 May: the old row is closed and a new one added. And\na new customer, 4, places an order before their first snapshot.</span>\n<span class=\"paragraph\">Before the changes land, we store the mart in a Delta table with\n<code>.write</code>; its first refresh creates the table.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-the-next-day-a-move-and-a-new-customer\">5. The next day: a move and a new customer</h2>\n<span class=\"paragraph\">Overnight, the snapshot job records that customer 2 moved from Rome to\nMilan at 15:00 on 3 May: it closes the old row and adds a new one. A new\ncustomer, 4, places an order before their first snapshot.</span>\n<span class=\"paragraph\">Before the changes land, we store the mart in a Delta table with\n<code>.write</code>. Its first refresh creates the table.</span></span>"
           }
         }
       ],
@@ -333,7 +333,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "daily_city_revenue:\n  computed\n  requires orders: unique(order_id) (checked on data)\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime.datetime(2000, 1, 1, 0, 0)) (file stats @v1)\n  wrote daily_city_revenue from orders@v1, history@v0: created v2, 4 row(s) written, 0 deleted\n",
+          "text": "daily_city_revenue:\n  computed\n  requires orders: unique(order_id) (checked on data)\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime(2000, 1, 1)) (file stats @v1)\n  route on duckdb: exact; evidence tested\n  wrote daily_city_revenue from orders@v1, history@v0: created v2, 4 row(s) written, 0 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -353,19 +353,19 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "daily_city_revenue:\n  orders@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v2\n  history@v0\u2192v2: 2 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v2\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime.datetime(2000, 1, 1, 0, 0)) (file stats @v2 (new files))\n  requires orders: unique(order_id) (checked on data)\n  view daily_city_revenue: orders@v2, history@v2\n  wrote daily_city_revenue from orders@v2, history@v2: merge v3, 3 row(s) written, 1 deleted\n",
+          "text": "daily_city_revenue:\n  route on duckdb: exact; evidence tested\n  orders@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v2\n  history@v0\u2192v2: 2 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v2\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime(2000, 1, 1)) (file stats @v2 (new files))\n  requires orders: unique(order_id) (checked on data)\n  view daily_city_revenue: orders@v2, history@v2\n  view daily_city_revenue: recomputed and diffed\n  wrote daily_city_revenue from orders@v2, history@v2: merge v3, 3 row(s) written, 1 deleted\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
       "id": "aLJB",
-      "code_hash": "e689874100afb4ee08cdd17d78894254",
+      "code_hash": "af3390dde9790bac0b96d6928700314b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>daily_city_revenue</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>day</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>n_orders</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>revenue_cents</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lyon</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>800</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Milan</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1200</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4599</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>unknown</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>500</td></tr></tbody></table></div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Order 4 (18:00 on 3 May) moved from Rome to Milan, and customer 4's order is counted under <code>unknown</code> instead of disappearing or making <code>city</code> NULL. The sink merged the change in one commit; its NOT NULL and CHECK constraints are the proved tests.</span></span></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>daily_city_revenue</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>day</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>n_orders</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>revenue_cents</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lyon</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>800</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Milan</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1200</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4599</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>unknown</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>500</td></tr></tbody></table></div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Order 4 (18:00 on 3 May) moved from Rome to Milan, and customer 4's order is counted under <code>unknown</code>, so it neither disappears nor makes <code>city</code> NULL. The sink merged the change in one commit; its NOT NULL and CHECK constraints are the proved tests.</span></span></div>"
           }
         }
       ],
@@ -373,12 +373,12 @@
     },
     {
       "id": "nHfw",
-      "code_hash": "e166ff9906bb269a9c9dd6e1d9fea660",
+      "code_hash": "230126819050742820608af44582bdc2",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a dashboard model whose tests can't fail in production for\na reason CI didn't see. Its dbt tests became a contract proved before\nthe model runs, and the one that would have failed, <code>not_null(city)</code>\nafter a left join, failed at definition time instead of on the\ndashboard. The preconditions came from Delta metadata where possible.\nThe checked plan gives the same rows on DuckDB, Polars and DataFusion,\nand as Snowflake or Spark SQL, where the same SQL text would not. And\nalthough the model is outside the incremental fragment, it still runs\nas a node, recomputed and diffed, with its sink merged exactly\nonce per state.</span>\n<span class=\"paragraph\"><strong>Next up:</strong> the rest of the tour explains each feature in turn,\nstarting with <a href=\"?file=04_contracts.py\">Contracts</a>.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a dashboard model whose dbt tests are a contract, proved\nbefore the model runs. The one that would have failed in production,\n<code>not_null(city)</code> after a left join, failed at definition time instead.\nThe preconditions came from Delta metadata where possible, and the\nchecked plan gives the same rows on DuckDB, Polars and DataFusion, and\ncan be written as Snowflake or Spark SQL, where the same SQL text would\nnot. The model is outside the incremental fragment, so it runs as a node\nthat is recomputed and diffed, with its sink merged exactly once per\nstate.</span>\n<span class=\"paragraph\">Next up: <a href=\"?file=04_contracts.py\">Contracts</a> explains what Lean tracks\nand how contracts compose, and\n<a href=\"?file=05_pipelines_and_engines.py\">Pipelines and engines</a> covers\nnodes, sinks, incremental maintenance and the engines.</span></span>"
           }
         }
       ],

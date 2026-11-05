@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "7f2295495b4ab820a1694f4813011e1d"
+    "script_metadata_hash": "c8a1170d43f8319f0abc50fabb29659c"
   },
   "cells": [
     {
@@ -20,12 +20,12 @@
     },
     {
       "id": "MJUe",
-      "code_hash": "792ac6b4c7d290e90a6d43eac3ebfe73",
+      "code_hash": "564edc8354315211b298d1c7148b18fa",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><a href=\"?file=00_start_here.py\">Contents</a> \u00b7 2. <a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a> \u2192</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><a href=\"https://github.com/AlexanderNenninger/substrait-lean#the-tour\" rel=\"noopener noreferrer\" target=\"_blank\">README</a> \u00b7 2. <a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a> \u2192</span></span>"
           }
         }
       ],
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "e93603846ce9af7b540c617fe47b8db9",
+      "code_hash": "8615184e5ac23355e82edc53ce85496e",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these <strong>double charges</strong>, the same card\npaying the same amount at the same merchant twice within five minutes,\nand refund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>); stream processors write it as an interval\njoin, and here it is a self-join on a Delta Lake table of card\ntransactions. The refund queue trusts what you hand it, so it has to be\nright: no pair twice, no charge matched with itself, and nothing left\nover when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its <strong>contract</strong>: what it assumes\n   about the input, and what the refund queue may rely on;</li>\n<li>have the contract <strong>proved</strong> before any data runs;</li>\n<li>run the same checked plan on DuckDB, Polars and DataFusion, and write\n   it as Snowflake and Spark SQL;</li>\n<li><strong>maintain the result from the change feed</strong> when new transactions\n   arrive and old ones are reversed, and see what the usual \"process\n   the new rows\" job gets wrong;</li>\n<li>write it to a Delta table that carries the contract, so the next job\n   can build on it.</li>\n</ol></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these double charges, the same card paying\nthe same amount at the same merchant twice within five minutes, and\nrefund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>). Stream processors write it as an interval\njoin; here it is a self-join on a Delta Lake table of card transactions.\nThe refund queue relies on what you hand it: no pair twice, no charge\nmatched with itself, and nothing left over when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its contract: what it assumes about\n   the input and what the refund queue may rely on;</li>\n<li>have the checker prove the contract before any data runs;</li>\n<li>run the checked plan on DuckDB, Polars and DataFusion, and see the\n   SQL a warehouse would run (the Snowflake and Spark dialects are a\n   preview: they run on an emulator and a local session, and work on\n   them waits on <a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/271\" rel=\"noopener noreferrer\" target=\"_blank\">#271</a>);</li>\n<li>maintain the result from the change feed when new transactions arrive\n   and old ones are reversed, next to the usual \"process the new rows\"\n   job;</li>\n<li>write the result to a Delta table that carries the contract, so the\n   next job can build on it.</li>\n</ol></span>"
           }
         }
       ],
@@ -46,12 +46,12 @@
     },
     {
       "id": "bkHC",
-      "code_hash": "8c33c64911cb5ac40218de466022bf4d",
+      "code_hash": "fc29a9877856f2dfd56a4698c044f339",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-source-a-delta-table-of-transactions\">1. The source: a Delta table of transactions</h2>\n<span class=\"paragraph\">Amounts are integer cents: money as DOUBLE does not compare exactly, and\nan equality of amounts is the whole rule. The table has the Change Data\nFeed on (so later runs can read what changed) and a CHECK constraint\nthat amounts are not negative. The data has one real double charge, a\nnear miss on card 11 half an hour apart, and card 12, whose two payments\narrived without a merchant at all.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-source-a-delta-table-of-transactions\">1. The source: a Delta table of transactions</h2>\n<span class=\"paragraph\">Amounts are integer cents, because a DOUBLE amount doesn't compare\nexactly and the rule is an equality of amounts. The table has the Change Data\nFeed on (so later runs can read what changed) and a CHECK constraint\nthat amounts are not negative. The data has one real double charge, a\nnear miss on card 11 half an hour apart, and card 12, whose two payments\narrived without a merchant.</span></span>"
           }
         }
       ],
@@ -85,12 +85,12 @@
     },
     {
       "id": "Xref",
-      "code_hash": "b9e937fd9372989d0c3763376e900e62",
+      "code_hash": "337316d4dbf43cd8dbf85fc77e318811",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-rule-and-its-contract\">2. The rule and its contract</h2>\n<span class=\"paragraph\">We'll write the rule in Ibis, state what it assumes and what it\npromises, and have the checker prove it before any data runs. The rule\nis plain Ibis; the decorator writes down what everyone involved is\ncounting on:</span>\n<ul>\n<li><strong><code>requires</code></strong>: what the job assumes about its input. Transaction ids\n  are unique, amounts are not negative, and timestamps are before 2100\n  (so adding five minutes can't overflow).</li>\n<li><strong><code>ensures</code></strong>: what the refund queue relies on. One row per pair,\n  the first transaction before its duplicate, a merchant on every row, a\n  non-negative amount, and the duplicate no earlier than the first.</li>\n</ul>\n<span class=\"paragraph\">The checks in <code>ensures</code> are the ones you would otherwise write as dbt\ntests (<code>unique</code>, <code>not_null</code>, <code>accepted_range</code>, an expression test) and\nrun on yesterday's data, hoping yesterday contained the bad case. Here\nthey are proved for <strong>every</strong> input that meets <code>requires</code>, before the\njob runs.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-rule-and-its-contract\">2. The rule and its contract</h2>\n<span class=\"paragraph\">We'll write the rule in Ibis, state what it assumes and what it\npromises, and have the checker prove it before any data runs. The rule\nis plain Ibis, and the decorator writes down what everyone involved\ncounts on:</span>\n<ul>\n<li><code>requires</code> is what the job assumes about its input. Transaction ids\n  are unique, amounts are not negative, and timestamps are before 2100,\n  so that adding five minutes can't overflow.</li>\n<li><code>ensures</code> is what the refund queue relies on. There is one row per\n  pair, the first transaction comes before its duplicate, every row has\n  a merchant and a non-negative amount, and the duplicate is no earlier\n  than the first.</li>\n</ul>\n<span class=\"paragraph\">The checks in <code>ensures</code> are the ones you would write as dbt tests\n(<code>unique</code>, <code>not_null</code>, <code>accepted_range</code>, an expression test) and run on\nyesterday's data. Here the checker proves them for every input that\nmeets <code>requires</code>, before the job runs.</span></span>"
           }
         }
       ],
@@ -111,12 +111,12 @@
     },
     {
       "id": "BYtC",
-      "code_hash": "c5cd3e3a0d54a5552b0c036ab3106b09",
+      "code_hash": "4933cee755361bf02a5ca1f56c627c20",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now we build it. The Delta table is a source, and calling the rule on\nit builds a node. Building the node proves the contract (a\n<code>VerificationError</code> would stop here), and its first refresh loads the\ncurrent snapshot:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now we build it. The Delta table is a source, and piping it into the\nrule builds a node. Building the node proves the contract (a\n<code>VerificationError</code> would stop here), and its first refresh loads the\ncurrent snapshot:</span></span>"
           }
         }
       ],
@@ -124,7 +124,7 @@
     },
     {
       "id": "RGSE",
-      "code_hash": "a558b15b105644ad839ed12d26e03f43",
+      "code_hash": "e67529096cacfca4a511c47b35e35861",
       "outputs": [
         {
           "type": "data",
@@ -142,7 +142,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -150,12 +150,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "9d4cc8bb8dc55f6a566b8a5b2909a627",
+      "code_hash": "ff114140fae1ca084e762d8cdc6466ab",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Every postcondition is \u2705 proved, and no runtime error is possible. How\neach one follows:</span>\n<ul>\n<li><strong><code>unique(first_txn, duplicate_txn)</code></strong>: <code>txn_id</code> is a key of the\n  input, so a pair of ids identifies a pair of rows.</li>\n<li><strong><code>merchant</code> is never NULL</strong>, although the column is nullable: rows\n  only join when <code>a.merchant = b.merchant</code> is TRUE, and <code>NULL = NULL</code> is\n  not. Card 12's payments never match. (pandas' <code>merge</code> <em>does</em> match\n  NaN with NaN, and a Polars join does with <code>nulls_equal=True</code>: a port\n  of this rule to a dataframe library can change its result.)</li>\n<li><strong><code>first_ts &lt;= duplicate_ts</code></strong> comes from the join condition, which\n  holds on every output row.</li>\n</ul>\n<span class=\"paragraph\">Each precondition was established without trusting anyone's word for\nit, and the first refresh says how:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Every postcondition is proved, and no runtime error is possible. Each\none follows from the plan:</span>\n<ul>\n<li><code>unique(first_txn, duplicate_txn)</code>: <code>txn_id</code> is a key of the input, so\n  a pair of ids identifies a pair of rows.</li>\n<li><code>merchant</code> is never NULL, although the column is nullable. Rows join\n  only when <code>a.merchant = b.merchant</code> is TRUE, and <code>NULL = NULL</code> is not\n  TRUE, so card 12's payments never match. pandas' <code>merge</code> matches NaN\n  with NaN, and a Polars join does with <code>nulls_equal=True</code>, so porting\n  this rule to a dataframe library can change its result.</li>\n<li><code>first_ts &lt;= duplicate_ts</code> comes from the join condition, which holds\n  on every output row.</li>\n</ul>\n<span class=\"paragraph\">The first refresh reports where each precondition came from:</span></span>"
           }
         }
       ],
@@ -168,7 +168,7 @@
         {
           "type": "data",
           "data": {
-            "application/json": "[\"transactions: unique(txn_id) (checked on data)\", \"transactions: (_.amount_cents >= 0) (Delta constraint)\", \"transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v1)\"]"
+            "application/json": "[\"transactions: unique(txn_id) (checked on data)\", \"transactions: (_.amount_cents >= 0) (Delta constraint)\", \"transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v1)\"]"
           }
         }
       ],
@@ -176,12 +176,12 @@
     },
     {
       "id": "nWHF",
-      "code_hash": "8ee955f2d0d2854e58abebda4a7a0703",
+      "code_hash": "6cda1cace301635679fc0145337230a9",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The amount bound comes from the table's <strong>Delta CHECK constraint</strong>, the\ntimestamp bound from the <strong>file statistics</strong> (the maximum <code>ts</code> of each\nfile), and the key is checked on the data, since Delta doesn't enforce\nkeys. A later batch only checks the files it added.</span>\n<span class=\"paragraph\">The node holds the one double charge in the data, and neither the near\nmiss nor card 12's merchant-less pair:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The amount bound comes from the table's Delta CHECK constraint and the\ntimestamp bound from the file statistics (the maximum <code>ts</code> of each\nfile). The key is checked on the data, since Delta doesn't enforce keys.\nA later batch checks only the files it added.</span>\n<span class=\"paragraph\">The node holds the one double charge in the data, without the near miss\nor card 12's merchant-less pair:</span></span>"
           }
         }
       ],
@@ -202,12 +202,12 @@
     },
     {
       "id": "ZHCJ",
-      "code_hash": "83529cc2ad05741b0554d9be22e9833e",
+      "code_hash": "69182bad60d1da3a5ac57db8da024cd1",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"break-the-rule\">Break the rule</h3>\n<span class=\"paragraph\">The easiest bug in a self-join is forgetting that a row matches itself,\nand the customer would find out first: every payment refunded as its own\nduplicate. Switch off <code>a.txn_id &lt; b.txn_id</code> (or loosen it to <code>&lt;=</code>) and\nthe contract is re-checked:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"break-the-rule\">Break the rule</h3>\n<span class=\"paragraph\">A common bug in a self-join is a row matching itself, which refunds\nevery payment as its own duplicate. Loosen <code>a.txn_id &lt; b.txn_id</code> to <code>&lt;=</code>,\nor drop it, and the checker re-checks the contract:</span></span>"
           }
         }
       ],
@@ -220,7 +220,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='34f80271-5b30-b740-e5f7-a06b8f427f62'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='f5a0dd69-e803-fa78-8e53-346eba64b724'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -233,7 +233,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -241,12 +241,12 @@
     },
     {
       "id": "TqIu",
-      "code_hash": "08e96d673e2db4444693f51e91f967fe",
+      "code_hash": "e0b5ab06e0bdce4ee8e34517a76c6ab5",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused: the checker can't prove it,\nbecause it is false. With no condition at all, each pair also appears\nin both orders, and each double charge would be refunded twice. In\nneither case did anything have to run, and no test data had to contain\nthe bad case.</span>\n<h2 id=\"3-one-plan-every-engine\">3. One plan, every engine</h2>\n<span class=\"paragraph\">Maybe you develop on DuckDB on a laptop and the job runs somewhere else\nin production. The node's plan is the one Lean checked. sverify runs it\non each engine through its own translation, which keeps Lean's\nsemantics (NULL keys never match, integers don't wrap around, ties\nbreak one way) or refuses the plan. So a node refreshed with\n<code>engine=</code> has the same rows everywhere:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused because it is false. With no\ncondition at all, each pair also appears in both orders, and each double\ncharge would be refunded twice. The checker catches both without running\nanything and without test data that contains the bad case.</span>\n<h2 id=\"3-one-plan-every-engine\">3. One plan, every engine</h2>\n<span class=\"paragraph\">You might develop on DuckDB on a laptop and run the job elsewhere in\nproduction. The node's plan is the one Lean checked. Sverify runs it on\neach engine through its own translation, which keeps Lean's semantics\n(NULL keys never match, integers don't wrap around, ties break one way)\nor refuses the plan. DuckDB is the reference engine (Tier 1), and Polars\nis characterized fact by fact with proved shims; CI tests the others\nagainst the Lean model, and their known deviations are documented. With\n<code>route=\"auto\"</code>, <code>refresh</code> also says how the proof reaches DuckDB or\nPolars (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>; see the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md\" rel=\"noopener noreferrer\" target=\"_blank\">engine tiers</a>).\nA node refreshed with <code>engine=</code> has the same rows on each:</span></span>"
           }
         }
       ],
@@ -267,12 +267,12 @@
     },
     {
       "id": "DnEU",
-      "code_hash": "574d9e815637a6ffd0b0497631c01935",
+      "code_hash": "e91431c7b9f8e0c83e06a1191993066f",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make for you:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make. The Snowflake\nand Spark dialects are a preview, checked on an emulator and a local\nsession:</span></span>"
           }
         }
       ],
@@ -285,7 +285,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='a5c72907-e51d-6c9c-8d10-c6eb18c36b4a'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='db2016c1-0633-afba-41f0-e531aca25c03'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -293,7 +293,7 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "2461340f0719750c41469bcaf302ad00",
+      "code_hash": "5d84f1e677f3f2fb162051b660d91a23",
       "outputs": [
         {
           "type": "data",
@@ -306,12 +306,12 @@
     },
     {
       "id": "Pvdt",
-      "code_hash": "cfc956ef39ce671e72f4fff16fddcec9",
+      "code_hash": "248da36b0ab85e9fe3209d4fcfdbd46b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-new-transactions-keeping-the-result-up-to-date\">4. New transactions: keeping the result up to date</h2>\n<span class=\"paragraph\">An hour later, two things have happened to the source table:</span>\n<ul>\n<li>transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a\n  duplicate of transaction <strong>3</strong>, which was loaded in the first run;</li>\n<li>transaction 2 was <strong>reversed</strong> and deleted, so the coffee pair is no\n  longer a double charge.</li>\n</ul></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-new-transactions-keeping-the-result-up-to-date\">4. New transactions: keeping the result up to date</h2>\n<span class=\"paragraph\">An hour later, two things have happened to the source table:</span>\n<ul>\n<li>transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a\n  duplicate of transaction 3, which was loaded in the first run;</li>\n<li>transaction 2 was reversed and deleted, so the coffee pair is no\n  longer a double charge.</li>\n</ul></span>"
           }
         }
       ],
@@ -324,7 +324,7 @@
         {
           "type": "data",
           "data": {
-            "application/json": "{\"num_added_files\": 2, \"num_removed_files\": 1, \"num_deleted_rows\": 1, \"num_copied_rows\": 5, \"execution_time_ms\": 6, \"scan_time_ms\": 2, \"rewrite_time_ms\": 0}"
+            "application/json": "{\"num_added_files\": 2, \"num_removed_files\": 1, \"num_deleted_rows\": 1, \"num_copied_rows\": 5, \"execution_time_ms\": 3, \"scan_time_ms\": 1, \"rewrite_time_ms\": 0}"
           }
         }
       ],
@@ -332,12 +332,12 @@
     },
     {
       "id": "aLJB",
-      "code_hash": "f06ee6c45d8f90363307fc08a43b484c",
+      "code_hash": "e025dc689c2f371ddf7bf3ec38f7c905",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"the-usual-incremental-job\">The usual incremental job</h3>\n<span class=\"paragraph\">The common way to avoid recomputing the self-join is a watermark: find\nthe duplicates among the rows that arrived since the last run, and\nappend them to the output. It runs fast, and it is wrong twice, once\nfor each of the two changes:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"the-usual-incremental-job\">The usual incremental job</h3>\n<span class=\"paragraph\">The common way to avoid recomputing the self-join is a watermark: find\nthe duplicates among the rows that arrived since the last run, and\nappend them to the output. It is fast and gets both changes wrong:</span></span>"
           }
         }
       ],
@@ -358,12 +358,12 @@
     },
     {
       "id": "xXTn",
-      "code_hash": "4dc85ec3b1e76631708d5858a82da7c4",
+      "code_hash": "bb7ce8f1b6892d3f5ef5aa156c73a250",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">It <strong>misses (3, 7)</strong>, because transaction 3 is not among the new rows,\nand it <strong>keeps (1, 2)</strong>, because an append-only job never sees the\nreversal, so that customer gets a refund for a charge that no longer\nexists. Fixing that by hand means joining the new rows with the old\nones both ways, and handling deletes and updates: that is the delta rule\nof a join, <code>\u0394(A \u22c8 B) = \u0394A \u22c8 (B + \u0394B) + A \u22c8 \u0394B</code>, and it is easy to get\nsubtly wrong.</span>\n<h3 id=\"the-nodes-refresh\">The node's refresh</h3>\n<span class=\"paragraph\"><code>dups.refresh()</code> reads the Change Data Feed from the version the node\nwas computed at, checks the preconditions on the new rows only, and\nruns the delta plans Lean derived and <strong>proved</strong> to give the same result\nas a full recompute:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">It misses (3, 7), because transaction 3 is not among the new rows. It\nkeeps (1, 2), because an append-only job never sees the reversal, so a\ncustomer is refunded for a charge that no longer exists. Fixing this by\nhand means joining the new rows with the old ones in both directions and\nhandling deletes and updates. That is the delta rule of a join,\n<code>\u0394(A \u22c8 B) = \u0394A \u22c8 (B + \u0394B) + A \u22c8 \u0394B</code>, which is easy to get subtly wrong.</span>\n<h3 id=\"the-nodes-refresh\">The node's refresh</h3>\n<span class=\"paragraph\"><code>dups.refresh()</code> reads the Change Data Feed from the version the node\nwas computed at, checks the preconditions on the new rows only, and\nruns the delta plans that Lean derived and proved equal to a full\nrecompute:</span></span>"
           }
         }
       ],
@@ -384,7 +384,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "duplicate_payments:\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v3 (new files))\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
+          "text": "duplicate_payments:\n  route on duckdb: exact; evidence tested\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3 (new files))\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
           "mimetype": "text/plain"
         }
       ]
@@ -404,12 +404,12 @@
     },
     {
       "id": "NCOB",
-      "code_hash": "dcb1a4d2e125242e71abaa181f1033c3",
+      "code_hash": "9396aaa2d85226497e87249985dbf37b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The report names the one thing the proof takes on trust: that the\nchange feed really turns the old snapshot into the new one (\"\u0394 trusted\nas coming from Delta CDF\"). Where the feed is gone (CDF off, files\nvacuumed), the refresh diffs the two snapshots instead, and says so.\n<code>dups.refresh(audit=True)</code> also compares every batch with a recompute\nbefore it is applied.</span>\n<h2 id=\"5-the-sink-carries-the-contract\">5. The sink carries the contract</h2>\n<span class=\"paragraph\"><code>dups.write(DeltaSink(...))</code> stores the node in a Delta table, and every\nrefresh writes it <strong>exactly once per state</strong>: the commit is keyed by the\nsource versions, so a retried job can't write a batch twice. The first\nwrite creates the table; the proved guarantees become NOT NULL columns\nand CHECK constraints, and the commit metadata records the plan and the\ncontract. Later writes MERGE only the change.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The report names the one thing the proof takes on trust: that the change\nfeed turns the old snapshot into the new one (\"\u0394 trusted as coming from\nDelta CDF\"). Where the feed is gone (CDF off, files vacuumed), the\nrefresh diffs the two snapshots and says so. <code>dups.refresh(audit=True)</code>\nalso compares every batch with a recompute before applying it.</span>\n<h2 id=\"5-the-sink-carries-the-contract\">5. The sink carries the contract</h2>\n<span class=\"paragraph\"><code>dups.write(DeltaSink(...))</code> stores the node in a Delta table, and every\nrefresh writes it exactly once per state: the commit is keyed by the\nsource versions, so a retried job can't write a batch twice. The first\nwrite creates the table, with the proved guarantees as NOT NULL columns\nand CHECK constraints and the plan and contract in the commit metadata.\nLater writes MERGE only the change.</span></span>"
           }
         }
       ],
@@ -430,7 +430,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v3)\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
+          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3)\n  route on duckdb: exact; evidence tested\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  route on duckdb: exact; evidence tested\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
           "mimetype": "text/plain"
         }
       ]
@@ -442,7 +442,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<pre class='text-xs'>Contract(view=&#x27;duplicate_payments&#x27;, plan=&#x27;a2a9585129158014f7a47c8a602b7695d5acc699c3f9c9c56b8038be3e21a1ca&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={})</pre>"
+            "text/html": "<pre class='text-xs'>Contract(view=&#x27;duplicate_payments&#x27;, plan=&#x27;5c1f9a356b42351e163865e537ba9cf2e99413db7657de5792b3059e7b72d00d&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;, &#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;, &#x27;card_id&#x27;, &#x27;amount_cents&#x27;, &#x27;first_ts&#x27;, &#x27;duplicate_ts&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={}, cursors={}, table_ids={&#x27;transactions&#x27;: &#x27;8e18fd74-517b-4ffd-83b2-27580ab4dba7&#x27;}, format=1)</pre>"
           }
         }
       ],
@@ -450,12 +450,12 @@
     },
     {
       "id": "TXez",
-      "code_hash": "24b2d9c1f07ad942a1708ffb14a5e0cc",
+      "code_hash": "23f2482c5c1daaaae825a95eae012527",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now the refund queue's own job reads that table. Whoever maintains it\ndoesn't have to trust your word, or re-check your data: its\npreconditions are discharged from the table's schema and constraints,\nwhich the contract put there:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now the refund queue's own job reads that table. Its preconditions are\ndischarged from the table's schema and constraints, which the contract\nput there, so whoever maintains the job needn't re-check the data:</span></span>"
           }
         }
       ],
@@ -476,12 +476,12 @@
     },
     {
       "id": "yCnT",
-      "code_hash": "fbc1459cf71d6845dec48dfb3f23aeef",
+      "code_hash": "030219e98764d069fd697489a3308cf7",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a refund queue you can trust. Its assumptions were proved\nbefore a single row ran, and a bug that would have broken one was caught\nat definition time, not by a customer. The preconditions came from\nDelta's own constraints and file statistics where it has them, and from\nthe data where it doesn't. The same plan gives the same rows on DuckDB,\nPolars and DataFusion and is written as Snowflake or Spark SQL. It stays\nright as charges arrive and get reversed, where the watermark job got\ntwo rows wrong, and the next job can build on its table without checking\nagain.</span>\n<span class=\"paragraph\"><strong>Next up:</strong> <a href=\"?file=02_sensor_alerts.py\">Sensor alerts from an Iceberg table</a>,\nwhere ties and NaN get involved. The features used here are explained\nin <a href=\"?file=04_contracts.py\">Contracts</a>,\n<a href=\"?file=09_incremental_views.py\">Incremental views</a>,\n<a href=\"?file=10_pipelines.py\">Pipelines</a> and <a href=\"?file=11_engines.py\">Engines and SQL</a>.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a refund queue you can rely on. The checker proved its\nassumptions before a single row ran and would have caught a self-join\nbug at definition time. The preconditions came from Delta's constraints\nand file statistics where it has them and from the data where it\ndoesn't. The same plan gives the same rows on DuckDB, Polars and\nDataFusion, and it stays right as charges arrive and get reversed, where\nthe watermark job got two rows wrong. The next job builds on the stored\ntable without checking again.</span>\n<span class=\"paragraph\">Next up: <a href=\"?file=02_sensor_alerts.py\">Sensor alerts from an Iceberg table</a>,\nwhere ties and NaN get involved. <a href=\"?file=04_contracts.py\">Contracts</a> and\n<a href=\"?file=05_pipelines_and_engines.py\">Pipelines and engines</a> explain the\nfeatures used here.</span></span>"
           }
         }
       ],

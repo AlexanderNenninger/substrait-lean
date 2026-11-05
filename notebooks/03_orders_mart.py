@@ -1,19 +1,20 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#     "datafusion==51.0.0",
 #     "deltalake",
 #     "duckdb",
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "pyarrow==26.0.0",
-#     "sverify[datafusion,polars,delta]==0.3.0",
+#     "pyarrow==26.0.1",
+#     "sverify[datafusion,polars,delta]==0.7.0",
 # ]
 # ///
 
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="3. An orders mart")
+app = marimo.App(width="compact", app_title="3. An orders mart")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +28,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 2. [Sensor alerts](?file=02_sensor_alerts.py) · [Contents](?file=00_start_here.py) · 4. [Contracts](?file=04_contracts.py) →
+    ← 2. [Sensor alerts](?file=02_sensor_alerts.py) · 4. [Contracts](?file=04_contracts.py) →
     """)
     return
 
@@ -38,23 +39,22 @@ def _(mo):
     # 3. An orders mart: dbt tests, proved
 
     Say you own the dashboard the sales team opens every morning:
-    **revenue per city and day**. The regional managers' bonuses depend on
-    it, so when a number is off, you hear about it before lunch.
+    revenue per city and day. The regional managers' bonuses depend on it,
+    so when a number is off, you hear about it before lunch.
 
-    It's a mart model of the kind every analytics team has, with one
-    subtlety: the city is the customer's city *when the order was placed*.
-    Customers move,
-    so the city comes from a type-2 slowly changing dimension (dbt snapshots
-    build these), and the join is a point-in-time join
-    (`dbt-scd2-point-in-time` in the [query
-    catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md)).
+    It's a mart model of the kind most analytics teams have, with one
+    subtlety: the city is the customer's city when the order was placed.
+    Customers move, so the city comes from a type-2 slowly changing
+    dimension (dbt snapshots build these), and the join is a point-in-time
+    join (`dbt-scd2-point-in-time` in the
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md)).
 
     In dbt this model would come with tests: `not_null(city)`,
-    `unique(city, day)`, `revenue >= 0`. Those run after the model has been
-    built, on the data that happens to be there. Here they are the model's
+    `unique(city, day)`, `revenue >= 0`. They run after the model is built,
+    on the data that happens to be there. Here they are the model's
     contract, proved for every possible input before it runs, and one of
-    them fails for a reason the test data doesn't show. Better that it fails
-    here than in a regional manager's inbox.
+    them fails for a reason the test data doesn't show. We'd rather see that
+    failure here than in a regional manager's inbox.
     """)
     return
 
@@ -66,7 +66,7 @@ def _(mo):
 
     `customer_history` has one row per customer and version: `[valid_from,
     valid_to)`, with `valid_to` NULL for the current one. Customer 1 moved
-    from Paris to Lyon on 2 May, and takes their orders' revenue with them.
+    from Paris to Lyon on 2 May, and their later orders count for Lyon.
     """)
     return
 
@@ -168,8 +168,8 @@ def _(mo):
 
     The join takes the history row whose range contains the order time.
     The ranges are half-open, so an order at the instant of a move gets the
-    new city, and the current row's NULL `valid_to` means "still valid":
-    two of the catalogue's pitfalls for this query.
+    new city, and the current row's NULL `valid_to` means "still valid".
+    The catalogue lists both as pitfalls of this query.
     """)
     return
 
@@ -215,8 +215,8 @@ def _(dt, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    We check the first version, where `city` is the dimension's column as
-    is:
+    We check the first version, where `city` is the dimension's column
+    as it is:
     """)
     return
 
@@ -241,22 +241,23 @@ def _(mo):
     mo.md(r"""
     `not_null(city)` is refused, although `city` is NOT NULL in the
     dimension and every order in the sample data has a city. The checker
-    knows what the data doesn't show: an order whose customer has no
-    history row yet (a new customer whose snapshot hasn't run), or one
-    placed before the customer's first `valid_from`, matches nothing in the
-    left join, and its city is NULL. That's dbt's `relationships` test
-    failing in production after passing in CI.
+    knows what the data doesn't show: an order whose customer has no history
+    row yet (a new customer whose snapshot hasn't run), or one placed before
+    the customer's first `valid_from`, matches nothing in the left join, and
+    its city is NULL. That is dbt's `relationships` test failing in
+    production after passing in CI.
 
-    The other tests are proved: the grouping columns are a key of an
+    The other tests are proved. The grouping columns are a key of an
     aggregate's output, `revenue_cents >= 0` follows from the precondition
     on amounts (and the `fill_null` for an empty sum), and `day` is never
-    NULL because `order_ts` isn't. The warning says an integer `SUM` over
-    enough rows can leave 64 bits: DataFusion would then wrap around
-    silently, while sverify's DuckDB and Polars runners raise.
+    NULL because `order_ts` isn't. The report assumes that each city's daily
+    `SUM` fits 64 bits, since no contract can bound how many orders a group
+    holds, and the job checks the sums while it runs. The hint names the
+    bound and the row cap (`sv.max_rows`) that would prove it instead.
 
     Someone has to decide what such an order counts as, and the dashboard's
-    readers would rather see an `unknown` row than revenue that silently
-    vanished. So we say it:
+    readers would rather see an `unknown` row than revenue that vanished. So
+    we say it:
     """)
     return
 
@@ -275,9 +276,10 @@ def _(mo):
     mo.md(r"""
     ### The same model in SQL
 
-    If your team writes its models in SQL, `sv.verify` checks the SQL text
-    against the same kind of contract (conditions can be SQL snippets too).
-    The SQL needs `coalesce` around the `SUM` for the same reason the Ibis
+    If your team writes models in SQL, `sv.verify` checks the SQL text
+    against the same kind of contract, with conditions as SQL snippets. The
+    SQL is DuckDB's dialect, which sverify plans with its own SQLGlot lift.
+    It needs `coalesce` around the `SUM` for the reason the Ibis version
     needs `fill_null`:
     """)
     return
@@ -311,14 +313,13 @@ def _(history_t, orders_t, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    (A SQL string can be verified, but nodes are built from Ibis
-    transforms, and that is how contracts travel from one step to the
-    next; that is why the job below uses the Ibis version.)
+    The job below uses the Ibis version, because nodes are built from
+    transforms and contracts travel from one step to the next through them.
 
     ## 3. Build it from the Delta tables
 
-    Now we wire it up. The model reads both tables as sources, and calling
-    it on them builds a node. A left join and an aggregate have no proven
+    Now we wire it up. The model reads both tables as sources, and piping
+    them into it builds a node. A left join and an aggregate have no proved
     delta rules yet, so the node is recomputed on each refresh, and its
     status says so:
     """)
@@ -330,7 +331,7 @@ def _(DeltaSource, daily_city_revenue, lake):
     orders = DeltaSource(str(lake / "orders"))
     history = DeltaSource(str(lake / "customer_history"), name="history")
     mart = orders.pipe(daily_city_revenue, history=history)
-    assert daily_city_revenue.last_report.proved
+    assert daily_city_revenue.report.proved
     mart.refresh()
     print(mart.status())
     return history, mart, orders
@@ -350,21 +351,24 @@ def _(mo):
     mo.md(r"""
     Paris on 1 May, Lyon on 3 May: customer 1's orders follow the move.
 
-    ## 4. Same answer on every engine, unlike the SQL text
+    ## 4. Same answer on every engine
 
-    The same SQL text doesn't mean the same thing everywhere. Suppose
+    The same SQL text means different things on different engines. Suppose
     someone adds an average order value as `revenue_cents / n_orders`:
     """)
     return
 
 
 @app.cell
-def _(sv):
+def _():
+    import datafusion
     import duckdb
 
     {
         "DuckDB": duckdb.sql("select 4699 / 2 as avg").fetchall()[0][0],
-        "DataFusion": sv.connect().datafusion.sql("select 4699 / 2 as avg").to_pylist()[0]["avg"],
+        "DataFusion": datafusion.SessionContext()
+        .sql("select 4699 / 2 as avg")
+        .to_pylist()[0]["avg"],
     }
     return
 
@@ -373,21 +377,22 @@ def _(sv):
 def _(mo):
     mo.md(r"""
     DuckDB's `/` on integers gives a double, DataFusion's (and
-    PostgreSQL's) truncates, Snowflake's gives a NUMBER with extra
-    decimals, and Spark's a double. A model moved from DuckDB in
-    development to Snowflake in production changes its numbers without an
-    error, and the first to notice is whoever reconciles the dashboard with
-    finance. sverify's translations write out what the plan means instead
-    (integer division truncates, on every engine), so the checked plan gives
-    the same rows on each, whichever `engine=` the node is refreshed with:
+    PostgreSQL's) truncates, Snowflake's gives a NUMBER with extra decimals,
+    and Spark's gives a double. A model moved from DuckDB in development to
+    Snowflake in production changes its numbers without an error, and
+    whoever reconciles the dashboard with finance notices first. Sverify's
+    translations write out what the plan means (integer division truncates
+    on every engine), so the checked plan gives the same rows on each,
+    whichever `engine=` the node is refreshed with. DuckDB is the reference
+    engine (Tier 1); see the
+    [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)
+    for the others:
     """)
     return
 
 
 @app.cell
 def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_sql):
-    import json
-
     _results = {}
     for _engine in ENGINES:
         _node = orders.pipe(daily_city_revenue, history=history)
@@ -396,8 +401,8 @@ def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_s
     assert len({repr(r) for r in _results.values()}) == 1
     {
         "engines that agree": list(_results),
-        "Snowflake SQL": f"{len(to_sql(json.loads(mart.plan), SNOWFLAKE))} characters",
-        "Spark SQL": f"{len(to_sql(json.loads(mart.plan), SPARK))} characters",
+        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, SNOWFLAKE))} characters",
+        "Spark SQL": f"{len(to_sql(mart.internal_plan, SPARK))} characters",
     }
     return
 
@@ -408,11 +413,11 @@ def _(mo):
     ## 5. The next day: a move and a new customer
 
     Overnight, the snapshot job records that customer 2 moved from Rome to
-    Milan at 15:00 on 3 May: the old row is closed and a new one added. And
-    a new customer, 4, places an order before their first snapshot.
+    Milan at 15:00 on 3 May: it closes the old row and adds a new one. A new
+    customer, 4, places an order before their first snapshot.
 
     Before the changes land, we store the mart in a Delta table with
-    `.write`; its first refresh creates the table.
+    `.write`. Its first refresh creates the table.
     """)
     return
 
@@ -451,7 +456,7 @@ def _(display, mo, stored):
             ),
             mo.md(
                 "Order 4 (18:00 on 3 May) moved from Rome to Milan, and customer 4's order "
-                "is counted under `unknown` instead of disappearing or making `city` NULL. "
+                "is counted under `unknown`, so it neither disappears nor makes `city` NULL. "
                 "The sink merged the change in one commit; its NOT NULL and CHECK constraints "
                 "are the proved tests."
             ),
@@ -465,19 +470,20 @@ def _(mo):
     mo.md(r"""
     ## What you got
 
-    You now have a dashboard model whose tests can't fail in production for
-    a reason CI didn't see. Its dbt tests became a contract proved before
-    the model runs, and the one that would have failed, `not_null(city)`
-    after a left join, failed at definition time instead of on the
-    dashboard. The preconditions came from Delta metadata where possible.
-    The checked plan gives the same rows on DuckDB, Polars and DataFusion,
-    and as Snowflake or Spark SQL, where the same SQL text would not. And
-    although the model is outside the incremental fragment, it still runs
-    as a node, recomputed and diffed, with its sink merged exactly
-    once per state.
+    You now have a dashboard model whose dbt tests are a contract, proved
+    before the model runs. The one that would have failed in production,
+    `not_null(city)` after a left join, failed at definition time instead.
+    The preconditions came from Delta metadata where possible, and the
+    checked plan gives the same rows on DuckDB, Polars and DataFusion, and
+    can be written as Snowflake or Spark SQL, where the same SQL text would
+    not. The model is outside the incremental fragment, so it runs as a node
+    that is recomputed and diffed, with its sink merged exactly once per
+    state.
 
-    **Next up:** the rest of the tour explains each feature in turn,
-    starting with [Contracts](?file=04_contracts.py).
+    Next up: [Contracts](?file=04_contracts.py) explains what Lean tracks
+    and how contracts compose, and
+    [Pipelines and engines](?file=05_pipelines_and_engines.py) covers
+    nodes, sinks, incremental maintenance and the engines.
     """)
     return
 
