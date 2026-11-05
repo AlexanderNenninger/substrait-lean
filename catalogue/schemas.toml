@@ -604,8 +604,6 @@ day = "date"
 
 [datasets.iot]
 not_null = ["readings.ts", "meters.ts", "counters.ts", "states.ts", "door_events.ts", "motion_events.ts"]
-# A device takes one reading per instant.
-unique = { readings = [["device_id", "ts"]] }
 
 [datasets.iot.values]
 "readings.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:01:00", "2024-03-01 00:02:30", "2024-03-01 00:05:00", "2024-03-01 00:20:00", "2024-03-01 01:00:00", "2024-03-01 06:00:00", "2024-03-02 00:00:00", "2024-03-02 12:00:00"]

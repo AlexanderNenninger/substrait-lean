@@ -189,9 +189,9 @@ intent = "List each order's product names as one comma-separated string."
 domain = "retail"
 source = { name = "modern-sql.com: listagg", url = "https://modern-sql.com/feature/listagg", licence = "all rights reserved (Markus Winand); paraphrased" }
 features = ["inner_join", "group_by", "string_agg"]
-pitfalls = ["tie_order: the order inside the list is unspecified without WITHIN GROUP (ORDER BY …); ordered by name, tied names join to the same string"]
+pitfalls = ["tie_order: the order inside the list is unspecified without WITHIN GROUP (ORDER BY …)"]
 ibis = '''
-q = order_items.join(products, "product_id").group_by("order_id").aggregate(items=_.name.group_concat(",", order_by=_.name))
+q = order_items.join(products, "product_id").group_by("order_id").aggregate(items=_.name.group_concat(","))
 '''
 
 [[query]]

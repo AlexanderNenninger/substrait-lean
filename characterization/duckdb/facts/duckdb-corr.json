@@ -99,18 +99,6 @@
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L10-L18", "note": "corr(NULL, NULL) → NULL; corr(1, 1) → NAN"},
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L52-L60", "note": "corr of (1e301, 0), (-1e301, 0) → nan; no test of |corr| > 1"}
       ]
-    },
-    {
-      "checked_at": "2026-11-05",
-      "method": "probe",
-      "checked_by": "catalogue follow-up of #676 (h2o-groupby-q9)",
-      "evidence": [
-        {
-          "sql": "SELECT corr(x, y)::VARCHAR FROM (VALUES (1.0::DOUBLE, 2.0::DOUBLE)) t(x, y); SELECT corr(x, y)::VARCHAR FROM (VALUES (1.0::DOUBLE, 2.0::DOUBLE), (1.0, 3.0)) t(x, y); SELECT corr(x, y)::VARCHAR FROM (SELECT 1.0::DOUBLE x, 2.0::DOUBLE y WHERE false); SELECT corr(x, y)::VARCHAR FROM (VALUES (1.0::DOUBLE, 2.0::DOUBLE), (2.0, 4.0)) t(x, y)",
-          "observed": "nan, nan, NULL, 1.0"
-        }
-      ],
-      "notes": "DuckDB 2.0.0 (Python, macOS arm64). One pair and a constant side give NaN, no pairs NULL. The DuckDB writer's CASE (`_base.py`, `measure`: fewer than two pairs, or MIN = MAX on a side) gives the reference's NULL there, so h2o-groupby-q9's written plan matches Lean's rows."
     }
   ],
   "issues": [

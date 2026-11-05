@@ -274,15 +274,12 @@ def synthetic(
     columns from 0..5 (so joins on keys match), and are NULL one time in ten
     unless listed in `not_null`. A column listed in `keys` holds distinct
     integers instead, and is never NULL. A table listed in `rows` has that
-    many rows instead (a table of fixed size, such as TPC-H's 25 nations).
-    A table listed in `unique` keeps only the first row of each combination
-    of the columns listed for it (a key over several columns)."""
+    many rows instead (a table of fixed size, such as TPC-H's 25 nations)."""
     ds = schemas["datasets"][dataset]
     pools = ds.get("values", {})
     keys = set(ds.get("keys", []))
     not_null = set(ds.get("not_null", [])) | keys
     sizes = ds.get("rows", {})
-    uniques = ds.get("unique", {})
     default_rows = rows
     out = {}
     for name, cols in ds["tables"].items():
@@ -301,15 +298,6 @@ def synthetic(
             if profile == "double" and t.startswith("decimal"):
                 vals = [None if v is None else float(v) for v in vals]
             data[c] = vals
-        for cols_ in uniques.get(name, []):
-            seen: set[tuple] = set()
-            keep = []
-            for i in range(rows):
-                k = tuple(data[c][i] for c in cols_)
-                keep.append(k not in seen)
-                seen.add(k)
-            data = {c: [v for v, ok in zip(vs, keep, strict=True) if ok] for c, vs in data.items()}
-            rows = sum(keep)
         out[name] = pa.table({c: pa.array(v, arrow.field(c).type) for c, v in data.items()})
     return out
 
