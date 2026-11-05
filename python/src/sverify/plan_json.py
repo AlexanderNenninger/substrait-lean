@@ -361,6 +361,68 @@ def cast_json(e: Json, to: Any, or_null: bool = False) -> Json:
     }
 
 
+def _i64(k: int) -> Json:
+    return literal(k, dt.int64)
+
+
+def days_json(date: Json, n: Json) -> Json:
+    """The DATE `n` days after `date` (`BinFn.dateAdd`)."""
+    return call("add", [date, call("multiply", [n, interval_json(0, 86_400_000_000)])])
+
+
+def make_date_json(y: Json, m: Json, d: Json) -> Json:
+    """`make_date(y, m, d)` of integers (#809): the date by H. Hinnant's
+    `days_from_civil`, NULL if an argument is. It raises for a month or day
+    the calendar lacks, as DuckDB does, and for a year outside the
+    reference's 1 to 9999."""
+
+    def div(a: Json, k: int) -> Json:
+        return call("divide", [a, _i64(k)])
+
+    def mul(a: Json, k: int) -> Json:
+        return call("multiply", [a, _i64(k)])
+
+    def add(*xs: Json) -> Json:
+        return chain("add", list(xs))
+
+    def sub(a: Json, b: Json) -> Json:
+        return call("subtract", [a, b])
+
+    def clamp(a: Json, lo: int, hi: int) -> Json:
+        return call("greatest", [call("least", [a, _i64(hi)]), _i64(lo)])
+
+    def within(a: Json, lo: int, hi: int) -> Json:
+        return call("and", [call("gte", [a, _i64(lo)]), call("lte", [a, _i64(hi)])])
+
+    # The arguments clamped to their ranges, so that the arithmetic below is
+    # bounded and its SQL needs no overflow guards; the comparisons after it
+    # see the arguments as they are.
+    yc, mc, dc = clamp(y, 1, 9999), clamp(m, 1, 12), clamp(d, 1, 31)
+    # The year from March (January and February are the previous year's),
+    # and the day of that year, without a CASE.
+    yy = sub(yc, div(sub(_i64(14), mc), 12))
+    doy = add(div(add(mul(call("modulus", [add(mc, _i64(9)), _i64(12)]), 153), _i64(2)), 5), dc)
+    days = add(sub(add(mul(yy, 365), div(yy, 4)), div(yy, 100)), div(yy, 400), doy,
+               _i64(-719469))  # fmt: skip
+    date = days_json(literal(dt_.date(1970, 1, 1), dt.date), days)
+    fail = call("sverify_raise", [m, literal("make_date of a date outside the calendar "
+                                              "or the years 1 to 9999", dt.string)])  # fmt: skip
+
+    # The month's length: 30 or 31 alternating, with the turn at August
+    # (`(m + m / 8) % 2`), and February's 28 or 29.
+    def divides(k: int) -> Json:
+        return call("equal", [call("modulus", [yc, _i64(k)]), _i64(0)])
+
+    leap = call("or", [call("and", [divides(4), call("not", [divides(100)])]), divides(400)])
+    feb = add(_i64(28), if_then([(leap, _i64(1))], _i64(0)))
+    long = add(_i64(30), call("modulus", [add(mc, div(mc, 8)), _i64(2)]))
+    length = if_then([(call("equal", [mc, _i64(2)]), feb)], long)
+    valid = chain("and", [within(y, 1, 9999), within(m, 1, 12), call("gte", [d, _i64(1)]),
+                          call("lte", [d, length])])  # fmt: skip
+    null = literal(None, dt.date)
+    return if_then([(call("is_null", [a]), null) for a in (y, m, d)] + [(valid, date)], fail)
+
+
 # --------------------------------------------------------------------------
 # Relations
 

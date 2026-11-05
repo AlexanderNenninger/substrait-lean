@@ -85,7 +85,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | dbt-pivot-conditional | [Pivot revenue by category (conditional sums)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/pivot.sql) | ✓ | NPD |  |
 | dbt-pivot-wider | [Pivot with Ibis pivot_wider](https://docs.pola.rs/user-guide/transformations/pivot/) | ✓ | NPDS |  |
-| dbt-unpivot-longer | [Unpivot quarterly columns (pivot_longer)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/unpivot.sql) | ✗ | N | `unnest` |
+| dbt-unpivot-longer | [Unpivot quarterly columns (pivot_longer)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/unpivot.sql) | ✓ | NPDS |  |
 | dbt-unpivot-union | [Unpivot quarterly columns (UNION ALL)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/unpivot.sql) | ✓ | NPDS |  |
 | dbt-scd2-from-updates | [Build a type-2 history from updates](https://docs.getdbt.com/docs/build/snapshots) | ✓ | NPDS |  |
 | dbt-scd2-point-in-time | [Point-in-time join to a type-2 dimension](https://docs.getdbt.com/docs/build/snapshots) | ✓ | NPDS |  |

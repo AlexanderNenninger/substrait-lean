@@ -11,7 +11,17 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
-from sverify.plan_json import Unsupported, interval_json, literal
+from sverify.plan_json import (
+    Json,
+    Unsupported,
+    call,
+    cast_json,
+    days_json,
+    if_then,
+    interval_json,
+    literal,
+    make_date_json,
+)
 from sverify.sql_lift._base import _KNOWN, Column, E, Sub, _fn, _Lift, _shown, register
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
@@ -24,7 +34,7 @@ def _temporal_literals(es: list[E]) -> list[E]:
         return es
     es = [_temporal(e, temporal[0]) if e.type.is_string() and e.constant else e for e in es]
     # Next to a DATE column, a timestamp constant at midnight compares as its
-    # date (exactly); Lean cannot cast the column to a timestamp (#240).
+    # date (exactly); at another time, the column is cast to a timestamp.
     if any(e.type.is_date() and not e.constant for e in es):
         es = [_as_date(e) if e.type.is_timestamp() and e.constant else e for e in es]
     return es
@@ -35,10 +45,7 @@ def _as_date(e: E) -> E:
     if v is None:
         return E(literal(None, dt.date), dt.date, None)
     if v.time() != dt_.time():
-        raise Unsupported(
-            f"comparing a DATE column with the timestamp {v} is not supported yet: sverify has "
-            "no cast of a DATE column to a timestamp (#240)"
-        )
+        return e
     return E(literal(v.date(), dt.date), dt.date, v.date())
 
 
@@ -193,10 +200,8 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
             v = dt_.datetime.combine(d, dt_.time()) + dt_.timedelta(microseconds=micros)
             return E(literal(v, ts), ts, v)
         if micros % _DAY != 0:
-            raise Unsupported(
-                "a DATE column plus an interval of hours or less is a TIMESTAMP, which needs a "
-                "cast sverify lacks (#240)"
-            )
+            # A TIMESTAMP: the date's midnight plus the interval (#807).
+            return E(_fn(name, [cast_json(a.json, ts), b.json], ts), ts)
         return E(_fn(name, [a.json, b.json], dt.date), dt.date, midnight=True)
     if a.type.is_time():
         # TIME ± INTERVAL wraps around midnight, and DuckDB drops the
@@ -235,6 +240,8 @@ _TIME_PARTS = ("hour", "minute", "second", "millisecond", "microsecond")
 def _date_part(lf: _Lift, part: str, a: E) -> E:
     """`date_part(part, a)`, a BIGINT: DuckDB's parts, which Lean's are
     (ISO weeks, Sunday as day 0 of the week)."""
+    if part.lower() in _DERIVED_PARTS:
+        return _DERIVED_PARTS[part.lower()](lf, a)
     p = _DATE_PARTS.get(part.lower())
     if p is None:
         raise Unsupported(f"the date part {part} is not supported yet")
@@ -269,26 +276,209 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
         if not (isinstance(part, sge.Literal) and part.is_string):
             raise Unsupported(f"{name} needs a constant part")
         return _date_part(lf, part.this, sub(args[1]))
+    if name in ("isoyear", "epoch_us") and len(args) == 1:
+        a = _when(sub(args[0]))
+        if name == "epoch_us":
+            return E(_micros(lf, a), dt.int64)
+        return _isoyear(lf, a)
     if name == "weekday" and len(args) == 1:
         # DuckDB's `weekday(d)` is `dayofweek(d)`, Sunday 0 (#328).
         return _date_part(lf, "dow", sub(args[0]))
     raise Unsupported(f"unknown function {node.name}(): DuckDB SQL here has no such function")
 
 
-_KNOWN.add("weekday")
+_KNOWN.update({"weekday", "isoyear", "epoch_us"})
+
+
+_TS = dt.timestamp(scale=6)
+
+
+def _i64(k: int) -> Json:
+    return literal(k, dt.int64)
+
+
+def _when(e: E) -> E:
+    """A date or timestamp argument; a time zone is refused."""
+    if not (e.type.is_date() or e.type.is_timestamp() or e.type.is_null()):
+        raise Unsupported(f"a {e.type} is not a date or a timestamp")
+    if e.type.is_timestamp() and e.type.timezone is not None:
+        raise Unsupported("timestamps with a time zone are not supported")
+    return e
+
+
+def _day(lf: _Lift, e: E) -> Json:
+    """The DATE of a date or timestamp (`CAST(ts AS DATE)` rounds down)."""
+    if e.type.is_date():
+        return e.json
+    if e.constant:
+        return literal(None if e.value is None else e.value.date(), dt.date)
+    return lf.to(e, dt.date).json
+
+
+def _micros(lf: _Lift, e: E) -> Json:
+    """`epoch_us`: a timestamp's microseconds since 1970-01-01, or a DATE's
+    midnight's (`UnFn.epochUs`, `UnFn.dateTime`; #809). A constant's are
+    counted here."""
+    if e.constant:
+        v = e.value
+        if v is not None and type(v) is dt_.date:
+            v = dt_.datetime.combine(v, dt_.time())
+        us = None if v is None else (v - dt_.datetime(1970, 1, 1)) // dt_.timedelta(microseconds=1)
+        return literal(us, dt.int64)
+    return cast_json(lf.to(e, _TS).json, dt.int64)
+
+
+def _part(p: str, x: Json) -> Json:
+    return call("date_part", [literal(p, dt.string), x])
+
+
+def _monday_index(lf: _Lift, e: E) -> Json:
+    """The day of the week, Monday 0."""
+    dow = _part("dow", _day(lf, e))
+    return call("modulus", [call("add", [dow, _i64(6)]), _i64(7)])
+
+
+def _isodow(lf: _Lift, e: E) -> E:
+    # Monday 1 to Sunday 7.
+    return E(call("add", [_monday_index(lf, _when(e)), _i64(1)]), dt.int64)
+
+
+def _isoyear(lf: _Lift, e: E) -> E:
+    # The year of the week's Thursday.
+    d = _day(lf, _when(e))
+    to_thursday = call("subtract", [_i64(3), _monday_index(lf, e)])
+    return E(_part("year", days_json(d, to_thursday)), dt.int64)
+
+
+def _epoch(lf: _Lift, e: E) -> E:
+    """`epoch(ts)` and `date_part('epoch', ts)`: the seconds since
+    1970-01-01, a DOUBLE: the microseconds as a double, divided by 10⁶."""
+    us = cast_json(_micros(lf, _when(e)), dt.float64)
+    return E(_fn("divide", [us, literal(1e6, dt.float64)], dt.float64), dt.float64)
+
+
+_DERIVED_PARTS: dict[str, Callable[[_Lift, E], E]] = {
+    "epoch": _epoch,
+    "isodow": _isodow,
+    "isoyear": _isoyear,
+}
+
+_DAY_NAMES = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August",
+                "September", "October", "November", "December")  # fmt: skip
+
+
+def _named(part: str, names: tuple[str, ...], first: int) -> Callable[..., E]:
+    """`dayname(d)`, `monthname(d)`: English names, as DuckDB's."""
+
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        k = _part(part, _day(lf, _when(sub(node.this))))
+        ifs = [(call("equal", [k, _i64(i + first)]), literal(n, dt.string))
+               for i, n in enumerate(names)]  # fmt: skip
+        return E(if_then(ifs, literal(None, dt.string)), dt.string)
+
+    return rule
+
+
+def _last_day(lf: _Lift, node: sge.LastDay, sub: Sub, scope: list[Column]) -> E:
+    # The month's first day, a month on, a day back: a DATE.
+    if node.args.get("unit") is not None:
+        raise Unsupported(f"{_shown(node)} is not supported")
+    d = _day(lf, _when(sub(node.this)))
+    first = _fn("date_trunc", [literal("month", dt.string), d], dt.date)
+    next_month = _fn("add", [first, interval_json(1, 0)], dt.date)
+    return E(_fn("subtract", [next_month, interval_json(0, _DAY)], dt.date), dt.date)
+
+
+def _make_date(lf: _Lift, node: sge.DateFromParts, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB raises for a month or day outside the calendar.
+    es = [sub(node.args[k]) for k in ("year", "month", "day")]
+    for e in es:
+        if not (e.type.is_integer() or e.type.is_null()):
+            raise Unsupported(f"make_date of a {e.type} is not supported")
+    if all(e.constant for e in es):
+        if any(e.value is None for e in es):
+            return E(literal(None, dt.date), dt.date, None)
+        try:
+            v = dt_.date(*(e.value for e in es))
+        except ValueError as err:
+            raise Unsupported(f"make_date{tuple(e.value for e in es)}: DuckDB raises") from err
+        return E(literal(v, dt.date), dt.date, v)
+    y, m, d = (lf.to(e, dt.int64).json for e in es)
+    return E(make_date_json(y, m, d), dt.date)
+
+
+#: `date_diff`'s units of a fixed length, in microseconds.
+_FIXED_UNITS = {"hour": 3_600_000_000, "minute": 60_000_000, "second": 1_000_000,
+                "millisecond": 1_000}  # fmt: skip
+#: DuckDB's other names of the units.
+_UNIT_NAMES = {
+    "us": "microsecond", "usec": "microsecond", "microseconds": "microsecond",
+    "ms": "millisecond", "msec": "millisecond", "milliseconds": "millisecond",
+    "s": "second", "sec": "second", "secs": "second", "seconds": "second",
+    "m": "minute", "min": "minute", "mins": "minute", "minutes": "minute",
+    "h": "hour", "hr": "hour", "hrs": "hour", "hours": "hour",
+    "d": "day", "days": "day", "dayofmonth": "day",
+    "w": "week", "weeks": "week", "mon": "month", "mons": "month", "months": "month",
+    "q": "quarter", "quarters": "quarter", "y": "year", "yr": "year", "yrs": "year",
+    "years": "year",
+}  # fmt: skip
+
+
+def _floor_div(x: Json, k: int) -> Json:
+    """`⌊x / k⌋` for `k > 0`: the remainder taken toward -∞ first."""
+    floor_mod = call("modulus", [call("add", [call("modulus", [x, _i64(k)]), _i64(k)]), _i64(k)])
+    return call("divide", [call("subtract", [x, floor_mod]), _i64(k)])
 
 
 def _date_diff(lf: _Lift, node: sge.DateDiff, sub: Sub, scope: list[Column]) -> E:
-    # DuckDB's `datediff('day', a, b)` is `b - a` in days.
+    """`date_diff(unit, a, b)`, a BIGINT: the boundaries of `unit` from `a`
+    to `b`, as DuckDB counts them (#809), flooring before 1970 too; a week
+    is 7 of the days, toward zero. A DATE is its midnight."""
     unit = node.args.get("unit")
     name = unit.name.lower() if unit is not None else "day"
-    if name not in ("day", "days"):
-        raise Unsupported(f"datediff in {name} is not supported yet")
-    later, earlier = sub(node.this), sub(node.expression)
-    for e in (later, earlier):
-        if not e.type.is_date() or e.midnight:
-            raise Unsupported(f"datediff of a {e.type} is not supported yet")
-    return E(_fn("date_diff", [later.json, earlier.json], dt.int64), dt.int64)
+    name = _UNIT_NAMES.get(name, name)
+    later, earlier = _when(sub(node.this)), _when(sub(node.expression))
+    pair = (later, earlier)
+    dates = all(e.type.is_date() or e.type.is_null() for e in pair)
+
+    def days(a: Json, b: Json) -> Json:
+        return _fn("date_diff", [a, b], dt.int64)
+
+    if name == "day":
+        return E(days(*(_day(lf, e) for e in pair)), dt.int64)
+    if name == "week":
+        # Whole weeks of the days, toward zero.
+        return E(call("divide", [days(*(_day(lf, e) for e in pair)), _i64(7)]), dt.int64)
+    if name in ("month", "quarter", "year"):
+
+        def index(e: E) -> Json:
+            d = _day(lf, e)
+            y = _part("year", d)
+            if name == "year":
+                return y
+            k, p = (12, "month") if name == "month" else (4, "quarter")
+            return call("add", [call("multiply", [y, _i64(k)]), _part(p, d)])
+
+        return E(call("subtract", [index(later), index(earlier)]), dt.int64)
+    if name in _FIXED_UNITS:
+        k = _FIXED_UNITS[name]
+        if dates:
+            n = days(*(_day(lf, e) for e in pair))
+            return E(call("multiply", [n, _i64(_DAY // k)]), dt.int64)
+        a, b = (_floor_div(_micros(lf, e), k) for e in pair)
+        return E(call("subtract", [a, b]), dt.int64)
+    if name == "microsecond":
+        return E(call("subtract", [_micros(lf, later), _micros(lf, earlier)]), dt.int64)
+    raise Unsupported(f"datediff in {name} is not supported yet")
+
+
+def _to_unix(lf: _Lift, node: sge.TimeToUnix, sub: Sub, scope: list[Column]) -> E:
+    return _epoch(lf, sub(node.this))
+
+
+def _isodow_rule(lf: _Lift, node: sge.DayOfWeekIso, sub: Sub, scope: list[Column]) -> E:
+    return _isodow(lf, sub(node.this))
 
 
 register(
@@ -298,6 +488,12 @@ register(
         sge.Extract: _extract,
         sge.Anonymous: _anonymous,
         sge.DateDiff: _date_diff,
+        sge.TimeToUnix: _to_unix,
+        sge.DayOfWeekIso: _isodow_rule,
+        sge.Dayname: _named("dow", _DAY_NAMES, 0),
+        sge.Monthname: _named("month", _MONTH_NAMES, 1),
+        sge.LastDay: _last_day,
+        sge.DateFromParts: _make_date,
         **{
             cls: _part_fn(part)
             for cls, part in (

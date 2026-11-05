@@ -34,6 +34,7 @@ def UnFn.render : UnFn → String
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
   | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"
   | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
+  | .dateTime => "DATE_TIMESTAMP" | .epochUs => "EPOCH_US"
   | .strftime fmt => s!"STRFTIME_{fmt.quote}" | .bucket k o => s!"BUCKET_{k}_{o}"
   | .decimal p s => s!"DECIMAL_{p}_{s}" | .dkind p s => s!"AS_DECIMAL_{p}_{s}" | .dround k => s!"DROUND_{k}" | .dtrunc k => s!"DTRUNC_{k}"
   | .ftod s => s!"TO_DECIMAL_{s}" | .dtof s => s!"DECIMAL_TO_DOUBLE_{s}"

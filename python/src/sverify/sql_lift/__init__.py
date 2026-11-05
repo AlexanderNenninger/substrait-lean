@@ -9,7 +9,7 @@ reach it through `sv.sql(query, dialect="duckdb", semantics=...)`.
                 semantics="duckdb")
 
 SQLGlot parses the query (`read="duckdb"`, strict) and resolves and types its
-names against the inputs' schemas (`qualify`, `annotate_types`). The lift then
+names against the inputs' schemas (`qualify`). The lift then
 writes one Substrait plan, reading each input as a named table, in which every
 choice DuckDB's SQL leaves implicit is explicit: casts where DuckDB coerces,
 the output type of every function, the options Substrait defines for them

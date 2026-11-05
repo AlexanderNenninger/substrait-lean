@@ -570,6 +570,9 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .time a)])]
   | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
+  | .un .dateTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .date a)])]
+  | .un .epochUs a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .time a)])]
   | .un (.strftime fmt) a => call (fn "strftime") [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
   | .un (.bucket k o) a => call (fn "date_bin") [writeInterval k, writeExpr cols .time a, writeLit .time (.int o)]
   | .un (.dateTrunc u) a =>

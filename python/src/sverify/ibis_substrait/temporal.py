@@ -24,6 +24,7 @@ from sverify.plan_json import (
     interval_json,
     interval_parts,
     literal,
+    make_date_json,
 )
 
 
@@ -203,11 +204,15 @@ def _constants(*args: Any) -> list[int] | None:
 
 
 def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[Exprs, Any], Json]:
-    """`DateFromYMD` and friends: constants only (Lean has no functions of
-    three arguments); a bad date is an error, as in DataFusion."""
+    """`DateFromYMD` and friends: of constants, a literal; a bad date is an
+    error, as in DataFusion. A date of columns is `make_date_json`; the others
+    of columns are refused."""
 
     def rule(x: Exprs, op: Any) -> Json:
         values = _constants(*op.args)
+        if values is None and isinstance(op, ops.DateFromYMD):
+            # `make_date` of columns (#809), which raises outside the calendar.
+            return make_date_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
             raise Unsupported(f"{what} of columns is not supported, only of constants")
         try:

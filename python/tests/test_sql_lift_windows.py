@@ -3,6 +3,7 @@
 
 import json
 
+import ibis
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
@@ -98,3 +99,24 @@ def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):
     # (#268), which states NaN and ±inf exactly instead of refusing them.
     result = check(query, TABLES)
     assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_range_frame_bounds_overflow_as_in_duckdb():
+    """DuckDB computes a RANGE frame's bounds in its integer key's type and
+    raises where one leaves it (`sql_export/range_frames.test`); the plan
+    raises there too, and agrees elsewhere."""
+    import pyarrow as pa
+
+    from sverify.engine import connect, put_table, run_plan, written_plan
+    from sverify_dev.lift import check
+
+    sql = "SELECT sum(x) OVER (ORDER BY x RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS s FROM t"
+    schema = {"t": ibis.schema({"x": "int32"})}
+    ok = pa.table({"x": pa.array([1, 2, None, 5], pa.int32())})
+    result = check(sql, {"t": ok})
+    assert result.ok, f"{result.stage}: {result.detail}"
+    con = connect()
+    put_table(con, "t", pa.table({"x": pa.array([2147483647, 2147483646], pa.int32())}))
+    plan = json.dumps(lift(sql, schema).plan)
+    with pytest.raises(Exception, match="Overflow"):
+        run_plan(con, written_plan(plan), "duckdb")
