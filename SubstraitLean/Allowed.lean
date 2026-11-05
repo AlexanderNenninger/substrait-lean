@@ -233,7 +233,7 @@ def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List 
       a.detPlan cat A F K && b.detPlan cat A F K
   | .window r part sort fns =>
       r.detPlan cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all WinFn.orderFree || (List.range (r.arity cat)).all (· ∈ part))
+        fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part))
   | .aggregate r _ ms => r.detPlan cat A F K && ms.all (·.orderFree)
 
 theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
@@ -282,7 +282,7 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
       simp only [List.all_eq_true, decide_eq_true_eq] at hsub
       exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort
-    · exact window_orderFree hf hp
+    · exact window_tieFree hf hp hsort
     · simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
       exact Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc hp
   | .semi a b _ on, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by

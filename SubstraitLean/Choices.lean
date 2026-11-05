@@ -117,7 +117,7 @@ def Rel.evalChoices (cat : Catalog) : Rel → Option (List (List TieChoice))
     if all || fixed then pure (toChoices ((Rel.fetch (.values 0 rows) off cnt).eval cat)) else none
   | .window r part sort fns => do
     let rows ← exactRows (← r.evalChoices cat)
-    if fns.all WinFn.orderFree || !windowTies part sort rows then
+    if fns.all (WinFn.tieFree sort) || !windowTies part sort rows then
       pure (toChoices (windowEval part sort fns rows))
     else none
   | .filter r c => do
