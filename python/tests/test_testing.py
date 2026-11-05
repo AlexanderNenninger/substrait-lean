@@ -204,7 +204,7 @@ def test_an_unproved_contract_fails():
     lines = str(e.value).splitlines()
     assert lines[:2] == ["the contract of loose is not proved:", "  loose:"]
     # After the bounds inferred against overflow (#244).
-    assert "    requires orders: (_.amount < 2**62) (inferred)" in lines
+    assert "    requires orders: (_.amount < 2**62) (inferred from amount * 2)" in lines
     assert "    ensures (_.doubled >= 0): NOT proved: it may be FALSE on some rows" in lines
 
 

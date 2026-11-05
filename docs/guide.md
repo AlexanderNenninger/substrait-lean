@@ -277,7 +277,7 @@ expr = doubled(orders)
 print(doubled.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: _.id.notnull()
-# requires orders: (_.amount < 2**62) (inferred)
+# requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 # ensures id IS NOT NULL: proved
@@ -393,7 +393,7 @@ try:
     share(orders)
 except VerificationError as e:
     print(str(e).splitlines()[0])
-# could not prove: no runtime error (division by zero: (($2 - 1) / ($2 - 30))), ...
+# could not prove: no runtime error (division by zero: (amount - 1) // (amount - 30)), ...
 ```
 
 Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
@@ -438,9 +438,9 @@ mixed = sv.verify(
     lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
 )
 print(mixed)
-# requires lines: (_.total >= -9 * 10**18) (inferred)
-# requires lines: (_.n != 0) (inferred)
-# hint: `($2 / $1)` is inside an AND or OR, which evaluates both operands, ...
+# requires lines: (_.total >= -9 * 10**18) (inferred from total // n)
+# requires lines: (_.n != 0) (inferred from total // n)
+# hint: `total // n` is inside an AND or OR (`&`, `|`), and DuckDB and Polars evaluate both operands ...
 ```
 
 `mixed.run(gcon)` refuses this batch, whose second row has `n = 0`, with a
@@ -467,7 +467,7 @@ def twice(orders):
 twice(orders)
 print(twice.last_report)
 # requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 2**62) (inferred)
+# requires orders: (_.amount < 2**62) (inferred from amount * 2)
 # ensures (_.twice >= 0): proved
 # ...
 ```
@@ -521,7 +521,7 @@ per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")])
     cpu=samples.cpu.sum()
 )
 print(sv.verify(per_minute))
-# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred)
+# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred from ts.truncate('minute'))
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
@@ -782,7 +782,7 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.last_report)
-# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where a column
+# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where amount is NULL: ...
 # ...
 print(n.refresh())
 # capped:

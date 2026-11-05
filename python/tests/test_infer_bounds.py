@@ -89,7 +89,7 @@ def test_inferred_bounds_prove_the_contract(expr, requires, bounds):
     assert inferred(report) == bounds
     # They are assumed like the rest of `requires`, and shown as inferred.
     assert all(b in report.requires["orders"] for b in bounds)
-    assert f"requires orders: {bounds[0]} (inferred)" in str(report)
+    assert f"requires orders: {bounds[0]} (inferred" in str(report)
     assert "assumed (inferred)" in report._repr_markdown_()
 
 
@@ -143,7 +143,7 @@ def test_without_inference_the_hint_names_the_bound():
         # A sum's size depends on the group's.
         (
             T.group_by("id").aggregate(s=T.amount.sum()).select(x=_.s * 2),
-            "no bound on an input column rules it out: it comes from it reads the value "
+            "no bound on an input column rules it out: it reads the value "
             "of an aggregate other than MIN or MAX",
         ),
     ],
@@ -301,7 +301,7 @@ def test_strict_requires_explicit_bounds():
         return orders.select(x=orders.amount * 2)
 
     src = StaticSource(pa.table({"id": [1], "amount": [3]}), name="orders")
-    with pytest.raises(VerificationError, match=r"overflow: \(\$1 \* 2\)") as e:
+    with pytest.raises(VerificationError, match=r"overflow: amount \* 2") as e:
         src.pipe(strictly)
     assert e.value.report.inferred == {}
     [issue] = e.value.report.errors
