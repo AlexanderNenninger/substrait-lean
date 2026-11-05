@@ -2428,7 +2428,7 @@ def _observed(
 def _open_columns(expr: ir.Table) -> dict[str, str]:
     """The output columns of aggregates whose value the reference leaves
     open: `"picks"` for `first`, `last` or `arbitrary` without an order,
-    `"elements"` for `collect` without one."""
+    `"elements"` for `collect` or `group_concat` without one."""
     out: dict[str, str] = {}
     for agg in expr.op().find(ops.Aggregate):
         if not isinstance(agg, ops.Aggregate):
@@ -2440,7 +2440,7 @@ def _open_columns(expr: ir.Table) -> dict[str, str]:
                 or isinstance(metric, ops.Arbitrary)
             ):
                 out[name] = "picks"
-            elif isinstance(metric, ops.ArrayCollect) and not metric.order_by:
+            elif isinstance(metric, ops.ArrayCollect | ops.GroupConcat) and not metric.order_by:
                 out[name] = "elements"
     names = set(expr.columns)
     return {n: why for n, why in out.items() if n in names}

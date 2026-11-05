@@ -2049,12 +2049,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   if sort.isEmpty && name == "mode" then
     throw ("mode without ORDER BY breaks ties in the engine's order, which is not supported; " ++
       "give it an order (mode(x ORDER BY x) takes the smallest of the most frequent values)")
-  -- Without an order, `FIRST` is any row's value: the model takes them in list
-  -- order, and `Rel.windowsTotal` reports the result as the engine's choice
-  -- unless the group's columns contain a key (Ibis's `distinct(on=)`, #55).
-  if sort.isEmpty && name == "string_agg" then
-    throw ("string_agg without ORDER BY joins the values in the engine's order, which is not " ++
-      "supported; give it an order")
+  -- Without an order, `FIRST` is any row's value and `STRING_AGG` joins the
+  -- values in any order: the model takes them in list order, `Measure.Allowed`
+  -- allows every order, contracts see only "a string" (`Measure.abs`), and
+  -- `Rel.windowsTotal` reports the result as the engine's choice unless the
+  -- group's columns contain a key (Ibis's `distinct(on=)`, #55).
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false

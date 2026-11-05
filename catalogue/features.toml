@@ -57,11 +57,11 @@ agg_filter = { lean = "yes", description = "conditional aggregate: FILTER (WHERE
 agg_arithmetic = { lean = "yes", description = "arithmetic on aggregate results inside one aggregation (SUM(a) / SUM(b), MAX - MIN, 100 * SUM(x))", note = "the Ibis producer computes each reduction as a measure and the arithmetic in a projection over the aggregate (#67)" }
 having = { lean = "yes", description = "HAVING" }
 grouping_sets = { lean = "yes", description = "ROLLUP / CUBE / GROUPING SETS", note = "the SQL lift writes a UNION ALL of one aggregate per grouping set" }
-stddev_var = { lean = "partial", description = "STDDEV / VARIANCE", note = "grouped, of doubles or integers, with each engine's own algorithm (#54); not over windows" }
+stddev_var = { lean = "partial", description = "STDDEV / VARIANCE", note = "grouped, of doubles or integers, with each engine's own algorithm (#54); over a window, the reference's two passes over the frame, on DuckDB only (#271)" }
 corr = { lean = "partial", description = "CORR / COVAR / REGR_*", note = "COVAR_SAMP, COVAR_POP and CORR, grouped, on DuckDB, with its own algorithm (#54); not REGR_*, not over windows" }
 percentile = { lean = "yes", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "exact quantile_cont and quantile_disc with a constant fraction, on DuckDB (#53); approximate quantiles are refused (#469)" }
 approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }
-string_agg = { lean = "partial", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect", note = "STRING_AGG with an ORDER BY of columns (DuckDB only so far, #271); without one the order is the engine's, which is refused" }
+string_agg = { lean = "partial", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect", note = "STRING_AGG with or without an ORDER BY of columns (DuckDB only so far, #271); without one the order is the engine's: the plan is not deterministic and contracts on it stay unproved" }
 arg_max = { lean = "yes", description = "ARG_MAX / first or last value of a group, ordered aggregates", note = "arg_min/arg_max and first/last with an order, on DuckDB (#53, #55); ties are the engine's unless a key settles them" }
 bool_agg = { lean = "no", description = "BOOL_AND / BOOL_OR / EVERY" }
 

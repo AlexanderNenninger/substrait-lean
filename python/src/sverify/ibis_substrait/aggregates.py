@@ -120,11 +120,9 @@ def collect(x: Exprs, op: Any) -> Json:
 
 def group_concat(x: Exprs, op: Any) -> Json:
     """`STRING_AGG(x, sep ORDER BY …)` of the non-NULL strings (#55), as Ibis's
-    `LISTAGG`. Without `order_by` the order is the engine's, which is refused."""
-    if not op.order_by:
-        raise Unsupported(
-            "group_concat() without order_by joins in the engine's order; give it an order_by"
-        )
+    `LISTAGG`. Without `order_by` the order is the engine's: contracts see
+    only some string (`Measure.abs`), and `verify` reports the result as not
+    deterministic (`Rel.windowsTotal`)."""
     if not isinstance(op.sep, ops.Literal):
         raise Unsupported("group_concat needs a constant separator")
     if not op.arg.dtype.is_string():

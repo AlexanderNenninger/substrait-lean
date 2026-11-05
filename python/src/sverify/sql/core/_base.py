@@ -2873,7 +2873,7 @@ class _Parser:
         if _arr(m, "sorts") and name not in ("first", "last", "string_agg", "array_agg", "mode"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
-        if name in ("string_agg", "mode") and not sort:
+        if name == "mode" and not sort:
             raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
@@ -3768,7 +3768,9 @@ class _Writer:
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
         # Without sort keys too: the ordinal is Lean's list order.
-        picks = any(orders) or any(ms.fn in ("first", "last", "collect", "mode") for ms in measures)
+        picks = any(orders) or any(
+            ms.fn in ("first", "last", "string_agg", "collect", "mode") for ms in measures
+        )
         if picks and any(ms.distinct for ms in measures):
             raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
         needs = needs or picks
