@@ -147,15 +147,15 @@ is what the probe gives.
 
 ### Strings
 
-2 of 5 in for 1.0 covered.
+5 of 5 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
 | basic string functions | in | covered | catalogue: string_basic 3, like 9; dbt cross-db macros |  |
 | md5 and sha256 | in | covered | catalogue hash 1; dbt surrogate keys |  |
-| regexp_matches, regexp_extract, regexp_replace | in | — | catalogue regex_replace (ClickBench q28, through Ibis); Eurostat flags; Ibis re_* verify | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
-| split_part, string_split and concat_ws | in | — | dbt.split_part; concat_ws surrogate keys; Eurostat | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
-| right, lpad and rpad | in | — | dbt.right; Ibis right, lpad, rpad verify | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
+| regexp_matches, regexp_extract, regexp_replace | in | covered | catalogue regex_replace (ClickBench q28, through Ibis); Eurostat flags; Ibis re_* verify | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
+| split_part, string_split and concat_ws | in | covered | dbt.split_part; concat_ws surrogate keys; Eurostat | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
+| right, lpad and rpad | in | covered | dbt.right; Ibis right, lpad, rpad verify | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
 | hash() | skipped | — | Ibis hash |  |
 | JSON | skipped | — | catalogue json (none verified); event payloads |  |
 | translate, URL parts, LIKE ESCAPE, GLOB | after 1.0 | — | Ibis translate, host; replay ~150 | [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328) |
