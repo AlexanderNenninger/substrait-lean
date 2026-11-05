@@ -52,7 +52,9 @@ class Pipeable:
 
 def as_transform(step: Any) -> ContractedTransform:
     """`step` as a contracted transform: as it is, or a plain function lifted
-    to a transform with no contract (`@sv.transform()`)."""
+    to a transform with no contract (`@sv.transform(on_inferred="warn")`):
+    it has no `requires` to state an inferred precondition in, so one is
+    assumed, checked on the data, and named in a warning."""
     from sverify.contracts import ContractedTransform, transform
     from sverify.nodes import Node, is_source
 
@@ -63,7 +65,7 @@ def as_transform(step: Any) -> ContractedTransform:
             f"pipe takes a step: a transform (@sv.transform), sv.sql(query) or a "
             f"function from Ibis tables to an Ibis table, got {step!r}"
         )
-    lifted = transform()(step)
+    lifted = transform(on_inferred="warn")(step)
     if not lifted.name.isidentifier():  # a lambda
         lifted.name = "step"
     return lifted

@@ -2,6 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.Allowed
+import SubstraitLean.LoweringDuckDB
 
 /-!
 # The realizability table: `obligations reference E` (#444, step 3b)
@@ -375,6 +376,13 @@ theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) {
 
 /-! ## DuckDB: the translation refines the reference -/
 
+/-- The DuckDB shim: unless the shimmed plan raises, DuckDB returns an allowed
+result. -/
+theorem Rel.duckdb_shim_allowed {cat : Catalog} {r : Rel}
+    (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
+    r.Allowed cat ((Lowering.duckdb.lowerRel r).evalI (Profile.duckdb {}).impl cat) := by
+  rw [Rel.duckdb_shim_sound h]; exact r.eval_allowed cat
+
 /-- **`(duckdb, T r) ⊑ (reference, r)`**, for `T = Lowering.duckdb.lowerRel`
 (`docs/core-semantics.md`, "Soundness"): unless the translated plan raises,
 DuckDB's result is one the reference allows (`Rel.duckdb_shim_allowed`), and
@@ -405,6 +413,16 @@ run_cmd do
       if let .proved thm _ := r.evidence then
         unless known thm do
           throwError "obligations {t.name} at {r.option}: no theorem {thm}"
+
+/-! Every theorem the Polars rows name (`Profile.polars.obs`) is one. -/
+open Lean Elab Command in
+run_cmd do
+  for (_, o, r) in Substrait.Profile.polars.obs do
+    if let .proved thm _ := (r : Substrait.ObsRow).evidence then
+      let n := thm.toName
+      unless (← getEnv).contains (`Substrait ++ n) || (← getEnv).contains n ||
+          Substrait.floatBoundsTheorems.contains thm do
+        throwError "Profile.polars.obs at {o}: no theorem {thm}"
 
 /-! ## For Python -/
 

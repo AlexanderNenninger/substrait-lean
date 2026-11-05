@@ -87,10 +87,13 @@ the data first, and refuses a batch that breaks one before anything runs
 from sverify.errors import PreconditionError
 
 t = con.table("orders")
-unchecked = sv.verify(t.select(t.id, unit=t.total // t.qty))
+print(sv.verify(t.select(t.id, unit=t.total // t.qty)))
+# needs: (_.total >= -9 * 10**18) and (_.qty != 0) on orders, inferred from `total // qty` (overflow or division by zero otherwise): declare them in requires ...
+# ...
+unchecked = sv.verify(t.select(t.id, unit=t.total // t.qty), on_inferred="silent")
 print(unchecked)
-# requires orders: (_.total >= -9 * 10**18) (inferred)
-# requires orders: (_.qty != 0) (inferred)
+# requires orders: (_.total >= -9 * 10**18) (inferred from total // qty)
+# requires orders: (_.qty != 0) (inferred from total // qty)
 # ...
 con.put("orders", pa.table({"id": [4], "qty": [0], "total": [10]}))
 try:
@@ -153,8 +156,8 @@ print(means.observation.equal(on_duckdb, on_polars))
 The route to Polars is `observed`: equal under the observation, here a
 tolerance of `1e-6` on doubles.
 
-Without the observation, the postcondition asks for exact doubles, and the
-route to Polars is refused with the bound it could prove.
+Without the observation, the run accepts doubles within the plan's proved
+bound, except in a column a postcondition reads, which keeps its exact value.
 
 ## 6. A reproducible sink, kept up to date
 
@@ -185,7 +188,7 @@ try:
     readings.pipe(sums).write(exact).refresh(engine="polars", route="auto")
 except RouteError as e:
     print(e)
-# refused on polars: sums_exact: a rerun must give the same result: agg.fsum's sum_order: ... a rerun must reproduce exact doubles
+# refused on polars: sums (stored as sums_exact): a rerun must give the same result: agg.fsum's sum_order: ... a rerun must reproduce exact doubles: pass reproducible=...
 
 totals = readings.pipe(sums).write(
     DeltaSink("sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
@@ -218,15 +221,17 @@ filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
 # transfer: verified under Profile.duckdb; polars's choices are within its choices on every option the proof depends on ...
 
-divided = sv.verify(t.select(t.id, unit=t.total // t.qty), semantics="duckdb")
+divided = sv.verify(
+    t.select(t.id, unit=t.total // t.qty), semantics="duckdb", on_inferred="silent"
+)
 try:
     divided.run(con, "polars", route="transfer")
 except RouteError as e:
     print(e)
-# refused on polars: ... int.div's division_type: Profile.duckdb gives TRUNCATE, polars gives FLOOR (polars-int-divide)
+# refused on polars: verify with semantics='reference' to run on polars (the plan was verified with semantics='duckdb', whose proof does not carry over to polars); details: ...
 divided.run(con, "polars", route="auto")
 print(divided.routes["polars"])
-# recheck: proved again under Profile.polars [refines]
+# recheck: proved again under Profile.polars [exact]
 ```
 
 The transfer check fails on the division, so `route="auto"` goes on to the
@@ -287,7 +292,7 @@ print(parity.proved)
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
 print(parity.routes["polars"])
-# native: verified under Profile.polars [refines]
+# native: verified under Profile.polars [exact]
 print(sv.verify(s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0]).proved)
 # False
 try:

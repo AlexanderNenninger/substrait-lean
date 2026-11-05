@@ -513,10 +513,10 @@ def Profile.reference.table : ProfileTable where
 
 /-- Option ids and Substrait names are unique; each option's behaviours are
 distinct, and its YAML values and extra behaviours are in its core. -/
-example : (options.map (·.id)).Nodup := by decide +kernel
-example : (options.filterMap (·.substrait)).Nodup := by decide +kernel
+example : (options.map (·.id)).Nodup := nodup_of_nodupB (by decide +kernel)
+example : (options.filterMap (·.substrait)).Nodup := nodup_of_nodupB (by decide +kernel)
 example : options.all fun o =>
-    o.core.Nodup && o.yaml.all o.core.contains && o.extra.all (o.core.contains ·.1) := by
+    nodupB o.core && o.yaml.all o.core.contains && o.extra.all (o.core.contains ·.1) := by
   decide +kernel
 /-- Every group's options are options. -/
 example : Functions.groups.all fun (_, os) => os.all fun o => (OptionSpec.find? o).isSome := by

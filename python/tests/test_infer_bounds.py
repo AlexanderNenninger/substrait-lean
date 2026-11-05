@@ -2,6 +2,7 @@
 (`SubstraitLean/Infer.lean`) proposes them, the unchanged contract proof
 checks them, and they behave like `requires` on data and metadata."""
 
+import functools
 from datetime import datetime
 
 import ibis
@@ -17,6 +18,12 @@ from sverify.contracts import ON_DATA, Inferred, label
 from sverify.engine import create_table
 from sverify.errors import PreconditionError, VerificationError
 from sverify.io import StaticSource
+
+#: These tests are about inferred preconditions: assume them, as before
+#: `on_inferred` (#655); `test_on_inferred.py` tests the default.
+verify = functools.partial(sv.verify, on_inferred="silent")
+transform = functools.partial(sv.transform, on_inferred="silent")
+
 
 T = ibis.table(
     {"id": "int64", "amount": "int64", "b": "int64", "ts": "timestamp", "d": "date", "q": "int32"},
@@ -84,12 +91,12 @@ def inferred(report) -> list[str]:
     ],
 )
 def test_inferred_bounds_prove_the_contract(expr, requires, bounds):
-    report = sv.verify(expr, requires={"orders": requires}, ensures=[])
+    report = verify(expr, requires={"orders": requires}, ensures=[])
     assert report.proved, report
     assert inferred(report) == bounds
     # They are assumed like the rest of `requires`, and shown as inferred.
     assert all(b in report.requires["orders"] for b in bounds)
-    assert f"requires orders: {bounds[0]} (inferred)" in str(report)
+    assert f"requires orders: {bounds[0]} (inferred" in str(report)
     assert "assumed (inferred)" in report._repr_markdown_()
 
 
@@ -106,19 +113,19 @@ def test_abs_of_a_narrow_integer_is_bounded_within_its_type(dtype, bounds):
     """`ABS` fails on the smallest value of the column's type, not only of
     BIGINT's, and no bound reaches 2**63, which the lift reads as a HUGEINT
     (#616)."""
-    report = sv.verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": dtype}})
+    report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": dtype}})
     assert report.proved, report
     assert inferred(report) == bounds
 
 
 def test_abs_of_the_smallest_tinyint_may_fail():
-    report = sv.verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": "int8"}}, infer=False)
+    report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": "int8"}}, infer=False)
     assert not report.proved
     assert any("WRAP8" in str(i) for i in report.errors), report
 
 
 def test_without_inference_the_hint_names_the_bound():
-    report = sv.verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, infer=False)
+    report = verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, infer=False)
     assert not report.proved
     assert report.inferred == {}
     [issue] = report.errors
@@ -143,13 +150,13 @@ def test_without_inference_the_hint_names_the_bound():
         # A sum's size depends on the group's.
         (
             T.group_by("id").aggregate(s=T.amount.sum()).select(x=_.s * 2),
-            "no bound on an input column rules it out: it comes from it reads the value "
+            "no bound on an input column rules it out: it reads the value "
             "of an aggregate other than MIN or MAX",
         ),
     ],
 )
 def test_limits_are_suggested_not_assumed(expr, hint):
-    report = sv.verify(expr, requires={"orders": [_.amount >= 0]})
+    report = verify(expr, requires={"orders": [_.amount >= 0]})
     assert not report.proved
     assert report.inferred == {}
     assert any(i.hint == hint for i in report.errors), report.errors
@@ -163,14 +170,14 @@ def test_a_wrong_inference_fails_the_proof(monkeypatch):
         return {"orders": [Inferred('"amount" < 9000000000000000000', "(_.amount < 9 * 10**18)")]}
 
     monkeypatch.setattr(contracts, "_render_needs", too_weak)
-    report = sv.verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]})
+    report = verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]})
     assert inferred(report) == ["(_.amount < 9 * 10**18)"]
     assert not report.proved
     assert [i.kind for i in report.errors] == ["overflow"]
 
 
 def test_values_from_upstream_are_suggested_for_its_ensures():
-    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.twice >= 0])
+    @transform(requires={"t": [_.amount >= 0]}, ensures=[_.twice >= 0])
     def twice(t):
         return t.select(t.id, twice=t.amount * 2)
 
@@ -181,7 +188,7 @@ def test_values_from_upstream_are_suggested_for_its_ensures():
     assert issue.hint == "state `(_.amount < 2**62)` in the ensures of 'paid_without_bound'"
 
 
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount >= 0, _.amount.notnull()])
+@transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount >= 0, _.amount.notnull()])
 def paid_without_bound(orders):
     return orders.filter(orders.amount.notnull())
 
@@ -189,7 +196,7 @@ def paid_without_bound(orders):
 # -- like `requires`: checked on data, proved from metadata, composed ----------
 
 
-@sv.transform(
+@transform(
     requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull()],
 )
@@ -220,7 +227,7 @@ def test_an_eager_table_gets_the_inferred_bound():
         return orders.mutate(doubled=_.amount * 2)
 
     contract = {"requires": {"orders": [_.amount >= 0]}, "ensures": [_.doubled >= 0]}
-    mutated = sv.transform(**contract)(double)
+    mutated = transform(**contract)(double)
 
     orders = ibis.memtable(pa.table({"id": [1, 2], "amount": pa.array([10, 20], pa.int64())}))
     out = mutated(orders)
@@ -275,7 +282,7 @@ def test_inferred_bounds_compose_through_nodes():
     checks it at refresh; a bound an upstream contract guarantees needs no
     inference."""
 
-    @sv.transform(requires={"t": [_.doubled >= 0]}, ensures=[_.id.notnull()])
+    @transform(requires={"t": [_.doubled >= 0]}, ensures=[_.id.notnull()])
     def ids(t):
         return t.filter(t.id.notnull()).select(t.id)
 
@@ -285,7 +292,7 @@ def test_inferred_bounds_compose_through_nodes():
     assert found[("orders", "(_.amount < 2**62)")] == ON_DATA
     assert node.to_arrow().to_pylist() == [{"id": 1}]
 
-    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.twice >= 0])
+    @transform(requires={"t": [_.amount >= 0]}, ensures=[_.twice >= 0])
     def twice(t):
         return t.select(t.id, twice=t.amount * 2)
 
@@ -296,18 +303,18 @@ def test_inferred_bounds_compose_through_nodes():
 
 
 def test_strict_requires_explicit_bounds():
-    @sv.transform(requires={"orders": [_.amount >= 0]}, infer=False)
+    @transform(requires={"orders": [_.amount >= 0]}, infer=False)
     def strictly(orders):
         return orders.select(x=orders.amount * 2)
 
     src = StaticSource(pa.table({"id": [1], "amount": [3]}), name="orders")
-    with pytest.raises(VerificationError, match=r"overflow: \(\$1 \* 2\)") as e:
+    with pytest.raises(VerificationError, match=r"overflow: amount \* 2") as e:
         src.pipe(strictly)
     assert e.value.report.inferred == {}
     [issue] = e.value.report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
 
-    @sv.transform(requires={"orders": [_.amount >= 0, _.amount < 2**62]}, infer=False)
+    @transform(requires={"orders": [_.amount >= 0, _.amount < 2**62]}, infer=False)
     def stated(orders):
         return orders.select(x=orders.amount * 2)
 
@@ -316,7 +323,7 @@ def test_strict_requires_explicit_bounds():
 
 
 def test_datetime_bound_is_checked_on_data():
-    @sv.transform(ensures=[_.m.notnull()], requires={"ev": [_.ts.notnull()]})
+    @transform(ensures=[_.m.notnull()], requires={"ev": [_.ts.notnull()]})
     def per_month(ev):
         return ev.select(m=ev.ts.truncate("M"))
 
@@ -336,7 +343,7 @@ def test_datetime_bound_is_checked_on_data():
 def test_null_passes_an_inferred_bound():
     """Only a value can overflow, so NULL meets an inferred bound."""
 
-    @sv.transform()
+    @transform()
     def twice(t):
         return t.select(x=t.amount * 2)
 

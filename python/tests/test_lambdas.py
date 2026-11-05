@@ -93,6 +93,7 @@ def test_an_error_in_the_body_is_an_error_of_the_row(con):
     put_table(c, "b", pa.table({"l": pa.array([[1, 2], [2**62, 1]], pa.list_(pa.int64()))}))
     b = c.table("b")
     expr = b.select(x=b.l.map(lambda v: v * 2))
+    # A lambda's `$0` is its element, not a column: Lean's notation stays.
     assert "may fail: overflow: ($0 * 2)" in str(sv.verify(expr))
     with pytest.raises(Exception, match="multiply leaves 64 bits"):
         run_plan(c, written_plan(plan_json(c, expr)), "polars")

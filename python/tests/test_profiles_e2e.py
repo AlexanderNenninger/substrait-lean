@@ -119,7 +119,7 @@ def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
     assert route_of(report, "duckdb").kind == "reference"
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").kind == "reference"
     assert route_of(report, "polars").cls == "shim"
 
@@ -136,7 +136,7 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
     run_both(report, con)
     for e in ENGINES:
         assert route_of(report, e).kind == "reference"
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
 
 
 @classes
@@ -152,14 +152,14 @@ def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
     report = sv.verify(t.group_by("k").aggregate(total=t.i.sum()))
     assert report.proved and [i.what for i in report.assumed] == ["i"]
     run_both(report, con)
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
     assert any("sum_empty_null" in s for s in route_of(report, "polars").shims)
     present = sv.verify(t.group_by("k").aggregate(total=t.i.sum()), requires={"t": [_.i.notnull()]})
     assert present.proved, str(present)
     run_both(present, con)
     for e in ENGINES:
-        assert route_of(present, e).cls == "refines"
+        assert route_of(present, e).cls == "exact"
     # The plan reads every column of `t`: the bad batch has them all.
     bad = sv.connect()
     rows = con.get("t").slice(0, 2)
@@ -185,7 +185,7 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     out = run_both(report, good)
     assert all(math.isfinite(z) for z in out["polars"].column("z").to_pylist())
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
     bad = sv.connect()
     bad.put("u", pa.table({"x": [1e200], "y": [1e200]}))
     for e in ENGINES:
@@ -217,11 +217,11 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
         assert report.proved, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
-    assert route_of(rounded, "duckdb").cls == "refines"
+    assert route_of(rounded, "duckdb").cls == "exact"
     assert route_of(rounded, "polars").cls == "shim"
     assert mean.epsilon, "the plan's bound on the mean"
-    assert route_of(mean, "duckdb").cls in ("refines", "approx")
-    assert route_of(mean, "polars").cls == "approx"
+    assert route_of(mean, "duckdb").cls in ("exact", "observed")
+    assert route_of(mean, "polars").cls == "observed"
 
 
 # -- B: observations ---------------------------------------------------------
@@ -252,8 +252,8 @@ def test_b1_float_aggregates_within_a_tolerance(con) -> None:
         assert report.epsilon, "the plan's bound on the doubles"
         data = con if tolerance.abs is not None else _non_negative(con)
         run_both(report, data)
-        assert route_of(report, "polars").cls == "approx", tolerance
-        assert route_of(report, "duckdb").cls in ("refines", "approx")
+        assert route_of(report, "polars").cls == "observed", tolerance
+        assert route_of(report, "duckdb").cls in ("exact", "observed")
     tight = sv.verify(
         t.group_by("k").aggregate(total=t.x.sum()),
         requires={"t": [_.x.between(-1e6, 1e6), sv.max_rows(1_000_000)]},
@@ -289,8 +289,8 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     canon = sv.verify(expr, ensures=[sv.equivalent(zeros="canon")])
     out = run_both(canon, z)
     assert sorted(out["polars"].column("n").to_pylist()) == [1, 2, 2]
-    assert route_of(canon, "polars").cls == "refines_up_to"
-    assert route_of(canon, "duckdb").cls in ("refines", "refines_up_to")
+    assert route_of(canon, "polars").cls == "observed"
+    assert route_of(canon, "duckdb").cls in ("exact", "observed")
 
 
 # -- C: order and NULLs ------------------------------------------------------
@@ -307,7 +307,7 @@ def test_c1_explicit_nulls_first(con) -> None:
     out = run_both(report, con)
     assert out["polars"].column("k").to_pylist()[:2] == [None, None]
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
 
 
 @waits_for(
@@ -329,7 +329,7 @@ def test_c2_unspecified_null_order(con) -> None:
     )
     out = run_both(report, con)
     assert out["polars"].column("k").to_pylist()[-2:] == [None, None]
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
 
 
@@ -355,7 +355,7 @@ def test_c4_join_on_keys_with_nulls(con) -> None:
     out = run_both(report, con)
     assert None not in out["polars"].column("k").to_pylist()
     for e in ENGINES:
-        assert route_of(report, e).cls == "refines"
+        assert route_of(report, e).cls == "exact"
 
 
 # -- D: open options ---------------------------------------------------------
@@ -379,7 +379,7 @@ def test_d1_open_picks_and_element_order(con) -> None:
     run_both(report, con, sv.equivalent(elements="multiset"))
     for e in ENGINES:
         assert route_of(report, e).kind == "reference"
-        assert route_of(report, e).cls in ("refines", "refines_up_to")
+        assert route_of(report, e).cls in ("exact", "observed")
     reads = sv.verify(expr, requires=req, ensures=[q, _.f == _.mx, _.l[0] <= _.mx])
     assert {c.label: c.ignores for c in reads.ensures} == {
         "(_.f == _.mx)": ("picks",),
@@ -411,7 +411,7 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
         2,
         None,
     ]
-    assert route_of(report, "duckdb").cls == "refines"
+    assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
 
 
@@ -442,7 +442,7 @@ def test_f1_verified_under_polars_runs_natively(con) -> None:
     assert '"FLOOR"' in sv.engine.written_plan(report.plan or "")
     out = report.run(con, "polars", route="auto")
     r = report.routes["polars"]
-    assert (r.kind, r.profile, r.cls) == ("native", "polars", "refines")
+    assert (r.kind, r.profile, r.cls) == ("native", "polars", "exact")
     assert not r.shims
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
     assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
@@ -534,7 +534,7 @@ def test_f2_duckdb_plan_transfers_to_polars(con) -> None:
     assert report.proved, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
-    assert (r.kind, r.cls) == ("transfer", "refines"), r
+    assert (r.kind, r.cls) == ("transfer", "exact"), r
     out = run_both(report, big)
     assert math.inf in out["polars"].column("z").to_pylist()
 
@@ -606,7 +606,7 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
     assert report.routes["duckdb"].kind == "reference"
     r = routes.choose(report, "polars")
     assert r.refused and r.cls == "refused" and "#271" in r.reason
-    with pytest.raises(RouteError, match="md5 is not yet supported on polars"):
+    with pytest.raises(RouteError, match=r"hexdigest\('md5'\) \(SQL md5\) runs on duckdb only"):
         report.run(con, "polars", route="auto")
 
 
@@ -619,6 +619,6 @@ def test_h1_engine_versions(con, monkeypatch: pytest.MonkeyPatch) -> None:
         r = routes.choose(report, "polars")
     assert r.kind == "reference" and any("2.2.0" in w for w in r.warnings)
     monkeypatch.setattr(routes, "installed_version", lambda e: "3.0.0" if e == "polars" else None)
-    with pytest.raises(routes.EngineVersionError, match="re-run the probes"):
+    with pytest.raises(routes.EngineVersionError, match="install a 2.x release of polars"):
         report.run(con, "polars", route="auto")
     assert routes.choose(report, "duckdb").kind == "reference"

@@ -39,7 +39,12 @@ def plan(name: str, key: str = "scalarFunction", anchor: int = 7) -> dict:
 @pytest.mark.parametrize("dialect", ["spark", "snowflake", "DataFusion", "Polars"])
 @pytest.mark.parametrize("name", ["regexp_extract", "md5", "first", "median", "corr"])
 def test_duckdb_only(name: str, dialect: str) -> None:
-    with pytest.raises(Unsupported, match=f"^{name} is not yet supported on {dialect}; see #271$"):
+    label = re.escape(_support._LABELS.get(name, name))
+    with pytest.raises(
+        Unsupported,
+        match=f"^{label} runs on duckdb only: run it with engine='duckdb' "
+        f"\\({dialect} does not run it yet; see #271, https://github.com/.*/issues/271\\)$",
+    ):
         _support.check(plan(name, "measure"), dialect, Unsupported)
     _support.check(plan(name, "measure"), "duckdb", Unsupported)
 
@@ -47,8 +52,9 @@ def test_duckdb_only(name: str, dialect: str) -> None:
 def test_messages() -> None:
     bb = sorted(black_box.NAMES)[0]
     assert _support.refusal(bb, "spark") == black_box.refusal(bb, "spark")
-    assert _support.refusal("sverify_pair", "spark") == (
-        "covariance and correlation are not yet supported on spark; see #271"
+    assert _support.refusal("sverify_pair", "spark").startswith(
+        "covariance and correlation (Ibis cov, corr) runs on duckdb only: "
+        "run it with engine='duckdb' (spark does not run it yet; see #271, https://"
     )
     assert _support.refusal("ntile", "DataFusion") == (
         "DataFusion's NTILE does not deal out buckets as SQL does"

@@ -201,4 +201,6 @@ NAMES = frozenset(SCALARS) | frozenset(AGGREGATES)
 
 def refusal(name: str, engine: str) -> str:
     """Why `engine` refuses the black box `name`: only DuckDB has them yet."""
-    return f"the black box {name} is not yet supported on {engine}; see #271"
+    from sverify._support import DUCKDB_ONLY
+
+    return f"the black box {name} is not yet supported on {engine}; " + DUCKDB_ONLY

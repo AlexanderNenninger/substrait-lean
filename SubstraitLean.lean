@@ -9,6 +9,7 @@ import SubstraitLean.Numeric
 import SubstraitLean.Expr
 import SubstraitLean.Order
 import SubstraitLean.Dedup
+import SubstraitLean.Reflect
 import SubstraitLean.Window
 import SubstraitLean.Aggregate
 import SubstraitLean.Rel

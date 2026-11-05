@@ -1149,8 +1149,9 @@ class IcebergSink(_TableSink[Table]):
         min_snapshots: The newest snapshots of the table's history an
             expiry keeps, however old. Default: 1.
         reproducible: What a rerun of a state must reproduce
-            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset
-            with exact values.
+            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset,
+            doubles within the plan's bound (`sv.equivalent(floats="plan")`),
+            other values exact; `sv.equivalent()` asks for the same bits.
 
     Raises:
         ValueError: A transform of `partition_by` is unknown, or

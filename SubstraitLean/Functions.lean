@@ -1,5 +1,6 @@
 import Lean.Data.Json
 import SubstraitLean.Aggregate
+import SubstraitLean.Reflect
 
 /-!
 # The function tables
@@ -447,7 +448,7 @@ theorem anchorNamed_mem (name : String) :
 example : all.all fun r => all.all fun s => (r.name == s.name) == (r.anchor == s.anchor) := by
   decide +kernel
 /-- A constructor has one row, and a row stands for itself. -/
-example : ((all.filterMap (·.ctor)).Nodup) := by decide +kernel
+example : ((all.filterMap (·.ctor)).Nodup) := nodup_of_nodupB (by decide +kernel)
 example : all.all fun r => r.ctor.all fun c => c.key == c := by decide +kernel
 /-- New anchors are in their area's range. -/
 example : areas.all fun (_, rs, lo) => rs.all fun r =>
