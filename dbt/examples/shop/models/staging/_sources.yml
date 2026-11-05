@@ -1,0 +1,139 @@
+version: 2
+
+# The raw tables (loaded from seeds/). Their tests are what sverify-dbt
+# assumes: `dbt build` runs them first and skips the models downstream of a
+# failure. Column types come from `data_type` here, or from catalog.json.
+sources:
+  - name: app
+    schema: main
+    tables:
+      - name: orders
+        columns:
+          - name: order_id
+            data_type: bigint
+            data_tests: [not_null, unique]
+          - name: customer_id
+            data_type: bigint
+            data_tests: [not_null]
+          - name: order_ts
+            data_type: timestamp
+          - name: status
+            data_type: varchar
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [placed, shipped, returned, cancelled]
+          - name: amount
+            data_type: double
+            data_tests:
+              - dbt_utils.accepted_range:
+                  arguments:
+                    min_value: 0
+                    max_value: 100000
+
+      - name: order_items
+        columns:
+          - name: order_id
+            data_type: bigint
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('app', 'orders')
+                    field: order_id
+          - name: product_id
+            data_type: bigint
+            data_tests: [not_null]
+          - name: qty
+            data_type: bigint
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  arguments:
+                    min_value: 1
+                    max_value: 1000
+          - name: price
+            data_type: double
+            data_tests:
+              - dbt_utils.accepted_range:
+                  arguments:
+                    min_value: 0
+                    max_value: 10000
+
+      - name: products
+        columns:
+          - name: product_id
+            data_type: bigint
+            data_tests: [not_null, unique]
+          - name: name
+            data_type: varchar
+          - name: category
+            data_type: varchar
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_in_set:
+                  arguments:
+                    value_set: [books, games, garden]
+
+      - name: customer_updates
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [customer_id, updated_at]
+        columns:
+          - name: customer_id
+            data_type: bigint
+            data_tests: [not_null]
+          - name: city
+            data_type: varchar
+          - name: plan
+            data_type: varchar
+          - name: updated_at
+            data_type: timestamp
+            data_tests: [not_null]
+
+      - name: events
+        columns:
+          - name: user_id
+            data_type: bigint
+          - name: event_ts
+            data_type: timestamp
+          - name: event_name
+            data_type: varchar
+          - name: page
+            data_type: varchar
+          - name: channel
+            data_type: varchar
+
+      - name: sales_wide
+        columns:
+          - name: region
+            data_type: varchar
+            data_tests: [not_null, unique]
+          - {name: q1, data_type: bigint}
+          - {name: q2, data_type: bigint}
+          - {name: q3, data_type: bigint}
+          - {name: q4, data_type: bigint}
+
+      - name: subscriptions
+        columns:
+          - name: customer_id
+            data_type: bigint
+            data_tests: [not_null]
+          - {name: start_date, data_type: date}
+          - {name: end_date, data_type: date}
+          - name: mrr
+            data_type: bigint
+            data_tests:
+              # max_value added from sverify's suggestion (sverify-dbt suggest):
+              # subscription_arr's `mrr * 12` overflows otherwise.
+              - dbt_utils.accepted_range:
+                  arguments:
+                    min_value: 0
+                    max_value: 1000000
+
+      - name: employees
+        columns:
+          - {name: emp_id, data_type: bigint}
+          - {name: manager_id, data_type: bigint}
+          - {name: name, data_type: varchar}
+          - {name: dept, data_type: varchar}
+          - {name: salary, data_type: bigint}
