@@ -32,10 +32,12 @@ documentation they rest on:
 * **Strings**: a backslash is an escape character in a quoted literal, so
   it is doubled. Without a collation, strings compare by UTF-8 bytes, which
   is Lean's code point order; `LENGTH`, `POSITION` and `SUBSTR` count
-  characters. `POSITION('' IN s)` is not documented, so an empty needle is 1
-  by a `CASE`. Regular expressions are POSIX extended with Perl's `\\d`,
+  characters; `POSITION('' IN s)` is 1, as probed (it is not documented).
+  Regular expressions are POSIX extended with Perl's `\\d`,
   `\\w` and `\\s` (black boxes in Lean); `REGEXP_INSTR` searches, where
-  `REGEXP_LIKE` would match the whole string. `UPPER`, `LOWER` and patterns
+  `REGEXP_LIKE` would match the whole string. `SUBSTR` wraps positions and
+  lengths at 32 bits, so they are clamped below 2^31 and raise from 2^32 on.
+  `UPPER`, `LOWER` and patterns
   with `\\d`, `\\w` or `\\s` raise on non-ASCII text, where Snowflake's
   tables need not be Rust's (#70).
 * **Dates**: `DAYOFWEEK`, `WEEK` and `DATE_TRUNC('WEEK')` depend on the
@@ -50,20 +52,29 @@ documentation they rest on:
   (no `rowid`), so nothing can stand for Lean's list order, which FETCH and
   ties in a window follow: `row_ordinal` is refused. Windows run with
   `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
+* **Aggregates**: `VAR_*` and `STDDEV_*` of doubles use a formula that
+  cancels catastrophically, so they are refused; sums of doubles are refused
+  as their order is not given.
 * **Identifiers** fold to upper case unless quoted; every one is quoted.
+
+The Snowflake behaviour behind these was probed on Snowflake 10.40.102 and is
+recorded privately.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from sverify._plan_read import SUBSTR_MAX
 from sverify._support import DUCKDB_ONLY
 from sverify.sql.core import Dec, Dialect, Kind, Lst, Unsupported
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
+INT32_MAX = 2**31 - 1
 NAN = "CAST('NaN' AS FLOAT)"
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -98,8 +109,12 @@ class SnowflakeDialect(Dialect):
         """An expression of type `kind` that fails with `message`. Snowflake
         has no RAISE function, but casting a non-numeric (non-boolean) string
         is an error that quotes the string. It depends on `dep` so it cannot
-        be folded at compile time, and is NULL when `dep` is."""
+        be folded at compile time, and is NULL when `dep` is. A cast to
+        `VARCHAR` never fails, so a string's raise goes through a `NUMBER`
+        (Snowflake behaviour recorded privately)."""
         msg = self.str_lit(f"sverify: {message}: ")
+        if kind == "str":
+            return f"TO_VARCHAR(CAST({msg} || TO_VARCHAR({dep}) AS NUMBER(38,0)))"
         return f"CAST({msg} || TO_VARCHAR({dep}) AS {self.type_name(kind)})"
 
     # Literals
@@ -119,7 +134,7 @@ class SnowflakeDialect(Dialect):
         return f"CAST('{f + 0.0!r}' AS FLOAT)"  # `+ 0.0`: the one zero
 
     def int_lit(self, i: int) -> str:
-        return str(i)
+        return str(i) if i >= 0 else f"({i})"
 
     def timestamp_lit(self, micros: int) -> str:
         try:
@@ -148,17 +163,28 @@ class SnowflakeDialect(Dialect):
         fail = self.raise_("integer overflow", r, "int")
         return f"IFF({r} BETWEEN {I64_MIN} AND {I64_MAX}, {r}, {fail})"
 
+    def folded(self, r: str, value: int | None) -> str:
+        """`r` checked, or the literal `value` when the operands were literals
+        and it fits: the check of `1 + 1` is the same 150 bytes every time."""
+        if value is not None and I64_MIN <= value <= I64_MAX:
+            return self.int_lit(value)
+        return self.checked(r)
+
     def int_add(self, a: str, b: str) -> str:
-        return self.checked(f"({a} + {b})")
+        x, y = _int_value(a), _int_value(b)
+        return self.folded(f"({a} + {b})", None if x is None or y is None else x + y)
 
     def int_sub(self, a: str, b: str) -> str:
-        return self.checked(f"({a} - {b})")
+        x, y = _int_value(a), _int_value(b)
+        return self.folded(f"({a} - {b})", None if x is None or y is None else x - y)
 
     def int_mul(self, a: str, b: str) -> str:
-        return self.checked(f"({a} * {b})")
+        x, y = _int_value(a), _int_value(b)
+        return self.folded(f"({a} * {b})", None if x is None or y is None else x * y)
 
     def int_neg(self, a: str) -> str:
-        return self.checked(f"(- {a})")
+        x = _int_value(a)
+        return self.folded(f"(- {a})", None if x is None else -x)
 
     def trunc_div(self, a: str, b: str) -> str:
         # Exact: `a - MOD(a, b)` is a multiple of `b`. Only MIN / -1 leaves 64 bits.
@@ -263,6 +289,13 @@ class SnowflakeDialect(Dialect):
     def window_int_sum(self, v: str, over: str) -> str:
         return f"CAST({self.checked(f'SUM({v}) {over}', row=False)} AS NUMBER(38,0))"
 
+    def float_var(self, fn: str, v: str) -> str:
+        raise Unsupported(
+            "Snowflake's VAR_SAMP, VAR_POP and STDDEV of doubles cancel catastrophically "
+            "(0 for 1e9 + {4, 7, 13, 16}, whose sample variance is 30), outside the "
+            "reference's bounds (Snowflake behaviour recorded privately)"
+        )
+
     def float_sum(self, v: str, o: str) -> str:
         raise Unsupported(
             "Snowflake does not add doubles in a given order, and the rounding of a SUM or "
@@ -291,7 +324,38 @@ class SnowflakeDialect(Dialect):
         return f"IFF({odd}, {p} || {self.str_lit(chr(92))}, {p})"
 
     def substring(self, s: str, start: str, length: str | None) -> str:
-        return f"SUBSTR({s}, {start})" if length is None else f"SUBSTR({s}, {start}, {length})"
+        """`SUBSTR` reads its start and length as 32-bit integers, wrapping
+        larger ones (Snowflake behaviour recorded privately): a start of 2^32 + 2 is 2, a
+        length of 2^31 is negative. No string is 2^31 - 1 characters long
+        (128 MiB at most), so anything from there on is clamped to it. From
+        2^32 on, outside `Text.substrInRange`, the SQL raises as the other
+        engines do. `Lowering.substring` passes a start of at least 1, and a
+        length that is the plan's literal or a smaller `GREATEST(…, 0)`: a
+        literal of 2^32 or more is refused, so a computed length needs only
+        the clamp."""
+        if re.fullmatch(r"\d+", start):
+            first = self.int32_lit(int(start))
+        else:
+            # The string is the raise's dependency: `start` is written twice, not three times.
+            top = self.int_lit(INT32_MAX)
+            if self.guards:
+                fail = self.raise_("substring offset outside of supported range", s, "int")
+                top = f"IFF({start} >= {SUBSTR_MAX}, {fail}, {top})"
+            first = f"LEAST({start}, {top})"
+        if length is None:
+            return f"SUBSTR({s}, {first})"
+        if re.fullmatch(r"\d+", length):
+            n = self.int32_lit(int(length))
+        else:
+            n = f"LEAST({length}, {INT32_MAX})"
+        return f"SUBSTR({s}, {first}, {n})"
+
+    @staticmethod
+    def int32_lit(k: int) -> str:
+        """A literal start or length `k ≥ 0` as SUBSTR reads it."""
+        if k >= SUBSTR_MAX:
+            raise Unsupported(f"a substring position or length of {k} is not below 2^32")
+        return str(min(k, INT32_MAX))
 
     def trim(self, s: str, chars: str, left: bool, right: bool) -> str:
         f = "TRIM" if left and right else "LTRIM" if left else "RTRIM"
@@ -304,6 +368,12 @@ class SnowflakeDialect(Dialect):
 
     def is_true(self, a: str) -> str:
         return f"COALESCE({a}, FALSE)"
+
+    def where(self, a: str) -> str:
+        # A `WHERE` drops NULL as it drops FALSE. Snowflake cannot evaluate a
+        # correlated `EXISTS` whose correlation sits inside `COALESCE`
+        # (002031 "Unsupported subquery type"; Snowflake behaviour recorded privately).
+        return a
 
     # Windows
 
@@ -334,6 +404,15 @@ class SnowflakeDialect(Dialect):
 
     def union_all(self, a: str, b: str) -> str:
         return f"({a}) UNION ALL ({b})"
+
+
+_INT = re.compile(r"\(?(-?\d+)\)?")
+
+
+def _int_value(sql: str) -> int | None:
+    """The value of an integer literal as `int_lit` writes it, else None."""
+    m = _INT.fullmatch(sql)
+    return int(m.group(1)) if m else None
 
 
 SNOWFLAKE: Dialect = SnowflakeDialect("snowflake")

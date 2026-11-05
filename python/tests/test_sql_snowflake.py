@@ -263,6 +263,49 @@ def test_strings_escape_backslashes():
     assert SNOWFLAKE.str_lit("it's a\\b") == "'it''s a\\\\b'"
 
 
+def test_raise_of_a_string_raises():
+    # A cast to VARCHAR never fails: the raise goes through a NUMBER
+    # (Snowflake behaviour recorded privately).
+    sql = parses(SNOWFLAKE.raise_("UPPER of non-ASCII text differs between engines", "x", "str"))
+    assert sql.startswith("TO_VARCHAR(CAST(") and sql.endswith("AS NUMBER(38,0)))")
+    assert "AS VARCHAR)" not in sql
+    assert parses(SNOWFLAKE.raise_("e", "x", "float")).endswith("AS FLOAT)")
+
+
+def test_substring_positions_fit_32_bits():
+    # SUBSTR wraps starts and lengths at 32 bits (Snowflake behaviour recorded privately).
+    assert parses(SNOWFLAKE.substring("s", "2", "3")) == "SUBSTR(s, 2, 3)"
+    assert SNOWFLAKE.substring("s", "3000000000", "3000000000") == (
+        "SUBSTR(s, 2147483647, 2147483647)"
+    )
+    with pytest.raises(Unsupported, match="2\\^32"):
+        SNOWFLAKE.substring("s", "1", str(2**32))
+    computed = parses(SNOWFLAKE.substring("s", "a", "n"))
+    assert computed == (
+        "SUBSTR(s, LEAST(a, IFF(a >= 4294967296, "
+        "CAST('sverify: substring offset outside of supported range: ' || TO_VARCHAR(s) "
+        "AS NUMBER(38,0)), 2147483647)), LEAST(n, 2147483647))"
+    )
+    # The start is written twice, however large it is.
+    assert SNOWFLAKE.substring("s", "START", None).count("START") == 2
+
+
+def test_double_variance_is_refused():
+    # The textbook formula: 0 for 1e9 + {4, 7, 13, 16} (Snowflake behaviour recorded privately).
+    with pytest.raises(Unsupported, match="cancel catastrophically"):
+        SNOWFLAKE.float_var("var_samp", "x")
+
+
+def test_integer_literals_fold():
+    assert SNOWFLAKE.int_add("1", "1") == "2"
+    assert SNOWFLAKE.int_sub(SNOWFLAKE.int_lit(-5), "3") == "(-8)"
+    assert SNOWFLAKE.int_neg(SNOWFLAKE.int_lit(-7)) == "7"
+    # Past 64 bits the check stays, and raises at run time.
+    big = parses(SNOWFLAKE.int_mul(str(2**63 - 1), "2"))
+    assert big.startswith("IFF(") and "integer overflow" in big
+    assert parses(SNOWFLAKE.int_add("x", "1")).startswith("IFF((x + 1) BETWEEN")
+
+
 def test_windows_and_relations():
     over = SNOWFLAKE.over(['"c0"'], [SNOWFLAKE.sort_key('"c1"', True, False)])
     assert over == 'OVER (PARTITION BY "c0" ORDER BY "c1" DESC NULLS LAST)'
@@ -463,8 +506,17 @@ def test_emulated_semantics_on_fakesnow(fakesnow_cursor):
 
 def snowflake_connection():
     env = os.environ
+    if env.get("SNOWFLAKE_CONNECTION_NAME"):
+        # A named connection of ~/.snowflake/config.toml (the Snowflake CLI's):
+        # the connector reads its account and credential itself.
+        import snowflake.connector
+
+        return snowflake.connector.connect(connection_name=env["SNOWFLAKE_CONNECTION_NAME"])
     if not (env.get("SNOWFLAKE_ACCOUNT") and env.get("SNOWFLAKE_USER")):
-        pytest.skip("set SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER and a credential to run on Snowflake")
+        pytest.skip(
+            "set SNOWFLAKE_CONNECTION_NAME, or SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER and a "
+            "credential, to run on Snowflake"
+        )
     import snowflake.connector
 
     keys = ("account", "user", "password", "authenticator", "private_key_file", "role")
