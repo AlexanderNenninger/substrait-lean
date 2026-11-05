@@ -1,0 +1,38 @@
+{
+  "id": "SP-1",
+  "project": "spark",
+  "kind": "bug",
+  "version": "4.3.0",
+  "status": "filed",
+  "status_note": "Reproduces on Spark 4.3.0 in both ANSI modes, interpreted and codegen. SPARK-45438 (open since 2023, Scala 2.13 builds) reports the raise for `-x` and `abs(x)` at the largest 38-digit decimal; the silent rounding of any decimal past 34 significant digits is the same cause and is not in it. Source at v4.3.0 (98bc0212): `Decimal.unary_-` still negates the Scala `BigDecimal`, whose `MathContext` is `DECIMAL128`.",
+  "upstream": [
+    "https://issues.apache.org/jira/browse/SPARK-45438"
+  ],
+  "summary": [
+    "`-x` and `abs(x)` of a `DECIMAL` with more than 34 significant digits round it half up to 34 digits, silently: `-CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0))` is -12345678901234567890123456789012350000. `0 - x` is exact.",
+    "At 10³⁸ - 1 the rounding reaches 10³⁸, which does not fit `DECIMAL(38,0)`, so `-x` raises `NUMERIC_VALUE_OUT_OF_RANGE` even with ANSI off. `Decimal.unary_-` (sql/api/.../types/Decimal.scala#L567-L575) builds `-decimalVal` on a Scala `BigDecimal`, which rounds to its default `MathContext.DECIMAL128` (34 digits); `abs` calls it."
+  ],
+  "repro": "SELECT CAST(-a AS STRING), CAST(abs(-a) AS STRING), CAST(0 - a AS STRING)\nFROM VALUES (CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0))) AS s(a);\n-- -12345678901234567890123456789012350000, 12345678901234567890123456789012350000, -12345678901234567890123456789012345678\nSELECT -CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0));\n-- NUMERIC_VALUE_OUT_OF_RANGE, with spark.sql.ansi.enabled true or false",
+  "handling": "The Spark profile (#739) should spell `negate` of a decimal as `0 - x` and `abs` as `CASE WHEN x < 0 THEN 0 - x ELSE x END`. The fix upstream is to negate the Java `BigDecimal` (`decimalVal.underlying.negate()`), which is exact.",
+  "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, then a manual repro of `decimal-overflow-subtract`",
+  "issues": [
+    738,
+    739
+  ],
+  "files": [
+    "characterization/spark/probes.json",
+    "characterization/spark/facts/spark-decimal-negate.json"
+  ],
+  "facts": [
+    "spark-decimal-negate"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
+      },
+      "note": "probes decimal-negate-34-digits and decimal-negate-max of characterization/spark/probes.json, both ANSI modes, folded and codegen. Source at v4.3.0: Decimal.scala#L567-L575, arithmetic.scala#L70. JIRA search (project SPARK) for \"unary minus decimal precision\", \"negate decimal 38\", \"Decimal unary_- MathContext\", \"abs decimal precision loss\": SPARK-45438 only."
+    }
+  ]
+}
