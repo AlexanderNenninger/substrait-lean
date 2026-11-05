@@ -29,9 +29,31 @@ JSON (kept so plans can be written back out). Virtual tables are recorded
 too, under `valuesKey`, so that their column kinds are known. -/
 abbrev Tables := List (String × Nat × Json)
 
+/-- `n` in base 2⁶⁴, its digits in decimal, most significant first,
+separated by `.`. A double's code has hundreds of decimal digits, which
+`toString` finds one division by ten at a time. -/
+def natKey (n : Nat) : String :=
+  if n < 18446744073709551616 then toString n
+  else natKey (n / 18446744073709551616) ++ "." ++ toString (n % 18446744073709551616)
+termination_by n
+decreasing_by exact Nat.div_lt_self (by omega) (by decide)
+
+/-- A value as a string, one per value: each form starts with its tag, an
+integer ends with `;` and a string or list gives its length first, so no
+encoding is a prefix of another's. It keys virtual tables (`valuesKey`),
+where `reprStr` took half of a small plan's check (#825). -/
+def valueKey : Value → String
+  | .null => "n"
+  | .bool b => if b then "t" else "f"
+  | .int i => s!"i{if i < 0 then "-" else ""}{natKey i.natAbs};"
+  | .str s => s!"s{s.length}:{s}"
+  | .list vs => s!"l{vs.length}:" ++ String.join (vs.attach.map fun ⟨v, _⟩ => valueKey v)
+
 /-- The entry of a virtual table in `Tables`; no table name starts with `$`
 in a plan the parser reads. -/
-def valuesKey (n : Nat) (rows : Relation) : String := s!"$values {n} {reprStr rows}"
+def valuesKey (n : Nat) (rows : Relation) : String :=
+  s!"$values {n} {rows.length}:" ++
+    String.join (rows.map fun row => s!"{row.length}:" ++ String.join (row.map valueKey))
 
 def isValuesKey (t : String) : Bool := t.startsWith "$values "
 
