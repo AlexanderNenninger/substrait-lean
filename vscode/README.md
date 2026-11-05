@@ -32,11 +32,15 @@ The TypeScript client starts one Python process per workspace folder,
 `python -m sverify_vscode serve` ([python/sverify_vscode](python/sverify_vscode)),
 which imports sverify and Ibis once and answers one JSON request per check.
 A check runs the file as a module named `__sverify_check__`, so code under
-`if __name__ == "__main__":` (runs on data) stays out of it. It records each
-transform call and each `sv.verify` call with its `Report`, and calls a
-transform the file never calls on the module's unbound tables
-(`ibis.table(schema, name=...)`) named like its parameters. A
-`VerificationError` is recorded, and the file goes on running.
+`if __name__ == "__main__":` (runs on data) stays out of it. Then it checks
+each `sv.ContractedTransform` of the module with
+`ContractedTransform.check` on the module's unbound tables
+(`ibis.table(schema, name=...)`) named like its parameters, or reads its
+`last_report`, and reads each `sv.Report` the module assigned to a name,
+matched with the `sv.verify(...)` call assigned to it. The setting
+`sverify.counterexamples` reaches the file's own calls through
+`SVERIFY_COUNTEREXAMPLES`. The checker uses only sverify's public API;
+[UX-NOTES.md](UX-NOTES.md#public-api-gaps) lists what that took.
 
 The Python side places each finding in the source with the AST
 (`Issue.shown`, such as `total // qty`, matched against the transform's
@@ -100,7 +104,8 @@ code lenses and completion through VS Code's own commands.
 - Marimo notebooks (the tour itself) are not checked: their cells run only
   under `app.run()`.
 - A transform is checked only on unbound tables the file defines, or where
-  the file calls it.
+  the file calls it; an `sv.verify` report only where the file assigns it
+  to a name. A module-level call that raises stops the check at that line.
 - Findings are placed by matching text: an expression written twice gets
   the first place, and a SQL issue that names no columns (`$3`) sits on the
   `sv.verify` call.

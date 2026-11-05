@@ -70,6 +70,7 @@ import functools
 import inspect
 import json
 import math
+import os
 import re
 import warnings
 import weakref
@@ -829,6 +830,19 @@ class CheckedCondition:
             )
         return why
 
+    @property
+    def message(self) -> str:
+        """The condition's status in words, as `str(report)` prints it after
+        "ensures <label>: ": "proved", or "NOT proved: " and `why`; then what
+        the observation ignores that it depends on, and whether it is
+        checked on the output data."""
+        mark = "proved" if self.proved else f"NOT proved: {self.why}"
+        if self.ignores:
+            mark += f"; {_observation.why(self.ignores)}"
+        if self.checked:
+            mark += f"; {DATA_CHECK}"
+        return mark
+
 
 #: What a report suggests for an overflow it cannot rule out (#202).
 OVERFLOW_HINT = (
@@ -976,11 +990,28 @@ class Issue:
     """The operation in the user's terms: column names and the Ibis or SQL
     operator (`total // qty`, `sum(x)`); None where the plan does not say
     which columns `expr` reads."""
+    suggested: dict[str, tuple[str, ...]] = field(default_factory=dict, compare=False)
+    """The preconditions that rule it out, as labels per input table
+    (`{"orders": ("(_.qty != 0)",)}`), where the inference found them: what
+    `hint` says to state in `requires`, as data. Empty where it found none."""
 
     @property
     def what(self) -> str:
         """The column, or else the expression, a report names the issue by."""
         return self.column or self.shown or self.expr
+
+    @property
+    def message(self) -> str:
+        """The issue in words, as `str(report)` prints it after "may fail: ":
+        its kind, the operation, what causes it where the kind does not say,
+        and, for one the job also checks while it runs, that it does."""
+        return f"{self}{_cause(self)}" + (f" ({RUNTIME_CHECK})" if _assumable(self) else "")
+
+    @property
+    def assumption(self) -> str:
+        """For an issue in `Report.assumed`: what the report assumes of it, as
+        `str(report)` prints it after "assumes: "."""
+        return _assumption(self)
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.shown or self.expr}"
@@ -1137,6 +1168,10 @@ class Report:
     postconditions: list[Condition] = field(default_factory=list, repr=False, compare=False)
     """The postconditions, as conditions, in the order of `ensures`
     (`to_substrait` ships them)."""
+    inputs: dict[str, ibis.Schema] = field(default_factory=dict, repr=False, compare=False)
+    """The schema of each input table the plan reads, by table name: the
+    columns `requires` may name, per table, as `output` holds those
+    `ensures` may name."""
 
     @overload
     def to_substrait(
@@ -1511,6 +1546,51 @@ class Report:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
 
+    @property
+    def notes(self) -> list[str]:
+        """What the report notes about the result as a whole, as `str(report)`
+        prints them after "note: ": that rows may tie in an `ORDER BY`
+        (`deterministic` is False, `ties` says which keys would help), and
+        that the proof holds for the `params` given only."""
+        out = [] if self.deterministic else [TIES_HINT]
+        if self.params:
+            out.append(f"{PARAMS_NOTE}: {', '.join(self.params)}")
+        return out
+
+    def route(
+        self,
+        engine: Any,
+        route: RouteKind | Literal["auto"] = "auto",
+        *,
+        reproducible: Observation | None = None,
+    ) -> Route:
+        """The route by which `run` would take the plan to `engine`, and the
+        plan's class there, without running it: the route `report.routes`
+        records after a run (D13).
+
+        Args:
+            engine: The engine's name (`"duckdb"`, `"polars"`, …) or a Spark
+                session.
+            route: `"auto"` (the default) tries the routes in turn; a route
+                by name (`"native"`, `"reference"`, `"transfer"`,
+                `"recheck"`) is taken or refused.
+            reproducible: What a rerun must reproduce, as `run` takes it.
+
+        Returns:
+            The `Route`: its `kind`, `cls` (`"exact"`, `"observed"`, `"shim"`
+            or `"refused"`), `observation` and `reason`. A plan that is not
+            proved is refused, with `reason` saying so.
+
+        Raises:
+            EngineVersionError: The installed engine is another major
+                version than its profile's.
+            EngineSettingsError: A setting the engine's profile depends on
+                differs from its facts'.
+        """
+        from sverify import routes as _routes
+
+        return _routes.choose(self, engine, route, reproducible=reproducible)
+
     def _hints(self) -> list[str]:
         """`hints`, and the general overflow hint for an overflow neither they
         nor its own `Issue.hint` cover."""
@@ -1536,28 +1616,18 @@ class Report:
             ]
         lines += [f"needs: {n}" for n in self.needs_lines()]
         for c in self.ensures:
-            mark = "proved" if c.proved else f"NOT proved: {c.why}"
-            if c.ignores:
-                mark += f"; {_observation.why(c.ignores)}"
-            if c.checked:
-                mark += f"; {DATA_CHECK}"
-            lines.append(f"ensures {c.label}: {mark}")
+            lines.append(f"ensures {c.label}: {c.message}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
-        lines += [f"assumes: {_assumption(i)}" for i in self._assumed()]
+        lines += [f"assumes: {i.assumption}" for i in self._assumed()]
         for i in self.errors:
-            lines.append(
-                f"may fail: {i}{_cause(i)}" + (f" ({RUNTIME_CHECK})" if _assumable(i) else "")
-            )
+            lines.append(f"may fail: {i.message}")
             if i.hint:
                 lines.append(f"  hint: {i.hint}")
         lines += [f"hint: {h}" for h in self._hints()]
-        if not self.deterministic:
-            lines.append(f"note: {TIES_HINT}")
-        if self.params:
-            lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
+        lines += [f"note: {n}" for n in self.notes]
         lines.append(f"semantics: {self.semantics}")
         lines += [f"  {_transfer_failure(f)}" for f in self.transfer or ()]
         if self.observation != Observation():
@@ -2255,13 +2325,30 @@ def requires_by_input(
     return dict(requires)
 
 
+def default_counterexamples() -> int:
+    """How many inputs `verify`, a transform's call and
+    `ContractedTransform.check` try per unproved postcondition when not told:
+    the `SVERIFY_COUNTEREXAMPLES` environment variable, else 200. An editor
+    or a CI step that only needs the verdicts sets it to 0."""
+    raw = os.environ.get("SVERIFY_COUNTEREXAMPLES", "").strip()
+    if not raw:
+        return 200
+    try:
+        n = int(raw)
+    except ValueError:
+        raise ValueError(f"SVERIFY_COUNTEREXAMPLES must be an integer, not {raw!r}") from None
+    if n < 0:
+        raise ValueError(f"SVERIFY_COUNTEREXAMPLES must be 0 or more, not {n}")
+    return n
+
+
 def verify(
     transform: Transform,
     *,
     requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
     ensures: Sequence[Condition] = (),
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
-    counterexamples: int = 200,
+    counterexamples: int | None = None,
     params: Mapping[ir.Scalar, Any] | None = None,
     infer: bool = True,
     semantics: Semantics | None = None,
@@ -2302,8 +2389,9 @@ def verify(
             `ibis.schema` accepts, or Ibis tables. Needed for SQL transforms;
             an Ibis expression's own tables are found from it.
         counterexamples: How many small inputs to try per unproved
-            postcondition when searching for one that breaks it. Default 200;
-            0 skips the search.
+            postcondition when searching for one that breaks it; 0 skips the
+            search. Default: the `SVERIFY_COUNTEREXAMPLES` environment
+            variable, else 200 (`default_counterexamples`).
         params: Values for the `ibis.param`s of an Ibis transform, as Ibis's
             `execute(params=...)` takes them. The report is about the
             transform with these values (`bind_params`); an unbound parameter
@@ -2395,7 +2483,7 @@ def verify(
         requires=requires_by_input(requires, inputs),
         ensures=ensures,
         tables=tables,
-        counterexamples=counterexamples,
+        counterexamples=default_counterexamples() if counterexamples is None else counterexamples,
         params=bound,
         infer=infer,
         semantics=_checked_semantics(semantics),
@@ -2940,6 +3028,13 @@ def _verify_once(
                 if i["bound"] and i["bound"].get("why") is None
                 else (),
                 user_expr(i["expr"], transform_plan, dialect),
+                {
+                    t: tuple(label(c) for c in cs)
+                    for t, cs in _render_needs(i["bound"]["needs"], schemas).items()
+                    if cs
+                }
+                if i["error"] and i["bound"] and i["bound"].get("why") is None
+                else {},
             )
             for i in out["issues"]
             # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
@@ -2966,6 +3061,7 @@ def _verify_once(
         transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
         postconditions=list(ensures),
+        inputs=dict(schemas),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
@@ -3657,6 +3753,7 @@ class ContractedTransform:
         self.last_report: Report | None = None
         """The `Report` of the proof of the postconditions in the last call,
         or None before the first call."""
+        self._counterexamples: int | None = None
         self.last_preconditions: list[Discharged] = []
         """How each precondition on a bound input was established, in the
         last call: from metadata (`sverify.io` tables) or on the data."""
@@ -3688,6 +3785,9 @@ class ContractedTransform:
                 "ibis.literal(...)"
             )
         inputs = frozenset(inputs)
+        budget = (
+            default_counterexamples() if self._counterexamples is None else self._counterexamples
+        )
         key = (
             tag,
             inputs,
@@ -3698,6 +3798,7 @@ class ContractedTransform:
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
             tuple(label(c) for c in ensures),
+            budget,
         )
         if key not in self._cache:
             self._cache[key] = infer_bounds(
@@ -3705,7 +3806,7 @@ class ContractedTransform:
                 requires=assumptions,
                 ensures=ensures,
                 tables=None,
-                counterexamples=200,
+                counterexamples=budget,
                 params=[],
                 infer=infer,
                 inputs=inputs,
@@ -3820,7 +3921,65 @@ class ContractedTransform:
             return nodes.derive(self, args, kwargs)
         return self._build(args, kwargs, node=False)
 
-    def _build(self, args: Sequence[Any], kwargs: Mapping[str, Any], *, node: bool) -> ir.Table:
+    def check(self, *args: Any, counterexamples: int | None = None, **kwargs: Any) -> Report:
+        """Prove the contract for the input schemas, and return the report
+        without raising and without reading data.
+
+        `doubled.check(orders=schema)` is `doubled(orders)` on an unbound
+        table of that schema: the postconditions are proved, the needed
+        preconditions inferred, and the report kept in `last_report`. An
+        unproved contract does not raise `VerificationError`, a bound table
+        stands for its schema (its data is not read, so `requires` is not
+        checked on it), and `on_unproved` does not apply. An editor, a test
+        or a CI step reads the report (`Report.proved`, `Report.needed`).
+
+        Args:
+            *args: The inputs, positionally: Ibis tables, `ibis.Schema`s, or
+                mappings from column name to type (`{"id": "int64"}`).
+            counterexamples: Inputs tried per unproved postcondition for one
+                that breaks it (`sverify.counterexample`); 0 skips the
+                search. Default: `default_counterexamples()`, as a call uses.
+            **kwargs: The inputs by parameter name, likewise.
+
+        Returns:
+            The `Report` of the proof.
+
+        Raises:
+            TypeError: The inputs do not match the function's parameters, or
+                one is no table or schema (a source or a node: check the
+                transform on its `schema` instead).
+        """
+        bound = self.signature.bind(*args, **kwargs)
+        for name, value in bound.arguments.items():
+            if isinstance(value, ir.Table):
+                value = value.schema()
+            if isinstance(value, Mapping) and not isinstance(value, ibis.Schema):
+                value = ibis.schema(value)
+            if not isinstance(value, ibis.Schema):
+                raise TypeError(
+                    f"{self.name}.check: {name} must be an Ibis table or a schema, "
+                    f"not {type(value).__name__}"
+                )
+            bound.arguments[name] = ibis.table(value, name=name)
+        before = self._counterexamples
+        self._counterexamples = counterexamples
+        try:
+            self._build(bound.args, bound.kwargs, node=False, raise_unproved=False)
+        except VerificationError as e:  # from a link of a composed input
+            self.last_report = e.report
+        finally:
+            self._counterexamples = before
+        assert self.last_report is not None
+        return self.last_report
+
+    def _build(
+        self,
+        args: Sequence[Any],
+        kwargs: Mapping[str, Any],
+        *,
+        node: bool,
+        raise_unproved: bool = True,
+    ) -> ir.Table:
         """The result and its proof. A `node` result (`nodes.derive`, on
         placeholder tables) has its runtime-checked postconditions checked
         at every refresh instead of now."""
@@ -3880,7 +4039,7 @@ class ContractedTransform:
             if self.check_requires:
                 self._check_on_data(value, param, conds)
         checked: list[Condition] = []
-        if not report.proved:
+        if not report.proved and raise_unproved:
             if self.on_unproved == "warn":
                 warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in

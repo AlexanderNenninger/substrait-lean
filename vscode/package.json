@@ -51,7 +51,7 @@
             "null"
           ],
           "default": null,
-          "description": "Inputs tried per unproved postcondition to find a counterexample. null: sverify's default (200). 0 is faster."
+          "description": "Inputs tried per unproved postcondition to find a counterexample, for the file's own sv.verify calls too (SVERIFY_COUNTEREXAMPLES). null: sverify's default (200). 0 is fastest."
         },
         "sverify.previewFixes": {
           "type": "boolean",

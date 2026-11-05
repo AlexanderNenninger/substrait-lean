@@ -657,6 +657,47 @@ postcondition again with it added. `Report.suggestions` has them as code,
 per postcondition and table, for editors and language servers
 ([test_suggestions.py](../python/tests/test_suggestions.py)).
 
+### Checking without running
+
+A tool that reads a contract's proof, such as an editor, a CI step or dbt,
+checks a transform on input schemas with `check`. It returns the report
+without raising and reads no data, so `requires` is not checked on a bound
+table:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.unit >= 0])
+def unit_price(orders):
+    return orders.select(orders.id, unit=orders.amount // orders.qty)
+
+
+report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
+print(report.proved, report.needed)
+# False {'orders': ['(_.qty != 0)']}
+print(report.ensures[0].message)
+# NOT proved: it may be FALSE or NULL on some rows
+print(report.route("duckdb").cls)
+# refused
+```
+
+The report's parts come as data and as the lines `str(report)` prints:
+
+- `Report.inputs` and `Report.output` give the schemas of the input tables
+  and of the result, the columns `requires` and `ensures` may name.
+- `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
+  `Report.notes` are the report's lines for each postcondition, possible
+  runtime error, assumption and note.
+- `Issue.suggested` gives the preconditions that rule an issue out, per
+  table, which `Issue.hint` states in words.
+- `Report.route(engine)` gives the route a run would take and the plan's
+  class on the engine (exact, observed, shim or refused) without running
+  it. After a run, `report.routes` records the route taken.
+
+The counterexample search tries 200 inputs per unproved postcondition. The
+`SVERIFY_COUNTEREXAMPLES` environment variable sets that budget for
+`sv.verify`, a transform's call and `check`; 0 skips the search, for a tool
+that only needs the verdicts
+([test_check_api.py](../python/tests/test_check_api.py)).
+
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream

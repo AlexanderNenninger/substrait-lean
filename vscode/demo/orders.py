@@ -16,7 +16,7 @@ orders = ibis.table(
 
 # Proved: hover `doubled` for the report, `doubled=` for what Lean knows.
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+    requires={"orders": [_.am_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
 )
 def doubled(orders):
@@ -24,7 +24,7 @@ def doubled(orders):
 
 
 # Not proved: amount = 0 gives total = 1. The counterexample says so.
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[sv._.total > 5])
 def plus_one(orders):
     return orders.select(orders.id, total=orders.amount + 1)
 

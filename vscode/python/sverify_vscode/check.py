@@ -1,13 +1,19 @@
-"""Run a Python file with sverify's checks recorded, and turn each report
-into what the editor shows: diagnostics with quick fixes, hovers, code
-lenses and the contract sites completion reads.
+"""Run a Python file and check what it defines with sverify's public API,
+then turn each report into what the editor shows: diagnostics with quick
+fixes, hovers, code lenses and the contract sites completion reads.
 
 The file runs as a module named `__sverify_check__`, so code under
-`if __name__ == "__main__":` (runs on data, refreshes) does not run. Each
-`@sv.transform` call and each `sv.verify` call is recorded with its report.
-A transform the file defines but never calls is called on the module's
-unbound tables (`ibis.table(schema, name=...)`) whose names match its
-parameters.
+`if __name__ == "__main__":` (runs on data, refreshes) does not run. Then:
+
+- each `sv.ContractedTransform` in the module's globals is checked with
+  `ContractedTransform.check` on the module's unbound tables
+  (`ibis.table(schema, name=...)`) named like its parameters, or else its
+  `last_report` is read, where the file called it;
+- each `sv.Report` the module assigned to a name is matched with the
+  `sv.verify(...)` call assigned to that name.
+
+Only names `sverify` exports and the documented fields of what they return
+are used (`UX-NOTES.md`, "Public API gaps").
 """
 
 from __future__ import annotations
@@ -15,8 +21,10 @@ from __future__ import annotations
 import ast
 import contextlib
 import difflib
+import inspect
 import io
 import json
+import os
 import re
 import runpy
 import sys
@@ -28,10 +36,8 @@ from pathlib import Path
 from typing import Any
 
 import ibis
-import ibis.expr.types as ir
-import sverify
-import sverify.contracts as contracts
-from sverify import routes
+import ibis.expr.operations as ops
+import sverify as sv
 
 from .source import (
     CONTRACT_HELPERS,
@@ -59,123 +65,33 @@ ERROR, WARNING, INFO, HINT = 0, 1, 2, 3
 class Record:
     """What one check of a subject produced."""
 
-    report: contracts.Report | None = None
+    report: sv.Report | None = None
     error: str | None = None
     inputs: dict[str, dict[str, str]] = field(default_factory=dict)
     output: dict[str, str] = field(default_factory=dict)
-    seconds: float = 0.0
-    line: int | None = None  # the verify call's line, from the stack
+    seconds: float | None = None  # None: the file's own call, not timed
 
 
-class Recorder:
-    """Patches sverify while a file runs, and keeps what it saw."""
+@dataclass
+class Collected:
+    """What a run of the file left: records of its transforms, by the first
+    line of their definition, and of its reports, by the name they were
+    assigned to."""
 
-    def __init__(self, path: str, counterexamples: int | None):
-        self.path = str(Path(path).resolve())
-        self.counterexamples = counterexamples
-        self.transforms: dict[int, tuple[Any, Record | None]] = {}  # by first line
-        self.verifies: list[Record] = []
-
-    def _line(self, depth: int = 2) -> int | None:
-        """The line of the file that called sverify, if the caller `depth`
-        frames up is in the file (not sverify calling itself)."""
-        frame = sys._getframe(depth)
-        if str(Path(frame.f_code.co_filename).resolve()) == self.path:
-            return frame.f_lineno
-        return None
-
-    @contextlib.contextmanager
-    def patched(self):
-        rec = self
-        orig_init = contracts.ContractedTransform.__init__
-        orig_call = contracts.ContractedTransform.__call__
-        orig_verify = contracts.verify
-        orig_infer = contracts.infer_bounds
-
-        def init(self, fn, *a, **k):
-            orig_init(self, fn, *a, **k)
-            code = getattr(fn, "__code__", None)
-            if code is not None and str(Path(code.co_filename).resolve()) == rec.path:
-                rec.transforms[code.co_firstlineno] = (self, None)
-
-        def call(self, *args, **kwargs):
-            code = getattr(self.fn, "__code__", None)
-            key = code.co_firstlineno if code is not None else None
-            r = Record()
-            named = zip(self.signature.parameters, args, strict=False)
-            r.inputs = {p: _schema(v) for p, v in named if isinstance(v, ir.Table)}
-            t0 = time.perf_counter()
-            try:
-                out = orig_call(self, *args, **kwargs)
-            except contracts.VerificationError as e:
-                r.report = e.report
-                out = self.fn(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001 - shown on the transform
-                r.error = f"{type(e).__name__}: {e}"
-                r.report = self.last_report
-                out = self.fn(*args, **kwargs)
-            else:
-                r.report = self.last_report
-            r.seconds = time.perf_counter() - t0
-            if isinstance(out, ir.Table):
-                r.output = _schema(out)
-            if key in rec.transforms and rec.transforms[key][1] is None:
-                rec.transforms[key] = (self, r)
-            return out
-
-        def verify(transform, *args, **kwargs):
-            r = Record(line=rec._line())
-            if isinstance(transform, ir.Table):
-                r.inputs = {n: _types(s) for n, s in contracts.leaf_tables(transform).items()}
-                r.output = _schema(transform)
-            elif kwargs.get("tables"):
-                r.inputs = {
-                    n: _types(t.schema() if isinstance(t, ir.Table) else ibis.schema(t))
-                    for n, t in kwargs["tables"].items()
-                }
-            t0 = time.perf_counter()
-            try:
-                r.report = orig_verify(transform, *args, **kwargs)
-            except Exception as e:
-                r.error = f"{type(e).__name__}: {e}"
-                r.seconds = time.perf_counter() - t0
-                rec.verifies.append(r)
-                raise
-            r.seconds = time.perf_counter() - t0
-            if r.report is not None and r.report.output and not r.output:
-                r.output = {k: str(v) for k, v in r.report.output.items()}
-            rec.verifies.append(r)
-            return r.report
-
-        def infer(*args, **kwargs):
-            if rec.counterexamples is not None:
-                kwargs["counterexamples"] = rec.counterexamples
-            return orig_infer(*args, **kwargs)
-
-        contracts.ContractedTransform.__init__ = init
-        contracts.ContractedTransform.__call__ = call
-        contracts.verify = verify
-        sverify.verify = verify
-        contracts.infer_bounds = infer
-        try:
-            yield
-        finally:
-            contracts.ContractedTransform.__init__ = orig_init
-            contracts.ContractedTransform.__call__ = orig_call
-            contracts.verify = orig_verify
-            sverify.verify = orig_verify
-            contracts.infer_bounds = orig_infer
+    transforms: dict[int, Record] = field(default_factory=dict)
+    reports: dict[str, Record] = field(default_factory=dict)
 
 
 def _types(schema: Any) -> dict[str, str]:
     return {n: str(t) for n, t in schema.items()}
 
 
-def _schema(t: ir.Table) -> dict[str, str]:
-    try:
-        return _types(t.schema())
-    except Exception:  # noqa: BLE001
-        return {}
+def _report_record(report: sv.Report) -> Record:
+    return Record(
+        report=report,
+        inputs={t: _types(s) for t, s in report.inputs.items()},
+        output=_types(report.output),
+    )
 
 
 def _fresh_modules(root: Path) -> None:
@@ -186,52 +102,81 @@ def _fresh_modules(root: Path) -> None:
             del sys.modules[name]
 
 
-def run_file(path: str, counterexamples: int | None = None) -> tuple[Recorder, dict, dict]:
-    """Run the file with the checks recorded. Returns the recorder, the
-    module's globals and the exception it ended with (empty if none)."""
-    rec = Recorder(path, counterexamples)
+def _unbound(value: Any) -> bool:
+    return isinstance(value, ibis.Table) and isinstance(value.op(), ops.UnboundTable)
+
+
+def collect(path: str, globs: dict, counterexamples: int | None) -> Collected:
+    """Check the transforms and read the reports of a module's globals."""
+    p = Path(path).resolve()
+    out = Collected()
+    tables: dict[str, ibis.Table] = {}
+    for name, v in globs.items():
+        if _unbound(v):
+            tables.setdefault(v.get_name(), v)
+            tables[name] = v
+    for name, v in globs.items():
+        if isinstance(v, sv.Report):
+            out.reports[name] = _report_record(v)
+        if not isinstance(v, sv.ContractedTransform):
+            continue
+        fn = inspect.unwrap(v)
+        code = getattr(fn, "__code__", None)
+        if code is None or Path(code.co_filename).resolve() != p:
+            continue
+        params = list(inspect.signature(v).parameters)
+        args = {q: tables[q] for q in params if q in tables}
+        if len(args) == len(params) and params:
+            rec = Record(inputs={q: _types(t.schema()) for q, t in args.items()})
+            t0 = time.perf_counter()
+            try:
+                rec.report = v.check(**args)
+                rec.output = _types(rec.report.output)
+            except Exception as e:  # noqa: BLE001 - shown on the transform
+                rec.error = f"{type(e).__name__}: {e}"
+            rec.seconds = time.perf_counter() - t0
+        elif v.last_report is not None:
+            rec = _report_record(v.last_report)
+        else:
+            continue
+        out.transforms[code.co_firstlineno] = rec
+    return out
+
+
+def run_file(path: str, counterexamples: int | None = None) -> tuple[Collected, dict]:
+    """Run the file, then check what it defines. Returns what was collected
+    and the exception the run ended with (empty if none)."""
     p = Path(path).resolve()
     _fresh_modules(p.parent)
     sys.path.insert(0, str(p.parent))
     failure: dict = {}
     globs: dict = {}
-    out = io.StringIO()
+    # The budget of the file's own sv.verify calls and transform calls.
+    before = os.environ.get("SVERIFY_COUNTEREXAMPLES")
+    if counterexamples is not None:
+        os.environ["SVERIFY_COUNTEREXAMPLES"] = str(counterexamples)
     try:
-        with rec.patched(), warnings.catch_warnings(record=True) as caught, contextlib.redirect_stdout(out):
-            warnings.simplefilter("always")
+        with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()):
+            warnings.simplefilter("ignore")
             try:
                 globs = runpy.run_path(str(p), run_name="__sverify_check__")
-            except BaseException as e:  # noqa: BLE001 - shown as a diagnostic
-                if isinstance(e, KeyboardInterrupt):
-                    raise
+            except Exception as e:  # noqa: BLE001 - shown as a diagnostic
                 tb = traceback.extract_tb(e.__traceback__)
                 line = next((f.lineno for f in reversed(tb) if Path(f.filename).resolve() == p), None)
                 failure = {"message": f"{type(e).__name__}: {e}", "line": line}
                 frame = e.__traceback__
-                while frame is not None and frame.tb_next is not None:
+                while frame is not None:
                     if Path(frame.tb_frame.f_code.co_filename).resolve() == p:
                         globs = dict(frame.tb_frame.f_globals)
                     frame = frame.tb_next
-            # Transforms the file never called: call them on its unbound tables.
-            tables = {
-                **{k: v for k, v in globs.items() if isinstance(v, ir.Table) and not contracts.is_bound(v)},
-            }
-            by_name = {}
-            for v in tables.values():
-                with contextlib.suppress(Exception):
-                    by_name[v.op().name] = v
-            by_name.update(tables)
-            for t, r in list(rec.transforms.values()):
-                if r is not None:
-                    continue
-                args = [by_name.get(p) for p in t.signature.parameters]
-                if args and all(a is not None for a in args):
-                    with contextlib.suppress(Exception):
-                        t(*args)
-        rec.warnings = [str(w.message) for w in caught]  # type: ignore[attr-defined]
+            collected = collect(path, globs, counterexamples)
     finally:
         sys.path.remove(str(p.parent))
-    return rec, globs, failure
+        if before is None:
+            os.environ.pop("SVERIFY_COUNTEREXAMPLES", None)
+        else:
+            os.environ["SVERIFY_COUNTEREXAMPLES"] = before
+    return collected, failure
 
 
 # -- what the editor shows ---------------------------------------------------
@@ -270,7 +215,7 @@ def _add(src: Source, s: Subject, table: str, codes: list[str], tables: list[str
 class Checked:
     """One file's check, as JSON for the client."""
 
-    def __init__(self, src: Source, rec: Recorder, failure: dict, seconds: float):
+    def __init__(self, src: Source, rec: Collected, failure: dict, seconds: float):
         self.src, self.rec = src, rec
         self.diagnostics: list[dict] = []
         self.hovers: list[dict] = []
@@ -300,11 +245,9 @@ class Checked:
             rec: Record | None = None
             if s.kind == "transform":
                 first = s.node.decorator_list[0].lineno if s.node.decorator_list else s.node.lineno
-                found = self.rec.transforms.get(first) or self.rec.transforms.get(s.node.lineno)
-                rec = found[1] if found else None
+                rec = self.rec.transforms.get(first) or self.rec.transforms.get(s.node.lineno)
             else:
-                lo, hi = s.lines
-                rec = next((r for r in self.rec.verifies if r.line is not None and lo <= r.line <= hi), None)
+                rec = self.rec.reports.get(s.name)
             out.append((s, rec))
         return out
 
@@ -330,17 +273,14 @@ class Checked:
         if rec is None:
             if s.kind == "transform":
                 params = ", ".join(s.params)
-                self.diagnostics.append(
-                    _diag(
-                        anchor,
-                        INFO,
-                        f"not checked: sverify has no schema for {params}. Call {s.name} on "
-                        f"ibis.table(schema, name=...) tables in this file, or define module-level "
-                        f"unbound tables named {params}",
-                        "no-schema",
-                        i,
-                    )
+                msg = (
+                    f"not checked: sverify has no schema for {params}. Define module-level "
+                    f"unbound tables named {params} (ibis.table(schema, name=...))"
                 )
+                self.diagnostics.append(_diag(anchor, INFO, msg, "no-schema", i))
+            elif not self.failure:
+                msg = "not checked: assign the report to a name (report = sv.verify(...))"
+                self.diagnostics.append(_diag(anchor, INFO, msg, "no-report", i))
             self.subjects.append({"kind": s.kind, "name": s.name, "range": list(anchor), "checked": False})
             return
         report = rec.report
@@ -363,7 +303,7 @@ class Checked:
         flagged = any(d["subject"] == i and d["code"] == "unknown-column" for d in self.diagnostics)
         if flagged and rec.error and "has no attribute" in rec.error:
             pass  # the contract's unknown column, flagged where it is written
-        elif rec.error and (report is None or "VerificationError" not in rec.error):
+        elif rec.error:
             self.diagnostics.append(_diag(anchor, ERROR, rec.error, "error", i))
         if report is None:
             self.subjects.append({"kind": s.kind, "name": s.name, "range": list(anchor), "checked": False})
@@ -387,7 +327,7 @@ class Checked:
                 "range": list(anchor),
                 "checked": True,
                 "proved": report.proved,
-                "seconds": round(rec.seconds, 3),
+                "seconds": None if rec.seconds is None else round(rec.seconds, 3),
                 "summary": summary,
                 "routes": route_info,
                 "report": str(report),
@@ -397,7 +337,7 @@ class Checked:
     # -- postconditions -------------------------------------------------------
 
     def _ensures(
-        self, i: int, s: Subject, report: contracts.Report, site_list: list[Site], tables: list[str]
+        self, i: int, s: Subject, report: sv.Report, site_list: list[Site], tables: list[str]
     ) -> None:
         src = self.src
         ens = next((x for x in site_list if x.role == "ensures"), None)
@@ -415,15 +355,15 @@ class Checked:
                 self.hovers.append({"range": list(rng), "markdown": f"**proved**: `{c.label}` — {c.value}"})
                 continue
             if c.proved:
-                msg = f"proved under the reference, but {contracts._observation.why(c.ignores)}"
+                msg = c.message
                 self.diagnostics.append(_diag(rng, WARNING, msg, "observation", i))
                 continue
-            msg = f"not proved: {c.why}"
+            msg = c.message
             if c.counterexample is not None:
                 msg += f"\ncounterexample: {c.counterexample}"
             fixes = []
-            for t, conds in c.suggested.items():
-                codes = [label_code(contracts.label(x), src.sv, src.datetime) for x in conds]
+            for t, labs in report.suggestions.get(c.label, {}).items():
+                codes = [label_code(lab, src.sv, src.datetime) for lab in labs]
                 fixes.append(
                     _fix(
                         f"Add {', '.join(codes)} to requires of {t}",
@@ -441,7 +381,12 @@ class Checked:
                             [_add(src, s, tables[0], [code], tables)],
                         )
                     )
-            if c.nullable and len(tables) == 1 and not c.suggested and c.value != "not shown to be a key":
+            if (
+                c.nullable
+                and len(tables) == 1
+                and c.label not in report.suggestions
+                and c.value != "not shown to be a key"
+            ):
                 codes = [f"_.{col}.notnull()" for col in c.nullable if col in self._input_cols(s, tables[0])]
                 if codes:
                     fixes.append(
@@ -481,7 +426,7 @@ class Checked:
                 return node, rng
         return None, _name_range(self.src, s.node) if s.kind == "transform" else self.src.range(s.anchor)
 
-    def _issues(self, i: int, s: Subject, report: contracts.Report, tables: list[str]) -> None:
+    def _issues(self, i: int, s: Subject, report: sv.Report, tables: list[str]) -> None:
         src = self.src
         # Needed preconditions (on_inferred="error"), grouped by operation.
         for t, labs in report.needed.items():
@@ -509,9 +454,8 @@ class Checked:
                 self.diagnostics.append(_diag(rng, ERROR, msg, "needs", i, [f for f in fixes if f]))
         # Inferred and assumed silently ("warn" and "silent").
         if not report.needed:
-            for t, conds in report.inferred.items():
-                for c in conds:
-                    lab = contracts.label(c)
+            for t, labs in _inferred(report).items():
+                for lab in labs:
                     issue = report.inferred_from.get(lab)
                     node, rng = self._where(s, issue.shown if issue else None)
                     code = label_code(lab, src.sv, src.datetime)
@@ -533,57 +477,32 @@ class Checked:
                             ],
                         )
                     )
-        for issue in report._assumed():
+        for issue in report.assumed:
             node, rng = self._where(s, issue.shown)
-            fixes = self._hint_fixes(s, report, issue, tables)
-            self.diagnostics.append(
-                _diag(rng, INFO, f"assumes: {contracts._assumption(issue)}", "assumed", i, fixes)
-            )
+            msg = f"assumes: {issue.assumption}"
+            hints = _hints_for(report, issue)
+            if hints:
+                msg += "\nhint: " + "\nhint: ".join(hints)
+            self.diagnostics.append(_diag(rng, INFO, msg, "assumed", i))
         for issue in report.errors:
-            if issue in report._assumed():
+            if issue in report.assumed:
                 continue
             node, rng = self._where(s, issue.shown)
-            msg = f"may fail: {issue}{contracts._cause(issue)}"
+            msg = f"may fail: {issue.message}"
             if issue.hint:
                 msg += f"\nhint: {issue.hint}"
             fixes = []
-            m = re.search(r"state `(.+?)` in the requires of '(\w+)'", issue.hint or "")
-            if m:
-                code = label_code(m[1], src.sv, src.datetime)
+            for t, labs in issue.suggested.items():
+                codes = [label_code(lab, src.sv, src.datetime) for lab in labs]
                 fixes.append(
                     _fix(
-                        f"Add {code} to requires of {m[2]}",
-                        [_add(src, s, m[2], [code], tables), *_imports(src, [code])],
+                        f"Add {', '.join(codes)} to requires of {t}",
+                        [_add(src, s, t, codes, tables), *_imports(src, codes)],
                         preferred=True,
                     )
                 )
             fixes += self._guard_fixes(node, [issue], src)
-            fixes += self._hint_fixes(s, report, issue, tables)
             self.diagnostics.append(_diag(rng, ERROR, msg, "may-fail", i, [f for f in fixes if f]))
-
-    def _hint_fixes(
-        self, s: Subject, report: contracts.Report, issue: contracts.Issue, tables: list[str]
-    ) -> list[dict]:
-        """Fixes read from a report's prose hints (`Report.hints`): the code in
-        backticks for the table they name."""
-        out = []
-        for h in report.hints:
-            if issue.column and f"`{issue.column}`" not in h:
-                continue
-            m = re.search(r"requires` of (\w+)", h)
-            if not m:
-                continue
-            codes = [c for c in re.findall(r"`([^`]+)`", h) if c.startswith(("_.", "sv.max_rows"))]
-            bounds = [c for c in codes if c.startswith("_.")]
-            caps = [c.replace("sv.", f"{self.src.sv}.", 1) for c in codes if c.startswith("sv.")]
-            if bounds and caps:
-                out.append(
-                    _fix(
-                        f"Bound {issue.what} and cap the rows of {m[1]}: {', '.join(bounds + caps[:1])}",
-                        [_add(self.src, s, m[1], bounds + caps[:1], tables)],
-                    )
-                )
-        return [f for f in out if f]
 
     def _filter_fix(self, s: Subject, table: str, codes: list[str]) -> dict | None:
         """Filter the input first: rows that need the condition are dropped."""
@@ -600,7 +519,7 @@ class Checked:
             [Edit((line, 0, line, 0), text)],
         )
 
-    def _guard_fixes(self, node: ast.AST | None, issues: list[contracts.Issue], src: Source) -> list[dict]:
+    def _guard_fixes(self, node: ast.AST | None, issues: list[Any], src: Source) -> list[dict]:
         """A CASE guard for a division by zero: NULL where the divisor is 0."""
         if not any(x.kind == "division by zero" for x in issues):
             return []
@@ -651,9 +570,7 @@ class Checked:
 
     # -- ties ------------------------------------------------------------------
 
-    def _ties(
-        self, i: int, s: Subject, report: contracts.Report, tables: list[str], route_info: dict
-    ) -> None:
+    def _ties(self, i: int, s: Subject, report: sv.Report, tables: list[str], route_info: dict) -> None:
         src = self.src
         rng = _name_range(src, s.node) if s.kind == "transform" else src.range(s.anchor)
         suggestions: dict[str, list[str]] = {t: list(v) for t, v in report.ties.items()}
@@ -673,7 +590,7 @@ class Checked:
                         preferred=True,
                     )
                 )
-            msg = contracts.TIES_HINT if not report.deterministic else "a route suggests more preconditions"
+            msg = report.notes[0] if not report.deterministic else "a route suggests more preconditions"
             self.diagnostics.append(_diag(rng, WARNING, msg, "ties", i, [f for f in fixes if f]))
 
     # -- validation and hovers of contracts -------------------------------------
@@ -732,9 +649,7 @@ class Checked:
                 )
                 self.diagnostics.append(_diag(rng, ERROR, msg, "unknown-table", i, [f for f in fixes if f]))
 
-    def _column_hovers(
-        self, s: Subject, report: contracts.Report, rec: Record, site_list: list[Site]
-    ) -> None:
+    def _column_hovers(self, s: Subject, report: sv.Report, rec: Record, site_list: list[Site]) -> None:
         src = self.src
         eps = report.epsilon or {}
         conds: dict[str, list[str]] = {}
@@ -764,7 +679,7 @@ class Checked:
                     self.hovers.append(
                         {"range": [line - 1, ch, line - 1, ch + len(n.arg)], "markdown": out_md(n.arg)}
                     )
-        requires = {t: [contracts.label(c) for c in cs] for t, cs in report.conditions.items()} or {}
+        requires = report.requires
         for site in site_list:
             for item in site.items:
                 for name, rng in _columns_named(src, item):
@@ -853,13 +768,13 @@ def _sql_columns(src: Source, item: ast.Constant) -> list[tuple[str, Range]]:
     return out
 
 
-def _routes(report: contracts.Report) -> dict[str, dict]:
+def _routes(report: sv.Report) -> dict[str, dict]:
     out = {}
     for e in ENGINES:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                r = routes.choose(report, e)
+                r = report.route(e)
         except Exception as ex:  # noqa: BLE001 - shown in the hover
             out[e] = {"kind": None, "cls": "refused", "reason": f"{type(ex).__name__}: {ex}"}
             continue
@@ -879,33 +794,50 @@ def _routes(report: contracts.Report) -> dict[str, dict]:
     return out
 
 
-def _summary(report: contracts.Report, route_info: dict, seconds: float) -> str:
+def _inferred(report: sv.Report) -> dict[str, list[str]]:
+    """The preconditions sverify inferred, as labels per table: those of
+    `requires` that `inferred_from` explains."""
+    return {
+        t: [lab for lab in labs if lab in report.inferred_from]
+        for t, labs in report.requires.items()
+        if any(lab in report.inferred_from for lab in labs)
+    }
+
+
+def _hints_for(report: sv.Report, issue: Any) -> list[str]:
+    """The report's hints about an issue's column (shown as they are)."""
+    return [h for h in report.hints if issue.column and f"`{issue.column}`" in h]
+
+
+def _summary(report: sv.Report, route_info: dict, seconds: float | None) -> str:
     n = len(report.ensures)
     proved = sum(c.proved for c in report.ensures)
     head = "✓ proved" if report.proved else "✗ not proved"
     parts = [head, f"{proved}/{n} ensures"]
     if report.needed:
         parts.append(f"needs {sum(len(v) for v in report.needed.values())}")
-    if report.errors:
-        parts.append(f"{len([i for i in report.errors if i not in report._assumed()])} may fail")
-    if report._assumed():
-        parts.append(f"{len(report._assumed())} assumed")
+    failing = [i for i in report.errors if i not in report.assumed]
+    if failing:
+        parts.append(f"{len(failing)} may fail")
+    if report.assumed:
+        parts.append(f"{len(report.assumed)} assumed")
     parts += [f"{e}: {info['cls'] or info['kind'] or '?'}" for e, info in route_info.items()]
-    parts.append(f"{seconds:.1f} s")
+    if seconds is not None:
+        parts.append(f"{seconds:.1f} s")
     return "sverify " + " · ".join(parts)
 
 
-def _subject_markdown(s: Subject, report: contracts.Report, route_info: dict, rec: Record) -> str:
+def _subject_markdown(s: Subject, report: sv.Report, route_info: dict, rec: Record) -> str:
     status = "proved" if report.proved else "not proved"
     lines = [
         f"### sverify: {s.name} — {status}",
-        f"semantics: `{report.semantics}`, checked in {rec.seconds:.2f} s",
+        f"semantics: `{report.semantics}`"
+        + ("" if rec.seconds is None else f", checked in {rec.seconds:.2f} s"),
         "",
     ]
     needed = report.needed
     req = [
-        f"- requires {t}: `{c}`"
-        + (" (inferred)" if c in {contracts.label(x) for x in report.inferred.get(t, [])} else "")
+        f"- requires {t}: `{c}`" + (" (inferred)" if c in report.inferred_from else "")
         for t, cs in report.requires.items()
         for c in cs
         if c not in needed.get(t, ())
@@ -914,9 +846,9 @@ def _subject_markdown(s: Subject, report: contracts.Report, route_info: dict, re
     lines += [f"- needs on {t}: `{c}`" for t, cs in needed.items() for c in cs]
     for c in report.ensures:
         mark = "✓" if c.portable else "✗"
-        lines.append(f"- {mark} ensures `{c.label}`" + ("" if c.proved else f": {c.why}"))
-    lines += [f"- assumes: {contracts._assumption(i)}" for i in report._assumed()]
-    lines += [f"- may fail: {i}" for i in report.errors if i not in report._assumed()]
+        lines.append(f"- {mark} ensures `{c.label}`: {c.message}")
+    lines += [f"- assumes: {i.assumption}" for i in report.assumed]
+    lines += [f"- may fail: {i.message}" for i in report.errors if i not in report.assumed]
     if report.facts or report.rows is not None:
         lines += ["", "| output column | proved |", "|---|---|"]
         if report.rows is not None:
@@ -930,8 +862,7 @@ def _subject_markdown(s: Subject, report: contracts.Report, route_info: dict, re
     if report.epsilon:
         eps = ", ".join(f"`{k}` {v}" for k, v in report.epsilon.items())
         lines += ["", f"ε per double column: {eps}"]
-    if not report.deterministic:
-        lines += ["", f"note: {contracts.TIES_HINT}"]
+    lines += [x for n in report.notes for x in ("", f"note: {n}")]
     return "\n".join(lines)
 
 
@@ -968,5 +899,5 @@ def check(path: str, counterexamples: int | None = None) -> dict:
             "sites": [],
             "diagnostics": [],
         }
-    rec, _globs, failure = run_file(path, counterexamples)
+    rec, failure = run_file(path, counterexamples)
     return Checked(src, rec, failure, time.perf_counter() - t0).json()

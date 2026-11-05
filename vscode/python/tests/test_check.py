@@ -109,7 +109,6 @@ def test_every_fix_parses(orders):
     [
         ("by_id", "not-proved", 'Add sv.unique("id") to requires of orders'),
         ("typo", "unknown-column", "Change to `amount`"),
-        ("per_customer", "assumed", "Bound amount"),
     ],
 )
 def test_fix_proves(orders, tmp_path, name, code, title):
@@ -119,6 +118,13 @@ def test_fix_proves(orders, tmp_path, name, code, title):
     fixed.write_text(apply(text, fix["edits"]))
     after = check(str(fixed), 0)
     assert by(after, name)[1]["proved"] is True
+
+
+def test_assumed_sum_shows_its_hint(orders):
+    """The SUM's bounds and row cap are prose only (UX-NOTES, "Public API
+    gaps"): the diagnostic shows the hint, and offers no fix."""
+    [d] = diags(orders, "per_customer", "assumed")
+    assert "hint: SUM of `amount`" in d["message"] and not d["fixes"]
 
 
 def test_needs_fixes_prove_together(orders, tmp_path):
