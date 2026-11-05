@@ -532,6 +532,11 @@ class _TableSink[T](Sink, ABC):
             "refresh writes the whole table, or skips the state the other writer committed."
         )
 
+    def _version_after(self, table: T) -> int | None:
+        """The sink's version after a write through `table`. Default: read
+        again (`_version`)."""
+        return self._version()
+
     def _check(self, table: T, contract: Contract, then: int | None | object) -> None:
         """Raise unless `table` still has the epoch `then`: what `committed`
         read, or what this write committed last."""
@@ -562,7 +567,7 @@ class _TableSink[T](Sink, ABC):
             out = self._write_native(table, created, change)
         if out is None:
             out = self._write_arrow(table, created, change)
-        return replace(out, version=self._version())
+        return replace(out, version=self._version_after(table))
 
     def _commit(self) -> SinkWrite:
         out = super()._commit()

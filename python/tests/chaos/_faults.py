@@ -62,9 +62,9 @@ POINTS: dict[str, tuple[str, str]] = {
     "state.merge": ("sverify._state.Merger.__call__", "adding up weighted state"),
     # What the sink records: the contract, with the epoch and the cursors.
     "cursor.record": ("sverify.io._common._cursors", "recording the sources' cursors"),
-    "sink.committed": ("sverify.io._sink.Sink.committed", "reading what the sink committed"),
+    "sink.committed": ("sverify.io._sink.Sink.contract", "reading what the sink committed"),
     "delta.committed": (
-        "sverify.io.delta.DeltaSink.committed",
+        "sverify.io.delta.DeltaSink.contract",
         "reading the Delta sink's last transaction",
     ),
     # The Delta sink, before, during and after its commit.

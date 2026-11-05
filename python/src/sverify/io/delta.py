@@ -806,9 +806,11 @@ class DeltaSink(_TableSink[DeltaTable]):
                         "keys, since DeltaSink can't create a table through the catalog"
                     ) from e
                 raise
-        if not DeltaTable.is_deltatable(self.uri, storage_options=options):
+        try:
+            # One read of the log, where `is_deltatable` first would read it twice.
+            return DeltaTable(self.uri, storage_options=options)
+        except TableNotFoundError:
             return None
-        return DeltaTable(self.uri, storage_options=options)
 
     def _version(self) -> int | None:
         dt = self._table()
@@ -816,6 +818,12 @@ class DeltaSink(_TableSink[DeltaTable]):
 
     def _open(self) -> DeltaTable | None:
         return self._table()
+
+    def _version_after(self, table: DeltaTable) -> int | None:
+        # The table the write went through: read the log's new entries
+        # only, where `_version` would open the table again.
+        table.update_incremental()
+        return table.version()
 
     def _epoch_of(self, table: DeltaTable) -> int | None:
         return table.transaction_version(self.app_id)
