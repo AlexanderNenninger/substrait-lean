@@ -36,7 +36,7 @@ def test_check_returns_an_unproved_report_without_raising() -> None:
     report = unit.check(orders=SCHEMA)
     assert not report.proved
     assert report.needed == {"orders": ["(_.qty != 0)"]}
-    assert unit.last_report is report
+    assert unit.report is report
 
 
 def test_check_takes_schemas_tables_and_positions() -> None:
@@ -91,7 +91,7 @@ def test_messages_are_the_lines_of_the_report() -> None:
     [assumed] = summed.assumed
     assert assumed.assumption.startswith("SUM of x fits 64 bits")
     assert f"assumes: {assumed.assumption}" in str(summed)
-    raising = sv.verify(t.select(r=t.x // 0), on_inferred="silent", counterexamples=0)
+    raising = sv.verify(t.select(r=t.x // 0), on_inferred="ignore", counterexamples=0)
     for issue in raising.errors:
         assert f"may fail: {issue.message}" in str(raising)
 

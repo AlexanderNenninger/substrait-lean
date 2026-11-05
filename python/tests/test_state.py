@@ -21,6 +21,7 @@ from sverify._state import ArrowStore, DuckDBStore, Merger, arrow_of
 from sverify._weighted import WEIGHT, consolidated, negated
 from sverify.engine import put_table, run_plan
 from sverify.incremental import Pipeline
+from sverify.io import Changes
 from sverify.testing import installed_engines
 
 NAN = float("nan")
@@ -130,7 +131,7 @@ def test_views_keep_their_state_where_their_engine_reads_it(engine):
     held = Resident if engine == "duckdb" else pa.Table
     for step in range(3):
         deletes = orders()[2 * step : 2 * step + 2]
-        pipe.apply({"o": sv.Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
+        pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
         for v in views:
             assert isinstance(v.state, held)
             assert repr(v.rows()) == repr(v.recompute())
@@ -165,7 +166,7 @@ def test_states_change_in_place_and_old_views_are_dropped():
     first = held(pipe)
     assert len(before) == len(in_place) and first <= resident_names(db)
     for step in range(5):
-        pipe.apply({"o": sv.Changes(inserts=orders(100 + 10 * step))})
+        pipe.apply({"o": Changes(inserts=orders(100 + 10 * step))})
     gc.collect()
     _duckdb.collect(db)
     now = resident_names(db)
@@ -191,9 +192,9 @@ def tricky_pipeline(engine):
 
 
 BATCHES = [
-    sv.Changes(inserts=[(4, NAN, [1]), (5, 0.0, None)], deletes=[(1, NAN, [1])]),
-    sv.Changes(deletes=[(3, None, []), (2, -0.0, None)]),
-    sv.Changes(inserts=[(6, None, [])], deletes=[(1, NAN, [1]), (4, NAN, [1])]),
+    Changes(inserts=[(4, NAN, [1]), (5, 0.0, None)], deletes=[(1, NAN, [1])]),
+    Changes(deletes=[(3, None, []), (2, -0.0, None)]),
+    Changes(inserts=[(6, None, [])], deletes=[(1, NAN, [1]), (4, NAN, [1])]),
 ]
 
 

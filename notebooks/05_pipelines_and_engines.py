@@ -115,7 +115,7 @@ def _(pa, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `orders.apply(sv.Changes(inserts=[...], deletes=[...]))` changes a
+    `orders.apply(sv.io.Changes(inserts=[...], deletes=[...]))` changes a
     source and gives it a new version. The next `view.refresh()` receives
     that change and updates the view from it. To check, we build the same
     node again and refresh it, which computes its result from scratch.
@@ -143,7 +143,7 @@ def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city
     def _batch(rng, source, make_row):
         current = _rows(source.table)
         deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
-        changes = sv.Changes(
+        changes = sv.io.Changes(
             inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes
         )
         source.apply(changes)
@@ -420,7 +420,7 @@ def _(mo):
 def _(mo, orders, sv, view):
     _before = orders.version, view.versions
     try:
-        orders.apply(sv.Changes(inserts=[(7, "ada", 70)], deletes=[(99, "nobody", 1)]))
+        orders.apply(sv.io.Changes(inserts=[(7, "ada", 70)], deletes=[(99, "nobody", 1)]))
     except ValueError as _e:
         _err = _e
     mo.callout(
@@ -619,23 +619,25 @@ def _(directory, dup, feed, good, monday, neg, presses, sv):
             presses["last"] = (kind, e)
             # The demo takes the bad order out of the feed again, so the
             # next batch can go through.
-            feed.apply(sv.Changes(deletes=changes["orders"].inserts))
+            feed.apply(sv.io.Changes(deletes=changes["orders"].inserts))
 
     while presses["good"] < good.value:
         _i = presses["good"]
         _try(
             "good",
             {
-                "orders": sv.Changes(inserts=[(10 + _i, "bob", 3 * _i), (20 + _i, f"new{_i}", 7)]),
-                "customers": sv.Changes(inserts=[(f"new{_i}", _cities[_i % 4])]),
+                "orders": sv.io.Changes(
+                    inserts=[(10 + _i, "bob", 3 * _i), (20 + _i, f"new{_i}", 7)]
+                ),
+                "customers": sv.io.Changes(inserts=[(f"new{_i}", _cities[_i % 4])]),
             },
         )
         presses["good"] += 1
     while presses["dup"] < dup.value:
-        _try("dup", {"orders": sv.Changes(inserts=[(1, "dee", 4)])})
+        _try("dup", {"orders": sv.io.Changes(inserts=[(1, "dee", 4)])})
         presses["dup"] += 1
     while presses["neg"] < neg.value:
-        _try("neg", {"orders": sv.Changes(inserts=[(99, "eve", -5)])})
+        _try("neg", {"orders": sv.io.Changes(inserts=[(99, "eve", -5)])})
         presses["neg"] += 1
     state = (presses["good"], presses["dup"], presses["neg"])
     return (state,)
@@ -681,6 +683,162 @@ def _(base, by_city, by_location, display, mo, presses, state):
         ],
         gap=1,
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### When the data breaks the contract
+
+    A refused batch stops the report until someone fixes the feed. For a
+    few bad rows among thousands, you may rather set them aside and let the
+    rest through. With `on_violation="quarantine"` on the transform (or on
+    the source), the refresh sets aside the rows that break a precondition,
+    with the reason, and the node runs on the others
+    ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)).
+    A row is set aside when a row condition is not TRUE on it, or when
+    another row shares its key: both rows of a repeated `id` go, so the rule
+    needs no order between them. Every precondition holds on the rows that
+    stay (`Catalog.kept_sound` in
+    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean)),
+    so `paid`'s proof holds as before. We feed a Delta table an order with a
+    negative amount and one with an id that exists already:
+    """)
+    return
+
+
+@app.cell
+def _(lake, pa, sv):
+    from deltalake import write_deltalake as _write
+    from ibis import _
+    from sverify.io import DeltaSink as _DeltaSink
+    from sverify.io import DeltaSource
+
+    _orders_uri = str(lake / "raw_orders")
+    _write(
+        _orders_uri,
+        pa.table({"id": [1, 2, 3], "customer": ["ada", "bob", "cy"], "amount": [30, 5, 0]}),
+        configuration={"delta.enableChangeDataFeed": "true"},
+    )
+
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, sv.unique("id")]},
+        ensures=[_.amount >= 0, sv.unique("id")],
+        on_violation="quarantine",
+    )
+    def clean(orders):
+        return orders.select("id", "customer", "amount")
+
+    clean_orders = DeltaSource(_orders_uri, name="orders").pipe(clean)
+    clean_orders = clean_orders.write(_DeltaSink(str(lake / "clean")))
+    clean_orders.refresh()
+    _write(
+        _orders_uri,
+        pa.table({"id": [4, 5, 2], "customer": ["dee", "eve", "fay"], "amount": [12, -5, 9]}),
+        mode="append",
+    )
+    flagged = clean_orders.refresh()
+    print(flagged.summary())
+    return clean_orders, flagged
+
+
+@app.cell(hide_code=True)
+def _(clean_orders, flagged, mo):
+    mo.md(
+        f"The refresh completed (`outcome` is `{flagged.outcome!r}`). Order 4 went "
+        "through. Order 5 breaks `amount >= 0`. Order 2 is now on two rows, so both "
+        "copies are set aside, the one `clean` held before included, until the feed "
+        "says which is right. The rows sit in a Delta table next to the sink, "
+        "`clean_quarantine`, with the reason and the source version, and "
+        "`clean_orders.quarantined()` returns them. A scheduled job posts "
+        "`flagged.alert()` to whoever is on call, for example as a GitHub issue:\n\n"
+        f"{flagged.alert()}\n\n"
+        f"`clean` now holds:\n\n```text\n{clean_orders.to_pandas().sort_values('id')}\n```"
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The fix comes from upstream: the feed deletes the wrong order 2 and
+    corrects the amount of order 5. The next refresh releases the rows set
+    aside, and they flow into `clean` and everything that reads it:
+    """)
+    return
+
+
+@app.cell
+def _(clean_orders, lake):
+    from deltalake import DeltaTable as _DeltaTable
+
+    _dt = _DeltaTable(str(lake / "raw_orders"))
+    _dt.delete("id = 2 AND customer = 'fay'")
+    _DeltaTable(str(lake / "raw_orders")).update(updates={"amount": "5"}, predicate="id = 5")
+    fixed = clean_orders.refresh()
+    print(fixed.summary())
+    print(fixed.outcome, len(clean_orders.quarantined()))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    `on_violation="hold"` holds the node at its versions instead: the
+    refresh commits nothing for the batch, says why (`outcome` is
+    `"held"`), and reads the batch again next time. The default,
+    `"error"`, is what the buttons above do.
+
+    A change to the schema breaks a contract in another way. Say the feed's
+    owner lets `id` be NULL, and the next version has an order without one.
+    `clean` was proved with `id` NOT NULL, so the refresh refuses, and the
+    message names the column, the version and the contract:
+    """)
+    return
+
+
+@app.cell
+def _(lake, pa):
+    import sverify as _sv
+    from deltalake import write_deltalake as _write2
+    from ibis import _ as _d
+    from sverify.errors import SchemaError
+    from sverify.io import DeltaSource as _DeltaSource
+
+    _uri = str(lake / "events")
+    _strict = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            ("customer", pa.string()),
+            ("amount", pa.int64()),
+        ]
+    )
+    _write2(_uri, pa.Table.from_pylist([{"id": 1, "customer": "ada", "amount": 30}], _strict))
+
+    @_sv.transform(requires={"orders": [_d.amount >= 0]}, ensures=[_d.id.notnull()])
+    def keyed(orders):
+        return orders.select("id", "amount")
+
+    _node = _DeltaSource(_uri, name="orders").pipe(keyed)
+    _node.refresh()
+    _loose = pa.schema([("id", pa.int64()), ("customer", pa.string()), ("amount", pa.int64())])
+    _write2(
+        _uri,
+        pa.Table.from_pylist(
+            [
+                {"id": 1, "customer": "ada", "amount": 30},
+                {"id": None, "customer": "bob", "amount": 4},
+            ],
+            _loose,
+        ),
+        mode="overwrite",
+        schema_mode="overwrite",
+    )
+    try:
+        _node.refresh()
+    except SchemaError as _e:
+        print(f"SchemaError: {_e}")
     return
 
 
@@ -752,7 +910,7 @@ def _(base, cities, lake, pa):
             super().__init__(path.stem, location=str(path))
             self.path, self.record = path, path.with_suffix(".contract.json")
 
-        def committed(self):
+        def contract(self, version=None):
             if not self.record.exists():
                 return None
             return Contract.from_json(self.record.read_text())
@@ -813,7 +971,7 @@ def _(mo):
       (`kind="snapshot"`) or rows added and removed (`kind="changes"`).
     * A sink's `write` gets a `SinkChange`: the rows added and removed
       since its last write, or the whole table on the first, with the
-      contract to record. `committed()` reads that contract back, so each
+      contract to record. `contract()` reads that contract back, so each
       state is written once even across restarts; without it sverify
       remembers for the life of the process. `sink_from(fn)` hands the
       whole table to a function.
@@ -987,7 +1145,7 @@ def _(mo):
     session) picks where it runs; DuckDB in memory is the default. A node
     keeps its state between refreshes, so the next refresh may use another
     engine. Contracts checked on data take `engine=` too:
-    `@sv.transform(ensures=[...], on_unproved="runtime", check_engine="duckdb")`.
+    `@sv.transform(ensures=[...], on_unproved="check", check_engine="duckdb")`.
     We refresh a fresh node of the NULL-key join on each engine:
     """)
     return

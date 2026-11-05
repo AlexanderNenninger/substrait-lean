@@ -134,7 +134,7 @@ def test_a_node_reading_the_sink_reads_past_a_compaction(tmp_path):
     reader.refresh()
     grow(src, 1)
     entry = reader.refresh()["ids"]
-    assert entry.report is not None and entry.report.sources[0].mode == "change feed"
+    assert entry.report is not None and entry.report.sources[0].mode == "change_feed"
     assert "OPTIMIZE" in ops(str(tmp_path / "big"))
     assert rows(reader) == [(1,), (2,), (10,)]
 

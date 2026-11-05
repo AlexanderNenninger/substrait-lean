@@ -42,6 +42,7 @@ from sverify.engines import table_rows, written_plan
 from sverify.errors import PostconditionError, PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
+from sverify.io import Changes
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
@@ -709,7 +710,7 @@ def test_incremental_view_on_duckdb():
     examples.create_tables(con, [(1, "ada", 30), (2, "bob", 5)], [("ada", "Paris")])
     view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
     assert view.rows() == view.recompute() == [(1, "Paris")]
-    view.apply({"orders": sv.Changes(inserts=[(3, "ada", 1)], deletes=[(1, "ada", 30)])})
+    view.apply({"orders": Changes(inserts=[(3, "ada", 1)], deletes=[(1, "ada", 30)])})
     assert view.rows() == view.recompute() == [(3, "Paris")]
     # The base table changed in `con` too.
     assert sorted(table_rows(con, "orders")) == [(2, "bob", 5), (3, "ada", 1)]
@@ -721,7 +722,7 @@ def test_contract_checks_on_duckdb():
     @sv.transform(
         requires={"orders": [_.amount >= 0]},
         ensures=[_.amount < 100],
-        on_unproved="runtime",
+        on_unproved="check",
         check_engine="duckdb",
     )
     def passthrough(orders):

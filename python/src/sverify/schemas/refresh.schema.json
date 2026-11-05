@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json",
+  "title": "sverify refresh report",
+  "description": "What a refresh did, node by node (sverify.Refresh.to_json): for a scheduled job or a command line to read. Format 1. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md).",
+  "type": "object",
+  "required": [
+    "format",
+    "outcome",
+    "nodes"
+  ],
+  "properties": {
+    "$schema": {
+      "description": "This schema's $id.",
+      "type": "string"
+    },
+    "format": {
+      "description": "The version of this format.",
+      "const": 1
+    },
+    "outcome": {
+      "$ref": "#/$defs/outcome"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    }
+  },
+  "$defs": {
+    "outcome": {
+      "description": "\"ok\"; \"quarantined\": rows of a node's sources are quarantined (on_violation=\"quarantine\"); \"held\": a node did not take its batch (on_violation=\"hold\", or a condition without a row rule). A refresh that fails raises and writes no report.",
+      "enum": [
+        "ok",
+        "quarantined",
+        "held"
+      ]
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "node",
+        "outcome",
+        "started",
+        "held",
+        "sources",
+        "quarantined",
+        "quarantine_table",
+        "quarantine",
+        "write"
+      ],
+      "properties": {
+        "node": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "started": {
+          "description": "On the first refresh: \"computed\", or how the node resumed from its sink.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "held": {
+          "description": "Why the node did not take the batch, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "table",
+              "from",
+              "to",
+              "mode",
+              "inserts",
+              "deletes"
+            ],
+            "properties": {
+              "table": {
+                "type": "string"
+              },
+              "from": {
+                "type": "integer"
+              },
+              "to": {
+                "type": "integer"
+              },
+              "mode": {
+                "description": "How the source's change was read, in snake_case: \"change_feed\", \"snapshot_diff\", \"recomputed\", \"unchanged\", ...",
+                "type": "string"
+              },
+              "inserts": {
+                "type": "integer"
+              },
+              "deletes": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "quarantined": {
+          "description": "Rows of the node's sources quarantined after the refresh, in all.",
+          "type": "integer"
+        },
+        "quarantine_table": {
+          "description": "Where they are stored, or null if only the process holds them.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quarantine": {
+          "description": "Per source: what this refresh quarantined, released and saw deleted.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "quarantined",
+              "by_condition",
+              "released",
+              "deleted",
+              "total",
+              "table",
+              "examples"
+            ],
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "quarantined": {
+                "description": "Rows this refresh quarantined.",
+                "type": "integer"
+              },
+              "by_condition": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "released": {
+                "type": "integer"
+              },
+              "deleted": {
+                "type": "integer"
+              },
+              "total": {
+                "description": "Rows quarantined after the refresh, in all.",
+                "type": "integer"
+              },
+              "table": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "write": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string"
+            },
+            "version": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "inserted": {
+              "type": "integer"
+            },
+            "deleted": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  }
+}

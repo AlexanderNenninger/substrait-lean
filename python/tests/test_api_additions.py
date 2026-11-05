@@ -11,7 +11,7 @@ from ibis import _
 
 import sverify as sv
 from sverify.errors import ExportError, PreconditionError
-from sverify.io import DeltaSink, DeltaSource, StaticSource
+from sverify.io import Changes, DeltaSink, DeltaSource, StaticSource
 
 # -- the namespace --------------------------------------------------------------
 
@@ -63,8 +63,8 @@ def test_transform_to_substrait():
     with pytest.raises(ExportError, match="not been called"):
         double.to_substrait()
     double(ibis.table({"x": "int64"}, name="t"))
-    assert double.last_report is not None
-    assert json.loads(double.to_substrait()) == json.loads(double.last_report.to_substrait())
+    assert double.report is not None
+    assert json.loads(double.to_substrait()) == json.loads(double.report.to_substrait())
 
 
 def test_plain_step_exports():
@@ -112,7 +112,7 @@ def test_precondition_error_on_a_batch():
     orders = _orders()
     node = orders.pipe(paid)
     node.refresh()
-    orders.apply(sv.Changes(inserts=[(4, -1), (5, 20)]))
+    orders.apply(Changes(inserts=[(4, -1), (5, 20)]))
     with pytest.raises(PreconditionError) as e:
         node.refresh()
     assert e.value.source == "orders"
@@ -270,7 +270,7 @@ def test_needed_conditions_of_sql_are_sql():
 
 def test_needed_conditions_empty_when_assumed():
     t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
-    r = sv.verify(t.select(u=t.total // t.qty), on_inferred="silent")
+    r = sv.verify(t.select(u=t.total // t.qty), on_inferred="ignore")
     assert r.needed_conditions == {}
 
 

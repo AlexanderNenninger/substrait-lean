@@ -16,6 +16,12 @@ Three kinds of world:
   whose cursor, the files read, the sinks record) → the same nodes, stored
   in Delta.
 
+A `dirty` Delta world adds rows that break `paid`'s preconditions at every
+step (a negative amount, a repeated id), fixes some of them upstream on
+even steps, and reads the source with `on_violation="quarantine"` (#184):
+the sinks then equal a recompute of the kept rows, and the quarantine table
+holds the others.
+
 `check` is what must hold after a fault, once a refresh succeeds: every
 sink equals a full recompute of the inputs (an oracle in plain Arrow, not
 sverify), each records the versions it reflects, and its transaction epoch
@@ -75,6 +81,9 @@ class World:
     how: Literal["group", "node"] = "group"
     """How the job refreshes: `sv.group(...).refresh()`, or `refresh()` on
     each top node."""
+    dirty: bool = False
+    """Whether each step adds rows that break `paid`'s preconditions, which
+    the job sets aside (`on_violation="quarantine"`)."""
 
     # -- where things are ----------------------------------------------------
 
@@ -144,8 +153,17 @@ class World:
             self._drop(i, new)
             return
         if self.kind == "delta":
+            if self.dirty:
+                # A negative amount, and a second row with the first new id.
+                new += [(500 + i, "bad", -i), (100 + 2 * i, "dup", 1)]
             write_deltalake(self.orders_uri, orders_table(new), mode="append")
             dt = DeltaTable(self.orders_uri)
+            if self.dirty and i % 2 == 0:
+                # Fixed upstream: the last step's negative row is deleted,
+                # and its repeated id is unique again.
+                dt.delete(f"id = {500 + i - 1}")
+                DeltaTable(self.orders_uri).delete(f"customer = 'dup' AND id = {100 + 2 * (i - 1)}")
+                dt = DeltaTable(self.orders_uri)
             if i % 2 == 0:
                 dt.update(updates={"amount": "amount + 1"}, predicate=f"id = {i % 4}")
             if i % 3 == 0:
@@ -174,7 +192,8 @@ class World:
 
     def source(self) -> Any:
         if self.kind == "delta":
-            return DeltaSource(self.orders_uri, name="orders")
+            policy = "quarantine" if self.dirty else None
+            return DeltaSource(self.orders_uri, name="orders", on_violation=policy)
         if self.kind == "iceberg":
             return IcebergSource(self.catalog(), "db.orders", name="orders")
         return from_files(str(self.drops), name="orders", schema=ORDERS)
@@ -202,8 +221,8 @@ class World:
     def contract(self, name: str) -> Any:
         """The contract the sink's last commit recorded, with its epoch."""
         if self.kind == "iceberg":
-            return IcebergSink(self.catalog(), f"db.{name}").committed()
-        return DeltaSink(self.sink_uri(name), storage_options=self.options).committed()
+            return IcebergSink(self.catalog(), f"db.{name}").contract()
+        return DeltaSink(self.sink_uri(name), storage_options=self.options).contract()
 
     def txn(self, name: str) -> int | None:
         """The epoch the sink's transaction records (Delta's `txn` action;
@@ -245,9 +264,21 @@ def _bag(table: pa.Table, columns: list[str]) -> Counter:
     return Counter(tuple(r[c] for c in columns) for r in table.to_pylist())
 
 
+def kept(orders: pa.Table) -> list[dict]:
+    """The rows `paid`'s preconditions keep (#184): the amount in range and
+    the id on one row among those."""
+    ok = [
+        r
+        for r in orders.to_pylist()
+        if r["amount"] is not None and 0 <= r["amount"] < 1_000_000_000 and r["id"] is not None
+    ]
+    ids = Counter(r["id"] for r in ok)
+    return [r for r in ok if ids[r["id"]] == 1]
+
+
 def expected(orders: pa.Table) -> dict[str, Counter]:
-    """What each sink must hold, from the source table alone."""
-    rows = [r for r in orders.to_pylist() if r["amount"] is not None]
+    """What each sink must hold, from the source table alone: its kept rows."""
+    rows = [r for r in kept(orders) if r["amount"] is not None]
     by: dict[str, list[int]] = {}
     for r in rows:
         by.setdefault(r["customer"], []).append(r["amount"])
@@ -322,6 +353,36 @@ def check(world: World, job: Job | None = None) -> None:
     if job is not None:
         for name, node in (("paid", job.paid), ("doubled", job.doubled), ("totals", job.totals)):
             _same(_bag(node.to_arrow(), COLUMNS[name]), want[name], "node state = recompute")
+    if world.dirty:
+        check_quarantine(world)
+
+
+def check_quarantine(world: World) -> None:
+    """The quarantine table holds every source row the sink does not, and
+    records the sink's state: the rows set aside at its versions."""
+    import json
+
+    from sverify._quarantine import decode_row
+
+    orders = world.orders()
+    keep = Counter(tuple(r.values()) for r in kept(orders))
+    want = Counter(tuple(r.values()) for r in orders.to_pylist()) - keep
+    uri = world.sink_uri("paid_quarantine")
+    table = DeltaTable(uri, storage_options=world.options)
+    got: Counter = Counter()
+    for r in table.to_pyarrow_table().to_pylist():
+        got[tuple(decode_row(r["row"]).values())] += r["copies"]
+    _same(got, want, "quarantine table = source - kept")
+    record = next(
+        json.loads(c["sverify.quarantine"]) for c in table.history() if "sverify.quarantine" in c
+    )
+    c = world.contract("paid")
+    _holds(
+        record["sources"] == c.sources,
+        "lost-change",
+        "quarantine table records the sink's versions",
+        (record, c.sources),
+    )
 
 
 def check_recorded(world: World) -> None:
@@ -366,9 +427,10 @@ class Setup:
     native: bool = True
     cdf: bool = True
     how: Literal["group", "node"] = "group"
+    dirty: bool = False
 
     def world(self, root: Path, **kw: Any) -> World:
-        return World(root, self.kind, cdf=self.cdf, how=self.how, **kw)
+        return World(root, self.kind, cdf=self.cdf, how=self.how, dirty=self.dirty, **kw)
 
     def use(self, monkeypatch: Any) -> None:
         """Set this process up for the setup: the Delta sinks' write path."""
@@ -376,7 +438,13 @@ class Setup:
             monkeypatch.setattr("sverify.io.delta.local_path", lambda uri: None)
 
     def record(self) -> dict[str, Any]:
-        return {"kind": self.kind, "native": self.native, "cdf": self.cdf, "how": self.how}
+        return {
+            "kind": self.kind,
+            "native": self.native,
+            "cdf": self.cdf,
+            "how": self.how,
+            "dirty": self.dirty,
+        }
 
 
 #: The setups, by name: Delta (DuckDB-written files, delta-rs MERGE, or no
@@ -387,4 +455,5 @@ SETUPS = {
     "delta-full": Setup("delta", cdf=False),
     "files": Setup("files"),
     "iceberg": Setup("iceberg"),
+    "delta-quarantine": Setup("delta", dirty=True),
 }

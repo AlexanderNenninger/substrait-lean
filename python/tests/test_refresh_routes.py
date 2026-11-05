@@ -51,7 +51,7 @@ def test_a_stored_node_needs_a_determined_result(tmp_path) -> None:
     """D10: an idempotent sink's epoch must give the same rows on a rerun."""
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7)])
     open_pick = any_amount(orders)
-    report = any_amount.last_report
+    report = any_amount.report
     assert report is not None and not report.deterministic
     # Reported, not refused, where nothing is stored.
     route = open_pick.refresh(route="auto")["any_amount"].route

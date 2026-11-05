@@ -34,7 +34,7 @@ def positive(t):
 
 def test_composed_contracts_connect():
     result = doubled(paid(orders))
-    report = doubled.last_report
+    report = doubled.report
     assert report is not None and report.proved
     # `doubled` was proved against `paid`'s guarantees, not against `orders`.
     assert report.requires == {
@@ -111,8 +111,8 @@ def test_keys_propagate_through_links():
         return t.mutate(tag=t.amount + 1)
 
     tagged(big(orders))
-    assert tagged.last_report is not None
-    assert tagged.last_report.requires == {"big": ["unique(id)", "(_.amount < 1000000000)"]}
+    assert tagged.report is not None
+    assert tagged.report.requires == {"big": ["unique(id)", "(_.amount < 1000000000)"]}
     with pytest.raises(CompositionError, match=r"tagged needs unique\(id\)"):
         tagged(paid(orders))
 
@@ -130,8 +130,8 @@ def test_two_contracted_inputs():
         return j.select(total=j.doubled + j.amount)
 
     combine(doubled(paid(orders)), paid(orders))
-    assert combine.last_report is not None
-    assert set(combine.last_report.requires) == {"doubled", "paid"}
+    assert combine.report is not None
+    assert set(combine.report.requires) == {"doubled", "paid"}
 
 
 def test_runtime_mode_checks_a_broken_link_on_data():
@@ -139,7 +139,7 @@ def test_runtime_mode_checks_a_broken_link_on_data():
     def not_null(orders):
         return orders.filter(orders.amount.notnull())
 
-    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0], on_unproved="runtime")
+    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0], on_unproved="check")
     def lenient(t):
         return t
 

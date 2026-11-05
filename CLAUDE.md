@@ -1,5 +1,22 @@
 # Notes for Claude
 
+## Every PR leaves its area faster
+
+Each pull request comes with at least one optimization in the area it
+touches, beside its main change. One of:
+
+- development iteration: a faster or leaner build, test, proof or check
+  (a slow test made cheap, a `decide` replaced by reflection, a smaller
+  generated module, a cached step);
+- runtime: sverify running faster or in less memory for its users (a
+  smaller written plan, a cheaper proof, less data read, a lower peak).
+
+Measure it, before and after, and put the numbers in the PR body under
+"Optimization". Keep it in the code the PR already touches, so it doesn't
+collide with other sessions' work. A PR that touches nothing measurable
+(docs, facts, ledgers) says so instead. Behaviour stays the same: an
+optimization changes no result and weakens no proof.
+
 ## Running QA
 
 `poe qa` (from `python/`) runs everything: Lean proofs, build, lint,
@@ -72,6 +89,11 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 - **Long-running jobs that aren't QA** (a full sqllogictest replay, fuzzing)
   count as a run too. Give them a `/tmp/substrait-lean-*` directory, so the
   check above sees them.
+- **Never use sudo there,** not even `sudo -n` to test for it. Everything
+  runs as `nennia`: user-level `systemd-run --user` scopes for memory caps,
+  and tools installed under `~/` (elan, uv, the JDK already there). Nothing
+  in QA needs root or the maintainer's password. If something seems to,
+  stop and ask the coordinator.
 - **Clean up after yourself.** Delete your directory when the run ends,
   also when it fails. To stop a run, kill its processes by PID, not with
   `pkill -f` over `ssh`: the pattern also matches the `ssh` command itself.

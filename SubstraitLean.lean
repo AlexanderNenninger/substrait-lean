@@ -34,6 +34,7 @@ import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
 import SubstraitLean.Lowering
+import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringSearch
@@ -48,6 +49,7 @@ import SubstraitLean.LiftCache
 import SubstraitLean.LiftSearch
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Keys
+import SubstraitLean.Quarantine
 import SubstraitLean.Semantic
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat

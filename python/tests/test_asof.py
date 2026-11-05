@@ -109,7 +109,7 @@ def test_asof_guarantees_are_proved(how):
         sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL, how=how),
         requires=KEYS,
         ensures=GUARANTEES,
-        on_inferred="silent",  # ts - tolerance's bound
+        on_inferred="ignore",  # ts - tolerance's bound
     )
     assert report.proved, str(report)
 
@@ -123,7 +123,7 @@ def test_ties_on_the_right_keep_the_guarantees():
         sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL),
         requires={"acc": KEYS["acc"]},
         ensures=GUARANTEES,
-        on_inferred="silent",
+        on_inferred="ignore",
     )
     assert report.proved, str(report)
     assert not report.deterministic
@@ -139,12 +139,12 @@ def test_aligning_100hz_with_130hz():
     create_table(con, "acc", acc_t.schema(), acc)
     create_table(con, "gyr", gyr_t.schema(), gyr)
 
-    @sv.transform(requires=KEYS, ensures=GUARANTEES, on_inferred="silent")
+    @sv.transform(requires=KEYS, ensures=GUARANTEES, on_inferred="ignore")
     def aligned(acc, gyr):
         return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=TOL)
 
     rows = aligned(con.table("acc"), con.table("gyr")).to_pyarrow().to_pylist()
-    report = aligned.last_report
+    report = aligned.report
     assert report is not None and report.proved
     assert len(rows) == 100
     # The gyroscope samples every 7.7 ms, so every sample finds a partner.

@@ -83,7 +83,7 @@ def _():
         return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
     doubled(orders)  # proves the postconditions, or raises VerificationError
-    doubled.last_report
+    doubled.report
     return (
         CompositionError,
         PostconditionError,
@@ -110,7 +110,7 @@ def _(mo):
     * Calling `doubled(orders)` builds the Ibis expression as usual. Before
       returning it, sverify sends the plan and the conditions to the Lean
       checker (`substrait-check --contract`), which tries to prove every
-      postcondition. The verdicts are in `.last_report`.
+      postcondition. The verdicts are in `.report`.
     * The first table of the report holds the verdicts. The second holds
       everything Lean established about each output column, asked for or not.
     * `amount < 1_000_000_000` is there for `amount * 2`. Doubling the
@@ -192,11 +192,11 @@ def _(mo):
     | `on_unproved=` | what happens when a postcondition is not proved |
     |:---|:---|
     | `"error"` (default) | `VerificationError`; nothing runs |
-    | `"runtime"` | the pipeline runs and the condition is checked on the output; a violation raises `PostconditionError` |
+    | `"check"` | the pipeline runs and the condition is checked on the output; a violation raises `PostconditionError` |
     | `"warn"` | a warning, and the pipeline runs |
 
     Take a table with a NULL in it and the condition `amount < 100`, which
-    nothing bounds, so it is not proved. With `"runtime"` the pipeline runs
+    nothing bounds, so it is not proved. With `"check"` the pipeline runs
     and the condition is checked on the output.
     """)
     return
@@ -215,7 +215,7 @@ def _(create_table, display, ibis, sv, table_rows):
 def _(PostconditionError, con, mo, sv):
     from ibis import _
 
-    @sv.transform(ensures=[_.amount < 100], on_unproved="runtime")
+    @sv.transform(ensures=[_.amount < 100], on_unproved="check")
     def passthrough(orders):
         return orders.select("id", "amount")
 
@@ -263,7 +263,7 @@ def _(mo):
     Keys and relations between columns come next. Not tracked yet: relations
     that need more than a column plus a constant (`a < 2 * b`), what is
     inside a string and counts across rows. For those,
-    `on_unproved="runtime"` checks the condition on the data.
+    `on_unproved="check"` checks the condition on the data.
 
     ## Keys
 
@@ -804,7 +804,7 @@ def _(con_w, create_table, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
         return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=tol, how=how.value)
 
     aligned(con_w.table("acc"), con_w.table("gyr")).order_by("ts").to_pyarrow()
-    aligned.last_report
+    aligned.report
     return
 
 
@@ -864,7 +864,7 @@ def _(ibis, sv):
 
     _orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
     doubled_paid(paid(_orders))
-    doubled_paid.last_report
+    doubled_paid.report
     return doubled_paid, paid
 
 
@@ -923,7 +923,7 @@ def _(CompositionError, VerificationError, doubled_paid, ibis, mo, paid, sv, ups
     try:
         doubled_paid(_inputs[upstream.value]())
         _out = mo.vstack(
-            [mo.callout(mo.md("Every link holds ✓"), kind="success"), doubled_paid.last_report]
+            [mo.callout(mo.md("Every link holds ✓"), kind="success"), doubled_paid.report]
         )
     except CompositionError as _e:
         _out = mo.callout(mo.md(f"CompositionError: {str(_e).splitlines()[0]}"), kind="danger")
