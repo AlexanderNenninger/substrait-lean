@@ -16,8 +16,8 @@ import sverify as sv
 T = {"t": {"s": "VARCHAR", "k": "BIGINT"}}
 
 
-def _proved(sql, requires, ensures, tables=T, semantics="duckdb"):
-    report = sv.verify(sql, tables=tables, semantics=semantics, requires=requires, ensures=ensures)
+def _proved(sql, requires, ensures):
+    report = sv.verify(sql, tables=T, semantics="duckdb", requires=requires, ensures=ensures)
     return [c.proved for c in report.ensures]
 
 
