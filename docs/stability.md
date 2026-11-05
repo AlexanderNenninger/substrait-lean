@@ -14,7 +14,7 @@ Jobs and tools read these formats that sverify writes:
 
 | Format | Where it lives | Version | Schema |
 |---|---|---|---|
-| The sink's contract record ([#734](https://github.com/AlexanderNenninger/substrait-lean/issues/734)) | a Delta commit's `commitInfo` under the key `sverify`; an Iceberg table's property `sverify.contract`, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
+| The sink's contract record ([#734](https://github.com/AlexanderNenninger/substrait-lean/issues/734)) | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata ([#735](https://github.com/AlexanderNenninger/substrait-lean/issues/735)) | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
 | The report's JSON ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)) | `Report.to_json()`, read back by `Report.from_json()` | `format` in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
 | The command line's JSON ([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)) | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
@@ -29,12 +29,29 @@ Within 1.x each format follows these rules:
   reads what a newer one wrote, and sees what it knows of it.
 - Every 1.x release reads what every earlier 1.x release wrote, and the
   records of the releases before 1.0 that the fixtures hold, from 0.4.0 on.
-  A sink's record written before 0.5 has no `format` and reads as format 1.
-- `format` is 1 throughout 1.x. A reader refuses a format newer than it
+- `format` is 2 throughout 1.x. A reader refuses a format newer than it
   knows, with an error that says to upgrade sverify.
 - A value from a fixed set, such as the manifest's `class` or a condition's
   `kind`, may gain new values. A reader that meets one it does not know
   says so in its error.
+
+Format 1 is the shape before 1.0, and 1.0 renamed its keys so that each
+concept has one name: `semantics`, `equivalence` and `node`. A reader maps a
+sink's record or a manifest of format 1:
+
+- the sink's record names the node `view`, and Delta keeps it under the
+  key `sverify`; a record written before 0.5 has no `format`;
+- the manifest says `profile`, `observation` and `observation_components`
+  for `semantics`, `equivalence` and `equivalence_components`.
+
+The report's JSON of format 1 was in no release, and `Report.from_json`
+refuses it. In format 2 its postconditions, issues and assumptions take the
+shape of a SARIF 2.1.0 result, so that `sverify check --format sarif` only
+wraps them in a run
+([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)):
+`ruleId`, the code in snake_case (`may_be_false`, `division_by_zero`);
+`level`, SARIF's `error`, `warning`, `note` or `none`; `kind`, `pass` or
+`fail`; `message.text`; and sverify's own fields under `properties`.
 
 Each release writes fixtures of the formats it writes into
 [`python/tests/formats/<version>/`](../python/tests/formats/), with
