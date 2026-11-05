@@ -302,6 +302,10 @@ jobs:
             uv run --locked --project python poe -C python "test-$b" || status=1
           done
           exit $status
+      # The share of the 1.0 coverage targets covered (#743,
+      # docs/coverage-targets.md), in the job summary; a gate from M6.
+      - if: matrix.shard == '1/3'
+        run: uv run --locked --project python python -m sverify_dev.coverage --targets >> "$GITHUB_STEP_SUMMARY"
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query

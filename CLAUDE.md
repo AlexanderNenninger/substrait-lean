@@ -1,5 +1,22 @@
 # Notes for Claude
 
+## Every PR leaves its area faster
+
+Each pull request comes with at least one optimization in the area it
+touches, beside its main change. One of:
+
+- development iteration: a faster or leaner build, test, proof or check
+  (a slow test made cheap, a `decide` replaced by reflection, a smaller
+  generated module, a cached step);
+- runtime: sverify running faster or in less memory for its users (a
+  smaller written plan, a cheaper proof, less data read, a lower peak).
+
+Measure it, before and after, and put the numbers in the PR body under
+"Optimization". Keep it in the code the PR already touches, so it doesn't
+collide with other sessions' work. A PR that touches nothing measurable
+(docs, facts, ledgers) says so instead. Behaviour stays the same: an
+optimization changes no result and weakens no proof.
+
 ## Running QA
 
 `poe qa` (from `python/`) runs everything: Lean proofs, build, lint,
