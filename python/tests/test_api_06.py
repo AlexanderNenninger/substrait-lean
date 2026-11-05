@@ -102,7 +102,7 @@ def test_an_assumed_double_sum_names_the_sum() -> None:
     r = ibis.table({"k": "int64", "temp_c": "float64"}, name="readings")
     both = r.group_by("k").aggregate(s=r.temp_c.sum(), m=r.temp_c.mean(), hi=r.temp_c.max())
     report = _quiet(sv.verify, both, on_inferred="silent")
-    assert str(report).startswith("assumes: sum(temp_c) or avg(temp_c) stays finite")
+    assert "assumes: sum(temp_c) or mean(temp_c) stays finite" in str(report)
 
 
 # -- #690: an unproved run raises a VerificationError -------------------------
@@ -168,11 +168,11 @@ def test_the_route_reference_is_now_translated(con, tmp_path) -> None:
     assert out["doubled"].route is not None and out["doubled"].route.kind == "translated"
 
 
-def test_a_route_leads_with_its_class() -> None:
+def test_a_route_names_translated_by_its_class_alone() -> None:
     shim = routes.Route("polars", "translated", "reference", "why", cls="shim", evidence="tested")
-    assert str(shim) == "shim, tested (translated): why"
+    assert str(shim) == "shim; evidence tested"
     exact = routes.Route("duckdb", "native", "duckdb", "why", cls="exact")
-    assert str(exact) == "exact (native): why"
+    assert str(exact) == "exact; native: why"
     assert str(routes.Route("duckdb", None, "duckdb", "why")) == "refused: why"
 
 

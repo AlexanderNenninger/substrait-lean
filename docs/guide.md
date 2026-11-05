@@ -1279,8 +1279,10 @@ only if one applies:
 | `recheck` | the checker proves the plan again under the engine's profile |
 
 `report.routes[engine]` records the route, with its class, which says what
-you can rely on. A route prints its class first:
-`shim, tested (translated): verified under the reference; …`.
+you can rely on. A route prints its class first, then
+the evidence, and the route where it is not `translated`:
+`shim (integer division rewritten to truncate); evidence tested`, or
+`exact; transfer: verified under semantics="duckdb"; …`.
 
 | Class (`route.cls`) | What it means for you |
 |---|---|

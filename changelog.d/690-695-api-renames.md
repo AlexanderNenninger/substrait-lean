@@ -36,8 +36,8 @@ Names (#695):
   `semantics="reference"` runs through the translation to the engine.
   `route="reference"` warns and takes `"translated"`; `Route.kind` is
   `"translated"`.
-- A route prints its class first: `shim, proved (translated): verified under
-  the reference; …`.
+- A route's line names the route only where it is not `translated`:
+  `exact; transfer: verified under semantics="duckdb"; …`.
 - Printed output says `semantics="duckdb"` where it said `Profile.duckdb`.
 - `@sv.transform(engine=)` is `check_engine=`: where checks on data run.
   `refresh(engine=)` and `run(con, engine)` keep `engine` for where the plan
