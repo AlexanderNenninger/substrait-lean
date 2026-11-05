@@ -23,8 +23,9 @@ every possible input, or says why it can't ([what is proved](https://github.com/
 * A route takes the proof to the engine. `route="auto"` runs the plan on
   DuckDB or Polars natively, through the reference's proved translation, or
   by a check that the engine's choices are within the proof's, and names
-  the plan's class there: it refines the reference, needs a proved shim, is
-  within a float bound, or agrees up to an observation. Where no route
+  the plan's class there: exact, equal under an observation the
+  postcondition states (a float tolerance is one), or exact or observed
+  after a proved shim. Where no route
   applies, the plan is refused with the reason
   ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB and
   Polars are characterized fact by fact, with the evidence for each

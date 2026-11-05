@@ -121,12 +121,15 @@ rules of `float-bounds/FloatBounds/Propagate.lean`:
   literal multiplies by the reciprocal (`fl(x · fl(1/y))`,
   polars-scalar-divisor): `(εa / lb)(1 + u)² + (3u + u²)(ma / lb) +
   (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`);
+* `exp a`, `a ≤ ha`: `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + t)`
+  (`rule_exp`): the platform's `libm` on both sides, trusted to one ulp
+  (`NativeLink.exp`);
 * `+ - * /` and `sqrt` are correctly rounded on both engines, as are
   integer-to-double conversions (the characterization's round 5), so an
   operation on exact inputs is exact there, Polars's literal division aside;
 * each engine's logarithms that differ from the reference's (Polars's
   `log10`, `log2` and `log(b)` are `ln / ln`, 2.1 ulp; DuckDB's `log(b, x)`
-  1.4 ulp) are probed, not modelled, and the other elementary functions are
+  1.4 ulp) are probed, not modelled, and the other elementary functions but `exp` are
   the platform's `libm` (macOS `tan` up to 2.4 ulp, glibc `cos` and `tan` far
   more near zeros of `cos`): unbounded here where an input is off, and their
   bounds are not proved.
@@ -170,6 +173,15 @@ def magOf (env : List AVal) (e : Expr) : Option Float := do
   let hi ← b.hi
   return unscale (max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs)
 
+/-- An upper bound on `e` from the preconditions (`0` where it is negative). -/
+def hiOf (env : List AVal) (e : Expr) : Option Float := do
+  let a := e.absD env []
+  guard a.intsOnly
+  let b ← a.int
+  let hi ← b.hi
+  let s := FloatCode.scaled hi
+  return if s ≤ 0 then 0.0 else unscale s.natAbs
+
 /-- The least `|e|` from the preconditions, where `0` is outside its range. -/
 def minAbsOf (env : List AVal) (e : Expr) : Option Float := do
   let a := e.absD env []
@@ -202,12 +214,13 @@ def opExtra (engine : String) : Expr → Option Float
   | _ => some 0.0
 
 /-- An operation the engines may compute otherwise than the reference, on
-the same inputs: the platform's `libm` (`pow`, `atan2`, `log(b, x)`, every
-elementary function but `sqrt`), rounding to decimals, decimal conversions
-and black boxes. Its error is probed or not known, never proved here. -/
+the same inputs, with no rule here: the platform's `libm` (`pow`, `atan2`,
+`log(b, x)`, every elementary function but `sqrt` and `exp`), rounding to
+decimals, decimal conversions and black boxes. Its error is probed or not
+known, never proved. -/
 def inexact : Expr → Bool
   | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ | .bin (.bbox2 _) _ _ => true
-  | .un (.fmath f) _ => f != .sqrt
+  | .un (.fmath f) _ => f != .sqrt && f != .exp
   | .un (.froundTo _) _ | .un (.ftod _) _ | .un (.dtof _) _ | .un (.bbox _) _ => true
   | _ => false
 
@@ -265,6 +278,13 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
       if ea == 0.0 && eb == 0.0 && extra == 0.0 then return (0.0, pa && pb && !inexact e)
       guard (ea == 0.0 && eb == 0.0)
       return (extra * u * (← resultMag env e), false)
+  | .un (.fmath .exp) a => do
+    -- `rule_exp`: the platform's `libm` on both sides, one ulp each.
+    let (ea, pa) ← exprEps engine env cols a
+    let ha ← hiOf env a
+    let u := unitRound
+    guard (ha + ea ≤ 709.0)
+    return (ea * Float.exp (ha + ea) * (1.0 + 2.0 * u) + 4.0 * u * (Float.exp ha + tinyF), pa)
   | e@(.un _ a) => do
     let (ea, pa) ← exprEps engine env cols a
     let extra ← opExtra engine e

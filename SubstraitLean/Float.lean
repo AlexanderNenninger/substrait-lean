@@ -511,6 +511,43 @@ theorem codeLo_le {c s : Int} (h : s ≤ scaled c) : codeLo s ≤ c := by
   unfold scaled at h; unfold codeLo
   split at h <;> omega
 
+/-! ### Trusted: one double operation (#582)
+
+A double `+`, `-`, `*` or `/` of finite doubles whose exact result is well
+below the largest double is finite, and within a few `u` of the exact result
+of the codes' values. Stated on scaled values, so the checker bounds the
+result with integer interval arithmetic (`floatArith` in `Contracts.lean`)
+and rules out an overflow to `±∞` from the inputs' bounds (`BinFn.mayInf`).
+Proved for IEEE 754 rounding to nearest in `float-bounds/` as `core_add`,
+`core_sub`, `core_mul` and `core_div` (`FloatBounds/Arith.lean`), given its
+`NativeLink` and the code conversions above (`Decoded`), with `u · tiny`
+scaled to `1/2`. Axioms here so that the core needs no Mathlib. -/
+
+/-- A finite double's code. -/
+def IsFin (c : Int) : Prop := negInf < c ∧ c < posInf
+
+axiom add_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) :
+    IsFin (lift₂ (· + ·) a b) ∧ (scaled (lift₂ (· + ·) a b) - (scaled a + scaled b)).natAbs ≤
+      ((scaled a).natAbs + (scaled b).natAbs) / 2 ^ 50 + 1
+
+axiom sub_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) :
+    IsFin (lift₂ (· - ·) a b) ∧ (scaled (lift₂ (· - ·) a b) - (scaled a - scaled b)).natAbs ≤
+      ((scaled a).natAbs + (scaled b).natAbs) / 2 ^ 50 + 1
+
+axiom mul_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) :
+    IsFin (lift₂ (· * ·) a b) ∧
+      (2 ^ 1074 * scaled (lift₂ (· * ·) a b) - scaled a * scaled b).natAbs ≤
+        (scaled a).natAbs * (scaled b).natAbs / 2 ^ 50 + 2 ^ 1074
+
+axiom div_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
+    (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
+    IsFin (lift₂ (· / ·) a b) ∧
+      (scaled (lift₂ (· / ·) a b)).natAbs ≤
+        (scaled a).natAbs * (2 ^ 1074 + 2 ^ 1024) / (scaled b).natAbs + 1
+
 /-- `2⁵²`. -/
 def tolK : Nat := 2 ^ 52
 
