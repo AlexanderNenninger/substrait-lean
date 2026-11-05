@@ -30,9 +30,11 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB and
   Polars are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
-* Postconditions say what the result's consumer observes:
-  `sv.equivalent(floats=sv.within(abs=1e-6))` accepts doubles within a
-  tolerance, rows as a sequence or a multiset, one zero. A sink states what a
+* Postconditions say what the result's consumer observes. By default,
+  doubles within the plan's proved bound (`floats="plan"`, which the report
+  prints); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
+  which `verify` checks against that bound, and also rows as a sequence or
+  a multiset, one zero. A sink states what a
   rerun must reproduce (`reproducible=`), and a refresh whose engine can't
   promise it is refused.
 * Results are kept up to date from the changes, by delta plans proved

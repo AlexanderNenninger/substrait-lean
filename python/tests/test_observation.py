@@ -139,12 +139,15 @@ def test_report_names_what_a_condition_depends_on() -> None:
 
 
 def test_without_an_observation_nothing_changes() -> None:
+    """Without doubles, the default (`floats="plan"`) and `sv.equivalent()`
+    prove the same, and the report prints no `observes:` line."""
     expr = T.select("k", y=T.k + 1)
     req = {"t": [_.k.between(0, 100)]}
     plain = sv.verify(expr, requires=req, ensures=[_.y >= 1], counterexamples=0)
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
     assert plain.proved and observed.proved
-    assert plain.observation == observed.observation == Observation()
+    assert plain.observation == sv.equivalent(floats="plan")
+    assert observed.observation == Observation()
     assert "observes" not in str(plain)
 
 

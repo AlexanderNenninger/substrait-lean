@@ -196,7 +196,9 @@ class Route:
     functions" in `docs/core-semantics.md`): `"exact"`, `"observed"` (equal
     to a result the reference allows up to `observation`), `"shim"`, or
     `"refused"` for a refusal; the worst over the options the proof depends
-    on. None where the checker's tables give no class for those options."""
+    on; `"exact"` where the tables give no class for those options (the
+    translation's tests stand for them). None only for a run with
+    `unverified=True`, which no proof reaches."""
     evidence: Evidence | None = None
     """`"proved"` where every option's class is proved in Lean, `"tested"`
     where one rests on a test or a probe; None where the tables say nothing."""
@@ -723,7 +725,8 @@ def realization(
     the plan is refused there.
 
     Returns:
-        The worst class (None where no row gives one), the evidence, the
+        The worst class (`"exact"`, on tested evidence, where no row gives
+        one), the evidence, the
         shims written, the problems that refuse the plan, and, for an
         observed plan, the observation and whether its tolerance is proved.
 
@@ -786,8 +789,13 @@ def realization(
             "the reference: its threshold lies within the doubles' bound of their range; "
             "state a precondition that keeps the values away from it, or compare exact columns"
         )
-    worst = max(classes, key=CLASSES.index) if classes else None
     ev: Evidence | None = None
+    if not classes:
+        # No option the proof depends on has a row in the engine's tables
+        # (a LAG over a key): the translation gives the reference's result,
+        # on the evidence of its tests (`TRANSLATIONS`).
+        return Realized("exact", "tested", (), problems)
+    worst = max(classes, key=CLASSES.index)
     if evidence and len(evidence) == len(classes):
         ev = "tested" if "tested" in evidence else "proved"
     elif evidence:
@@ -803,7 +811,7 @@ def realization(
 class Realized(NamedTuple):
     """How an engine realizes a plan's options (`realization`)."""
 
-    cls: Class | None
+    cls: Class
     evidence: Evidence | None
     shims: tuple[str, ...]
     problems: list[str]
@@ -831,6 +839,48 @@ def _with_bound(
     return replace(q, floats=Within(most.get("abs"), most.get("rel"), ulps))
 
 
+def plan_bound(epsilon: Mapping[str, Mapping[str, Any]] | None) -> Within | None:
+    """The plan's bound on its doubles as one tolerance: per kind every
+    column has, the largest of the columns' `ε` (`Report.epsilon`). None
+    where no double column has a bound above zero, or one has none."""
+    if not epsilon or any(_unbounded(e) for e in epsilon.values()):
+        return None
+    found = [b for b in (_bounds(e) for e in epsilon.values()) if any(v for v, _ in b.values())]
+    kinds = [k for k in _KINDS if found and all(k in b for b in found)]
+    if not kinds:
+        return None
+    most = {k: max(b[k][0] for b in found) for k in kinds}
+    return Within(
+        most.get("abs"), most.get("rel"), None if "ulps" not in most else int(most["ulps"])
+    )
+
+
+def floats_on(report: Report) -> dict[str, list[str]]:
+    """For an observation that states its doubles (`floats="exact"` or a
+    tolerance), per engine the reference translates to and has a choices
+    table for, the problems that observation meets on the engine's doubles
+    and the plan's bound (`epsilon`) does not: empty where the engine meets
+    it. Empty under any profile but the reference's (a native route is
+    exact), and for a plan without doubles."""
+    observation = report.observation
+    if observation.floats == "plan" or report.semantics != "reference":
+        return {}
+    if not any(getattr(t, "is_floating", bool)() for t in report.output.values()):
+        return {}
+    plan = json.loads(report.plan) if report.plan else {}
+    depends = report.depends if report.depends is not None else plan_options(plan)
+    looser = replace(observation, floats="plan")
+    out: dict[str, list[str]] = {}
+    for e in TRANSLATIONS:
+        if not (_options_json().get("choices") or {}).get(e):
+            continue
+        rows_exact = (report.rows_exact or {}).get(e)
+        asked = realization(e, depends, observation, report.epsilon, None, rows_exact)
+        base = realization(e, depends, looser, report.epsilon, None, rows_exact)
+        out[e] = [p for p in asked.problems if p not in base.problems]
+    return out
+
+
 def _all_proved(epsilon: Mapping[str, Any] | None) -> bool:
     return bool(epsilon) and all(
         all(p for _, p in _bounds(e).values()) for e in (epsilon or {}).values()
@@ -852,15 +902,14 @@ def _coarsest(a: Observation, b: Observation) -> Observation:
 
 
 def observed(report: Report) -> tuple[Observation, dict[str, str]]:
-    """What a run checks the engine's result against: the observation
-    `ensures` names, or else rows as a multiset, doubles within the plan's
-    bound (`Report.epsilon`) and other values exact (`PLAN_BOUND`), with
-    the double columns a postcondition reads held to their exact value
+    """What a run checks the engine's result against: the report's
+    observation (`ensures`'s, or else rows as a multiset, doubles within
+    the plan's bound and other values exact, `PLAN_BOUND`). Under the
+    plan's bound (`floats="plan"`, stated or not), the double columns a
+    postcondition reads are held to their exact value
     (by column, the postcondition's label): a condition proved of the
     reference's value need not hold of a value near it."""
-    from sverify.observation import PLAN_BOUND
-
-    if report.stated:
+    if report.observation.floats != "plan":
         return report.observation, {}
     held: dict[str, str] = {}
     doubles = [c for c, t in report.output.items() if getattr(t, "is_floating", bool)()]
@@ -870,7 +919,7 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
         for col in doubles if c.reads is None else c.reads:
             if col in doubles:
                 held.setdefault(col, c.label)
-    return PLAN_BOUND, held
+    return replace(report.observation, bound=None), held
 
 
 # -- the re-check -------------------------------------------------------------
@@ -1083,6 +1132,7 @@ def verified(report: Report) -> bool:
         not report.errors
         and not report.transfer
         and not report.needed
+        and not report.floats_unmet
         and all(c.portable or c.checked for c in report.ensures)
     )
 
@@ -1105,6 +1155,11 @@ def not_verified(report: Report) -> str:
         if "report.unproved" not in see:
             see.append("report.unproved")
     parts += [f"needs {n}" for n in report.needs_lines()]
+    if report.floats_unmet:
+        first = next(ps[0] for ps in report.floats_on.values() if ps)
+        want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
+        parts.append(f"no engine meets the observation's {want}: {first}")
+        see.append("report.floats_on")
     if report.needed:
         see.append("report.needed")
     if report.transfer:
@@ -1183,6 +1238,9 @@ def choose(
         return Route(e, None, source, reason, det, tuple(notes), tuple(failures), "refused")
 
     if not verified(report):
+        if report.floats_unmet:
+            cap = max_rows_fix(report, e, report.observation)
+            return replace(refuse(not_verified(report) + _cap_text(cap)), suggested=cap)
         return refuse(not_verified(report))
     if deterministic and reproducible is None:
         from sverify.observation import Observation as _Observation
@@ -1238,6 +1296,10 @@ def choose(
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
+        gives = got.observation
+        if gives is not None and gives.rows == "sequence" and not _sorted_root(plan):
+            # The reference leaves the order of an unsorted result open.
+            gives = replace(gives, rows="multiset")
         return Route(
             e,
             kind,
@@ -1251,7 +1313,7 @@ def choose(
             got.shims,
             reproducible,
             rerun_evidence,
-            observation=got.observation,
+            observation=gives,
             bound_proved=got.bound_proved,
         )
 
