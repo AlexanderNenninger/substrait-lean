@@ -447,7 +447,7 @@ p = orders.pipe(paid)
 
 
 @pytest.mark.parametrize(
-    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 6, "held")]
+    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 5, "held")]
 )
 def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     tmp_path, capsys, policy, code, status

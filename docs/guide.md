@@ -816,10 +816,9 @@ lands, the document says `"format": "provisional"`. The exit codes are:
 | 2 | refused: a construct outside sverify's model (`sverify.errors.Unsupported`) |
 | 3 | budget exceeded: time or memory |
 | 4 | error |
-| 5 | `refresh` completed, and rows of a node's sources are set aside (`on_violation="quarantine"`) |
-| 6 | `refresh` completed, and a node held its batch (`on_violation="hold"`) |
+| 5 | `refresh` completed, and rows of a node's sources are quarantined (`on_violation="quarantine"`) or a node held its batch (`on_violation="hold"`); the JSON's `status` says which |
 
-With 5 or 6, `refresh` prints `Refresh.alert()` after the summary, and its
+With 5, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 
 `--timeout` (default 30 s, or `SVERIFY_TIMEOUT`; 0 turns it off) bounds

@@ -22,7 +22,9 @@ The refresh report says how many rows each refresh set aside, released and
 saw deleted, with examples. `Refresh.outcome` (`"ok"`, `"quarantined"`,
 `"held"`), `Refresh.alert()` (Markdown for whoever is on call) and
 `Refresh.to_json()` (format 1, `sverify/schemas/refresh.schema.json`) are
-new, and `Node.quarantined()` returns the rows set aside. The quarantine
+new, and `Node.quarantined()` returns the rows set aside. `sverify refresh`
+exits 5 when rows are quarantined or a node is held, with `status`
+`"quarantined"` or `"held"` in its JSON. The quarantine
 table's format is stable within 1.x (`sverify/schemas/quarantine.schema.json`,
 [docs/stability.md](docs/stability.md)).
 

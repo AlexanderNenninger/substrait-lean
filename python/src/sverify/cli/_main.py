@@ -24,18 +24,19 @@ from sverify.cli._limits import (
 )
 from sverify.cli._suggest import place
 
-PROVED, NOT_PROVED, REFUSED, BUDGET, ERROR, QUARANTINED, HELD = 0, 1, 2, 3, 4, 5, 6
+PROVED, NOT_PROVED, REFUSED, BUDGET, ERROR, ATTENTION = 0, 1, 2, 3, 4, 5
 STATUS = {
     PROVED: "proved",
     NOT_PROVED: "not_proved",
     REFUSED: "refused",
     BUDGET: "budget_exceeded",
     ERROR: "error",
-    QUARANTINED: "quarantined",
-    HELD: "held",
+    ATTENTION: "quarantined",
 }
-#: A refresh that completed, by `Refresh.outcome` (#184).
-OUTCOME_EXIT = {"ok": PROVED, "quarantined": QUARANTINED, "held": HELD}
+#: A refresh that completed, by `Refresh.outcome` (#184): rows quarantined
+#: and a node held both need attention, and exit 5; the JSON's `status` says
+#: which.
+OUTCOME_EXIT = {"ok": PROVED, "quarantined": ATTENTION, "held": ATTENTION}
 
 
 def _version() -> str:
@@ -206,7 +207,7 @@ def _emit(
             "sverify": _version(),
             "command": command,
             "exit": code,
-            "status": STATUS[code],
+            "status": result.pop("status", None) or STATUS[code],
             **result,
         }
         print(json.dumps(doc, indent=2, default=str))
@@ -479,6 +480,8 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         alert = done.alert()
         return done.summary() + ("" if alert is None else "\n\n" + alert)
 
+    if done.outcome != "ok":
+        result["status"] = done.outcome
     return _emit(args, "refresh", OUTCOME_EXIT[done.outcome], result, human)
 
 
@@ -577,7 +580,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
     return its exit code: 0 proved, 1 not proved, 2 refused, 3 budget
     exceeded (time or memory), 4 error; for `refresh`, 5 completed with rows
-    quarantined, 6 completed with a node held (#184)."""
+    quarantined or a node held (#184)."""
     args = parser().parse_args(argv)
     try:
         memory_limit_from(args.memory_limit)
