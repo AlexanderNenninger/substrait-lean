@@ -93,7 +93,6 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.structField a0 => some (Substrait.duckdbOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.duckdbOn.listElement a0)
     | Substrait.UnFn.cardinality  => some (Substrait.duckdbOn.cardinality )
-    | Substrait.UnFn.flatten  => some (Substrait.duckdbOn.flatten )
     | Substrait.UnFn.raise a0 => some (Substrait.duckdbOn.raise a0)
     | Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i8 => some Substrait.duckdbOn.fit_silent_i8
     | Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i16 => some Substrait.duckdbOn.fit_silent_i16
@@ -104,7 +103,8 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i32 => some Substrait.duckdbOn.fit_saturate_i32
     | Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i64 => some Substrait.duckdbOn.fit_saturate_i64
     | Substrait.UnFn.isNum  => some (Substrait.duckdbOn.isNum )
-    | Substrait.UnFn.bbox a0 => some (Substrait.duckdbOn.bbox a0),
+    | Substrait.UnFn.bbox a0 => some (Substrait.duckdbOn.bbox a0)
+    | Substrait.UnFn.flatten  => some (Substrait.duckdbOn.flatten ),
    fun f => match f with
     | Substrait.BinFn.add  => some (Substrait.duckdbOn.add )
     | Substrait.BinFn.sub  => some (Substrait.duckdbOn.sub )
@@ -213,7 +213,6 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),
   ("UnFn.cardinality", "native", 0),
-  ("UnFn.flatten", "native", 0),
   ("UnFn.raise", "native", 0),
   ("UnFn.fit .silent .i8", "hand-written schema: CASE WHEN #0 IS NOT NULL THEN dsub(imod(dadd(imod(dadd(#0, 128), 256), 256), 256), 128) ELSE #0 END", 0),
   ("UnFn.fit .silent .i16", "hand-written schema: CASE WHEN #0 IS NOT NULL THEN dsub(imod(dadd(imod(dadd(#0, 32768), 65536), 65536), 65536), 32768) ELSE #0 END", 0),
@@ -225,6 +224,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.fit .saturate .i64", "CASE WHEN 9223372036854775807 < #0 THEN 9223372036854775807 ELSE CASE WHEN #0 < -9223372036854775808 THEN -9223372036854775808 ELSE #0 END END", 0),
   ("UnFn.isNum", "native", 0),
   ("UnFn.bbox", "native", 0),
+  ("UnFn.flatten", "native", 0),
   ("BinFn.add", "native", 0),
   ("BinFn.sub", "native", 0),
   ("BinFn.mul", "native", 0),

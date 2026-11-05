@@ -187,10 +187,6 @@ inductive UnFn where
   /-- `cardinality(l)`: the number of elements, NULL ones included
   (`functions_list.yaml`). -/
   | cardinality
-  /-- `flatten(l)`: the elements of `l`'s lists, in order; a `NULL` inner
-  list adds none, and a `NULL` `l` is `NULL` (DuckDB, #810). `list(x)` keeps
-  `x`'s NULLs as `flatten(array_agg([x]))`. -/
-  | flatten
   /-- A shim's guard (#185): always raises (`Issue.raised` in `Safety.lean`),
   with the message `msg` and the value of its argument; DuckDB's `error()`.
   Its value, which nobody sees, is `NULL`. -/
@@ -205,6 +201,10 @@ inductive UnFn where
   /-- A scalar black box of one argument (`SubstraitLean/BlackBox.lean`, #325):
   the table's row `name`. -/
   | bbox (name : String)
+  /-- `flatten(l)`: the elements of `l`'s lists, in order; a `NULL` inner
+  list adds none, and a `NULL` `l` is `NULL` (DuckDB, #810). `list(x)` keeps
+  `x`'s NULLs as `flatten(array_agg([x]))`. -/
+  | flatten
   deriving Repr, DecidableEq
 
 inductive BinFn where
