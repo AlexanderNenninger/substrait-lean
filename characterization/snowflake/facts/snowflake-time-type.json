@@ -1,0 +1,59 @@
+{
+  "id": "snowflake-time-type",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`TIME` arithmetic wraps at midnight; months raise",
+  "verdict": "`TIMEADD(HOUR, 2, '23:00')` is 01:00; `MONTH` on a `TIME` raises",
+  "area": "temporal",
+  "options": [
+    "time_interval_months"
+  ],
+  "rows": [
+    {
+      "group": "time.arith",
+      "option": "time_interval_months",
+      "types": [
+        "time"
+      ]
+    }
+  ],
+  "constructs": [
+    "TIMEADD",
+    "DATEADD",
+    "TIME"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`TIMEADD(HOUR, 2, '23:00:00')` is `01:00:00` and `DATEADD(HOUR, 25, …)` `00:00:00`: arithmetic wraps around midnight. `TIMEADD(MONTH, 1, t)` is a compile error. `'24:00:00'` and `'23:59:60'` do not parse. `DATEDIFF(SECOND, '23:00', '01:00')` is -79200.",
+  "reference": "`TIME ± INTERVAL` with months is refused (`time_interval_months`). sverify's SQL writes no `TIME` arithmetic for Snowflake.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT timeadd(HOUR, 2, t), dateadd(HOUR, 25, t), t + INTERVAL '2 hours', datediff(SECOND, t, u), SYSTEM$TYPEOF(timeadd(HOUR, 2, t)) FROM (VALUES ('23:00:00'::TIME, '01:00:00'::TIME)) AS s(t, u)",
+          "observed": "(01:00:00, 00:00:00, 01:00:00, -79200, TIME(9)[SB8])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "time-arith"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "time-month"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "time-parse"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

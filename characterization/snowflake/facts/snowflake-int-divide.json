@@ -1,0 +1,122 @@
+{
+  "id": "snowflake-int-divide",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`/` of integers is a decimal rounded to 6 more places",
+  "verdict": "`/` gives `NUMBER(p, 6)` rounded half up; zero raises; sverify divides exactly through `MOD`",
+  "area": "integers",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "overflow",
+    "on_domain_error"
+  ],
+  "rows": [
+    {
+      "group": "int.div",
+      "option": "division_type",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.div",
+      "option": "on_division_by_zero",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.div",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.div",
+      "option": "on_domain_error",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "/",
+    "DIV0",
+    "DIV0NULL"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`7 / 2` is `3.500000`, a `NUMBER(25,6)`: integer division is decimal division, rounded half away from zero at the scale (`2 / 3` is `0.666667`), so truncating it can be off by one (`299999999999999999 / 3` is `99999999999999999.666667`, but a quotient of `…999.9999995` would round up). The scale is the dividend's plus 6 (`NUMBER(10,2) / NUMBER(10,4)` has scale 8).",
+    "A zero divisor raises `100051 Division by zero`; `DIV0(a, 0)` and `DIV0NULL(a, 0)` are 0, and `DIV0NULL(a, NULL)` is 0. `MIN / -1` is `9223372036854775808.000000`: no overflow."
+  ],
+  "reference": "`divide` truncates (`division_type: TRUNCATE`), raises on a zero divisor and on `MIN / -1` (`overflow`). sverify's SQL divides `a - MOD(a, b)` by `b`, which is exact, then checks the 64-bit range (`writer-trunc-div`, `writer-trunc-div-min`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a, b, a / b AS q, SYSTEM$TYPEOF(a / b) AS t FROM (VALUES (7, 2), (-7, 2), (7, -2), (1, 3), (2, 3), (9223372036854775807, 3)) AS s(a, b)",
+          "observed": "(7, 2, 3.500000, NUMBER(25,6)[SB16]); (-7, 2, -3.500000, NUMBER(25,6)[SB16]); (7, -2, -3.500000, NUMBER(25,6)[SB16]); (1, 3, 0.333333, NUMBER(25,6)[SB16]); (2, 3, 0.666667, NUMBER(25,6)[SB16]); (9223372036854775807, 3, 3074457345618258602.333333, NUMBER(25,6)[SB16])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-divide"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-divide-scale"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-divide-rounding"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-div-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-div0"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-div-min"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "integer-division-literal"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-trunc-div"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-trunc-div-min"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

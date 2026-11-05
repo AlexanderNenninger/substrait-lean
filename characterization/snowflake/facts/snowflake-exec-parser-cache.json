@@ -1,0 +1,44 @@
+{
+  "id": "snowflake-exec-parser-cache",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Identical query text can return a stored result",
+  "verdict": "`USE_CACHED_RESULT` on by default; the probes turn it off",
+  "area": "execution",
+  "options": [
+    "settings",
+    "size_limits"
+  ],
+  "constructs": [
+    "USE_CACHED_RESULT"
+  ],
+  "settings": {
+    "USE_CACHED_RESULT": false
+  },
+  "description": "With `USE_CACHED_RESULT` on, the account's default, Snowflake returns a stored result for the same query text over unchanged tables, so a run-to-run variation (sum-double) shows only with it off. The probes run with it off; `sample-sum-double-repeat` puts four copies of one sum in one query.",
+  "reference": "No cache in the model.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem",
+          "observed": "(11475087016.1999); (11475087016.1999); (11475087016.199898); (11475087016.1999)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-sum-double-repeat"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "settings"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

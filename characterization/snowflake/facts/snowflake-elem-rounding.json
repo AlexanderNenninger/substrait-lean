@@ -1,0 +1,77 @@
+{
+  "id": "snowflake-elem-rounding",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Elementary functions: correctly rounded in the cases checked, not documented",
+  "verdict": "`sin(1e22)` correctly rounded; refused, as the libm is not documented",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "platform"
+  ],
+  "rows": [
+    {
+      "group": "fp.elem",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.log",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "SIN",
+    "COS",
+    "TAN",
+    "EXP",
+    "LN",
+    "LOG",
+    "POWER",
+    "SQRT"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`SIN(1e22)` is `-0.85220084976718879499…` as an exact decimal, the double nearest the true value: the argument reduction is exact. `LOG(10, 1000)` is `2.9999999999999996` (`LN(x) / LN(10)`, two roundings) and `LOG(2, 1000)` `9.965784284662087`.",
+    "`TO_VARCHAR` of a double prints at most 15 significant digits (often 10), so the last bits need a cast to `NUMBER(38,37)` or the driver's value to see."
+  ],
+  "reference": "The elementary functions are the platform's libm (black boxes in the reference). sverify's function table refuses Snowflake's: their implementation is not documented (`_functions.py`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT to_varchar(sin(x)), to_varchar(exp(x)), to_varchar(ln(x)), to_varchar(power(x, 0.37)), to_varchar(tan(x)), to_varchar(x * x) FROM (VALUES (1e22::FLOAT), (0.7853981633974483::FLOAT), (2.5::FLOAT)) AS s(x)",
+          "observed": "(-0.8522008498, inf, 50.656872046, 138038426.460288, -1.628778226, 1e+44); (0.7071067812, 2.193280051, -0.2415644753, 0.9144990446, 1, 0.6168502751); (0.5984721441, 12.182493961, 0.9162907319, 1.403582043, -0.7470222972, 6.25)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-elem-bits"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-elem-hex"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-log-cases"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

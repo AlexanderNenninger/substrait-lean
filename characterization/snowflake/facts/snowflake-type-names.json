@@ -1,0 +1,51 @@
+{
+  "id": "snowflake-type-names",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Snowflake's type names collapse",
+  "verdict": "every integer `NUMBER(38,0)`; every float `FLOAT`; `TIMESTAMP` is `TIMESTAMP_NTZ(9)`",
+  "area": "frontend",
+  "options": [
+    "type_names"
+  ],
+  "constructs": [
+    "NUMBER",
+    "FLOAT",
+    "TIMESTAMP",
+    "VARCHAR"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`TINYINT`, `SMALLINT`, `INT`, `INTEGER`, `BIGINT`, `BYTEINT`, `NUMBER`, `DECIMAL`, `NUMERIC` are `NUMBER(38,0)`; `FLOAT`, `FLOAT4`, `FLOAT8`, `DOUBLE`, `DOUBLE PRECISION`, `REAL` are `FLOAT`; `TIMESTAMP` and `DATETIME` are `TIMESTAMP_NTZ(9)`, `TIME` `TIME(9)`. `SYSTEM$TYPEOF` shows them.",
+  "reference": "Types are explicit in the plan. sverify's SQL names `NUMBER(38,0)`, `FLOAT`, `TIMESTAMP_NTZ(6)`, `TIME(9)`, `DATE`, `VARCHAR`, `BOOLEAN`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT SYSTEM$TYPEOF(1::TINYINT), SYSTEM$TYPEOF(1::SMALLINT), SYSTEM$TYPEOF(1::INT), SYSTEM$TYPEOF(1::INTEGER), SYSTEM$TYPEOF(1::BIGINT), SYSTEM$TYPEOF(1::BYTEINT), SYSTEM$TYPEOF(1::NUMBER), SYSTEM$TYPEOF(1::DECIMAL), SYSTEM$TYPEOF(1::NUMERIC)",
+          "observed": "(NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-type-names"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-type-names"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-type-names"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

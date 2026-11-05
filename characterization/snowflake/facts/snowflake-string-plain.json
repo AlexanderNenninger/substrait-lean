@@ -1,0 +1,67 @@
+{
+  "id": "snowflake-string-plain",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Lengths count code points",
+  "verdict": "`LENGTH` in code points; `REVERSE`, `TRIM`, `LPAD`, `EDITDISTANCE` too",
+  "area": "strings",
+  "options": [
+    "char_set"
+  ],
+  "constructs": [
+    "LENGTH",
+    "OCTET_LENGTH",
+    "REVERSE",
+    "TRIM",
+    "LPAD",
+    "RPAD",
+    "REPEAT",
+    "EDITDISTANCE"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`LENGTH('héllo')` is 5, `LENGTH('😀')` 1, `LENGTH('é')` 2 (no normalisation); `OCTET_LENGTH` counts UTF-8 bytes. `REVERSE`, `LPAD`, `RPAD` and `EDITDISTANCE` work on code points; `LPAD` truncates to the length and gives `''` for a negative one; `REPEAT` with a negative count is `''`. `TRIM(s, chars)` removes any of the characters; `TRIM(s)` only spaces, not tabs. Comparisons keep trailing spaces (`'a' = 'a '` is FALSE) and `CHAR(n)` is not padded.",
+  "reference": "Code points, no padding: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT length('héllo'), len('héllo'), octet_length('héllo'), octet_length(to_binary('héllo', 'UTF-8')), length('😀'), length('é'), length('')",
+          "observed": "(5, 5, 6, 6, 1, 2, 0)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-length"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-pad-repeat"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-trim"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-editdistance"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-trailing-spaces"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-is-ascii"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

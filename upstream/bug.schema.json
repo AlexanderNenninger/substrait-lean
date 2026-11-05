@@ -8,13 +8,13 @@
   "required": ["id", "project", "status", "status_note", "summary", "repro", "found_by", "checked"],
   "properties": {
     "id": {
-      "description": "Stable id: the project's prefix (SG sqlglot, DF datafusion, DD duckdb, DL deltalake, PL polars, SP spark, IB ibis, ST substrait), a dash, then the next free number. The file is named <id>.json.",
+      "description": "Stable id: the project's prefix (SG sqlglot, DF datafusion, DD duckdb, DL deltalake, PL polars, SP spark, SF snowflake, IB ibis, ST substrait), a dash, then the next free number. The file is named <id>.json.",
       "type": "string",
       "pattern": "^[A-Z]{2}-[0-9]+$"
     },
     "project": {
       "description": "The upstream project.",
-      "enum": ["sqlglot", "datafusion", "duckdb", "deltalake", "polars", "spark", "ibis", "substrait"]
+      "enum": ["sqlglot", "datafusion", "duckdb", "deltalake", "polars", "spark", "snowflake", "ibis", "substrait"]
     },
     "kind": {"description": "bug (the default): the project does something wrong; spec-gap: Substrait's spec leaves a behaviour unstated that it could express (an option, an option's value, a default), and engines differ there. Only Substrait's entries are spec gaps.", "enum": ["bug", "spec-gap"]},
     "version": {"description": "The version the bug was found on (a version or a range).", "type": "string"},

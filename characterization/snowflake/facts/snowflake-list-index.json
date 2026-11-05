@@ -1,0 +1,48 @@
+{
+  "id": "snowflake-list-index",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Arrays are 0-based; a negative index raises",
+  "verdict": "`a[0]` first; past the end NULL; negative raises; refused (see #271)",
+  "area": "nested",
+  "options": [
+    "list_indexing",
+    "raise_set",
+    "settings"
+  ],
+  "constructs": [
+    "ARRAY_CONSTRUCT",
+    "[]",
+    "GET"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`ARRAY_CONSTRUCT(1, 2, 3)[0]` is 1 and `[5]` NULL; `[-1]` raises `array index -1 is off limits`. Elements are `VARIANT`; a NULL element is stored as JSON null (`undefined`).",
+  "reference": "`list_extract` is 1-based and raises out of range. sverify refuses lists on Snowflake (`type_name`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT array_construct(1, 2, 3)[0], array_construct(1, 2, 3)[5], get(array_construct(1, 2, 3), 1), array_construct(1, NULL, 3), array_size(array_construct(1, NULL)), SYSTEM$TYPEOF(array_construct(1, 2)[0])",
+          "observed": "(1, NULL, 2, [\n  1,\n  undefined,\n  3\n], 2, VARIANT[LOB])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-index"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-index-negative"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

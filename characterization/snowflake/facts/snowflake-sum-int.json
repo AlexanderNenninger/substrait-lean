@@ -1,0 +1,84 @@
+{
+  "id": "snowflake-sum-int",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`SUM` of integers is exact to 128 bits, then raises",
+  "verdict": "exact `NUMBER` sum; raises past 2^127; NULL without values",
+  "area": "aggregates",
+  "options": [
+    "overflow",
+    "empty_group_aggregates",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "group": "agg.isum",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "agg.isum",
+      "option": "empty_group_aggregates",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "SUM"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`SUM` of two `2^63 - 1` is `18446744073709551614`, a `NUMBER(38,0)`: no 64-bit overflow, and the order does not matter. Past 2^127 it raises `Value overflow in a SUM aggregate`. Over no rows, or NULLs only, it is NULL; `COUNT` is 0.",
+  "reference": "`sum` of integers raises when the total leaves the declared width. sverify's SQL checks the exact total against 64 bits (`int_sum`, `writer-int-sum-overflow`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sum(x), SYSTEM$TYPEOF(sum(x)), avg(x), SYSTEM$TYPEOF(avg(x)) FROM (VALUES (9223372036854775807), (9223372036854775807)) AS s(x)",
+          "observed": "(18446744073709551614, NUMBER(31,0)[SB16], 9223372036854775807.000000, NUMBER(37,6)[SB16])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-sum-int"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-sum-int-bigint"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "number-past-38-digits-sum"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-empty"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-only-nulls"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-int-sum-overflow"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

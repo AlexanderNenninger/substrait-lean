@@ -1,0 +1,74 @@
+{
+  "id": "snowflake-nonfinite-aggregates",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Aggregates of NaN and ±inf give NaN and inf",
+  "verdict": "`SUM(inf, -inf)` NaN; `MAX` NaN; overflow inf",
+  "area": "aggregates",
+  "options": [
+    "nonfinite_aggregates",
+    "nan_creation",
+    "float_overflow",
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "nan_creation",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "float_overflow",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "SUM",
+    "AVG",
+    "MIN",
+    "MAX",
+    "VAR_POP",
+    "STDDEV"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`SUM` and `AVG` of `inf, -inf, 1` are NaN, `VAR_POP` and `STDDEV` too; `MIN` is `-inf`, `MAX` `inf`. With a NaN, `SUM`, `AVG`, `VAR_POP` and `MAX` are NaN and `MIN` is the smallest number. `SUM(1.7e308, 1.7e308)` is inf.",
+  "reference": "`nan_creation`, `float_overflow` raise; NaN propagates. sverify's SQL checks for both infinities and raises; double sums are refused (sum-double).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sum(x), avg(x), min(x), max(x), var_pop(x), stddev(x) FROM (VALUES ('inf'::FLOAT), ('-inf'::FLOAT), (1::FLOAT)) AS s(x)",
+          "observed": "(NaN, NaN, -inf, inf, NaN, NaN)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-nonfinite"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-nonfinite-nan"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-sum-double-overflow"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "id": "snowflake-cast-double-to-int",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "A double cast to an integer rounds",
+  "verdict": "rounds half away from zero; NaN, inf, out of range raise; sverify truncates first",
+  "area": "casts",
+  "options": [
+    "float_to_int",
+    "cast_failure"
+  ],
+  "rows": [
+    {
+      "option": "float_to_int",
+      "types": [
+        "any"
+      ]
+    },
+    {
+      "option": "cast_failure",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "CAST",
+    "::NUMBER",
+    "TRUNC"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`CAST(2.5::FLOAT AS NUMBER)` is 3, `-2.5` gives -3, `-0.5` gives -1, `0.49999999999999994` gives 0. NaN, ±inf and `1e40` raise `Number out of representable range`. `1e19` fits (`NUMBER(38,0)` is not 64-bit). To decimals it rounds half away from zero on the binary value (`2.675` to `NUMBER(10,2)` is 2.67, `0.125` to 2 places 0.13).",
+  "reference": "`cast` to an integer with `float_to_int: TRUNCATE` and `cast_failure: ERROR` outside the range. sverify's SQL (`float_to_int`) casts `TRUNC(x)` after a range check that raises for NaN, ±inf and values outside 64 bits (`writer-float-to-int*`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT x, x::NUMBER(38,0), x::BIGINT, trunc(x)::NUMBER(38,0) FROM (VALUES (2.5::FLOAT), (-2.5::FLOAT), (3.5::FLOAT), (0.49999999999999994::FLOAT), (-0.5::FLOAT), (1e19::FLOAT)) AS s(x)",
+          "observed": "(2.5, 3, 3, 2); (-2.5, -3, -3, -2); (3.5, 4, 4, 3); (0.49999999999999994, 0, 0, 0); (-0.5, -1, -1, 0); (1e+19, 10000000000000000000, 10000000000000000000, 10000000000000000000)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-double-to-int"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-double-to-int-big"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-double-to-int-nan"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-double-to-int-inf"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "cast-double-to-decimal"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-float-to-int"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-float-to-int-nan"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-float-to-int-edge"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "decimal-to-int"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

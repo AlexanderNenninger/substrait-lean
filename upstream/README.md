@@ -1,7 +1,7 @@
 # Upstream bugs
 
 Bugs and surprising behaviours that sverify found in the projects it builds
-on: SQLGlot, the engines (DuckDB, Polars, DataFusion, Spark), Ibis, delta-rs
+on: SQLGlot, the engines (DuckDB, Polars, DataFusion, Spark, Snowflake), Ibis, delta-rs
 and Substrait's tooling. We file them upstream in batches, so each one
 records enough to file it: the version, a minimal reproduction, and how
 sverify works around it today.
@@ -31,6 +31,7 @@ The id is the project's prefix and the next free number:
 | `DL` | delta-rs (`deltalake`) |
 | `PL` | Polars |
 | `SP` | Spark |
+| `SF` | Snowflake |
 | `IB` | Ibis |
 | `ST` | Substrait: its tooling and its spec |
 

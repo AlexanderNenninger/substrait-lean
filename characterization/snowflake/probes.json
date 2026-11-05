@@ -1,0 +1,1639 @@
+{
+ "snowflake": "10.40.102",
+ "session": {
+  "TIMEZONE": "UTC",
+  "USE_CACHED_RESULT": "FALSE",
+  "QUERY_TAG": "sverify-probe"
+ },
+ "parameters": {
+  "AUTOCOMMIT": "true",
+  "BINARY_INPUT_FORMAT": "HEX",
+  "BINARY_OUTPUT_FORMAT": "HEX",
+  "DATE_INPUT_FORMAT": "AUTO",
+  "DATE_OUTPUT_FORMAT": "YYYY-MM-DD",
+  "DEFAULT_NULL_ORDERING": "LAST",
+  "ERROR_ON_NONDETERMINISTIC_MERGE": "true",
+  "QUOTED_IDENTIFIERS_IGNORE_CASE": "false",
+  "TIMESTAMP_DAY_IS_ALWAYS_24H": "false",
+  "TIMESTAMP_INPUT_FORMAT": "AUTO",
+  "TIMESTAMP_NTZ_OUTPUT_FORMAT": "YYYY-MM-DD HH24:MI:SS.FF3",
+  "TIMESTAMP_OUTPUT_FORMAT": "YYYY-MM-DD HH24:MI:SS.FF3 TZHTZM",
+  "TIMESTAMP_TYPE_MAPPING": "TIMESTAMP_NTZ",
+  "TIMEZONE": "UTC",
+  "TIME_OUTPUT_FORMAT": "HH24:MI:SS",
+  "TWO_DIGIT_CENTURY_START": "1970",
+  "WEEK_OF_YEAR_POLICY": "0",
+  "WEEK_START": "0"
+ },
+ "probes": [
+  {
+   "construct": "bigint-add",
+   "sql": "SELECT a + b AS r, SYSTEM$TYPEOF(a + b) AS t FROM (VALUES (9223372036854775807::BIGINT, 1::BIGINT)) AS s(a, b)",
+   "observed": "(9223372036854775808, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "bigint-subtract",
+   "sql": "SELECT a - b AS r, SYSTEM$TYPEOF(a - b) AS t FROM (VALUES (-9223372036854775808::BIGINT, 1::BIGINT)) AS s(a, b)",
+   "observed": "(-9223372036854775809, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "bigint-multiply",
+   "sql": "SELECT a * b AS r, SYSTEM$TYPEOF(a * b) AS t FROM (VALUES (9223372036854775807::BIGINT, 2::BIGINT)) AS s(a, b)",
+   "observed": "(18446744073709551614, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "bigint-negate",
+   "sql": "SELECT -a AS r, SYSTEM$TYPEOF(-a) AS t FROM (VALUES (-9223372036854775808::BIGINT, 1::BIGINT)) AS s(a, b)",
+   "observed": "(9223372036854775808, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "bigint-abs",
+   "sql": "SELECT abs(a) AS r, SYSTEM$TYPEOF(abs(a)) AS t FROM (VALUES (-9223372036854775808::BIGINT, 1::BIGINT)) AS s(a, b)",
+   "observed": "(9223372036854775808, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "bigint-div-min",
+   "sql": "SELECT a / b AS r, SYSTEM$TYPEOF(a / b) AS t FROM (VALUES (-9223372036854775808::BIGINT, -1::BIGINT)) AS s(a, b)",
+   "observed": "(9223372036854775808.000000, NUMBER(38,6)[SB16])"
+  },
+  {
+   "construct": "bigint-mod-min",
+   "sql": "SELECT mod(a, b) AS r, SYSTEM$TYPEOF(mod(a, b)) AS t FROM (VALUES (-9223372036854775808::BIGINT, -1::BIGINT)) AS s(a, b)",
+   "observed": "(0, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "bigint-percent-min",
+   "sql": "SELECT a % b AS r, SYSTEM$TYPEOF(a % b) AS t FROM (VALUES (-9223372036854775808::BIGINT, -1::BIGINT)) AS s(a, b)",
+   "observed": "(0, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "int-type-names",
+   "sql": "SELECT SYSTEM$TYPEOF(1::TINYINT), SYSTEM$TYPEOF(1::SMALLINT), SYSTEM$TYPEOF(1::INT), SYSTEM$TYPEOF(1::INTEGER), SYSTEM$TYPEOF(1::BIGINT), SYSTEM$TYPEOF(1::BYTEINT), SYSTEM$TYPEOF(1::NUMBER), SYSTEM$TYPEOF(1::DECIMAL), SYSTEM$TYPEOF(1::NUMERIC)",
+   "note": "Every integer type is NUMBER(38,0).",
+   "observed": "(NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1], NUMBER(38,0)[SB1])"
+  },
+  {
+   "construct": "tinyint-no-range",
+   "sql": "SELECT a + b AS r, SYSTEM$TYPEOF(a + b) FROM (VALUES (127::TINYINT, 1::TINYINT)) AS s(a, b)",
+   "observed": "(128, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "number38-add-overflow",
+   "sql": "SELECT a + b AS r FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0), 1)) AS s(a, b)",
+   "observed": "(100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "number38-multiply-overflow",
+   "sql": "SELECT a * b AS r FROM (VALUES (9223372036854775807::BIGINT, 9223372036854775807::BIGINT), (10000000000000000000, 10000000000000000000)) AS s(a, b)",
+   "note": "i64 · i64 fits in 38 digits; 10^19 · 10^19 does not.",
+   "observed": "(85070591730234615847396907784232501249); (100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "number38-multiply-overflow-literal",
+   "sql": "SELECT 10000000000000000000 * 10000000000000000000 AS r",
+   "observed": "(100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "int-divide",
+   "sql": "SELECT a, b, a / b AS q, SYSTEM$TYPEOF(a / b) AS t FROM (VALUES (7, 2), (-7, 2), (7, -2), (1, 3), (2, 3), (9223372036854775807, 3)) AS s(a, b)",
+   "observed": "(7, 2, 3.500000, NUMBER(25,6)[SB16]); (-7, 2, -3.500000, NUMBER(25,6)[SB16]); (7, -2, -3.500000, NUMBER(25,6)[SB16]); (1, 3, 0.333333, NUMBER(25,6)[SB16]); (2, 3, 0.666667, NUMBER(25,6)[SB16]); (9223372036854775807, 3, 3074457345618258602.333333, NUMBER(25,6)[SB16])"
+  },
+  {
+   "construct": "int-divide-scale",
+   "sql": "SELECT SYSTEM$TYPEOF(a / b), a / b FROM (VALUES (1::NUMBER(38,0), 7::NUMBER(38,0))) AS s(a, b) UNION ALL SELECT SYSTEM$TYPEOF(a / b), a / b FROM (VALUES (1::NUMBER(10,2), 7::NUMBER(10,4))) AS s(a, b)",
+   "observed": "(NUMBER(38,6)[SB16], 0.14285700); (NUMBER(20,8)[SB16], 0.14285714)"
+  },
+  {
+   "construct": "int-div-zero",
+   "sql": "SELECT a / b FROM (VALUES (7, 0)) AS s(a, b)",
+   "observed": "error 100051 (22012): Division by zero"
+  },
+  {
+   "construct": "int-mod-zero",
+   "sql": "SELECT mod(a, b) FROM (VALUES (7, 0)) AS s(a, b)",
+   "observed": "error 100051 (22012): Division by zero"
+  },
+  {
+   "construct": "int-percent-zero",
+   "sql": "SELECT a % b FROM (VALUES (7, 0)) AS s(a, b)",
+   "observed": "error 100051 (22012): Division by zero"
+  },
+  {
+   "construct": "int-div0",
+   "sql": "SELECT div0(a, b), div0null(a, b), div0(a, c), div0null(a, c) FROM (VALUES (7, 0, NULL)) AS s(a, b, c)",
+   "observed": "(0.000000, 0.000000, NULL, 0.000000)"
+  },
+  {
+   "construct": "int-mod-signs",
+   "sql": "SELECT a, b, mod(a, b), a % b, trunc(a / b), floor(a / b) FROM (VALUES (-7, 2), (7, -2), (-7, -2), (7, 2)) AS s(a, b)",
+   "observed": "(-7, 2, -1, -1, -3, -4); (7, -2, 1, 1, -3, -4); (-7, -2, -1, -1, 3, 3); (7, 2, 1, 1, 3, 3)"
+  },
+  {
+   "construct": "int-divide-rounding",
+   "sql": "SELECT a, b, a / b, trunc(a / b), (a / b)::NUMBER(38,0) FROM (VALUES (2, 3), (-2, 3), (299999999999999999, 3), (9999999999999999999, 10000000)) AS s(a, b)",
+   "note": "Whether the 6-digit quotient rounds up to the next integer.",
+   "observed": "(2, 3, 0.666667, 0, 1); (-2, 3, -0.666667, 0, -1); (299999999999999999, 3, 99999999999999999.666667, 99999999999999999, 100000000000000000); (9999999999999999999, 10000000, 1000000000000.000000, 1000000000000, 1000000000000)"
+  },
+  {
+   "construct": "int-shifts",
+   "sql": "SELECT n, bitshiftleft(a, n), bitshiftright(a, n), SYSTEM$TYPEOF(bitshiftleft(a, n)) FROM (VALUES (-8, 1), (-8, 7), (-8, 63), (-8, 64), (-8, 65), (-8, 127), (-8, 128), (-8, 129)) AS s(a, n)",
+   "observed": "(1, -16, -4, NUMBER(38,0)[SB16]); (7, -1024, -1, NUMBER(38,0)[SB16]); (63, -73786976294838206464, -1, NUMBER(38,0)[SB16]); (64, -147573952589676412928, -1, NUMBER(38,0)[SB16]); (65, -295147905179352825856, -1, NUMBER(38,0)[SB16]); (127, 0, -1, NUMBER(38,0)[SB16]); (128, 0, -1, NUMBER(38,0)[SB16]); (129, 0, -1, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "int-shift-bigint",
+   "sql": "SELECT bitshiftleft(a, 1), bitshiftleft(a, 63), bitshiftright(a, 1) FROM (VALUES (9223372036854775807::BIGINT, 0)) AS s(a, b)",
+   "observed": "(18446744073709551614, 85070591730234615856620279821087277056, 4611686018427387903)"
+  },
+  {
+   "construct": "int-bitwise",
+   "sql": "SELECT bitand(a, b), bitor(a, b), bitxor(a, b), bitnot(a), SYSTEM$TYPEOF(bitand(a, b)) FROM (VALUES (-9223372036854775808, -1), (-8, 5)) AS s(a, b)",
+   "observed": "(-9223372036854775808, -1, 9223372036854775807, 9223372036854775807, NUMBER(19,0)[SB16]); (0, -3, -3, 7, NUMBER(19,0)[SB16])"
+  },
+  {
+   "construct": "int-bitwise-wide",
+   "sql": "SELECT bitand(a, b), bitnot(a) FROM (VALUES (18446744073709551616, 18446744073709551617), (99999999999999999999999999999999999999, 1)) AS s(a, b)",
+   "observed": "(18446744073709551616, -18446744073709551617); (1, -100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "int-power",
+   "sql": "SELECT power(a, b), SYSTEM$TYPEOF(power(a, b)) FROM (VALUES (2, 62), (2, 63), (2, 64), (3, 40), (2, -1), (0, -1)) AS s(a, b)",
+   "observed": "(4.611686018427388e+18, FLOAT[DOUBLE]); (9.223372036854776e+18, FLOAT[DOUBLE]); (1.8446744073709552e+19, FLOAT[DOUBLE]); (1.2157665459056929e+19, FLOAT[DOUBLE]); (0.5, FLOAT[DOUBLE]); (inf, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "decimal-arith-types",
+   "sql": "SELECT SYSTEM$TYPEOF(1.5::NUMBER(5,1) + 2.25::NUMBER(6,2)), SYSTEM$TYPEOF(1.5::NUMBER(5,1) - 2.25::NUMBER(6,2)), SYSTEM$TYPEOF(1.5::NUMBER(5,1) * 2.25::NUMBER(6,2)), SYSTEM$TYPEOF(1.5::NUMBER(5,1) / 2.25::NUMBER(6,2)), SYSTEM$TYPEOF(1::NUMBER(38,10) * 1::NUMBER(38,10)), SYSTEM$TYPEOF(1::NUMBER(38,20) / 3::NUMBER(38,20)), SYSTEM$TYPEOF(-1.5::NUMBER(5,1)), SYSTEM$TYPEOF(abs(-1.5::NUMBER(5,1))), SYSTEM$TYPEOF(mod(7.5::NUMBER(5,1), 2::NUMBER(3,0)))",
+   "observed": "(NUMBER(7,2)[SB2], NUMBER(7,2)[SB1], NUMBER(11,3)[SB2], NUMBER(13,7)[SB4], NUMBER(38,12)[SB8], NUMBER(38,20)[SB16], NUMBER(5,1)[SB1], NUMBER(5,1)[SB1], NUMBER(5,1)[SB1])"
+  },
+  {
+   "construct": "decimal-arith-values",
+   "sql": "SELECT a + b, a - b, a * b, a / b, mod(a, b) FROM (VALUES (1.5::NUMBER(5,1), 2.25::NUMBER(6,2)), (-1.5::NUMBER(5,1), 0.07::NUMBER(6,2))) AS s(a, b)",
+   "observed": "(3.75, -0.75, 3.375, 0.6666667, 1.50); (-1.43, -1.57, -0.105, -21.4285714, -0.03)"
+  },
+  {
+   "construct": "decimal-multiply-scale-cap",
+   "sql": "SELECT a * b, SYSTEM$TYPEOF(a * b) FROM (VALUES (0.1234567890123::NUMBER(20,13), 0.1234567890123::NUMBER(20,13))) AS s(a, b)",
+   "note": "The product's scale is capped (12, the larger input scale, or 37); whether the dropped digits round or truncate.",
+   "observed": "(0.0152415787532, NUMBER(27,13)[SB16])"
+  },
+  {
+   "construct": "decimal-divide-scale",
+   "sql": "SELECT a / b, SYSTEM$TYPEOF(a / b) FROM (VALUES (1::NUMBER(10,0), 3::NUMBER(10,0)), (2::NUMBER(10,0), 3::NUMBER(10,0)), (-2::NUMBER(10,0), 3::NUMBER(10,0)), (1.00::NUMBER(10,2), 8::NUMBER(10,0))) AS s(a, b)",
+   "observed": "(0.33333333, NUMBER(18,8)[SB8]); (0.66666667, NUMBER(18,8)[SB8]); (-0.66666667, NUMBER(18,8)[SB8]); (0.12500000, NUMBER(18,8)[SB8])"
+  },
+  {
+   "construct": "decimal-rescale-cast",
+   "sql": "SELECT x, x::NUMBER(10,1), x::NUMBER(10,0) FROM (VALUES (1.25::NUMBER(10,2)), (-1.25::NUMBER(10,2)), (1.35::NUMBER(10,2)), (2.5::NUMBER(10,2)), (-2.5::NUMBER(10,2)), (0.05::NUMBER(10,2))) AS s(x)",
+   "observed": "(1.25, 1.3, 1); (-1.25, -1.3, -1); (1.35, 1.4, 1); (2.50, 2.5, 3); (-2.50, -2.5, -3); (0.05, 0.1, 0)"
+  },
+  {
+   "construct": "decimal-cast-overflow",
+   "sql": "SELECT x::NUMBER(3,0) FROM (VALUES (1000)) AS s(x)",
+   "observed": "error 100046 (22003): Number out of representable range: type FIXED[SB2](3,0){not null}, value 1000"
+  },
+  {
+   "construct": "decimal-cast-overflow-scale",
+   "sql": "SELECT x::NUMBER(3,2) FROM (VALUES (9.999)) AS s(x)",
+   "note": "Rounding 9.999 to two places gives 10.00, which needs four digits.",
+   "observed": "error 100046 (22003): Number out of representable range: type FIXED[SB2](3,2){not null}, value 9.999"
+  },
+  {
+   "construct": "decimal-add-overflow",
+   "sql": "SELECT a + b FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0), 1::NUMBER(38,0))) AS s(a, b)",
+   "observed": "(100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "decimal-add-overflow-scaled",
+   "sql": "SELECT a + b, SYSTEM$TYPEOF(a + b) FROM (VALUES (999999999999999999999999999999999999.99, 0.01)) AS s(a, b)",
+   "observed": "(1000000000000000000000000000000000000.00, NUMBER(38,2)[SB16])"
+  },
+  {
+   "construct": "decimal-round",
+   "sql": "SELECT x, round(x), round(x, 1), round(x, -1), trunc(x), floor(x), ceil(x), SYSTEM$TYPEOF(round(x, 1)) FROM (VALUES (2.5::NUMBER(10,2)), (-2.5::NUMBER(10,2)), (2.45::NUMBER(10,2)), (-2.45::NUMBER(10,2)), (15.00::NUMBER(10,2))) AS s(x)",
+   "observed": "(2.50, 3, 2.5, 0, 2, 2, 3, NUMBER(11,1)[SB8]); (-2.50, -3, -2.5, 0, -2, -3, -2, NUMBER(11,1)[SB8]); (2.45, 2, 2.5, 0, 2, 2, 3, NUMBER(11,1)[SB8]); (-2.45, -2, -2.5, 0, -2, -3, -2, NUMBER(11,1)[SB8]); (15.00, 15, 15.0, 20, 15, 15, 15, NUMBER(11,1)[SB8])"
+  },
+  {
+   "construct": "decimal-round-half-even",
+   "sql": "SELECT x, round(x, 0, 'HALF_TO_EVEN'), round(x, 0, 'HALF_AWAY_FROM_ZERO') FROM (VALUES (2.5::NUMBER(10,1)), (3.5::NUMBER(10,1)), (-2.5::NUMBER(10,1))) AS s(x)",
+   "observed": "(2.5, 2, 3); (3.5, 4, 4); (-2.5, -2, -3)"
+  },
+  {
+   "construct": "decimal-sum-avg",
+   "sql": "SELECT sum(x), SYSTEM$TYPEOF(sum(x)), avg(x), SYSTEM$TYPEOF(avg(x)) FROM (VALUES (1.25::NUMBER(10,2)), (2.50::NUMBER(10,2)), (0.01::NUMBER(10,2))) AS s(x)",
+   "observed": "(3.76, NUMBER(22,2)[SB16], 1.25333333, NUMBER(28,8)[SB16])"
+  },
+  {
+   "construct": "decimal-sum-overflow",
+   "sql": "SELECT sum(x) FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0)), (1::NUMBER(38,0))) AS s(x)",
+   "observed": "(100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "decimal-to-double",
+   "sql": "SELECT x::FLOAT, x::VARCHAR::FLOAT, to_varchar(x::FLOAT) FROM (VALUES (0.1::NUMBER(10,1)), (1234567890.123456789::NUMBER(38,9)), (12345678901234567890123456789::NUMBER(38,0))) AS s(x)",
+   "observed": "(0.1, 0.1, 0.1); (1234567890.1234567, 1234567890.1234567, 1234567890.12346); (1.2345678901234568e+28, 1.2345678901234568e+28, 1.23456789012346e+28)"
+  },
+  {
+   "construct": "decimal-to-int",
+   "sql": "SELECT x, x::NUMBER(38,0), trunc(x)::NUMBER(38,0) FROM (VALUES (2.5::NUMBER(10,1)), (-2.5::NUMBER(10,1)), (2.4::NUMBER(10,1)), (-0.5::NUMBER(10,1))) AS s(x)",
+   "observed": "(2.5, 3, 2); (-2.5, -3, -2); (2.4, 2, 2); (-0.5, -1, 0)"
+  },
+  {
+   "construct": "decimal-negate-wide",
+   "sql": "SELECT -x, abs(x), SYSTEM$TYPEOF(-x) FROM (VALUES (-99999999999999999999999999999999999999::NUMBER(38,0))) AS s(x)",
+   "observed": "(99999999999999999999999999999999999999, 99999999999999999999999999999999999999, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "decimal-negate-wide-scaled",
+   "sql": "SELECT -x, abs(x), SYSTEM$TYPEOF(-x) FROM (VALUES (-9999999999999999999999999999999999999.9)) AS s(x)",
+   "observed": "(9999999999999999999999999999999999999.9, 9999999999999999999999999999999999999.9, NUMBER(38,1)[SB16])"
+  },
+  {
+   "construct": "number-past-38-digits",
+   "sql": "SELECT a + b, SYSTEM$TYPEOF(a + b), (a + b)::NUMBER(38,0), to_varchar(a + b), length(to_varchar(a + b)) FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0), 1::NUMBER(38,0))) AS s(a, b)",
+   "note": "A sum past 38 digits: is it kept, cast, printed?",
+   "observed": "(100000000000000000000000000000000000000, NUMBER(38,0)[SB16], 100000000000000000000000000000000000000, 100000000000000000000000000000000000000, 39)"
+  },
+  {
+   "construct": "number-past-38-digits-cast",
+   "sql": "SELECT (a + b)::NUMBER(38,0) FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0), 1::NUMBER(38,0))) AS s(a, b)",
+   "observed": "(100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "number-past-38-digits-compare",
+   "sql": "SELECT a + b > a, (a + b) - 1 = a, (a + b) * 1 FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0), 1::NUMBER(38,0))) AS s(a, b)",
+   "observed": "(True, True, 100000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "number-past-128-bits",
+   "sql": "SELECT a * b FROM (VALUES (18446744073709551616::NUMBER(38,0), 18446744073709551616::NUMBER(38,0))) AS s(a, b)",
+   "note": "2^128 needs 129 bits.",
+   "observed": "error 100046 (22003): Number out of representable range: type FIXED[SB16](38,0){not null}, value 3.40282e+38"
+  },
+  {
+   "construct": "number-past-38-digits-sum",
+   "sql": "SELECT sum(x), SYSTEM$TYPEOF(sum(x)), sum(x)::NUMBER(38,0) FROM (VALUES (99999999999999999999999999999999999999::NUMBER(38,0)), (99999999999999999999999999999999999999::NUMBER(38,0))) AS s(x)",
+   "observed": "error 100058 (22000): Value overflow in a SUM aggregate"
+  },
+  {
+   "construct": "double-type-names",
+   "sql": "SELECT SYSTEM$TYPEOF(1::FLOAT), SYSTEM$TYPEOF(1::FLOAT4), SYSTEM$TYPEOF(1::FLOAT8), SYSTEM$TYPEOF(1::DOUBLE), SYSTEM$TYPEOF(1::DOUBLE PRECISION), SYSTEM$TYPEOF(1::REAL)",
+   "observed": "(FLOAT[DOUBLE], FLOAT[DOUBLE], FLOAT[DOUBLE], FLOAT[DOUBLE], FLOAT[DOUBLE], FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-literals",
+   "sql": "SELECT SYSTEM$TYPEOF(1.5), SYSTEM$TYPEOF(1e3), SYSTEM$TYPEOF(1.5e0), SYSTEM$TYPEOF('NaN'::FLOAT), SYSTEM$TYPEOF(-0.0), to_varchar(-0.0), to_varchar('-0.0'::FLOAT)",
+   "observed": "(NUMBER(2,1)[SB1], NUMBER(4,0)[SB2], NUMBER(2,1)[SB1], FLOAT[DOUBLE], NUMBER(1,0)[SB1], 0, -0)"
+  },
+  {
+   "construct": "double-special-text",
+   "sql": "SELECT to_varchar('NaN'::FLOAT), to_varchar('nan'::FLOAT), to_varchar('inf'::FLOAT), to_varchar('-inf'::FLOAT), to_varchar('Infinity'::FLOAT), to_varchar('-Infinity'::FLOAT), to_varchar('INF'::FLOAT), to_varchar('+inf'::FLOAT), to_varchar('-NaN'::FLOAT), to_varchar('1e308'::FLOAT), to_varchar('1e309'::FLOAT), to_varchar('-0'::FLOAT), to_varchar('4.9e-324'::FLOAT), to_varchar('2.5e-324'::FLOAT)",
+   "observed": "(NaN, NaN, inf, -inf, inf, -inf, inf, inf, NaN, 1e+308, inf, -0, 4.940656458e-324, 4.940656458e-324)"
+  },
+  {
+   "construct": "double-arith-nan-creation",
+   "sql": "SELECT a - a, a * 0, a / a, b + c FROM (VALUES ('inf'::FLOAT, 'inf'::FLOAT, '-inf'::FLOAT)) AS s(a, b, c)",
+   "observed": "(NaN, NaN, NaN, NaN)"
+  },
+  {
+   "construct": "double-arith-overflow",
+   "sql": "SELECT a * 10, a + a, -a * 10, SYSTEM$TYPEOF(a * 10) FROM (VALUES (1e308::FLOAT)) AS s(a)",
+   "observed": "(inf, inf, -inf, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-arith-overflow-literal",
+   "sql": "SELECT 1e308::FLOAT * 10",
+   "observed": "(inf)"
+  },
+  {
+   "construct": "double-div-zero",
+   "sql": "SELECT a / b FROM (VALUES (1::FLOAT, 0::FLOAT)) AS s(a, b)",
+   "observed": "error 100051 (22012): Division by zero"
+  },
+  {
+   "construct": "double-div-zero-cases",
+   "sql": "SELECT div0(a, b), div0null(a, b), div0(c, b) FROM (VALUES (1::FLOAT, 0::FLOAT, 'NaN'::FLOAT)) AS s(a, b, c)",
+   "observed": "(0.0, 0.0, 0.0)"
+  },
+  {
+   "construct": "double-div-negzero",
+   "sql": "SELECT a / b FROM (VALUES (1::FLOAT, '-0.0'::FLOAT)) AS s(a, b)",
+   "observed": "error 100051 (22012): Division by zero"
+  },
+  {
+   "construct": "double-div-inf",
+   "sql": "SELECT a / b, b / a, 1 / a FROM (VALUES ('inf'::FLOAT, 2::FLOAT)) AS s(a, b)",
+   "observed": "(inf, 0.0, 0.0)"
+  },
+  {
+   "construct": "double-mod",
+   "sql": "SELECT a, b, mod(a, b), a % b FROM (VALUES (5.5::FLOAT, 2::FLOAT), (-5.5::FLOAT, 2::FLOAT), (5.5::FLOAT, -2::FLOAT), ('inf'::FLOAT, 2::FLOAT), (5.5::FLOAT, 'inf'::FLOAT), ('NaN'::FLOAT, 2::FLOAT)) AS s(a, b)",
+   "observed": "(5.5, 2.0, 1.5, 1.5); (-5.5, 2.0, -1.5, -1.5); (5.5, -2.0, 1.5, 1.5); (inf, 2.0, NaN, NaN); (5.5, inf, NaN, NaN); (NaN, 2.0, NaN, NaN)"
+  },
+  {
+   "construct": "double-mod-zero",
+   "sql": "SELECT mod(a, b) FROM (VALUES (5.5::FLOAT, 0::FLOAT)) AS s(a, b)",
+   "observed": "error 100051 (22012): Division by zero"
+  },
+  {
+   "construct": "double-rounding",
+   "sql": "SELECT a + b, to_varchar(a + b), a * 3, 1 / a FROM (VALUES (0.1::FLOAT, 0.2::FLOAT)) AS s(a, b)",
+   "observed": "(0.30000000000000004, 0.3, 0.30000000000000004, 10.0)"
+  },
+  {
+   "construct": "double-output-digits",
+   "sql": "SELECT to_varchar(0.1::FLOAT), 0.1::FLOAT::VARCHAR, to_varchar(1/3::FLOAT), 1/3::FLOAT::VARCHAR, to_varchar(123456789012345678::FLOAT), 123456789012345678::FLOAT::VARCHAR, to_varchar(1e21::FLOAT), 1e21::FLOAT::VARCHAR, to_varchar(1e-7::FLOAT), 1e-7::FLOAT::VARCHAR, to_varchar(100::FLOAT), 100::FLOAT::VARCHAR, to_varchar(2.5::FLOAT), 2.5::FLOAT::VARCHAR, to_varchar(0.30000000000000004::FLOAT), 0.30000000000000004::FLOAT::VARCHAR",
+   "note": "How many digits a double prints with.",
+   "observed": "(0.1, 0.1, 0.3333333333, 0.333333, 1.23456789012346e+17, 1.23456789012346e+17, 1e+21, 1e+21, 1e-07, 1e-07, 100, 100, 2.5, 2.5, 0.3, 0.3)"
+  },
+  {
+   "construct": "double-nan-equality",
+   "sql": "SELECT a = b, a < c, a > c, a = a, a <> a, equal_null(a, b), greatest(a, c), least(a, c), SYSTEM$TYPEOF(greatest(a, c)) FROM (VALUES ('NaN'::FLOAT, 'NaN'::FLOAT, 'inf'::FLOAT)) AS s(a, b, c)",
+   "observed": "(True, False, True, True, False, True, NaN, inf, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-nan-order",
+   "sql": "SELECT x FROM (VALUES ('NaN'::FLOAT), ('inf'::FLOAT), ('-inf'::FLOAT), (0::FLOAT), (NULL), (-1::FLOAT)) AS s(x) ORDER BY x",
+   "observed": "(-inf); (-1.0); (0.0); (inf); (NaN); (NULL)"
+  },
+  {
+   "construct": "double-nan-order-desc",
+   "sql": "SELECT x FROM (VALUES ('NaN'::FLOAT), ('inf'::FLOAT), ('-inf'::FLOAT), (0::FLOAT), (NULL), (-1::FLOAT)) AS s(x) ORDER BY x DESC",
+   "observed": "(NULL); (NaN); (inf); (0.0); (-1.0); (-inf)"
+  },
+  {
+   "construct": "double-nan-minmax",
+   "sql": "SELECT min(x), max(x), count(DISTINCT x) FROM (VALUES ('NaN'::FLOAT), ('inf'::FLOAT), (1::FLOAT), (NULL)) AS s(x)",
+   "observed": "(1.0, NaN, 3)"
+  },
+  {
+   "construct": "double-nan-group",
+   "sql": "SELECT to_varchar(x), count(*) FROM (VALUES ('NaN'::FLOAT), ('nan'::FLOAT), (0::FLOAT / 0::FLOAT), ('-NaN'::FLOAT)) AS s(x) GROUP BY x",
+   "note": "0/0 raises; drop this row if it fails.",
+   "observed": "error 002014 (22000): SQL compilation error: Invalid expression [0.0 / 0.0] in VALUES clause"
+  },
+  {
+   "construct": "double-nan-group-safe",
+   "sql": "SELECT to_varchar(x), count(*) FROM (VALUES ('NaN'::FLOAT), ('nan'::FLOAT), ('inf'::FLOAT - 'inf'::FLOAT), ('-NaN'::FLOAT)) AS s(x) GROUP BY x",
+   "observed": "(NaN, 4)"
+  },
+  {
+   "construct": "double-nan-sign",
+   "sql": "SELECT to_varchar(-x), to_varchar(x * -1), to_varchar(y - y), to_varchar(-(y - y)), sign(x), SYSTEM$TYPEOF(sign(x)) FROM (VALUES ('NaN'::FLOAT, 'inf'::FLOAT)) AS s(x, y)",
+   "observed": "(NaN, NaN, NaN, NaN, 0.0, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-zero-sign",
+   "sql": "SELECT to_varchar(a), to_varchar(-b), to_varchar(b * -1), to_varchar(a + b), a = b, a < b, to_varchar(1 / NULLIF(1, 0) * a), sign(a), atan2(a, -1) FROM (VALUES ('-0.0'::FLOAT, 0::FLOAT)) AS s(a, b)",
+   "observed": "(-0, -0, -0, 0, True, False, -0, 0.0, -3.141592653589793)"
+  },
+  {
+   "construct": "double-zero-group",
+   "sql": "SELECT to_varchar(x), count(*) FROM (VALUES ('-0.0'::FLOAT), (0::FLOAT), (-0.0::FLOAT)) AS s(x) GROUP BY x",
+   "observed": "(-0, 3)"
+  },
+  {
+   "construct": "double-zero-group-first",
+   "sql": "SELECT to_varchar(x), count(*) FROM (VALUES (0::FLOAT), ('-0.0'::FLOAT)) AS s(x) GROUP BY x",
+   "observed": "(0, 2)"
+  },
+  {
+   "construct": "double-zero-distinct-order",
+   "sql": "SELECT DISTINCT to_varchar(x) FROM (SELECT x FROM (VALUES ('-0.0'::FLOAT), (0::FLOAT)) AS s(x) ORDER BY x)",
+   "observed": "(-0); (0)"
+  },
+  {
+   "construct": "double-math-domain",
+   "sql": "SELECT sqrt(a), asin(b), acos(b), power(a, 0.5), power(0::FLOAT, a) FROM (VALUES (-1::FLOAT, 2::FLOAT)) AS s(a, b)",
+   "observed": "error 100044 (22P01): Invalid floating point operation: sqrt(-1)"
+  },
+  {
+   "construct": "double-sqrt-neg",
+   "sql": "SELECT sqrt(a) FROM (VALUES (-1::FLOAT)) AS s(a)",
+   "observed": "error 100044 (22P01): Invalid floating point operation: sqrt(-1)"
+  },
+  {
+   "construct": "double-asin-out",
+   "sql": "SELECT asin(a) FROM (VALUES (2::FLOAT)) AS s(a)",
+   "observed": "error 100044 (22P01): Invalid floating point operation: asin(2)"
+  },
+  {
+   "construct": "double-ln-zero",
+   "sql": "SELECT ln(a) FROM (VALUES (0::FLOAT)) AS s(a)",
+   "observed": "error 100043 (2201E): Invalid floating point operation: log(e,0)"
+  },
+  {
+   "construct": "double-ln-neg",
+   "sql": "SELECT ln(a) FROM (VALUES (-1::FLOAT)) AS s(a)",
+   "observed": "error 100043 (2201E): Invalid floating point operation: log(e,-1)"
+  },
+  {
+   "construct": "double-log-cases",
+   "sql": "SELECT log(10, a), log(2, a), exp(a), SYSTEM$TYPEOF(ln(a)) FROM (VALUES (1000::FLOAT), (0.001::FLOAT)) AS s(a)",
+   "observed": "(2.9999999999999996, 9.965784284662087, inf, FLOAT[DOUBLE]); (-2.9999999999999996, -9.965784284662087, 1.0010005001667084, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-power-neg-frac",
+   "sql": "SELECT power(a, b) FROM (VALUES (-8::FLOAT, 0.3333333333333333::FLOAT)) AS s(a, b)",
+   "observed": "error 100053 (2201F): Invalid floating point operation: pow(-8, 0.333333)"
+  },
+  {
+   "construct": "double-power-overflow",
+   "sql": "SELECT power(a, b), exp(c) FROM (VALUES (10::FLOAT, 400::FLOAT, 1000::FLOAT)) AS s(a, b, c)",
+   "observed": "(inf, inf)"
+  },
+  {
+   "construct": "double-trig-inf",
+   "sql": "SELECT sin(x), cos(x), tan(x) FROM (VALUES ('inf'::FLOAT)) AS s(x)",
+   "observed": "(NaN, NaN, NaN)"
+  },
+  {
+   "construct": "double-atan2-zero",
+   "sql": "SELECT atan2(a, b), atan2(-a, b), atan2(a, -b) FROM (VALUES (0::FLOAT, 0::FLOAT)) AS s(a, b)",
+   "observed": "(0.0, -0.0, 3.141592653589793)"
+  },
+  {
+   "construct": "double-elem-bits",
+   "sql": "SELECT to_varchar(sin(x)), to_varchar(exp(x)), to_varchar(ln(x)), to_varchar(power(x, 0.37)), to_varchar(tan(x)), to_varchar(x * x) FROM (VALUES (1e22::FLOAT), (0.7853981633974483::FLOAT), (2.5::FLOAT)) AS s(x)",
+   "note": "Last bits of the elementary functions, against C's libm.",
+   "observed": "(-0.8522008498, inf, 50.656872046, 138038426.460288, -1.628778226, 1e+44); (0.7071067812, 2.193280051, -0.2415644753, 0.9144990446, 1, 0.6168502751); (0.5984721441, 12.182493961, 0.9162907319, 1.403582043, -0.7470222972, 6.25)"
+  },
+  {
+   "construct": "double-elem-hex",
+   "sql": "SELECT to_varchar(to_binary(to_varchar(sin(x)), 'UTF-8')) , sin(x)::NUMBER(38,37) FROM (VALUES (1e22::FLOAT)) AS s(x)",
+   "note": "Fallback if to_varchar does not print 17 digits.",
+   "observed": "(2D302E38353232303038343938, -0.8522008497671887949920233040757011622)"
+  },
+  {
+   "construct": "double-round",
+   "sql": "SELECT x, round(x), round(x, 2), round(x, -1), floor(x), ceil(x), trunc(x), SYSTEM$TYPEOF(round(x)), SYSTEM$TYPEOF(floor(x)) FROM (VALUES (2.5::FLOAT), (-2.5::FLOAT), (0.5::FLOAT), (1.5::FLOAT), (2.675::FLOAT), (1.005::FLOAT), (-0.4::FLOAT)) AS s(x)",
+   "observed": "(2.5, 3.0, 2.5, 0.0, 2.0, 3.0, 2.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (-2.5, -3.0, -2.5, 0.0, -3.0, -2.0, -2.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (0.5, 1.0, 0.5, 0.0, 0.0, 1.0, 0.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (1.5, 2.0, 1.5, 0.0, 1.0, 2.0, 1.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (2.675, 3.0, 2.68, 0.0, 2.0, 3.0, 2.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (1.005, 1.0, 1.0, 0.0, 1.0, 2.0, 1.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (-0.4, 0.0, -0.4, 0.0, -1.0, 0.0, 0.0, FLOAT[DOUBLE], FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-round-nonfinite",
+   "sql": "SELECT round(x), floor(x), ceil(x), round(x, 2), trunc(x) FROM (VALUES ('NaN'::FLOAT), ('inf'::FLOAT), ('-inf'::FLOAT), (1e300::FLOAT)) AS s(x)",
+   "observed": "(NaN, NaN, NaN, NaN, NaN); (inf, inf, inf, inf, inf); (-inf, -inf, -inf, -inf, -inf); (1e+300, 1e+300, 1e+300, 1e+300, 1e+300)"
+  },
+  {
+   "construct": "double-round-half-even",
+   "sql": "SELECT round(x, 0, 'HALF_TO_EVEN') FROM (VALUES (2.5::FLOAT)) AS s(x)",
+   "observed": "error 000939 (22023): SQL compilation error: error line 1 at position 7 too many arguments for function [ROUND] expected 2, got 3"
+  },
+  {
+   "construct": "double-fp32",
+   "sql": "SELECT to_varchar(a::FLOAT4 + b::FLOAT4), SYSTEM$TYPEOF(a::FLOAT4), to_varchar(16777217::FLOAT4) FROM (VALUES (0.1, 0.2)) AS s(a, b)",
+   "observed": "(0.3, FLOAT[DOUBLE], 16777217)"
+  },
+  {
+   "construct": "double-round-near-half",
+   "sql": "SELECT x, round(x), to_varchar(round(x)), round(x, 2), floor(x + 0.5) FROM (VALUES ('0.49999999999999994'::FLOAT), ('-0.49999999999999994'::FLOAT), ('267.49999999999997'::FLOAT), ('2.4999999999999996'::FLOAT), ('4503599627370497'::FLOAT), ('1.4999999999999998'::FLOAT), ('2.675'::FLOAT), ('1.005'::FLOAT), ('0.285'::FLOAT)) AS s(x)",
+   "note": "Doubles just below a half: exact rounding gives the lower integer.",
+   "observed": "(0.49999999999999994, 0.0, 0, 0.5, 1.0); (-0.49999999999999994, 0.0, 0, -0.5, 0.0); (267.49999999999994, 267.0, 267, 267.5, 267.0); (2.4999999999999996, 2.0, 2, 2.5, 2.0); (4503599627370497.0, 4503599627370497.0, 4.5035996273705e+15, 4503599627370497.0, 4503599627370498.0); (1.4999999999999998, 1.0, 1, 1.5, 1.0); (2.675, 3.0, 3, 2.68, 3.0); (1.005, 1.0, 1, 1.0, 1.0); (0.285, 0.0, 0, 0.28, 0.0)"
+  },
+  {
+   "construct": "double-round-scaled",
+   "sql": "SELECT x * 100, to_varchar(x * 100), round(x * 100), round(x * 100) / 100 FROM (VALUES ('2.675'::FLOAT)) AS s(x)",
+   "observed": "(267.5, 267.5, 268.0, 2.68)"
+  },
+  {
+   "construct": "double-var-shifted",
+   "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), covar_samp(x, x), corr(x, y), var_samp(x - 1000000000) FROM (VALUES ('1000000004'::FLOAT, '1000000009'::FLOAT), ('1000000007'::FLOAT, '1000000015'::FLOAT), ('1000000013'::FLOAT, '1000000027'::FLOAT), ('1000000016'::FLOAT, '1000000033'::FLOAT)) AS s(x, y)",
+   "note": "Welford's example: the exact sample variance is 30.",
+   "observed": "(0.0, 0.0, 0.0, 0.0, NULL, 30.0)"
+  },
+  {
+   "construct": "double-ieee-ops",
+   "sql": "SELECT a, b, a * b, a + b, a - b, a / b FROM (VALUES ('-352.3344703336753'::FLOAT, '-698.3016521509962'::FLOAT), ('301.8689460797075'::FLOAT, '-855.1274266649145'::FLOAT), ('71.76400861337834'::FLOAT, '-268.622166174829'::FLOAT), ('-884.0021504505864'::FLOAT, '14.871466378840523'::FLOAT), ('-925.0086831160303'::FLOAT, '-132.70863267522827'::FLOAT), ('-860.2891528507621'::FLOAT, '-818.5739733122699'::FLOAT), ('-150.96162171497213'::FLOAT, '653.7042493440761'::FLOAT), ('-752.3960777007088'::FLOAT, '-553.522070785971'::FLOAT), ('254.86644481117855'::FLOAT, '895.4178849140112'::FLOAT), ('154.20589723499734'::FLOAT, '-206.63905069843963'::FLOAT), ('952.51021118584'::FLOAT, '-906.8346387644874'::FLOAT), ('716.936918097359'::FLOAT, '-420.7814273366474'::FLOAT), ('2.675'::FLOAT, '100'::FLOAT), ('0.1'::FLOAT, '3'::FLOAT), ('1.1'::FLOAT, '1.1'::FLOAT), ('0.7'::FLOAT, '0.1'::FLOAT), ('1e308'::FLOAT, '10'::FLOAT), ('3'::FLOAT, '0.1'::FLOAT)) AS s(a, b)",
+   "note": "Products, sums, differences and quotients of doubles, to compare with IEEE's (Python's) results.",
+   "observed": "(-352.3344703336753, -698.3016521509962, 246035.74274375165, -1050.6361224846714, 345.9671818173209, 0.5045591246252541); (301.8689460797075, -855.1274266649145, -258136.4150511901, -553.258480585207, 1156.996372744622, -0.35301048319433237); (71.76400861337834, -268.622166174829, -19277.403447114775, -196.85815756145064, 340.3861747882073, -0.26715594485479555); (-884.0021504505864, 14.871466378840523, -13146.408259248617, -869.1306840717459, -898.873616829427, -59.44283690197261); (-925.0086831160303, -132.70863267522827, 122756.63754904189, -1057.7173157912584, -792.300050440802, 6.9702223922369955); (-860.2891528507621, -818.5739733122699, 704210.310046495, -1678.8631261630321, -41.71517953849218, 1.0509607938909862); (-150.96162171497213, 653.7042493440761, -98684.25360295022, 502.74262762910394, -804.6658710590482, -0.23093259966788704); (-752.3960777007088, -553.522070785971, 416467.8349801387, -1305.91814848668, -198.87400691473783, 1.3592883055816503); (254.86644481117855, 895.4178849140112, 228211.97294837906, 1150.2843297251898, -640.5514401028327, 0.2846340787973583); (154.20589723499734, -206.63905069843963, -31864.960216740987, -52.433153463442295, 360.84494793343697, -0.7462572863830997); (952.51021118584, -906.8346387644874, -863769.2532801968, 45.675572421352626, 1859.3448499503274, -1.050368138212699); (716.936918097359, -420.7814273366474, -301673.7397073438, 296.1554907607116, 1137.7183454340066, -1.7038226298038852); (2.675, 100.0, 267.5, 102.675, -97.325, 0.02675); (0.1, 3.0, 0.30000000000000004, 3.1, -2.9, 0.03333333333333333); (1.1, 1.1, 1.2100000000000002, 2.2, 0.0, 1.0); (0.7, 0.1, 0.06999999999999999, 0.7999999999999999, 0.6, 6.999999999999999); (1e+308, 10.0, inf, 1e+308, 1e+308, 1e+307); (3.0, 0.1, 0.30000000000000004, 3.1, 2.9, 30.0)"
+  },
+  {
+   "construct": "double-mul-number",
+   "sql": "SELECT a * 100, a * 100::FLOAT, a * '100'::FLOAT, SYSTEM$TYPEOF(a * 100) FROM (VALUES ('2.675'::FLOAT)) AS s(a)",
+   "note": "A double times a NUMBER literal, and times a double.",
+   "observed": "(267.5, 267.5, 267.5, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "double-fold-literal",
+   "sql": "SELECT '2.675'::FLOAT * '100'::FLOAT, '0.1'::FLOAT * '3'::FLOAT, '1.1'::FLOAT * '1.1'::FLOAT, round('2.675'::FLOAT * '100'::FLOAT)",
+   "note": "Constant expressions, folded at compile time.",
+   "observed": "(267.5, 0.30000000000000004, 1.2100000000000002, 268.0)"
+  },
+  {
+   "construct": "double-fold-one-row",
+   "sql": "SELECT a * b, round(a * b) FROM (VALUES ('2.675'::FLOAT, '100'::FLOAT)) AS s(a, b)",
+   "observed": "(267.5, 268.0)"
+  },
+  {
+   "construct": "double-fold-two-rows",
+   "sql": "SELECT a * b, round(a * b) FROM (VALUES ('2.675'::FLOAT, '100'::FLOAT), ('1'::FLOAT, '1'::FLOAT)) AS s(a, b)",
+   "observed": "(267.5, 268.0); (1.0, 1.0)"
+  },
+  {
+   "construct": "double-fold-subquery",
+   "sql": "SELECT a * b FROM (SELECT '2.675'::FLOAT AS a, '100'::FLOAT AS b UNION ALL SELECT '0.1'::FLOAT, '3'::FLOAT)",
+   "observed": "(267.5); (0.30000000000000004)"
+  },
+  {
+   "construct": "double-fold-sum",
+   "sql": "SELECT '0.1'::FLOAT + '0.2'::FLOAT, a + b FROM (VALUES ('0.1'::FLOAT, '0.2'::FLOAT)) AS s(a, b)",
+   "observed": "(0.30000000000000004, 0.30000000000000004)"
+  },
+  {
+   "construct": "double-var-small",
+   "sql": "SELECT var_samp(x), var_pop(x), covar_samp(x, x) FROM (VALUES ('4'::FLOAT), ('7'::FLOAT), ('13'::FLOAT), ('16'::FLOAT)) AS s(x)",
+   "observed": "(30.0, 22.5, 30.0)"
+  },
+  {
+   "construct": "double-var-1e6",
+   "sql": "SELECT var_samp(x), var_pop(x) FROM (VALUES ('1000004'::FLOAT), ('1000007'::FLOAT), ('1000013'::FLOAT), ('1000016'::FLOAT)) AS s(x)",
+   "observed": "(30.0, 22.5)"
+  },
+  {
+   "construct": "double-var-grouped",
+   "sql": "SELECT g, var_samp(x) FROM (VALUES (1, '1000000004'::FLOAT), (1, '1000000007'::FLOAT), (1, '1000000013'::FLOAT), (1, '1000000016'::FLOAT), (2, '1000000004'::FLOAT), (2, '1000000007'::FLOAT), (2, '1000000013'::FLOAT), (2, '1000000016'::FLOAT)) AS s(g, x) GROUP BY g ORDER BY g",
+   "observed": "(1, 0.0); (2, 0.0)"
+  },
+  {
+   "construct": "cast-double-to-int",
+   "sql": "SELECT x, x::NUMBER(38,0), x::BIGINT, trunc(x)::NUMBER(38,0) FROM (VALUES (2.5::FLOAT), (-2.5::FLOAT), (3.5::FLOAT), (0.49999999999999994::FLOAT), (-0.5::FLOAT), (1e19::FLOAT)) AS s(x)",
+   "observed": "(2.5, 3, 3, 2); (-2.5, -3, -3, -2); (3.5, 4, 4, 3); (0.49999999999999994, 0, 0, 0); (-0.5, -1, -1, 0); (1e+19, 10000000000000000000, 10000000000000000000, 10000000000000000000)"
+  },
+  {
+   "construct": "cast-double-to-int-big",
+   "sql": "SELECT x::NUMBER(38,0) FROM (VALUES (1e40::FLOAT)) AS s(x)",
+   "observed": "error 100046 (22003): Number out of representable range: type FIXED[SB16](38,0){not null}, value 1e+40"
+  },
+  {
+   "construct": "cast-double-to-int-nan",
+   "sql": "SELECT x::NUMBER(38,0) FROM (VALUES ('NaN'::FLOAT)) AS s(x)",
+   "observed": "error 100046 (22003): Number out of representable range: type FIXED[SB16](38,0){not null}, value nan"
+  },
+  {
+   "construct": "cast-double-to-int-inf",
+   "sql": "SELECT x::NUMBER(38,0) FROM (VALUES ('inf'::FLOAT)) AS s(x)",
+   "observed": "error 100046 (22003): Number out of representable range: type FIXED[SB16](38,0){not null}, value inf"
+  },
+  {
+   "construct": "cast-double-to-decimal",
+   "sql": "SELECT x::NUMBER(10,2), x::NUMBER(10,1) FROM (VALUES (1.005::FLOAT), (2.675::FLOAT), (-1.25::FLOAT), (0.125::FLOAT)) AS s(x)",
+   "observed": "(1.00, 1.0); (2.67, 2.7); (-1.25, -1.3); (0.13, 0.1)"
+  },
+  {
+   "construct": "cast-text-to-int",
+   "sql": "SELECT try_cast('12' AS NUMBER(38,0)), try_cast(' 12 ' AS NUMBER(38,0)), try_cast('+12' AS NUMBER(38,0)), try_cast('-0' AS NUMBER(38,0)), try_cast('1e3' AS NUMBER(38,0)), try_cast('1.5' AS NUMBER(38,0)), try_cast('2.5' AS NUMBER(38,0)), try_cast('-2.5' AS NUMBER(38,0)), try_cast('0x10' AS NUMBER(38,0)), try_cast('1_000' AS NUMBER(38,0)), try_cast('' AS NUMBER(38,0)), try_cast('12a' AS NUMBER(38,0)), try_cast('9223372036854775808' AS NUMBER(38,0)), try_cast('999999999999999999999999999999999999999' AS NUMBER(38,0))",
+   "observed": "(12, 12, 12, 0, 1000, 2, 3, -3, NULL, NULL, NULL, NULL, 9223372036854775808, NULL)"
+  },
+  {
+   "construct": "cast-text-to-int-strict",
+   "sql": "SELECT 'abc'::NUMBER(38,0)",
+   "observed": "error 100038 (22018): Numeric value 'abc' is not recognized"
+  },
+  {
+   "construct": "cast-text-to-int-strict-row",
+   "sql": "SELECT x::NUMBER(38,0) FROM (VALUES ('abc')) AS s(x)",
+   "observed": "error 100038 (22018): Numeric value 'abc' is not recognized"
+  },
+  {
+   "construct": "cast-text-to-double",
+   "sql": "SELECT to_varchar(try_cast('1.5' AS FLOAT)), to_varchar(try_cast(' 1.5 ' AS FLOAT)), to_varchar(try_cast('1e3' AS FLOAT)), to_varchar(try_cast('1E-3' AS FLOAT)), to_varchar(try_cast('.5' AS FLOAT)), to_varchar(try_cast('5.' AS FLOAT)), to_varchar(try_cast('+1' AS FLOAT)), to_varchar(try_cast('NaN' AS FLOAT)), to_varchar(try_cast('nan' AS FLOAT)), to_varchar(try_cast('inf' AS FLOAT)), to_varchar(try_cast('Infinity' AS FLOAT)), to_varchar(try_cast('-Infinity' AS FLOAT)), to_varchar(try_cast('1e400' AS FLOAT)), to_varchar(try_cast('0x1p3' AS FLOAT)), to_varchar(try_cast('1,5' AS FLOAT)), to_varchar(try_cast('' AS FLOAT))",
+   "observed": "(1.5, 1.5, 1000, 0.001, 0.5, 5, 1, NaN, NaN, inf, inf, -inf, inf, 8, NULL, NULL)"
+  },
+  {
+   "construct": "cast-text-to-bool",
+   "sql": "SELECT try_cast('true' AS BOOLEAN), try_cast('TRUE' AS BOOLEAN), try_cast('t' AS BOOLEAN), try_cast('yes' AS BOOLEAN), try_cast('y' AS BOOLEAN), try_cast('on' AS BOOLEAN), try_cast('1' AS BOOLEAN), try_cast('false' AS BOOLEAN), try_cast('f' AS BOOLEAN), try_cast('no' AS BOOLEAN), try_cast('off' AS BOOLEAN), try_cast('0' AS BOOLEAN), try_cast(' true' AS BOOLEAN), try_cast('2' AS BOOLEAN), try_cast('' AS BOOLEAN)",
+   "observed": "(True, True, True, True, True, True, True, False, False, False, False, False, True, NULL, NULL)"
+  },
+  {
+   "construct": "cast-number-to-bool",
+   "sql": "SELECT x::BOOLEAN FROM (VALUES (0), (1), (2), (-1), (0.5)) AS s(x)",
+   "observed": "(False); (True); (True); (True); (True)"
+  },
+  {
+   "construct": "cast-text-to-date",
+   "sql": "SELECT to_varchar(try_cast('2024-01-05' AS DATE)), to_varchar(try_cast('2024-1-5' AS DATE)), to_varchar(try_cast(' 2024-01-05' AS DATE)), to_varchar(try_cast('2024-01-05 ' AS DATE)), to_varchar(try_cast('2024-02-30' AS DATE)), to_varchar(try_cast('2024-02-29' AS DATE)), to_varchar(try_cast('2023-02-29' AS DATE)), to_varchar(try_cast('0001-01-01' AS DATE)), to_varchar(try_cast('9999-12-31' AS DATE)), to_varchar(try_cast('10000-01-01' AS DATE)), to_varchar(try_cast('-0001-01-01' AS DATE)), to_varchar(try_cast('05/01/2024' AS DATE)), to_varchar(try_cast('2024-01-05T10:00:00' AS DATE)), to_varchar(try_cast('20240105' AS DATE)), to_varchar(try_cast('1704412800' AS DATE))",
+   "observed": "(2024-01-05, 2024-01-05, 2024-01-05, 2024-01-05, NULL, 2024-02-29, NULL, 0001-01-01, 9999-12-31, 10000-01-01, -1-01-01, 2024-05-01, 2024-01-05, 1970-08-23, 2024-01-05)"
+  },
+  {
+   "construct": "cast-text-to-timestamp",
+   "sql": "SELECT try_cast('2024-01-05 10:00:00' AS TIMESTAMP_NTZ(6)), try_cast('2024-01-05T10:00:00' AS TIMESTAMP_NTZ(6)), try_cast('2024-01-05 10:00:00.1234567' AS TIMESTAMP_NTZ(6)), try_cast('2024-01-05 10:00:00+02:00' AS TIMESTAMP_NTZ(6)), try_cast('2024-01-05' AS TIMESTAMP_NTZ(6)), try_cast('2024-01-05 24:00:00' AS TIMESTAMP_NTZ(6)), try_cast('1704412800' AS TIMESTAMP_NTZ(6)), try_cast('2024-01-05 10:00:60' AS TIMESTAMP_NTZ(6))",
+   "observed": "(2024-01-05T10:00:00, 2024-01-05T10:00:00, 2024-01-05T10:00:00.123456, 2024-01-05T10:00:00, 2024-01-05T00:00:00, NULL, 2024-01-05T00:00:00, NULL)"
+  },
+  {
+   "construct": "cast-to-text",
+   "sql": "SELECT to_varchar(TRUE), TRUE::VARCHAR, to_varchar(12::NUMBER(38,0)), 12::NUMBER(38,0)::VARCHAR, to_varchar(1.50::NUMBER(10,2)), 1.50::NUMBER(10,2)::VARCHAR, to_varchar(-0.5::NUMBER(10,1)), -0.5::NUMBER(10,1)::VARCHAR, to_varchar(1.5::FLOAT), 1.5::FLOAT::VARCHAR, to_varchar(1e20::FLOAT), 1e20::FLOAT::VARCHAR, to_varchar('2024-01-05'::DATE), '2024-01-05'::DATE::VARCHAR, to_varchar('2024-01-05 10:00:00.123'::TIMESTAMP_NTZ(6)), '2024-01-05 10:00:00.123'::TIMESTAMP_NTZ(6)::VARCHAR, to_varchar('10:00:00'::TIME), '10:00:00'::TIME::VARCHAR",
+   "observed": "(true, true, 12, 12, 1.50, 1.50, -0.5, -0.5, 1.5, 1.5, 1e+20, 1e+20, 2024-01-05, 2024-01-05, 2024-01-05 10:00:00.123, 2024-01-05 10:00:00.123, 10:00:00, 10:00:00)"
+  },
+  {
+   "construct": "cast-try-non-string",
+   "sql": "SELECT try_cast(x AS NUMBER(38,0)) FROM (VALUES (1.5::FLOAT)) AS s(x)",
+   "note": "TRY_CAST is documented for string input only.",
+   "observed": "error 001065 (22023): SQL compilation error: Function TRY_CAST cannot be used with arguments of types FLOAT and NUMBER(38,0)"
+  },
+  {
+   "construct": "cast-try-functions",
+   "sql": "SELECT try_to_number('1.5'), try_to_number('1.5', 10, 1), try_to_double('x'), try_to_date('2024-02-30'), try_to_boolean('maybe'), try_to_number('999999999999999999999999999999999999999')",
+   "observed": "(2, 1.5, NULL, NULL, NULL, NULL)"
+  },
+  {
+   "construct": "cast-try-overflow",
+   "sql": "SELECT try_cast('1000' AS NUMBER(3,0)), try_cast('9.999' AS NUMBER(3,2))",
+   "observed": "(NULL, NULL)"
+  },
+  {
+   "construct": "cast-int-to-double-precision",
+   "sql": "SELECT to_varchar(x::FLOAT), x::FLOAT::NUMBER(38,0) FROM (VALUES (9007199254740993), (9223372036854775807)) AS s(x)",
+   "observed": "(9.00719925474099e+15, 9007199254740992); (9.22337203685478e+18, 9223372036854775808)"
+  },
+  {
+   "construct": "kleene",
+   "sql": "SELECT a, b, a AND b, a OR b, NOT a, a = b, a IS DISTINCT FROM b, equal_null(a, b), coalesce(a, FALSE) FROM (VALUES (TRUE, TRUE), (TRUE, FALSE), (TRUE, NULL::BOOLEAN), (FALSE, TRUE), (FALSE, FALSE), (FALSE, NULL::BOOLEAN), (NULL::BOOLEAN, TRUE), (NULL::BOOLEAN, FALSE), (NULL::BOOLEAN, NULL::BOOLEAN)) AS s(a, b)",
+   "observed": "(True, True, True, True, False, True, False, True, True); (True, False, False, True, False, False, True, False, True); (True, NULL, NULL, True, False, NULL, True, False, True); (False, True, False, True, True, False, True, False, False); (False, False, False, False, True, True, False, True, False); (False, NULL, False, NULL, True, NULL, True, False, False); (NULL, True, NULL, True, NULL, NULL, True, False, False); (NULL, False, False, NULL, NULL, NULL, True, False, False); (NULL, NULL, NULL, NULL, NULL, NULL, False, True, False)"
+  },
+  {
+   "construct": "bool-aggregates-nulls",
+   "sql": "SELECT booland_agg(x), boolor_agg(x), boolxor_agg(x), count(x), count(*) FROM (VALUES (TRUE), (NULL::BOOLEAN)) AS s(x)",
+   "observed": "(True, True, True, 1, 2)"
+  },
+  {
+   "construct": "bool-aggregates-only-nulls",
+   "sql": "SELECT booland_agg(x), boolor_agg(x) FROM (VALUES (NULL::BOOLEAN)) AS s(x)",
+   "observed": "(NULL, NULL)"
+  },
+  {
+   "construct": "null-functions",
+   "sql": "SELECT concat('a', NULL), 'a' || NULL, concat_ws('-', 'a', NULL, 'b'), greatest(1, NULL), least(1, NULL), greatest_ignore_nulls(1, NULL), least_ignore_nulls(NULL, 2), abs(NULL), length(NULL), array_construct(1, NULL)",
+   "observed": "(NULL, NULL, NULL, NULL, NULL, 1, 2, NULL, NULL, [\n  1,\n  undefined\n])"
+  },
+  {
+   "construct": "null-join-keys",
+   "sql": "SELECT l.k, r.k FROM (VALUES (1), (NULL)) AS l(k) JOIN (VALUES (1), (NULL)) AS r(k) ON l.k = r.k",
+   "observed": "(1, 1)"
+  },
+  {
+   "construct": "null-join-keys-not-distinct",
+   "sql": "SELECT l.k, r.k FROM (VALUES (1), (NULL)) AS l(k) JOIN (VALUES (1), (NULL)) AS r(k) ON l.k IS NOT DISTINCT FROM r.k ORDER BY 1",
+   "observed": "(1, 1); (NULL, NULL)"
+  },
+  {
+   "construct": "null-join-equal-null",
+   "sql": "SELECT l.k, r.k FROM (VALUES (1), (NULL)) AS l(k) JOIN (VALUES (1), (NULL)) AS r(k) ON equal_null(l.k, r.k) ORDER BY 1",
+   "observed": "(1, 1); (NULL, NULL)"
+  },
+  {
+   "construct": "null-in-list",
+   "sql": "SELECT x IN (1, NULL), x NOT IN (2, NULL), x IN (SELECT 1 UNION ALL SELECT NULL) FROM (VALUES (1), (3)) AS s(x)",
+   "observed": "(True, NULL, True); (NULL, NULL, NULL)"
+  },
+  {
+   "construct": "null-group",
+   "sql": "SELECT x, count(*) FROM (VALUES (NULL), (NULL), (1)) AS s(x) GROUP BY x ORDER BY x",
+   "observed": "(1, 1); (NULL, 2)"
+  },
+  {
+   "construct": "str-length",
+   "sql": "SELECT length('héllo'), len('héllo'), octet_length('héllo'), octet_length(to_binary('héllo', 'UTF-8')), length('😀'), length('é'), length('')",
+   "observed": "(5, 5, 6, 6, 1, 2, 0)"
+  },
+  {
+   "construct": "str-case",
+   "sql": "SELECT upper('straße'), lower('İ'), upper('ǆ'), initcap('ǆa'), lower('ΣΑΣ'), upper('ﬁ'), upper('é')",
+   "observed": "(STRASSE, i̇, Ǆ, Ǆa, σας, FI, É)"
+  },
+  {
+   "construct": "str-trailing-spaces",
+   "sql": "SELECT 'a' = 'a ', 'a' < 'a ', length('a '), 'a '::CHAR(3) = 'a', length('a'::CHAR(3)), 'a'::CHAR(3) || 'b'",
+   "observed": "(False, True, 2, False, 1, ab)"
+  },
+  {
+   "construct": "str-compare-bytes",
+   "sql": "SELECT x FROM (VALUES ('b'), ('B'), ('a'), ('é'), ('z'), ('Z'), ('😀'), ('Ａ'), ('')) AS s(x) ORDER BY x",
+   "observed": "(); (B); (Z); (a); (b); (z); (é); (Ａ); (😀)"
+  },
+  {
+   "construct": "str-compare-ops",
+   "sql": "SELECT 'B' < 'a', 'é' > 'z', '😀' > '￿', 'a' < 'ab', 'Z' < 'a'",
+   "observed": "(True, True, True, True, True)"
+  },
+  {
+   "construct": "str-collation",
+   "sql": "SELECT 'a' = 'A' COLLATE 'en-ci', 'a' < 'B' COLLATE 'en', collation('a' COLLATE 'en-ci'), 'a ' = 'a' COLLATE 'en-rtrim', upper('a' COLLATE 'en-ci')",
+   "observed": "(True, True, en-ci, True, A)"
+  },
+  {
+   "construct": "str-like",
+   "sql": "SELECT 'Abc' LIKE 'a%', 'Abc' ILIKE 'a%', 'a_c' LIKE 'a\\\\_c', 'abc' LIKE 'a\\\\_c', 'a%' LIKE 'a\\\\%', 'a\\\\b' LIKE 'a\\\\\\\\b', 'abc' LIKE 'a!_c' ESCAPE '!', 'a_c' LIKE 'a!_c' ESCAPE '!'",
+   "note": "Whether a backslash escapes in LIKE without an ESCAPE clause.",
+   "observed": "(False, True, False, False, False, False, False, True)"
+  },
+  {
+   "construct": "str-like-escape-backslash",
+   "sql": "SELECT 'a_c' LIKE 'a\\\\_c' ESCAPE '\\\\', 'abc' LIKE 'a\\\\_c' ESCAPE '\\\\', 'ab\\\\' LIKE 'ab\\\\' ESCAPE '\\\\'",
+   "observed": "(True, False, True)"
+  },
+  {
+   "construct": "str-like-multiline",
+   "sql": "SELECT 'a\\nb' LIKE 'a%b', 'a\\nb' LIKE 'a_b'",
+   "observed": "(True, True)"
+  },
+  {
+   "construct": "str-literal-escapes",
+   "sql": "SELECT length('a\\\\b'), length('a\\nb'), 'a\\tb', length('\\u00e9'), length('it''s'), $$a\\nb$$",
+   "observed": "(3, 3, a\tb, 1, 4, a\\nb)"
+  },
+  {
+   "construct": "str-substr",
+   "sql": "SELECT substr('hello', 0, 2), substr('hello', 1, 2), substr('hello', -2), substr('hello', -2, 1), substr('hello', 2, -1), substr('hello', 2, 0), substr('hello', 9), substr('hello', -9, 3), substr('héllo', 2, 2), substr('hello', 4294967297, 1)",
+   "observed": "(he, he, lo, l, , , , , él, h)"
+  },
+  {
+   "construct": "str-position",
+   "sql": "SELECT position('' IN 'abc'), position('z' IN 'abc'), position('l' IN 'héllo'), position('L' IN 'hello'), charindex('l', 'hello'), position('l', 'hello', 4), position('' IN ''), contains('abc', ''), startswith('abc', ''), endswith('abc', '')",
+   "observed": "(1, 0, 3, 0, 3, 4, 1, True, True, True)"
+  },
+  {
+   "construct": "str-position-null-empty",
+   "sql": "SELECT POSITION(n IN h) AS p FROM (VALUES (NULL, 'a'), ('a', NULL), (NULL, ''), ('', NULL), ('', ''), ('abc', ''), ('héllo', 'l'), ('abc', 'z')) AS s(h, n)",
+   "note": "NULL with a NULL argument; an empty needle is found at 1, in an empty string too.",
+   "observed": "(NULL); (NULL); (NULL); (NULL); (1); (1); (3); (0)"
+  },
+  {
+   "construct": "str-match-case",
+   "sql": "SELECT contains('Abc', 'a'), startswith('Abc', 'a'), endswith('abC', 'c'), position('A' IN 'abc'), regexp_like('Abc', 'a.*'), regexp_like('Abc', 'a.*', 'i')",
+   "observed": "(False, False, False, 0, False, True)"
+  },
+  {
+   "construct": "str-trim",
+   "sql": "SELECT trim('xxaxx', 'x'), ltrim('xyaxy', 'xy'), rtrim('aé é', ' é'), trim('  a  '), trim('\\ta\\t'), length(trim('\\ta\\t'))",
+   "observed": "(a, axy, a, a, \ta\t, 3)"
+  },
+  {
+   "construct": "str-regex",
+   "sql": "SELECT regexp_instr('aé1', '\\\\d'), regexp_instr('é', '\\\\w'), regexp_instr('\\u00a0', '\\\\s'), regexp_instr('٣', '\\\\d'), regexp_like('abc', 'b'), regexp_like('abc', '.*b.*'), regexp_replace('abc', '(b)', '[\\\\1]'), regexp_replace('abc', 'b', '$0'), regexp_substr('abc', 'z')",
+   "observed": "(3, 0, 0, 0, False, True, a[b]c, a$0c, NULL)"
+  },
+  {
+   "construct": "str-regex-lookahead",
+   "sql": "SELECT regexp_like('ab', 'a(?=b)b')",
+   "observed": "error 100048 (2201B): Invalid regular expression: 'a(?=b)b', no argument for repetition operator: ?"
+  },
+  {
+   "construct": "str-substr-wrap",
+   "sql": "SELECT substr('hello', 4294967298, 1), substr('hello', 2, 4294967296), substr('hello', 2, 4294967297), substr('hello', -4294967295, 1), substr('hello', 2147483648, 1), substr('hello', 9223372036854775807, 1)",
+   "note": "Positions past 32 bits.",
+   "observed": "(e, , e, h, , o)"
+  },
+  {
+   "construct": "str-substr-wrap-negative",
+   "sql": "SELECT substr('hello', -4294967296, 2), substr('hello', -9223372036854775808, 1)",
+   "observed": "(he, h)"
+  },
+  {
+   "construct": "str-position-wrap",
+   "sql": "SELECT position('l', 'hello', 4294967297), position('l', 'hello', 4294967300)",
+   "observed": "error 100039 (22003): Numeric value '4294967297' is out of range"
+  },
+  {
+   "construct": "str-substr-int32",
+   "sql": "SELECT substr('hello', 4294967295, 1), substr('hello', 2, 2147483648), substr('hello', 2, 3000000000), substr('hello', 2, 2147483647), substr('hello', 2147483647, 1), substr('hello', 2, 4611686018427387904)",
+   "note": "Positions and lengths inside the reference's range, from 2^31 on.",
+   "observed": "(o, , , ello, , )"
+  },
+  {
+   "construct": "str-regex-invalid",
+   "sql": "SELECT regexp_instr('abc', '(')",
+   "observed": "error 100048 (2201B): Invalid regular expression: '(', missing ): ("
+  },
+  {
+   "construct": "str-regex-dialect",
+   "sql": "SELECT regexp_like('aaa', 'a{2,}'), regexp_like('ab', '[[:alpha:]]+'), regexp_like('a.b', 'a\\\\.b'), regexp_instr('foo bar', '\\\\bbar'), regexp_like('AB', '(?i)ab')",
+   "observed": "error 100048 (2201B): Invalid regular expression: '(?i)ab', no argument for repetition operator: ?"
+  },
+  {
+   "construct": "str-digests",
+   "sql": "SELECT md5('abc'), md5('é'), sha1('abc'), sha2('abc', 256), sha2('é', 256), sha2('abc', 512), md5(NULL), md5_binary('abc')",
+   "observed": "(900150983cd24fb0d6963f7d28e17f72, 66ddcd97cfdeabb2f6fb8a999b4bc76f, a9993e364706816aba3e25717850c26c9cd0d89d, ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad, 4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c, ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f, NULL, 900150983cd24fb0d6963f7d28e17f72)"
+  },
+  {
+   "construct": "str-concat-types",
+   "sql": "SELECT concat('a', 1), 'a' || 1.50, 'a' || 1.5::FLOAT, 'a' || TRUE, 'a' || '2024-01-05'::DATE, SYSTEM$TYPEOF('a' || 1)",
+   "observed": "(a1, a1.5, a1.5, atrue, a2024-01-05, VARCHAR(134217728)[LOB])"
+  },
+  {
+   "construct": "str-editdistance",
+   "sql": "SELECT editdistance('kitten', 'sitting'), editdistance('é', 'e'), editdistance('', 'abc'), editdistance(NULL, 'a')",
+   "observed": "(3, 1, 3, NULL)"
+  },
+  {
+   "construct": "str-pad-repeat",
+   "sql": "SELECT lpad('abc', 5, 'xy'), lpad('abcdef', 3, 'x'), rpad('é', 3, 'ü'), repeat('ab', 3), repeat('ab', -1), lpad('a', -1, 'x'), reverse('héllo')",
+   "observed": "(xyabc, abc, éüü, ababab, , , olléh)"
+  },
+  {
+   "construct": "str-size-limit",
+   "sql": "SELECT length(repeat('a', 16777216)), length(repeat('a', 134217728))",
+   "observed": "(16777216, 134217728)"
+  },
+  {
+   "construct": "str-size-limit-over",
+   "sql": "SELECT length(repeat('a', 134217729))",
+   "observed": "error 100078 (22000): String '(padded string)' is too long and would be truncated"
+  },
+  {
+   "construct": "ts-type-names",
+   "sql": "SELECT SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP), SYSTEM$TYPEOF('2024-01-05 10:00:00'::DATETIME), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_NTZ), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_NTZ(6)), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_LTZ), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_TZ), SYSTEM$TYPEOF('2024-01-05 10:00:00'::DATE), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIME)",
+   "observed": "(TIMESTAMP_NTZ(9)[SB16], TIMESTAMP_NTZ(9)[SB16], TIMESTAMP_NTZ(9)[SB16], TIMESTAMP_NTZ(6)[SB8], TIMESTAMP_LTZ(9)[SB16], TIMESTAMP_TZ(9)[SB16], DATE[SB4], TIME(9)[SB8])"
+  },
+  {
+   "construct": "ts-parts-millisecond",
+   "sql": "SELECT date_part(MILLISECOND, x) FROM (VALUES ('2024-05-05 10:20:30.123456'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "error 001008 (22023): SQL compilation error: invalid value [MILLISECOND] for parameter 'DATE_PART date/time part'"
+  },
+  {
+   "construct": "ts-parts-microsecond",
+   "sql": "SELECT date_part(MICROSECOND, x) FROM (VALUES ('2024-05-05 10:20:30.123456'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "error 001008 (22023): SQL compilation error: invalid value [MICROSECOND] for parameter 'DATE_PART date/time part'"
+  },
+  {
+   "construct": "ts-precision",
+   "sql": "SELECT '2024-01-05 10:00:00.1234567'::TIMESTAMP_NTZ(6), '2024-01-05 10:00:00.9999999'::TIMESTAMP_NTZ(6), '2024-01-05 10:00:00.1234565'::TIMESTAMP_NTZ(6), '2024-01-05 10:00:00.123456789'::TIMESTAMP_NTZ(9)::TIMESTAMP_NTZ(6)",
+   "note": "Does a cast to fewer fractional digits truncate or round?",
+   "observed": "(2024-01-05T10:00:00.123456, 2024-01-05T10:00:00.999999, 2024-01-05T10:00:00.123456, 2024-01-05T10:00:00.123456)"
+  },
+  {
+   "construct": "ts-dateadd-us",
+   "sql": "SELECT dateadd(MICROSECOND, 1, x), SYSTEM$TYPEOF(dateadd(MICROSECOND, 1, x)), dateadd(MICROSECOND, -1, x), dateadd(MICROSECOND, 86400000000, x), datediff(MICROSECOND, x, y) FROM (VALUES ('2024-01-05 10:00:00'::TIMESTAMP_NTZ(6), '2024-01-05 09:59:59.999999'::TIMESTAMP_NTZ(6))) AS s(x, y)",
+   "observed": "(2024-01-05T10:00:00.000001, TIMESTAMP_NTZ(9)[SB16], 2024-01-05T09:59:59.999999, 2024-01-06T10:00:00, -1)"
+  },
+  {
+   "construct": "ts-datediff-boundaries",
+   "sql": "SELECT datediff(MONTH, a, b), datediff(YEAR, a, b), datediff(DAY, a, b), datediff(SECOND, c, d), datediff(MICROSECOND, c, d) FROM (VALUES ('2024-01-31'::DATE, '2024-02-01'::DATE, '2024-01-05 10:00:00.999999'::TIMESTAMP_NTZ(6), '2024-01-05 10:00:01.000001'::TIMESTAMP_NTZ(6))) AS s(a, b, c, d)",
+   "observed": "(1, 0, 1, 1, 2)"
+  },
+  {
+   "construct": "ts-datediff-us-range",
+   "sql": "SELECT datediff(MICROSECOND, a, b), SYSTEM$TYPEOF(datediff(MICROSECOND, a, b)) FROM (VALUES ('0001-01-01 00:00:00'::TIMESTAMP_NTZ(6), '9999-12-31 23:59:59.999999'::TIMESTAMP_NTZ(6))) AS s(a, b)",
+   "observed": "(315537897599999999, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "ts-epoch-us",
+   "sql": "SELECT date_part(EPOCH_MICROSECOND, x), date_part(EPOCH_SECOND, x), to_timestamp_ntz(date_part(EPOCH_MICROSECOND, x), 6) FROM (VALUES ('1969-12-31 23:59:59.5'::TIMESTAMP_NTZ(6)), ('0001-01-01 00:00:00'::TIMESTAMP_NTZ(6)), ('9999-12-31 23:59:59.999999'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "(-500000, -1, 1969-12-31T23:59:59.500000); (-62135596800000000, -62135596800, 0001-01-01T00:00:00); (253402300799999999, 253402300799, 9999-12-31T23:59:59.999999)"
+  },
+  {
+   "construct": "ts-to-timestamp-scale",
+   "sql": "SELECT to_varchar(to_timestamp_ntz(-1, 6)), to_varchar(to_timestamp_ntz(1704412800000000, 6)), to_varchar(to_timestamp_ntz(1704412800, 0)), to_varchar(to_timestamp_ntz(1704412800123, 3)), to_varchar(to_timestamp_ntz(253402300800000000, 6))",
+   "observed": "(1969-12-31 23:59:59.999, 2024-01-05 00:00:00.000, 2024-01-05 00:00:00.000, 2024-01-05 00:00:00.123, 10000-01-01 00:00:00.000)"
+  },
+  {
+   "construct": "date-range",
+   "sql": "SELECT to_varchar(dateadd(DAY, -1, a)), to_varchar(dateadd(DAY, 1, b)), to_varchar(dateadd(YEAR, 1, b)), SYSTEM$TYPEOF(dateadd(DAY, 1, b)) FROM (VALUES ('0001-01-01'::DATE, '9999-12-31'::DATE)) AS s(a, b)",
+   "observed": "(0000-12-31, 10000-01-01, 10000-12-31, DATE[SB4])"
+  },
+  {
+   "construct": "date-range-far",
+   "sql": "SELECT to_varchar(dateadd(DAY, 10000000, a)), to_varchar(dateadd(YEAR, 300000, a)) FROM (VALUES ('2024-01-01'::DATE)) AS s(a)",
+   "observed": "(29403-01-27, 302024-01-01)"
+  },
+  {
+   "construct": "date-range-overflow",
+   "sql": "SELECT to_varchar(dateadd(DAY, 2147483647, a)) FROM (VALUES ('2024-01-01'::DATE)) AS s(a)",
+   "observed": "(-5877587-06-21)"
+  },
+  {
+   "construct": "ts-range",
+   "sql": "SELECT to_varchar(dateadd(MICROSECOND, -1, a)), to_varchar(dateadd(MICROSECOND, 1, b)) FROM (VALUES ('0001-01-01 00:00:00'::TIMESTAMP_NTZ(6), '9999-12-31 23:59:59.999999'::TIMESTAMP_NTZ(6))) AS s(a, b)",
+   "observed": "(0000-12-31 23:59:59.999, 10000-01-01 00:00:00.000)"
+  },
+  {
+   "construct": "date-add-months",
+   "sql": "SELECT dateadd(MONTH, 1, a), add_months(a, 1), dateadd(MONTH, 1, b), add_months(b, 1), dateadd(MONTH, -1, c), add_months(c, 1), dateadd(YEAR, 1, d) FROM (VALUES ('2024-01-31'::DATE, '2024-04-30'::DATE, '2024-03-31'::DATE, '2024-02-29'::DATE)) AS s(a, b, c, d)",
+   "note": "ADD_MONTHS keeps the end of a month; DATEADD may not.",
+   "observed": "(2024-02-29, 2024-02-29, 2024-05-30, 2024-05-31, 2024-02-29, 2024-04-30, 2025-02-28)"
+  },
+  {
+   "construct": "date-arith",
+   "sql": "SELECT a + 1, a - 1, b - a, SYSTEM$TYPEOF(b - a), a + INTERVAL '1 day', SYSTEM$TYPEOF(a + INTERVAL '1 day'), a + INTERVAL '1 hour', SYSTEM$TYPEOF(a + INTERVAL '1 hour') FROM (VALUES ('2024-01-31'::DATE, '2024-03-01'::DATE)) AS s(a, b)",
+   "observed": "(2024-02-01, 2024-01-30, 30, NUMBER(9,0)[SB4], 2024-02-01, DATE[SB4], 2024-01-31T01:00:00, TIMESTAMP_NTZ(9)[SB16])"
+  },
+  {
+   "construct": "ts-interval-month",
+   "sql": "SELECT x + INTERVAL '1 month', x - INTERVAL '1 year', SYSTEM$TYPEOF(x + INTERVAL '1 month') FROM (VALUES ('2024-01-31 10:00:00'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "(2024-02-29T10:00:00, 2023-01-31T10:00:00, TIMESTAMP_NTZ(9)[SB16])"
+  },
+  {
+   "construct": "ts-interval-units",
+   "sql": "SELECT x + INTERVAL '1 day, 2 hours', x + INTERVAL '1 microsecond', x + INTERVAL '1500 milliseconds' FROM (VALUES ('2024-01-31 10:00:00'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "(2024-02-01T12:00:00, 2024-01-31T10:00:00.000001, 2024-01-31T10:00:01.500000)"
+  },
+  {
+   "construct": "ts-interval-compound",
+   "sql": "SELECT x + INTERVAL '1 day 2 hours' FROM (VALUES ('2024-01-31 10:00:00'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "error 001003 (42000): SQL compilation error: syntax error line 1 at position 6 unexpected '2'."
+  },
+  {
+   "construct": "ts-interval-fraction",
+   "sql": "SELECT x + INTERVAL '1.5 seconds' FROM (VALUES ('2024-01-31 10:00:00'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "(2024-01-31T10:00:02)"
+  },
+  {
+   "construct": "ts-minus-ts",
+   "sql": "SELECT to_varchar(b - a), SYSTEM$TYPEOF(b - a), datediff(SECOND, a, b) FROM (VALUES ('2024-01-05 10:00:00'::TIMESTAMP_NTZ(6), '2024-01-06 11:00:00'::TIMESTAMP_NTZ(6))) AS s(a, b)",
+   "observed": "(+1 01:00:00.000000000, INTERVAL DAY(9) TO SECOND(9)[SB16], 90000)"
+  },
+  {
+   "construct": "time-arith",
+   "sql": "SELECT timeadd(HOUR, 2, t), dateadd(HOUR, 25, t), t + INTERVAL '2 hours', datediff(SECOND, t, u), SYSTEM$TYPEOF(timeadd(HOUR, 2, t)) FROM (VALUES ('23:00:00'::TIME, '01:00:00'::TIME)) AS s(t, u)",
+   "observed": "(01:00:00, 00:00:00, 01:00:00, -79200, TIME(9)[SB8])"
+  },
+  {
+   "construct": "time-month",
+   "sql": "SELECT dateadd(MONTH, 1, t) FROM (VALUES ('23:00:00'::TIME)) AS s(t)",
+   "observed": "error 002152 (22023): SQL compilation error: ['MONTH'] is not a valid date/time component for function DATEADD and type TIME(9)."
+  },
+  {
+   "construct": "time-parse",
+   "sql": "SELECT try_cast('24:00:00' AS TIME), try_cast('23:59:60' AS TIME), try_cast('10:00:00.123456789' AS TIME), SYSTEM$TYPEOF('10:00:00'::TIME)",
+   "observed": "(NULL, NULL, 10:00:00.123456, TIME(9)[SB8])"
+  },
+  {
+   "construct": "week-parts",
+   "sql": "SELECT d, dayofweek(d), dayofweekiso(d), week(d), weekiso(d), yearofweek(d), yearofweekiso(d), date_trunc('WEEK', d), dayofyear(d), extract(dow FROM d), extract(dayofweek_iso FROM d) FROM (VALUES ('2021-01-01'::DATE), ('2021-01-03'::DATE), ('2021-01-04'::DATE), ('2024-12-30'::DATE), ('2026-11-05'::DATE), ('1969-12-29'::DATE)) AS s(d) ORDER BY d",
+   "observed": "(1969-12-29, 1, 1, 1, 1, 1970, 1970, 1969-12-29, 363, 1, 1); (2021-01-01, 5, 5, 53, 53, 2020, 2020, 2020-12-28, 1, 5, 5); (2021-01-03, 0, 7, 53, 53, 2020, 2020, 2020-12-28, 3, 0, 7); (2021-01-04, 1, 1, 1, 1, 2021, 2021, 2021-01-04, 4, 1, 1); (2024-12-30, 1, 1, 1, 1, 2025, 2025, 2024-12-30, 365, 1, 1); (2026-11-05, 4, 4, 45, 45, 2026, 2026, 2026-11-02, 309, 4, 4)"
+  },
+  {
+   "construct": "week-parts-pre-1970",
+   "sql": "SELECT d, year(d), month(d), day(d), weekiso(d), dayofweekiso(d), date_trunc('MONTH', d), date_part(EPOCH_SECOND, d::TIMESTAMP_NTZ) FROM (VALUES ('0001-01-01'::DATE), ('1582-10-10'::DATE), ('1900-03-01'::DATE), ('1969-12-31'::DATE)) AS s(d) ORDER BY d",
+   "note": "1582-10-10 falls in the Julian–Gregorian gap: proleptic Gregorian or not.",
+   "observed": "(0001-01-01, 1, 1, 1, 1, 1, 0001-01-01, -62135596800); (1582-10-10, 1582, 10, 10, 40, 7, 1582-10-01, -12219724800); (1900-03-01, 1900, 3, 1, 9, 4, 1900-03-01, -2203891200); (1969-12-31, 1969, 12, 31, 1, 3, 1969-12-01, -86400)"
+  },
+  {
+   "construct": "ts-parts",
+   "sql": "SELECT hour(x), minute(x), second(x), extract(NANOSECOND FROM x), date_trunc('SECOND', x), date_trunc('MILLISECOND', x), date_trunc('QUARTER', x) FROM (VALUES ('2024-05-05 10:20:30.123456'::TIMESTAMP_NTZ(6))) AS s(x)",
+   "observed": "(10, 20, 30, 123456000, 2024-05-05T10:20:30, 2024-05-05T10:20:30.123000, 2024-04-01T00:00:00)"
+  },
+  {
+   "construct": "ts-time-zones",
+   "sql": "SELECT convert_timezone('America/New_York', 'UTC', '2024-03-10 02:30:00'::TIMESTAMP_NTZ), convert_timezone('America/New_York', 'UTC', '2024-11-03 01:30:00'::TIMESTAMP_NTZ), convert_timezone('UTC', 'America/New_York', '2024-03-10 07:30:00'::TIMESTAMP_NTZ), convert_timezone('Europe/Berlin', '2024-03-31 01:30:00 +00:00'::TIMESTAMP_TZ)",
+   "note": "A DST gap (02:30 on 2024-03-10 does not exist in New York) and an overlap (01:30 on 2024-11-03 is twice).",
+   "observed": "(2024-03-10T07:30:00, 2024-11-03T05:30:00, 2024-03-10T03:30:00, 2024-03-31T03:30:00+02:00)"
+  },
+  {
+   "construct": "ts-ltz-session",
+   "sql": "ALTER SESSION SET TIMEZONE = 'America/New_York'; SELECT '2024-03-10 02:30:00'::TIMESTAMP_LTZ, '2024-11-03 01:30:00'::TIMESTAMP_LTZ, '2024-01-05 10:00:00'::TIMESTAMP_LTZ::TIMESTAMP_NTZ, to_varchar('2024-01-05 10:00:00 +00:00'::TIMESTAMP_TZ::TIMESTAMP_NTZ)",
+   "note": "Under a session time zone with DST; the result is the last statement's.",
+   "observed": "(2024-03-10T01:30:00-05:00, 2024-11-03T01:30:00-04:00, 2024-01-05T10:00:00, 2024-01-05 10:00:00.000)"
+  },
+  {
+   "construct": "ts-tz-compare",
+   "sql": "SELECT '2024-01-05 10:00:00 +00:00'::TIMESTAMP_TZ = '2024-01-05 11:00:00 +01:00'::TIMESTAMP_TZ, '2024-01-05 10:00:00'::TIMESTAMP_NTZ = '2024-01-05 10:00:00'::TIMESTAMP_LTZ",
+   "observed": "(True, True)"
+  },
+  {
+   "construct": "ts-day-is-24h",
+   "sql": "SELECT dateadd(DAY, 1, '2024-03-09 12:00:00 -05:00'::TIMESTAMP_TZ), dateadd(DAY, 1, '2024-03-09 12:00:00'::TIMESTAMP_LTZ)",
+   "observed": "(2024-03-10T12:00:00-05:00, 2024-03-10T12:00:00+00:00)"
+  },
+  {
+   "construct": "agg-sum-int",
+   "sql": "SELECT sum(x), SYSTEM$TYPEOF(sum(x)), avg(x), SYSTEM$TYPEOF(avg(x)) FROM (VALUES (9223372036854775807), (9223372036854775807)) AS s(x)",
+   "observed": "(18446744073709551614, NUMBER(31,0)[SB16], 9223372036854775807.000000, NUMBER(37,6)[SB16])"
+  },
+  {
+   "construct": "agg-sum-int-bigint",
+   "sql": "SELECT sum(x), SYSTEM$TYPEOF(sum(x)) FROM (VALUES (9223372036854775807::BIGINT), (9223372036854775807::BIGINT), (-9223372036854775807::BIGINT)) AS s(x)",
+   "observed": "(9223372036854775807, NUMBER(38,0)[SB16])"
+  },
+  {
+   "construct": "agg-avg-int",
+   "sql": "SELECT avg(x), SYSTEM$TYPEOF(avg(x)), avg(x::BIGINT) FROM (VALUES (1), (2), (2)) AS s(x)",
+   "observed": "(1.666667, NUMBER(19,6)[SB16], 1.666667)"
+  },
+  {
+   "construct": "agg-avg-int-neg",
+   "sql": "SELECT avg(x) FROM (VALUES (-1), (-2)) AS s(x) UNION ALL SELECT avg(x) FROM (VALUES (1), (1), (1), (0), (0), (0), (0), (0), (0)) AS s(x)",
+   "note": "Rounding of AVG past its scale.",
+   "observed": "(-1.500000); (0.333333)"
+  },
+  {
+   "construct": "agg-empty",
+   "sql": "SELECT sum(x), count(x), count(*), min(x), max(x), avg(x), booland_agg(x > 0), listagg(x::VARCHAR), array_agg(x), var_samp(x), median(x) FROM (VALUES (1)) AS s(x) WHERE x > 5",
+   "observed": "(NULL, 0, 0, NULL, NULL, NULL, NULL, , [], NULL, NULL)"
+  },
+  {
+   "construct": "agg-empty-grouped",
+   "sql": "SELECT x, sum(x) FROM (VALUES (1)) AS s(x) WHERE x > 5 GROUP BY x",
+   "observed": ""
+  },
+  {
+   "construct": "agg-only-nulls",
+   "sql": "SELECT sum(x), count(x), avg(x), min(x), listagg(x::VARCHAR), array_agg(x) FROM (VALUES (NULL::NUMBER), (NULL::NUMBER)) AS s(x)",
+   "observed": "(NULL, 0, NULL, NULL, , [])"
+  },
+  {
+   "construct": "agg-sum-double-order",
+   "sql": "SELECT sum(x), to_varchar(sum(x)) FROM (VALUES (1e20::FLOAT), (1::FLOAT), (-1e20::FLOAT)) AS s(x) UNION ALL SELECT sum(x), to_varchar(sum(x)) FROM (VALUES (1::FLOAT), (1e20::FLOAT), (-1e20::FLOAT)) AS s(x)",
+   "observed": "(0.0, 0); (0.0, 0)"
+  },
+  {
+   "construct": "agg-sum-double-precision",
+   "sql": "SELECT to_varchar(sum(x)), to_varchar(avg(x)) FROM (VALUES (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT), (0.1::FLOAT)) AS s(x)",
+   "note": "A naive left-to-right sum of ten 0.1 is 0.9999999999999999.",
+   "observed": "(1, 0.1)"
+  },
+  {
+   "construct": "agg-nonfinite",
+   "sql": "SELECT sum(x), avg(x), min(x), max(x), var_pop(x), stddev(x) FROM (VALUES ('inf'::FLOAT), ('-inf'::FLOAT), (1::FLOAT)) AS s(x)",
+   "observed": "(NaN, NaN, -inf, inf, NaN, NaN)"
+  },
+  {
+   "construct": "agg-nonfinite-nan",
+   "sql": "SELECT sum(x), avg(x), min(x), max(x), var_pop(x) FROM (VALUES ('NaN'::FLOAT), (1::FLOAT)) AS s(x)",
+   "observed": "(NaN, NaN, 1.0, NaN, NaN)"
+  },
+  {
+   "construct": "agg-sum-double-overflow",
+   "sql": "SELECT sum(x) FROM (VALUES (1.7e308::FLOAT), (1.7e308::FLOAT)) AS s(x)",
+   "observed": "(inf)"
+  },
+  {
+   "construct": "agg-var",
+   "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), stddev_pop(x), variance(x), stddev(x), SYSTEM$TYPEOF(var_samp(x)) FROM (VALUES (1e9 + 4), (1e9 + 7), (1e9 + 13), (1e9 + 16)) AS s(x)",
+   "note": "The exact sample variance is 30 (Welford's example); a naive sum of squares loses it.",
+   "observed": "(30.000000, 22.500000, 5.477225575051661, 4.743416490252569, 30.000000, 5.477225575051661, NUMBER(38,6)[SB16])"
+  },
+  {
+   "construct": "agg-var-double",
+   "sql": "SELECT to_varchar(var_samp(x)), to_varchar(var_pop(x)) FROM (VALUES (1e9::FLOAT + 4), (1e9::FLOAT + 7), (1e9::FLOAT + 13), (1e9::FLOAT + 16)) AS s(x)",
+   "observed": "(0, 0)"
+  },
+  {
+   "construct": "agg-var-shifted",
+   "sql": "SELECT to_varchar(var_samp(x)) FROM (VALUES (1e15::FLOAT + 4), (1e15::FLOAT + 7), (1e15::FLOAT + 13), (1e15::FLOAT + 16)) AS s(x)",
+   "observed": "(0)"
+  },
+  {
+   "construct": "agg-var-degenerate",
+   "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), covar_samp(x, y), covar_pop(x, y), corr(x, y) FROM (VALUES (1::FLOAT, 2::FLOAT)) AS s(x, y)",
+   "observed": "(NULL, 0.0, NULL, NULL, 0.0, NULL)"
+  },
+  {
+   "construct": "agg-corr-constant",
+   "sql": "SELECT corr(x, y), covar_samp(x, y), regr_slope(y, x) FROM (VALUES (1::FLOAT, 5::FLOAT), (2::FLOAT, 5::FLOAT), (3::FLOAT, 5::FLOAT)) AS s(x, y)",
+   "observed": "(NULL, 0.0, 0.0)"
+  },
+  {
+   "construct": "agg-var-int-type",
+   "sql": "SELECT var_samp(x), SYSTEM$TYPEOF(var_samp(x)), stddev(x), SYSTEM$TYPEOF(stddev(x)), corr(x, x), SYSTEM$TYPEOF(corr(x, x)) FROM (VALUES (1), (2), (4)) AS s(x)",
+   "observed": "(2.333333, NUMBER(38,6)[SB16], 1.5275251225429978, FLOAT[DOUBLE], 1.0000000000000004, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "agg-quantiles",
+   "sql": "SELECT median(x), percentile_cont(0.25) WITHIN GROUP (ORDER BY x), percentile_disc(0.25) WITHIN GROUP (ORDER BY x), percentile_cont(0.5) WITHIN GROUP (ORDER BY x), percentile_disc(0.5) WITHIN GROUP (ORDER BY x), SYSTEM$TYPEOF(median(x)), SYSTEM$TYPEOF(percentile_disc(0.5) WITHIN GROUP (ORDER BY x)) FROM (VALUES (1), (2), (4), (10)) AS s(x)",
+   "observed": "(3.000, 1.750, 1, 3.000, 2, NUMBER(5,3)[SB4], NUMBER(2,0)[SB1])"
+  },
+  {
+   "construct": "agg-quantiles-double",
+   "sql": "SELECT median(x), percentile_cont(0.1) WITHIN GROUP (ORDER BY x), SYSTEM$TYPEOF(median(x)) FROM (VALUES (1::FLOAT), (2::FLOAT)) AS s(x)",
+   "observed": "(1.5, 1.1, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "agg-tie-pick",
+   "sql": "SELECT mode(x), any_value(y), min_by(y, x), max_by(y, x), array_agg(y) FROM (VALUES (1, 'a'), (2, 'b'), (1, 'c'), (2, 'd')) AS s(x, y)",
+   "observed": "(1, a, a, b, [\n  \"a\",\n  \"b\",\n  \"c\",\n  \"d\"\n])"
+  },
+  {
+   "construct": "agg-array-agg-order",
+   "sql": "SELECT array_agg(y) WITHIN GROUP (ORDER BY x), listagg(y, ',') WITHIN GROUP (ORDER BY x) FROM (VALUES (1, 'a'), (0, 'b'), (1, 'c'), (0, 'd')) AS s(x, y)",
+   "observed": "([\n  \"b\",\n  \"d\",\n  \"a\",\n  \"c\"\n], b,d,a,c)"
+  },
+  {
+   "construct": "agg-bit",
+   "sql": "SELECT bitand_agg(x), bitor_agg(x), bitxor_agg(x), SYSTEM$TYPEOF(bitand_agg(x)) FROM (VALUES (-8), (5), (NULL)) AS s(x)",
+   "observed": "(0, -3, -3, NUMBER(2,0)[SB1])"
+  },
+  {
+   "construct": "agg-count-distinct-nan-zero",
+   "sql": "SELECT count(DISTINCT x), count(DISTINCT y) FROM (VALUES ('NaN'::FLOAT, '-0.0'::FLOAT), ('nan'::FLOAT, 0::FLOAT)) AS s(x, y)",
+   "observed": "(1, 1)"
+  },
+  {
+   "construct": "window-default-frame",
+   "sql": "SELECT p, x, sum(x) OVER (PARTITION BY p ORDER BY x), count(*) OVER (PARTITION BY p ORDER BY x), sum(x) OVER (PARTITION BY p), first_value(x) OVER (PARTITION BY p ORDER BY x), last_value(x) OVER (PARTITION BY p ORDER BY x) FROM (VALUES (1, 1), (1, 1), (1, 2), (1, NULL), (2, 5)) AS s(p, x) ORDER BY p, x NULLS LAST",
+   "note": "RANGE frames take peers; ROWS frames do not.",
+   "observed": "(1, 1, 2, 2, 4, 1, NULL); (1, 1, 2, 2, 4, 1, NULL); (1, 2, 4, 3, 4, 1, NULL); (1, NULL, 4, 4, 4, 1, NULL); (2, 5, 5, 1, 5, 5, 5)"
+  },
+  {
+   "construct": "window-ranks",
+   "sql": "SELECT p, x, rank() OVER (PARTITION BY p ORDER BY x), dense_rank() OVER (PARTITION BY p ORDER BY x), percent_rank() OVER (PARTITION BY p ORDER BY x), cume_dist() OVER (PARTITION BY p ORDER BY x), row_number() OVER (PARTITION BY p ORDER BY x) FROM (VALUES (1, 1), (1, 1), (1, 2), (1, NULL), (2, 5)) AS s(p, x) ORDER BY p, x NULLS LAST",
+   "observed": "(1, 1, 1, 1, 0.0, 0.5, 1); (1, 1, 1, 1, 0.0, 0.5, 2); (1, 2, 3, 2, 0.6666666666666666, 0.75, 3); (1, NULL, 4, 3, 1.0, 1.0, 4); (2, 5, 1, 1, 0.0, 1.0, 1)"
+  },
+  {
+   "construct": "window-null-order",
+   "sql": "SELECT x, row_number() OVER (ORDER BY x), row_number() OVER (ORDER BY x DESC) FROM (VALUES (1), (NULL), (2)) AS s(x) ORDER BY x NULLS LAST",
+   "observed": "(1, 1, 3); (2, 2, 2); (NULL, 3, 1)"
+  },
+  {
+   "construct": "window-ntile",
+   "sql": "SELECT x, ntile(3) OVER (ORDER BY x), ntile(4) OVER (ORDER BY x) FROM (VALUES (1), (2), (3), (4), (5), (6), (7)) AS s(x) ORDER BY x",
+   "observed": "(1, 1, 1); (2, 1, 1); (3, 1, 2); (4, 2, 2); (5, 2, 3); (6, 3, 3); (7, 3, 4)"
+  },
+  {
+   "construct": "window-lag-lead",
+   "sql": "SELECT x, lag(x) OVER (ORDER BY x), lag(x, 2, -1) OVER (ORDER BY x), lead(x, 1, -1) OVER (ORDER BY x), lag(x, 0) OVER (ORDER BY x) FROM (VALUES (1), (2), (3)) AS s(x) ORDER BY x",
+   "observed": "(1, NULL, -1, 2, 1); (2, 1, -1, 3, 2); (3, 2, 1, -1, 3)"
+  },
+  {
+   "construct": "window-lag-no-order",
+   "sql": "SELECT lag(x) OVER () FROM (VALUES (1), (2)) AS s(x)",
+   "observed": "error 002061 (42601): SQL compilation error: Window function type [LAG] requires ORDER BY in window specification."
+  },
+  {
+   "construct": "window-ignore-nulls",
+   "sql": "SELECT x, y, lag(y) IGNORE NULLS OVER (ORDER BY x), first_value(y) IGNORE NULLS OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING), last_value(y) OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM (VALUES (1, NULL), (2, 5), (3, NULL)) AS s(x, y) ORDER BY x",
+   "observed": "(1, NULL, NULL, 5, NULL); (2, 5, NULL, 5, NULL); (3, NULL, 5, 5, NULL)"
+  },
+  {
+   "construct": "window-range-frame",
+   "sql": "SELECT x, sum(x) OVER (ORDER BY x RANGE BETWEEN 1 PRECEDING AND CURRENT ROW), sum(x) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM (VALUES (1), (2), (2), (4)) AS s(x) ORDER BY x",
+   "observed": "(1, 1, 3); (2, 5, 8); (2, 5, 5); (4, 4, 6)"
+  },
+  {
+   "construct": "window-sum-int-type",
+   "sql": "SELECT sum(x) OVER (ORDER BY x), SYSTEM$TYPEOF(sum(x) OVER (ORDER BY x)), avg(x) OVER (ORDER BY x) FROM (VALUES (1), (2)) AS s(x) ORDER BY x",
+   "observed": "(1, NUMBER(13,0)[SB8], 1.000000); (3, NUMBER(13,0)[SB8], 1.500000)"
+  },
+  {
+   "construct": "window-tie-order",
+   "sql": "SELECT k, v, row_number() OVER (ORDER BY k) FROM (VALUES (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7)) AS s(k, v) ORDER BY 3",
+   "note": "Which tied row gets which number: no order is promised.",
+   "observed": "(1, 0, 1); (1, 1, 2); (1, 2, 3); (1, 3, 4); (1, 4, 5); (1, 5, 6); (1, 6, 7); (1, 7, 8)"
+  },
+  {
+   "construct": "set-union",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) UNION SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x) ORDER BY x",
+   "observed": "(1); (2); (3); (NULL)"
+  },
+  {
+   "construct": "set-union-all",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) UNION ALL SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x) ORDER BY x",
+   "observed": "(1); (1); (1); (2); (3); (NULL); (NULL); (NULL)"
+  },
+  {
+   "construct": "set-intersect",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) INTERSECT SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x) ORDER BY x",
+   "observed": "(1); (NULL)"
+  },
+  {
+   "construct": "set-except",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) EXCEPT SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x) ORDER BY x",
+   "observed": "(2)"
+  },
+  {
+   "construct": "set-minus",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) MINUS SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x) ORDER BY x",
+   "observed": "(2)"
+  },
+  {
+   "construct": "set-intersect-all",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) INTERSECT ALL SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x)",
+   "observed": "error 000002 (0A000): Unsupported feature 'INTERSECT ALL'."
+  },
+  {
+   "construct": "set-except-all",
+   "sql": "SELECT x FROM (VALUES (1), (1), (2), (NULL), (NULL)) AS s(x) EXCEPT ALL SELECT x FROM (VALUES (1), (NULL), (3)) AS s(x)",
+   "observed": "error 000002 (0A000): Unsupported feature 'MINUS ALL'."
+  },
+  {
+   "construct": "set-nan-zero",
+   "sql": "SELECT to_varchar(x) FROM (VALUES ('NaN'::FLOAT), ('-0.0'::FLOAT)) AS s(x) UNION SELECT to_varchar(x) FROM (VALUES ('nan'::FLOAT), (0::FLOAT)) AS s(x)",
+   "observed": "(NaN); (-0); (0)"
+  },
+  {
+   "construct": "set-nan-zero-values",
+   "sql": "SELECT x FROM (VALUES ('NaN'::FLOAT), ('-0.0'::FLOAT)) AS s(x) INTERSECT SELECT x FROM (VALUES ('nan'::FLOAT), (0::FLOAT)) AS s(x)",
+   "observed": "(NaN); (-0.0)"
+  },
+  {
+   "construct": "set-union-types",
+   "sql": "SELECT x, SYSTEM$TYPEOF(x) FROM (SELECT 1 AS x UNION ALL SELECT 1.5 UNION ALL SELECT 2::FLOAT)",
+   "observed": "(1.0, FLOAT[DOUBLE]); (1.5, FLOAT[DOUBLE]); (2.0, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "order-null-default",
+   "sql": "SELECT x FROM (VALUES (1), (NULL), (2)) AS s(x) ORDER BY x",
+   "observed": "(1); (2); (NULL)"
+  },
+  {
+   "construct": "order-null-default-desc",
+   "sql": "SELECT x FROM (VALUES (1), (NULL), (2)) AS s(x) ORDER BY x DESC",
+   "observed": "(NULL); (2); (1)"
+  },
+  {
+   "construct": "order-null-explicit",
+   "sql": "SELECT x FROM (VALUES (1), (NULL), (2)) AS s(x) ORDER BY x DESC NULLS LAST",
+   "observed": "(2); (1); (NULL)"
+  },
+  {
+   "construct": "order-null-setting",
+   "sql": "ALTER SESSION SET DEFAULT_NULL_ORDERING = 'FIRST'; SELECT x FROM (VALUES (1), (NULL), (2)) AS s(x) ORDER BY x",
+   "observed": "(NULL); (1); (2)"
+  },
+  {
+   "construct": "order-strings",
+   "sql": "SELECT x FROM (VALUES ('b'), ('a '), ('a'), ('A'), ('ä')) AS s(x) ORDER BY x",
+   "observed": "(A); (a); (a ); (b); (ä)"
+  },
+  {
+   "construct": "order-ties",
+   "sql": "SELECT k, v FROM (VALUES (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (0, 99)) AS s(k, v) ORDER BY k",
+   "note": "The order of tied rows: whether a sort keeps input order.",
+   "observed": "(0, 99); (1, 0); (1, 1); (1, 2); (1, 3); (1, 4); (1, 5); (1, 6); (1, 7)"
+  },
+  {
+   "construct": "order-limit-ties",
+   "sql": "SELECT k, v FROM (VALUES (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7)) AS s(k, v) ORDER BY k LIMIT 3",
+   "observed": "(1, 0); (1, 1); (1, 2)"
+  },
+  {
+   "construct": "limit-null-offset",
+   "sql": "SELECT x FROM (VALUES (1), (2), (3)) AS s(x) ORDER BY x LIMIT NULL OFFSET 1",
+   "observed": "(2); (3)"
+  },
+  {
+   "construct": "join-nan-zero",
+   "sql": "SELECT to_varchar(l.x), to_varchar(r.x) FROM (VALUES ('NaN'::FLOAT), ('-0.0'::FLOAT)) AS l(x) JOIN (VALUES ('nan'::FLOAT), (0::FLOAT)) AS r(x) ON l.x = r.x",
+   "observed": "(NaN, NaN); (-0, 0)"
+  },
+  {
+   "construct": "array-index",
+   "sql": "SELECT array_construct(1, 2, 3)[0], array_construct(1, 2, 3)[5], get(array_construct(1, 2, 3), 1), array_construct(1, NULL, 3), array_size(array_construct(1, NULL)), SYSTEM$TYPEOF(array_construct(1, 2)[0])",
+   "observed": "(1, NULL, 2, [\n  1,\n  undefined,\n  3\n], 2, VARIANT[LOB])"
+  },
+  {
+   "construct": "array-index-negative",
+   "sql": "SELECT array_construct(1, 2, 3)[-1]",
+   "observed": "error 001852 (22023): Invalid extraction path '-1': array index -1 is off limits; must be between 0 and 2,147,483,647."
+  },
+  {
+   "construct": "array-compare",
+   "sql": "SELECT array_construct(1, 2) = array_construct(1, 2), array_construct(1, NULL) = array_construct(1, NULL), object_construct('a', NULL) = object_construct(), array_construct(1, 2) < array_construct(1, 3)",
+   "observed": "(True, True, True, True)"
+  },
+  {
+   "construct": "flatten-null-empty",
+   "sql": "SELECT count(*) FROM (SELECT NULL::ARRAY AS a UNION ALL SELECT array_construct() UNION ALL SELECT array_construct(1)) t, LATERAL FLATTEN(input => t.a)",
+   "observed": "(1)"
+  },
+  {
+   "construct": "flatten-outer",
+   "sql": "SELECT t.k, f.value FROM (SELECT 1 AS k, NULL::ARRAY AS a UNION ALL SELECT 2, array_construct() UNION ALL SELECT 3, array_construct(1)) t, LATERAL FLATTEN(input => t.a, OUTER => TRUE) f ORDER BY t.k",
+   "observed": "(1, NULL); (2, NULL); (3, 1)"
+  },
+  {
+   "construct": "array-order",
+   "sql": "SELECT a FROM (SELECT array_construct(1, 2) AS a UNION ALL SELECT array_construct(1, NULL) UNION ALL SELECT array_construct(1) UNION ALL SELECT array_construct(0, 5) UNION ALL SELECT NULL) ORDER BY a",
+   "note": "Where a NULL element sorts inside an array; ARRAY_CONSTRUCT keeps it as JSON null (undefined).",
+   "observed": "([\n  0,\n  5\n]); ([\n  1\n]); ([\n  1,\n  undefined\n]); ([\n  1,\n  2\n]); (NULL)"
+  },
+  {
+   "construct": "array-null-element-compare",
+   "sql": "SELECT array_construct(1, NULL) < array_construct(1, 2), array_construct(1, NULL) > array_construct(1, 2), array_construct(1) < array_construct(1, NULL)",
+   "observed": "(True, False, True)"
+  },
+  {
+   "construct": "object-equality",
+   "sql": "SELECT object_construct('a', 1, 'b', NULL) = object_construct('a', 1), object_construct_keep_null('a', 1, 'b', NULL) = object_construct('a', 1), object_construct_keep_null('b', NULL) = object_construct_keep_null('b', NULL), object_construct('a', 1, 'b', 2) = object_construct('b', 2, 'a', 1), object_construct('a', 1) < object_construct('a', 2)",
+   "observed": "(True, False, True, True, True)"
+  },
+  {
+   "construct": "array-agg-order-nan",
+   "sql": "SELECT array_agg(x) WITHIN GROUP (ORDER BY x), median(x), percentile_disc(0.9) WITHIN GROUP (ORDER BY x) FROM (VALUES ('NaN'::FLOAT), (1::FLOAT), ('inf'::FLOAT), (NULL)) AS s(x)",
+   "observed": "([\n  1.000000000000000e+00,\n  Infinity,\n  NaN\n], inf, NaN)"
+  },
+  {
+   "construct": "array-agg-order-zero",
+   "sql": "SELECT array_agg(to_varchar(x)) WITHIN GROUP (ORDER BY x, y) FROM (VALUES (0::FLOAT, 2), ('-0.0'::FLOAT, 1)) AS s(x, y)",
+   "note": "Whether -0.0 sorts below 0.0 or ties with it (the second key breaks ties).",
+   "observed": "([\n  \"-0\",\n  \"0\"\n])"
+  },
+  {
+   "construct": "eval-case-guard",
+   "sql": "SELECT CASE WHEN b = 0 THEN NULL ELSE a / b END FROM (VALUES (1, 0), (4, 2)) AS s(a, b)",
+   "observed": "(NULL); (2.000000)"
+  },
+  {
+   "construct": "eval-iff-guard",
+   "sql": "SELECT iff(b = 0, NULL, a / b) FROM (VALUES (1, 0), (4, 2)) AS s(a, b)",
+   "observed": "(NULL); (2.000000)"
+  },
+  {
+   "construct": "eval-where-guard",
+   "sql": "SELECT a / b FROM (VALUES (1, 0), (4, 2)) AS s(a, b) WHERE b <> 0",
+   "observed": "(2.000000)"
+  },
+  {
+   "construct": "eval-and-guard",
+   "sql": "SELECT a FROM (VALUES (1, 0), (4, 2)) AS s(a, b) WHERE b <> 0 AND a / b > 1",
+   "observed": "(4)"
+  },
+  {
+   "construct": "eval-coalesce-guard",
+   "sql": "SELECT coalesce(a, 1 / b) FROM (VALUES (1, 0)) AS s(a, b)",
+   "observed": "(1.000000)"
+  },
+  {
+   "construct": "eval-constant-branch",
+   "sql": "SELECT CASE WHEN 1 = 1 THEN 1 ELSE 1 / 0 END, iff(TRUE, 1, 'x'::NUMBER)",
+   "note": "Is an untaken branch with a constant error folded and raised at compile time?",
+   "observed": "(1.000000, 1)"
+  },
+  {
+   "construct": "eval-cast-branch",
+   "sql": "SELECT iff(a > 0, a, CAST('sverify: e: ' || to_varchar(a) AS NUMBER(38,0))) FROM (VALUES (1), (2)) AS s(a)",
+   "observed": "(1); (2)"
+  },
+  {
+   "construct": "eval-cast-branch-taken",
+   "sql": "SELECT iff(a > 0, a, CAST('sverify: integer overflow: ' || to_varchar(a) AS NUMBER(38,0))) FROM (VALUES (1), (-2)) AS s(a)",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: -2' is not recognized"
+  },
+  {
+   "construct": "eval-cast-branch-null",
+   "sql": "SELECT CAST('sverify: e: ' || to_varchar(a) AS NUMBER(38,0)) FROM (VALUES (NULL::NUMBER)) AS s(a)",
+   "observed": "(NULL)"
+  },
+  {
+   "construct": "eval-cast-raise-float",
+   "sql": "SELECT CAST('sverify: division by zero: ' || to_varchar(a) AS FLOAT) FROM (VALUES (0::FLOAT)) AS s(a)",
+   "note": "The writer's raise for a double: a string that does not parse as a double. Must not be read as NaN or inf.",
+   "observed": "error 100038 (22018): Numeric value 'sverify: division by zero: 0' is not recognized"
+  },
+  {
+   "construct": "eval-cast-raise-bool",
+   "sql": "SELECT CAST('sverify: e: ' || to_varchar(a) AS BOOLEAN) FROM (VALUES (1)) AS s(a)",
+   "observed": "error 100037 (22018): Boolean value 'sverify: e: 1' is not recognized"
+  },
+  {
+   "construct": "eval-cast-raise-date",
+   "sql": "SELECT CAST('sverify: e: ' || to_varchar(a) AS DATE) FROM (VALUES (1)) AS s(a)",
+   "observed": "error 100040 (22007): Date 'sverify: e: 1' is not recognized"
+  },
+  {
+   "construct": "eval-cast-raise-timestamp",
+   "sql": "SELECT CAST('sverify: e: ' || to_varchar(a) AS TIMESTAMP_NTZ(6)) FROM (VALUES (1)) AS s(a)",
+   "observed": "error 100035 (22007): Timestamp 'sverify: e: 1' is not recognized"
+  },
+  {
+   "construct": "eval-cast-raise-time",
+   "sql": "SELECT CAST('sverify: e: ' || to_varchar(a) AS TIME(9)) FROM (VALUES (1)) AS s(a)",
+   "observed": "error 100108 (22007): Time 'sverify: e: 1' is not recognized"
+  },
+  {
+   "construct": "eval-raise-varchar-via-number",
+   "sql": "SELECT to_varchar(CAST('sverify: e: ' || to_varchar(a) AS NUMBER(38,0))) FROM (VALUES (1)) AS s(a)",
+   "note": "A raise for a string: through a NUMBER cast.",
+   "observed": "error 100038 (22018): Numeric value 'sverify: e: 1' is not recognized"
+  },
+  {
+   "construct": "int-shift-negative",
+   "sql": "SELECT bitshiftleft(-8, -1)",
+   "observed": "error 100050 (22023): Invalid parameter value: -1. Reason: shift parameter must be greater or equal to zero"
+  },
+  {
+   "construct": "comment-slashes",
+   "sql": "SELECT 7 // 2\n, 1",
+   "note": "`//` starts a comment in Snowflake SQL.",
+   "observed": "(7, 1)"
+  },
+  {
+   "construct": "eval-cast-raise-varchar",
+   "sql": "SELECT CAST('sverify: e: ' || to_varchar(a) AS VARCHAR) FROM (VALUES (1)) AS s(a)",
+   "note": "A cast to VARCHAR never fails: the writer's raise cannot raise for a string.",
+   "observed": "(sverify: e: 1)"
+  },
+  {
+   "construct": "limits-number",
+   "sql": "SELECT SYSTEM$TYPEOF(1::NUMBER(38,37)), 1::NUMBER(38,37)",
+   "observed": "(NUMBER(38,37)[SB16], 1.0000000000000000000000000000000000000)"
+  },
+  {
+   "construct": "limits-number-39",
+   "sql": "SELECT 1::NUMBER(39,0)",
+   "observed": "error 001811 (42601): SQL compilation error: error line 1 at position 17 Invalid number precision: 39. Must be between 0 and 38."
+  },
+  {
+   "construct": "settings",
+   "sql": "SHOW PARAMETERS IN SESSION",
+   "note": "Recorded in the header instead of here; this probe only checks the query runs.",
+   "observed": "(163 parameters; see the header)"
+  },
+  {
+   "construct": "sample-sum-double-repeat",
+   "sql": "SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem",
+   "note": "One double sum over 6M rows, four times in one query: does the result vary?",
+   "observed": "(11475087016.1999); (11475087016.1999); (11475087016.199898); (11475087016.1999)"
+  },
+  {
+   "construct": "sample-sum-double-exact",
+   "sql": "SELECT sum(l_extendedprice * l_discount), sum(l_extendedprice::FLOAT * l_discount::FLOAT) FROM snowflake_sample_data.tpch_sf1.lineitem",
+   "note": "The exact NUMBER sum next to the double one.",
+   "observed": "(11475087016.1999, 11475087016.1999)"
+  },
+  {
+   "construct": "sample-var-shifted",
+   "sql": "SELECT var_samp(l_quantity::FLOAT), var_samp(l_quantity::FLOAT + 1e9), var_samp(l_quantity::FLOAT + 1e12), var_samp(l_quantity) FROM snowflake_sample_data.tpch_sf1.lineitem",
+   "note": "The variance does not change with a shift; a formula that cancels shows it.",
+   "observed": "(208.11705078693723, 250.09872075240645, 0.0, 208.1170507869)"
+  },
+  {
+   "construct": "sample-tie-order",
+   "sql": "SELECT listagg(l_orderkey || ':' || l_linenumber, ',') FROM (SELECT l_orderkey, l_linenumber FROM snowflake_sample_data.tpch_sf1.lineitem ORDER BY l_returnflag, l_linestatus LIMIT 8) UNION ALL SELECT listagg(l_orderkey || ':' || l_linenumber, ',') FROM (SELECT l_orderkey, l_linenumber FROM snowflake_sample_data.tpch_sf1.lineitem ORDER BY l_returnflag, l_linestatus LIMIT 8)",
+   "note": "The first 8 rows of a sort with millions of ties, twice.",
+   "observed": "(5400036:4,5400002:4,5400002:1,5400001:7,5400036:2,5400002:2,5400005:1,5400001:4); (600033:3,600002:2,600003:3,600003:2,600033:2,600003:6,600007:4,600007:3)"
+  },
+  {
+   "construct": "sample-row-number-ties",
+   "sql": "SELECT count(*) FROM (SELECT l_orderkey, l_linenumber, row_number() OVER (PARTITION BY l_returnflag ORDER BY l_linestatus) AS r1, row_number() OVER (PARTITION BY l_returnflag ORDER BY l_linestatus) AS r2 FROM snowflake_sample_data.tpch_sf1.lineitem) WHERE r1 <> r2",
+   "note": "Two identical ROW_NUMBER windows over ties in one query: do they number the rows alike?",
+   "observed": "(0)"
+  },
+  {
+   "construct": "literal-types",
+   "sql": "SELECT SYSTEM$TYPEOF(1), SYSTEM$TYPEOF(-1), SYSTEM$TYPEOF(9223372036854775807), SYSTEM$TYPEOF(18446744073709551616), SYSTEM$TYPEOF(99999999999999999999999999999999999999), SYSTEM$TYPEOF(1.5), SYSTEM$TYPEOF(1.50), SYSTEM$TYPEOF(1e3), SYSTEM$TYPEOF(1E-3), SYSTEM$TYPEOF('a'), SYSTEM$TYPEOF(TRUE), SYSTEM$TYPEOF(NULL), SYSTEM$TYPEOF(DATE '2024-01-05'), SYSTEM$TYPEOF(TIMESTAMP '2024-01-05 10:00:00'), SYSTEM$TYPEOF(X'AB'), SYSTEM$TYPEOF(-0.0)",
+   "observed": "(NUMBER(1,0)[SB1], NUMBER(1,0)[SB1], NUMBER(19,0)[SB8], NUMBER(20,0)[SB16], NUMBER(38,0)[SB16], NUMBER(2,1)[SB1], NUMBER(2,1)[SB1], NUMBER(4,0)[SB2], NUMBER(4,3)[SB1], VARCHAR(1)[LOB], BOOLEAN[SB1], NULL[LOB], DATE[SB4], TIMESTAMP_NTZ(9)[SB16], BINARY(1)[LOB], NUMBER(1,0)[SB1])"
+  },
+  {
+   "construct": "implicit-casts-arith",
+   "sql": "SELECT 1 + '2', SYSTEM$TYPEOF(1 + '2'), 1 + '2.5', '3' * '4', SYSTEM$TYPEOF('3' * '4'), 1 + 1.5::FLOAT, SYSTEM$TYPEOF(1 + 1.5::FLOAT), 1.5 + 1::FLOAT, SYSTEM$TYPEOF(1.5 + 1::FLOAT)",
+   "observed": "(3, NUMBER(19,0)[SB1], 3.5, 12.0, FLOAT[DOUBLE], 2.5, FLOAT[DOUBLE], 2.5, FLOAT[DOUBLE])"
+  },
+  {
+   "construct": "implicit-casts-compare",
+   "sql": "SELECT '10' < 9, '10' < '9', 10 < '9', 1 = '1.0', 1 = 1.0, 1 = 1.0::FLOAT, '2024-01-05'::DATE = '2024-01-05', TRUE = 'true', 0.1::FLOAT = 0.1",
+   "observed": "(False, True, False, True, True, True, True, True, True)"
+  },
+  {
+   "construct": "implicit-casts-bad",
+   "sql": "SELECT 1 + 'abc'",
+   "observed": "error 100038 (22018): Numeric value 'abc' is not recognized"
+  },
+  {
+   "construct": "identifiers-case",
+   "sql": "SELECT \"x\", X FROM (SELECT 1 AS \"x\", 2 AS x)",
+   "observed": "(1, 2)"
+  },
+  {
+   "construct": "integer-division-literal",
+   "sql": "SELECT 7 / 2, SYSTEM$TYPEOF(7 / 2)",
+   "observed": "(3.500000, NUMBER(7,6)[SB4])"
+  },
+  {
+   "construct": "writer-int-add",
+   "sql": "SELECT a, b, IFF((a + b) BETWEEN -9223372036854775808 AND 9223372036854775807, (a + b), CAST('sverify: integer overflow: ' || TO_VARCHAR((a + b)) AS NUMBER(38,0))) FROM (VALUES (-9223372036854775808, -1), (9223372036854775807, 2), (-7, 2), (7, -2), (-9223372036854775808, 3), (9, 0)) AS s(a, b) WHERE b <> 0 AND a > 0",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: 9223372036854775809' is not recognized"
+  },
+  {
+   "construct": "writer-int-add-overflow",
+   "sql": "SELECT IFF((a + b) BETWEEN -9223372036854775808 AND 9223372036854775807, (a + b), CAST('sverify: integer overflow: ' || TO_VARCHAR((a + b)) AS NUMBER(38,0))) FROM (VALUES (9223372036854775807, 1)) AS s(a, b)",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: 9223372036854775808' is not recognized"
+  },
+  {
+   "construct": "writer-int-mul-overflow",
+   "sql": "SELECT IFF((a * b) BETWEEN -9223372036854775808 AND 9223372036854775807, (a * b), CAST('sverify: integer overflow: ' || TO_VARCHAR((a * b)) AS NUMBER(38,0))) FROM (VALUES (9223372036854775807, 2)) AS s(a, b)",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: 18446744073709551614' is not recognized"
+  },
+  {
+   "construct": "writer-trunc-div",
+   "sql": "SELECT a, b, IFF(CAST((a - MOD(a, b)) / b AS NUMBER(38,0)) BETWEEN -9223372036854775808 AND 9223372036854775807, CAST((a - MOD(a, b)) / b AS NUMBER(38,0)), CAST('sverify: integer overflow: ' || TO_VARCHAR(CAST((a - MOD(a, b)) / b AS NUMBER(38,0))) AS NUMBER(38,0))), MOD(a, b) FROM (VALUES (-9223372036854775808, -1), (9223372036854775807, 2), (-7, 2), (7, -2), (-9223372036854775808, 3), (9, 0)) AS s(a, b) WHERE b <> 0 AND NOT (a = -9223372036854775808 AND b = -1)",
+   "observed": "(9223372036854775807, 2, 4611686018427387903, 1); (-7, 2, -3, -1); (7, -2, -3, 1); (-9223372036854775808, 3, -3074457345618258602, -2)"
+  },
+  {
+   "construct": "writer-trunc-div-min",
+   "sql": "SELECT IFF(CAST((a - MOD(a, b)) / b AS NUMBER(38,0)) BETWEEN -9223372036854775808 AND 9223372036854775807, CAST((a - MOD(a, b)) / b AS NUMBER(38,0)), CAST('sverify: integer overflow: ' || TO_VARCHAR(CAST((a - MOD(a, b)) / b AS NUMBER(38,0))) AS NUMBER(38,0))) FROM (VALUES (-9223372036854775808, -1)) AS s(a, b)",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: 9223372036854775808' is not recognized"
+  },
+  {
+   "construct": "writer-float-to-int",
+   "sql": "SELECT x, (CASE WHEN x >= CAST('-9.223372036854776e+18' AS FLOAT) AND x < CAST('9.223372036854776e+18' AS FLOAT) THEN CAST(TRUNC(x) AS NUMBER(38,0)) ELSE CAST('sverify: CAST to BIGINT out of range: ' || TO_VARCHAR(x) AS NUMBER(38,0)) END) FROM (VALUES (CAST('2.5' AS FLOAT)), (CAST('-2.5' AS FLOAT)), (CAST('1e+19' AS FLOAT)), (CAST('-9.223372036854776e+18' AS FLOAT)), (CAST('9.223372036854776e+18' AS FLOAT)), (CAST('NaN' AS FLOAT)), (CAST('inf' AS FLOAT))) AS s(x) WHERE x BETWEEN -1e18 AND 1e18",
+   "observed": "(2.5, 2); (-2.5, -2)"
+  },
+  {
+   "construct": "writer-float-to-int-nan",
+   "sql": "SELECT (CASE WHEN x >= CAST('-9.223372036854776e+18' AS FLOAT) AND x < CAST('9.223372036854776e+18' AS FLOAT) THEN CAST(TRUNC(x) AS NUMBER(38,0)) ELSE CAST('sverify: CAST to BIGINT out of range: ' || TO_VARCHAR(x) AS NUMBER(38,0)) END) FROM (VALUES (CAST('NaN' AS FLOAT))) AS s(x)",
+   "observed": "error 100038 (22018): Numeric value 'sverify: CAST to BIGINT out of range: NaN' is not recognized"
+  },
+  {
+   "construct": "writer-float-to-int-edge",
+   "sql": "SELECT (CASE WHEN x >= CAST('-9.223372036854776e+18' AS FLOAT) AND x < CAST('9.223372036854776e+18' AS FLOAT) THEN CAST(TRUNC(x) AS NUMBER(38,0)) ELSE CAST('sverify: CAST to BIGINT out of range: ' || TO_VARCHAR(x) AS NUMBER(38,0)) END) FROM (VALUES (CAST('-9.223372036854776e+18' AS FLOAT))) AS s(x)",
+   "observed": "(-9223372036854775808)"
+  },
+  {
+   "construct": "writer-float-lit",
+   "sql": "SELECT to_varchar(CAST('0.1' AS FLOAT)), to_varchar(CAST('0.0' AS FLOAT)), to_varchar(CAST('1e-320' AS FLOAT)), to_varchar(CAST('1.7976931348623157e+308' AS FLOAT)), to_varchar(CAST('5e-324' AS FLOAT)), to_varchar(CAST('NaN' AS FLOAT)), to_varchar(CAST('-inf' AS FLOAT))",
+   "observed": "(0.1, 0, 9.999888672e-321, 1.79769313486232e+308, 4.940656458e-324, NaN, -inf)"
+  },
+  {
+   "construct": "writer-float-mod",
+   "sql": "SELECT a, b, (CASE WHEN a IS NULL OR b IS NULL THEN CAST(NULL AS FLOAT) WHEN b = CAST('0.0' AS FLOAT) THEN CAST('sverify: division by zero: ' || TO_VARCHAR(b) AS FLOAT) WHEN (a = CAST('NaN' AS FLOAT)) OR (b = CAST('NaN' AS FLOAT)) OR a = CAST('inf' AS FLOAT) OR a = CAST('-inf' AS FLOAT) THEN CAST('NaN' AS FLOAT) WHEN b = CAST('inf' AS FLOAT) OR b = CAST('-inf' AS FLOAT) THEN a ELSE (a % b) END) FROM (VALUES (CAST('5.5' AS FLOAT), CAST('2.0' AS FLOAT)), (CAST('-5.5' AS FLOAT), CAST('2.0' AS FLOAT)), (CAST('inf' AS FLOAT), CAST('2.0' AS FLOAT)), (CAST('5.5' AS FLOAT), CAST('inf' AS FLOAT)), (CAST('NaN' AS FLOAT), CAST('1.0' AS FLOAT))) AS s(a, b)",
+   "observed": "(5.5, 2.0, 1.5); (-5.5, 2.0, -1.5); (inf, 2.0, NaN); (5.5, inf, 5.5); (NaN, 1.0, NaN)"
+  },
+  {
+   "construct": "writer-float-round",
+   "sql": "SELECT x, ROUND(x), (CASE WHEN ((x = CAST('NaN' AS FLOAT)) OR ((x = CAST('inf' AS FLOAT)) OR (x = CAST('-inf' AS FLOAT)))) THEN x ELSE (CASE WHEN (((ROUND((x * CAST('100.0' AS FLOAT))) / CAST('100.0' AS FLOAT)) = CAST('NaN' AS FLOAT)) OR (((ROUND((x * CAST('100.0' AS FLOAT))) / CAST('100.0' AS FLOAT)) = CAST('inf' AS FLOAT)) OR ((ROUND((x * CAST('100.0' AS FLOAT))) / CAST('100.0' AS FLOAT)) = CAST('-inf' AS FLOAT)))) THEN x ELSE (ROUND((x * CAST('100.0' AS FLOAT))) / CAST('100.0' AS FLOAT)) END) END), (CASE WHEN ((x = CAST('NaN' AS FLOAT)) OR ((x = CAST('inf' AS FLOAT)) OR (x = CAST('-inf' AS FLOAT)))) THEN x ELSE (CASE WHEN (((ROUND((x / CAST('10.0' AS FLOAT))) * CAST('10.0' AS FLOAT)) = CAST('NaN' AS FLOAT)) OR (((ROUND((x / CAST('10.0' AS FLOAT))) * CAST('10.0' AS FLOAT)) = CAST('inf' AS FLOAT)) OR ((ROUND((x / CAST('10.0' AS FLOAT))) * CAST('10.0' AS FLOAT)) = CAST('-inf' AS FLOAT)))) THEN CAST('0.0' AS FLOAT) ELSE (ROUND((x / CAST('10.0' AS FLOAT))) * CAST('10.0' AS FLOAT)) END) END) FROM (VALUES (CAST('2.5' AS FLOAT)), (CAST('-2.5' AS FLOAT)), (CAST('0.5' AS FLOAT)), (CAST('2.675' AS FLOAT)), (CAST('1e+300' AS FLOAT)), (CAST('inf' AS FLOAT)), (CAST('NaN' AS FLOAT))) AS s(x)",
+   "observed": "(2.5, 3.0, 2.5, 0.0); (-2.5, -3.0, -2.5, 0.0); (0.5, 1.0, 0.5, 0.0); (2.675, 3.0, 2.68, 0.0); (1e+300, 1e+300, 1e+300, 1e+300); (inf, inf, inf, inf); (NaN, NaN, NaN, NaN)"
+  },
+  {
+   "construct": "writer-int-avg",
+   "sql": "SELECT CAST((SUM(x)  - MOD(SUM(x) , COUNT(x) )) / COUNT(x)  AS NUMBER(38,0)) FROM (VALUES (-7), (0)) AS s(x) UNION ALL SELECT CAST((SUM(x)  - MOD(SUM(x) , COUNT(x) )) / COUNT(x)  AS NUMBER(38,0)) FROM (VALUES (7), (0)) AS s(x) UNION ALL SELECT CAST((SUM(x)  - MOD(SUM(x) , COUNT(x) )) / COUNT(x)  AS NUMBER(38,0)) FROM (VALUES (9223372036854775807), (9223372036854775807), (9223372036854775807)) AS s(x)",
+   "observed": "(-3); (3); (9223372036854775807)"
+  },
+  {
+   "construct": "writer-int-sum-overflow",
+   "sql": "SELECT CAST(IFF(SUM(x) BETWEEN -9223372036854775808 AND 9223372036854775807, SUM(x), CAST('sverify: integer overflow: ' || TO_VARCHAR(SUM(x)) AS NUMBER(38,0))) AS NUMBER(38,0)) FROM (VALUES (9223372036854775807), (1)) AS s(x)",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: 9223372036854775808' is not recognized"
+  },
+  {
+   "construct": "writer-date-part",
+   "sql": "SELECT YEAR(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), MONTH(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DAY(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), HOUR(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), MINUTE(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), SECOND(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), (SECOND(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))) * 1000 + FLOOR(EXTRACT(NANOSECOND FROM CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))) / 1000000)), (SECOND(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))) * 1000000 + FLOOR(EXTRACT(NANOSECOND FROM CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))) / 1000)), MOD(DAYOFWEEKISO(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), 7), WEEKISO(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DAYOFYEAR(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), QUARTER(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6)))",
+   "observed": "(2024, 1, 5, 10, 0, 0, 123, 123456, 5, 1, 5, 1)"
+  },
+  {
+   "construct": "writer-date-trunc",
+   "sql": "SELECT DATEADD(DAY, 1 - DAYOFWEEKISO(CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DATE_TRUNC('DAY', CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6)))), DATE_TRUNC('MONTH', CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DATE_TRUNC('YEAR', CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DATE_TRUNC('DAY', CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DATE_TRUNC('HOUR', CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DATE_TRUNC('SECOND', CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6)))",
+   "observed": "(2024-01-01T00:00:00, 2024-01-01T00:00:00, 2024-01-01T00:00:00, 2024-01-05T00:00:00, 2024-01-05T10:00:00, 2024-01-05T10:00:00)"
+  },
+  {
+   "construct": "writer-time-micros",
+   "sql": "SELECT DATE_PART(EPOCH_MICROSECOND, CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), TO_TIMESTAMP_NTZ(DATE_PART(EPOCH_MICROSECOND, CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), 6), DATEDIFF(MICROSECOND, CAST('1969-12-31 23:59:59.999999' AS TIMESTAMP_NTZ(6)), CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6))), DATEADD(MICROSECOND, -1, CAST('2024-01-05 10:00:00.123456' AS TIMESTAMP_NTZ(6)))",
+   "observed": "(1704448800123456, 2024-01-05T10:00:00.123456, 1704448800123457, 2024-01-05T10:00:00.123455)"
+  },
+  {
+   "construct": "writer-like-pattern",
+   "sql": "SELECT p, (s LIKE IFF(REGEXP_LIKE(p, '(.*[^\\\\\\\\])?(\\\\\\\\\\\\\\\\)*\\\\\\\\', 's'), p || '\\\\', p) ESCAPE '\\\\') FROM (VALUES ('a\\\\\\\\', 'a\\\\\\\\'), ('a_c', 'a\\\\\\\\_c'), ('abc', 'a\\\\\\\\_c'), ('a\\\\\\\\', 'a\\\\\\\\\\\\\\\\')) AS s(s, p)",
+   "observed": "(a\\\\, False); (a\\\\_c, False); (a\\\\_c, False); (a\\\\\\\\, True)"
+  },
+  {
+   "construct": "writer-substring",
+   "sql": "SELECT SUBSTR('héllo', 2, 2), SUBSTR('héllo', 4)",
+   "observed": "(él, lo)"
+  },
+  {
+   "construct": "writer-str-lit",
+   "sql": "SELECT length('a\\\\b'), 'a\\\\b', length('it''s'), 'it''s', length('a\\nb'), 'a\\nb', length('\\u0001'), '\\u0001', length('é'), 'é'",
+   "observed": "(3, a\\b, 4, it's, 3, a\nb, 1, \u0001, 1, é)"
+  },
+  {
+   "construct": "writer-substring-int32",
+   "sql": "SELECT SUBSTR('hello', LEAST(x, IFF(x >= 4294967296, CAST('sverify: substring offset outside of supported range: ' || TO_VARCHAR('hello') AS NUMBER(38,0)), 2147483647)), 1), SUBSTR('hello', LEAST(y, IFF(y >= 4294967296, CAST('sverify: substring offset outside of supported range: ' || TO_VARCHAR('hello') AS NUMBER(38,0)), 2147483647)), 1), SUBSTR('hello', 2, LEAST(z, 2147483647)), SUBSTR('hello', 2, 2147483647), SUBSTR('hello', 2147483647, 1), SUBSTR('hello', 2) FROM (VALUES (4294967295, 2147483648)) AS s(x, y), (SELECT 3000000000 AS z)",
+   "note": "Starts and lengths from 2^31 on, inside the reference's range: '' for a start past the end, the rest for a long length.",
+   "observed": "(, , ello, ello, , ello)"
+  },
+  {
+   "construct": "writer-substring-raise",
+   "sql": "SELECT SUBSTR('hello', LEAST(x, IFF(x >= 4294967296, CAST('sverify: substring offset outside of supported range: ' || TO_VARCHAR('hello') AS NUMBER(38,0)), 2147483647)), 1) FROM (VALUES (4294967298)) AS s(x)",
+   "note": "A start of 2^32 + 2 is outside the reference's range: it raises.",
+   "observed": "error 100038 (22018): Numeric value 'sverify: substring offset outside of supported range: hello' is not recognized"
+  },
+  {
+   "construct": "writer-raise-str",
+   "sql": "SELECT TO_VARCHAR(CAST('sverify: UPPER of non-ASCII text differs between engines: ' || TO_VARCHAR('é') AS NUMBER(38,0)))",
+   "observed": "error 100038 (22018): Numeric value 'sverify: UPPER of non-ASCII text differs between engines: é' is not recognized"
+  },
+  {
+   "construct": "writer-int-fold",
+   "sql": "SELECT 2, (-8), IFF((9223372036854775807 * 2) BETWEEN -9223372036854775808 AND 9223372036854775807, (9223372036854775807 * 2), CAST('sverify: integer overflow: ' || TO_VARCHAR((9223372036854775807 * 2)) AS NUMBER(38,0))), IFF((- (-9223372036854775808)) BETWEEN -9223372036854775808 AND 9223372036854775807, (- (-9223372036854775808)), CAST('sverify: integer overflow: ' || TO_VARCHAR((- (-9223372036854775808))) AS NUMBER(38,0)))",
+   "note": "Literal arithmetic folds to a literal; past 64 bits it keeps the check, which raises.",
+   "observed": "error 100038 (22018): Numeric value 'sverify: integer overflow: 18446744073709551614' is not recognized"
+  },
+  {
+   "construct": "writer-int-fold-values",
+   "sql": "SELECT 2, (-8), (-4294967296), 7",
+   "observed": "(2, -8, -4294967296, 7)"
+  },
+  {
+   "construct": "writer-is-ascii",
+   "sql": "SELECT (OCTET_LENGTH(TO_BINARY('abc', 'UTF-8')) = LENGTH('abc')), (OCTET_LENGTH(TO_BINARY('é', 'UTF-8')) = LENGTH('é')), OCTET_LENGTH(TO_BINARY('😀', 'UTF-8'))",
+   "observed": "(True, False, 4)"
+  },
+  {
+   "construct": "writer-greatest",
+   "sql": "SELECT GREATEST_IGNORE_NULLS(1, NULL), LEAST_IGNORE_NULLS(NULL, 2), GREATEST_IGNORE_NULLS(CAST('NaN' AS FLOAT), CAST('1.0' AS FLOAT))",
+   "observed": "(1, 2, NaN)"
+  },
+  {
+   "construct": "writer-timestamp-lit",
+   "sql": "SELECT CAST('1969-12-31 23:59:59.999999' AS TIMESTAMP_NTZ(6)), CAST('9999-12-31 23:59:59.999999' AS TIMESTAMP_NTZ(6)), CAST('0001-01-01' AS DATE)",
+   "observed": "(1969-12-31T23:59:59.999999, 9999-12-31T23:59:59.999999, 0001-01-01)"
+  },
+  {
+   "construct": "writer-add-months",
+   "sql": "SELECT DATEADD(MONTH, 1, CAST('2024-01-31' AS DATE)), DATEADD(MONTH, 1, CAST('2024-01-31 11:00:00.000000' AS TIMESTAMP_NTZ(6)))",
+   "note": "2024-01-31 plus a month.",
+   "observed": "(2024-02-29, 2024-02-29T11:00:00)"
+  },
+  {
+   "construct": "writer-is-nan",
+   "sql": "SELECT (CAST('NaN' AS FLOAT) = CAST('NaN' AS FLOAT)), (CAST('1.0' AS FLOAT) = CAST('NaN' AS FLOAT)), (CAST('0.0' AS FLOAT) * -1 = CAST('0.0' AS FLOAT))",
+   "observed": "(True, False, True)"
+  }
+ ]
+}

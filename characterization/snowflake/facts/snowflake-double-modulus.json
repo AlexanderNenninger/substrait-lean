@@ -1,0 +1,86 @@
+{
+  "id": "snowflake-double-modulus",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`MOD` of doubles: truncated, but NaN for an infinite divisor",
+  "verdict": "`MOD(x, inf)` is NaN, C's fmod gives x; zero raises; sverify writes the cases",
+  "area": "doubles",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "nan_creation",
+    "zero_sign"
+  ],
+  "rows": [
+    {
+      "group": "fp.mod",
+      "option": "division_type",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "on_division_by_zero",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "nan_creation",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "MOD",
+    "%"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`MOD(5.5, 2)` is 1.5 and `MOD(-5.5, 2)` -1.5: the dividend's sign, as C's `fmod`. A zero divisor raises. `MOD(inf, 2)` and `MOD(NaN, 2)` are NaN, but `MOD(5.5, inf)` is NaN too, where `fmod` gives 5.5.",
+  "reference": "`modulus` of doubles is `fmod`. sverify's SQL (`Dialect.float_mod`) writes the edge cases out, so only finite operands reach `MOD`; `writer-float-mod` gives 5.5 for `(5.5, inf)`.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a, b, mod(a, b), a % b FROM (VALUES (5.5::FLOAT, 2::FLOAT), (-5.5::FLOAT, 2::FLOAT), (5.5::FLOAT, -2::FLOAT), ('inf'::FLOAT, 2::FLOAT), (5.5::FLOAT, 'inf'::FLOAT), ('NaN'::FLOAT, 2::FLOAT)) AS s(a, b)",
+          "observed": "(5.5, 2.0, 1.5, 1.5); (-5.5, 2.0, -1.5, -1.5); (5.5, -2.0, 1.5, 1.5); (inf, 2.0, NaN, NaN); (5.5, inf, NaN, NaN); (NaN, 2.0, NaN, NaN)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-mod"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-mod-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-float-mod"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

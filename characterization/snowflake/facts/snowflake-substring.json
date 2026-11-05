@@ -1,0 +1,61 @@
+{
+  "id": "snowflake-substring",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`SUBSTR` counts a negative start from the end",
+  "verdict": "start 0 reads as 1; negative counts from the end; sverify passes starts ≥ 1",
+  "area": "strings",
+  "options": [
+    "negative_start",
+    "string_positions"
+  ],
+  "rows": [
+    {
+      "group": "str.sub",
+      "option": "negative_start",
+      "types": [
+        "string"
+      ]
+    },
+    {
+      "group": "str.sub",
+      "option": "string_positions",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "SUBSTR"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`SUBSTR('hello', 0, 2)` is `he`, as a start of 1. `SUBSTR('hello', -2)` is `lo`. A negative length is `''`, a start past the end `''`, and `SUBSTR('hello', -9, 3)` `''`. Positions count code points (`SUBSTR('héllo', 2, 2)` is `él`).",
+  "reference": "`substring` with `negative_start: WRAP_FROM_END`, 1-based characters. sverify's SQL computes a wrapped start itself and passes only starts of at least 1 (`Lowering.substring`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT substr('hello', 0, 2), substr('hello', 1, 2), substr('hello', -2), substr('hello', -2, 1), substr('hello', 2, -1), substr('hello', 2, 0), substr('hello', 9), substr('hello', -9, 3), substr('héllo', 2, 2), substr('hello', 4294967297, 1)",
+          "observed": "(he, he, lo, l, , , , , él, h)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-substr"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-substring"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "snowflake-exec-parallel",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Double sums and ties vary with the parallel scan",
+  "verdict": "double `SUM` and tie order vary run to run; integer sums do not",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "SUM",
+    "ORDER BY",
+    "ROW_NUMBER"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "Over LINEITEM, a double `SUM` gave two different values in four runs, and the first rows of a sort over ties differed between two runs; the exact `NUMBER` sum never varies. Two identical `ROW_NUMBER` windows in one query numbered the rows alike. Small `VALUES` inputs run on one thread and do not show it.",
+  "reference": "Bags; open orders and sums of doubles within their bounds. sverify's SQL refuses double sums and the model's list order.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem UNION ALL SELECT sum(l_extendedprice::FLOAT * l_discount::FLOAT) AS s FROM snowflake_sample_data.tpch_sf1.lineitem",
+          "observed": "(11475087016.1999); (11475087016.1999); (11475087016.199898); (11475087016.1999)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-sum-double-repeat"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-sum-double-exact"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-tie-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-row-number-ties"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

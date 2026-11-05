@@ -1,0 +1,66 @@
+{
+  "id": "snowflake-exec-settings",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Session parameters that change results",
+  "verdict": "`TIMEZONE`, `TIMESTAMP_TYPE_MAPPING`, `WEEK_START`, `WEEK_OF_YEAR_POLICY`, `DEFAULT_NULL_ORDERING`, output formats",
+  "area": "execution",
+  "options": [
+    "settings"
+  ],
+  "constructs": [
+    "ALTER SESSION"
+  ],
+  "settings": {
+    "TIMEZONE": [
+      "UTC",
+      "America/New_York"
+    ],
+    "DEFAULT_NULL_ORDERING": [
+      "LAST",
+      "FIRST"
+    ],
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Of the 163 session parameters, these change what a query returns: `TIMEZONE` (`TIMESTAMP_LTZ`), `TIMESTAMP_TYPE_MAPPING` (what `TIMESTAMP` means), `WEEK_START` and `WEEK_OF_YEAR_POLICY` (`DAYOFWEEK`, `WEEK`, `DATE_TRUNC('WEEK')`), `DEFAULT_NULL_ORDERING`, `TIMESTAMP_DAY_IS_ALWAYS_24H`, the `*_OUTPUT_FORMAT` and `*_INPUT_FORMAT` parameters (text casts), `TWO_DIGIT_CENTURY_START`, `QUOTED_IDENTIFIERS_IGNORE_CASE`, and `USE_CACHED_RESULT`, which returns a stored result for the same text (a double sum then does not vary). Their values at the probes are in the header of probes.json.",
+    "Collations come from `COLLATE` or `DEFAULT_DDL_COLLATION` on a table."
+  ],
+  "reference": "No setting changes the reference. sverify's SQL pins what it depends on in the text: `TIMESTAMP_NTZ(6)`, ISO week functions, explicit `NULLS FIRST`/`LAST`, quoted identifiers, and no text casts but of integers.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "ALTER SESSION SET DEFAULT_NULL_ORDERING = 'FIRST'; SELECT x FROM (VALUES (1), (NULL), (2)) AS s(x) ORDER BY x",
+          "observed": "(NULL); (1); (2)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "order-null-setting"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-ltz-session"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "week-parts"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-type-names"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "identifiers-case"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

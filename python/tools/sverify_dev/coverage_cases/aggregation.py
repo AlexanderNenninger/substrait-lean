@@ -156,6 +156,9 @@ REFUSED: dict[str, dict[str, str]] = {
     "collect": NO_LISTS,
     "collect ordered": NO_LISTS,
     "unnest": NO_LISTS,
+    # Snowflake's VAR_SAMP and STDDEV of doubles cancel catastrophically
+    # (upstream/bugs/SF-4.json).
+    "std": {"snowflake": "cancel catastrophically"},
 }
 
 UNORDERED_LISTS = {"collect"}

@@ -295,8 +295,9 @@ FUNCTIONS: tuple[Fn, ...] = (
     _str("strpos", 28, "str.match", 2, "int", expr=True,
          sql={"": "POSITION({1} IN {0})", "duckdb": "strpos({0}, {1})",
               "spark": "locate({1}, {0})",
-              "snowflake": "(CASE WHEN {0} IS NULL OR {1} IS NULL THEN NULL "
-                           "WHEN {1} = '' THEN 1 ELSE POSITION({1} IN {0}) END)"}),
+              # Snowflake's POSITION is 1 for an empty needle and NULL with a NULL
+              # (characterization/snowflake/facts/snowflake-strpos.json).
+              }),
     _str("starts_with", 29, "str.match", 2, "bool", expr=True, lift=("StartsWith",),
          ibis=("StartsWith",),
          sql={"": "starts_with({0}, {1})", "spark": "startswith({0}, {1})",

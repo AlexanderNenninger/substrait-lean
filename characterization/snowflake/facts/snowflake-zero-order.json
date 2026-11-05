@@ -1,0 +1,83 @@
+{
+  "id": "snowflake-zero-order",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "-0.0 equals 0.0; a group shows its first zero",
+  "verdict": "equal, one group, the first value represents it",
+  "area": "doubles",
+  "options": [
+    "zero_sign",
+    "nan_zero_grouping"
+  ],
+  "rows": [
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "=",
+    "<",
+    "GROUP BY",
+    "ORDER BY",
+    "JOIN"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`-0.0 = 0.0` is TRUE and `-0.0 < 0.0` FALSE. They form one group, shown as whichever came first (`-0` then `0` groups as `-0`; `0` then `-0` as `0`); `COUNT(DISTINCT …)` counts one; a join matches them; in a sort they tie.",
+  "reference": "`zero_sign: ONE_ZERO`: equal, one group. sverify's SQL canonicalises zeros, so the representative does not matter.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT to_varchar(a), to_varchar(-b), to_varchar(b * -1), to_varchar(a + b), a = b, a < b, to_varchar(1 / NULLIF(1, 0) * a), sign(a), atan2(a, -1) FROM (VALUES ('-0.0'::FLOAT, 0::FLOAT)) AS s(a, b)",
+          "observed": "(-0, -0, -0, 0, True, False, -0, 0.0, -3.141592653589793)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-zero-sign"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-zero-group"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-zero-group-first"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-count-distinct-nan-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "join-nan-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "array-agg-order-zero"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

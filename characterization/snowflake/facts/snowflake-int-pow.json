@@ -1,0 +1,63 @@
+{
+  "id": "snowflake-int-pow",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`POWER` is a double",
+  "verdict": "`POWER` of integers is `FLOAT`; `0^-1` is inf; sverify multiplies",
+  "area": "integers",
+  "options": [
+    "overflow",
+    "on_domain_error"
+  ],
+  "rows": [
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "POWER"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`POWER(2, 62)` is `4.611686018427388e+18`, a `FLOAT`: there is no integer power, so a result past 2^53 rounds and one past 64 bits never raises. `POWER(2, -1)` is 0.5 and `POWER(0, -1)` is `inf`.",
+  "reference": "`power` of integers keeps the type and raises on overflow and on a negative exponent. sverify's SQL never writes `POWER` for integers: it multiplies with checked products (`Dialect.int_pow`), raising outside 64 bits and on a negative exponent.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT power(a, b), SYSTEM$TYPEOF(power(a, b)) FROM (VALUES (2, 62), (2, 63), (2, 64), (3, 40), (2, -1), (0, -1)) AS s(a, b)",
+          "observed": "(4.611686018427388e+18, FLOAT[DOUBLE]); (9.223372036854776e+18, FLOAT[DOUBLE]); (1.8446744073709552e+19, FLOAT[DOUBLE]); (1.2157665459056929e+19, FLOAT[DOUBLE]); (0.5, FLOAT[DOUBLE]); (inf, FLOAT[DOUBLE])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-power"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

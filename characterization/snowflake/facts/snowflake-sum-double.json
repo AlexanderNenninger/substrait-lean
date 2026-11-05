@@ -1,0 +1,92 @@
+{
+  "id": "snowflake-sum-double",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`SUM` of doubles changes from run to run",
+  "verdict": "not left to right; order and rounding vary across runs",
+  "area": "aggregates",
+  "options": [
+    "sum_order",
+    "rounding",
+    "empty_group_aggregates",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "sum_order",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "empty_group_aggregates",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "SUM"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Over LINEITEM's 6M rows, one `SUM` of doubles gave `11475087016.1999` three times and `11475087016.199898` once, in the same query: the order varies with the parallel scan. Over small inputs, ten 0.1 sum to exactly 1 (left to right gives `0.9999999999999999`), yet `1e20 + 1 - 1e20` is 0 in either order: not left to right, not exact.",
+    "Over no rows it is NULL; `+inf` and `-inf` sum to NaN; a sum past the range is inf."
+  ],
+  "reference": "`sum` of doubles in any order, within #85's bound. The order is not given, so sverify's SQL refuses double `SUM` and `AVG` on Snowflake (`float_sum`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT sum(x), to_varchar(sum(x)) FROM (VALUES (1e20::FLOAT), (1::FLOAT), (-1e20::FLOAT)) AS s(x) UNION ALL SELECT sum(x), to_varchar(sum(x)) FROM (VALUES (1::FLOAT), (1e20::FLOAT), (-1e20::FLOAT)) AS s(x)",
+          "observed": "(0.0, 0); (0.0, 0)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-sum-double-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-sum-double-precision"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-sum-double-repeat"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-sum-double-exact"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-empty"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "agg-sum-double-overflow"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

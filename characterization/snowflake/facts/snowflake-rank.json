@@ -1,0 +1,86 @@
+{
+  "id": "snowflake-rank",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Ranks follow SQL; `NTILE` gives the remainder to the first groups",
+  "verdict": "native; NULLs rank last ascending",
+  "area": "windows",
+  "options": [
+    "ntile_spread",
+    "tie_order",
+    "default_window_frame"
+  ],
+  "rows": [
+    {
+      "group": "win.rank",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    },
+    {
+      "group": "win.ntile",
+      "option": "ntile_spread",
+      "types": [
+        "any"
+      ]
+    },
+    {
+      "group": "win.ntile",
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "RANK",
+    "DENSE_RANK",
+    "PERCENT_RANK",
+    "CUME_DIST",
+    "ROW_NUMBER",
+    "NTILE"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` give SQL's values over ties; NULL keys rank last ascending and first descending. `NTILE(3)` of 7 rows is 1, 1, 1, 2, 2, 3, 3. `ROW_NUMBER` numbers ties in an order that varies over a table, though two equal windows of one query agree (`sample-row-number-ties`).",
+  "reference": "SQL's ranks; `ntile_spread` to the first groups; `tie_order` any: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT p, x, rank() OVER (PARTITION BY p ORDER BY x), dense_rank() OVER (PARTITION BY p ORDER BY x), percent_rank() OVER (PARTITION BY p ORDER BY x), cume_dist() OVER (PARTITION BY p ORDER BY x), row_number() OVER (PARTITION BY p ORDER BY x) FROM (VALUES (1, 1), (1, 1), (1, 2), (1, NULL), (2, 5)) AS s(p, x) ORDER BY p, x NULLS LAST",
+          "observed": "(1, 1, 1, 1, 0.0, 0.5, 1); (1, 1, 1, 1, 0.0, 0.5, 2); (1, 2, 3, 2, 0.6666666666666666, 0.75, 3); (1, NULL, 4, 3, 1.0, 1.0, 4); (2, 5, 1, 1, 0.0, 1.0, 1)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-ranks"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-ntile"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-null-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-tie-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-row-number-ties"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

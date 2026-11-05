@@ -1,0 +1,61 @@
+{
+  "id": "snowflake-concat",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`||` and `CONCAT` are NULL with a NULL; so is `CONCAT_WS`",
+  "verdict": "`ACCEPT_NULLS`; `CONCAT_WS` does not skip NULLs",
+  "area": "nulls",
+  "options": [
+    "null_handling"
+  ],
+  "rows": [
+    {
+      "group": "str.concat",
+      "option": "null_handling",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "||",
+    "CONCAT",
+    "CONCAT_WS",
+    "GREATEST",
+    "LEAST"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`CONCAT('a', NULL)` and `'a' || NULL` are NULL, and so is `CONCAT_WS('-', 'a', NULL, 'b')` (Spark's skips it). `GREATEST(1, NULL)` is NULL; `GREATEST_IGNORE_NULLS` skips. `||` takes numbers, booleans and dates as text.",
+  "reference": "`str_concat` with `null_handling: ACCEPT_NULLS`: native. sverify's SQL writes `GREATEST_IGNORE_NULLS` where the reference skips NULLs.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT concat('a', NULL), 'a' || NULL, concat_ws('-', 'a', NULL, 'b'), greatest(1, NULL), least(1, NULL), greatest_ignore_nulls(1, NULL), least_ignore_nulls(NULL, 2), abs(NULL), length(NULL), array_construct(1, NULL)",
+          "observed": "(NULL, NULL, NULL, NULL, NULL, 1, 2, NULL, NULL, [\n  1,\n  undefined\n])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "null-functions"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-concat-types"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-greatest"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

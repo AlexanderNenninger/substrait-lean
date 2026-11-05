@@ -1,0 +1,76 @@
+{
+  "id": "snowflake-int-shift",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Bit shifts work on 128 bits",
+  "verdict": "`BITSHIFTLEFT` keeps bits past 64; a negative count raises; refused (see #271)",
+  "area": "integers",
+  "options": [
+    "shift_range"
+  ],
+  "rows": [
+    {
+      "group": "int.shift",
+      "option": "shift_range",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "BITSHIFTLEFT",
+    "BITSHIFTRIGHT",
+    "BITAND",
+    "BITOR",
+    "BITXOR",
+    "BITNOT"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`BITSHIFTLEFT(-8, 63)` is `-73786976294838206464` and `BITSHIFTLEFT(2^63 - 1, 63)` a 39-digit number: shifts act on 128-bit values, so bits shifted past 64 stay. From 127 on the result is 0 (or -1 shifting right a negative). A negative count raises `shift parameter must be greater or equal to zero`.",
+    "`BITAND`, `BITOR`, `BITXOR`, `BITNOT` are two's complement on the same 128 bits (`BITNOT(2^64)` is `-2^64 - 1`); their type is the input's (`NUMBER(19,0)`)."
+  ],
+  "reference": "`shift_left`, `shift_right` on 64 bits: bits shifted out are lost, a count outside `[0, 64)` raises (ST-1). sverify's function table refuses Snowflake's shifts (`_functions.py`, \"not 64-bit\").",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT n, bitshiftleft(a, n), bitshiftright(a, n), SYSTEM$TYPEOF(bitshiftleft(a, n)) FROM (VALUES (-8, 1), (-8, 7), (-8, 63), (-8, 64), (-8, 65), (-8, 127), (-8, 128), (-8, 129)) AS s(a, n)",
+          "observed": "(1, -16, -4, NUMBER(38,0)[SB16]); (7, -1024, -1, NUMBER(38,0)[SB16]); (63, -73786976294838206464, -1, NUMBER(38,0)[SB16]); (64, -147573952589676412928, -1, NUMBER(38,0)[SB16]); (65, -295147905179352825856, -1, NUMBER(38,0)[SB16]); (127, 0, -1, NUMBER(38,0)[SB16]); (128, 0, -1, NUMBER(38,0)[SB16]); (129, 0, -1, NUMBER(38,0)[SB16])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-shifts"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-shift-bigint"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-shift-negative"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-bitwise"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-bitwise-wide"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

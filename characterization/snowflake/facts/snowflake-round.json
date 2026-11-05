@@ -1,0 +1,76 @@
+{
+  "id": "snowflake-round",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`ROUND` of a double rounds half away from zero, exactly",
+  "verdict": "half away from zero; exact near a half; `ROUND(x, d)` is `ROUND(x·10^d) / 10^d`",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {
+      "group": "fp.round",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "ROUND",
+    "FLOOR",
+    "CEIL",
+    "TRUNC"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`ROUND(2.5)` is 3, `ROUND(-2.5)` -3, `ROUND(0.5)` 1. Rounding is on the exact binary value: `ROUND(0.49999999999999994)` is 0, `ROUND(267.49999999999994)` 267.",
+    "`ROUND(x, 2)` behaves as `ROUND(x * 100) / 100`: `2.675` gives 2.68 (`2.675 * 100` is exactly 267.5 in IEEE), `1.005` gives 1.0, `0.285` gives 0.28. `FLOOR`, `CEIL`, `TRUNC` and `ROUND` return a `FLOAT`; NaN and ±inf stay. A double's `ROUND` takes no rounding mode (`HALF_TO_EVEN` is for decimals only)."
+  ],
+  "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO`, and `FloatCode.roundTo` for digits: native. sverify's SQL writes `ROUND(x * m) / m` itself (`writer-float-round`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT x, round(x), round(x, 2), round(x, -1), floor(x), ceil(x), trunc(x), SYSTEM$TYPEOF(round(x)), SYSTEM$TYPEOF(floor(x)) FROM (VALUES (2.5::FLOAT), (-2.5::FLOAT), (0.5::FLOAT), (1.5::FLOAT), (2.675::FLOAT), (1.005::FLOAT), (-0.4::FLOAT)) AS s(x)",
+          "observed": "(2.5, 3.0, 2.5, 0.0, 2.0, 3.0, 2.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (-2.5, -3.0, -2.5, 0.0, -3.0, -2.0, -2.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (0.5, 1.0, 0.5, 0.0, 0.0, 1.0, 0.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (1.5, 2.0, 1.5, 0.0, 1.0, 2.0, 1.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (2.675, 3.0, 2.68, 0.0, 2.0, 3.0, 2.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (1.005, 1.0, 1.0, 0.0, 1.0, 2.0, 1.0, FLOAT[DOUBLE], FLOAT[DOUBLE]); (-0.4, 0.0, -0.4, 0.0, -1.0, 0.0, 0.0, FLOAT[DOUBLE], FLOAT[DOUBLE])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-round"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-round-near-half"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-round-scaled"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-round-nonfinite"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-round-half-even"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-float-round"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -43,6 +43,7 @@ PREFIXES = {
     "deltalake": "DL",
     "polars": "PL",
     "spark": "SP",
+    "snowflake": "SF",
     "ibis": "IB",
     "substrait": "ST",
 }

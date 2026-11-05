@@ -1,0 +1,90 @@
+{
+  "id": "snowflake-timestamp-precision",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`TIMESTAMP` is nanoseconds; sverify writes `TIMESTAMP_NTZ(6)`",
+  "verdict": "`TIMESTAMP_NTZ(9)` by default; casts to 6 digits truncate; `DATEADD` widens to 9",
+  "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "TIMESTAMP_NTZ",
+    "DATEADD",
+    "DATEDIFF",
+    "DATE_PART"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`TIMESTAMP` maps to `TIMESTAMP_NTZ(9)` (`TIMESTAMP_TYPE_MAPPING`). A cast to `TIMESTAMP_NTZ(6)` truncates: `.9999999` becomes `.999999`. `DATEADD(MICROSECOND, 1, x)` of a `TIMESTAMP_NTZ(6)` is a `TIMESTAMP_NTZ(9)`, exact. `DATEDIFF(MICROSECOND, a, b)` is exact; coarser units count boundaries (`DATEDIFF(SECOND, '…:00.999999', '…:01.000001')` is 1).",
+    "`DATE_PART(EPOCH_MICROSECOND, x)` and `TO_TIMESTAMP_NTZ(n, 6)` convert exactly, before 1970 too. `DATE_PART` has no `MILLISECOND` or `MICROSECOND`; `EXTRACT(NANOSECOND …)` does."
+  ],
+  "reference": "Timestamps are microseconds. sverify's SQL writes `TIMESTAMP_NTZ(6)` literals, adds and subtracts microseconds with `DATEADD` and `DATEDIFF`, and builds milliseconds and microseconds from `SECOND` and `NANOSECOND` (`writer-date-part`, `writer-time-micros`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP), SYSTEM$TYPEOF('2024-01-05 10:00:00'::DATETIME), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_NTZ), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_NTZ(6)), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_LTZ), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIMESTAMP_TZ), SYSTEM$TYPEOF('2024-01-05 10:00:00'::DATE), SYSTEM$TYPEOF('2024-01-05 10:00:00'::TIME)",
+          "observed": "(TIMESTAMP_NTZ(9)[SB16], TIMESTAMP_NTZ(9)[SB16], TIMESTAMP_NTZ(9)[SB16], TIMESTAMP_NTZ(6)[SB8], TIMESTAMP_LTZ(9)[SB16], TIMESTAMP_TZ(9)[SB16], DATE[SB4], TIME(9)[SB8])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-type-names"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-precision"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-dateadd-us"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-datediff-boundaries"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-datediff-us-range"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-epoch-us"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-parts"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-parts-millisecond"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "ts-parts-microsecond"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-date-part"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-time-micros"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-timestamp-lit"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

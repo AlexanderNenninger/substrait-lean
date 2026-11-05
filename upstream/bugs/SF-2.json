@@ -1,0 +1,29 @@
+{
+  "id": "SF-2",
+  "project": "snowflake",
+  "kind": "bug",
+  "version": "10.40.102",
+  "status": "confirmed",
+  "status_note": "Reproduces on Snowflake 10.40.102. `SUBSTR`'s docs take the start and length as integers without a range (https://docs.snowflake.com/en/sql-reference/functions/substr); `POSITION` with a start past 2^31 raises `out of range`, so the two disagree. Not searched in Snowflake's community forum yet.",
+  "summary": "`SUBSTR` reads its start and length as 32-bit integers and wraps larger values silently: a start of 2^32 + 2 is 2, a start of 2^32 - 1 is -1 (counted from the end), and a length of 2^31 or 3·10^9 is negative, so the result is `''`. A `BIGINT` position computed from data can thus pick the wrong characters with no error.",
+  "repro": "SELECT SUBSTR('hello', 4294967298, 1), SUBSTR('hello', 4294967295, 1),\n       SUBSTR('hello', 2, 2147483648), SUBSTR('hello', 2, 4294967297);\n-- e, o, '', e\nSELECT POSITION('l', 'hello', 4294967297);\n-- Numeric value '4294967297' is out of range",
+  "handling": "sverify's SQL (`SnowflakeDialect.substring`) clamps starts and lengths to 2^31 - 1, past the end of any string (at most 128 MiB), raises for a start of 2^32 or more as the reference does, and refuses a literal length of 2^32 or more.",
+  "found_by": "the Snowflake characterization: sverify_dev.probe_snowflake, probes str-substr-wrap, str-substr-int32",
+  "files": [
+    "python/src/sverify/sql/snowflake.py",
+    "python/tests/test_sql_snowflake.py",
+    "characterization/snowflake/probes.json"
+  ],
+  "facts": [
+    "snowflake-substring-range"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "snowflake": "10.40.102 (Snowflake CLI 3.32.1, X-Small warehouse)"
+      },
+      "note": "probes str-substr, str-substr-wrap, str-substr-wrap-negative, str-substr-int32, str-position-wrap; the fix in writer-substring-int32 and writer-substring-raise."
+    }
+  ]
+}

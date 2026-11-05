@@ -1,0 +1,58 @@
+{
+  "id": "snowflake-nan-sign",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "A NaN's sign does not show",
+  "verdict": "one NaN: `-NaN` parses and prints as NaN",
+  "area": "doubles",
+  "options": [
+    "nan_kind",
+    "platform"
+  ],
+  "rows": [
+    {
+      "option": "nan_kind",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "NaN"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`'-NaN'::FLOAT` is NaN; `-x`, `x * -1` of NaN, and `inf - inf`, all print `NaN` and group together. `SIGN(NaN)` is 0.",
+  "reference": "`nan_kind: ONE_NAN`: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT to_varchar(-x), to_varchar(x * -1), to_varchar(y - y), to_varchar(-(y - y)), sign(x), SYSTEM$TYPEOF(sign(x)) FROM (VALUES ('NaN'::FLOAT, 'inf'::FLOAT)) AS s(x, y)",
+          "observed": "(NaN, NaN, NaN, NaN, 0.0, FLOAT[DOUBLE])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-nan-sign"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-special-text"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-nan-group-safe"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

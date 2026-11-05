@@ -1,0 +1,62 @@
+{
+  "id": "snowflake-sort-stability",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Ties come back in no fixed order",
+  "verdict": "small `VALUES` in input order; tables vary run to run",
+  "area": "relations",
+  "options": [
+    "tie_order",
+    "parallel_nondeterminism"
+  ],
+  "rows": [
+    {
+      "option": "tie_order",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "ORDER BY",
+    "LIMIT"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "Over a small `VALUES`, tied rows keep their input order. Over LINEITEM, the first 8 rows of a sort by keys with millions of ties differ between two runs in one query: order keys 54000… once, 6000… the other time.",
+  "reference": "`tie_order`: any order. Tables have no row order, so sverify's SQL refuses to stand for the model's list order (`row_ordinal`); `FETCH` and windows need `deterministic=True`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT k, v FROM (VALUES (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (0, 99)) AS s(k, v) ORDER BY k",
+          "observed": "(0, 99); (1, 0); (1, 1); (1, 2); (1, 3); (1, 4); (1, 5); (1, 6); (1, 7)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "order-ties"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "order-limit-ties"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "sample-tie-order"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "window-tie-order"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "snowflake-implicit-casts",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Text casts to numbers in arithmetic and comparisons",
+  "verdict": "`'3' * '4'` is a `FLOAT`; `'10' < 9` compares numbers",
+  "area": "frontend",
+  "options": [
+    "implicit_casts"
+  ],
+  "constructs": [
+    "+",
+    "*",
+    "<",
+    "="
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`1 + '2'` is 3 and `'3' * '4'` `12.0`, a `FLOAT`. `'10' < 9` casts the string to a number (FALSE); `'10' < '9'` compares text (TRUE); `1 = '1.0'` and `TRUE = 'true'` are TRUE. `NUMBER + FLOAT` is `FLOAT`. A string that does not parse raises.",
+  "reference": "Casts are explicit in the plan. sverify's SQL never mixes text and numbers.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT 1 + '2', SYSTEM$TYPEOF(1 + '2'), 1 + '2.5', '3' * '4', SYSTEM$TYPEOF('3' * '4'), 1 + 1.5::FLOAT, SYSTEM$TYPEOF(1 + 1.5::FLOAT), 1.5 + 1::FLOAT, SYSTEM$TYPEOF(1.5 + 1::FLOAT)",
+          "observed": "(3, NUMBER(19,0)[SB1], 3.5, 12.0, FLOAT[DOUBLE], 2.5, FLOAT[DOUBLE], 2.5, FLOAT[DOUBLE])"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "implicit-casts-arith"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "implicit-casts-compare"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "implicit-casts-bad"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "set-union-types"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

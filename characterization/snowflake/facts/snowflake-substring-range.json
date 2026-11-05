@@ -1,0 +1,78 @@
+{
+  "id": "snowflake-substring-range",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`SUBSTR` wraps positions and lengths at 32 bits",
+  "verdict": "a start of 2^32 + 2 reads as 2, a length of 2^31 as negative (SF-2); sverify clamps and raises",
+  "area": "strings",
+  "options": [
+    "substring_range",
+    "raise_set"
+  ],
+  "rows": [
+    {
+      "group": "str.sub",
+      "option": "substring_range",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "SUBSTR",
+    "POSITION"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "`SUBSTR` reads its start and length as 32-bit integers: `SUBSTR('hello', 4294967298, 1)` is `e` (start 2), `SUBSTR('hello', 4294967295, 1)` `o` (start -1, from the end), `SUBSTR('hello', 2, 2147483648)` and `SUBSTR('hello', 2, 3000000000)` `''` (negative lengths), `SUBSTR('hello', 2, 4294967297)` `e`. Nothing raises, where `POSITION` with a start past 2^31 raises. See [SF-2](../../../upstream/bugs/SF-2.json).",
+    "Strings are at most 128 MiB (exec-size-limits), so no start or length from 2^31 - 1 on can reach past one."
+  ],
+  "reference": "`substring` raises outside `Text.substrInRange` (starts in `[-2^32, 2^32)`, lengths below 2^32) and otherwise takes what exists. sverify's SQL (`SnowflakeDialect.substring`, this PR) clamps starts and lengths to 2^31 - 1, raises for a start from 2^32 on, and refuses a literal length from 2^32 on (`writer-substring-int32`, `writer-substring-raise`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT substr('hello', 0, 2), substr('hello', 1, 2), substr('hello', -2), substr('hello', -2, 1), substr('hello', 2, -1), substr('hello', 2, 0), substr('hello', 9), substr('hello', -9, 3), substr('héllo', 2, 2), substr('hello', 4294967297, 1)",
+          "observed": "(he, he, lo, l, , , , , él, h)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-substr"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-substr-wrap"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-substr-wrap-negative"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-substr-int32"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "str-position-wrap"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-substring-int32"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-substring-raise"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

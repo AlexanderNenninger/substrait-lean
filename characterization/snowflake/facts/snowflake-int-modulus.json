@@ -1,0 +1,102 @@
+{
+  "id": "snowflake-int-modulus",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`MOD` and `%` truncate",
+  "verdict": "`TRUNCATE`; `MIN % -1` is 0; a zero divisor raises",
+  "area": "integers",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "min_mod_neg_one",
+    "overflow"
+  ],
+  "rows": [
+    {
+      "group": "int.mod",
+      "option": "division_type",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.mod",
+      "option": "on_division_by_zero",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.mod",
+      "option": "min_mod_neg_one",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.mod",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "MOD",
+    "%"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": "`MOD(a, b)` and `a % b` take the dividend's sign (`MOD(-7, 2)` is -1, `MOD(7, -2)` is 1). `MIN % -1` is 0. A zero divisor raises `Division by zero`.",
+  "reference": "`modulus` with `division_type: TRUNCATE`, `on_division_by_zero: ERROR`, `MIN % -1` is 0: native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a, b, mod(a, b), a % b, trunc(a / b), floor(a / b) FROM (VALUES (-7, 2), (7, -2), (-7, -2), (7, 2)) AS s(a, b)",
+          "observed": "(-7, 2, -1, -1, -3, -4); (7, -2, 1, 1, -3, -4); (-7, -2, -1, -1, 3, 3); (7, 2, 1, 1, 3, 3)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-mod-signs"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-mod-min"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "bigint-percent-min"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-mod-zero"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "int-percent-zero"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

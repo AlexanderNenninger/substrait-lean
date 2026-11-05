@@ -1,0 +1,61 @@
+{
+  "id": "snowflake-week-parts",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "`DAYOFWEEK` and `WEEK` follow session parameters; the ISO forms do not",
+  "verdict": "`DAYOFWEEK` Sunday 0 under `WEEK_START` 0; sverify writes the ISO forms",
+  "area": "temporal",
+  "options": [
+    "week_numbering"
+  ],
+  "constructs": [
+    "DAYOFWEEK",
+    "DAYOFWEEKISO",
+    "WEEK",
+    "WEEKISO",
+    "YEAROFWEEKISO",
+    "DATE_TRUNC",
+    "EXTRACT"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Under the defaults (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0), `DAYOFWEEK` and `EXTRACT(dow …)` count from Sunday = 0, `WEEK` is ISO (`2021-01-01` is week 53 of 2020), and `DATE_TRUNC('WEEK')` goes to Monday. Both parameters change these. `DAYOFWEEKISO`, `WEEKISO` and `YEAROFWEEKISO` are ISO whatever they say.",
+    "Dates are proleptic Gregorian: `1582-10-10` exists. Parts before 1970 and in year 1 are right."
+  ],
+  "reference": "`week_numbering`: ISO weeks, floor before 1970. sverify's SQL writes `DAYOFWEEKISO`, `WEEKISO`, and truncates to Monday itself (`writer-date-part`, `writer-date-trunc`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT d, dayofweek(d), dayofweekiso(d), week(d), weekiso(d), yearofweek(d), yearofweekiso(d), date_trunc('WEEK', d), dayofyear(d), extract(dow FROM d), extract(dayofweek_iso FROM d) FROM (VALUES ('2021-01-01'::DATE), ('2021-01-03'::DATE), ('2021-01-04'::DATE), ('2024-12-30'::DATE), ('2026-11-05'::DATE), ('1969-12-29'::DATE)) AS s(d) ORDER BY d",
+          "observed": "(1969-12-29, 1, 1, 1, 1, 1970, 1970, 1969-12-29, 363, 1, 1); (2021-01-01, 5, 5, 53, 53, 2020, 2020, 2020-12-28, 1, 5, 5); (2021-01-03, 0, 7, 53, 53, 2020, 2020, 2020-12-28, 3, 0, 7); (2021-01-04, 1, 1, 1, 1, 2021, 2021, 2021-01-04, 4, 1, 1); (2024-12-30, 1, 1, 1, 1, 2025, 2025, 2024-12-30, 365, 1, 1); (2026-11-05, 4, 4, 45, 45, 2026, 2026, 2026-11-02, 309, 4, 4)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "week-parts"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "week-parts-pre-1970"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-date-part"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "writer-date-trunc"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}

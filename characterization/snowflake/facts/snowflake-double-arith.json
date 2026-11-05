@@ -1,0 +1,109 @@
+{
+  "id": "snowflake-double-arith",
+  "engine": "snowflake",
+  "engine_version": "10.40.102",
+  "title": "Double arithmetic is IEEE; NaN and inf are values",
+  "verdict": "IEEE round to nearest; `inf - inf` NaN, overflow inf, never raises",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "nan_creation",
+    "float_overflow"
+  ],
+  "rows": [
+    {
+      "group": "fp.arith",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.arith",
+      "option": "nan_creation",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.arith",
+      "option": "float_overflow",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*"
+  ],
+  "settings": {
+    "TIMEZONE": "UTC",
+    "USE_CACHED_RESULT": false
+  },
+  "description": [
+    "Sums, differences and products of doubles are IEEE's: 18 pairs, 12 of them random, give Python's results bit for bit, folded at compile time or computed (`double-ieee-ops`, `double-fold-*`).",
+    "`inf - inf`, `inf * 0` and `inf / inf` are NaN; `1e308 * 10` is `inf`. Nothing raises."
+  ],
+  "reference": "`rounding: TIE_TO_EVEN` native. `nan_creation` and `float_overflow` raise in the reference: sverify's SQL checks results and raises (the shared lowering's finiteness checks, #257 and #575).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_snowflake through the Snowflake CLI (Snowflake characterization session)",
+      "evidence": [
+        {
+          "sql": "SELECT a, b, a * b, a + b, a - b, a / b FROM (VALUES ('-352.3344703336753'::FLOAT, '-698.3016521509962'::FLOAT), ('301.8689460797075'::FLOAT, '-855.1274266649145'::FLOAT), ('71.76400861337834'::FLOAT, '-268.622166174829'::FLOAT), ('-884.0021504505864'::FLOAT, '14.871466378840523'::FLOAT), ('-925.0086831160303'::FLOAT, '-132.70863267522827'::FLOAT), ('-860.2891528507621'::FLOAT, '-818.5739733122699'::FLOAT), ('-150.96162171497213'::FLOAT, '653.7042493440761'::FLOAT), ('-752.3960777007088'::FLOAT, '-553.522070785971'::FLOAT), ('254.86644481117855'::FLOAT, '895.4178849140112'::FLOAT), ('154.20589723499734'::FLOAT, '-206.63905069843963'::FLOAT), ('952.51021118584'::FLOAT, '-906.8346387644874'::FLOAT), ('716.936918097359'::FLOAT, '-420.7814273366474'::FLOAT), ('2.675'::FLOAT, '100'::FLOAT), ('0.1'::FLOAT, '3'::FLOAT), ('1.1'::FLOAT, '1.1'::FLOAT), ('0.7'::FLOAT, '0.1'::FLOAT), ('1e308'::FLOAT, '10'::FLOAT), ('3'::FLOAT, '0.1'::FLOAT)) AS s(a, b)",
+          "observed": "(-352.3344703336753, -698.3016521509962, 246035.74274375165, -1050.6361224846714, 345.9671818173209, 0.5045591246252541); (301.8689460797075, -855.1274266649145, -258136.4150511901, -553.258480585207, 1156.996372744622, -0.35301048319433237); (71.76400861337834, -268.622166174829, -19277.403447114775, -196.85815756145064, 340.3861747882073, -0.26715594485479555); (-884.0021504505864, 14.871466378840523, -13146.408259248617, -869.1306840717459, -898.873616829427, -59.44283690197261); (-925.0086831160303, -132.70863267522827, 122756.63754904189, -1057.7173157912584, -792.300050440802, 6.9702223922369955); (-860.2891528507621, -818.5739733122699, 704210.310046495, -1678.8631261630321, -41.71517953849218, 1.0509607938909862); (-150.96162171497213, 653.7042493440761, -98684.25360295022, 502.74262762910394, -804.6658710590482, -0.23093259966788704); (-752.3960777007088, -553.522070785971, 416467.8349801387, -1305.91814848668, -198.87400691473783, 1.3592883055816503); (254.86644481117855, 895.4178849140112, 228211.97294837906, 1150.2843297251898, -640.5514401028327, 0.2846340787973583); (154.20589723499734, -206.63905069843963, -31864.960216740987, -52.433153463442295, 360.84494793343697, -0.7462572863830997); (952.51021118584, -906.8346387644874, -863769.2532801968, 45.675572421352626, 1859.3448499503274, -1.050368138212699); (716.936918097359, -420.7814273366474, -301673.7397073438, 296.1554907607116, 1137.7183454340066, -1.7038226298038852); (2.675, 100.0, 267.5, 102.675, -97.325, 0.02675); (0.1, 3.0, 0.30000000000000004, 3.1, -2.9, 0.03333333333333333); (1.1, 1.1, 1.2100000000000002, 2.2, 0.0, 1.0); (0.7, 0.1, 0.06999999999999999, 0.7999999999999999, 0.6, 6.999999999999999); (1e+308, 10.0, inf, 1e+308, 1e+308, 1e+307); (3.0, 0.1, 0.30000000000000004, 3.1, 2.9, 30.0)"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-ieee-ops"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-fold-literal"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-fold-one-row"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-fold-two-rows"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-fold-subquery"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-fold-sum"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-rounding"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-arith-nan-creation"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-arith-overflow"
+        },
+        {
+          "file": "characterization/snowflake/probes.json",
+          "probe": "double-arith-overflow-literal"
+        }
+      ],
+      "notes": "`sverify_dev.probe_snowflake` runs each query through `snow sql` (Snowflake CLI 3.32.1) on an X-Small warehouse, Snowflake 10.40.102, with the session's `TIMEZONE` set to UTC and `USE_CACHED_RESULT` off; every other parameter is the account's default, recorded in the header of probes.json (`WEEK_START` 0, `WEEK_OF_YEAR_POLICY` 0, `DEFAULT_NULL_ORDERING` LAST, `TIMESTAMP_TYPE_MAPPING` TIMESTAMP_NTZ). The inputs are literal `VALUES`, except the `sample-*` probes, which read TPC-H's LINEITEM (6,001,215 rows) in SNOWFLAKE_SAMPLE_DATA."
+    }
+  ]
+}
