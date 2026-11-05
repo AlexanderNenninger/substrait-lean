@@ -89,6 +89,7 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify import observation as _observation
+from sverify._hooks import COLLECTING, Collected
 from sverify._unsupported import SverifyError
 from sverify.counterexample import Counterexample
 from sverify.counterexample import search as search_counterexample
@@ -5021,7 +5022,13 @@ class ContractedTransform:
         )
         return True
 
-    def _link(self, param: str, value: ir.Table, conds: list[Condition]) -> _Abstraction:
+    def _link(
+        self,
+        param: str,
+        value: ir.Table,
+        conds: list[Condition],
+        entry: Collected | None = None,
+    ) -> _Abstraction:
         """Discharge this transformation's preconditions on a derived input by
         proving them from what produced it (assume-guarantee composition).
         Returns, as `assumptions`, what may be assumed about the input."""
@@ -5058,7 +5065,11 @@ class ContractedTransform:
         )
         if self.on_unproved == "warn":
             warnings.warn(str(error), stacklevel=4)
-        elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
+        elif self.on_unproved == "runtime" and self._check_on_data(value, param, unproved):
+            pass
+        elif entry is not None:
+            entry.links.append(error)
+        else:
             raise error
         return out
 
@@ -5179,6 +5190,10 @@ class ContractedTransform:
         at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
+        entry = None
+        if (collected := COLLECTING.get()) is not None:
+            entry = Collected(self, node)
+            collected.append(entry)
         result = self.fn(*args, **kwargs)
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}
@@ -5201,7 +5216,7 @@ class ContractedTransform:
                 if self.check_requires:
                     self._check_on_data(value, param, conds)
                 continue
-            link = self._link(param, value, conds)
+            link = self._link(param, value, conds, entry)
             _merge(external, link.external)
             unproved_links += link.unproved_links
             if op in placeholders:  # the same input under two parameters
@@ -5234,19 +5249,24 @@ class ContractedTransform:
                 self._check_on_data(value, param, conds)
         checked: list[Condition] = []
         if not report.proved and raise_unproved:
-            if self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in
             # "runtime" mode the engine raises them if they happen.
-            elif self.on_unproved == "runtime" and (node or is_bound(result)):
+            if self.on_unproved == "runtime" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
                 checked = [c for c in self.ensures if label(c) in unproved]
                 report = self.last_report = _marked_checked(report)
                 for c in [] if node else checked:
                     if n := violations(result, c, self.check_engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
+            elif entry is not None:
+                pass  # collected: the caller reads the report
+            elif self.on_unproved == "warn":
+                warnings.warn(str(VerificationError(report)), stacklevel=3)
             else:
                 raise VerificationError(report)
+        if entry is not None:
+            entry.report = report
+            entry.params = {t: p for t, (p, _) in {**bound_inputs, **plain}.items()}
         _merge(external, abstraction.external)
         _merge(external, base)
         proved = {c.label for c in report.ensures if c.proved}

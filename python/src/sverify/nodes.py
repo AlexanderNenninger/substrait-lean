@@ -1026,13 +1026,22 @@ class Group:
                 row order, or no route takes a node's proof to `engine`;
                 nothing was refreshed.
         """
+        from sverify._hooks import PLANNED, is_collecting
         from sverify.routes import checked_route
 
+        if is_collecting():
+            raise RuntimeError(
+                "refresh() ran while sverify checked this file without running it "
+                "(sverify check, sverify.cli.discover): run it under "
+                '`if __name__ == "__main__":`, or with `sverify refresh <file>:<node>`'
+            )
         if engine is None:
             engine = "duckdb"
         route = checked_route(route)
         order = self._order()
         chosen = _routes(order, engine, route, reproducible, unverified)
+        if (planned := PLANNED.get()) is not None:
+            planned()
         for n in order:
             if isinstance(n, _Stored) and n._stage is None:
                 _continue_versions(n)
