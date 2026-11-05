@@ -1,6 +1,263 @@
 # Changelog
 
-## 0.5.0 (2026-11-05)
+## 0.6.0 (2026-11-05)
+
+0.5.0 was tagged but never published: a Spark test ran out of memory in the
+release's wheel tests, so nothing reached PyPI. 0.6.0 is the first release of
+0.5.0's changes (the 0.5.0 section below) and of these. It is also the first
+release of `sverify-dbt`, at the same version.
+
+### Breaking changes
+
+Upgrading from 0.4.0, read the 0.5.0 section's breaking changes too. New in
+0.6.0, each with its own entry below:
+
+- Fewer knobs for "not proved" and one name per concept (#690, #695):
+  `on_inferred="off"` replaces `infer=False`; the route `"reference"` is
+  `"translated"`; `@sv.transform(engine=)` is `check_engine=`;
+  `Report.run(check_inputs=)` is `check_requires=`; `node.plan` is
+  `node.internal_plan`. Renamed keywords warn and go in 0.7. Removed:
+  `strict=`, the positional `sv.references`, `Connection.datafusion`.
+- A run of an unproved plan raises `UnverifiedRunError`, a
+  `VerificationError` and a `RouteError`.
+- Every exception sverify raises derives from `sverify.errors.SverifyError`.
+
+### Quarantine: bad rows set aside, the rest flows
+
+A batch that breaks a precondition on a source no longer has to stop the
+pipeline ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)).
+`on_violation` on `sv.transform` or on a source chooses what a refresh does:
+
+- `"quarantine"` sets the offending rows aside, with the reason, in a table
+  next to the node's sink (`<sink>_quarantine`, or `.write(sink,
+  quarantine=...)`), and the node runs on the others. A row breaks a row
+  condition, or shares its key with another row: every row of a repeated
+  key is set aside, so the rule needs no order and a recompute agrees with
+  the batches. `Catalog.kept_sound` (`SubstraitLean/Quarantine.lean`)
+  proves every precondition holds on the kept rows, so the node's proof
+  holds. A delete or update upstream releases rows.
+- `"hold"` commits nothing for the batch and holds the node at its
+  versions until a later version meets the preconditions. Conditions on a
+  table as a whole (`max_rows`, `arrives_within`) hold the node this way
+  under quarantine too.
+- `"error"` stays the default.
+
+The refresh report says how many rows each refresh set aside, released and
+saw deleted, with examples. `Refresh.outcome` (`"ok"`, `"quarantined"`,
+`"held"`), `Refresh.alert()` (Markdown for whoever is on call) and
+`Refresh.to_json()` (format 1, `sverify/schemas/refresh.schema.json`) are
+new, and `Node.quarantined()` returns the rows set aside. `sverify refresh`
+exits 5 when rows are quarantined or a node is held, with `status`
+`"quarantined"` or `"held"` in its JSON. The quarantine
+table's format is stable within 1.x (`sverify/schemas/quarantine.schema.json`,
+[docs/stability.md](docs/stability.md)).
+
+`SchemaError` now names the column, the change, the version and the
+contract it breaks, with what to do: "`orders.id` became nullable at v12,
+and the new rows have NULLs in it; `paid` requires _.id.notnull(). Fix the
+upstream, or handle NULLs in `paid` (e.g. `.fill_null(0)`) and relax
+`requires`."
+
+### One vocabulary for `on_unproved`, `on_inferred` and `on_violation`
+
+The three `on_*` parameters share their values (the API review's C1): `"error"`
+raises, `"warn"` goes on with a warning, `"ignore"` goes on silently,
+`"check"` checks on the data at run time, `"off"` infers nothing, and
+`on_violation` adds `"quarantine"` and `"hold"`.
+
+- `on_unproved="runtime"` is now `on_unproved="check"`, and
+  `on_inferred="silent"` is `on_inferred="ignore"`. The old spellings still
+  work for one release, with a `DeprecationWarning`; a report JSON written
+  with `"silent"` reads as `"ignore"`.
+- `transform(check_requires=False)` with an `on_violation` other than
+  `"error"` raises `ValueError`: that setting acts on the checks it turns off.
+
+### Breaking: fewer knobs for "not proved", one name per concept (#690, #695)
+
+From the API critique (#686). Every renamed or removed keyword below still
+works in 0.6 with a `DeprecationWarning` that names its replacement, and goes
+in 0.7. The names deprecated before 0.5 are gone.
+
+Not proved (#690):
+
+- `on_inferred="off"` replaces `infer=False` on `sv.verify` and
+  `@sv.transform`: nothing is inferred or assumed, so a `SUM` that may leave
+  64 bits, or a double operation that may overflow to ±inf, is an error.
+  `on_inferred` takes `"error"` (the default), `"warn"`, `"silent"` and
+  `"off"`. `infer=` warns.
+- `@sv.transform(on_unproved="warn")` now lets the node's refreshes run
+  unverified, each with an `UnverifiedRunWarning`, where it used to need
+  `refresh(unverified=True)` as well.
+- A run or refresh of a plan that is not proved raises
+  `sverify.errors.UnverifiedRunError`, a `VerificationError`, so
+  `except VerificationError` catches every "not proved". It is also a
+  `RouteError`, so `except RouteError` still catches it. A refresh's message
+  names `refresh(unverified=True)`.
+- An assumed `SUM` reads `fits 64 bits in every group (checked at run time:
+  the job raises if it does not; on_inferred="off" makes it an error)`, and
+  an assumed finite double operation `stays finite on finite inputs (checked
+  at run time …)`. Neither says "inferred" any more.
+- Removed: `@sv.transform(strict=...)` (deprecated since 0.4),
+  `sv.references(col, table, other)` (write `to=`), and
+  `sverify.testing.Connection.datafusion` (deprecated since 0.4).
+- `node.plan` is `node.internal_plan`: sverify's own form of the plan, with
+  its private extension URNs. `Report.to_substrait()` is the portable one.
+  `node.plan` warns.
+
+Names (#695):
+
+- The route `"reference"` is `"translated"`: a plan verified under
+  `semantics="reference"` runs through the translation to the engine.
+  `route="reference"` warns and takes `"translated"`; `Route.kind` is
+  `"translated"`.
+- A route's line names the route only where it is not `translated`:
+  `exact; transfer: verified under semantics="duckdb"; …`.
+- Printed output says `semantics="duckdb"` where it said `Profile.duckdb`.
+- `@sv.transform(engine=)` is `check_engine=`: where checks on data run.
+  `refresh(engine=)` and `run(con, engine)` keep `engine` for where the plan
+  runs.
+- `Report.run(check_inputs=)` is `check_requires=`, as on `@sv.transform`.
+- `sverify.engines.to_sql(tie_free=)` is `deterministic=`, as on
+  `Report.run`; `run_spark` too. `to_sql` also takes the plan as a JSON
+  string, so `to_sql(node.internal_plan, SNOWFLAKE)` needs no `json.loads`.
+- `Node.refresh(engine=None)` and `Group.refresh` default to `None`, DuckDB,
+  as `Report.run(engine=None)` defaults to its connection's engine.
+- `sv.verify`'s first parameter is `query`, positional-only.
+- `report.equivalence` is the equivalence the result is proved up to, by the
+  name of `sv.equivalent`; `report.observation` stays.
+- `report.needed_text` is a property; `Report.needs_text()` and
+  `needs_lines()` warn.
+- A refresh report of a stored node is headed by the transform and the sink,
+  `daily_revenue → daily:`, where the names differ.
+- `summary()` reads `changes from orders v1→v2 (change feed)` where it read
+  `orders@v1→v2, Δ trusted (change feed)`.
+
+### Public API additions
+
+- `sverify.__version__` is the installed version, and `dir(sverify)` lists
+  `__all__` and `__version__`; the submodules import as before.
+- `node.to_substrait()` and `transform.to_substrait()` export the report of
+  a node and of a transform's last call, as `report.to_substrait()` does;
+  `node.report` is that report.
+- `PreconditionError` carries the table (`.source`), the condition
+  (`.condition`) and up to ten of the rows that break it as an Arrow table
+  (`.rows`).
+- `sv.key("id")` states a primary key: `sv.unique("id")` and
+  `'"id" IS NOT NULL'`.
+- `report.not_null` lists the output columns the checker shows are never NULL, and
+  a stored node writes them as NOT NULL columns and records them in its
+  contract, with those `ensures` states.
+- `report.needed_conditions` gives `report.needs` as conditions ready for
+  `requires=`: Ibis deferreds for an Ibis transform, SQL strings for a SQL
+  one.
+- Every exception sverify raises on purpose derives from
+  `sverify.errors.SverifyError`, and keeps its built-in base; the classes
+  stay importable where they are defined.
+- `isin([0, 1])`, and SQL's `x IN (0, 1)`, of integers that fill a range is
+  read as that range, so a column known to lie in it meets the condition.
+
+([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691))
+
+### The strings a column can hold
+
+Sverify tracks the strings a column can be while they are few (up to 64):
+a constant is its string, `s = 'k'` and `s IN ('a', 'b')` narrow a column,
+`s <> 'k'` and `NOT IN` take strings out, and `CASE`, `COALESCE`, projections,
+joins, grouping and `UNION ALL` carry the sets through. A filter
+`status <> 'cancelled'` over a source whose `status` is one of four strings
+proves `status IN ('placed', 'shipped', 'returned')`, which is dbt's
+`accepted_values`, and a tag that is a constant in each branch of a
+`UNION ALL` proves the tag's values. The report's facts name the strings:
+"one of the strings 'q1', 'q2', 'q3', 'q4'"
+([#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708)).
+
+A key of each branch of a `UNION ALL`, with a column the branches cannot share
+a value in (a constant tag, a `GROUPING` level, ranges apart), is a key of the
+union. `unique(region, quarter)` over an unpivot by `UNION ALL`, and the
+group keys of a rollup written as a union, now prove
+([#436](https://github.com/AlexanderNenninger/substrait-lean/issues/436)).
+
+### sverify-dbt lives in this repository and is released with sverify
+
+`sverify-dbt` ([`dbt/`](dbt/README.md)), which proves a DuckDB dbt
+project's data tests and model contracts before the models run, is back in
+this repository with its history. From this release on it is published to
+PyPI with sverify, at the same version, pinning `sverify==<version>`. The
+`dbt` CI job runs its tests, its check of the sample project
+(`dbt/examples/shop`, 19 of 26 tests and constraints proved), and
+`dbt build` without the proved tests
+([#732](https://github.com/AlexanderNenninger/substrait-lean/issues/732),
+[#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177)).
+
+### A map of the proofs
+
+[`docs/proofs.md`](docs/proofs.md) names each Lean module's job and the
+theorems each guarantee rests on (`contract_sound`, `Rel.keys_sound`, the
+delta rules, the engine profiles' shims), with what they trust. Each
+generated Lean module's header says how to regenerate it, and
+`tests/test_proof_map.py` keeps the map in step with the modules (#733).
+
+### Stable formats and a stability policy for 1.x
+
+[docs/stability.md](docs/stability.md) states what 1.x keeps stable: the
+formats a running pipeline reads, the contracts it proved, and the Python
+API, which breaks in a minor release only loudly, with a test, a changelog
+entry and a migration note
+([#737](https://github.com/AlexanderNenninger/substrait-lean/issues/737)).
+
+- The sink's contract record (`sverify.io.Contract`) has a `format`, 1, and
+  a JSON schema, `sverify/schemas/sink-contract.schema.json`. A record
+  without `format`, written before this release, reads as format 1; a
+  record of a newer format is refused with an error that says to upgrade
+  ([#734](https://github.com/AlexanderNenninger/substrait-lean/issues/734)).
+- The Substrait contract metadata, `io.sverify.substrait.v1.Contract`,
+  follows protobuf's rules for updating a message, and its manifest has a
+  JSON schema, `sverify/schemas/substrait-manifest.schema.json`
+  ([#735](https://github.com/AlexanderNenninger/substrait-lean/issues/735)).
+- `python/tests/formats/` holds what each release wrote: Delta and Iceberg
+  sinks from 0.4.0 on and Substrait exports.
+  [`tests/test_formats.py`](python/tests/test_formats.py) reads them all, and
+  a pipeline resumes from an old Delta sink.
+
+### The report as JSON
+
+`Report.to_json()` writes a report as a versioned JSON document for CI jobs
+and tools, and `Report.from_json()` reads it back into a `Report` with the
+same verdict
+([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736)).
+The document holds the verdict, each postcondition with its reason, message
+and counterexample, the runtime issues and assumptions, what the proof needs
+(`Report.needs`), the facts, the non-NULL columns and the routes. Its format
+is 1, with a JSON schema, `sverify/schemas/report.schema.json`, and follows
+the rules of [docs/stability.md](docs/stability.md): within 1.x it only gains
+keys, and a reader refuses a newer format with an error that says to
+upgrade. `python/tests/formats/` holds reports for
+[`tests/test_formats.py`](python/tests/test_formats.py) to read back.
+
+### The `sverify` command
+
+- `sverify check <file>[:<node>]` proves every contracted transform and node
+  a Python file applies, without running it, and prints the contract in
+  plain words first: what the output guarantees, what each refresh checks
+  on the data, and what is not proved, each problem with a code. A dbt
+  project goes to `sverify-dbt check`
+  ([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)).
+- `sverify suggest <file> [--apply]` writes the preconditions the proofs
+  need (`Report.needs`) into the decorators' `requires=`, then checks the
+  file again.
+- `sverify refresh <file>:<node>` runs a node and reports what changed;
+  `sverify explain <code>` explains a code, and `sverify explain
+  <file>:<node>` prints a node's full report.
+- Every command takes `--json` (a provisional format until #736) and exits
+  0 proved, 1 not proved, 2 refused, 3 budget exceeded, 4 error.
+- `--timeout` (default 30 s, `SVERIFY_TIMEOUT`, 0 turns it off) bounds
+  proof, planning and checking, never a refresh moving data.
+  `--memory-limit` (`SVERIFY_MEMORY_LIMIT`) sets DuckDB's `memory_limit`,
+  with a spill directory (`SVERIFY_SPILL_DIRECTORY`); a breach stops before
+  any sink commits.
+- `sverify.cli.discover(path)` does what `check` does from Python.
+
+## 0.5.0 (2026-11-05, tagged, not published)
 
 ### Breaking changes
 
