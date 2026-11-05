@@ -849,7 +849,7 @@ def run_plan(
         import ibis
         import pyarrow as pa
         import sverify as sv
-        from sverify.engines import ENGINES, create_table, run
+        from sverify.engines import ENGINES, run
         from sverify.io import StaticSource
 
         orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
@@ -860,11 +860,10 @@ def run_plan(
             return orders.filter(orders.amount > 10)
 
 
-        plan = big_orders(orders).internal_plan  # the plan Lean checked
+        plan = big_orders(orders).internal_plan  # the plan the checker proved
 
         con = sv.connect()
-        create_table(con, "orders", ibis.schema({"id": "int64", "amount": "int64"}),
-                     [(1, 30), (2, 5)])
+        con.create("orders", ibis.schema({"id": "int64", "amount": "int64"}), [(1, 30), (2, 5)])
         for engine in ENGINES:
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
