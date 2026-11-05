@@ -251,6 +251,84 @@ theorem rule_exp {a a' εa ha r e : ℝ} (hεa : |a' - a| ≤ εa) (hha : a ≤ 
         linarith
     _ = _ := by ring
 
+/-! ## Exact and step functions (#568)
+
+`abs` and negation are exact on both engines and 1-Lipschitz. `FLOOR`,
+`CEIL`, `ROUND` and casts to integers are steps: the engine's input within
+`εa` of the reference's may cross a step, so their results are within
+`εa + c₁ + c₂` where each lies in `[x − c₁, x + c₂]` (`FLOOR` 1, `CEIL` 1,
+`ROUND` 1, truncation toward zero 2). `sqrt` is correctly rounded on both
+engines (`NativeLink.sqrt`). -/
+
+/-- **`abs`**: `||a'| − |a|| ≤ εa`. -/
+theorem rule_abs {a a' εa : ℝ} (h : |a' - a| ≤ εa) : abs (abs a' - abs a) ≤ εa :=
+  le_trans (abs_abs_sub_abs_le_abs_sub a' a) h
+
+/-- **A step function** whose value lies in `[x − c₁, x + c₂]`: within
+`εa + c₁ + c₂`. -/
+theorem rule_step {f : ℝ → ℝ} {c₁ c₂ : ℝ} (hf : ∀ x, x - c₁ ≤ f x ∧ f x ≤ x + c₂)
+    {a a' εa : ℝ} (h : |a' - a| ≤ εa) : |f a' - f a| ≤ εa + (c₁ + c₂) := by
+  have h1 := hf a; have h2 := hf a'
+  have := abs_le.mp h
+  rw [abs_le]; constructor <;> linarith
+
+theorem floor_step (x : ℝ) : x - 1 ≤ (⌊x⌋ : ℝ) ∧ (⌊x⌋ : ℝ) ≤ x + 0 :=
+  ⟨by have := Int.sub_one_lt_floor x; linarith, by have := Int.floor_le x; linarith⟩
+
+theorem ceil_step (x : ℝ) : x - 0 ≤ (⌈x⌉ : ℝ) ∧ (⌈x⌉ : ℝ) ≤ x + 1 :=
+  ⟨by have := Int.le_ceil x; linarith, by have := Int.ceil_lt_add_one x; linarith⟩
+
+/-- **`FLOOR`**: within `εa + 1`. -/
+theorem rule_floor {a a' εa : ℝ} (h : |a' - a| ≤ εa) : |(⌊a'⌋ : ℝ) - ⌊a⌋| ≤ εa + 1 := by
+  have := rule_step (f := fun x => (⌊x⌋ : ℝ)) floor_step h; simpa using this
+
+/-- **`CEIL`**: within `εa + 1`. -/
+theorem rule_ceil {a a' εa : ℝ} (h : |a' - a| ≤ εa) : |(⌈a'⌉ : ℝ) - ⌈a⌉| ≤ εa + 1 := by
+  have := rule_step (f := fun x => (⌈x⌉ : ℝ)) ceil_step h; simpa using this
+
+/-- **`ROUND`**, any rounding to an integer within `1/2` (half away from zero
+as SQL rounds): within `εa + 1`. -/
+theorem rule_round {r : ℝ → ℝ} (hr : ∀ x, |r x - x| ≤ 1 / 2) {a a' εa : ℝ}
+    (h : |a' - a| ≤ εa) : |r a' - r a| ≤ εa + 1 := by
+  have := rule_step (f := r) (c₁ := 1 / 2) (c₂ := 1 / 2)
+    (fun x => by have := abs_le.mp (hr x); constructor <;> linarith) h
+  linarith
+
+/-- **A cast to an integer by truncation toward zero**: within `εa + 2`. -/
+theorem rule_trunc {t : ℝ → ℝ} (ht : ∀ x, |t x - x| ≤ 1) {a a' εa : ℝ}
+    (h : |a' - a| ≤ εa) : |t a' - t a| ≤ εa + 2 := by
+  have := rule_step (f := t) (c₁ := 1) (c₂ := 1)
+    (fun x => by have := abs_le.mp (ht x); constructor <;> linarith) h
+  linarith
+
+/-- `√` is `1/2`-Hölder (`abs_sqrt_sub_sqrt_le`, `Variance.lean`), and
+`|√x − √y| ≤ |x − y| / s` where `√x + √y ≥ s > 0`. -/
+theorem abs_sqrt_sub_sqrt_le_div {x y s : ℝ} (hx : 0 ≤ x) (hy : 0 ≤ y) (hs : 0 < s)
+    (hsum : s ≤ √x + √y) : |√x - √y| ≤ |x - y| / s := by
+  have e : (√x - √y) * (√x + √y) = x - y := by
+    have := Real.sq_sqrt hx; have := Real.sq_sqrt hy; ring_nf; linarith
+  rw [le_div_iff₀ hs]
+  calc |√x - √y| * s ≤ |√x - √y| * (√x + √y) := by gcongr
+    _ = |x - y| := by
+      rw [← e, abs_mul, abs_of_nonneg (show 0 ≤ √x + √y by positivity)]
+
+/-- **`sqrt`**, correctly rounded on both sides: inputs `a, a' ≥ 0` within `εa`
+whose square roots differ by at most `Δ` (`√εa`, or `εa / s`), with `a ≤ ha`:
+`Δ (1 + u) + 2u (√ha + tiny)`. -/
+theorem StdModel.rule_sqrt (M : StdModel) {a a' ha Δ : ℝ} (hha : a ≤ ha)
+    (hΔ : |√a' - √a| ≤ Δ) (hov : √ha + Δ ≤ maxFinite) :
+    |M.fl (√a') - M.fl (√a)| ≤ Δ * (1 + u) + 2 * u * (√ha + tiny) := by
+  have hF : |√a| ≤ √ha := by
+    rw [abs_of_nonneg (Real.sqrt_nonneg _)]; exact Real.sqrt_le_sqrt hha
+  exact M.transfer_ieee hΔ hF hov
+
+/-- **A comparison's threshold** (#568): where `a ≤ ha`, `lb ≤ b` and the
+ranges widened by `ε` do not meet, `a < b` on both sides. -/
+theorem rule_threshold {a a' b b' ha lb εa εb : ℝ} (hεa : |a' - a| ≤ εa) (hεb : |b' - b| ≤ εb)
+    (hha : a ≤ ha) (hlb : lb ≤ b) (h : ha + εa < lb - εb) : a < b ∧ a' < b' := by
+  have := abs_le.mp hεa; have := abs_le.mp hεb
+  constructor <;> linarith
+
 end FloatBounds
 
 end
