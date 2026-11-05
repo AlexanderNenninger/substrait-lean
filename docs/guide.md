@@ -1247,6 +1247,84 @@ of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
 `AVG` that divided by `n` (`2.2e-4` above, with `n = M = 10⁶`). Tighter
 `requires` give a tighter bound ([float-bounds.md](float-bounds.md)).
 
+### Exporting to Substrait
+
+`report.to_substrait(format="json" | "binary")` returns a verified plan for
+any conforming Substrait consumer, with the conditions under which its proof
+holds ([#664](https://github.com/AlexanderNenninger/substrait-lean/issues/664)).
+It is the plan the checker verified, written for Substrait 0.106:
+
+- each call declares its YAML's URN and its compound name (`add:i64_i64`),
+  and states its output type (`_substrait_extensions.json`, generated from
+  the YAMLs by `python -m sverify_dev.substrait_extensions --write`);
+- each option the proof depends on (`report.depends`) is pinned in the
+  call's options at the reference's behaviour: `overflow`, `rounding`,
+  `division_type`, `on_division_by_zero` and the rest the YAMLs list;
+- a plan verified with `semantics="substrait"` goes out as it is, since its
+  proof holds for every choice Substrait allows.
+
+Where the proof uses a choice Substrait cannot state, a spec gap
+([upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)),
+the export handles it in one of these ways:
+
+| Gap | Handling |
+|---|---|
+| ST-1, ST-2, ST-5, ST-9 (overflow), ST-11, ST-12 | none needed: the reference raises there, and the preconditions, which travel with the plan, rule those inputs out (`unexercised` in the manifest) |
+| ST-9 (rounding of doubles) | IEEE 754's default rounding, which `fp64` follows; recorded with evidence `tested` |
+| ST-3, ST-4, ST-6 | a shim, by `shims` |
+| ST-7 | none needed: the writer states every sort key's direction |
+| ST-8 | none needed where no decimal `+`, `-` or `*` reduces its scale; otherwise by `shims` |
+| ST-10 | refused in every mode: `upper` and `lower` of non-ASCII text |
+
+`shims` takes three values, applied to every gap alike:
+
+- `"apply"` (the default) rewrites the plan into well-specified Substrait,
+  so that every conforming consumer gives the reference's result. A
+  `variance` or `std_dev` of too few values is NULL (ST-3). An equality of
+  doubles is `x + 0.0 = y + 0.0 OR (is_nan(x) AND is_nan(y))`, a double
+  grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
+  sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
+  and the two zeros are one (ST-4). A cast of a double to an integer
+  truncates first (ST-6). A gap the plan meets where no shim applies yet,
+  such as an ordering comparison of doubles, refuses the export.
+- `"annotate"` keeps the plan as written and records each choice in the
+  manifest as an assumption the consumer must honour (`assumptions`, class
+  `assumed`).
+- `"refuse"` refuses the export at any such gap.
+
+A refusal raises `sverify.errors.ExportError`, which names the reason and
+the gap. So does an unproved report, a plan verified under an engine's
+profile, and a function outside Substrait's YAMLs.
+
+The contract travels in the plan's `advanced_extensions.optimization` as an
+`io.sverify.substrait.v1.Contract` message
+([`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto)),
+which a consumer that does not know it ignores. It holds the preconditions
+(declared, inferred and assumed) and the postconditions, each in your terms
+and as a Substrait plan of one boolean column, and a manifest:
+
+| Key | What it holds |
+|---|---|
+| `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
+| `extension_urns` | the YAMLs the plan's calls come from |
+| `profile` | the profile the plan was verified under |
+| `class` | `exact`, `observed` (equal up to `observation`) or `assumed` (with annotated choices) |
+| `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
+| `observation` | what the postconditions observe (`sv.equivalent`) |
+| `pinned` | each pinned option, its values and the calls that state it |
+| `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
+| `deterministic`, `rows`, `params`, `output` | as in the report |
+
+`report.substrait_contract()` returns the same contract as JSON, for a
+sidecar file. `sv.from_substrait(exported)` reads a plan back, in either
+format, and proves its contract again with the checker; the report it
+returns has the same postconditions and verdict.
+[Example 10](examples.md#10-a-verified-plan-for-any-substrait-consumer)
+exports a plan and shows the three modes. DataFusion's Substrait consumer
+runs the exports in `tests/test_substrait_export.py` and gives the
+reference's results; it does not know Substrait's `variance` or
+`shift_left` yet.
+
 ### Reproducible sinks
 
 A stored node's sink commits each epoch once, so a rerun must give the same

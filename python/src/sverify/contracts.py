@@ -79,7 +79,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, overload
 
 import ibis
 import ibis.expr.operations as ops
@@ -1129,6 +1129,78 @@ class Report:
     out: where it came from."""
     """The preconditions per input table, as conditions: `requires` and
     the bounds inferred (`inferred`). `check_inputs` checks them on data."""
+    postconditions: list[Condition] = field(default_factory=list, repr=False, compare=False)
+    """The postconditions, as conditions, in the order of `ensures`
+    (`to_substrait` ships them)."""
+
+    @overload
+    def to_substrait(
+        self,
+        format: Literal["json"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str: ...
+
+    @overload
+    def to_substrait(
+        self,
+        format: Literal["binary"],
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> bytes: ...
+
+    def to_substrait(
+        self,
+        format: Literal["json", "binary"] = "json",
+        *,
+        shims: Literal["apply", "annotate", "refuse"] = "apply",
+    ) -> str | bytes:
+        """The verified plan for any conforming Substrait consumer, with its
+        contract as metadata (#664).
+
+        Every function call names its YAML's URN, its compound name and its
+        output type (Substrait 0.106). Every option the proof depends on
+        (`depends`) is pinned in the call's options at the reference's
+        behaviour. Where Substrait has no option for a choice the proof uses
+        (a spec gap, `upstream/bugs/ST-*.json`), `shims` decides: `"apply"`
+        rewrites the plan into well-specified Substrait, `"annotate"` keeps
+        it and records the choice in the metadata as an assumption the
+        consumer must honour, and `"refuse"` refuses the export. A gap where
+        the reference raises needs no shim in any mode: the preconditions,
+        which travel with the plan, rule those inputs out.
+
+        The contract travels in the plan's `advanced_extensions` as an
+        `io.sverify.substrait.v1.Contract`: `requires` (declared, inferred
+        and assumed) and `ensures`, each in your terms and as a Substrait
+        plan, and a manifest (the profile, the pinned options, the shims and
+        assumptions, the observation the result holds up to, the Substrait
+        version and extension URNs, sverify's version). `sv.from_substrait`
+        reads it back and proves the contract again.
+
+        Args:
+            format: `"json"` (protobuf JSON, a string) or `"binary"` (the
+                serialized `substrait.Plan`).
+            shims: What to do at a spec gap the proof depends on.
+
+        Returns:
+            The plan, as protobuf JSON or bytes.
+
+        Raises:
+            sverify.errors.ExportError: The report is not proved,
+                or the plan has no conforming Substrait form that keeps the
+                proof; the message names the reason and the gap.
+        """
+        from sverify import substrait_export
+
+        return substrait_export.export(self, format, shims=shims)
+
+    def substrait_contract(
+        self, *, shims: Literal["apply", "annotate", "refuse"] = "apply"
+    ) -> dict:
+        """The contract `to_substrait` embeds, as JSON, for a sidecar file."""
+        from sverify import substrait_export
+
+        return substrait_export.contract_json(self, shims=shims)
 
     def check_inputs(self, con: Connection) -> None:
         """Check the preconditions (`requires`, the inferred bounds among
@@ -2877,6 +2949,7 @@ def _verify_once(
         contract=contract,
         transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
+        postconditions=list(ensures),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)

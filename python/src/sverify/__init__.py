@@ -57,6 +57,7 @@ from sverify.incremental import Changes
 from sverify.nodes import Node, group
 from sverify.observation import equivalent, within
 from sverify.sql_model import sql
+from sverify.substrait_export import from_substrait
 
 __all__ = [
     "Changes",
@@ -67,6 +68,7 @@ __all__ = [
     "asof_join",
     "connect",
     "equivalent",
+    "from_substrait",
     "group",
     "max_rows",
     "references",
