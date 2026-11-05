@@ -7,7 +7,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.errors import Unsupported
+from sverify.errors import UnsupportedError
 from sverify.io import StaticSource
 
 pytestmark = pytest.mark.backend("spark")
@@ -42,7 +42,7 @@ def test_a_tie_free_window_runs_on_spark(spark):
     # Without the key, rows may tie and Spark has no row order to break them.
     loose = sv.verify(_prev(t))
     assert not loose.deterministic
-    with pytest.raises((Unsupported, sv.errors.RouteError)):
+    with pytest.raises((UnsupportedError, sv.errors.RouteError)):
         loose.run(con, spark)
 
 

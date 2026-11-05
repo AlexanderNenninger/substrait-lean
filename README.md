@@ -3,7 +3,7 @@
 A formal model of [Substrait](https://substrait.io) relational plans in
 [Lean 4](https://lean-lang.org), and `sverify`, a Python package built on it.
 Sverify proves a data pipeline's contracts before it runs, gets the same
-result on DuckDB, Polars, DataFusion and Spark, and keeps it up to date from
+result on DuckDB, Polars and Spark, and keeps it up to date from
 Delta Lake and Iceberg change feeds ([what is proved](docs/how-it-works.md#what-is-proved)). This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
@@ -198,7 +198,7 @@ uv run pytest                    # all pass; the Spark tests skip without a JVM
 `uv sync` installs `sverify` in editable mode, with every extra (below). Its build hook runs
 `lake build substrait-check` and links `sverify/_bin/substrait-check` to the
 result, so later `lake build`s take effect without reinstalling. To use a
-different binary, set `SVERIFY_CHECK` to its path.
+different binary, set `SVERIFY_CHECKER` to its path.
 
 ### Development tasks
 

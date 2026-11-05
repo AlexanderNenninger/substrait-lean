@@ -435,7 +435,7 @@ _EXTRAS = {"duckdb": (), "polars": ("polars", "numpy"), "datafusion": ("datafusi
 
 def installed_engines() -> tuple[str, ...]:
     """The engines of `sverify.engines.ENGINES` that can run here: DuckDB
-    always, Polars and DataFusion when their extras are installed.
+    always, Polars when its extra is installed.
 
     Returns:
         Engine names, in the order of `ENGINES`.

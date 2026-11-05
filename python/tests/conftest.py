@@ -54,7 +54,7 @@ from hypothesis import settings
 from sverify.engines import ENGINES
 
 #: Keep in step with the `test-*` poe tasks and the CI matrix.
-BACKENDS = ("core", *ENGINES, "snowflake", "spark")
+BACKENDS = ("core", *ENGINES, "datafusion", "snowflake", "spark")
 
 PROFILE = os.environ.get("SVERIFY_PROFILE") or ("ci" if os.environ.get("CI") else "dev")
 if PROFILE not in ("dev", "ci"):

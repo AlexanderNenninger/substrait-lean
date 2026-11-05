@@ -138,7 +138,6 @@ def run(
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,
-    tie_free: bool | None = None,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
     `sverify.engines.run_spark`, deprecated, calls it.
@@ -158,27 +157,17 @@ def run(
             `PARTITION BY` and `ORDER BY` columns (what a contract report's
             `deterministic` says), so windows run without a row-order
             tiebreak (see `sverify.engines.to_sql`). Default False.
-        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         The plan's result, as an Arrow table.
 
     Raises:
-        sverify.engines.Unsupported: Spark SQL cannot express the plan with
+        sverify.engines.UnsupportedError: Spark SQL cannot express the plan with
             Lean's meaning, for example a plan that needs a table's row order
             without `deterministic=True`.
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
-    if tie_free is not None:
-        import warnings
-
-        warnings.warn(
-            "run_spark(tie_free=...) is deprecated; write deterministic=...",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        deterministic = tie_free
     spark = spark or session()
     sql = to_sql(plan, SPARK, deterministic=deterministic)
     put_tables(tables, spark)

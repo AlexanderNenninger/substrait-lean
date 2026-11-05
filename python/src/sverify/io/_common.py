@@ -409,6 +409,8 @@ class ConcurrentWriteError(SverifyError, RuntimeError):
     replaces it with this process's state, or skips if the sink already holds
     it."""
 
+    code = "concurrent_write"
+
 
 @dataclass
 class SinkWrite:

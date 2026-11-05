@@ -143,7 +143,7 @@ def test_run_spark_is_deprecated(monkeypatch):
     monkeypatch.setattr(spark_engine, "run", lambda *a, **k: calls.append((a, k)))
     with pytest.warns(DeprecationWarning, match=r"run\(con, plan, 'spark'\).*sv\.unique"):
         run_spark("{}", {})
-    assert calls == [(("{}", {}, None), {"deterministic": False, "tie_free": None})]
+    assert calls == [(("{}", {}, None), {"deterministic": False})]
 
 
 def test_rows_and_tables_column_by_column():

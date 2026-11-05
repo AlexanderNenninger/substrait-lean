@@ -11,8 +11,8 @@
 
 Running plans:
 
-* `run` runs a plan in sverify's internal form on DuckDB, Polars or
-  DataFusion (`ENGINES`), or on Spark (`"spark"`, or a Spark session
+* `run` runs a plan in sverify's internal form on DuckDB or Polars
+  (`ENGINES`), or on Spark (`"spark"`, or a Spark session
   configured with `SPARK_CONF`; `pip install 'sverify[spark]'`), over a
   `Connection`'s tables (`sv.connect()` makes one; `con.create`, `con.put`
   and `con.rows` put rows in and read them back). `run_sharded` runs a plan
@@ -23,8 +23,8 @@ SQL:
 
 * `Node.to_sql` and `Report.to_sql` write the plan a proof checked as SQL
   whose meaning is the proof's, in a `Dialect`: `DUCKDB`, `SNOWFLAKE` or
-  `SPARK`. What a dialect cannot write is refused (`Unsupported`, the same
-  class as `sverify.errors.Unsupported`). `Dialect`'s SQL-writing methods
+  `SPARK`. What a dialect cannot write is refused (`UnsupportedError`, the same
+  class as `sverify.errors.UnsupportedError`). `Dialect`'s SQL-writing methods
   and subclassing it are outside the 1.x promise.
 
 Plans, the low-level layer, outside the 1.x promise (they take sverify's
@@ -33,7 +33,7 @@ internal plan, and may change in a minor release):
 * `to_sql` writes any plan in sverify's internal form as SQL.
 * `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
   is a plan as the checker parsed and wrote it back, the form `run` and
-  `to_sql` take; `run_substrait_json` runs a Substrait plan on DataFusion;
+  `to_sql` take; `run_substrait_json` runs a Substrait plan on DataFusion (experimental);
   `delta_plans` are the weighted delta plans the checker derives for
   incremental maintenance.
 
@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sverify._unsupported import Unsupported
+from sverify._unsupported import UnsupportedError
 from sverify.engine import (
     ENGINES,
     Connection,
@@ -75,7 +75,6 @@ def run_spark(
     spark: Any = None,
     *,
     deterministic: bool = False,
-    tie_free: bool | None = None,
 ) -> pa.Table:
     """Deprecated: `run(con, plan, "spark")`, or `run(con, plan, spark)` for
     a session of your own, over a connection's tables.
@@ -97,7 +96,15 @@ def run_spark(
     )
     from sverify.spark_engine import run as _run
 
-    return _run(plan, tables, spark, deterministic=deterministic, tie_free=tie_free)
+    return _run(plan, tables, spark, deterministic=deterministic)
+
+
+def __getattr__(name: str) -> Any:
+    if name == "Unsupported":
+        from sverify.errors import deprecated_name
+
+        return deprecated_name(__name__, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
@@ -108,7 +115,7 @@ __all__ = [
     "SPARK_CONF",
     "Connection",
     "Dialect",
-    "Unsupported",
+    "UnsupportedError",
     "create_table",
     "delta_plans",
     "run",

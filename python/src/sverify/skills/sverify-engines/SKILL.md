@@ -1,11 +1,11 @@
 ---
 name: sverify-engines
 description: >
-  Run sverify-checked transforms on DuckDB, Polars, DataFusion or Spark, or
+  Run sverify-checked transforms on DuckDB, Polars or Spark, or
   write their plans as DuckDB, Snowflake or Spark SQL with the same
   semantics. Use when a user wants the same result on several engines, moves
   a job between engines or to a warehouse, gets
-  `sverify.engines.Unsupported` and wants to know why, needs
+  `sverify.engines.UnsupportedError` and wants to know why, needs
   `deterministic=True`, or aligns two time series with `asof_join`.
 ---
 
@@ -42,13 +42,13 @@ def halves(orders):
 
 
 results = {}
-for engine in ENGINES:  # "duckdb", and with their extras "polars" and "datafusion"
+for engine in ENGINES:  # "duckdb", and with its extra "polars"
     node = halves(orders)
     node.refresh(engine=engine)
     # A node's rows come in no particular order: compare them as bags.
     results[engine] = sorted(map(repr, node.to_arrow().to_pylist()))
 print(sorted(results))
-# ['datafusion', 'duckdb', 'polars']
+# ['duckdb', 'polars']
 assert len({repr(r) for r in results.values()}) == 1  # the same rows everywhere
 ```
 
@@ -74,11 +74,11 @@ any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
 
-`to_sql` and the engines raise `Unsupported` (with the reason) instead of
+`to_sql` and the engines raise `UnsupportedError` (with the reason) instead of
 answering differently from the model:
 
 ```python
-from sverify.engines import Unsupported
+from sverify.engines import UnsupportedError
 
 
 @sv.transform()
@@ -89,7 +89,7 @@ def numbered(orders):
 
 try:
     numbered(orders).to_sql("snowflake")
-except Unsupported as e:
+except UnsupportedError as e:
     print(str(e).split(",")[0])
 # Snowflake tables have no row order
 
