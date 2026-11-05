@@ -30,13 +30,15 @@ transform.
 
 from __future__ import annotations
 
+import importlib.abc
+import importlib.util
 import inspect
+import sys
 from collections.abc import Mapping
 from typing import Any, cast, overload
 
 import ibis.expr.types as ir
 import sqlglot as sg
-from ibis.backends.sql.compilers.base import SQLGlotCompiler
 
 from sverify.contracts import ContractedTransform, Semantics
 from sverify.engine import run_checker
@@ -296,4 +298,36 @@ def _visit_sql_model(self, op, *, query, inputs, names, schema, dialect, semanti
     return out.subquery(copy=False)
 
 
-SQLGlotCompiler.visit_SQLModel = _visit_sql_model  # type: ignore[attr-defined]
+_COMPILER = "ibis.backends.sql.compilers.base"
+
+
+def _register_visitor(module: Any) -> None:
+    module.SQLGlotCompiler.visit_SQLModel = _visit_sql_model
+
+
+class _AfterCompilerImport(importlib.abc.MetaPathFinder):
+    """Registers `visit_SQLModel` on Ibis's SQL compiler when Ibis imports
+    it. Importing the compiler here would import every SQL dialect Ibis has
+    (about 100 ms of `import sverify`); a `SQLModel` is only compiled to SQL
+    after Ibis has imported it anyway."""
+
+    def find_spec(self, name: str, path: Any, target: Any = None) -> Any:
+        if name != _COMPILER:
+            return None
+        sys.meta_path.remove(self)
+        spec = importlib.util.find_spec(name)
+        if spec is not None and spec.loader is not None:
+            run = spec.loader.exec_module
+
+            def exec_module(module: Any) -> None:
+                run(module)
+                _register_visitor(module)
+
+            spec.loader.exec_module = exec_module  # type: ignore[method-assign]
+        return spec
+
+
+if _COMPILER in sys.modules:
+    _register_visitor(sys.modules[_COMPILER])
+else:
+    sys.meta_path.insert(0, _AfterCompilerImport())

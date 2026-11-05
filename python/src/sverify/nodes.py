@@ -44,7 +44,7 @@ import pyarrow as pa
 
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
-from sverify.engine import ENGINES, connect, plain_schema, written_plan
+from sverify.engine import _LOCAL_ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
 from sverify.observation import PLAN_BOUND, Observation
@@ -658,7 +658,7 @@ class _Stage:
         is built again with them."""
         from sverify.io._common import _TableSource
 
-        con = connect(engine if engine in ENGINES else "duckdb")
+        con = connect(engine if engine in _LOCAL_ENGINES else "duckdb")  # type: ignore[arg-type] - DataFusion too
         pipe = Pipeline(con)
         mapping = {}
         for leaf in leaves:
@@ -689,8 +689,8 @@ class _Stage:
         return stage
 
     def use(self, engine: Any) -> None:
-        if engine in ENGINES:
-            self.pipe.con.engine = engine
+        if engine in _LOCAL_ENGINES:
+            self.pipe.con.engine = engine  # type: ignore[assignment] - DataFusion too
         self.view.engine = engine
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:

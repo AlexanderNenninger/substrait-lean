@@ -42,13 +42,13 @@ def halves(orders):
 
 
 results = {}
-for engine in ENGINES:  # "duckdb", and with their extras "polars" and "datafusion"
+for engine in ENGINES:  # "duckdb", and with its extra "polars"
     node = halves(orders)
     node.refresh(engine=engine)
     # A node's rows come in no particular order: compare them as bags.
     results[engine] = sorted(map(repr, node.to_arrow().to_pylist()))
 print(sorted(results))
-# ['datafusion', 'duckdb', 'polars']
+# ['duckdb', 'polars']
 assert len({repr(r) for r in results.values()}) == 1  # the same rows everywhere
 ```
 
