@@ -13,24 +13,23 @@ The design is in [#177](https://github.com/AlexanderNenninger/substrait-lean/iss
 
 ## Installation
 
-Sverify-dbt needs a sverify newer than 0.5.0: it reads `Report.needs`,
-`CheckedCondition.reason` and `.condition`, and DuckDB type names in
-`verify(tables=...)`, which
-[substrait-lean#685](https://github.com/AlexanderNenninger/substrait-lean/pull/685) adds. Until a release has them,
-sverify comes from the substrait-lean commit in
-[`SVERIFY_COMMIT`](SVERIFY_COMMIT), which
-[`scripts/sverify.sh`](scripts/sverify.sh) checks out under `vendor/` and
-builds the checker of (it needs [elan](https://github.com/leanprover/elan)).
-Then `uv sync` installs it from there:
+While sverify's API settles, sverify-dbt tracks substrait-lean's `main`:
+[`scripts/sverify.sh`](scripts/sverify.sh) resolves `main` to its commit
+of today, checks it out under `vendor/`, and builds its checker (it needs
+[elan](https://github.com/leanprover/elan)). Then `uv sync` installs
+sverify from there:
 
 ```bash
 eval "export $(scripts/sverify.sh | tail -1)"   # SVERIFY_PREBUILT_CHECK=...
 uv sync
 ```
 
-Once a release (or the [nightly](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) wheel) has
-these, `pyproject.toml` depends on `sverify>=<that version>`, and the
-`[tool.uv.sources]` entry, `SVERIFY_COMMIT` and the script go.
+`scripts/sverify.sh <ref>` (or `SVERIFY_REF=<ref>`) builds against another
+branch, tag or commit. CI builds against `main` on every push and pull
+request and daily, and each run's summary names the commit it used, so a
+change on `main` that breaks sverify-dbt shows up within a day. Once the
+API settles, `pyproject.toml` goes back to `sverify>=<that release>`, and
+the `[tool.uv.sources]` entry and the script go.
 
 ## Usage
 

@@ -6,9 +6,9 @@ readme = "README.md"
 license = "MPL-2.0"
 requires-python = ">=3.12"
 dependencies = [
-    # Report.needs, CheckedCondition.reason and .condition, DuckDB type
-    # names in verify(tables=...): the release after 0.5.0.
-    "sverify>0.5.0",
+    # sverify from substrait-lean's main while its API settles
+    # ([tool.uv.sources] below); `sverify>=<release>` once it has.
+    "sverify",
     # Rewrites the relations of each model's compiled SQL to its inputs' names.
     "sqlglot>=30.17.0",
     # Writes the selectors file (dbt depends on it too).
@@ -39,9 +39,9 @@ dev = [
 ]
 
 [tool.uv.sources]
-# sverify at the commit in SVERIFY_COMMIT, which scripts/sverify.sh checks
-# out and builds the checker of; `SVERIFY_PREBUILT_CHECK` links it. Drop this
-# once a sverify release (or nightly) after 0.5.0 has the API sverify-dbt uses.
+# sverify from the substrait-lean commit scripts/sverify.sh checked out
+# (main by default); `SVERIFY_PREBUILT_CHECK` links the checker it built.
+# Drop this for `sverify>=<release>` once sverify's API settles.
 sverify = { path = "vendor/substrait-lean/python", editable = true }
 
 [tool.ruff]
