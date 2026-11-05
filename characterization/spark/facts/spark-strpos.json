@@ -31,7 +31,7 @@
     ]
   },
   "description": [
-    "`instr('héllo', 'l')`, `locate('l', 'héllo')` and `position('l' IN 'héllo')` are 3: code points from 1. Without a match they are 0. `instr(s, '')` is 1. `locate(t, s, start)` starts at `start` (1-based) and gives 0 for a start below 1."
+    "`instr('héllo', 'l')`, `locate('l', 'héllo')` and `position('l' IN 'héllo')` are 3: code points from 1. Without a match they are 0. `instr(s, '')` is 1. `locate(t, s, start)` starts at `start` (1-based) and gives 0 for a start below 1. `instr(s, t, position, occurrence)` takes a 1-based start and the occurrence to find (1 by default), counting overlapping matches (`instr('aaaa', 'aa', 1, 3)` is 3). A negative position counts from the end and searches backwards: `instr('abcabc', 'b', -1)` is 5, `instr('abcabc', 'b', -3)` 2, `instr('abcabc', 'b', -1, 2)` 2. A position of 0, or one beyond either end (`instr('abc', 'b', 10)`, `instr('abc', 'b', -10)`), gives 0. An empty needle gives 1 at any position, negative ones included (`instr('hello', '', 3)` is 1). A NULL position or occurrence gives NULL."
   ],
   "reference": "`strpos(s, t)` is the 1-based character position of the first match, 0 when there is none (#209). Spark is native.",
   "status": "no-finding",
@@ -89,6 +89,42 @@
         {
           "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2550-L2555",
           "note": "`instr('abcabc', 'b', 0, 1)` is 0: a start of 0 finds nothing"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2462-L2467",
+          "note": "`instr('abcabc', 'b', -1)` is 5: a negative start counts from the end"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2478-L2483",
+          "note": "`instr('abcabc', 'b', -3)` is 2: the search runs backwards"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2526-L2531",
+          "note": "`instr('abcabc', 'b', -1, 2)` is 2: the second match from the end"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2670-L2675",
+          "note": "`instr('aaaa', 'aa', 1, 3)` is 3: overlapping matches count"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2574-L2579",
+          "note": "`instr('hello', '', 3)` is 1, not 3"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2582-L2587",
+          "note": "`instr('hello', '', -1)` is 1"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2710-L2715",
+          "note": "`instr('abc', 'b', 10, 1)` is 0: a start past the end"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2718-L2723",
+          "note": "`instr('abc', 'b', -10, 1)` is 0: a start before the beginning"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L2734-L2739",
+          "note": "`instr('a', 'b', 1, cast(null as int))` is NULL"
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."

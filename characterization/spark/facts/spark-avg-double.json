@@ -24,7 +24,7 @@
   ],
   "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -84,6 +84,23 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "aggregates[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 2880 of 2880 results as the fact says.",
+        "It exercises avg of doubles as the target's sum over the count.",
+        "aggregates[0]: 300 rows, `sum(x)`, `avg(x)`, `max(x)`, `min(x)`, 2880 of 2880 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

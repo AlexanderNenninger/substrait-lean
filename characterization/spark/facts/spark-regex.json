@@ -32,7 +32,7 @@
   ],
   "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`). Java's syntax is a superset of RE2's for the constructs sverify writes; the replacement's syntax differs (`$1`).",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -105,6 +105,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "regex[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 3600 of 3600 results as the fact says.",
+        "regex[0]: 300 rows, `s RLIKE (CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' WHEN 3 THEN '(.)\\\\1' WHEN 4 THEN '^(\\\\s*)x' WHEN 5 THEN '(é+)' WHEN 6 THEN '([a-c]+)-(\\\\d)' WHEN 7 THEN '(?<=a)(b)' END)`, `regexp_extract(s, CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' W`, 3600 of 3600 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

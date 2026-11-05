@@ -24,7 +24,7 @@
     ]
   },
   "description": [
-    "Spark reads and writes Parquet, ORC, CSV, JSON, XML, text and binary files with its built-in sources, and Avro with the bundled `spark-avro` module. Object stores go through Hadoop's file system connectors (`s3a://`, `abfss://`, `gs://`), which need their jars and credentials in the Hadoop configuration (`spark.hadoop.*`). Catalogs other than the session's are plugins named by `spark.sql.catalog.<name>` (Iceberg's `SparkCatalog`, Delta's `DeltaCatalog`, Unity Catalog's), each from its own package. Parquet keeps `TIMESTAMP_NTZ` and `TIMESTAMP_LTZ` apart and stores decimals by precision."
+    "Spark reads and writes Parquet, ORC, CSV, JSON, XML, text and binary files with its built-in sources, and Avro with the bundled `spark-avro` module. Object stores go through Hadoop's file system connectors (`s3a://`, `abfss://`, `gs://`), which need their jars and credentials in the Hadoop configuration (`spark.hadoop.*`). Catalogs other than the session's are plugins named by `spark.sql.catalog.<name>` (Iceberg's `SparkCatalog`, Delta's `DeltaCatalog`, Unity Catalog's), each from its own package. Parquet keeps `TIMESTAMP_NTZ` and `TIMESTAMP_LTZ` apart and stores decimals by precision. Written and read back without a header or schema, a CSV column comes back as a `string` named `_c0`, and a JSON integer as a `bigint`; Parquet and ORC keep `int`."
   ],
   "reference": "I/O is outside what a plan computes; sverify's `io` modules read and write the formats, and `sverify.spark_engine` hands Spark tables as temporary views.",
   "status": "no-finding",

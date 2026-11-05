@@ -41,7 +41,7 @@
   ],
   "reference": "`substring(s, start, length)`, 1-based, `negative_start: WRAP_FROM_END` (#209), the window cut at the string's ends. A start of 0 covers positions 0 and 1 of a length-2 window, so `substring('héllo', 0, 2)` is `h`. Spark agrees but at a start of 0, where it returns one character more; a writer maps a start of 0 (and a negative start that reaches before the string) to the reference's window.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -94,6 +94,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "substring[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 1200 of 1200 results as the fact says.",
+        "substring[0]: 300 rows, `substring(s, p, l)`, 1200 of 1200 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

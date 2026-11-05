@@ -15,8 +15,23 @@
       "group": "agg.isum",
       "option": "overflow",
       "types": [
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "agg.isum",
+      "option": "overflow",
+      "types": [
         "i8",
-        "i16",
+        "i16"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "agg.isum",
+      "option": "empty_group_aggregates",
+      "types": [
         "i32",
         "i64"
       ]
@@ -26,10 +41,9 @@
       "option": "empty_group_aggregates",
       "types": [
         "i8",
-        "i16",
-        "i32",
-        "i64"
-      ]
+        "i16"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -49,7 +63,7 @@
   ],
   "reference": "`sum` of integers returns the input type, with `overflow: ERROR` on the true total (an inferred precondition checked on the data, #316, #437), and NULL for no values. Spark widens `i8`…`i32` (a cast back to the width raises where the reference does), and for `i64` raises on partial sums: `sverify.sql.spark` adds `DECIMAL(38,0)` values instead and checks the total.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -154,6 +168,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "int_sums[0], int_sums[1]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 1022 of 1022 results as the fact says.",
+        "int_sums[0]: 300 rows, `sum(x)`, `try_sum(x)`, 858 of 858 results as the fact says (raised: ARITHMETIC_OVERFLOW 18); int_sums[1]: 300 rows, `sum(x)`, 164 of 164 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

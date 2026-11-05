@@ -44,7 +44,7 @@
   ],
   "reference": "`shift_left` and `shift_right` (`functions_arithmetic.yaml`) with the range open (ST-1); the reference drops shifted-out bits and raises for a count outside `[0, width)`. Spark's masked count needs a guard, and an `i8` or `i16` shift a cast back to its width.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -129,6 +129,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "int_shift[0], int_shift[1], int_shift[2], int_shift[3]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 14400 of 14400 results as the fact says.",
+        "int_shift[0]: 300 rows, `shiftleft(a, n)`, `shiftright(a, n)`, `shiftrightunsigned(a, n)`, 3600 of 3600 results as the fact says; int_shift[1]: 300 rows, `shiftleft(a, n)`, `shiftright(a, n)`, `shiftrightunsigned(a, n)`, 3600 of 3600 results as the fact says; int_shift[2]: 300 rows, `shiftleft(a, n)`, `shiftright(a, n)`, `shiftrightunsigned(a, n)`, 3600 of 3600 results as the fact says; int_shift[3]: 300 rows, `shiftleft(a, n)`, `shiftright(a, n)`, `shiftrightunsigned(a, n)`, 3600 of 3600 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ]
 }

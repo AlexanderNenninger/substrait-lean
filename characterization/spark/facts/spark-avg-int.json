@@ -14,11 +14,18 @@
       "group": "agg.isum",
       "option": "avg_int_result",
       "types": [
-        "i8",
-        "i16",
-        "i32",
         "i64"
       ]
+    },
+    {
+      "group": "agg.isum",
+      "option": "avg_int_result",
+      "types": [
+        "i8",
+        "i16",
+        "i32"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -37,7 +44,7 @@
   ],
   "reference": "`avg` of `i64` returns `i64` in Substrait; the reference follows the declared output type (`avg_int_result`, #209). Spark's double result needs a cast back, which may be off where the sum passes 2⁵³; `sverify.sql.spark` computes the average exactly from a `DECIMAL(38,0)` sum.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -110,6 +117,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "int_sums[2]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 164 of 164 results as the fact says.",
+        "int_sums[2]: 300 rows, `avg(x)`, 164 of 164 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

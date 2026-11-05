@@ -34,7 +34,7 @@
   ],
   "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB only, and other engines refuse it until #271. `try_cast` is Spark's `RETURN_NULL`.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -139,6 +139,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "try_variants[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 7200 of 7200 results as the fact says.",
+        "try_variants[0]: 300 rows, `try_add(a, b)`, `try_subtract(a, b)`, `try_multiply(a, b)`, `try_mod(a, b)`, `try_divide(a, b)`, `try_cast(s AS INT)`, 7200 of 7200 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

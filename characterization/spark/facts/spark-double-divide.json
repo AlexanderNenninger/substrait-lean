@@ -17,7 +17,21 @@
       "group": "fp.div",
       "option": "on_division_by_zero",
       "types": [
-        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "on_division_by_zero",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "nan_creation",
+      "types": [
         "fp64"
       ]
     },
@@ -25,7 +39,14 @@
       "group": "fp.div",
       "option": "nan_creation",
       "types": [
-        "fp32",
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "on_domain_error",
+      "types": [
         "fp64"
       ]
     },
@@ -33,7 +54,14 @@
       "group": "fp.div",
       "option": "on_domain_error",
       "types": [
-        "fp32",
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "float_overflow",
+      "types": [
         "fp64"
       ]
     },
@@ -41,7 +69,14 @@
       "group": "fp.div",
       "option": "float_overflow",
       "types": [
-        "fp32",
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.div",
+      "option": "rounding",
+      "types": [
         "fp64"
       ]
     },
@@ -49,9 +84,9 @@
       "group": "fp.div",
       "option": "rounding",
       "types": [
-        "fp32",
-        "fp64"
-      ]
+        "fp32"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -69,7 +104,7 @@
   ],
   "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257); a finite quotient past the largest double raises (#575). Spark under ANSI gives `ERROR` natively; without ANSI, `NULL`. `IEEE` needs the `CASE` that `sverify.sql.spark` writes.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -162,6 +197,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "double_divide_mod[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 1200 of 1200 results as the fact says; Spark's value differs from Rel.eval's (sverify's lift, reference profile) on 13 of 285 rows compared.",
+        "double_divide_mod[0]: 300 rows, `a / b`, 1200 of 1200 results as the fact says (raised: DIVIDE_BY_ZERO 30); Spark differs from Rel.eval on 13 of 285.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

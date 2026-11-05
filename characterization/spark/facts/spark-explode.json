@@ -22,7 +22,7 @@
       false
     ]
   },
-  "description": "`LATERAL VIEW explode(a)` gives one row per element (a NULL element included) and none for a NULL or empty array; `LATERAL VIEW OUTER explode(a)` (`explode_outer`) gives one row with a NULL element for each.",
+  "description": "`LATERAL VIEW explode(a)` gives one row per element (a NULL element included) and none for a NULL or empty array; `LATERAL VIEW OUTER explode(a)` (`explode_outer`) gives one row with a NULL element for each. Spark 4.3.0 also has ANSI `UNNEST` in `FROM`: `UNNEST(a)` gives no rows for a NULL or empty array, `WITH ORDINALITY` adds a 1-based `bigint` column, and `UNNEST(a, b)` zips several arrays, padding the shorter ones with NULL (a NULL array counts as empty). `LEFT JOIN LATERAL UNNEST(a) ON true` keeps one row with a NULL element for a NULL or empty array.",
   "reference": "`UNNEST`: one row per element, none for an empty list or NULL. Spark's `explode` is native.",
   "status": "no-finding",
   "evidence": "probe",
@@ -79,6 +79,26 @@
         {
           "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L43-L47",
           "note": "`UNNEST(cast(null as array<int>))` gives no rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L35-L39",
+          "note": "`UNNEST(array())` gives no rows"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L51-L58",
+          "note": "`UNNEST(array(10, 20, 30)) WITH ORDINALITY` numbers the rows 1 to 3, a `bigint`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L70-L77",
+          "note": "`UNNEST(array(1, 2), array(10, 20, 30))` pads the shorter array with NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L110-L123",
+          "note": "`LATERAL UNNEST(xs, ys) WITH ORDINALITY`: no rows where both are empty; a NULL `xs` beside `array('f')` gives `NULL, f`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/unnest.sql.out#L126-L138",
+          "note": "`LEFT JOIN LATERAL UNNEST(xs) ON true` gives one NULL row for an empty and for a NULL array"
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."

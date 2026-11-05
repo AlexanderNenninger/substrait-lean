@@ -32,7 +32,7 @@
   ],
   "reference": "`list_extract(l, i)` (reference-semantics.md, Nested) counts from 1, as DuckDB's does. `element_at` matches it for positive indexes; a writer guards 0 and out-of-range indexes.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -153,6 +153,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "list_index[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 6326 of 6326 results as the fact says.",
+        "list_index[0]: 300 rows, `element_at(a, i)`, `a[i]`, `get(a, i)`, `try_element_at(a, i)`, `size(a)`, `array_size(a)`, 6326 of 6326 results as the fact says (raised: INVALID_ARRAY_INDEX 30, INVALID_ARRAY_INDEX_IN_ELEMENT_AT 28, INVALID_INDEX_OF_ZERO 92).",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ]
 }

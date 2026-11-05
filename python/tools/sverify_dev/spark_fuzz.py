@@ -98,7 +98,8 @@ class Expr:
 
     name: str
     spark: str
-    model: Callable[[tuple, bool], Any]
+    model: Callable[[Any, bool], Any]
+    """A row (a tuple) or, for an aggregate, a group's values by scan slice."""
     type: str | Callable[[bool], str] | None = None
     duckdb: str | None = None
     same: Callable[[Any, Any], bool] | None = None
@@ -1933,7 +1934,7 @@ def _int_sums() -> list[Target]:
                     return [Raise("ARITHMETIC_OVERFLOW")]
             if acc is not None:
                 partials.append(acc)
-        outs = []
+        outs: list[Any] = []
         for perm in itertools.permutations(partials):
             acc, bad = 0, False
             for x in perm:
@@ -1964,14 +1965,9 @@ def _int_sums() -> list[Target]:
                 Expr(
                     "try_sum",
                     "try_sum(x)",
-                    lambda parts, ansi: (
-                        [None if isinstance(v, Raise) else v for v in sum_m(parts, True)]
-                        + (
-                            [wrap(sum(x for p in parts for x in p if x is not None), 64)]
-                            if False
-                            else []
-                        )
-                    ),
+                    lambda parts, ansi: [
+                        None if isinstance(v, Raise) else v for v in sum_m(parts, True)
+                    ],
                     "bigint",
                     None,
                     _any_of,
@@ -2633,10 +2629,11 @@ def run(
                     save(out)
                 print(f"  {stats.agree}/{stats.rows} agree, {len(stats.findings)} finding(s), "
                       f"Rel.eval differs on {stats.lean_differs}/{stats.lean_compared}", flush=True)  # fmt: skip
+        jvm: Any = sp.spark._jvm
         out["_meta"] = {
             "spark": pyspark.__version__,
-            "java": sp.spark._jvm.System.getProperty("java.version"),
-            "os": f"{sp.spark._jvm.System.getProperty('os.name')} {sp.spark._jvm.System.getProperty('os.arch')}",
+            "java": jvm.System.getProperty("java.version"),
+            "os": f"{jvm.System.getProperty('os.name')} {jvm.System.getProperty('os.arch')}",
             "conf": CONF,
             "paths": "ansi true and false; folded and codegen (ConvertToLocalRelation, ConstantFolding excluded)",
             "date": dt.date.today().isoformat(),

@@ -1,0 +1,32 @@
+{
+  "id": "SP-6",
+  "project": "spark",
+  "kind": "bug",
+  "version": "4.3.0",
+  "status": "confirmed",
+  "status_note": "Spark's own golden files at v4.3.0 expect it, in both ANSI modes. No issue found yet; JIRA not searched.",
+  "summary": "`to_timestamp` of a year past the microsecond range raises a bare `java.lang.ArithmeticException: long overflow` with no error class or SQLSTATE, in both ANSI modes. The parser's `extractMicros` multiplies the epoch seconds with `Math.multiplyExact`; under ANSI `parseToTimestampExact` wraps only `DateTimeException` and `ParseException` in an error class, and without ANSI `isParseError` turns only those into NULL, so the overflow escapes both.",
+  "repro": "SELECT to_timestamp('294248', 'y');\n-- java.lang.ArithmeticException: long overflow (no error class), ANSI on or off",
+  "handling": "The profile must treat the timestamp range as a precondition on parsed values or refuse the construct. The reference raises far earlier (`date_range`, 9999-12-31), so a guarded plan never reaches it. The fix upstream is to catch the `ArithmeticException` in `extractMicros` and raise `DATETIME_OVERFLOW`, or NULL under `try_to_timestamp` and without ANSI.",
+  "found_by": "Spark's SQL query tests at v4.3.0 (sverify_dev.spark_tests, Spark evidence session): datetime-parsing-invalid.sql",
+  "issues": [
+    738
+  ],
+  "files": [
+    "characterization/spark/facts/spark-raise-set.json",
+    "characterization/spark/facts/spark-date-range.json"
+  ],
+  "facts": [
+    "spark-raise-set",
+    "spark-date-range"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-05",
+      "against": {
+        "spark": "4.3.0 golden files at v4.3.0"
+      },
+      "note": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-parsing-invalid.sql.out#L2-L8 and https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/datetime-parsing-invalid.sql.out#L2-L8. Source: https://github.com/apache/spark/blob/v4.3.0/sql/api/src/main/scala/org/apache/spark/sql/catalyst/util/TimestampFormatter.scala#L315-L322 (`Math.multiplyExact`), https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/DateTimeExpressionUtils.java#L153-L168 and https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala#L2145-L2150 (the exceptions caught)."
+    }
+  ]
+}

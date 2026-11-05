@@ -14,9 +14,23 @@
       "group": "agg.stat",
       "option": "stat_algo",
       "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
         "i64",
-        "fp64",
         "decimal"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
       ]
     },
     {
@@ -24,9 +38,9 @@
       "option": "stat_degenerate",
       "types": [
         "i64",
-        "fp64",
         "decimal"
-      ]
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -49,7 +63,7 @@
   ],
   "reference": "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -123,6 +137,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off. No input file sets spark.sql.legacy.statisticalAggregate, so every case runs with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "covar_corr[1]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 204 of 204 results as the fact says.",
+        "covar_corr[1]: 300 rows, `corr(x, y)`, 204 of 204 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [

@@ -15,9 +15,16 @@
       "option": "date_range",
       "types": [
         "date",
-        "timestamp",
-        "timestamp_tz"
+        "timestamp"
       ]
+    },
+    {
+      "group": "time.arith",
+      "option": "date_range",
+      "types": [
+        "timestamp_tz"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -41,7 +48,7 @@
   ],
   "reference": "`date_range`: date arithmetic raises outside 0001-01-01 … 9999-12-31 (#251); adding months keeps the day or takes the month's last day (`Time.addMonths`). Spark needs a range guard on every result, and its wrap at 2³¹ days returns a wrong date where the reference raises.",
   "status": "open",
-  "evidence": "probe",
+  "evidence": "fuzz",
   "provenance": [
     {
       "checked_at": "2026-11-05",
@@ -142,6 +149,22 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "characterization/spark/fuzz.json",
+          "note": "date_range[0], date_range[1]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 3360 of 3360 results as the fact says.",
+        "date_range[0]: 300 rows, `unix_date(date_add(date_from_unix_date(k), n))`, `unix_date(date_from_unix_date(k) + 1)`, 2400 of 2400 results as the fact says; date_range[1]: 300 rows, `unix_micros(CAST(timestamp_micros(us) AS TIMESTAMP_NTZ) + make_dt_interval(n, 0, 0, 0))`, 960 of 960 results as the fact says (raised: java.lang.ArithmeticException 60).",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
     }
   ],
   "issues": [
