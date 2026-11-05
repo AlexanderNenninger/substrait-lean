@@ -88,7 +88,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _deprecated
+from sverify import _deprecated, _stages
 from sverify import observation as _observation
 from sverify._duration import Duration, duration
 from sverify._hooks import COLLECTING, Collected
@@ -991,6 +991,10 @@ class CheckedCondition:
     """Why it is not proved, in the user's terms, where the report found
     more than the checker's value says (`_key_reasons`, `_null_reasons`,
     #688): `why` reads it first."""
+    ties: bool = False
+    """Unproved only because rows may tie: the checker proves it where every
+    window orders its rows totally (`Report.tie_places` names where they
+    may not). The counterexample search is skipped for it (#691)."""
 
     @property
     def reason(self) -> UnprovedReason | None:
@@ -1014,7 +1018,7 @@ class CheckedCondition:
             return "observation" if self.ignores else None
         if self.value == "not shown to be a key":
             return "not_a_key"
-        if self.value.startswith("undetermined"):
+        if self.ties or self.value.startswith("undetermined"):
             return "ties"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if parts == {"FALSE"}:
@@ -1041,6 +1045,8 @@ class CheckedCondition:
             return self.detail
         if self.value == "not shown to be a key":
             return "the preconditions do not make it a key"
+        if self.ties:
+            return "it holds where no rows tie in a window's ORDER BY, and rows may tie there"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if "TRUE" not in parts and parts == {"FALSE"}:
             return "it is FALSE on every row"
@@ -4164,15 +4170,16 @@ def _verify_once(
     def find(target: dict | Sequence[int]) -> Counterexample | None:
         if not counterexamples:
             return None
-        return search_counterexample(
-            schemas,
-            req_named,
-            keys,
-            transform_plan,
-            target,
-            budget=counterexamples,
-            references=foreign_keys,
-        )
+        with _stages.stage("counterexamples"):
+            return search_counterexample(
+                schemas,
+                req_named,
+                keys,
+                transform_plan,
+                target,
+                budget=counterexamples,
+                references=foreign_keys,
+            )
 
     def next_key() -> tuple[bool, Counterexample | None]:
         ok = next(key_results)["proved"]
@@ -4186,10 +4193,16 @@ def _verify_once(
         else:
             e = next(rows)
             p = next(ens_iter)
-            cex = None if e["proved"] else find(p)
+            ties = bool(e.get("ties"))
+            # It depends on how ties are ordered, which the search, on
+            # `Rel.eval`'s one order, rarely shows; breaking the ties with
+            # a key proves it (#691).
+            cex = None if e["proved"] or ties else find(p)
             suggested = _suggested(e.get("suggest"), schemas, assumable)
             checked.append(
-                CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
+                CheckedCondition(
+                    e["name"], e["proved"], e["value"], cex, suggested=suggested, ties=ties
+                )
             )
         checked[-1].condition = c
     from sverify import _user_text
