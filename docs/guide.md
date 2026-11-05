@@ -1722,7 +1722,7 @@ column. Each sverify term maps to its ODCS field:
 
 Every flag and rule carries a custom property `sverify` (vendor
 `sverify`) with its `status`: `proved` by the checker, `checked` on the
-data at every refresh (`on_unproved="runtime"`), or `declared` and
+data at every refresh (`on_unproved="check"`), or `declared` and
 neither. Its `label` is the condition as the transform states it. The
 document's own `sverify` property names the node, the sha256 of its plan
 (as the sink's [contract record](stability.md) has it) and whether the
