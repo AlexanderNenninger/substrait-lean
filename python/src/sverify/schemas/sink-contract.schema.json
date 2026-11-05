@@ -2,15 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/sink-contract.schema.json",
   "title": "sverify sink contract record",
-  "description": "What a sverify sink records with each commit (sverify.io.Contract.to_json): in a Delta commit's commitInfo under the key `sverify`, in an Iceberg table's property `sverify.contract`, or wherever a sink of your own stores it. Format 1. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). A record without `format` was written before 0.5 and is format 1.",
+  "description": "What a sverify sink records with each commit (sverify.io.Contract.to_json): in a Delta commit's commitInfo and an Iceberg table's properties, under the key `sverify.contract`, or wherever a sink of your own stores it. Format 2. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). Records written before 1.0 are format 1: they name the node `view`, Delta keeps them under the key `sverify`, and a record without `format` was written before 0.5. Readers map them.",
   "type": "object",
-  "required": ["view", "plan", "sources", "epoch", "not_null", "checks", "unique"],
+  "required": ["node", "plan", "sources", "epoch", "not_null", "checks", "unique"],
   "properties": {
     "format": {
-      "description": "The version of this format. Absent in records written before 0.5, which read as 1.",
-      "const": 1
+      "description": "The version of this format.",
+      "const": 2
     },
-    "view": {
+    "node": {
       "description": "The stored node's name.",
       "type": "string"
     },
