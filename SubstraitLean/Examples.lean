@@ -20,6 +20,7 @@ import SubstraitLean.Implied
 import SubstraitLean.Partition
 import SubstraitLean.Allowed
 import SubstraitLean.Ties
+import SubstraitLean.Knowledge
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
@@ -182,6 +183,11 @@ end Substrait.Examples
 #print axioms Substrait.contract_sound_all
 #print axioms Substrait.Rel.keys_sound_all
 #print axioms Substrait.Rel.keyedWindows_soundAll
+#print axioms Substrait.Rel.analyse_sound_all
+#print axioms Substrait.Rel.analyse_sound
+#print axioms Substrait.Knowledge.contract_sound
+#print axioms Substrait.Knowledge.contract_sound_all
+#print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines
 #print axioms Substrait.Lowering.lowerRel_raises
