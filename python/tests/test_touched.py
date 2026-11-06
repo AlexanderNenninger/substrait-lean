@@ -9,6 +9,7 @@ import ibis
 import pyarrow as pa
 import pytest
 
+from _engines import PROFILED_ORDERED
 from _pipelines import recomputed, rows
 from sverify import incremental
 from sverify.io import Changes, StaticSource
@@ -59,7 +60,7 @@ def random_batches(seed, steps=40):
     return first, out
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED_ORDERED)
 @pytest.mark.parametrize("seed", range(3))
 def test_touched_groups_match_a_full_recompute(seed, engine):
     first, batches = random_batches(seed)
@@ -187,7 +188,7 @@ def per_bucket(samples):
     )
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED_ORDERED)
 def test_a_time_bucket_key_reads_only_the_touched_range(engine, monkeypatch):
     rng = random.Random(7)
     live: list[tuple[str, int | None, int]] = [
@@ -255,7 +256,7 @@ def unique_stream(seed, steps=30):
     return first, out
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED_ORDERED)
 @pytest.mark.parametrize("seed", range(2))
 def test_touched_partitions_match_a_full_recompute(seed, engine):
     first, batches = unique_stream(seed)

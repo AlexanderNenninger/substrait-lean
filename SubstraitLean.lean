@@ -1,5 +1,6 @@
 import SubstraitLean.FloatFormat
 import SubstraitLean.Value
+import SubstraitLean.FloatExact
 import SubstraitLean.BlackBox
 import SubstraitLean.Rounding
 import SubstraitLean.Conversions
@@ -63,6 +64,7 @@ import SubstraitLean.Functions
 import SubstraitLean.Options
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
+import SubstraitLean.ObsEquiv
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile

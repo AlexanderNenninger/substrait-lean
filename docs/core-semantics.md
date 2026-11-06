@@ -721,6 +721,14 @@ pairs.
 - `t` under `Q` raises only where `r` under `P` may:
   `Raises_Q(t) ⊆ Raises_P(r)`.
 
+Refinement up to an observation `o` asks the first only up to `o`: every
+result `Q` allows for `t` is, up to `o`, one `P` allows for `r`
+(`Rel.RefinesUpTo`, `Rel.RefinesPUpTo`, with `Relation.Equiv o` from
+[ObsEquiv.lean](../SubstraitLean/ObsEquiv.lean)). `o = Obs.exact` is the
+relation above (`Rel.Refines`); `o = {rows := .multiset}` forgets the order
+of rows (`Rel.RefinesBag`, `Rel.RefinesP`), which is all an unsorted plan
+gives against an `ORDER BY`.
+
 A translation `T : P → Q` maps plans to plans or refuses them, and it is
 sound when `(Q, T r) ⊑ (P, r)` for every plan `r` it does not refuse. A
 theorem about `Allowed_P(r)`, the kind `verify` proves, then holds of every
@@ -731,9 +739,9 @@ The relation covers every move sverify makes:
 
 | Move | As refinement | Today |
 |---|---|---|
-| A rewrite within a profile | `(P, t) ⊑ (P, r)` | `Rel.Refines` ([Allowed.lean](../SubstraitLean/Allowed.lean)), `Rel.refines_of_perm` |
+| A rewrite within a profile | `(P, t) ⊑ (P, r)` up to `o` | `Rel.RefinesUpTo` ([Allowed.lean](../SubstraitLean/Allowed.lean)); `optimize` up to the order of rows, for plans without choices (`Rel.optimize_refines`, `Rel.refines_of_same`, `Rel.refines_of_perm`) |
 | A narrower profile, the same plan | `(P, r) ⊑ (core, r)` when `P`'s choices are within the core's | step 1c's `Rel.AllowedP_mono` |
-| Lowering to an engine | `(E, T_E r) ⊑ (reference, r)` | `Rel.duckdb_refines` (from `Rel.duckdb_shim_allowed` and `Lowering.lowerRel_raises`), `Lowering.lower_correct`, `Rel.guardFree_allowed` |
+| Lowering to an engine | `(E, T_E r) ⊑ (reference, r)`: exactly for DuckDB's lowering, up to an engine row's `q` where the row is `refinesUpTo q` | `Rel.duckdb_refines` (from `Rel.duckdb_shim_allowed` and `Lowering.lowerRel_raises`), `Lowering.lower_correct`, `Rel.guardFree_allowed` |
 | Lifting from a source language | `(X, s) ⊑ (P, L s)`: whatever `X` does with `s` is allowed for the lifted plan under `P` | the SQLGlot lift, trusted and tested; `LiftDuckDB`'s entries proved per rule (#242) |
 | A round trip | `(Substrait, s) ⊑ (core, read s)` and back | step 2 |
 
@@ -1475,7 +1483,10 @@ An observation `q'` refines `q` when `q'` observes everything `q` observes:
 `ker q' ⊆ ker q`. Equality up to `q'` then implies equality up to `q`, so
 the finer guarantee refines the coarser one, as `Allowed_P' ⊆ Allowed_P`
 does for profiles. The identity is the finest observation, a constant the
-coarsest. Five consequences:
+coarsest. In Lean, equality up to `q` is `Relation.Equiv q`
+(`SubstraitLean/ObsEquiv.lean`), and `Relation.Equiv_mono` proves that
+`Obs.le q' q` gives it: equality up to `q'` implies equality up to `q`. Five
+consequences:
 
 1. The check. An engine function equal to the reference's up to `q_E`
    meets a postcondition that asks for `q_post` ([D11](#d11-postconditions-name-the-equivalence))
@@ -1673,6 +1684,81 @@ catalogue and the oracles compared each engine with it, and reported
 legitimate picks as `tie_order` differences. Shims imitated
 `List.mergeSort` on engines, and Polars refused or shimmed picks it could
 run natively.
+
+### D25. Float aggregates are correctly rounded exact sums
+
+In the reference, a `SUM`, `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
+of doubles is the correctly rounded value of the exact sum or moments. Every
+finite double is an integer multiple of 2⁻¹⁰⁷⁴, so the sum of the values is
+an exact dyadic rational; the result is the double nearest to it, ties to
+even (`floatSumCR`, `SubstraitLean/FloatExact.lean`), and `AVG` is the exact
+sum divided by the count, rounded once (`floatAvgCR`). NaN and infinities
+follow IEEE 754: a NaN, or `+∞` with `-∞`, gives NaN, and one kind of
+infinity gives it. The value is a function of the multiset of values, so it
+is one value and order-free (`floatSumCR_perm`).
+
+Engines add in an order of their own: DuckDB in the order values reach each
+thread's state (`duckdb-sum-double`), Polars pairwise in blocks of 128
+(`polars-sum-float`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
+plan's bound, the distance of any order of additions from the exact sum
+(`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
+ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay
+`approxWithin "plan"`, so a double `SUM` or `AVG` on an engine is
+`observed (tolerance)`, as it was.
+
+Three consequences:
+
+- `sum_order` and `stat_algo` are no longer choices of the reference. They
+  stay choices of the engines, and the reference's row is `EXACT`.
+- `Rel.detPlan` is true of float aggregates, so `contract_sound_all` covers
+  every result the reference allows for them.
+- A tolerance is a metric: bounds add along a pipeline
+  (`Near ε₁ a b → Near ε₂ b c → Near (ε₁ + ε₂) a c`), and no tolerance passes
+  through a filter, group key or sort on a double column.
+
+Why: the reference added doubles one by one in list order (`floatSum`) and
+allowed every order and grouping (`FloatSums`). The engines' results were
+then the reference's only in DuckDB, which emulated Lean's order with
+`list_reduce`; Spark and Snowflake refused double sums for want of a row
+order; five facts about `floatSum` were axioms. The correctly rounded sum
+turns them into theorems, lets every engine run `SUM` and `AVG` natively,
+and gives incremental maintenance an exact state with no drift. A
+postcondition at a rounding boundary can move by an ulp, which `sv.approx`
+absorbs. The epic is
+[#919](https://github.com/AlexanderNenninger/substrait-lean/issues/919).
+Precedents: Müller et al. ("Reproducible Floating-Point Aggregation in
+RDBMSs", ICDE 2018, [arXiv:1802.09883](https://arxiv.org/abs/1802.09883)) make `SUM` order-free in a database; Neal's
+superaccumulator ([arXiv:1505.05571](https://arxiv.org/abs/1505.05571))
+computes the correctly rounded sum at less than twice the cost of a naive
+one.
+
+### D26. Two equalities for NULL
+
+In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition)
+`NULL = NULL` is unknown, so a NULL never matches, never equals and never
+compares: three-valued logic, `and3`/`or3`/`not3` and `BinFn.apply .eq` in
+`SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
+`EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
+all NULLs are one value: syntactic equality, `Value.decEq` in
+`SubstraitLean/Value.lean`, as `dedup` and `groupKey` use it. A key
+(`sv.unique`, `KeyOn`) uses the second, so two rows with NULL in a key column
+collide, which is stricter than SQL's `UNIQUE` (`Keys.lean`'s header). The
+anti part of a left join and a semi or anti join use the first.
+
+Nothing in the core changes. The decision names what it does, so that an
+encoding of difference or provenance
+([#905](https://github.com/AlexanderNenninger/substrait-lean/issues/905))
+keeps the two apart.
+
+### D27. The size hypothesis is the only size assumption
+
+`Rel.Small` (`SubstraitLean/Safety.lean`): every string has fewer than 2³²
+characters, every relation a window reads fewer than 2⁶² rows, and every
+relation an aggregate reads fewer than 2⁶³. It is a hypothesis of every
+soundness theorem over windows and aggregates, never an axiom, and no other
+size bound is assumed anywhere. [reference-semantics.md](reference-semantics.md)'s
+"Overrides" table states it. A new theorem that needs another bound adds it
+to `Rel.Small`, beside the others.
 
 ### D28. Lambdas have lexical scope
 

@@ -33,6 +33,8 @@ and that the input rows meet the contract's preconditions.
 | Dropping the SQL's guards changes no result | `Rel.guardFree_sound` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
+| Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
+| A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `Rel.weighted_eval` | `Weighted.lean` |
@@ -103,6 +105,7 @@ generators, then the trusted reading and writing.
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
 | `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
+| `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |
@@ -178,6 +181,7 @@ generators, then the trusted reading and writing.
 | `Options.lean` | The option catalogue and each profile's choices |
 | `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |
 | `Observations.lean` | Observations and classes against the reference |
+| `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |

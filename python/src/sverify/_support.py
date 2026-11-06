@@ -41,6 +41,12 @@ SUPPORT: dict[str, frozenset[str]] = {
     "corr": _DUCKDB,
     # The pairs `covar_*` and `corr` read.
     "sverify_pair": _DUCKDB,
+    # Lists (#810, #812): DuckDB's list functions, `list(x)` keeping NULLs.
+    "list_prepend": _DUCKDB,
+    "list_concat": _DUCKDB,
+    "list_contains": _DUCKDB,
+    "list_position": _DUCKDB,
+    "flatten": _DUCKDB,
     # The lift's guards: `make_date` of columns raises outside the calendar (#809).
     "sverify_raise": _DUCKDB,
     # Windows: DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
@@ -89,6 +95,8 @@ _LABELS = {
     "variance OVER": "var() over a window (SQL var_samp, var_pop OVER)",
     "std_dev OVER": "std() over a window (SQL stddev_samp, stddev_pop OVER)",
     "sha256": "hexdigest('sha256') (SQL sha256)",
+    "list_prepend": "a list of computed values (SQL [a, b], list_prepend)",
+    "flatten": "flatten() (SQL flatten, and list() keeping NULLs)",
 }
 
 

@@ -1,0 +1,29 @@
+{
+  "id": "SG-9",
+  "project": "sqlglot",
+  "version": "30.22.0",
+  "status": "confirmed",
+  "status_note": "confirmed on the pinned release; not filed yet",
+  "summary": "DuckDB's `agg(x) EXPORT_STATE` modifier parses as the column alias `EXPORT_STATE` of the aggregate's value.",
+  "repro": "`sqlglot.parse_one(\"SELECT sum(i) EXPORT_STATE FROM t\", read=\"duckdb\")` gives `Alias(this=Sum(i), alias=EXPORT_STATE)`; DuckDB returns the aggregate's state (a struct), not its value.",
+  "handling": "The lift refuses an unquoted alias named EXPORT_STATE (`sql_lift._base._check_export_state`).",
+  "found_by": "sqllogictest replay through the lift (#810), `aggregate/aggregate_state_export/ordered_aggregate_export_state.test`",
+  "issues": [
+    810
+  ],
+  "files": [
+    "python/src/sverify/sql_lift/_base.py",
+    "python/tests/test_sql_lift_aggregates.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-06",
+      "against": {
+        "sqlglot": "30.22.0",
+        "duckdb": "2.0.0"
+      },
+      "note": "repro on the pinned release"
+    }
+  ],
+  "upstream": []
+}

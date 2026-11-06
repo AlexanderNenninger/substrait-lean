@@ -39,7 +39,9 @@ def plan(name: str, key: str = "scalarFunction", anchor: int = 7) -> dict:
 
 
 @pytest.mark.parametrize("dialect", ["spark", "snowflake", "DataFusion", "Polars"])
-@pytest.mark.parametrize("name", ["regexp_extract", "md5", "first", "median", "corr"])
+@pytest.mark.parametrize(
+    "name", ["regexp_extract", "md5", "first", "median", "corr", "list_prepend", "flatten"]
+)
 def test_duckdb_only(name: str, dialect: str) -> None:
     label = re.escape(_support._LABELS.get(name, name))
     with pytest.raises(

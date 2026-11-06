@@ -893,7 +893,7 @@ def run_plan(
             engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
-        finite: On DuckDB and Polars, check that no operation on finite
+        finite: On DuckDB, Polars and Spark, check that no operation on finite
             doubles gives `±∞` (`Issue.infinite`, #575), the reference's
             precondition. Default: True; `Report.run` passes False for a
             plan verified with `semantics="duckdb"`, which allows `±∞`.
@@ -951,7 +951,11 @@ def run_plan(
         _rename_tables(plan, names)
         tables = {alias: con._arrow[t] for t, alias in names.items()}
         return spark_engine.run(
-            plan, tables, None if engine == "spark" else engine, deterministic=tie_free
+            plan,
+            tables,
+            None if engine == "spark" else engine,
+            deterministic=tie_free,
+            finite=finite,
         )
     if engine == "datafusion":
         return run_substrait_json(con, datafusion_plan(plan_json))

@@ -1,5 +1,6 @@
 import SubstraitLean.Keys
 import SubstraitLean.Check
+import SubstraitLean.Allowed
 
 /-!
 # Semantic rewrites from contracts
@@ -1822,5 +1823,31 @@ theorem Rel.optimize_sound : ∀ {r : Rel}, r.WF cat → Same cat r (r.optimize 
     exact Same.trans ⟨hw, rfl, by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
 
 end
+
+/-! ## Rewrites as refinements -/
+
+/-- **A rewrite that keeps the rows refines the plan** up to the order of
+rows (`Rel.RefinesBag`), when the rewritten plan leaves no choices. `Same`
+speaks of `Rel.eval` only, so this is the refinement it gives: the exact one
+(`Rel.Refines`, which keeps an `ORDER BY`'s order) needs the rewrite's
+allowed results, not only its rows. -/
+theorem Rel.refines_of_same {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r s : Rel} (h : Same cat r s)
+    (hd : s.detPlan cat A F K = true) : s.RefinesBag cat r :=
+  Rel.refines_of_perm hcat hA hF hK h.wf hd (h.eval ▸ .refl _)
+
+/-- **`optimize` refines the plan** up to the order of rows, when the plan it
+gives leaves no choices. -/
+theorem Rel.optimize_refines {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {R : ForeignKeys} (hR : R.Hold cat) {r : Rel}
+    (hwf : r.WF cat) (hd : (r.optimize cat A F K R).1.detPlan cat A F K = true) :
+    (r.optimize cat A F K R).1.RefinesBag cat r :=
+  Rel.refines_of_same hcat hA hF hK (Rel.optimize_sound hcat hA hF hK hR hwf) hd
 
 end Substrait
