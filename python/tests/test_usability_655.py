@@ -8,6 +8,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _engines import PROFILED
 from _pipelines import make_orders
 from sverify import routes
 from sverify.errors import PreconditionError, RouteError, UnverifiedRunWarning
@@ -76,7 +77,7 @@ def mean(orders):
     return orders.group_by("customer").aggregate(m=orders.amount.cast("float64").mean())
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_mean_into_a_sink_needs_no_settings(tmp_path, engine) -> None:
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7)])
     node = mean(orders).write(DeltaSink(str(tmp_path / "m")))

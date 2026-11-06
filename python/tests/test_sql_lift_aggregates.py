@@ -75,6 +75,18 @@ QUERIES = [
     " GROUP BY customer",
     "SELECT median(price) FILTER (WHERE id > 1) AS m, quantile_cont(DISTINCT amount, 0.9) AS q"
     " FROM orders",
+    # #810: string_agg skips NULLs; list, first and last keep them, as DuckDB
+    # does; bool_and and bool_or are min and max of booleans.
+    "SELECT customer, string_agg(customer, '-' ORDER BY id) AS s, list(qty ORDER BY id) AS l,"
+    " bool_and(amount > 2) AS ba, bool_or(qty > 3) AS bo FROM orders GROUP BY customer",
+    "SELECT first(qty ORDER BY id) AS f, last(qty ORDER BY id DESC) AS l,"
+    " first(price ORDER BY placed) AS fp, last(customer ORDER BY day) AS lc,"
+    " list(customer ORDER BY id) AS lst, array_agg(qty ORDER BY amount DESC) AS aa,"
+    " string_agg(customer ORDER BY id) AS sa FROM orders",
+    "SELECT customer, first(id ORDER BY amount) FILTER (WHERE qty IS NOT NULL) AS f,"
+    " last(day ORDER BY id) AS d FROM orders GROUP BY customer",
+    "SELECT list(customer ORDER BY id) FILTER (WHERE id > 1) AS l, first(qty ORDER BY id) AS f,"
+    " bool_or(qty > 3) AS b FROM orders WHERE id > 10",
     # A key that is the alias of a constant: `qualify` writes its position
     # (`GROUPING SETS ((1), ())`), which is the select list's first column.
     "SELECT count(k) AS c, sum(k) AS s FROM (SELECT 7 AS k FROM orders"
@@ -122,6 +134,15 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
         ("SELECT arg_max(id, amount, 2) FROM orders", "n best"),
         ("SELECT median(amount) OVER (PARTITION BY customer) FROM orders", "over a window"),
+        ("SELECT string_agg(amount, ',') FROM orders", "cast it to VARCHAR"),
+        ("SELECT string_agg(customer, customer) FROM orders", "constant separator"),
+        ("SELECT bool_and(amount) FROM orders", "not supported"),
+        ("SELECT list(cost ORDER BY id) FROM orders", "DECIMAL"),
+        ("SELECT first(qty ORDER BY amount + 1) FROM orders", "ORDER BY a column only"),
+        ("SELECT list(qty) OVER (ORDER BY id) FROM orders", "over a window"),
+        # SQLGlot reads EXPORT_STATE as an alias (upstream/bugs/SG-9.json).
+        ("SELECT first(qty ORDER BY id) EXPORT_STATE FROM orders", "EXPORT_STATE"),
+        ("SELECT sum(qty) export_state FROM orders", "EXPORT_STATE"),
     ],
 )
 def test_refusals_say_what(query, message):
