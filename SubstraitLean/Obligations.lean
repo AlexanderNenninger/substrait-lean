@@ -285,7 +285,7 @@ theorem Rel.mapExprs_id : ∀ r : Rel, r.mapExprs id = r
 
 /-- Where the reference does not raise, its functions give `Rel.eval`'s rows. -/
 theorem Rel.evalI_reference {cat : Catalog} {r : Rel} (h : ¬r.Raises Profile.reference cat) :
-    r.evalI Profile.reference.impl cat = r.eval cat := by
+    r.eval cat Profile.reference.impl = r.eval cat := by
   have := Rel.evalI_mapExprs (f := id) Expr.reference_exact (fun _ => rfl) (cat := cat) (r := r)
   rw [Rel.mapExprs_id] at this
   exact this h
@@ -306,7 +306,7 @@ are rows the original one is evaluated on. -/
 theorem Rel.raises_mapExprs {p q : Profile} {f : Expr → Expr} (hx : ∀ e, Expr.Exact p (f e) e)
     (hf : ∀ i, f (.field i) = .field i)
     (hr : ∀ e row, (f e).RaisesOn p row → e.RaisesOn q row) {cat : Catalog}
-    (hq : ∀ r : Rel, ¬r.Raises q cat → r.evalI q.impl cat = r.eval cat) :
+    (hq : ∀ r : Rel, ¬r.Raises q cat → r.eval cat q.impl = r.eval cat) :
     ∀ {r : Rel}, (r.mapExprs f).Raises p cat → r.Raises q cat
   | .read _, h | .values _ _, h => h.elim
   | .filter r c, h => by
@@ -391,7 +391,7 @@ theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) {
 result. -/
 theorem Rel.duckdb_shim_allowed {cat : Catalog} {r : Rel}
     (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
-    r.Allowed cat ((Lowering.duckdb.lowerRel r).evalI (Profile.duckdb {}).impl cat) := by
+    r.Allowed cat ((Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl) := by
   rw [Rel.duckdb_shim_sound h]; exact r.eval_allowed cat
 
 /-- **`(duckdb, T r) ⊑ (reference, r)`**, for `T = Lowering.duckdb.lowerRel`
@@ -403,7 +403,7 @@ base is `Rel.duckdb_sound`'s, aggregates included: DuckDB's double `SUM` and
 theorem Rel.duckdb_refines {cat : Catalog} (r : Rel) :
     (¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat →
       r.AllowedP Profile.reference.table cat
-        ((Lowering.duckdb.lowerRel r).evalI (Profile.duckdb {}).impl cat)) ∧
+        ((Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl)) ∧
     ((Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat →
       r.Raises Profile.reference cat) :=
   ⟨fun h => Rel.allowedP_reference.mpr (Rel.duckdb_shim_allowed h),
