@@ -187,7 +187,7 @@ is what the probe gives.
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
 | list literals, indexing, UNNEST | in | covered | catalogue unnest 1; Ibis lists |  |
-| len, list_contains, computed list elements | in | — | tag filters on list columns; replay (part of 1,724 list refusals) | [#812](https://github.com/AlexanderNenninger/substrait-lean/issues/812) |
+| len, list_contains, computed list elements | in | covered | tag filters on list columns; replay (part of 1,724 list refusals) | [#812](https://github.com/AlexanderNenninger/substrait-lean/issues/812) |
 | lambdas and other list functions | after 1.0 | — | replay ~1,500 | [#348](https://github.com/AlexanderNenninger/substrait-lean/issues/348) |
 | vector functions | after 1.0 | — | embeddings pipelines; replay 53 | [#327](https://github.com/AlexanderNenninger/substrait-lean/issues/327) |
 | structs and MAP | after 1.0 | — | replay 1,229 | [#349](https://github.com/AlexanderNenninger/substrait-lean/issues/349) |
@@ -203,9 +203,9 @@ is what the probe gives.
 | stddev, variance, corr | in | covered | catalogue: stddev_var 4, corr 1; float pattern ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749)) |  |
 | median, quantile_cont, quantile_disc | in | covered | catalogue percentile 2 (H2O q6); p95 rollups ([#326](https://github.com/AlexanderNenninger/substrait-lean/issues/326)'s comment) |  |
 | arg_max, arg_min, max_by | in | covered | catalogue arg_max 3; latest row per key |  |
-| string_agg, listagg, list, array_agg | in | — | catalogue string_agg 1; dbt.listagg; Ibis group_concat, collect verify | [#810](https://github.com/AlexanderNenninger/substrait-lean/issues/810) |
-| bool_and, bool_or | in | — | dbt.bool_or; Ibis any, all verify | [#810](https://github.com/AlexanderNenninger/substrait-lean/issues/810) |
-| first and last with ORDER BY | in | — | catalogue first_last_value 2; Ibis first, last ordered | [#810](https://github.com/AlexanderNenninger/substrait-lean/issues/810) |
+| string_agg, listagg, list, array_agg | in | covered | catalogue string_agg 1; dbt.listagg; Ibis group_concat, collect verify | [#810](https://github.com/AlexanderNenninger/substrait-lean/issues/810) |
+| bool_and, bool_or | in | covered | dbt.bool_or; Ibis any, all verify | [#810](https://github.com/AlexanderNenninger/substrait-lean/issues/810) |
+| first and last with ORDER BY | in | covered | catalogue first_last_value 2; Ibis first, last ordered | [#810](https://github.com/AlexanderNenninger/substrait-lean/issues/810) |
 | any_value | in | — | dbt.any_value; replay 56 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | approximate aggregates | after 1.0 | — | catalogue approx_distinct; Ibis approx_nunique, approx_median | [#469](https://github.com/AlexanderNenninger/substrait-lean/issues/469) |
 | statistics as black boxes: mad, entropy, kurtosis, sem, product | in | covered | metrics rollups; replay ~100 |  |
@@ -225,8 +225,8 @@ is what the probe gives.
 | first_value, last_value | in | covered | catalogue first_last_value 2 |  |
 | QUALIFY | in | — | catalogue qualify 7 (written as subqueries); dedup pattern; replay 62 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | named WINDOW | in | — | replay 71 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
-| RANGE frames with an INTERVAL offset | in | — | rolling 7 days (catalogue range_frame 1); Ibis rolling sum (interval) verifies | [#811](https://github.com/AlexanderNenninger/substrait-lean/issues/811) |
-| IGNORE NULLS | in | — | gap filling, last observation carried forward ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)) | [#811](https://github.com/AlexanderNenninger/substrait-lean/issues/811) |
+| RANGE frames with an INTERVAL offset | in | covered | rolling 7 days (catalogue range_frame 1); Ibis rolling sum (interval) verifies | [#811](https://github.com/AlexanderNenninger/substrait-lean/issues/811) |
+| IGNORE NULLS | in | covered | gap filling, last observation carried forward ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)) | [#811](https://github.com/AlexanderNenninger/substrait-lean/issues/811) |
 
 ## Skipped and listed
 
