@@ -1,8 +1,9 @@
 """Higher-order functions on lists with lambdas (#94): Substrait's `any_match`,
 `all_match`, `transform` and `filter`.
 
-Lambdas are closed for now: the body reads its parameter and constants.
-Ibis's `contains(v)` is `any_match(l, x -> x IS NOT DISTINCT FROM v)` (decided
+A lambda's body reads its parameter and the enclosing row (D28,
+`docs/core-semantics.md`); Ibis writes closed lambdas only, and Polars runs
+only those. Ibis's `contains(v)` is `any_match(l, x -> x IS NOT DISTINCT FROM v)` (decided
 on #94: Polars' meaning, within the spec), so `v` is a constant. Polars runs
 them; the SQL engines and DataFusion refuse them.
 """
@@ -121,3 +122,70 @@ def test_other_engines_refuse(con, engine, message):
     w = written_plan(plan_json(con, t.select(x=t.l.contains(1))))
     with pytest.raises(Exception, match=message):
         run_plan(con, w, engine)
+
+
+def _ref(field: int, param: bool = False) -> dict:
+    root = "lambdaParameterReference" if param else "rootReference"
+    return {
+        "value": {"selection": {"directReference": {"structField": {"field": field}}, root: {}}}
+    }
+
+
+def _hof(anchor: int, op: int) -> dict:
+    """`f(l, x -> op(x, c))` over the row `(c, l)`: the body reads the row's `c`."""
+    body = {"scalarFunction": {"functionReference": op, "arguments": [_ref(0, True), _ref(0)]}}
+    lam = {"lambda": {"parameters": {"types": [{"i64": {}}]}, "body": body}}
+    return {"scalarFunction": {"functionReference": anchor, "arguments": [_ref(1), {"value": lam}]}}
+
+
+#: `transform(l, x -> x + c)` and `filter(l, x -> x > c)`: lambdas that read
+#: the row (D28), as Substrait writes them.
+CAPTURING = {
+    "extensions": [
+        {"extensionFunction": {"functionAnchor": i, "name": n}}
+        for i, n in enumerate(["transform", "add", "filter", "gt"], start=1)
+    ],
+    "relations": [
+        {
+            "root": {
+                "names": ["shifted", "above"],
+                "input": {
+                    "project": {
+                        "common": {"emit": {"outputMapping": [2, 3]}},
+                        "input": {
+                            "read": {
+                                "namedTable": {"names": ["u"]},
+                                "baseSchema": {
+                                    "names": ["c", "l"],
+                                    "struct": {
+                                        "types": [{"i64": {}}, {"list": {"type": {"i64": {}}}}]
+                                    },
+                                },
+                            }
+                        },
+                        "expressions": [_hof(1, 2), _hof(3, 4)],
+                    }
+                },
+            }
+        }
+    ],
+}
+
+
+def test_a_lambda_reads_the_row():
+    """D28: the body sees the enclosing row."""
+    rows = {"u": [(10, [1, 20]), (0, [-1, None]), (5, None)]}
+    got = lean_values(json.dumps(inline_tables(CAPTURING, rows)))
+    assert sorted(got, key=repr) == sorted(
+        [([11, 30], [20]), ([-1, None], []), (None, None)], key=repr
+    )
+
+
+def test_polars_refuses_a_lambda_that_reads_the_row(con):
+    put_table(
+        con,
+        "u",
+        pa.table({"c": pa.array([1], pa.int64()), "l": pa.array([[1]], pa.list_(pa.int64()))}),
+    )
+    with pytest.raises(Exception, match="reads only its own parameter"):
+        run_plan(con, written_plan(json.dumps(CAPTURING)), "polars")

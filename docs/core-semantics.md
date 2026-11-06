@@ -1767,7 +1767,7 @@ A lambda in a higher-order call (`Expr.hof`: `any_match`, `all_match`,
 outer columns (`list_transform(l, x -> x + col)`). Its body is evaluated on
 `x :: row`: field 0 is the parameter and the row's column `i` is field
 `i + 1`; a nested lambda's body reads its own parameter as 0, the outer
-parameter as 1 and the row from 2 (de Bruijn order). The issue's text
+parameter as 1 and the row from 2 (de Bruijn order). #922's draft
 numbered the row first; with the parameter first a body keeps its meaning
 when columns are appended to the row, so `Expr.eval_append`, the lemma
 behind every pushdown, holds of bodies unchanged, and a closed body (field 0

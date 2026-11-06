@@ -214,9 +214,6 @@ theorem Expr.eval_dropCols {x y : Row} {e e' : Expr} (h : e.dropCols x.length = 
     e.eval (x ++ y) = e'.eval y :=
   Expr.eval_dropColsAt (x := x) (y := y) [] h
 
-theorem Expr.refsLtB_iff {n : Nat} {e : Expr} : e.refsLtB n = true ↔ e.refsLt n := by
-  induction e generalizing n <;> simp_all [refsLtB, refsLt, and_assoc]
-
 theorem Expr.eval_append_of_refsLtB {x : Row} (y : Row) {e : Expr} (h : e.refsLtB x.length = true) :
     e.eval (x ++ y) = e.eval x :=
   Expr.eval_append y (Expr.refsLtB_iff.mp h) rfl

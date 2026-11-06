@@ -83,7 +83,7 @@ theorem Value.hasKind_of_int {k : Kind} (hk : k.isIntRep = true) :
     ∀ {v : Value}, v.hasKind .int = true → v.hasKind k = true
   | .null, _ => by simp
   | .int _, _ => by cases k <;> simp_all [Value.hasKind, Kind.isIntRep]
-  | .bool _, h | .str _, h | .list _, h => by simp [Value.hasKind, Kind.isIntRep] at h
+  | .bool _, h | .str _, h | .list _, h => by simp [Value.hasKind] at h
 
 /-! ## Kinds of expressions -/
 
@@ -116,6 +116,11 @@ def KT.okK (want : Kind) : KT → Bool
   | .kind .other => true
   | .kind k => decide (k = want)
   | .num => false
+
+/-- Is `t` a list's kind, or unknown? -/
+def KT.okList : KT → Bool
+  | .kind (.list _) | .kind .other => true
+  | _ => false
 
 def Kind.isInt : Kind → Bool
   | .int => true
@@ -204,6 +209,10 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
     | .kind (.list _) | .kind .other => some (.kind .int)
     | _ => none
   | .raise _ | .bbox _ => some (.kind .other)
+  | .flatten => match t with
+    | .kind (.list (.list k)) => some (.kind (.list k))
+    | .kind (.list .other) | .kind .other => some (.kind (.list .other))
+    | _ => none
 
 /-- Integer arithmetic's result: the kind that is not a plain integer (a
 timestamp plus microseconds is a timestamp). -/
@@ -237,6 +246,9 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .pair => some (.kind (.struct [a.toKind, b.toKind]))
   | .greatest | .least => some (a.join b)
   | .bbox2 _ => some (.kind .other)
+  | .listFn .contains => need a.okList (.kind .bool)
+  | .listFn .position => need a.okList (.kind .int)
+  | .listFn .prepend | .listFn .concat => some (.kind (.list .other))
 
 /-- The kind of a literal: integers have none of their own. -/
 def Value.kt : Value → KT
@@ -299,7 +311,7 @@ theorem KT.okI_int {p : Kind → Bool} (hp : ∀ k, p k = true → k.isIntRep = 
   | .num, .bool _ | .num, .str _ | .num, .list _ => simp [KT.has, KT.toKind, Value.hasKind] at hv
   | .kind k, .bool _ | .kind k, .str _ | .kind k, .list _ =>
     cases k <;> simp_all [KT.okI, KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] <;>
-      (have := hp _ ht; simp [Kind.isIntRep] at this)
+      (have := hp _ ht; simp at this)
 
 /-- The integer-represented results, by the function alone. -/
 theorem KT.has_intRep {t : KT} (ht : t.toKind.isIntRep = true) {v : Value}
@@ -313,7 +325,7 @@ def UnFn.out : UnFn → Kind
   | .itos | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 | .strftime _ => .str
   | .wrap _ | .widen | .decimal _ _ | .dkind _ _ | .fit _ _ | .structField _ | .listElement _
-  | .raise _ | .bbox _ => .other
+  | .raise _ | .bbox _ | .flatten => .other
   | _ => .int
 
 theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true := by
@@ -364,7 +376,7 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
     | (obtain ⟨_, rfl⟩ := h; first | exact hout | exact Value.hasKind_of_int rfl hout)
     | (obtain ⟨ht, rfl⟩ := h
        exact Value.hasKind_of_int (KT.orNum_intRep (by intro k hk; cases k <;>
-         simp_all [Kind.isExactNum, Kind.isIntRep, Kind.isTimeOrTod, Kind.isTime]) ht) hout)
+         simp_all [Kind.isExactNum, Kind.isIntRep, Kind.isTimeOrTod]) ht) hout)
     | (subst h; first | exact hout | simp [KT.has, KT.toKind])
     | skip
   case wrap => obtain ⟨_, rfl⟩ := h; exact hv
@@ -400,6 +412,21 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
       | .list vs, hv => exact Value.listElement_hasKind (Value.hasKind_list.mp hv) off
       | .int _, hv | .bool _, hv | .str _, hv => simp [KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] at hv
     · simp [KT.has, KT.toKind]
+  case flatten =>
+    split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h
+    · rename_i k
+      match v, hv with
+      | .list vs, hv =>
+        simp only [UnFn.apply, Value.flatten, KT.has, KT.toKind]
+        refine Value.hasKind_list.mpr fun w hw => ?_
+        obtain ⟨u, hu, hw⟩ := List.mem_flatMap.mp hw
+        have := Value.hasKind_list.mp hv u hu
+        match u, this, hw with
+        | .list ws, hws, hw => exact Value.hasKind_list.mp hws w hw
+      | .null, _ => simp [UnFn.apply, Value.flatten, KT.has]
+      | .int _, hv | .bool _, hv | .str _, hv => simp [KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] at hv
+    all_goals
+      cases v <;> simp [UnFn.apply, Value.flatten, KT.has, KT.toKind, Value.hasKind_list]
   case cardinality =>
     split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
       exact Value.hasKind_of_int rfl hout
@@ -409,7 +436,8 @@ integer, a boolean or a string (or NULL). -/
 def BinFn.out : BinFn → Kind
   | .eq | .lt | .and | .or | .startsWith | .endsWith | .like | .ilike => .bool
   | .concat | .substr _ _ | .trim _ _ | .strRepeat => .str
-  | .pair | .greatest | .least | .bbox2 _ => .other
+  | .pair | .greatest | .least | .bbox2 _ | .listFn .prepend | .listFn .concat => .other
+  | .listFn .contains => .bool
   | _ => .int
 
 theorem and3_hasKind (a b : Value) : (and3 a b).hasKind .bool = true := by
@@ -422,6 +450,10 @@ theorem BinFn.apply_out (f : BinFn) (a b : Value) : (f.apply a b).hasKind f.out 
   cases f
   case and => exact and3_hasKind a b
   case or => exact or3_hasKind a b
+  case listFn op =>
+    cases op <;> simp only [BinFn.apply, BinFn.out, ListOp.apply] <;> (try exact Value.hasKind_other _)
+    · unfold Value.listContains; split <;> (try split) <;> rfl
+    · unfold Value.listPosition; split <;> (try split) <;> rfl
   case lt =>
     cases a <;> cases b <;> simp only [BinFn.apply, BinFn.out] <;> (try simp [Value.hasKind]) <;>
       (generalize Value.listLt3 _ _ = r; rcases r with _ | _ | _ <;> rfl)
@@ -459,6 +491,18 @@ theorem BinFn.kindOf_sound {f : BinFn} {ta tb t' : KT} {a b : Value} (h : f.kind
     have hb' : b.hasKind tb.toKind = true := hb
     cases a <;> cases b <;> simp only [BinFn.apply] <;>
       first | exact Value.hasKind_null _ | (rw [e, ha', hb']; rfl)
+  case listFn op =>
+    cases op <;> simp only [Option.some.injEq, Option.ite_none_right_eq_some] at h hout
+    · subst h
+      show (BinFn.apply _ a b).hasKind (.list .other) = true
+      simp only [BinFn.apply, ListOp.apply]
+      cases b <;> simp [Value.listPrepend, Value.hasKind_list]
+    · subst h
+      show (BinFn.apply _ a b).hasKind (.list .other) = true
+      simp only [BinFn.apply, ListOp.apply]
+      cases a <;> cases b <;> simp [Value.listConcat, Value.hasKind_list]
+    · obtain ⟨_, rfl⟩ := h; exact hout
+    · obtain ⟨_, rfl⟩ := h; exact Value.hasKind_of_int rfl hout
   case greatest | least =>
     subst_vars
     simp only [BinFn.apply]
@@ -720,8 +764,8 @@ theorem Row.HasKinds.zipJoin {ka kb : List Kind} {row : Row} :
     (Row.HasKinds ka row ∨ Row.HasKinds kb row) → Row.HasKinds (List.zipWith Kind.join ka kb) row := by
   intro h i
   rw [List.getD_eq_getElem?_getD, List.getElem?_zipWith]
-  cases ha : ka[i]? <;> cases hb : kb[i]? <;> simp only [Option.map_some, Option.map_none,
-    Option.bind_some, Option.bind_none, Option.getD_none, Option.getD_some, Value.hasKind_other]
+  cases ha : ka[i]? <;> cases hb : kb[i]? <;> simp only [
+    Option.getD_none, Option.getD_some, Value.hasKind_other]
   rename_i a b
   unfold Kind.join
   split
@@ -740,10 +784,10 @@ theorem Row.HasKinds.set {ks : List Kind} {row : Row} (h : Row.HasKinds ks row) 
     by_cases hc : c < row.length
     · by_cases hk : c < ks.length
       · simp [hc, hk, hv]
-      · simp only [hc, hk, if_true, if_false]
+      · simp only [hc, hk, ite_true, ite_false]
         cases hg : ks[c]? <;> simp_all
     · have := List.getElem?_eq_none (l := row) (by omega : row.length ≤ c)
-      simp [hc, this]
+      simp [hc]
   · simpa [hi, List.getD_eq_getElem?_getD] using h i
 
 theorem Rel.inferKinds_length {cat : Catalog} {tk : String → List Kind} :
@@ -924,7 +968,7 @@ theorem Rel.kinds_sound {cat : Catalog} {tk : String → List Kind} (hcat : cat.
       subst this
       simpa using hm
     · have hxk := kinds_sound hcat hk hwf.1 h' x hx
-      exact (Expr.kindsT_sound hxk hts).append hm (by simp [groupKey, Expr.kindsT_length hts])
+      exact (Expr.kindsT_sound hxk hts).append hm (by simp [Expr.kindsT_length hts])
   | .unnest r c, ks, hwf, h, row, hr => by
     simp only [inferKinds, Option.map_eq_some_iff] at h
     obtain ⟨ks', h', rfl⟩ := h

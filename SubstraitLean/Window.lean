@@ -156,6 +156,9 @@ def Expr.refsLtB (n : Nat) : Expr → Bool
   | .ifThen c t e => c.refsLtB n && t.refsLtB n && e.refsLtB n
   | .hof _ l b => l.refsLtB n && b.refsLtB (n + 1)
 
+theorem Expr.refsLtB_iff {n : Nat} {e : Expr} : e.refsLtB n = true ↔ e.refsLt n := by
+  induction e generalizing n <;> simp_all [refsLtB, refsLt, and_assoc]
+
 def WinFn.refsLt (n : Nat) : WinFn → Bool
   | .rowNumber | .rank _ | .denseRank _ | .percentRank _ | .cumeDist _ | .ntile _ => true
   | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ => decide (c < n)
