@@ -238,7 +238,7 @@ theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
-    r.evalI Spark.written cat = r.eval cat :=
+    r.eval cat Spark.written = r.eval cat :=
   Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Spark.written_faithful
 
 end Substrait

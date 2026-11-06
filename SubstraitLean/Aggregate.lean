@@ -116,15 +116,15 @@ def Measure.exprs (m : Measure) : List Expr :=
   m.arg :: m.filter.toList ++ m.sort.map (.field ·.col)
 
 /-- The rows a measure looks at: those passing its filter. -/
-def Measure.kept (m : Measure) (rows : Relation) : Relation :=
+def Measure.kept (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : Relation :=
   match m.filter with
   | none => rows
-  | some c => rows.filter fun row => (c.eval row).isTrue
+  | some c => rows.filter fun row => (c.eval row I).isTrue
 
 /-- The values a measure aggregates: its argument on the kept rows, without
 NULLs, and without repetitions for `DISTINCT`. -/
-def Measure.inputs (m : Measure) (rows : Relation) : List Value :=
-  let vs := ((m.kept rows).map m.arg.eval).filter (· != .null)
+def Measure.inputs (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : List Value :=
+  let vs := ((m.kept rows I).map fun row => m.arg.eval row I).filter (· != .null)
   if m.distinct then dedup vs else vs
 
 def intSum : List Value → Int
@@ -333,13 +333,13 @@ def AggFn.apply : AggFn → List Value → Value
 
 /-- `collect` takes the rows in its sort order (a stable sort, so without
 one in list order: one of the orders an engine may choose). -/
-def Measure.eval (rows : Relation) (m : Measure) : Value :=
+def Measure.eval (rows : Relation) (m : Measure) (I : Impl := Impl.lean) : Value :=
   match m.fn with
-  | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
-  | .pick last => (AggFn.pick last).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
-  | .concat sep => (AggFn.concat sep).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
-  | .mode => AggFn.mode.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
-  | f => f.apply (m.inputs rows)
+  | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)) I)
+  | .pick last => (AggFn.pick last).apply (m.inputs (rows.mergeSort (sortLe m.sort)) I)
+  | .concat sep => (AggFn.concat sep).apply (m.inputs (rows.mergeSort (sortLe m.sort)) I)
+  | .mode => AggFn.mode.apply (m.inputs (rows.mergeSort (sortLe m.sort)) I)
+  | f => f.apply (m.inputs rows I)
 
 /-- Does the aggregate take its rows in the measure's `sort` order? -/
 def AggFn.sorts : AggFn → Bool
@@ -352,15 +352,19 @@ theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation)
 
 /-! ## Groups -/
 
-def groupKey (gs : List Expr) (row : Row) : Row := gs.map (·.eval row)
+def groupKey (gs : List Expr) (row : Row) (I : Impl := Impl.lean) : Row := gs.map (·.eval row I)
 
 /-- The rows of the group with key `k`. -/
-def groupRows (gs : List Expr) (rows : Relation) (k : Row) : Relation :=
-  rows.filter fun row => groupKey gs row == k
+def groupRows (gs : List Expr) (rows : Relation) (k : Row) (I : Impl := Impl.lean) : Relation :=
+  rows.filter fun row => groupKey gs row I == k
 
-def aggregateEval (gs : List Expr) (ms : List Measure) (rows : Relation) : Relation :=
-  if gs.isEmpty then [ms.map (·.eval rows)]
-  else (dedup (rows.map (groupKey gs))).map fun k => k ++ ms.map (·.eval (groupRows gs rows k))
+/-- `GROUP BY gs` with the measures `ms`, the functions of `I` (Lean's by
+default) in the keys and the measures' arguments. -/
+def aggregateEval (gs : List Expr) (ms : List Measure) (rows : Relation)
+    (I : Impl := Impl.lean) : Relation :=
+  if gs.isEmpty then [ms.map (·.eval rows I)]
+  else (dedup (rows.map fun row => groupKey gs row I)).map fun k =>
+    k ++ ms.map (·.eval (groupRows gs rows k I) I)
 
 /-- The groups, one per output row. -/
 def aggGroups (gs : List Expr) (rows : Relation) : List Relation :=
