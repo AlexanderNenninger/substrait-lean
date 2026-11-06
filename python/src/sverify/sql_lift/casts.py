@@ -10,13 +10,14 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
-from sverify.plan_json import Unsupported, literal, type_json
+from sverify.plan_json import Unsupported, cast_json, literal, type_json
 from sverify.sql_lift._base import (
     DIALECT,
     Column,
     E,
     Sub,
     _fits,
+    _fn,
     _generated,
     _Lift,
     _numeric,
@@ -25,10 +26,48 @@ from sverify.sql_lift._base import (
 )
 from sverify.sql_lift.temporal import _temporal
 
+#: The black box of a cast from VARCHAR to each target (#806), by the
+#: target's type: `varchar_<name>`, `try_varchar_<name>` for `TRY_CAST`.
+_FROM_VARCHAR = (
+    (lambda t: t.is_integer(), "bigint", dt.int64),
+    (lambda t: t.is_float64(), "double", dt.float64),
+    (lambda t: t.is_boolean(), "boolean", dt.boolean),
+    (lambda t: t.is_date(), "date", dt.date),
+    (lambda t: t.is_timestamp(), "timestamp", dt.timestamp(scale=6)),
+)
+
+
+def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E | None:
+    """`CAST(s AS t)` or `TRY_CAST(s AS t)` of a string: the black box of the
+    target (`black_box.py`), DuckDB's rules. An integer narrower than a
+    BIGINT is the BIGINT cast down, as DuckDB fails (or, trying, is NULL)
+    where either does."""
+    if t.is_decimal():
+        raise Unsupported(f"a cast of a string to {t} is not supported yet (#27)")
+    if t.is_timestamp() and t.timezone is not None:
+        raise Unsupported("timestamps with a time zone are not supported")
+    for accepts, name, via in _FROM_VARCHAR:
+        if accepts(t):
+            row = f"{'try_' if try_ else ''}varchar_{name}"
+            e = E(_fn(row, [a.json], via), via)
+            if _same(via, t):
+                return e
+            return E(cast_json(e.json, t, or_null=try_), t)
+    return None  # other targets: the casts the model had before
+
+
+def _in_filtered_aggregate(node: sge.Expression) -> bool:
+    """Is `node` in the argument of an aggregate with `FILTER (WHERE …)`?"""
+    child, parent = node, node.parent
+    while parent is not None:
+        if isinstance(parent, sge.Filter):
+            return child.arg_key == "this"
+        child, parent = parent, parent.parent
+    return False
+
 
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
-    if isinstance(node, sge.TryCast) or node.args.get("safe"):
-        raise Unsupported("TRY_CAST is not supported yet")
+    try_ = isinstance(node, sge.TryCast) or bool(node.args.get("safe"))
     if node.args.get("format"):
         raise Unsupported("CAST … FORMAT is not supported")
     try:
@@ -50,6 +89,16 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise Unsupported(f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported")
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
+    from_string = a.type.is_string() and not t.is_string() and (try_ or not a.constant)
+    if from_string and not try_ and _in_filtered_aggregate(node):
+        raise Unsupported(
+            f"{node.sql(DIALECT)} in an aggregate with FILTER: DuckDB casts every row's "
+            "argument before the FILTER, and raises on a row it filters out; use TRY_CAST"
+        )
+    if from_string and (e := _from_varchar(lf, a, t, try_)) is not None:
+        return e
+    if try_:
+        raise Unsupported("TRY_CAST is only supported of strings yet")
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp() or t.is_time()):
         return _temporal(a, t)
     if a.constant and a.type.is_string() and t.is_decimal():
@@ -98,5 +147,6 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
 register(
     {
         sge.Cast: _cast,
+        sge.TryCast: _cast,
     }
 )

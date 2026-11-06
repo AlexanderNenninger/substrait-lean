@@ -1,0 +1,30 @@
+{
+  "id": "SG-10",
+  "project": "sqlglot",
+  "version": "30.22.0",
+  "status": "confirmed",
+  "status_note": "reproduces on 30.22.0; not filed yet",
+  "summary": "In the DuckDB dialect, the operator `~` reads as `RegexpFullMatch`, which writes `REGEXP_FULL_MATCH(s, p)`. DuckDB 2.0's `~` matches anywhere in the string, as `regexp_matches` does (its setting `regex_match_operator_semantics` chooses), so `'abc' ~ 'b'` is true in DuckDB and false as SQLGlot reads it. `!~` likewise.",
+  "repro": [
+    "```python\nimport sqlglot\nsqlglot.transpile(\"SELECT 'abc' ~ 'b'\", read=\"duckdb\", write=\"duckdb\")\n```",
+    "observed: `[\"SELECT REGEXP_FULL_MATCH('abc', 'b')\"]`; DuckDB 2.0.0 gives `SELECT 'abc' ~ 'b'` as `true` and `SELECT regexp_full_match('abc', 'b')` as `false`."
+  ],
+  "handling": "The SQL lift refuses `~` and `!~` between two operands, from the tokens, before parsing (`_check_regex_operators`); `regexp_matches` and `regexp_full_match` written as functions lift (#808).",
+  "found_by": "the replay of DuckDB's sqllogictests (`function/string/regex_operators.test` L11, `test_similar_to.test` L87) through `sverify_dev.slt`, on #894",
+  "issues": [
+    808
+  ],
+  "files": [
+    "python/src/sverify/sql_lift/_base.py",
+    "python/tests/test_sql_lift_strings.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-06",
+      "against": {
+        "sqlglot": "30.22.0",
+        "duckdb": "2.0.0"
+      }
+    }
+  ]
+}

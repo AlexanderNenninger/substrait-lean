@@ -20,8 +20,12 @@ compares three results with the expected one:
 and classifies the query:
 
 * `agree`: Lean and the engine give the expected result (an expected error
-  counts when they raise, or Lean's verifier says the plan may raise);
-* `disagree`: Lean or the engine does not (`side` says which);
+  counts when they raise);
+* `disagree`: Lean or the engine does not (`side` says which). Where Lean's
+  `Rel.eval` gives rows and its verifier says the plan may raise (an
+  overflow, a division by zero, a cast of a bad string), the query is
+  `disagree` on Lean's side, with the warning as its `reason`: the plan is
+  not proved, and sverify does not run it;
 * `refused`: sverify does not plan the query (the lift or the checker
   refuses it);
 * `skipped`: the test needs something the replay does not have (an
@@ -608,8 +612,15 @@ class Replay:
         rows[ONE] = [(0,)]
         return rows
 
+    def _offsets(self, name: str, col: str) -> bool:
+        """Does the `TIMETZ` column `col` of `name` hold an offset but 0?"""
+        q = '"' + col.replace('"', '""') + '"'
+        sql = f"SELECT count(*) FROM \"{name}\" WHERE date_part('timezone', {q}) <> 0"
+        return bool(self.db.sql(sql).fetchall()[0][0])
+
     def check_types(self, name: str) -> None:
-        """Refuse a table whose `HUGEINT` or `UHUGEINT` values Arrow cannot
+        """Refuse a table holding a `TIMETZ` with an offset but 0, which
+        Arrow drops, or whose `HUGEINT` or `UHUGEINT` values Arrow cannot
         hold (#618). DuckDB exports both as `decimal128(38, 0)` without a
         range check (DD-5): a value of 10^38 or more is an invalid decimal,
         and a `UHUGEINT` of 2^127 or more arrives negative (the maximum as
@@ -619,6 +630,13 @@ class Replay:
         limit = 10**38
         for col, t in zip(rel.columns, rel.types, strict=True):
             kind = str(t).upper()
+            if "TIME WITH TIME ZONE" in kind and self._offsets(name, col):
+                # Arrow exports a TIMETZ as a TIME without its offset: the
+                # lift would order and compare wall clocks, which are the
+                # instants only at offset 0.
+                raise ValueError(
+                    f"column {col} of {name} is {t} with offsets, which Arrow exports as TIME"
+                )
             if not _HUGE.search(kind):
                 continue
             q = '"' + col.replace('"', '""') + '"'
