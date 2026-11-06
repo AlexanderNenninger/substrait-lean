@@ -20,11 +20,14 @@ import SubstraitLean.Implied
 import SubstraitLean.Partition
 import SubstraitLean.Allowed
 import SubstraitLean.Ties
+import SubstraitLean.Knowledge
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
+import SubstraitLean.Robust
+import SubstraitLean.FloatExact
 
 /-!
 # Examples
@@ -172,6 +175,10 @@ end Substrait.Examples
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
 #print axioms Substrait.Rel.noIssue_of_sumsFit
+#print axioms Substrait.floatSumCR_mem
+#print axioms Substrait.floatAvgCR_mem
+#print axioms Substrait.floatSumCR_sign
+#print axioms Substrait.floatSumCR_perm
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
@@ -182,6 +189,14 @@ end Substrait.Examples
 #print axioms Substrait.contract_sound_all
 #print axioms Substrait.Rel.keys_sound_all
 #print axioms Substrait.Rel.keyedWindows_soundAll
+#print axioms Substrait.Rel.analyse_sound_all
+#print axioms Substrait.Rel.analyse_sound
+#print axioms Substrait.Rel.lane_eq
+#print axioms Substrait.Rel.aeval_csimp
+#print axioms Substrait.Rel.ratioPart_csimp
+#print axioms Substrait.Knowledge.contract_sound
+#print axioms Substrait.Knowledge.contract_sound_all
+#print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines
 #print axioms Substrait.Lowering.lowerRel_raises
@@ -291,3 +306,11 @@ end Substrait.Examples
 #print axioms Substrait.ExtremeAgg.finish_iavg
 #print axioms Substrait.SemiDelta.semi_maintained
 #print axioms Substrait.SemiDelta.matchCount_by_key
+#print axioms Substrait.Relation.Equiv_mono
+#print axioms Substrait.Relation.Equiv_exact
+#print axioms Substrait.Relation.Near_add
+#print axioms Substrait.Rel.refines_of_same
+#print axioms Substrait.Rel.unsorted_refinesBag_not_refines
+#print axioms Substrait.Expr.robust_of_robustB
+#print axioms Substrait.Expr.narrow_sound
+#print axioms Substrait.Expr.robust_of_depends

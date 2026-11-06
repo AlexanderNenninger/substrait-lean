@@ -92,19 +92,15 @@ def AggFn.AllowedP (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) 
 def Measure.AllowedP (t : ProfileTable) (I : Impl) (m : Measure) (rows : Relation)
     (v : Value) : Prop :=
   ∃ s, s.Perm rows ∧ (m.fn.sorts = true → s.Pairwise (sortLe m.sort · · = true)) ∧
-    m.fn.AllowedP t (m.inputsI I s) v
-
-/-- The rows of the group with key `k`, by the functions of `I`. -/
-def groupRowsI (I : Impl) (gs : List Expr) (rows : Relation) (k : Row) : Relation :=
-  rows.filter fun row => groupKeyI I gs row == k
+    m.fn.AllowedP t (m.inputs s I) v
 
 /-- `aggAllowed` with the choices of `t` and the functions of `I`. -/
 def aggAllowedP (t : ProfileTable) (I : Impl) (gs : List Expr) (ms : List Measure)
     (rows out : Relation) : Prop :=
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.AllowedP t I rows v) ms vs
   else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
-      Forall2 (fun m v => m.AllowedP t I (groupRowsI I gs rows k) v) ms vs)
-    (dedup (rows.map (groupKeyI I gs))) out
+      Forall2 (fun m v => m.AllowedP t I (groupRows gs rows k I) v) ms vs)
+    (dedup (rows.map fun row => groupKey gs row I)) out
 
 /-! ## Sorts -/
 
@@ -139,25 +135,22 @@ def Impl.Within (t : ProfileTable) (I : Impl) : Prop :=
   (∀ f v, I.un f v = f.apply v ∨ CallExtra t (.un f)) ∧
     ∀ f v w, I.bin f v w = f.apply v w ∨ CallExtra t (.bin f)
 
-/-- Lean's own functions. -/
-def Impl.lean : Impl := ⟨UnFn.apply, BinFn.apply⟩
-
 /-! ## Plans -/
 
 /-- `Rel.Allowed` with the choices of `t` and the functions of `I`. -/
 def Rel.AllowedI (t : ProfileTable) (I : Impl) (cat : Catalog) : Rel → Relation → Prop
   | .read tb, out => out.Perm (cat tb).rows
   | .values _ rows, out => out.Perm rows
-  | .filter r c, out => ∃ i, r.AllowedI t I cat i ∧ out = i.filter fun row => (c.evalI I row).isTrue
+  | .filter r c, out => ∃ i, r.AllowedI t I cat i ∧ out = i.filter fun row => (c.eval row I).isTrue
   | .project r es, out => ∃ i, r.AllowedI t I cat i ∧
-      out = i.map fun row => row ++ es.map (·.evalI I row)
+      out = i.map fun row => row ++ es.map (·.eval row I)
   | .emit r m, out => ∃ i, r.AllowedI t I cat i ∧ out = i.map fun row => m.map (row.getD · .null)
   | .cross a b, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
       out.Perm (crossRows x y)
   | .join a b .inner on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
-      out.Perm ((crossRows x y).filter fun row => (on.evalI I row).isTrue)
+      out.Perm ((crossRows x y).filter fun row => (on.eval row I).isTrue)
   | .join a b .left on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
-      out.Perm (x.flatMap (leftJoinRowI I on (b.arity cat) y))
+      out.Perm (x.flatMap fun row => leftJoinRow on (b.arity cat) y row I)
   | .fetch r off cnt, out => ∃ i, r.AllowedI t I cat i ∧ out = match cnt with
       | none => i.drop off
       | some n => (i.drop off).take n
@@ -165,7 +158,7 @@ def Rel.AllowedI (t : ProfileTable) (I : Impl) (cat : Catalog) : Rel → Relatio
   | .window r part sort fns, out => ∃ i, r.AllowedI t I cat i ∧ ∃ s, s.Perm i ∧
       s.Pairwise (sortLe sort · · = true) ∧ out.Perm (windowRows part fns [] s)
   | .semi a b anti on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
-      out.Perm (x.filter fun row => hasMatchI I on y row != anti)
+      out.Perm (x.filter fun row => hasMatch on y row I != anti)
   | .orderBy r keys, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm i ∧ SortedP t keys out
   | .distinct r, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm (dedup i)
   | .aggregate r gs ms, out => ∃ i, r.AllowedI t I cat i ∧ ∃ o, out.Perm o ∧
@@ -178,11 +171,6 @@ def Rel.AllowedP (t : ProfileTable) (cat : Catalog) (r : Rel) (out : Relation) :
   ∃ I, I.Within t ∧ r.AllowedI t I cat out
 
 /-! ## Monotonicity -/
-
-theorem Forall2.imp {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R a b → S a b) :
-    ∀ {l : List α} {l' : List β}, Forall2 R l l' → Forall2 S l l'
-  | _, _, .nil => .nil
-  | _, _, .cons hab t => .cons (h _ _ hab) (Forall2.imp h t)
 
 section Mono
 variable {t u : ProfileTable} (h : t.Le u)
@@ -265,44 +253,29 @@ end Mono
 
 /-! ## The reference -/
 
-theorem Expr.evalI_lean (row : Row) : ∀ e : Expr, e.evalI Impl.lean row = e.eval row
-  | .lit _ | .field _ => rfl
-  | .un f a => by simp only [Expr.evalI, Expr.eval, Expr.evalI_lean row a]; rfl
-  | .bin f a b => by
-    simp only [Expr.evalI, Expr.eval, Expr.evalI_lean row a, Expr.evalI_lean row b]; rfl
-  | .ifThen c th el => by
-    simp only [Expr.evalI, Expr.eval, Expr.evalI_lean row c, Expr.evalI_lean row th,
-      Expr.evalI_lean row el]
-  | .hof f l b => by
-    simp only [Expr.evalI, Expr.eval, Expr.evalI_lean row l]
-    congr 1; funext x; exact Expr.evalI_lean [x] b
+/-! The reference's functions are `Impl.lean`, and `Expr.eval`, `Rel.eval` and
+their helpers are the `Impl.lean` instances of one definition: the agreement
+lemmas below hold by `rfl`, kept for one release. -/
 
-theorem evalI_lean_fun : (fun (e : Expr) row => e.evalI Impl.lean row) = fun e row => e.eval row := by
-  funext e row; exact Expr.evalI_lean row e
+theorem Expr.evalI_lean (row : Row) (e : Expr) : e.eval row Impl.lean = e.eval row := rfl
 
-theorem leftJoinRowI_lean (on : Expr) (n : Nat) (ys : Relation) :
-    leftJoinRowI Impl.lean on n ys = leftJoinRow on n ys := by
-  funext x; simp only [leftJoinRowI, leftJoinRow, Expr.evalI_lean]
+theorem evalI_lean_fun :
+    (fun (e : Expr) row => e.eval row Impl.lean) = fun e row => e.eval row := rfl
 
-theorem hasMatchI_lean (on : Expr) (ys : Relation) :
-    hasMatchI Impl.lean on ys = hasMatch on ys := by
-  funext x; simp only [hasMatchI, hasMatch, Expr.evalI_lean]
+theorem leftJoinRowI_lean (on : Expr) (n : Nat) (ys : Relation) (x : Row) :
+    leftJoinRow on n ys x Impl.lean = leftJoinRow on n ys x := rfl
 
-theorem Measure.inputsI_lean (m : Measure) : m.inputsI Impl.lean = m.inputs := by
-  funext rows
-  have hk : m.keptI Impl.lean rows = m.kept rows := by
-    unfold Measure.keptI Measure.kept
-    cases m.filter <;> simp only [Expr.evalI_lean]
-  unfold Measure.inputsI Measure.inputs
-  rw [hk]
-  have : (m.arg.evalI Impl.lean) = m.arg.eval := funext fun row => Expr.evalI_lean row m.arg
-  rw [this]
+theorem hasMatchI_lean (on : Expr) (ys : Relation) (x : Row) :
+    hasMatch on ys x Impl.lean = hasMatch on ys x := rfl
 
-theorem groupKeyI_lean (gs : List Expr) : groupKeyI Impl.lean gs = groupKey gs := by
-  funext row; simp only [groupKeyI, groupKey, Expr.evalI_lean]
+theorem Measure.inputsI_lean (m : Measure) (rows : Relation) :
+    m.inputs rows Impl.lean = m.inputs rows := rfl
 
-theorem groupRowsI_lean (gs : List Expr) : groupRowsI Impl.lean gs = groupRows gs := by
-  funext rows k; simp only [groupRowsI, groupRows, groupKeyI_lean]
+theorem groupKeyI_lean (gs : List Expr) (row : Row) : groupKey gs row Impl.lean = groupKey gs row :=
+  rfl
+
+theorem groupRowsI_lean (gs : List Expr) (rows : Relation) (k : Row) :
+    groupRows gs rows k Impl.lean = groupRows gs rows k := rfl
 
 /-- The reference's choices of the relational options. -/
 theorem reference_allows_sum : Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["ANY"] := by
@@ -330,7 +303,7 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
-  simp only [Measure.AllowedP, Measure.Allowed, Measure.inputsI_lean, AggFn.allowedP_reference]
+  simp only [Measure.AllowedP, Measure.Allowed, AggFn.allowedP_reference]
 
 theorem forall₂_iff {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R a b ↔ S a b) {l : List α}
     {l' : List β} : Forall2 R l l' ↔ Forall2 S l l' :=
@@ -339,7 +312,6 @@ theorem forall₂_iff {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R 
 theorem aggAllowedP_reference (gs : List Expr) (ms : List Measure) (rows out : Relation) :
     aggAllowedP Profile.reference.table Impl.lean gs ms rows out ↔ aggAllowed gs ms rows out := by
   unfold aggAllowedP aggAllowed
-  simp only [groupKeyI_lean, groupRowsI_lean]
   split
   · exact exists_congr fun vs => and_congr_right fun _ =>
       forall₂_iff fun m v => Measure.allowedP_reference m rows v
@@ -375,24 +347,24 @@ theorem Rel.allowedI_reference (cat : Catalog) :
     ∀ (r : Rel) (out : Relation), r.AllowedI Profile.reference.table Impl.lean cat out ↔ r.Allowed cat out
   | .read _, _ | .values _ _, _ => Iff.rfl
   | .filter r c, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, Expr.evalI_lean, Rel.allowedI_reference cat r]
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .project r es, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, Expr.evalI_lean, Rel.allowedI_reference cat r]
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .emit r _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .cross a b, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
   | .join a b .inner on, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, Expr.evalI_lean, Rel.allowedI_reference cat a,
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
   | .join a b .left on, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, leftJoinRowI_lean, Rel.allowedI_reference cat a,
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
   | .fetch r _ _, _ => exists_congr fun i => and_congr_left' (Rel.allowedI_reference cat r i)
   | .unionAll a b, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
   | .window r _ _ _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .semi a b _ _, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, hasMatchI_lean, Rel.allowedI_reference cat a,
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
   | .orderBy r keys, out => by
     simp only [Rel.AllowedI, Rel.Allowed, SortedP.reference, Rel.allowedI_reference cat r]
@@ -431,29 +403,62 @@ theorem Rel.allowed_core {cat : Catalog} {r : Rel} {out : Relation} (h : r.Allow
 
 /-! ## Refinement between profiles -/
 
+/-- **`(Q, q) ⊑ (P, r)` up to `o`**: every result `Q` allows for `q` is, up
+to the observation `o`, one `P` allows for `r`. -/
+def Rel.RefinesPUpTo (o : Obs) (ctx : ObsCtx) (cat : Catalog) (Q P : ProfileTable) (q r : Rel) :
+    Prop :=
+  ∀ out, q.AllowedP Q cat out → ∃ out', r.AllowedP P cat out' ∧ Relation.Equiv o ctx out out'
+
 /-- **`(Q, q) ⊑ (P, r)`**: every result `Q` allows for `q`, `P` allows for `r`,
 up to the order of rows. -/
-def Rel.RefinesP (cat : Catalog) (Q P : ProfileTable) (q r : Rel) : Prop :=
-  ∀ out, q.AllowedP Q cat out → ∃ out', r.AllowedP P cat out' ∧ out.Perm out'
+abbrev Rel.RefinesP (cat : Catalog) (Q P : ProfileTable) (q r : Rel) : Prop :=
+  Rel.RefinesPUpTo { rows := .multiset } {} cat Q P q r
+
+theorem Rel.RefinesPUpTo.refl {o : Obs} {ctx : ObsCtx} (hc : ctx.WF) (cat : Catalog)
+    (P : ProfileTable) (r : Rel) : r.RefinesPUpTo o ctx cat P P r :=
+  fun out h => ⟨out, h, .refl hc out⟩
+
+theorem Rel.RefinesPUpTo.trans {o : Obs} {c₁ c₂ c₃ : ObsCtx} (hc : ObsCtx.Comp c₁ c₂ c₃)
+    {cat : Catalog} {P Q R : ProfileTable} {p q r : Rel} (h₁ : p.RefinesPUpTo o c₁ cat R Q q)
+    (h₂ : q.RefinesPUpTo o c₂ cat Q P r) : p.RefinesPUpTo o c₃ cat R P r :=
+  fun out h => by
+    obtain ⟨o₁, h₁', e₁⟩ := h₁ out h
+    obtain ⟨o₂, h₂', e₂⟩ := h₂ o₁ h₁'
+    exact ⟨o₂, h₂', e₁.trans hc e₂⟩
+
+theorem Rel.RefinesPUpTo_mono {o' o : Obs} {ctx : ObsCtx} (hc : ctx.WF) (h : o'.le o = true)
+    {cat : Catalog} {Q P : ProfileTable} {q r : Rel} (hq : q.RefinesPUpTo o' ctx cat Q P r) :
+    q.RefinesPUpTo o ctx cat Q P r :=
+  fun out ho => by
+    obtain ⟨out', h', e⟩ := hq out ho
+    exact ⟨out', h', Relation.Equiv_mono hc h e⟩
 
 theorem Rel.RefinesP.refl (cat : Catalog) (P : ProfileTable) (r : Rel) : r.RefinesP cat P P r :=
-  fun out h => ⟨out, h, .refl _⟩
+  Rel.RefinesPUpTo.refl .default cat P r
 
 theorem Rel.RefinesP.trans {cat : Catalog} {P Q R : ProfileTable} {p q r : Rel}
     (h₁ : p.RefinesP cat R Q q) (h₂ : q.RefinesP cat Q P r) : p.RefinesP cat R P r :=
-  fun out h => by
-    obtain ⟨o₁, h₁', hp₁⟩ := h₁ out h
-    obtain ⟨o₂, h₂', hp₂⟩ := h₂ o₁ h₁'
-    exact ⟨o₂, h₂', hp₁.trans hp₂⟩
+  Rel.RefinesPUpTo.trans (.self .default fun _ _ _ _ _ e₁ e₂ => e₁.trans e₂) h₁ h₂
+
+/-- A narrower profile, the same plan: `(t, r) ⊑ (u, r)`, exactly. -/
+theorem Rel.RefinesPUpTo.of_le {o : Obs} {ctx : ObsCtx} (hc : ctx.WF) {cat : Catalog}
+    {t u : ProfileTable} (h : t.Le u) (r : Rel) : r.RefinesPUpTo o ctx cat t u r :=
+  fun out ho => ⟨out, Rel.AllowedP_mono h ho, .refl hc out⟩
 
 /-- A narrower profile, the same plan: `(t, r) ⊑ (u, r)`. -/
 theorem Rel.RefinesP.of_le {cat : Catalog} {t u : ProfileTable} (h : t.Le u) (r : Rel) :
     r.RefinesP cat t u r :=
-  fun out ho => ⟨out, Rel.AllowedP_mono h ho, .refl _⟩
+  Rel.RefinesPUpTo.of_le .default h r
 
-/-- `Rel.Refines` is `⊑` under the reference. -/
+/-- `Rel.RefinesUpTo` is `⊑` up to the same observation under the reference. -/
+theorem Rel.refinesUpTo_iff_refinesPUpTo {o : Obs} {ctx : ObsCtx} {cat : Catalog} {q r : Rel} :
+    q.RefinesUpTo o ctx cat r ↔
+      q.RefinesPUpTo o ctx cat Profile.reference.table Profile.reference.table r := by
+  simp only [Rel.RefinesUpTo, Rel.RefinesPUpTo, Rel.allowedP_reference]
+
+/-- `Rel.RefinesBag` is `⊑` under the reference. -/
 theorem Rel.refines_iff_refinesP {cat : Catalog} {q r : Rel} :
-    q.Refines cat r ↔ q.RefinesP cat Profile.reference.table Profile.reference.table r := by
-  simp only [Rel.Refines, Rel.RefinesP, Rel.allowedP_reference]
+    q.RefinesBag cat r ↔ q.RefinesP cat Profile.reference.table Profile.reference.table r :=
+  Rel.refinesUpTo_iff_refinesPUpTo
 
 end Substrait

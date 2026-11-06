@@ -24,6 +24,7 @@ from sqlglot.errors import ErrorLevel
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
+from sverify import _decimals
 from sverify.plan_json import (
     Json,
     Unsupported,
@@ -167,7 +168,7 @@ def lift_table() -> LiftTable:
         import json
         import subprocess
 
-        from sverify.engine import checker_path
+        from sverify._checker import checker_path
 
         out = subprocess.run(
             [str(checker_path()), "--lift-table"], capture_output=True, text=True, check=True
@@ -1616,9 +1617,8 @@ class _Lift:
             if any(t.is_float64() for t in ts):
                 return dt.float64
             if any(t.is_decimal() for t in ts):
-                ds = [_digits(t) for t in ts]
-                s = max(s for _, s in ds)
-                return _decimal(max(p - s0 for p, s0 in ds) + s + int(sum_digits), s)
+                p, s = _decimals.common(_digits(t) for t in ts)
+                return _decimal(p + int(sum_digits), s)
             return max(ts, key=lambda t: t.nbytes).copy(nullable=True)
         first = ts[0]
         if all(_same(t, first) for t in ts):

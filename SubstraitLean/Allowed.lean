@@ -1,6 +1,7 @@
 import SubstraitLean.Partition
 import SubstraitLean.Profile
 import SubstraitLean.StatProps
+import SubstraitLean.ObsEquiv
 
 /-!
 # What the reference allows
@@ -27,9 +28,13 @@ The reference leaves these choices to the engine:
 For a plan without these choices (`Rel.detPlan`), every allowed result is
 `Rel.eval`'s up to the order of rows (`Rel.allowed_perm_eval`), so whatever
 is proved of `Rel.eval`'s rows holds of every allowed result. A rewrite is
-correct when it **refines** the plan (`Rel.Refines`): it may narrow the
-allowed set, never widen it. A rewrite to a plan without choices whose rows
-are the original's refines it (`Rel.refines_of_perm`).
+correct when it **refines** the plan up to an observation
+(`Rel.RefinesUpTo`): every result it allows is, up to the observation, one
+the plan allows. `Rel.Refines` is the exact case and `Rel.RefinesBag` the
+one up to the order of rows. A rewrite to a plan without choices whose rows
+are the original's refines it up to the order of rows (`Rel.refines_of_perm`),
+and an unsorted plan refines its `ORDER BY` twin in that sense only
+(`Rel.unsorted_refinesBag_not_refines`).
 -/
 
 namespace Substrait
@@ -101,23 +106,6 @@ theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) {rows : Relat
   obtain ⟨s, hs, _, hv⟩ := h
   rw [AggFn.allowed_iff hm] at hv
   rw [hv, ← Measure.eval_eq (AggFn.ne_collect hm), Measure.eval_perm hm hs]
-
-/-- `R` relates the lists' elements pairwise. -/
-inductive Forall2 {α β : Type} (R : α → β → Prop) : List α → List β → Prop
-  | nil : Forall2 R [] []
-  | cons {a : α} {b : β} {l : List α} {l' : List β} : R a b → Forall2 R l l' →
-      Forall2 R (a :: l) (b :: l')
-
-theorem forall₂_map_self {α β : Type} {R : α → β → Prop} {f : α → β} :
-    ∀ l : List α, (∀ x ∈ l, R x (f x)) → Forall2 R l (l.map f)
-  | [], _ => .nil
-  | x :: l, h => .cons (h x (List.mem_cons_self ..))
-      (forall₂_map_self l fun y hy => h y (List.mem_cons_of_mem _ hy))
-
-theorem eq_map_of_forall₂ {α β : Type} {f : α → β} :
-    ∀ {l : List α} {l' : List β}, Forall2 (fun x y => y = f x) l l' → l' = l.map f
-  | _, _, .nil => rfl
-  | _, _, .cons h t => by rw [h, eq_map_of_forall₂ t]; rfl
 
 /-- What an aggregate's output may be, for the input rows `rows` in this
 order: a row per group (in their order of first appearance), each measure
@@ -308,25 +296,93 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
 
 /-! ## Refinement -/
 
-/-- **`q` refines `r`**: every result `q` allows, `r` allows too, up to the
-order of rows. A correct rewrite refines the plan it rewrites: it may narrow
-the set of allowed results, never widen it. -/
-def Rel.Refines (cat : Catalog) (q r : Rel) : Prop :=
-  ∀ out, q.Allowed cat out → ∃ out', r.Allowed cat out' ∧ out.Perm out'
+/-- **`q` refines `r` up to the observation `o`**: every result `q` allows
+is, up to `o`, one `r` allows. A correct rewrite refines the plan it
+rewrites: it may narrow the set of allowed results, never widen it.
+`o = Obs.exact` keeps the order an `ORDER BY` fixes (`Rel.Refines`);
+`o = {rows := .multiset}` forgets the order of rows (`Rel.RefinesBag`). -/
+def Rel.RefinesUpTo (o : Obs) (ctx : ObsCtx) (cat : Catalog) (q r : Rel) : Prop :=
+  ∀ out, q.Allowed cat out → ∃ out', r.Allowed cat out' ∧ Relation.Equiv o ctx out out'
+
+/-- **`q` refines `r`**: every result `q` allows, `r` allows (`Rel.refines_iff`). -/
+abbrev Rel.Refines (cat : Catalog) (q r : Rel) : Prop := Rel.RefinesUpTo Obs.exact {} cat q r
+
+/-- `q` refines `r` up to the order of rows: every result `q` allows, `r`
+allows in some order. An unsorted plan refines its `ORDER BY` twin in this
+sense only. -/
+abbrev Rel.RefinesBag (cat : Catalog) (q r : Rel) : Prop :=
+  Rel.RefinesUpTo { rows := .multiset } {} cat q r
+
+theorem Rel.refines_iff {cat : Catalog} {q r : Rel} :
+    q.Refines cat r ↔ ∀ out, q.Allowed cat out → r.Allowed cat out :=
+  ⟨fun h out ho => by obtain ⟨out', h', e⟩ := h out ho; rwa [Relation.Equiv_exact.1 e],
+    fun h out ho => ⟨out, h out ho, Relation.Equiv_exact.2 rfl⟩⟩
+
+theorem Rel.refinesBag_iff {cat : Catalog} {q r : Rel} :
+    q.RefinesBag cat r ↔ ∀ out, q.Allowed cat out → ∃ out', r.Allowed cat out' ∧ out.Perm out' := by
+  simp only [Rel.RefinesUpTo, Relation.Equiv_multiset_perm]
+
+theorem Rel.RefinesUpTo.refl {o : Obs} {ctx : ObsCtx} (hc : ctx.WF) (cat : Catalog) (r : Rel) :
+    r.RefinesUpTo o ctx cat r :=
+  fun out h => ⟨out, h, .refl hc out⟩
+
+theorem Rel.RefinesUpTo.trans {o : Obs} {c₁ c₂ c₃ : ObsCtx} (hc : ObsCtx.Comp c₁ c₂ c₃)
+    {cat : Catalog} {p q r : Rel} (h₁ : p.RefinesUpTo o c₁ cat q) (h₂ : q.RefinesUpTo o c₂ cat r) :
+    p.RefinesUpTo o c₃ cat r :=
+  fun out h => by
+    obtain ⟨o₁, h₁', e₁⟩ := h₁ out h
+    obtain ⟨o₂, h₂', e₂⟩ := h₂ o₁ h₁'
+    exact ⟨o₂, h₂', e₁.trans hc e₂⟩
+
+/-- A refinement up to a finer observation is one up to a coarser one. -/
+theorem Rel.RefinesUpTo_mono {o' o : Obs} {ctx : ObsCtx} (hc : ctx.WF) (h : o'.le o = true)
+    {cat : Catalog} {q r : Rel} (hq : q.RefinesUpTo o' ctx cat r) : q.RefinesUpTo o ctx cat r :=
+  fun out ho => by
+    obtain ⟨out', h', e⟩ := hq out ho
+    exact ⟨out', h', Relation.Equiv_mono hc h e⟩
 
 theorem Rel.Refines.refl (cat : Catalog) (r : Rel) : r.Refines cat r :=
-  fun out h => ⟨out, h, .refl _⟩
+  Rel.RefinesUpTo.refl .default cat r
+
+theorem Rel.Refines.trans {cat : Catalog} {p q r : Rel} (h₁ : p.Refines cat q)
+    (h₂ : q.Refines cat r) : p.Refines cat r :=
+  Rel.RefinesUpTo.trans (.self .default fun _ _ _ _ _ e₁ e₂ => e₁.trans e₂) h₁ h₂
+
+theorem Rel.RefinesBag.trans {cat : Catalog} {p q r : Rel} (h₁ : p.RefinesBag cat q)
+    (h₂ : q.RefinesBag cat r) : p.RefinesBag cat r :=
+  Rel.RefinesUpTo.trans (.self .default fun _ _ _ _ _ e₁ e₂ => e₁.trans e₂) h₁ h₂
+
+/-- A refinement is one up to the order of rows. -/
+theorem Rel.Refines.bag {cat : Catalog} {q r : Rel} (h : q.Refines cat r) : q.RefinesBag cat r :=
+  Rel.RefinesUpTo_mono .default (Obs.exact_le _) h
 
 /-- A rewrite to a plan without choices whose rows are the original's
-refines it, whatever choices the original leaves. -/
+refines it up to the order of rows, whatever choices the original leaves. -/
 theorem Rel.refines_of_perm {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
     (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {q r : Rel} (hwf : q.WF cat)
-    (hd : q.detPlan cat A F K = true) (h : (q.eval cat).Perm (r.eval cat)) : q.Refines cat r :=
-  fun _ hq => ⟨r.eval cat, r.eval_allowed cat,
+    (hd : q.detPlan cat A F K = true) (h : (q.eval cat).Perm (r.eval cat)) : q.RefinesBag cat r :=
+  Rel.refinesBag_iff.2 fun _ hq => ⟨r.eval cat, r.eval_allowed cat,
     (allowed_perm_eval hcat hA hF hK hwf hd hq).trans h⟩
+
+/-- **The order an `ORDER BY` fixes counts**: a plan's rows unsorted refine
+its `ORDER BY` twin up to the order of rows and not exactly. -/
+theorem Rel.unsorted_refinesBag_not_refines :
+    let q : Rel := .values 1 [[.int 2], [.int 1]]
+    let cat : Catalog := fun _ => { arity := 0, rows := [] }
+    q.RefinesBag cat (.orderBy q [{ col := 0 }]) ∧ ¬ q.Refines cat (.orderBy q [{ col := 0 }]) := by
+  intro q cat
+  have hs : ¬ SortAllowed [{ col := 0 }] [[.int 2], [.int 1]] := by
+    rintro ⟨cmp, -, h⟩
+    simp [sortLeWith, SortKey.leWith, SortKey.valWith, SortKey.valLe, lexLe, nullRankOf, natLe,
+      SortKey.firstNulls] at h
+    revert h; decide +kernel
+  refine ⟨Rel.refinesBag_iff.2 fun out ho => ⟨[[.int 1], [.int 2]], ⟨_, .refl _, .swap _ _ _,
+    .of_sorted (by decide +kernel)⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
+  obtain ⟨i, -, -, hsort⟩ := Rel.refines_iff.1 h _ (List.Perm.refl _)
+  exact hsort
 
 /-! ## Engines
 
@@ -341,7 +397,7 @@ theorem Rel.guardFree_allowed {cat : Catalog} (hcat : cat.WF) {A : String → Li
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
-    {I : Impl} (hI : I.Faithful) : r.Allowed cat (r.evalI I cat) := by
+    {I : Impl} (hI : I.Faithful) : r.Allowed cat (r.eval cat I) := by
   rw [Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm hI]; exact r.eval_allowed cat
 
 end Substrait

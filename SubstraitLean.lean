@@ -1,5 +1,6 @@
 import SubstraitLean.FloatFormat
 import SubstraitLean.Value
+import SubstraitLean.FloatExact
 import SubstraitLean.BlackBox
 import SubstraitLean.Rounding
 import SubstraitLean.Conversions
@@ -42,6 +43,7 @@ import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
 import SubstraitLean.Allowed
 import SubstraitLean.Ties
+import SubstraitLean.Knowledge
 import SubstraitLean.Choices
 import SubstraitLean.DuckDBSQL
 import SubstraitLean.LiftHint
@@ -62,6 +64,8 @@ import SubstraitLean.Functions
 import SubstraitLean.Options
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
+import SubstraitLean.ObsEquiv
+import SubstraitLean.Robust
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile

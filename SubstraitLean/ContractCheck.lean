@@ -9,7 +9,9 @@ import SubstraitLean.Semantic
 import SubstraitLean.Write
 import SubstraitLean.Infer
 import SubstraitLean.Rows
+import SubstraitLean.Knowledge
 import SubstraitLean.Implied
+import SubstraitLean.Robust
 
 /-!
 # Checking a contract
@@ -191,6 +193,11 @@ structure Report where
   its rows totally, so only the order of ties leaves it open. Untrusted: it
   only spares the counterexample search (#691, #825). -/
   tiesOnly : List Bool := []
+  /-- For each postcondition, the components of an observation its value
+  depends on (`Expr.depends`): an observation that coarsens none of them
+  keeps it TRUE (`Expr.robust_of_depends`). `none` where the plan is not a
+  selection of conditions from the transformation. -/
+  depends : List (Option (List String)) := []
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -304,12 +311,15 @@ partial def _root_.Substrait.Rel.allExprs : Rel → List Expr
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
-    ("ensures", Json.arr (((r.ensures.zip (r.suggestions ++
+    ("ensures", Json.arr ((((r.ensures.zip (r.suggestions ++
         List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).zip
-        (r.tiesOnly ++ List.replicate r.ensures.length false)).map fun (((n, ok, v), b), t) =>
+        (r.tiesOnly ++ List.replicate r.ensures.length false)).zip
+        (r.depends ++ List.replicate r.ensures.length none)).map fun ((((n, ok, v), b), t), d) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
         ("value", Lean.toJson v), ("suggest", if ok then .null else b.json),
-        ("ties", Lean.toJson t)]).toArray),
+        ("ties", Lean.toJson t), ("depends", match d with
+          | some l => Lean.toJson l
+          | none => .null)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
@@ -458,6 +468,33 @@ def tiePlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fa
     (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
   (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map (i, opName n, ·)
 
+/-- A column's kind as an observation sees it (`ColKind`). -/
+def colKindOf : Kind → ColKind
+  | .float => .double
+  | .time => .timestamp
+  | .str => .string
+  | .dec _ _ => .decimal
+  | _ => .other
+
+/-- The columns of a plan `T.select(c, …)`, as expressions over `T`'s
+output, with `T`'s column kinds; `none` for another shape. -/
+def postExprs (cat : Catalog) (tables : Tables) : Rel → Option (List Expr × List Kind)
+  | .emit (.project t es) m =>
+    let n := t.arity cat
+    some (m.map fun j => if j < n then .field j else es.getD (j - n) (.lit .null), t.kinds tables)
+  | .project t es => some ((List.range (t.arity cat)).map .field ++ es, t.kinds tables)
+  | _ => none
+
+/-- What each postcondition column's value depends on (`Expr.depends`). -/
+def postDepends (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) :
+    List (Option (List String)) :=
+  match postExprs cat tables r with
+  | some (es, ks) =>
+    if es.length != n then List.replicate n none else
+      let ctx : ObsCtx := { kind := fun i => colKindOf (ks.getD i .other) }
+      es.map fun e => some (e.depends ctx).eraseDups
+  | none => List.replicate n none
+
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
 def issuesUnderAndOr (transform : Option Plan) (issues : List (Issue × Expr)) : List Expr :=
   match transform with
@@ -494,13 +531,21 @@ def check (input : Json) : Except String Report := do
   -- Each table's description and facts, computed once: `A` and `F` are
   -- called at every read of every pass (#825).
   let names := tables.map (·.1) |>.eraseDups
-  let envs := names.map fun t => (t, tableEnv (schemas t) (preOf t))
-  let factsOf := names.map fun t => (t, (preOf t).flatMap Expr.factsOf)
-  let A := fun t => (envs.lookup t).getD (tableEnv (schemas t) (preOf t))
-  let F := fun t => (factsOf.lookup t).getD ((preOf t).flatMap Expr.factsOf)
-  let inputKeys : String → List (List Nat) := fun t =>
-    natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
-  let T := Rel.keyedWindows cat A F inputKeys
+  let keysJson := (input.getObjVal? "keys").toOption
+  let keysOf (t : String) : List (List Nat) :=
+    natLists (keysJson.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
+  -- One description of the inputs (`KnowledgeEnv.ofSpec`, sound by
+  -- `KnowledgeEnv.ofSpec_sound`), computed once per table: the analyses
+  -- read it at every read of every pass (#825). The window keys follow
+  -- from it (`KnowledgeEnv.Sound.windows`, `.windowsAll`).
+  let know (t : String) : Knowledge :=
+    ⟨tableEnv (schemas t) (preOf t), (preOf t).flatMap Expr.factsOf, keysOf t, none⟩
+  let knows := names.map fun t => (t, know t)
+  let kenv : KnowledgeEnv := fun t => (knows.lookup t).getD (know t)
+  let A := kenv.cols
+  let F := kenv.facts
+  let inputKeys := kenv.keys
+  let T := kenv.windows cat
   let implied : List (String × List (List (Nat × Bound))) :=
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
@@ -508,6 +553,7 @@ def check (input : Json) : Except String Report := do
   let mut results : List (String × Bool × String) := []
   let mut suggestions : List Infer.Bounds := []
   let mut tiesOnly : List Bool := []
+  let mut depends : List (Option (List String)) := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
     if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
@@ -517,6 +563,7 @@ def check (input : Json) : Except String Report := do
     -- Proved for every order of the ties (`contract_sound_all`, with
     -- `Rel.orderAllowed_capReads` and `Rel.keyedWindows_soundAll`, D24).
     results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
+    depends := depends ++ postDepends cat tables q.root env.length
     -- Suggestions only for what is unproved: the report drops the others.
     suggestions := suggestions ++ (List.range env.length).map fun i =>
       if (env.getD i AVal.top).certainlyTrue then ({ why := none } : Infer.Bounds) else
@@ -605,6 +652,7 @@ def check (input : Json) : Except String Report := do
     ensures := results
     suggestions
     tiesOnly
+    depends
     facts
     keys
     deterministic

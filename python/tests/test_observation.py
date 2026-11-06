@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import math
+import subprocess
 import sys
 from datetime import datetime
+from typing import Any
 
 import ibis
 import pyarrow as pa
@@ -14,7 +17,8 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.observation import EXACT, Observation, Within
+from sverify.engine import checker_path
+from sverify.observation import _COMPONENTS, EXACT, Observation, Within
 
 T = ibis.table({"k": "int64", "x": "float64", "s": "string", "ts": "timestamp"}, name="t")
 
@@ -72,6 +76,32 @@ def test_a_finite_value_is_never_close_to_an_infinity(big: float) -> None:
     for w in (sv.within(ulps=1), sv.within(rel=1.0), sv.within(abs=sys.float_info.max)):
         assert not w.close(big, inf)
         assert not w.close(inf, big)
+
+
+def test_the_order_agrees_with_lean() -> None:
+    """`Observation.refines` orders each component's levels as `Obs.le`
+    does (`--options`' `levels`), on every pair of levels both sides name."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    levels = json.loads(out.stdout)["levels"]
+    assert set(levels) == {name for name, _ in _COMPONENTS}
+    for component, table in levels.items():
+        le = {tuple(p) for p in table["le"]}
+        names = [n for n in table["levels"] if n in _python_levels(component)]
+        assert len(names) >= 2, component
+        for a in names:
+            for b in names:
+                fine: dict[str, Any] = {component: a}
+                coarse: dict[str, Any] = {component: b}
+                mine = Observation(**fine).refines(Observation(**coarse))
+                assert mine == ((a, b) in le), (component, a, b)
+
+
+def _python_levels(component: str) -> tuple[str, ...]:
+    if component == "floats":
+        return ("exact", "plan")
+    return dict(_COMPONENTS)[component]
 
 
 def test_equal_up_to_the_observation() -> None:
@@ -136,6 +166,31 @@ def test_report_names_what_a_condition_depends_on() -> None:
     assert not report.proved
     assert "depends on floats, which the observation ignores" in str(report)
     assert "observes: equivalent(" in str(report)
+
+
+def test_the_checker_names_what_a_condition_depends_on() -> None:
+    """The checker reports the components each condition's value depends on
+    (`Expr.depends`), and `ignores` reads them (#898): a mean of doubles under
+    a tolerance depends on the floats, and `sv.approx` allows for them."""
+    expr = T.group_by("k").aggregate(mean_x=T.x.mean(), n=T.k.count())
+    report = sv.verify(
+        expr,
+        requires={"t": [_.x.between(0, 100), _.x.notnull(), sv.max_rows(1000)]},
+        ensures=[
+            sv.equivalent(floats=sv.within(abs=1e-3)),
+            _.mean_x <= 100,
+            sv.approx(_.mean_x <= 100),
+            _.n >= 0,
+        ],
+        counterexamples=0,
+    )
+    plain, approx, count = report.ensures
+    assert plain.depends is not None and "floats" in plain.depends
+    assert plain.ignores == ("floats",)
+    assert approx.ignores == ()
+    assert approx.portable
+    assert count.depends is not None and "floats" not in count.depends
+    assert count.portable
 
 
 def test_without_an_observation_nothing_changes() -> None:

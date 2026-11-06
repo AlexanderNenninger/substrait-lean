@@ -248,6 +248,68 @@ theorem StdModel.epsilon_avg {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : p
     _ ≤ _ := abs_sub _ _
     _ ≤ _ := by linarith
 
+/-! ## Against the reference's correctly rounded sum (D25)
+
+The reference's `SUM` of doubles is the exact sum of the values rounded once
+(`floatSumCR`, `SubstraitLean/FloatExact.lean`), and its `AVG` the exact mean
+rounded once (`floatAvgCR`). The core proves, on integers, that this value is
+within `u` of the exact one relatively (`FloatCode.ofExact_rel`); here that is
+the hypothesis `hr`. An engine's result is then within its order's bound of
+the exact sum (`core_summed_sum`) plus `u` of it. -/
+
+/-- The codes' values add up to at most `N · Bs / 2¹⁰⁷⁴` in magnitude. -/
+theorem abs_snd_sum_le {ps : List (ℝ × ℝ)} {N Bs : ℕ} (hN : ps.length ≤ N)
+    (hb : ∀ p ∈ ps, |p.2| * 2 ^ 1074 ≤ Bs) :
+    |(ps.map Prod.snd).sum| ≤ N * (Bs / 2 ^ 1074) := by
+  have hB : ∀ x ∈ (ps.map Prod.snd).map abs, x ≤ Bs / 2 ^ 1074 := by
+    intro x hx
+    simp only [List.map_map, List.mem_map, Function.comp] at hx
+    obtain ⟨p, hp, rfl⟩ := hx
+    rw [le_div_iff₀ (by positivity)]; exact hb p hp
+  have h1 := Rnd.abs_sum_le_absSum (ps.map Prod.snd)
+  have h2 := List.sum_le_length_nsmul _ _ hB
+  simp only [List.length_map, nsmul_eq_mul] at h2
+  have h3 : (ps.length : ℝ) ≤ N := by exact_mod_cast hN
+  have h4 : 0 ≤ (Bs : ℝ) / 2 ^ 1074 := by positivity
+  nlinarith
+
+/-- **`"abs"` of a `SUM` against the reference (D25)**: a result an engine's
+order gives is within `sumTolScaled N Bs / 2¹⁰⁷⁴ + u · N · Bs / 2¹⁰⁷⁴` of any
+`r` within `u` of the exact sum, relatively, which the correctly rounded sum
+is (`FloatCode.ofExact_rel`). -/
+theorem StdModel.epsilon_sum_cr {ps : List (ℝ × ℝ)} (hd : Decoded ps)
+    (hfix : ∀ p ∈ ps, M.fl p.1 = p.1) {s r : ℝ} (hs : M.Summed (ps.map Prod.fst) s)
+    (hr : |r - (ps.map Prod.snd).sum| ≤ u * |(ps.map Prod.snd).sum|)
+    {N Bs : ℕ} (hN : ps.length ≤ N) (hN32 : N ≤ 2 ^ 32) (hBs : (Bs : ℝ) ≤ 2 ^ 1474)
+    (hb : ∀ p ∈ ps, |p.2| * 2 ^ 1074 ≤ Bs) :
+    |s - r| ≤ sumTolScaled N Bs / 2 ^ 1074 + u * (N * (Bs / 2 ^ 1074)) := by
+  have a := M.core_summed_sum hd hfix hs hN hN32 hBs hb
+  have hz := abs_snd_sum_le hN hb
+  have hz' := mul_le_mul_of_nonneg_left hz u_pos.le
+  calc |s - r| = |(s - (ps.map Prod.snd).sum) - (r - (ps.map Prod.snd).sum)| := by ring_nf
+    _ ≤ _ := abs_sub _ _
+    _ ≤ _ := by linarith
+
+/-- **`"abs"` of an `AVG` against the reference (D25)**: a mean an engine's
+order gives is within `avgTolScaled N Bs / 2¹⁰⁷⁴ + u · Bs / 2¹⁰⁷⁴` of any `r`
+within `u` of the exact mean, relatively, which `floatAvgCR` is. -/
+theorem StdModel.epsilon_avg_cr {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps ≠ [])
+    (hfix : ∀ p ∈ ps, M.fl p.1 = p.1) {s r : ℝ} (hs : M.Summed (ps.map Prod.fst) s)
+    (hr : |r - (ps.map Prod.snd).sum / ps.length| ≤ u * |(ps.map Prod.snd).sum / ps.length|)
+    {N Bs : ℕ} (hN : ps.length ≤ N) (hN32 : N ≤ 2 ^ 32) (hBs : (Bs : ℝ) ≤ 2 ^ 1474)
+    (hb : ∀ p ∈ ps, |p.2| * 2 ^ 1074 ≤ Bs) :
+    |M.fl (s / ps.length) - r| ≤ avgTolScaled N Bs / 2 ^ 1074 + u * (Bs / 2 ^ 1074) := by
+  have a := M.core_summed_avg hd hne hfix hs hN hN32 hBs hb
+  have hz := abs_snd_sum_le (N := ps.length) le_rfl hb
+  have hl0 : (0 : ℝ) < ps.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have hq : |(ps.map Prod.snd).sum / ps.length| ≤ Bs / 2 ^ 1074 := by
+    rw [abs_div, abs_of_pos hl0, div_le_iff₀ hl0]; linarith
+  have hq' := mul_le_mul_of_nonneg_left hq u_pos.le
+  set q := (ps.map Prod.snd).sum / ps.length
+  calc _ = |(M.fl (s / ps.length) - q) - (r - q)| := by ring_nf
+    _ ≤ _ := abs_sub _ _
+    _ ≤ _ := by linarith
+
 /-! ## Relative: values of one sign -/
 
 theorem absSum_nonneg : ∀ {xs : List ℝ}, (∀ x ∈ xs, 0 ≤ x) → (xs.map abs).sum = xs.sum
@@ -364,6 +426,7 @@ end
 open Lean in
 run_cmd do
   for thm in ["FloatBounds.StdModel.epsilon_sum", "FloatBounds.StdModel.epsilon_avg",
-      "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel"] do
+      "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel",
+      "FloatBounds.StdModel.epsilon_sum_cr", "FloatBounds.StdModel.epsilon_avg_cr"] do
     unless (← getEnv).contains thm.toName do
       throwError "no theorem {thm}"

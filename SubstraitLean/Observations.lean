@@ -340,6 +340,29 @@ def Obs.sparseJson (q : Obs) : Json :=
     ("decimals", q.decimals != .exact), ("errors", q.errors != .exact)]
   Json.mkObj (keep.filterMap fun (k, b) => if b then (full.getObjVal? k).toOption.map (k, ·) else none)
 
+/-- Each component's levels, fine to coarse, as observations that differ from
+the identity in that component only, named as the Python side names them
+(`sverify.observation`). -/
+def obsLevels : List (String × List (String × Obs)) := [
+  ("rows", [("sequence", {}), ("ties permuted", { rows := .tiesPermuted }),
+    ("multiset", { rows := .multiset })]),
+  ("elements", [("sequence", {}), ("multiset", { elements := .multiset })]),
+  ("floats", [("exact", {}), ("plan", { floats := .within "plan" })]),
+  ("zeros", [("exact", {}), ("canon", { zeros := .canon })]),
+  ("timestamps", [("ns", {}), ("us", { times := .truncated .us }), ("ms", { times := .truncated .ms }),
+    ("s", { times := .truncated .s })]),
+  ("strings", [("exact", {}), ("nfc", { strings := .nfc }), ("casefold", { strings := .casefold })]),
+  ("decimals", [("exact", {}), ("value", { decimals := .value })]),
+  ("errors", [("exact", {}), ("kind", { errors := .kind }), ("raises", { errors := .raises })])]
+
+open Lean (Json toJson) in
+/-- The levels and the pairs `Obs.le` orders, per component (`--options`'
+`levels`), for the Python side to check its order against. -/
+def obsLevelsJson : Json :=
+  Json.mkObj <| obsLevels.map fun (c, ls) => (c, Json.mkObj [
+    ("levels", toJson (ls.map (·.1))),
+    ("le", toJson (ls.flatMap fun (a, qa) => (ls.filter fun (_, qb) => qa.le qb).map fun (b, _) => [a, b]))])
+
 open Lean (Json toJson) in
 def ObsRow.json (r : ObsRow) : Json :=
   Json.mkObj [

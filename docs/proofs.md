@@ -32,6 +32,9 @@ and that the input rows meet the contract's preconditions.
 | Dropping the SQL's guards changes no result | `Rel.guardFree_sound` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
+| Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
+| A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
+| A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `Rel.weighted_eval` | `Weighted.lean` |
@@ -98,6 +101,7 @@ generators, then the trusted reading and writing.
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
 | `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
+| `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
@@ -107,7 +111,7 @@ generators, then the trusted reading and writing.
 | `Text.lean` | String functions and `LIKE` |
 | `Time.lean` | `date_part` and `date_trunc` on the proleptic Gregorian calendar |
 | `Numeric.lean` | Elementary functions of doubles and 64-bit bitwise operations |
-| `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic |
+| `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic, over Lean's functions (`Impl.lean`) or an engine's (`Impl`) |
 | `Order.lean` | The orders on values and rows that sorts, windows and `MIN`/`MAX` use |
 | `Dedup.lean` | `dedup`, the first occurrence of each element, and its lemmas |
 | `Reflect.lean` | Boolean checks the tables are proved with, by reflection |
@@ -118,7 +122,7 @@ generators, then the trusted reading and writing.
 |---|---|
 | `Window.lean` | Window functions over partitions, orders and frames |
 | `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
-| `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval` |
+| `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
@@ -167,12 +171,15 @@ generators, then the trusted reading and writing.
 |---|---|
 | `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
 | `Ties.lean` | Every row order the reference allows, and the checkers' soundness under all of them |
+| `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps |
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
 | `Options.lean` | The option catalogue and each profile's choices |
 | `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |
 | `Observations.lean` | Observations and classes against the reference |
+| `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
+| `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |

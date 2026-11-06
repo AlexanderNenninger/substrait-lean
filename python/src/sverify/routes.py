@@ -60,10 +60,10 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify import _plan_read
 from sverify._unsupported import SverifyError, SverifyWarning
-from sverify.observation import Observation, Within
+from sverify.observation import Observation, Within, _deterministic_arg
 
 if TYPE_CHECKING:
-    from sverify.contracts import Report
+    from sverify.report import Report
 
 RouteKind = Literal["native", "translated", "transfer", "recheck"]
 #: A route taken, or `"unverified"`: a plan that is not proved, run with
@@ -1066,7 +1066,7 @@ def max_rows_fix(report: Report, engine: str, required: Observation | None) -> d
     (#655). Empty where there is no stated tolerance, no single capped
     input, or the bound already meets it; `sv.max_rows(0)` where no cap
     does."""
-    from sverify.contracts import MaxRows
+    from sverify.conditions import MaxRows
 
     if required is None or not isinstance(required.floats, Within) or not report._epsilon:
         return {}
@@ -1347,8 +1347,6 @@ def choose(
             cap = max_rows_fix(report, e, report.observation)
             return replace(refuse(not_verified(report) + _cap_text(cap)), suggested=cap)
         return refuse(not_verified(report))
-    from sverify.contracts import _deterministic_arg
-
     reproducible = _deterministic_arg("choose", deterministic, reproducible)
     rerun_evidence: Evidence | None = None
     if reproducible is not None:

@@ -56,6 +56,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
+from sverify import _decimals
 from sverify._retention import _aggregate, _own_tree, _row_local, _under
 
 COUNT = "__count"
@@ -96,9 +97,8 @@ class Linear:
 def plan(name: str, query: ir.Table | str) -> Linear | str:
     """How to maintain the view `name` of `query` from a group state, or why
     it cannot be."""
-    from sverify.engine import plan_json, written_plan
+    from sverify.engine import NotIncrementalError, delta_plans, plan_json, written_plan
     from sverify.ibis_substrait.core import DecimalDiv
-    from sverify.incremental import NotIncrementalError, delta_plans
 
     if isinstance(query, str):
         return "the view is SQL"
@@ -240,10 +240,10 @@ def _measure(name: str, v: ops.Value) -> _Measure | str:
                 return _Measure(name, "sum", arg, where, dt.int64)
             if t.is_decimal():
                 # The type of the decimal's SUM: ten more digits.
-                state = dt.Decimal(min(38, t.precision + 10), t.scale)
+                state = dt.Decimal(*_decimals.sum_of((t.precision, t.scale)))
                 if not mean:
                     return _Measure(name, "sum", arg, where, state)
-                to = dt.Decimal(min(38, t.precision + 4), t.scale + 4)
+                to = dt.Decimal(*_decimals.avg_of((t.precision, t.scale)))
                 return _Measure(name, "avg", arg, where, state, to)
             what = "AVG" if mean else "SUM"
             return (
