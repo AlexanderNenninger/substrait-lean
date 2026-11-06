@@ -1684,3 +1684,93 @@ catalogue and the oracles compared each engine with it, and reported
 legitimate picks as `tie_order` differences. Shims imitated
 `List.mergeSort` on engines, and Polars refused or shimmed picks it could
 run natively.
+
+### D25. Float aggregates are correctly rounded exact sums
+
+In the reference, a `SUM`, `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
+of doubles is the correctly rounded value of the exact sum or moments. Every
+finite double is an integer multiple of 2⁻¹⁰⁷⁴, so the sum of the values is
+an exact dyadic rational; the result is the double nearest to it, ties to
+even (`floatSumCR`, `SubstraitLean/FloatExact.lean`), and `AVG` is the exact
+sum divided by the count, rounded once (`floatAvgCR`). NaN and infinities
+follow IEEE 754: a NaN, or `+∞` with `-∞`, gives NaN, and one kind of
+infinity gives it. The value is a function of the multiset of values, so it
+is one value and order-free (`floatSumCR_perm`).
+
+Engines add in an order of their own: DuckDB in the order values reach each
+thread's state (`duckdb-sum-double`), Polars pairwise in blocks of 128
+(`polars-sum-float`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
+plan's bound, the distance of any order of additions from the exact sum
+(`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
+ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay
+`approxWithin "plan"`, so a double `SUM` or `AVG` on an engine is
+`observed (tolerance)`, as it was.
+
+Three consequences:
+
+- `sum_order` and `stat_algo` are no longer choices of the reference. They
+  stay choices of the engines, and the reference's row is `EXACT`.
+- `Rel.detPlan` is true of float aggregates, so `contract_sound_all` covers
+  every result the reference allows for them.
+- A tolerance is a metric: bounds add along a pipeline
+  (`Near ε₁ a b → Near ε₂ b c → Near (ε₁ + ε₂) a c`), and no tolerance passes
+  through a filter, group key or sort on a double column.
+
+Why: the reference added doubles one by one in list order (`floatSum`) and
+allowed every order and grouping (`FloatSums`). The engines' results were
+then the reference's only in DuckDB, which emulated Lean's order with
+`list_reduce`; Spark and Snowflake refused double sums for want of a row
+order; five facts about `floatSum` were axioms. The correctly rounded sum
+turns them into theorems, lets every engine run `SUM` and `AVG` natively,
+and gives incremental maintenance an exact state with no drift. A
+postcondition at a rounding boundary can move by an ulp, which `sv.approx`
+absorbs. The epic is
+[#919](https://github.com/AlexanderNenninger/substrait-lean/issues/919).
+Precedents: Müller et al. ("Reproducible Floating-Point Aggregation in
+RDBMSs", ICDE 2018, [arXiv:1802.09883](https://arxiv.org/abs/1802.09883)) make `SUM` order-free in a database; Neal's
+superaccumulator ([arXiv:1505.05571](https://arxiv.org/abs/1505.05571))
+computes the correctly rounded sum at less than twice the cost of a naive
+one.
+
+### D26. Two equalities for NULL
+
+In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition)
+`NULL = NULL` is unknown, so a NULL never matches, never equals and never
+compares: three-valued logic, `and3`/`or3`/`not3` and `BinFn.apply .eq` in
+`SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
+`EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
+all NULLs are one value: syntactic equality, `Value.decEq` in
+`SubstraitLean/Value.lean`, as `dedup` and `groupKey` use it. A key
+(`sv.unique`, `KeyOn`) uses the second, so two rows with NULL in a key column
+collide, which is stricter than SQL's `UNIQUE` (`Keys.lean`'s header). The
+anti part of a left join and a semi or anti join use the first.
+
+Nothing in the core changes. The decision names what it does, so that an
+encoding of difference or provenance
+([#905](https://github.com/AlexanderNenninger/substrait-lean/issues/905))
+keeps the two apart.
+
+### D27. The size hypothesis is the only size assumption
+
+`Rel.Small` (`SubstraitLean/Safety.lean`): every string has fewer than 2³²
+characters, every relation a window reads fewer than 2⁶² rows, and every
+relation an aggregate reads fewer than 2⁶³. It is a hypothesis of every
+soundness theorem over windows and aggregates, never an axiom, and no other
+size bound is assumed anywhere. [reference-semantics.md](reference-semantics.md)'s
+"Overrides" table states it. A new theorem that needs another bound adds it
+to `Rel.Small`, beside the others.
+
+### D28. Lambdas have lexical scope
+
+A lambda in a higher-order call (`Expr.hof`: `list_transform`,
+`list_filter`, …) sees the enclosing row. Its body's field references are
+numbered row first, then the parameter, as DuckDB's lambdas read outer
+columns (`list_transform(l, x -> x + col)`). Today `Expr.eval` evaluates a
+body on `[x]` alone and `Expr.refsLt` ignores the body, so a capturing lambda
+has no representation and the parser refuses it; the plans it accepts keep
+their meaning. The change is `Expr.eval`'s `hof` case to
+`b.eval (row ++ [x])`, with `refsLt`, `shift` (`Weighted.lean`), `Expr.cols`,
+the abstract interpreter's lambda case, and the parser accepting outer
+references in bodies. It goes with the kind checker
+([#924](https://github.com/AlexanderNenninger/substrait-lean/issues/924)),
+which types lambda bodies.
