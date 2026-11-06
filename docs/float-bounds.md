@@ -233,6 +233,34 @@ filter and groups are the same values on every engine. A route that rests on
 a proved bound has evidence `proved`, and the `sum_order` rows of DuckDB and
 Polars cite `StdModel.epsilon_sum` ([realizability](realizability.md)).
 
+### Against the correctly rounded sum (D25)
+
+Under [D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)
+the reference's `SUM` of doubles is the exact sum of the values rounded once,
+and its `AVG` the exact mean rounded once (`floatSumCR`, `floatAvgCR`,
+[`FloatExact.lean`](../SubstraitLean/FloatExact.lean)). The core computes
+them on integers, since every finite double is a multiple of `2⁻¹⁰⁷⁴`, and
+proves without axioms that the result is the nearest double
+(`FloatCode.ofExactDiv_within`), within `u` of the exact value relatively
+(`FloatCode.ofExact_rel`), monotone, and a function of the multiset
+(`floatSumCR_perm`). `floatSumCR_mem`, `floatAvgCR_mem` and `floatSumCR_sign`
+state the checker's bounds of the sequential sum (`floatSum_mem`,
+`floatAvg_mem`, `floatSum_sign`) as theorems of it.
+
+An engine's result is then within its order's bound of the exact sum plus
+`u` of it:
+
+| Theorem | Distance to the reference |
+|---|---|
+| `epsilon_sum_cr` | `sumTolScaled N Bs + u · N · Bs`, scaled by `2¹⁰⁷⁴` |
+| `epsilon_avg_cr` | `avgTolScaled N Bs + u · Bs`, scaled by `2¹⁰⁷⁴` |
+
+`float-bounds` cannot see the core's definitions, so the reference's value
+enters these as a hypothesis, `|r − Σ| ≤ u · |Σ|`, which `ofExact_rel` proves
+of it. `test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum`
+(`python/tests/test_float_bounds.py`) checks both against DuckDB and Python's
+`math.fsum`.
+
 ### Through arithmetic
 
 `"epsilon_by_engine"` carries each column's `ε` through the double arithmetic
