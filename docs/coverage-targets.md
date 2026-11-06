@@ -85,7 +85,7 @@ most of the cheap work left, and it matters to dbt users, who write SQL.
 ## Targets by area
 
 The areas are those of the code
-([CLAUDE.md](../CLAUDE.md), "Adding functions and coverage cases"). "Today"
+(the `add-function` skill, `.claude/skills/add-function/SKILL.md`). "Today"
 is what the probe gives.
 
 ### Relations
