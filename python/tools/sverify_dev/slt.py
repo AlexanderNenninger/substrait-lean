@@ -20,8 +20,12 @@ compares three results with the expected one:
 and classifies the query:
 
 * `agree`: Lean and the engine give the expected result (an expected error
-  counts when they raise, or Lean's verifier says the plan may raise);
-* `disagree`: Lean or the engine does not (`side` says which);
+  counts when they raise);
+* `disagree`: Lean or the engine does not (`side` says which). Where Lean's
+  `Rel.eval` gives rows and its verifier says the plan may raise (an
+  overflow, a division by zero, a cast of a bad string), the query is
+  `disagree` on Lean's side, with the warning as its `reason`: the plan is
+  not proved, and sverify does not run it;
 * `refused`: sverify does not plan the query (the lift or the checker
   refuses it);
 * `skipped`: the test needs something the replay does not have (an
