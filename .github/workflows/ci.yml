@@ -111,7 +111,7 @@ jobs:
           # and `test (duckdb)`, can read.
           src=python/src/sverify
           tests=python/tests
-          spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark)\.py$"
+          spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark|test_spark_[a-z0-9_]+)\.py$"
           snowflake="$src/sql/snowflake\.py$|$tests/test_sql_snowflake\.py$"
           polars="$src/(polars_engine|_polars_shims)\.py$|$tests/test_(polars|polars_shims|probe_polars)\.py$|python/tools/sverify_dev/probe_polars\.py$"
           datafusion="$tests/test_datafusion_quirks\.py$"

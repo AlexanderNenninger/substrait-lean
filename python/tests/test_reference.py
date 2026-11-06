@@ -14,6 +14,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
+from _engines import PROFILED, PROFILED_ORDERED
 from sverify.engine import (
     connect,
     put_table,
@@ -301,7 +302,7 @@ def test_double_division_options(dcon, mode, by_zero):
         assert nan_safe(arrow_rows(run_plan(dcon, written, engine))) == expected, engine
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_double_division_by_zero_raises(dcon, engine):
     assert issues(divide_plan(dcon, None)) == [
         "division by zero",
@@ -672,20 +673,21 @@ def icon():
         "SELECT power(z - 5.0, 0.5) AS v FROM n",
     ],
 )
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_engines_raise_where_ieee_would_make_a_nan(icon, sql, engine):
-    with pytest.raises(Exception, match="(?i)domain|NaN"):
+    # Spark refuses `sin` and `power`, which are Java's, before it runs.
+    with pytest.raises(Exception, match=r"(?i)domain|NaN|StrictMath|Math\.pow"):
         run_plan(icon, written_plan(substrait_json(icon, sql)), engine)
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_nan_in_the_input_stays_nan(icon, engine):
     sql = "SELECT x + y AS v FROM n WHERE z > 0.5"
     got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
     assert got == [(3.5,), ("NaN",)]
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED_ORDERED)
 def test_a_double_sum_of_both_infinities_raises(icon, engine):
     n = icon.table("n")
     both = n.select(v=n.x).union(n.select(v=n.y))
@@ -727,7 +729,7 @@ def test_lean_prints_integers_beyond_64_bits():
     assert lean_values(json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))) == [(2**63,)]
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_overflow_to_infinity_is_the_references_precondition(engine):
     """#575: `Issue.infinite` is a precondition of the reference. A plan
     verified under DuckDB's semantics, which allows ±inf, assumes nothing and
@@ -783,6 +785,7 @@ def test_bounds_rule_out_overflow_to_infinity():
     assert INFINITE in kinds("SELECT x / y AS v FROM f", ["x >= 0", "x <= 1000000", "y > 0"])
 
 
+# Spark refuses a double `power` (Java's `Math.pow`), so not on Spark.
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_power_of_minus_infinity_to_a_fraction_is_a_domain_error(engine):
     """`power(-inf, y)` for a finite non-integer `y` raises in the reference

@@ -8,6 +8,7 @@ import json
 import ibis
 import pytest
 
+from _engines import PROFILED_ORDERED
 from _sql_lift import TABLES
 from sverify.engine import connect, run_checker, run_plan, written_plan
 from sverify.sql_lift import lift
@@ -61,7 +62,7 @@ def test_checked_and_written_back(direction, written):
     assert directions(json.loads(written_plan(plan))) == [written]
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED_ORDERED)
 def test_unspecified_puts_nulls_last(engine):
     con = connect("duckdb")
     con.create("orders", ORDERS.schema, [tuple(r.values()) for r in ORDERS.to_pylist()])
