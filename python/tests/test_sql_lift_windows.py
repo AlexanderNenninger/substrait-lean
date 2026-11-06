@@ -43,6 +43,21 @@ QUERIES = [
     " FROM orders",
     # Computed window partitions.
     "SELECT id, rank() OVER (PARTITION BY amount % 2 ORDER BY -amount, id) AS r FROM orders",
+    # #811: IGNORE NULLS (last observation carried forward), and RANGE frames
+    # with INTERVAL offsets over timestamps and dates.
+    "SELECT id, last_value(qty IGNORE NULLS) OVER (ORDER BY id"
+    " ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS locf,"
+    " first_value(price IGNORE NULLS) OVER (ORDER BY id"
+    " ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS nxt,"
+    " last_value(customer RESPECT NULLS) OVER (ORDER BY id) AS lv FROM orders",
+    "SELECT id, sum(amount) OVER (ORDER BY placed"
+    " RANGE BETWEEN INTERVAL 7 DAY PRECEDING AND CURRENT ROW) AS wk,"
+    " count(*) OVER (ORDER BY day RANGE BETWEEN INTERVAL 31 DAYS PRECEDING"
+    " AND INTERVAL '1' DAY FOLLOWING) AS n,"
+    " max(id) OVER (ORDER BY placed RANGE BETWEEN INTERVAL '36 hours' PRECEDING"
+    " AND INTERVAL 1 HOUR FOLLOWING) AS m FROM orders",
+    "SELECT id, first(qty) OVER (ORDER BY id DESC) AS f, bool_or(qty > 3) OVER (ORDER BY id) AS b"
+    " FROM orders",
 ]
 
 
@@ -67,6 +82,19 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
         ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
         ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
+        (
+            "SELECT sum(id) OVER (ORDER BY placed RANGE INTERVAL 1 MONTH PRECEDING) FROM orders",
+            "months and years",
+        ),
+        (
+            "SELECT sum(id) OVER (ORDER BY day RANGE INTERVAL 1 HOUR PRECEDING) FROM orders",
+            "whole days",
+        ),
+        (
+            "SELECT sum(id) OVER (ORDER BY id ROWS INTERVAL 1 DAY PRECEDING) FROM orders",
+            "RANGE frame",
+        ),
+        ("SELECT lag(qty IGNORE NULLS) OVER (ORDER BY id) FROM orders", "not supported"),
         # A ranking with its own ORDER BY ranks within the frame (#625).
         *(
             (
