@@ -48,8 +48,12 @@ SUPPORT: dict[str, frozenset[str]] = {
     "list_contains": _DUCKDB,
     "list_position": _DUCKDB,
     "flatten": _DUCKDB,
-    # The lift's guards: `make_date` of columns raises outside the calendar (#809).
-    "sverify_raise": _DUCKDB,
+    # The lift's guards (`UnFn.raise`): `make_date` of columns outside the
+    # calendar (#809), a RANGE frame's bound that leaves its integer key's
+    # type (#805). DuckDB and Spark write them with `raise_`; Polars and
+    # DataFusion run plans without a way to raise, and Snowflake's SQL of the
+    # date guards grows past what it runs (`_REASONS`).
+    "sverify_raise": frozenset({"duckdb", "spark"}),
     # Windows: DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
     "ntile": ENGINES - {"datafusion"},
     # Black boxes (#325).
@@ -67,6 +71,10 @@ WINDOW_SUPPORT: dict[str, frozenset[str]] = {
 #: Why an engine refuses a function, where the reason is not #271.
 _REASONS = {
     ("ntile", "datafusion"): "DataFusion's NTILE does not deal out buckets as SQL does",
+    ("sverify_raise", "snowflake"): (
+        "Snowflake's SQL of these guards grows past what it runs: a date from columns "
+        "writes 208 MB of nested CASEs, against 38 KB for Spark"
+    ),
 }
 
 #: What a refusal calls a function: the Ibis and SQL names users write,
@@ -75,7 +83,10 @@ _LABELS = {
     "sverify_pair": "covariance and correlation (Ibis cov, corr)",
     "quantile_cont": "median() or quantile() (SQL median, quantile_cont)",
     "quantile_disc": "quantile() (SQL quantile_disc)",
-    "sverify_raise": "a date from columns (Ibis ibis.date, SQL make_date)",
+    "sverify_raise": (
+        "a guard that raises (a date from columns, Ibis ibis.date, SQL make_date; "
+        "a RANGE frame with offsets over an integer)"
+    ),
     "regexp_extract": "re_extract() (SQL regexp_extract)",
     "regexp_replace": "re_replace() (SQL regexp_replace)",
     "first": "first() (SQL first)",
