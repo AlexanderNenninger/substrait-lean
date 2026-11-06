@@ -168,6 +168,7 @@ generators, then the trusted reading and writing.
 |---|---|
 | `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
 | `Ties.lean` | Every row order the reference allows, and the checkers' soundness under all of them |
+| `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps |
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
