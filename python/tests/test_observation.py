@@ -7,6 +7,7 @@ import math
 import subprocess
 import sys
 from datetime import datetime
+from typing import Any
 
 import ibis
 import pyarrow as pa
@@ -91,7 +92,9 @@ def test_the_order_agrees_with_lean() -> None:
         assert len(names) >= 2, component
         for a in names:
             for b in names:
-                mine = Observation(**{component: a}).refines(Observation(**{component: b}))
+                fine: dict[str, Any] = {component: a}
+                coarse: dict[str, Any] = {component: b}
+                mine = Observation(**fine).refines(Observation(**coarse))
                 assert mine == ((a, b) in le), (component, a, b)
 
 
