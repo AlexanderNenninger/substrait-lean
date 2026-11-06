@@ -512,7 +512,7 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
-    r.evalI (Profile.duckdbWritten s).impl cat = r.eval cat :=
+    r.eval cat (Profile.duckdbWritten s).impl = r.eval cat :=
   Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm (Profile.duckdbWritten_faithful s hieee)
 
 /-! ## Plans that may raise
@@ -525,7 +525,7 @@ raises.
 * `Expr.Exact p t e`: `t`, run with `p`'s functions, computes `e`'s value on
   every row where it does not raise. `Lowering.lower_exact` proves it for every
   expression and its lowering (`SubstraitLean/Lowering.lean`).
-* `Rel.Raises p cat t`: some expression of `t` raises on a row `Rel.evalI`
+* `Rel.Raises p cat t`: some expression of `t` raises on a row `Rel.eval cat p.impl`
   evaluates it on.
 * `Rel.evalI_mapExprs`: a plan whose expressions are each `Exact` computes
   `Rel.eval`'s rows unless it raises. `Lowering.lowerRel_sound` applies it to
@@ -533,14 +533,14 @@ raises.
 
 No guard elimination is involved, so this needs neither a contract nor
 `looseSub`. An engine may evaluate an expression on fewer rows than
-`Rel.evalI` (a hash join tries its condition only on pairs whose keys match,
+`Rel.eval cat p.impl` (a hash join tries its condition only on pairs whose keys match,
 a pushed-down filter drops rows first); that skips evaluations without
 changing a value, which is the engine's own correctness, trusted as before. -/
 
 /-- Evaluating without errors under a profile is evaluating with its
 functions. -/
 theorem Expr.evalI_of_evalP {p : Profile} :
-    ∀ {e : Expr} {row : Row} {v : Value}, e.evalP p row = .ok v → e.evalI p.impl row = v
+    ∀ {e : Expr} {row : Row} {v : Value}, e.evalP p row = .ok v → e.eval row p.impl = v
   | .lit _, _, _, h | .field _, _, _, h => by
     simp only [Expr.evalP, Except.ok.injEq] at h; subst h; rfl
   | .un f a, row, v, h => by
@@ -548,7 +548,7 @@ theorem Expr.evalI_of_evalP {p : Profile} :
     | error k => simp [Expr.evalP, ha, bind, Except.bind] at h
     | ok x =>
       simp only [Expr.evalP, ha, bind, Except.bind] at h
-      simp only [Expr.evalI]; rw [evalI_of_evalP ha]
+      simp only [Expr.eval]; rw [evalI_of_evalP ha]
       simp only [Profile.impl, h, Outcome.val]
   | .bin f a b, row, v, h => by
     cases ha : a.evalP p row with
@@ -558,14 +558,14 @@ theorem Expr.evalI_of_evalP {p : Profile} :
       | error k => simp [Expr.evalP, ha, hb, bind, Except.bind] at h
       | ok y =>
         simp only [Expr.evalP, ha, hb, bind, Except.bind] at h
-        simp only [Expr.evalI]; rw [evalI_of_evalP ha, evalI_of_evalP hb]
+        simp only [Expr.eval]; rw [evalI_of_evalP ha, evalI_of_evalP hb]
         simp only [Profile.impl, h, Outcome.val]
   | .ifThen c t e, row, v, h => by
     cases hc : c.evalP p row with
     | error k => simp [Expr.evalP, hc, bind, Except.bind] at h
     | ok x =>
       simp only [Expr.evalP, hc, bind, Except.bind] at h
-      simp only [Expr.evalI, evalI_of_evalP hc]
+      simp only [Expr.eval, evalI_of_evalP hc]
       split
       · rename_i hx; simp only [hx, ↓reduceIte] at h; exact evalI_of_evalP h
       · rename_i hx
@@ -579,7 +579,7 @@ theorem Expr.evalI_of_evalP {p : Profile} :
       · cases h
       · rename_i hn
         simp only [Except.ok.injEq] at h; subst h
-        simp only [Expr.evalI, evalI_of_evalP hl]
+        simp only [Expr.eval, evalI_of_evalP hl]
         refine HoFn.apply_congr f _ fun x hx => ?_
         have := (List.findSome?_eq_none_iff.mp hn) x hx
         cases hb : b.evalP p [x] with
@@ -598,7 +598,7 @@ theorem Expr.evalP_reference_ok {e : Expr} {row : Row} {v : Value}
 /-- `t`, run with `p`'s functions, computes `e` on every row where it does
 not raise. -/
 def Expr.Exact (p : Profile) (t e : Expr) : Prop :=
-  ∀ row v, t.evalP p row = .ok v → t.evalI p.impl row = e.eval row
+  ∀ row v, t.evalP p row = .ok v → t.eval row p.impl = e.eval row
 
 theorem Expr.reference_exact (e : Expr) : Expr.Exact Profile.reference e e :=
   fun _ _ h => (evalI_of_evalP h).trans (evalP_reference_ok h)
@@ -649,40 +649,40 @@ theorem Expr.ok_of_not_raises {p : Profile} {row : Row} {e : Expr} (h : ¬e.Rais
 
 /-- An exact expression that does not raise computes the reference's value. -/
 theorem Expr.Exact.eq {p : Profile} {t e : Expr} (hx : Expr.Exact p t e) {row : Row}
-    (h : ¬t.RaisesOn p row) : t.evalI p.impl row = e.eval row := by
+    (h : ¬t.RaisesOn p row) : t.eval row p.impl = e.eval row := by
   obtain ⟨v, hv⟩ := Expr.ok_of_not_raises h
   exact hx row v hv
 
-/-- **Some expression raises** on a row `Rel.evalI` evaluates it on. -/
+/-- **Some expression raises** on a row `Rel.eval cat p.impl` evaluates it on. -/
 def Rel.Raises (p : Profile) (cat : Catalog) : Rel → Prop
   | .read _ | .values _ _ => False
-  | .filter r c => r.Raises p cat ∨ ∃ row ∈ r.evalI p.impl cat, c.RaisesOn p row
-  | .project r es => r.Raises p cat ∨ ∃ row ∈ r.evalI p.impl cat, ∃ e ∈ es, e.RaisesOn p row
+  | .filter r c => r.Raises p cat ∨ ∃ row ∈ r.eval cat p.impl, c.RaisesOn p row
+  | .project r es => r.Raises p cat ∨ ∃ row ∈ r.eval cat p.impl, ∃ e ∈ es, e.RaisesOn p row
   | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     r.Raises p cat
   | .cross a b | .unionAll a b => a.Raises p cat ∨ b.Raises p cat
   | .join a b _ on | .semi a b _ on => a.Raises p cat ∨ b.Raises p cat ∨
-      ∃ x ∈ a.evalI p.impl cat, ∃ y ∈ b.evalI p.impl cat, on.RaisesOn p (x ++ y)
+      ∃ x ∈ a.eval cat p.impl, ∃ y ∈ b.eval cat p.impl, on.RaisesOn p (x ++ y)
   | .aggregate r gs ms => r.Raises p cat ∨
-      ∃ row ∈ r.evalI p.impl cat, ∃ e ∈ gs ++ ms.flatMap Measure.exprs, e.RaisesOn p row
+      ∃ row ∈ r.eval cat p.impl, ∃ e ∈ gs ++ ms.flatMap Measure.exprs, e.RaisesOn p row
 
 theorem leftJoinRowI_map {I : Impl} {on on' : Expr} {n : Nat} {ys : Relation} {x : Row}
-    (h : ∀ y ∈ ys, on'.evalI I (x ++ y) = on.eval (x ++ y)) :
-    leftJoinRowI I on' n ys x = leftJoinRow on n ys x := by
-  have : ((ys.map (x ++ ·)).filter fun row => (on'.evalI I row).isTrue) =
+    (h : ∀ y ∈ ys, on'.eval (x ++ y) I = on.eval (x ++ y)) :
+    leftJoinRow on' n ys x I = leftJoinRow on n ys x := by
+  have : ((ys.map (x ++ ·)).filter fun row => (on'.eval row I).isTrue) =
       (ys.map (x ++ ·)).filter fun row => (on.eval row).isTrue :=
     List.filter_congr fun row hr => by
       obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hr
       rw [h y hy]
-  simp only [leftJoinRowI, leftJoinRow, this]
+  simp only [leftJoinRow, this]
 
 theorem hasMatchI_map {I : Impl} {on on' : Expr} {x : Row} :
-    ∀ {ys : Relation}, (∀ y ∈ ys, on'.evalI I (x ++ y) = on.eval (x ++ y)) →
-      hasMatchI I on' ys x = hasMatch on ys x
+    ∀ {ys : Relation}, (∀ y ∈ ys, on'.eval (x ++ y) I = on.eval (x ++ y)) →
+      hasMatch on' ys x I = hasMatch on ys x
   | [], _ => rfl
   | y :: ys, h => by
     have ih := hasMatchI_map (ys := ys) fun z hz => h z (by simp [hz])
-    simp only [hasMatchI, hasMatch, List.any_cons] at ih ⊢
+    simp only [hasMatch, List.any_cons] at ih ⊢
     rw [h y (by simp), ih]
 
 theorem Measure.mapExpr_exprs (f : Expr → Expr) (m : Measure) :
@@ -691,52 +691,52 @@ theorem Measure.mapExpr_exprs (f : Expr → Expr) (m : Measure) :
 
 theorem aggregateEvalI_map {I : Impl} {f : Expr → Expr} {gs : List Expr} {ms : List Measure}
     {rows : Relation}
-    (h : ∀ row ∈ rows, ∀ e ∈ gs ++ ms.flatMap Measure.exprs, (f e).evalI I row = e.eval row) :
-    aggregateEvalI I (gs.map f) (ms.map (Measure.mapExpr f)) rows = aggregateEval gs ms rows := by
-  have hk : ∀ row ∈ rows, groupKeyI I (gs.map f) row = groupKey gs row := fun row hr => by
-    simp only [groupKeyI, groupKey, List.map_map]
+    (h : ∀ row ∈ rows, ∀ e ∈ gs ++ ms.flatMap Measure.exprs, (f e).eval row I = e.eval row) :
+    aggregateEval (gs.map f) (ms.map (Measure.mapExpr f)) rows I = aggregateEval gs ms rows := by
+  have hk : ∀ row ∈ rows, groupKey (gs.map f) row I = groupKey gs row := fun row hr => by
+    simp only [groupKey, List.map_map]
     exact List.map_congr_left fun g hg => h row hr g (List.mem_append_left _ hg)
   have hin : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) →
-      (m.mapExpr f).inputsI I sub = m.inputs sub := by
+      (m.mapExpr f).inputs sub I = m.inputs sub := by
     intro m hm sub hsub
-    have he : ∀ row ∈ sub, ∀ e ∈ m.exprs, (f e).evalI I row = e.eval row := fun row hr e he =>
+    have he : ∀ row ∈ sub, ∀ e ∈ m.exprs, (f e).eval row I = e.eval row := fun row hr e he =>
       h row (hsub row hr) e (List.mem_append_right _ (List.mem_flatMap.mpr ⟨m, hm, he⟩))
-    have hkept : (m.mapExpr f).keptI I sub = m.kept sub := by
+    have hkept : (m.mapExpr f).kept sub I = m.kept sub := by
       cases hc : m.filter with
-      | none => simp only [Measure.keptI, Measure.kept, Measure.mapExpr, hc, Option.map_none]
+      | none => simp only [Measure.kept, Measure.mapExpr, hc, Option.map_none]
       | some c =>
-        simp only [Measure.keptI, Measure.kept, Measure.mapExpr, hc, Option.map_some]
+        simp only [Measure.kept, Measure.mapExpr, hc, Option.map_some]
         exact List.filter_congr fun row hr => by
           rw [he row hr c (by simp [Measure.exprs, hc])]
     have hsub' : ∀ row ∈ m.kept sub, row ∈ sub := fun row hr => by
       unfold Measure.kept at hr; split at hr
       · exact hr
       · exact (List.mem_filter.mp hr).1
-    simp only [Measure.inputsI, Measure.inputs, hkept]
+    simp only [Measure.inputs, hkept]
     have : (m.mapExpr f).distinct = m.distinct := rfl
     rw [this, List.map_congr_left fun row hr =>
-      (show (m.mapExpr f).arg.evalI I row = m.arg.eval row from
+      (show (m.mapExpr f).arg.eval row I = m.arg.eval row from
         he row (hsub' row hr) m.arg (by simp [Measure.exprs]))]
   have hm : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) →
-      (m.mapExpr f).evalI I sub = m.eval sub := by
+      (m.mapExpr f).eval sub I = m.eval sub := by
     intro m hm sub hsub
     have hfn : (m.mapExpr f).fn = m.fn := rfl
     have hsort : (m.mapExpr f).sort = m.sort := rfl
     cases hf : m.fn
-    all_goals simp only [Measure.evalI, Measure.eval, hfn, hsort, hf]
+    all_goals simp only [Measure.eval, hfn, hsort, hf]
     case collect => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case pick => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case concat => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case mode => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     all_goals rw [hin m hm sub hsub]
-  unfold aggregateEvalI aggregateEval
+  unfold aggregateEval
   simp only [List.isEmpty_map]
   split
   · simp only [List.map_map]
     exact congrArg (fun x => [x]) (List.map_congr_left fun m hmm => hm m hmm rows fun _ h => h)
   · rw [List.map_congr_left hk]
     refine List.map_congr_left fun k _ => ?_
-    have hf : (rows.filter fun row => groupKeyI I (gs.map f) row == k) = groupRows gs rows k :=
+    have hf : groupRows (gs.map f) rows k I = groupRows gs rows k :=
       List.filter_congr fun row hr => by rw [hk row hr]
     rw [hf, List.map_map]
     exact congrArg (k ++ ·) (List.map_congr_left fun m hmm =>
@@ -746,38 +746,38 @@ theorem aggregateEvalI_map {I : Impl} {f : Expr → Expr} {gs : List Expr} {ms :
 raises.** `f` must keep columns as they are (a measure's sort keys). -/
 theorem Rel.evalI_mapExprs {p : Profile} {f : Expr → Expr} (hx : ∀ e, Expr.Exact p (f e) e)
     (hf : ∀ i, f (.field i) = .field i) {cat : Catalog} :
-    ∀ {r : Rel}, ¬(r.mapExprs f).Raises p cat → (r.mapExprs f).evalI p.impl cat = r.eval cat
+    ∀ {r : Rel}, ¬(r.mapExprs f).Raises p cat → (r.mapExprs f).eval cat p.impl = r.eval cat
   | .read _, _ | .values _ _, _ => rfl
   | .filter r c, h => by
     simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
     have ih := evalI_mapExprs hx hf (r := r) h.1
     have h2 := h.2; rw [ih] at h2
-    simp only [mapExprs, evalI, eval, ih]
+    simp only [mapExprs, eval, ih]
     exact List.filter_congr fun row hr => by rw [(hx c).eq (h2 row hr)]
   | .project r es, h => by
     simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
     have ih := evalI_mapExprs hx hf (r := r) h.1
     have h2 := h.2; rw [ih] at h2
-    simp only [mapExprs, evalI, eval, ih, List.map_map]
+    simp only [mapExprs, eval, ih, List.map_map]
     exact List.map_congr_left fun row hr => congrArg (row ++ ·) (List.map_congr_left fun e he =>
       (hx e).eq (h2 row hr (f e) (List.mem_map_of_mem he)))
   | .emit r _, h | .orderBy r _, h | .distinct r, h | .unnest r _, h | .window r _ _ _, h => by
     simp only [mapExprs, Raises] at h
-    simp only [mapExprs, evalI, eval, evalI_mapExprs hx hf (r := r) h]
+    simp only [mapExprs, eval, evalI_mapExprs hx hf (r := r) h]
   | .fetch r _ cnt, h => by
     simp only [mapExprs, Raises] at h
     have ih := evalI_mapExprs hx hf (r := r) h
-    cases cnt <;> simp only [mapExprs, evalI, eval, ih]
+    cases cnt <;> simp only [mapExprs, eval, ih]
   | .cross a b, h | .unionAll a b, h => by
     simp only [mapExprs, Raises, not_or] at h
-    simp only [mapExprs, evalI, eval, evalI_mapExprs hx hf (r := a) h.1,
+    simp only [mapExprs, eval, evalI_mapExprs hx hf (r := a) h.1,
       evalI_mapExprs hx hf (r := b) h.2]
   | .join a b .inner on, h => by
     simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
     have iha := evalI_mapExprs hx hf (r := a) h.1
     have ihb := evalI_mapExprs hx hf (r := b) h.2.1
     have h2 := h.2.2; rw [iha, ihb] at h2
-    simp only [mapExprs, evalI, eval, iha, ihb]
+    simp only [mapExprs, eval, iha, ihb]
     exact List.filter_congr fun row hr => by
       obtain ⟨x, hx', y, hy, rfl⟩ := mem_crossRows.mp hr
       rw [(hx on).eq (h2 x hx' y hy)]
@@ -786,21 +786,21 @@ theorem Rel.evalI_mapExprs {p : Profile} {f : Expr → Expr} (hx : ∀ e, Expr.E
     have iha := evalI_mapExprs hx hf (r := a) h.1
     have ihb := evalI_mapExprs hx hf (r := b) h.2.1
     have h2 := h.2.2; rw [iha, ihb] at h2
-    simp only [mapExprs, evalI, eval, iha, ihb, arity_mapExprs]
+    simp only [mapExprs, eval, iha, ihb, arity_mapExprs]
     exact flatMap_congr fun x hx' => leftJoinRowI_map fun y hy => (hx on).eq (h2 x hx' y hy)
   | .semi a b _ on, h => by
     simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
     have iha := evalI_mapExprs hx hf (r := a) h.1
     have ihb := evalI_mapExprs hx hf (r := b) h.2.1
     have h2 := h.2.2; rw [iha, ihb] at h2
-    simp only [mapExprs, evalI, eval, iha, ihb]
+    simp only [mapExprs, eval, iha, ihb]
     exact List.filter_congr fun x hx' => by
       rw [hasMatchI_map fun y hy => (hx on).eq (h2 x hx' y hy)]
   | .aggregate r gs ms, h => by
     simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
     have ih := evalI_mapExprs hx hf (r := r) h.1
     have h2 := h.2; rw [ih] at h2
-    simp only [mapExprs, evalI, eval, ih]
+    simp only [mapExprs, eval, ih]
     refine aggregateEvalI_map fun row hr e he => ?_
     have hmem : ∀ e' ∈ gs.map f ++ (ms.map (Measure.mapExpr f)).flatMap Measure.exprs,
         ¬e'.RaisesOn p row := h2 row hr

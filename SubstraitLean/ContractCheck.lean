@@ -9,6 +9,7 @@ import SubstraitLean.Semantic
 import SubstraitLean.Write
 import SubstraitLean.Infer
 import SubstraitLean.Rows
+import SubstraitLean.Knowledge
 import SubstraitLean.Implied
 
 /-!
@@ -494,13 +495,21 @@ def check (input : Json) : Except String Report := do
   -- Each table's description and facts, computed once: `A` and `F` are
   -- called at every read of every pass (#825).
   let names := tables.map (·.1) |>.eraseDups
-  let envs := names.map fun t => (t, tableEnv (schemas t) (preOf t))
-  let factsOf := names.map fun t => (t, (preOf t).flatMap Expr.factsOf)
-  let A := fun t => (envs.lookup t).getD (tableEnv (schemas t) (preOf t))
-  let F := fun t => (factsOf.lookup t).getD ((preOf t).flatMap Expr.factsOf)
-  let inputKeys : String → List (List Nat) := fun t =>
-    natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
-  let T := Rel.keyedWindows cat A F inputKeys
+  let keysJson := (input.getObjVal? "keys").toOption
+  let keysOf (t : String) : List (List Nat) :=
+    natLists (keysJson.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
+  -- One description of the inputs (`KnowledgeEnv.ofSpec`, sound by
+  -- `KnowledgeEnv.ofSpec_sound`), computed once per table: the analyses
+  -- read it at every read of every pass (#825). The window keys follow
+  -- from it (`KnowledgeEnv.Sound.windows`, `.windowsAll`).
+  let know (t : String) : Knowledge :=
+    ⟨tableEnv (schemas t) (preOf t), (preOf t).flatMap Expr.factsOf, keysOf t, none⟩
+  let knows := names.map fun t => (t, know t)
+  let kenv : KnowledgeEnv := fun t => (knows.lookup t).getD (know t)
+  let A := kenv.cols
+  let F := kenv.facts
+  let inputKeys := kenv.keys
+  let T := kenv.windows cat
   let implied : List (String × List (List (Nat × Bound))) :=
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
