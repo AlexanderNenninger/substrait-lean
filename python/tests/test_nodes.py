@@ -22,7 +22,8 @@ from _pipelines import (
 )
 from sverify import nodes
 from sverify.contracts import label, violations
-from sverify.engines import ENGINES, delta_plans
+from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
+from sverify.engines import delta_plans
 from sverify.errors import (
     CompositionError,
     PostconditionError,

@@ -74,7 +74,7 @@ class Discovery:
         nodes: The file's nodes, by variable name.
         transforms: The file's contracted transforms, by variable name.
         error: What stopped the import, if anything (a refusal,
-            `sverify.errors.Unsupported`; an error of the file's own).
+            `sverify.errors.UnsupportedError`; an error of the file's own).
         module: The imported module, if the import finished.
     """
 

@@ -21,6 +21,7 @@ from hypothesis import strategies as st
 import sverify as sv
 from _pipelines import integer_powers
 from sverify import polars_engine
+from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
 from sverify.engine import (
     connect,
     plan_json,
@@ -32,7 +33,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.engines import ENGINES, delta_plans
+from sverify.engines import delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.io import Changes
@@ -328,7 +329,7 @@ def test_polars_view_matches_datafusion_view(name, data):
     for engine in ENGINES:
         con = connect()
         create_tables(con, orders, customers)
-        views[engine] = IncrementalView(con, PIPELINES[name], "v", engine=engine)
+        views[engine] = IncrementalView(con, PIPELINES[name], "v", engine=engine)  # type: ignore[arg-type]
     for _ in range(data.draw(st.integers(1, 3))):
         changes = {
             t: Changes(

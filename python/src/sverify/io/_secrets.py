@@ -34,6 +34,8 @@ class SecretError(SverifyError, LookupError):
     backend is not installed or refused, or it has no such field. The
     message names the reference, never a value."""
 
+    code = "secret_unreadable"
+
 
 class Refused(Exception):
     """A backend's refusal whose message holds no value (an HTTP status, a

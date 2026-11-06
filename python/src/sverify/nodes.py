@@ -47,7 +47,7 @@ from sverify import _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
-from sverify.engine import ENGINES, connect, plain_schema, written_plan
+from sverify.engine import _LOCAL_ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
 from sverify.io._credentials import CredentialUse
@@ -194,18 +194,6 @@ class Node:
         if self._plan is None:
             self._plan = written_plan(to_substrait_json(self._query()._expr))
         return self._plan
-
-    @property
-    def plan(self) -> str:
-        """Deprecated: `internal_plan`, sverify's own form of the plan
-        (`Report.to_substrait()` is the portable one)."""
-        warnings.warn(
-            "Node.plan is deprecated; read node.internal_plan (sverify's own form of the "
-            "plan), or report.to_substrait() for a portable Substrait plan",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.internal_plan
 
     @property
     def report(self) -> Report | None:
@@ -490,12 +478,11 @@ class Node:
             r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
             ```
         """
-        from sverify.routes import checked_route
 
         return group(self).refresh(
             engine=engine,
             audit=audit,
-            route=checked_route(route),
+            route=route,
             unverified=unverified,
             reproducible=reproducible,
             lineage=lineage,
@@ -850,7 +837,7 @@ class _Stage:
         is built again with them."""
         from sverify.io._common import _TableSource
 
-        con = connect(engine if engine in ENGINES else "duckdb")
+        con = connect(engine if engine in _LOCAL_ENGINES else "duckdb")  # type: ignore[arg-type] - DataFusion too
         pipe = Pipeline(con)
         mapping = {}
         for leaf in leaves:
@@ -884,8 +871,8 @@ class _Stage:
         return stage
 
     def use(self, engine: Any) -> None:
-        if engine in ENGINES:
-            self.pipe.con.engine = engine
+        if engine in _LOCAL_ENGINES:
+            self.pipe.con.engine = engine  # type: ignore[assignment] - DataFusion too
         self.view.engine = engine
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
@@ -1351,7 +1338,6 @@ class Group:
                 nothing was refreshed.
         """
         from sverify._hooks import PLANNED, is_collecting
-        from sverify.routes import checked_route
 
         if is_collecting():
             raise RuntimeError(
@@ -1361,7 +1347,6 @@ class Group:
             )
         if engine is None:
             engine = "duckdb"
-        route = checked_route(route)
         order = self._order()
         # OpenLineage run events (#792): off unless `lineage` is given.
         runs = None

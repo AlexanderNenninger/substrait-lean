@@ -56,7 +56,7 @@ class Unsupported(_Unsupported):
     DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
-    `ValueError`, and of `sverify.errors.Unsupported`, which every refusal
+    `ValueError`, and of `sverify.errors.UnsupportedError`, which every refusal
     raises.
     """
 
@@ -458,6 +458,11 @@ class Dialect:
         represents (the years -262143 to 262142)."""
         raise Unsupported(f"{self.name}: date_part is not implemented")
 
+    def day_part(self, part: str, d: str) -> str:
+        """`UnFn.dayPart`: the part of a DATE's midnight, for a date chrono
+        represents (the caller checks)."""
+        return self.date_part(part, self.date_to_time(d))
+
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`: rounded down to the unit, weeks from Monday."""
         raise Unsupported(f"{self.name}: date_trunc is not implemented")
@@ -491,6 +496,18 @@ class Dialect:
     def as_time(self, us: str) -> str:
         """`UnFn.asTime`: the timestamp `us` microseconds after 1970-01-01."""
         raise Unsupported(f"{self.name}: timestamps from microseconds are not implemented")
+
+    def date_time(self, d: str) -> str:
+        """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
+        raise Unsupported(
+            f"a DATE as a TIMESTAMP is not yet supported on {self.name}; " + DUCKDB_ONLY
+        )
+
+    def epoch_us(self, ts: str) -> str:
+        """`UnFn.epochUs`: a timestamp's microseconds since 1970-01-01 (#809)."""
+        raise Unsupported(
+            f"a timestamp's microseconds are not yet supported on {self.name}; " + DUCKDB_ONLY
+        )
 
     def zero_pad(self, n: str, width: int) -> str:
         """The integer `n ≥ 0` in decimal, padded with zeros to `width` digits
@@ -650,23 +667,29 @@ class Dialect:
         text = f"{sign}{digits[: len(digits) - k.s]}" + (f".{digits[-k.s :]}" if k.s else "")
         return self.cast(f"'{text}'", k)
 
-    def decimal_arith(self, op: str, a: str, b: str, sa: int, k: Dec) -> str:
-        """`a op b` of decimals or integers, exactly, as a `DECIMAL(p, s)`. A
-        product widens `a` (of scale `sa`) to 38 digits first, so that the
-        engine's own result type cannot overflow before the reference's."""
+    def decimal_arith(
+        self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
+    ) -> str:
+        """`a op b` of decimals or integers (of kinds `kinds`), exactly, as a
+        `DECIMAL(p, s)`. A product widens `a` (of scale `sa`) to 38 digits
+        first, so that the engine's own result type cannot overflow before the
+        reference's."""
         if op == "*":
             a = self.cast(a, Dec(38, sa))
         return self.cast(f"({a} {op} {b})", k)
 
-    def decimal_neg(self, a: str) -> str:
+    def decimal_neg(self, a: str, k: Dec | None = None) -> str:
+        """`-a` of a `DECIMAL` of type `k`, exactly."""
         return f"(-{a})"
 
-    def decimal_abs(self, a: str) -> str:
+    def decimal_abs(self, a: str, k: Dec | None = None) -> str:
+        """`|a|` of a `DECIMAL` of type `k`, exactly."""
         return f"ABS({a})"
 
-    def decimal_cast(self, a: str, k: Dec) -> str:
-        """A decimal, integer or double as a `DECIMAL(p, s)`, rounding half away
-        from zero to a smaller scale."""
+    def decimal_cast(self, a: str, k: Dec, src: Kind | None = None) -> str:
+        """A decimal, integer or double (`src`) as a `DECIMAL(p, s)`, rounding
+        half away from zero to a smaller scale; a double as `round(x · 10ˢ)`
+        in doubles (`FloatCode.toDecimal?`)."""
         return self.cast(a, k)
 
     def decimal_to_int(self, a: str) -> str:
@@ -925,7 +948,7 @@ class Field:
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
     "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
-    "black_box",
+    "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
@@ -946,7 +969,7 @@ StringBinOp = Literal[
 #: Dates and timestamps (`temporal.py`).
 TemporalUnOp = Literal[
     "date_part", "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day",
-    "as_time", "strftime", "bucket", "time_add", "time_trunc",
+    "as_time", "strftime", "bucket", "time_add", "time_trunc", "date_time", "epoch_us",
 ]  # fmt: skip
 TemporalBinOp = Literal["date_add", "date_diff"]
 
@@ -1443,6 +1466,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "bool"
         case If(then=Lit(value=v), orelse=o):
             return _lean_lit_kind(v) if isinstance(o, Lit) else lean_expr_kind(o, cols)
+        case If(then=Un(op="raise"), orelse=o):
+            return lean_expr_kind(o, cols)
         case If(then=t):
             return lean_expr_kind(t, cols)
 
@@ -1464,11 +1489,15 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="list_elem", arg=a):
             k = expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else None
+        case Un(op="raise"):
+            return None
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
             k = _bb_kind(n)
             return None if k == "other" else k
+        case Un(op="raise"):
+            return None  # the kind of where it stands
         case Un(op=op) if op in UN_KINDS:
             return UN_KINDS[op]
         case Un():
@@ -2307,6 +2336,11 @@ class _Parser:
                 # Microseconds since 1970-01-01 (arrow's cast of an integer).
                 if target == "time" and k == "int":
                     return Un("as_time", e)
+                # A DATE's midnight (#807), a timestamp's microseconds (#809).
+                if target == "time" and k == "date":
+                    return Un("date_time", e)
+                if target == "int" and k == "time" and _int_bits(_req(v, "type")) == 64:
+                    return Un("epoch_us", e)
                 # Fails where the value does not fit (`UnFn.narrow`).
                 if target == "int" and k == "int":
                     bits = _int_bits(_req(v, "type"))
@@ -3202,6 +3236,9 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", a)
         case "is_null", [a]:
             return Un("is_null", a)
+        case "sverify_raise", [a, Lit(value=str() as message)]:
+            # A guard's failure (`UnFn.raise`): the lift's RANGE frame bounds.
+            return Un("raise", a, param=message)
         case "is_not_null", [a]:
             return Un("not", Un("is_null", a))
         case (("negate" | "subtract"), [a]):
@@ -3216,6 +3253,9 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("eq", a, b)
         case "not_equal", [a, b]:
             return Un("not", Bin("eq", a, b))
+        case "sverify_raise", [a, Lit(value=str(msg))]:
+            # `UnFn.raise`: a guard of the lift's (`make_date`, #809).
+            return Un("raise", a, param=msg)
         case "lt", [a, b]:
             return Bin("lt", a, b)
         case "gt", [a, b]:
@@ -4236,8 +4276,14 @@ class _Writer:
                 return d.decimal_to_float(go(a, kind(a)))
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
+            case Un(op="raise", arg=a, param=msg):
+                return d.raise_(msg, go(a, kind(a)), ctx or "int")
             case Un(op="is_null", arg=a):
                 return d.is_null(go(a))
+            case Un(op="raise", arg=a, param=message):
+                if ctx is None:
+                    raise Unsupported("a guard's failure of an unknown type")
+                return d.raise_(message, go(a), ctx)
             case Un(op="neg", arg=a):
                 if kind(a) == "interval":
                     return d.interval_sub(d.interval_lit(0), go(a))
@@ -4417,13 +4463,18 @@ class _Writer:
             case ("add" | "sub" | "mul") as op, [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 sa = ka.s if isinstance(ka, Dec) else 0
-                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k)
+                kb = expr_kind(e.args[1], cols)
+                if ka is None or kb is None:
+                    raise Unsupported(f"decimal {op} of an operand of unknown type")
+                return d.decimal_arith(
+                    {"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, (ka, kb)
+                )
             case "neg", [a]:
-                return d.decimal_neg(a)
+                return d.decimal_neg(a, k)
             case "abs", [a]:
-                return d.decimal_abs(a)
+                return d.decimal_abs(a, k)
             case "cast", [a]:
-                return d.decimal_cast(a, k)
+                return d.decimal_cast(a, k, expr_kind(e.args[0], cols))
             case "div", [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)
@@ -4719,7 +4770,6 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    tie_free: bool | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -4759,7 +4809,6 @@ def to_sql(
             `±∞` (`Dialect.finite`), the reference's precondition (#575).
             Default: True; False for a plan verified with
             `semantics="duckdb"`.
-        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4793,15 +4842,6 @@ def to_sql(
         # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
-    if tie_free is not None:
-        import warnings
-
-        warnings.warn(
-            "to_sql(tie_free=...) is deprecated; write deterministic=... (as Report.run takes it)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        deterministic = tie_free
     if isinstance(plan, str):
         plan = json.loads(plan)
     if not guards:

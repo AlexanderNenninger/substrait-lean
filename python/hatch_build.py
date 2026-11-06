@@ -10,8 +10,9 @@ A wheel's build checks every generated entry's proof (`-Kcheck_generated=true`,
 `SubstraitLean/Generated.lean`), so no wheel ships an unchecked table; an
 editable install builds with the checkout's current setting.
 
-`SVERIFY_PREBUILT_CHECK=<path>` makes an editable install link that binary
+`SVERIFY_PREBUILT_CHECKER=<path>` makes an editable install link that binary
 and skip lake (CI builds the checker once per run and shares it).
+`SVERIFY_PREBUILT_CHECK`, its name before 1.0, is read too.
 """
 
 from __future__ import annotations
@@ -44,7 +45,9 @@ class LakeBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         build_data["pure_python"] = False
         build_data["tag"] = f"py3-none-{platform_tag()}"
-        prebuilt = os.environ.get("SVERIFY_PREBUILT_CHECK")
+        prebuilt = os.environ.get("SVERIFY_PREBUILT_CHECKER") or os.environ.get(
+            "SVERIFY_PREBUILT_CHECK"
+        )
         if version == "editable" and prebuilt:
             self._link(Path(prebuilt).resolve())
             return

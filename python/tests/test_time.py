@@ -570,7 +570,9 @@ def test_unsupported_formats_are_refused():
 
 def test_constructors_of_constants():
     """`ibis.date(2024, 2, 29)` and friends are constants; a bad date is
-    refused (DataFusion's `make_date` fails), and so are columns."""
+    refused (DataFusion's `make_date` fails). A date of columns is computed
+    (#809, `tests/test_sql_lift_temporal.py`); a timestamp of columns is
+    refused."""
     expr = D.select(
         a=ibis.date(2024, 2, 29), b=ibis.timestamp(2024, 1, 2, 3, 4, 5), c=ibis.time(9, 30, 0)
     )
@@ -582,7 +584,7 @@ def test_constructors_of_constants():
     with pytest.raises(Unsupported, match=r"DateFromYMD of \[2024, 2, 30\]: day "):
         to_substrait(D.select(a=ibis.date(2024, 2, 30)))
     with pytest.raises(Unsupported, match="of columns"):
-        to_substrait(D.select(a=ibis.date(D.n, 1, 1)))
+        to_substrait(D.select(a=ibis.timestamp(D.n, 1, 1, 0, 0, 0)))
 
 
 # --------------------------------------------------------------------------

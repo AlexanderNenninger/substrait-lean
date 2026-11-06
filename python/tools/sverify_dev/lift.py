@@ -88,7 +88,7 @@ def check(query: str, tables: Mapping[str, pa.Table], semantics: str = "duckdb")
     try:
         lifted = lift(query, schemas, semantics)
     except Exception as e:  # noqa: BLE001 - a refusal, or a bug: recorded
-        kind = "" if type(e).__name__ == "Unsupported" else f"{type(e).__name__}: "
+        kind = "" if type(e).__name__ == "UnsupportedError" else f"{type(e).__name__}: "
         return Check("lift", kind + str(e).splitlines()[0])
     plan = json.dumps(lifted.plan)
     code, out, err = run_checker((), plan)

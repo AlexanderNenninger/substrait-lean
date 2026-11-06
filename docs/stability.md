@@ -122,6 +122,10 @@ internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
 
+The engines in the promise are DuckDB, Polars and Spark
+(`sverify.engines.Engine`). DataFusion (`engine="datafusion"`, the
+`datafusion` extra, `run_substrait_json`) is experimental and outside it.
+
 A minor release may break the public API only when the break is:
 
 - loud: a call that used the old form raises, or warns with a

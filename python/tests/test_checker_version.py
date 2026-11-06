@@ -34,7 +34,7 @@ def test_the_built_checker_speaks_this_protocol() -> None:
 def test_another_protocol_fails_clearly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str, message: str
 ) -> None:
-    monkeypatch.setenv("SVERIFY_CHECK", fake_checker(tmp_path, output))
+    monkeypatch.setenv("SVERIFY_CHECKER", fake_checker(tmp_path, output))
     with pytest.raises(CheckerVersionError, match=re.escape(message)) as e:
         engine.checker_path()
     if "older" in message:

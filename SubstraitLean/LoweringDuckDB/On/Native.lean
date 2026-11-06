@@ -443,6 +443,28 @@ abbrev Substrait.duckdbOn.asTime : Substrait.UnEntry (Substrait.Profile.duckdb (
   Substrait.UnEntry.native Substrait.UnFn.asTime
   (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.asTime_native)
 
+theorem Substrait.duckdbOn.dateTime_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      Substrait.UnFn.dateTime x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dateTime x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.dateTime : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.dateTime :=
+  Substrait.UnEntry.native Substrait.UnFn.dateTime
+  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.dateTime_native)
+
+theorem Substrait.duckdbOn.epochUs_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      Substrait.UnFn.epochUs x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.epochUs x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.epochUs : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.epochUs :=
+  Substrait.UnEntry.native Substrait.UnFn.epochUs
+  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.epochUs_native)
+
 theorem Substrait.duckdbOn.strftime_native : ∀ (fmt : String) (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       (Substrait.UnFn.strftime fmt) x =

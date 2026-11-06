@@ -53,7 +53,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-# The sverify of this checkout; `SVERIFY_PREBUILT_CHECK` links a built checker.
+# The sverify of this checkout; `SVERIFY_PREBUILT_CHECKER` links a built checker.
 sverify = { path = "../python", editable = true }
 
 [tool.ruff]

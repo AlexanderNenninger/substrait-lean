@@ -90,7 +90,7 @@ Tables = Mapping[str, pl.LazyFrame | pl.DataFrame | pa.Table]
 
 class Unsupported(_Unsupported):
     """The plan uses something the translator does not map to Polars
-    (`sverify.errors.Unsupported`)."""
+    (`sverify.errors.UnsupportedError`)."""
 
 
 class RuntimeIssue(ArithmeticError):

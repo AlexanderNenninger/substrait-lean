@@ -18,8 +18,9 @@ import functools
 import os
 import re
 import sys
+import weakref
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
@@ -87,6 +88,8 @@ def spark_type(t: pa.DataType) -> str:
     """The Spark type of an Arrow column, as `sverify.sql.spark` writes it."""
     if pa.types.is_integer(t):
         return SPARK.type_name("int")
+    if pa.types.is_decimal(t):
+        return f"DECIMAL({t.precision}, {t.scale})"
     if pa.types.is_floating(t):
         return SPARK.type_name("float")
     if pa.types.is_timestamp(t):
@@ -120,16 +123,29 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
     return t
 
 
+#: The views sverify registered under its own names (`__sverify_<i>`, which
+#: `sverify.engine.run_plan` gives a plan's tables), per session: the Arrow
+#: table each holds. A run over the same table does not send it again.
+_VIEWS: weakref.WeakKeyDictionary[Any, dict[str, pa.Table]] = weakref.WeakKeyDictionary()
+
+
 def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None) -> None:
     """Register each table as a temporary view of that name. The columns go
     to Spark as Arrow, cast to the types `spark_type` names, so NULL and NaN
     stay apart, and no Python worker runs (a table of 100,000 rows takes a
-    quarter of the time it took as Python values)."""
+    quarter of the time it took as Python values). A view of sverify's own
+    names that holds the same Arrow table already is kept as it is."""
     spark = spark or session()
+    held = _VIEWS.setdefault(spark, {})
     for name, table in tables.items():
+        own = name.startswith("__sverify_")
+        if own and held.get(name) is table:
+            continue
         schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
         target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
         spark.createDataFrame(table.cast(target), schema).createOrReplaceTempView(name)
+        if own:
+            held[name] = table
 
 
 def run(
@@ -138,7 +154,6 @@ def run(
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,
-    tie_free: bool | None = None,
     finite: bool = True,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
@@ -159,7 +174,6 @@ def run(
             `PARTITION BY` and `ORDER BY` columns (what a contract report's
             `deterministic` says), so windows run without a row-order
             tiebreak (see `sverify.engines.to_sql`). Default False.
-        tie_free: Deprecated alias of `deterministic`.
         finite: Check that no operation on finite doubles gives `±∞`, the
             reference's precondition (#575); False for a plan verified
             under a profile that allows `±∞`, as Spark's does. Default True.
@@ -168,21 +182,12 @@ def run(
         The plan's result, as an Arrow table.
 
     Raises:
-        sverify.engines.Unsupported: Spark SQL cannot express the plan with
+        sverify.engines.UnsupportedError: Spark SQL cannot express the plan with
             Lean's meaning, for example a plan that needs a table's row order
             without `deterministic=True`.
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
-    if tie_free is not None:
-        import warnings
-
-        warnings.warn(
-            "run_spark(tie_free=...) is deprecated; write deterministic=...",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        deterministic = tie_free
     spark = spark or session()
     sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
     put_tables(tables, spark)

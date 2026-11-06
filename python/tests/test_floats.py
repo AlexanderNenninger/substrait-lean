@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engines import ENGINES
+from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
 
