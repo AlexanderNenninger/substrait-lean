@@ -126,7 +126,7 @@ namespace Knowledge
 
 /-- A row of a well-formed plan whose every column the analysis proves true
 is all `true`. -/
-theorem allTrue {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} {Q : Rel} (hQ : Q.WF cat)
+theorem allTrue {cat : Catalog} {K : KnowledgeEnv} {Q : Rel} (hQ : Q.WF cat)
     (hproved : (Q.analyse cat K).cols.all AVal.certainlyTrue = true) {row : Row}
     (hlen : row.length = Q.arity cat) (hm : EnvMem (Q.analyse cat K).cols row) :
     ∀ v ∈ row, v = .bool true := by
@@ -146,7 +146,7 @@ theorem contract_sound {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : 
     {Q : Rel} (hQ : Q.WF cat)
     (hproved : (Q.analyse cat K).cols.all AVal.certainlyTrue = true) :
     ∀ row ∈ Q.eval cat, ∀ v ∈ row, v = .bool true := fun row hrow =>
-  allTrue hcat hQ hproved (Rel.eval_arity hcat hQ row hrow)
+  allTrue hQ hproved (Rel.eval_arity hcat hQ row hrow)
     ((Q.analyse_sound hcat hK (sz := false) hQ nofun).1 row hrow)
 
 /-- `contract_sound` for every result under every tie order (D24). -/
@@ -154,7 +154,7 @@ theorem contract_sound_all {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     (hK : K.Sound cat) {Q : Rel} (hQ : Q.WF cat)
     (hproved : (Q.analyse cat K).cols.all AVal.certainlyTrue = true) :
     ∀ {out : Relation}, Q.OrderAllowed cat out → ∀ row ∈ out, ∀ v ∈ row, v = .bool true :=
-  fun ho row hrow => allTrue hcat hQ hproved (Rel.orderAllowed_arity hcat hQ ho row hrow)
+  fun ho row hrow => allTrue hQ hproved (Rel.orderAllowed_arity hcat hQ ho row hrow)
     ((Q.analyse_sound_all hcat hK hQ ho).1 row hrow)
 
 /-- `Rel.mayIssues_sound` on one hypothesis. -/
