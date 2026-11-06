@@ -24,7 +24,7 @@ import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from sverify.contracts import decode_double
+from sverify._checker import checker_path, decode_double
 
 Json = Any
 
@@ -38,8 +38,6 @@ def table() -> Mapping[str, Json]:
     """The templates by function (`"fdiv"`, `"fmath:sqrt"`, `"fit:silent:64"`,
     `"bit:bitwise_shift_left"`), read from the checker once."""
     if not _TABLE:
-        from sverify.engine import checker_path
-
         out = subprocess.run(
             [str(checker_path()), "--lowering-table"], capture_output=True, text=True, check=True
         ).stdout

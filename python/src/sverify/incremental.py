@@ -66,6 +66,7 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify import _linear, _quarantine, _retention, _semi, _touched
+from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
@@ -113,11 +114,13 @@ from sverify.contracts import (
     violating_rows,
     violations,
 )
-from sverify.engine import (
+from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: re-exported)
     Connection,
     Engine,
+    NotIncrementalError,
     arrow_rows,
     checker_failed,
+    delta_plans,
     plan_json,
     put_table,
     read_tables,
@@ -126,7 +129,6 @@ from sverify.engine import (
     to_arrow,
     written_plan,
 )
-from sverify.steps import Pipeable
 
 Row = tuple
 
@@ -143,49 +145,6 @@ def _rows(fetch: Callable[..., pa.Table], *args: Any) -> pa.Table | None:
 def _on_state(c: Condition) -> bool:
     """A view checks `c` on its whole new state (`TableCondition.on_state`)."""
     return isinstance(c, TableCondition) and c.on_state
-
-
-class NotIncrementalError(SverifyError):
-    """The plan is outside the fragment with verified delta rules.
-
-    Raised by `sverify.engines.delta_plans` for a plan with an operator
-    without a delta rule (a left join, aggregate, window, `DISTINCT` or
-    `LIMIT`). A node over such a plan is recomputed and diffed instead, so
-    refreshing it does not raise this. (A view that ends in `COUNT` and `SUM`
-    per group, or in `DISTINCT`, is maintained from a state per group,
-    `sverify._linear`.) The message is the checker's reason.
-    """
-
-    code = "not_incremental"
-
-
-def delta_plans(plan_json: str) -> list[str]:
-    """Ask Lean for the weighted delta plans of a Substrait JSON plan; the
-    change to the view is the concatenation of their outputs.
-
-    Each delta plan reads the view's input tables `t` at their old contents
-    and their changes as tables `t$delta`, which have the columns of `t` and
-    an extra `__weight` column (+1 for an inserted row, -1 for a deleted
-    one). Its output has the view's columns and a weight column likewise.
-
-    Args:
-        plan_json: A Substrait plan as protobuf JSON, as
-            `sverify.engines.substrait_json` or a node's `plan` write it.
-
-    Returns:
-        The delta plans, each a Substrait JSON plan in Lean's written form.
-
-    Raises:
-        sverify.errors.NotIncrementalError: The plan has an operator without a
-            verified delta rule.
-        ValueError: The checker rejects the plan.
-    """
-    code, out, err = run_checker(("--delta",), plan_json)
-    if code == 3:
-        raise NotIncrementalError(err.strip())
-    if code != 0:
-        raise checker_failed("--delta", err)
-    return out.splitlines()
 
 
 def _value_key(x: object) -> object:
