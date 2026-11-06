@@ -979,6 +979,12 @@ class CheckedCondition:
     reads: tuple[str, ...] | None = None
     """The output columns the condition reads; None where that is not
     known (every column)."""
+    depends: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
+    """The components of an observation the condition's value depends on,
+    as the checker computes them from the columns it reads (`Expr.depends`,
+    `SubstraitLean/Robust.lean`): an observation that coarsens none of them
+    keeps the condition TRUE (`Expr.robust_of_depends`). None where the
+    checker does not know them."""
     approx: bool = False
     """The condition is `sv.approx(...)`: it allows for rounding."""
     nullable: tuple[str, ...] | None = None
@@ -3611,6 +3617,7 @@ def _observed(
                     _reads(cond, report.output),
                     {} if c.proved else opened,
                     _order_free(cond, report.output, opened),
+                    c.depends,
                 )
             ),
         )
@@ -4200,9 +4207,16 @@ def _verify_once(
             # a key proves it (#691).
             cex = None if e["proved"] or ties else find(p)
             suggested = _suggested(e.get("suggest"), schemas, assumable)
+            depends = e.get("depends")
             checked.append(
                 CheckedCondition(
-                    e["name"], e["proved"], e["value"], cex, suggested=suggested, ties=ties
+                    e["name"],
+                    e["proved"],
+                    e["value"],
+                    cex,
+                    suggested=suggested,
+                    ties=ties,
+                    depends=None if depends is None else tuple(depends),
                 )
             )
         checked[-1].condition = c

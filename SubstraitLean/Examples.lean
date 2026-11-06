@@ -25,6 +25,7 @@ import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
+import SubstraitLean.Robust
 
 /-!
 # Examples
@@ -296,3 +297,6 @@ end Substrait.Examples
 #print axioms Substrait.Relation.Near_add
 #print axioms Substrait.Rel.refines_of_same
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
+#print axioms Substrait.Expr.robust_of_robustB
+#print axioms Substrait.Expr.narrow_sound
+#print axioms Substrait.Expr.robust_of_depends

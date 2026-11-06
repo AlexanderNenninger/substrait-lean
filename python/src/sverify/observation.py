@@ -472,6 +472,7 @@ def dependencies(
     read: Sequence[str] | None,
     open_columns: Mapping[str, str] | None = None,
     order_free: Collection[str] = (),
+    depends: Sequence[str] | None = None,
 ) -> list[str]:
     """The components `observation` ignores that `cond`, a condition of
     `ensures`, depends on (D12). Empty when the condition cannot tell
@@ -499,6 +500,11 @@ def dependencies(
             ignore its order (`order_free`).
         order_free: The columns `cond` reads only through such functions
             (`length`, `contains`, `min`, `max`, `sum`, `sort`, …).
+        depends: The components the condition's value depends on, from the
+            checker (`CheckedCondition.depends`, `Expr.depends`), which
+            proves that an observation coarsening none of them keeps the
+            condition (`Expr.robust_of_depends`). None: derived here from
+            the types of the columns it reads.
     """
     from sverify.contracts import Approx
 
@@ -511,8 +517,10 @@ def dependencies(
         if why_open is not None and why_open not in out:
             out.append(why_open)
     ignored = set(observation.ignored()) - {"rows", "zeros", "errors", "elements"}
-    for n in names:
-        comp = _component(columns[n])
+    comps = (
+        [_component(columns[n]) for n in names] if depends is None else list(dict.fromkeys(depends))
+    )
+    for comp in comps:
         if comp is None or comp not in ignored or comp in out:
             continue
         if comp == "floats" and (isinstance(cond, Approx) or observation.floats == "plan"):
