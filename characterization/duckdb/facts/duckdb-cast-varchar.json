@@ -1,0 +1,72 @@
+{
+  "id": "duckdb-cast-varchar",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Casts of a string to BIGINT, DOUBLE, BOOLEAN, DATE and TIMESTAMP",
+  "verdict": "modelled as black boxes (#806): DuckDB's rules, which Lean evaluates on a subset",
+  "area": "casts",
+  "constructs": [
+    "CAST",
+    "TRY_CAST"
+  ],
+  "settings": {},
+  "description": [
+    "Spaces around the string are dropped; a tab or newline makes it invalid at the start and is accepted at the end of a number. `CAST` raises a Conversion Error on an invalid string, `TRY_CAST` gives NULL.",
+    "BIGINT: a sign, digits, a fraction and an exponent; the exact decimal rounds half away from zero (`'1.5'` is 2, `'-1.5'` -2, `'123456789012345678.5'` 123456789012345679) and must fit 64 bits. Also `0x` hexadecimal and `0b` binary, and `_` between digits (`'1_000'`). `'1e'`, `'.e1'`, `'1__0'`, `'_1'` and `'0o17'` are invalid; `'0e999999'` is invalid too.",
+    "DOUBLE: the decimal correctly rounded (`'1e400'` is `inf`, `'1e-400'` and `'2.4e-324'` are 0), `inf`, `infinity` and `nan` with a sign and in any case, `nan(…)` with anything in the parentheses, and `_` between digits. No hexadecimal (`'0x10'`, `'0x1p3'` are invalid), no `,`.",
+    "BOOLEAN: `true`, `t`, `yes`, `y`, `1` and `false`, `f`, `no`, `n`, `0` in any case, with nothing around them (`' t '`, `'on'`, `'01'` are invalid).",
+    "DATE: a year, month and day separated by `-`, `/` or spaces, the month and day of one or two digits, the year of any number (`'24-01-05'` is 0024-01-05, `'12024-01-01'` is valid), `(BC)` or a negative year, `epoch`, `infinity` and `-infinity`; a time after the date is dropped. A month or day outside the calendar is invalid (`'2023-02-29'`, `'2024-13-01'`); `'20240105'` and `'2024.01.05'` are invalid.",
+    "TIMESTAMP: a date, then a space or `T` and hours, minutes and seconds; minutes of one digit (`'1:2'`), `24:00:00` as the next day, a time zone offset or `Z`/`UTC` read and dropped, digits of a second past six truncated (`'.9999995'` is `.999999`). Hours past 24, a minute or second of 60 are invalid."
+  ],
+  "reference": [
+    "Black boxes `varchar_<type>` and `try_varchar_<type>` (`SubstraitLean/BlackBox.lean`): `CAST` may raise (a domain error in `verify`) and is not NULL for a string; `TRY_CAST` is NULL where DuckDB rejects the string. An integer narrower than a BIGINT is the BIGINT cast down. Lean evaluates the subset of `SubstraitLean/VarcharCasts.lean` and refuses to print rows elsewhere."
+  ],
+  "status": "decided",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "session coverage #806, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT TRY_CAST(' 12 ' AS BIGINT), TRY_CAST('1.5' AS BIGINT), TRY_CAST('-1.5' AS BIGINT), TRY_CAST('0x1F' AS BIGINT), TRY_CAST('1_000' AS BIGINT), TRY_CAST('9223372036854775808' AS BIGINT), TRY_CAST('12.3 p' AS BIGINT)",
+          "observed": "12, 2, -2, 31, 1000, NULL, NULL"
+        },
+        {
+          "sql": "SELECT TRY_CAST('123456789012345678.5' AS BIGINT), TRY_CAST('-9223372036854775808.5' AS BIGINT), TRY_CAST('0b11' AS BIGINT), TRY_CAST('0o17' AS BIGINT)",
+          "observed": "123456789012345679, NULL, 3, NULL"
+        },
+        {
+          "sql": "SELECT TRY_CAST('1e400' AS DOUBLE), TRY_CAST('1e-400' AS DOUBLE), TRY_CAST('-Infinity' AS DOUBLE), TRY_CAST('nan(abc)' AS DOUBLE), TRY_CAST('0x10' AS DOUBLE), TRY_CAST('1,5' AS DOUBLE), TRY_CAST('12.3 p' AS DOUBLE)",
+          "observed": "inf, 0.0, -inf, nan, NULL, NULL, NULL"
+        },
+        {
+          "sql": "SELECT TRY_CAST('yEs' AS BOOLEAN), TRY_CAST(' t ' AS BOOLEAN), TRY_CAST('on' AS BOOLEAN), TRY_CAST('01' AS BOOLEAN)",
+          "observed": "true, NULL, NULL, NULL"
+        },
+        {
+          "sql": "SELECT TRY_CAST('2024-1-5' AS DATE), TRY_CAST('2024/01/05' AS DATE), TRY_CAST('2024 01 05' AS DATE), TRY_CAST('2023-02-29' AS DATE), TRY_CAST('20240105' AS DATE), TRY_CAST('2024-01-05 10:00' AS DATE), TRY_CAST('epoch' AS DATE)",
+          "observed": "2024-01-05, 2024-01-05, 2024-01-05, NULL, NULL, 2024-01-05, 1970-01-01"
+        },
+        {
+          "sql": "SELECT TRY_CAST('2024-01-05 24:00:00' AS TIMESTAMP), TRY_CAST('2024-01-05 25:00' AS TIMESTAMP), TRY_CAST('2024-01-05 10:00:00.9999995' AS TIMESTAMP), TRY_CAST('2024-01-05 10:00+01' AS TIMESTAMP)",
+          "observed": "2024-01-06 00:00:00, NULL, 2024-01-05 10:00:00.999999, 2024-01-05 10:00:00"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "session coverage #806: tests/test_sql_lift_casts.py::test_casts_from_varchar_on_random_strings, 12 seeds of 40 lists of strings",
+      "evidence": [
+        {
+          "test": "python/tests/test_sql_lift_casts.py::test_casts_from_varchar_on_random_strings"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    806
+  ]
+}

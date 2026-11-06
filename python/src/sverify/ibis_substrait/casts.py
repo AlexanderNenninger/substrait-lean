@@ -12,20 +12,45 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, same_type
-from sverify.plan_json import Json, Unsupported, cast_json, literal
+from sverify.plan_json import Json, Unsupported, call, cast_json, literal
+
+
+def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
+    """A cast of a string (#806): the black box of its target, DuckDB's
+    rules, as the SQL lift reads one (`sql_lift/casts.py`); a narrower
+    integer is the BIGINT cast down. None for the other targets."""
+    to = op.to
+    if not op.arg.dtype.is_string():
+        return None
+    if isinstance(op.arg, ops.Literal) and not try_:
+        # A constant: Lean folds it, as it did (`DATE '1998-12-01'` in TPC-H).
+        return None
+    if to.is_decimal():
+        raise Unsupported(f"a cast of a string to {to} is not supported yet (#27)")
+    for accepts, name, via in (
+        (to.is_integer, "bigint", dt.int64),
+        (to.is_float64, "double", dt.float64),
+        (to.is_boolean, "boolean", dt.boolean),
+        (to.is_date, "date", dt.date),
+        (lambda: to.is_timestamp() and to.timezone is None, "timestamp", dt.timestamp),
+    ):
+        if accepts():
+            j = call(f"{'try_' if try_ else ''}varchar_{name}", [x(op.arg)])
+            return j if same_type(via, to) else cast_json(j, to, or_null=try_)
+    return None
 
 
 def _cast(x: Exprs, op: Any) -> Json:
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
-    return cast_json(x(op.arg), op.to)
+    return _from_varchar(x, op, False) or cast_json(x(op.arg), op.to)
 
 
 def _try_cast(x: Exprs, op: Any) -> Json:
     """`TRY_CAST`: NULL where the cast fails (#58)."""
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
-    return cast_json(x(op.arg), op.to, or_null=True)
+    return _from_varchar(x, op, True) or cast_json(x(op.arg), op.to, or_null=True)
 
 
 #: DuckDB's names of the types of `typeof` (`duckdb-typeof-names`).

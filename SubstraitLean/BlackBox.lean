@@ -2,6 +2,7 @@ import SubstraitLean.Value
 import SubstraitLean.Float
 import SubstraitLean.Time
 import SubstraitLean.Reflect
+import SubstraitLean.VarcharCasts
 
 /-!
 # Black-box functions (#325)
@@ -58,6 +59,8 @@ inductive Ty where
   | int | double | str | bool
   /-- A date, as days since 1970-01-01. -/
   | date
+  /-- A timestamp, as microseconds since 1970-01-01 (#806). -/
+  | timestamp
   /-- An integer, string or boolean: a value whose type its `Value` shows.
   A double's code or a date is an integer too, so a scalar whose result
   depends on the type (`printf`) takes this. -/
@@ -83,7 +86,7 @@ def strOrNull : Value → Bool
 /-- Is `v` NULL or a value of the type? -/
 def Ty.has : Ty → Value → Bool
   | _, .null => true
-  | .int, .int _ | .double, .int _ | .date, .int _ => true
+  | .int, .int _ | .double, .int _ | .date, .int _ | .timestamp, .int _ => true
   | .str, .str _ => true
   | .bool, .bool _ => true
   | .atom, .int _ | .atom, .str _ | .atom, .bool _ => true
@@ -231,7 +234,28 @@ def scalars : List Scalar := [
   -- points) for `sep = ''`, and `['']` for `s = ''` (#808). NULL for a NULL
   -- `s`, and `[s]` for a NULL `sep`, so not strict. Lean evaluates it.
   { name := "string_split", args := [.str, .str], result := .strs, strict := false,
-    laws := [.nonNull], sample := .list [.str ""] }]
+    laws := [.nonNull], sample := .list [.str ""] },
+  -- `CAST(s AS t)` and `TRY_CAST(s AS t)` of a string (#806), DuckDB's rules
+  -- (`duckdb-cast-varchar`): spaces around, signs, fractions and exponents
+  -- (a BIGINT rounds half away from zero), `inf` and `nan`, `true`/`t`/`yes`/
+  -- `y`/`1`, ISO dates and times. `CAST` raises on a string DuckDB rejects,
+  -- so it is not NULL for a string; `TRY_CAST` is NULL there. Lean evaluates
+  -- a subset (`SubstraitLean/VarcharCasts.lean`).
+  { name := "varchar_bigint", args := [.str], result := .int, raises := .sometimes,
+    laws := [.nonNull], sample := .int 0 },
+  { name := "try_varchar_bigint", args := [.str], result := .int, sample := .int 0 },
+  { name := "varchar_double", args := [.str], result := .double, raises := .sometimes,
+    laws := [.nonNull], sample := .int 0 },
+  { name := "try_varchar_double", args := [.str], result := .double, sample := .int 0 },
+  { name := "varchar_boolean", args := [.str], result := .bool, raises := .sometimes,
+    laws := [.nonNull], sample := .bool false },
+  { name := "try_varchar_boolean", args := [.str], result := .bool, sample := .bool false },
+  { name := "varchar_date", args := [.str], result := .date, raises := .sometimes,
+    laws := [.nonNull], sample := .int 0 },
+  { name := "try_varchar_date", args := [.str], result := .date, sample := .int 0 },
+  { name := "varchar_timestamp", args := [.str], result := .timestamp, raises := .sometimes,
+    laws := [.nonNull], sample := .int 0 },
+  { name := "try_varchar_timestamp", args := [.str], result := .timestamp, sample := .int 0 }]
 
 /-- The aggregate black boxes. -/
 def aggregates : List Aggregate := [
@@ -362,6 +386,21 @@ def stringSplit (s sep : String) : List String :=
 #guard stringSplit "a,b," "," == ["a", "b", ""] && stringSplit "" "" == [""]
 #guard stringSplit "héllo" "" == ["h", "é", "l", "l", "o"]
 
+/-- A cast from VARCHAR (#806) by its target, the row's name less its prefix. -/
+def varcharCast? : String → Option (String → VarcharCasts.Parsed)
+  | "bigint" => some VarcharCasts.bigint
+  | "double" => some VarcharCasts.double
+  | "boolean" => some VarcharCasts.boolean
+  | "date" => some VarcharCasts.date
+  | "timestamp" => some VarcharCasts.timestamp
+  | _ => none
+
+/-- A cast from VARCHAR's row: its parser, and whether it is `TRY_CAST`. -/
+def varcharRow? (name : String) : Option ((String → VarcharCasts.Parsed) × Bool) :=
+  if name.startsWith "try_varchar_" then (varcharCast? (name.drop 12).toString).map (·, true)
+  else if name.startsWith "varchar_" then (varcharCast? (name.drop 8).toString).map (·, false)
+  else none
+
 /-- The scalar black boxes Lean evaluates. -/
 def evalScalar : String → List Value → Value
   | "base64", [.str s] => .str (base64 s)
@@ -377,6 +416,13 @@ def evalScalar : String → List Value → Value
   | "string_split", [.str s, .str sep] => .list ((stringSplit s sep).map .str)
   | "string_split", [.str s, .null] => .list [.str s]
   | "string_split", [.null, _] => .null
+  | name, [.str s] => match varcharRow? name with
+    | some (parse, _) => match parse s with
+      | .val v => v
+      -- NULL for `TRY_CAST`; `CAST` raises there (`evalRaises`).
+      | .bad => .null
+      | .unknown => unevaluated s!"{name} of {s.quote}"
+    | none => unevaluated name
   | name, _ => unevaluated name
 
 def evalAgg (name : String) (_ : List Value) : Value := unevaluated name
@@ -387,6 +433,12 @@ def evalRaises : String → List Value → Bool
   | "list_sum", [.list vs] => match listSum vs with
     | some n => !(decide (-2 ^ 63 ≤ n) && decide (n < 2 ^ 63))
     | none => false
+  | name, [.str s] => match varcharRow? name with
+    | some (parse, false) => match parse s with
+      | .val _ => false
+      | .bad => true
+      | .unknown => unevaluated s!"{name} of {s.quote}"
+    | _ => unevaluated name
   | name, _ => unevaluated name
 
 /-! ## The functions -/
