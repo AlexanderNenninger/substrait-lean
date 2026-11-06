@@ -980,6 +980,7 @@ def _observed(
                     _reads(cond, report.output),
                     {} if c.proved else opened,
                     _order_free(cond, report.output, opened),
+                    c.depends,
                 )
             ),
         )
@@ -1569,9 +1570,16 @@ def _verify_once(
             # a key proves it (#691).
             cex = None if e["proved"] or ties else find(p)
             suggested = _suggested(e.get("suggest"), schemas, assumable)
+            depends = e.get("depends")
             checked.append(
                 CheckedCondition(
-                    e["name"], e["proved"], e["value"], cex, suggested=suggested, ties=ties
+                    e["name"],
+                    e["proved"],
+                    e["value"],
+                    cex,
+                    suggested=suggested,
+                    ties=ties,
+                    depends=None if depends is None else tuple(depends),
                 )
             )
         checked[-1].condition = c
