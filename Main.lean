@@ -76,6 +76,8 @@ def checkPlan (plan : Plan) : Option (UInt32 × String) :=
   if !plan.root.checkWF cat then some (2, "well-formed: no")
   else if !plan.names.isEmpty && plan.names.length != arity then
     some (2, s!"well-formed: no (root names {plan.names} do not match arity {arity})")
+  -- `Rel.kinds_sound`: a well-kinded plan evaluates to its kinds.
+  else if (plan.root.inferKinds cat plan.tableKinds).isNone then some (2, "well-kinded: no")
   else none
 
 def delta (plan : Plan) : IO UInt32 := do

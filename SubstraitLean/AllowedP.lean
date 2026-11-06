@@ -275,7 +275,7 @@ theorem Expr.evalI_lean (row : Row) : ∀ e : Expr, e.evalI Impl.lean row = e.ev
       Expr.evalI_lean row el]
   | .hof f l b => by
     simp only [Expr.evalI, Expr.eval, Expr.evalI_lean row l]
-    congr 1; funext x; exact Expr.evalI_lean [x] b
+    congr 1; funext x; exact Expr.evalI_lean (x :: row) b
 
 theorem evalI_lean_fun : (fun (e : Expr) row => e.evalI Impl.lean row) = fun e row => e.eval row := by
   funext e row; exact Expr.evalI_lean row e

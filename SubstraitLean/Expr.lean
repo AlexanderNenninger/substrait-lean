@@ -280,11 +280,12 @@ inductive Expr where
   | un (f : UnFn) (a : Expr)
   | bin (f : BinFn) (a b : Expr)
   | ifThen (c t e : Expr)
-  /-- `f(l, x -> body)`: a higher-order function of the list `l`, with a
-  *closed* lambda. Its body reads only the lambda's parameter, as field 0,
-  so it is evaluated on the one-field row `[x]` and analysed as an expression
-  of its own; reading the row's columns or an outer lambda's parameter is
-  left for later (#94). -/
+  /-- `f(l, x -> body)`: a higher-order function of the list `l`. The lambda
+  has lexical scope (D28): its body is evaluated on `x :: row`, so it reads
+  its parameter as field 0 and the enclosing row's column `i` as field
+  `i + 1`. A nested lambda's body reads its own parameter as 0, the outer
+  parameter as 1 and the row from 2 (de Bruijn order), which keeps a body's
+  meaning when columns are appended to the row (`Expr.eval_append`). -/
   | hof (f : HoFn) (l body : Expr)
   deriving Repr, DecidableEq
 
@@ -586,17 +587,109 @@ def Expr.eval (row : Row) : Expr → Value
   | .un f a => f.apply (a.eval row)
   | .bin f a b => f.apply (a.eval row) (b.eval row)
   | .ifThen c t e => if (c.eval row).isTrue then t.eval row else e.eval row
-  | .hof f l b => f.apply (l.eval row) fun x => b.eval [x]
+  | .hof f l b => f.apply (l.eval row) fun x => b.eval (x :: row)
 
-/-- All field references in the expression are `< n`. A lambda's body is
-evaluated on its parameter alone, so its references are not the row's. -/
+/-- All field references in the expression are `< n`. A lambda's body reads
+one more field, its parameter, in front of the row (D28). -/
 def Expr.refsLt (n : Nat) : Expr → Prop
   | .lit _ => True
   | .field i => i < n
   | .un _ a => a.refsLt n
   | .bin _ a b => a.refsLt n ∧ b.refsLt n
   | .ifThen c t e => c.refsLt n ∧ t.refsLt n ∧ e.refsLt n
-  | .hof _ l _ => l.refsLt n
+  | .hof _ l b => l.refsLt n ∧ b.refsLt (n + 1)
+
+/-! ### Renaming under a lambda (D28)
+
+A lambda's body reads its parameter as field 0 and the row from field 1, so
+a renaming of the row's columns applies to a body shifted by one. -/
+
+/-- `g` under one binder: the parameter stays, the row's columns move. -/
+def liftIdx (g : Nat → Nat) : Nat → Nat
+  | 0 => 0
+  | i + 1 => g i + 1
+
+/-- `p` under one binder: the parameter is always allowed. -/
+def liftPred (p : Nat → Bool) : Nat → Bool
+  | 0 => true
+  | i + 1 => p i
+
+@[simp] theorem liftIdx_id : liftIdx id = id := by
+  funext i; cases i <;> rfl
+
+@[simp] theorem liftPred_true : liftPred (fun _ => true) = fun _ => true := by
+  funext i; cases i <;> rfl
+
+theorem liftPred_and (p q : Nat → Bool) :
+    liftPred (fun i => p i && q i) = fun i => liftPred p i && liftPred q i := by
+  funext i; cases i <;> rfl
+
+/-- A renaming of the row's columns that keeps the values read by `p` keeps
+them under a binder. -/
+theorem liftIdx_getD {p : Nat → Bool} {g : Nat → Nat} {row row' : Row} (x : Value)
+    (hg : ∀ i, p i = true → row'.getD (g i) .null = row.getD i .null) :
+    ∀ i, liftPred p i = true → (x :: row').getD (liftIdx g i) .null = (x :: row).getD i .null
+  | 0, _ => rfl
+  | i + 1, h => by simpa [liftIdx, liftPred] using hg i h
+
+/-- Make room for one extra column at position `n`: references at `n` and
+above move up by one. Under a lambda the position is one further. -/
+def Expr.shift (n : Nat) : Expr → Expr
+  | .lit v => .lit v
+  | .field i => .field (if i < n then i else i + 1)
+  | .un f a => .un f (a.shift n)
+  | .bin f a b => .bin f (a.shift n) (b.shift n)
+  | .ifThen c t e => .ifThen (c.shift n) (t.shift n) (e.shift n)
+  | .hof f l b => .hof f (l.shift n) (b.shift (n + 1))
+
+/-- A shifted field on a row with a column inserted at its position. -/
+theorem getD_shift_insert (w : Value) (i : Nat) (xa rest : Row) :
+    (xa ++ w :: rest).getD (if i < xa.length then i else i + 1) .null = (xa ++ rest).getD i .null := by
+  simp only [List.getD]
+  split
+  · rename_i h
+    rw [List.getElem?_append_left h, List.getElem?_append_left h]
+  · rename_i h
+    rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega),
+      show i + 1 - xa.length = (i - xa.length) + 1 by omega, List.getElem?_cons_succ]
+
+/-- `shift 0` of a list of expressions, read at `i`. -/
+theorem getD_map_shift (cols : List Expr) (i : Nat) :
+    (cols.map (·.shift 0)).getD i (.lit .null) = (cols.getD i (.lit .null)).shift 0 := by
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases cols[i]? <;> rfl
+
+/-- A shifted expression on a row with a column inserted at its position
+reads what the expression reads without it. -/
+theorem Expr.eval_shift_insert (w : Value) :
+    ∀ (e : Expr) (xa rest : Row), (e.shift xa.length).eval (xa ++ w :: rest) = e.eval (xa ++ rest)
+  | .lit _, _, _ => rfl
+  | .field i, xa, rest => getD_shift_insert w i xa rest
+  | .un f a, xa, rest => by simp only [shift, eval, Expr.eval_shift_insert w a]
+  | .bin f a b, xa, rest => by
+    simp only [shift, eval, Expr.eval_shift_insert w a, Expr.eval_shift_insert w b]
+  | .ifThen c t e, xa, rest => by
+    simp only [shift, eval, Expr.eval_shift_insert w c, Expr.eval_shift_insert w t,
+      Expr.eval_shift_insert w e]
+  | .hof f l b, xa, rest => by
+    simp only [shift, eval, Expr.eval_shift_insert w l]
+    congr 1; funext x
+    have := Expr.eval_shift_insert w b (x :: xa) rest
+    simpa using this
+
+/-- A shifted expression reads one column more. -/
+theorem Expr.refsLt_shift {m : Nat} : ∀ {e : Expr} (k : Nat), e.refsLt m → (e.shift k).refsLt (m + 1)
+  | .lit _, _, _ => trivial
+  | .field i, k, h => by simp only [refsLt, shift] at h ⊢; split <;> omega
+  | .un _ a, k, h => Expr.refsLt_shift (e := a) k h
+  | .bin _ a b, k, h => ⟨Expr.refsLt_shift k h.1, Expr.refsLt_shift k h.2⟩
+  | .ifThen c t e, k, h => ⟨Expr.refsLt_shift k h.1, Expr.refsLt_shift k h.2.1, Expr.refsLt_shift k h.2.2⟩
+  | .hof _ l b, k, h => ⟨Expr.refsLt_shift k h.1, Expr.refsLt_shift (k + 1) h.2⟩
+
+/-- `shift 0` reads a row with one more value in front. -/
+theorem Expr.eval_shift_cons (w : Value) (e : Expr) (row : Row) :
+    (e.shift 0).eval (w :: row) = e.eval row :=
+  Expr.eval_shift_insert w e [] row
 
 theorem Value.pick_mem {better : Value → Value → Bool} (v w : Value) :
     Value.pick better v w = v ∨ Value.pick better v w = w := by
@@ -650,14 +743,17 @@ is appended after them. This is the key lemma behind pushdown rewrites. -/
 theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
     e.eval (row ++ extra) = e.eval row := by
-  induction e with
+  induction e generalizing n row with
   | lit => rfl
   | field i =>
     simp only [refsLt] at he
     simp [eval, List.getD, List.getElem?_append_left (hlen ▸ he)]
-  | un f a ih => simp [eval, ih he]
-  | bin f a b iha ihb => simp [eval, iha he.1, ihb he.2]
-  | ifThen c t e ihc iht ihe => simp [eval, ihc he.1, iht he.2.1, ihe he.2.2]
-  | hof f l b ihl _ => simp [eval, ihl he]
+  | un f a ih => simp [eval, ih he hlen]
+  | bin f a b iha ihb => simp [eval, iha he.1 hlen, ihb he.2 hlen]
+  | ifThen c t e ihc iht ihe => simp [eval, ihc he.1 hlen, iht he.2.1 hlen, ihe he.2.2 hlen]
+  | hof f l b ihl ihb =>
+    simp only [eval, ihl he.1 hlen]
+    congr 1; funext x
+    exact ihb (row := x :: row) he.2 (by simp [hlen])
 
 end Substrait

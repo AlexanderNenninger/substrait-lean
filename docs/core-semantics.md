@@ -1673,3 +1673,30 @@ catalogue and the oracles compared each engine with it, and reported
 legitimate picks as `tie_order` differences. Shims imitated
 `List.mergeSort` on engines, and Polars refused or shimmed picks it could
 run natively.
+
+### D28. Lambdas have lexical scope
+
+A lambda in a higher-order call (`Expr.hof`: `any_match`, `all_match`,
+`transform`, `filter`) sees the enclosing row, as DuckDB's lambdas can read
+outer columns (`list_transform(l, x -> x + col)`). Its body is evaluated on
+`x :: row`: field 0 is the parameter and the row's column `i` is field
+`i + 1`; a nested lambda's body reads its own parameter as 0, the outer
+parameter as 1 and the row from 2 (de Bruijn order). The issue's text
+numbered the row first; with the parameter first a body keeps its meaning
+when columns are appended to the row, so `Expr.eval_append`, the lemma
+behind every pushdown, holds of bodies unchanged, and a closed body (field 0
+only) means what it meant before.
+
+The parser reads Substrait's references this way (`Parse.openBody`:
+`lambdaParameterReference` with `steps_out` `k` inside `k` nested lambdas,
+`rootReference` one further per lambda) and the writer writes them back
+(`Write.closeRefs`). Every function that renumbers a row's columns renumbers
+a body under one binder (`liftIdx`, `liftPred`, `Expr.shift` with a cutoff,
+`Expr.subst` with a shifted substitution), and the kind checker types a body
+under its element's kind in front of the row's (`Expr.kindT`). Accepted plans
+keep their meaning: before D28 the parser refused a body that read the row.
+
+Why: a closed lambda cannot express `contains` of a column or a filter by an
+outer value, and the review of the core (#893) found the restriction in
+`Expr.eval`, `Expr.refsLt` and the parser, none of it needed by a proof.
+

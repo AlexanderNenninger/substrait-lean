@@ -271,7 +271,7 @@ def Expr.refsAll (p : Nat → Bool) : Expr → Bool
   | .un _ a => a.refsAll p
   | .bin _ a b => a.refsAll p && b.refsAll p
   | .ifThen c t e => c.refsAll p && t.refsAll p && e.refsAll p
-  | .hof _ l _ => l.refsAll p
+  | .hof _ l b => l.refsAll p && b.refsAll (liftPred p)
 
 /-- The position of the grouping column `$c`. -/
 def gpos (gs : List Expr) (c : Nat) : Option Nat :=
@@ -907,7 +907,14 @@ theorem Expr.eval_congr_refsAll {p : Nat → Bool} {r r' : Row}
     simp only [refsAll, Bool.and_eq_true] at he
     simp only [eval, Expr.eval_congr_refsAll h he.1.1, Expr.eval_congr_refsAll h he.1.2,
       Expr.eval_congr_refsAll h he.2]
-  | .hof _ l _, he => by simp only [eval, Expr.eval_congr_refsAll h (e := l) he]
+  | .hof _ l b, he => by
+    simp only [refsAll, Bool.and_eq_true] at he
+    simp only [eval, Expr.eval_congr_refsAll h he.1]
+    congr 1; funext x
+    refine Expr.eval_congr_refsAll (p := liftPred p) (fun i hi => ?_) he.2
+    cases i with
+    | zero => rfl
+    | succ i => simpa [liftPred] using h i hi
 
 theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.refsLt m) :
     ∀ e : Expr, (e.subst cols).refsLt m
@@ -920,7 +927,11 @@ theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.r
   | .un _ a => Expr.refsLt_subst hc a
   | .bin _ a b => ⟨Expr.refsLt_subst hc a, Expr.refsLt_subst hc b⟩
   | .ifThen c t e => ⟨Expr.refsLt_subst hc c, Expr.refsLt_subst hc t, Expr.refsLt_subst hc e⟩
-  | .hof _ l _ => Expr.refsLt_subst hc l
+  | .hof _ l b => ⟨Expr.refsLt_subst hc l, Expr.refsLt_subst (m := m + 1) (fun c hc' => by
+      simp only [List.mem_cons, List.mem_map] at hc'
+      rcases hc' with rfl | ⟨c', hc'', rfl⟩
+      · show 0 < m + 1; omega
+      · exact Expr.refsLt_shift 0 (hc c' hc'')) b⟩
 
 theorem gpos_spec {gs : List Expr} {c q : Nat} (h : gpos gs c = some q) : gs[q]? = some (.field c) := by
   simpa using List.find?_some h

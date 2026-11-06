@@ -270,7 +270,7 @@ The values are right; the rendering is not.
 |---|---|---|
 | Representation | A struct is the list of its fields, in order. Equality is structural. | ✓ |
 | Order of lists | Lexicographic, element by element; a proper prefix sorts first. `lt`, `gt`, `lte` and `gte` are three-valued: a NULL element that decides the result makes it NULL (`[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is NULL). In `ORDER BY` and `MIN`/`MAX`, NULL elements sort after every other value. | ✓ (#207) |
-| Lambdas | `any_match`, `all_match`, `transform` and `filter` take closed lambdas only. `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ (#94) |
+| Lambdas | `any_match`, `all_match`, `transform` and `filter` take a lambda that reads its parameter and the enclosing row ([D28](core-semantics.md#d28-lambdas-have-lexical-scope)). `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ (#94) |
 | `UNNEST` | One row per element, none for an empty list or NULL (sverify's own extension). | ✓ |
 
 Design notes: [nested-values.md](nested-values.md).
@@ -460,3 +460,4 @@ these links connect it to a real run.
 | Engine tiers | [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211) |
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
 | The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |
+| Lambdas with lexical scope | [core-semantics.md, D28](core-semantics.md#d28-lambdas-have-lexical-scope), [#922](https://github.com/AlexanderNenninger/substrait-lean/issues/922) |

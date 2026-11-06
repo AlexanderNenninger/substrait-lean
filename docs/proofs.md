@@ -23,6 +23,7 @@ and that the input rows meet the contract's preconditions.
 | A plan with no reported issue raises no runtime error | `Rel.mayIssues_sound` | `Safety.lean` |
 | Row caps rule out `SUM` overflow | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | The checker decides well-formedness | `Rel.checkWF_iff` | `Check.lean` |
+| A well-kinded plan evaluates to its kinds | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
 | The fast evaluator computes the specification | `Rel.evalFast_eq` | `EvalFast.lean` |
 | `Rel.eval` gives a result the reference allows | `Rel.eval_allowed` | `Allowed.lean` |
 | DuckDB, under its default settings, computes the reference | `Rel.duckdb_sound` | `Profile.lean` |
@@ -62,7 +63,11 @@ engines is trusted, and kept small:
 
 - The parser and the writer, `Parse.lean` and `Write.lean`. The CLI checks
   that every plan it writes parses back to the same `Rel`, and the golden
-  tests (`tests/run.sh`) run that round trip on every fixture.
+  tests (`tests/run.sh`) run that round trip on every fixture. The parser's
+  choice of function by kind is checked: `checkPlan` refuses a plan
+  `Rel.inferKinds` does not type (`Rel.kinds_sound`). Integer-represented
+  kinds (doubles, dates, timestamps, decimals) share `Value.int` until #923,
+  so the theorem tells them apart by representation only.
 - The CLI's glue, `Main.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON.
 - The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
@@ -121,6 +126,7 @@ generators, then the trusted reading and writing.
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
+| `Kinds.lean` | `Rel.inferKinds`, the kind checker, and its soundness |
 
 ### Incremental maintenance
 

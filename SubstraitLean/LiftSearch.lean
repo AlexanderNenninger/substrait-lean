@@ -349,7 +349,7 @@ partial def exprTerm : Substrait.Expr → MetaM Lean.Expr
 
 /-- Read a candidate as the parser does. -/
 def parse (f : DuckFn) (j : Json) : Option Substrait.Expr :=
-  let cols := f.args.map fun t => if t == .double then Parse.Kind.float else .int
+  let cols := f.args.map fun t => if t == .double then Kind.float else .int
   (Parse.parseExpr fns cols (f.args.map fun _ => 64) j).toOption
 
 def agrees (want got : List Outcome) : Bool :=
@@ -608,11 +608,11 @@ argument's type), or the exact `sum` and the `count`, finished by dividing
 the one by the other as doubles (with each `on_division_by_zero`). Each is
 the measures' JSON, the finishing expression's, and what kinds the measures
 give. -/
-def aggCandidates (g : DuckAgg) : List (List Json × Json × List Parse.Kind) :=
+def aggCandidates (g : DuckAgg) : List (List Json × Json × List Kind) :=
   let t := g.arg.substrait
   let r := g.result.substrait
   let x := fieldJ 0
-  let kindOf (ty : String) := if ty == "fp64" then Parse.Kind.float else .int
+  let kindOf (ty : String) := if ty == "fp64" then Kind.float else .int
   let single := ["avg", "sum"].flatMap fun name => [(x, t), (castJ r x, r)].flatMap fun (a, ta) =>
     [r, t].filterMap fun out => (measureJ? s!"{name}:{ta}" a out).map fun m => ([m], fieldJ 0, [kindOf out])
   let pair := match measureJ? s!"sum:{t}" x t, measureJ? "count:any" x "i64" with
@@ -629,9 +629,9 @@ def aggSampleGroups (t : DuckType) : List (List Value) :=
    [.int (2 ^ 62), .int (-(2 ^ 62)), .int 3]] ++ vs.map ([·])
 
 /-- Read an aggregate candidate as the parser does. -/
-def parseAgg (g : DuckAgg) (ms : List Json) (fin : Json) (kinds : List Parse.Kind) :
+def parseAgg (g : DuckAgg) (ms : List Json) (fin : Json) (kinds : List Kind) :
     Option (List Measure × Substrait.Expr) := do
-  let cols := [if g.arg == .double then Parse.Kind.float else .int]
+  let cols := [if g.arg == .double then Kind.float else .int]
   let measures ← ms.mapM fun mj => ((Parse.parseMeasure fns cols [64] mj).toOption.map (·.1))
   let finish ← (Parse.parseExpr fns kinds (kinds.map fun _ => 64) fin).toOption
   return (measures, finish)

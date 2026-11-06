@@ -181,7 +181,7 @@ theorem Expr.evalI_congr {I J : Impl} : ∀ {e : Expr}, Impl.AgreeOn e.ctors I J
     simp only [Expr.evalI]
     rw [Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) row]
     congr 1; funext x
-    exact Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) [x]
+    exact Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) (x :: row)
 
 theorem evalI_congr_list {I J : Impl} {es : List Expr}
     (h : Impl.AgreeOn (es.flatMap Expr.ctors) I J) (row : Row) :

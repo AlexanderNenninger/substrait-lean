@@ -63,7 +63,26 @@ def Expr.evalI (I : Impl) (row : Row) : Expr → Value
   | .un f a => I.un f (a.evalI I row)
   | .bin f a b => I.bin f (a.evalI I row) (b.evalI I row)
   | .ifThen c t e => if (c.evalI I row).isTrue then t.evalI I row else e.evalI I row
-  | .hof f l b => f.apply (l.evalI I row) fun x => b.evalI I [x]
+  | .hof f l b => f.apply (l.evalI I row) fun x => b.evalI I (x :: row)
+
+theorem Expr.evalI_shift_insert {I : Impl} (w : Value) :
+    ∀ (e : Expr) (xa rest : Row), (e.shift xa.length).evalI I (xa ++ w :: rest) = e.evalI I (xa ++ rest)
+  | .lit _, _, _ => rfl
+  | .field i, xa, rest => getD_shift_insert w i xa rest
+  | .un f a, xa, rest => by simp only [shift, evalI, Expr.evalI_shift_insert w a]
+  | .bin f a b, xa, rest => by
+    simp only [shift, evalI, Expr.evalI_shift_insert w a, Expr.evalI_shift_insert w b]
+  | .ifThen c t e, xa, rest => by
+    simp only [shift, evalI, Expr.evalI_shift_insert w c, Expr.evalI_shift_insert w t,
+      Expr.evalI_shift_insert w e]
+  | .hof f l b, xa, rest => by
+    simp only [shift, evalI, Expr.evalI_shift_insert w l]
+    congr 1; funext x
+    simpa using Expr.evalI_shift_insert w b (x :: xa) rest
+
+theorem Expr.evalI_shift_cons {I : Impl} (w : Value) (e : Expr) (row : Row) :
+    (e.shift 0).evalI I (w :: row) = e.evalI I row :=
+  Expr.evalI_shift_insert w e [] row
 
 /-- **Unchecked evaluation is exact** where no issue happens. -/
 theorem Expr.evalI_eq {I : Impl} (hI : I.Faithful) {row : Row} :

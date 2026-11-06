@@ -97,7 +97,11 @@ theorem Expr.evalI_subst {I : Impl} (σ : List Expr) (row : Row) :
   | .ifThen c t e => by
     simp [subst, evalI, Expr.evalI_subst σ row c, Expr.evalI_subst σ row t,
       Expr.evalI_subst σ row e]
-  | .hof f l b => by simp [subst, evalI, Expr.evalI_subst σ row l]
+  | .hof f l b => by
+    simp only [subst, evalI, Expr.evalI_subst σ row l]
+    congr 1; funext x
+    rw [Expr.evalI_subst _ (x :: row) b]
+    simp [evalI, List.map_map, Function.comp_def, Expr.evalI_shift_cons]
 
 /-- A call of a function. -/
 def Expr.isCall : Expr → Bool
@@ -559,28 +563,34 @@ over `r` becomes `SUM(#n)` over `r` projected with `a + b * c`. -/
 theorem Expr.evalI_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
     e.evalI I (row ++ extra) = e.evalI I row := by
-  induction e with
+  induction e generalizing n row with
   | lit => rfl
   | field i =>
     simp only [refsLt] at he
     simp [evalI, List.getD, List.getElem?_append_left (hlen ▸ he)]
-  | un f a ih => simp [evalI, ih he]
-  | bin f a b iha ihb => simp [evalI, iha he.1, ihb he.2]
-  | ifThen c t e ihc iht ihe => simp [evalI, ihc he.1, iht he.2.1, ihe he.2.2]
-  | hof f l b ihl _ => simp [evalI, ihl he]
+  | un f a ih => simp [evalI, ih he hlen]
+  | bin f a b iha ihb => simp [evalI, iha he.1 hlen, ihb he.2 hlen]
+  | ifThen c t e ihc iht ihe => simp [evalI, ihc he.1 hlen, iht he.2.1 hlen, ihe he.2.2 hlen]
+  | hof f l b ihl ihb =>
+    simp only [evalI, ihl he.1 hlen]
+    congr 1; funext x
+    exact ihb (row := x :: row) he.2 (by simp [hlen])
 
 theorem Expr.evalP_append {p : Profile} {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
     e.evalP p (row ++ extra) = e.evalP p row := by
-  induction e with
+  induction e generalizing n row with
   | lit => rfl
   | field i =>
     simp only [refsLt] at he
     simp [evalP, List.getD, List.getElem?_append_left (hlen ▸ he)]
-  | un f a ih => simp [evalP, ih he]
-  | bin f a b iha ihb => simp [evalP, iha he.1, ihb he.2]
-  | ifThen c t e ihc iht ihe => simp [evalP, ihc he.1, iht he.2.1, ihe he.2.2]
-  | hof f l b ihl _ => simp [evalP, ihl he]
+  | un f a ih => simp [evalP, ih he hlen]
+  | bin f a b iha ihb => simp [evalP, iha he.1 hlen, ihb he.2 hlen]
+  | ifThen c t e ihc iht ihe => simp [evalP, ihc he.1 hlen, iht he.2.1 hlen, ihe he.2.2 hlen]
+  | hof f l b ihl ihb =>
+    simp only [evalP, ihl he.1 hlen]
+    congr 1; funext v; congr 1; funext x
+    exact ihb (row := x :: row) he.2 (by simp [hlen])
 
 /-- Two lists related element by element. -/
 def AllPulled {α β : Type} (R : α → β → Prop) : List α → List β → Prop

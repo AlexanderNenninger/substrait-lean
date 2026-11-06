@@ -2,6 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.Keys
 import SubstraitLean.Functions
 import SubstraitLean.Options
+import SubstraitLean.Kinds
 
 /-!
 # Parsing Substrait JSON plans
@@ -132,88 +133,6 @@ def sigTokens (name : String) : List String :=
 
 Doubles, timestamps and dates all become integers in the model (see
 `SubstraitLean/Float.lean`); the parser and the writer track which is which. -/
-
-inductive Kind where
-  /-- `tod`: a time of day (`TIME`), in microseconds since midnight. -/
-  | int | float | time | date | str | bool | tod | other
-  /-- A timestamp with a time zone: an instant, whose calendar arithmetic is
-  daylight-saving-aware in DataFusion, so it is refused. -/
-  | timeTz
-  /-- A list of values of the element kind. -/
-  | list (elem : Kind)
-  /-- A struct of fields of these kinds, in order. Its value is the list of
-  its fields (`docs/nested-values.md`). -/
-  | struct (fields : List Kind)
-  /-- `DECIMAL(p, s)`, as its unscaled integer (#27). -/
-  | dec (p s : Nat)
-  deriving Repr, BEq, Inhabited
-
-mutual
-/-- `DecidableEq` by hand: the deriving handler does not take the list in
-`struct` (as for `Value.decEq`). -/
-def Kind.decEq : (a b : Kind) → Decidable (a = b)
-  | .int, .int => isTrue rfl
-  | .float, .float => isTrue rfl
-  | .time, .time => isTrue rfl
-  | .date, .date => isTrue rfl
-  | .str, .str => isTrue rfl
-  | .bool, .bool => isTrue rfl
-  | .tod, .tod => isTrue rfl
-  | .other, .other => isTrue rfl
-  | .timeTz, .timeTz => isTrue rfl
-  | .list a, .list b => match Kind.decEq a b with
-    | isTrue h => isTrue (h ▸ rfl)
-    | isFalse h => isFalse (by simp [h])
-  | .struct as, .struct bs => match Kind.decEqList as bs with
-    | isTrue h => isTrue (h ▸ rfl)
-    | isFalse h => isFalse (by simp [h])
-  | .dec p s, .dec q t =>
-    if h : p = q ∧ s = t then isTrue (by obtain ⟨rfl, rfl⟩ := h; rfl)
-    else isFalse (by simp only [Kind.dec.injEq]; exact h)
-  | .int, .float | .int, .time | .int, .date | .int, .str | .int, .bool | .int, .tod
-  | .int, .other | .int, .timeTz | .int, .list _ | .int, .struct _ | .int, .dec _ _
-  | .float, .int | .float, .time | .float, .date | .float, .str | .float, .bool | .float, .tod
-  | .float, .other | .float, .timeTz | .float, .list _ | .float, .struct _ | .float, .dec _ _
-  | .time, .int | .time, .float | .time, .date | .time, .str | .time, .bool | .time, .tod
-  | .time, .other | .time, .timeTz | .time, .list _ | .time, .struct _ | .time, .dec _ _
-  | .date, .int | .date, .float | .date, .time | .date, .str | .date, .bool | .date, .tod
-  | .date, .other | .date, .timeTz | .date, .list _ | .date, .struct _ | .date, .dec _ _
-  | .str, .int | .str, .float | .str, .time | .str, .date | .str, .bool | .str, .tod
-  | .str, .other | .str, .timeTz | .str, .list _ | .str, .struct _ | .str, .dec _ _
-  | .bool, .int | .bool, .float | .bool, .time | .bool, .date | .bool, .str | .bool, .tod
-  | .bool, .other | .bool, .timeTz | .bool, .list _ | .bool, .struct _ | .bool, .dec _ _
-  | .tod, .int | .tod, .float | .tod, .time | .tod, .date | .tod, .str | .tod, .bool
-  | .tod, .other | .tod, .timeTz | .tod, .list _ | .tod, .struct _ | .tod, .dec _ _
-  | .other, .int | .other, .float | .other, .time | .other, .date | .other, .str | .other, .bool
-  | .other, .tod | .other, .timeTz | .other, .list _ | .other, .struct _ | .other, .dec _ _
-  | .timeTz, .int | .timeTz, .float | .timeTz, .time | .timeTz, .date | .timeTz, .str
-  | .timeTz, .bool | .timeTz, .tod | .timeTz, .other | .timeTz, .list _ | .timeTz, .struct _
-  | .timeTz, .dec _ _ | .list _, .int | .list _, .float | .list _, .time | .list _, .date
-  | .list _, .str | .list _, .bool | .list _, .tod | .list _, .other | .list _, .timeTz
-  | .list _, .struct _ | .list _, .dec _ _ | .struct _, .int | .struct _, .float
-  | .struct _, .time | .struct _, .date | .struct _, .str | .struct _, .bool | .struct _, .tod
-  | .struct _, .other | .struct _, .timeTz | .struct _, .list _ | .struct _, .dec _ _
-  | .dec _ _, .int | .dec _ _, .float | .dec _ _, .time | .dec _ _, .date | .dec _ _, .str
-  | .dec _ _, .bool | .dec _ _, .tod | .dec _ _, .other | .dec _ _, .timeTz | .dec _ _, .list _
-  | .dec _ _, .struct _ =>
-    isFalse (by simp)
-
-def Kind.decEqList : (as bs : List Kind) → Decidable (as = bs)
-  | [], [] => isTrue rfl
-  | [], _ :: _ | _ :: _, [] => isFalse (by simp)
-  | a :: as, b :: bs => match Kind.decEq a b, Kind.decEqList as bs with
-    | isTrue h, isTrue h' => isTrue (h ▸ h' ▸ rfl)
-    | isFalse h, _ => isFalse (by simp [h])
-    | _, isFalse h' => isFalse (by simp [h'])
-end
-
-instance : DecidableEq Kind := Kind.decEq
-
-/-- Decimals of any type and integers compare as numbers: `decimalCall`
-brings them to one scale. -/
-def Kind.numeric : Kind → Kind
-  | .dec _ _ => .int
-  | k => k
 
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
@@ -367,7 +286,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .hof .anyMatch _ _ | .hof .allMatch _ _ => .bool
   | .hof .filter l _ => l.kind cols
   -- The body's kind over the element's.
-  | .hof .transform l b => .list (b.kind [match l.kind cols with | .list k => k | _ => .other])
+  | .hof .transform l b => .list (b.kind ((match l.kind cols with | .list k => k | _ => .other) :: cols))
 
 -- `Expr.mapFields` (renumbering field references) is in `Contracts.lean`.
 
@@ -586,15 +505,19 @@ def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
         | .min | .max => m.arg.bits bs
         | _ => 64
 
+/-- Does the expression read a column of the row, past `k` lambda
+parameters? -/
+def _root_.Substrait.Expr.readsFieldFrom (k : Nat) : Expr → Bool
+  | .lit _ => false
+  | .field i => k ≤ i
+  | .un _ a => a.readsFieldFrom k
+  | .bin _ a b => a.readsFieldFrom k || b.readsFieldFrom k
+  | .ifThen c t e => c.readsFieldFrom k || t.readsFieldFrom k || e.readsFieldFrom k
+  | .hof _ l b => l.readsFieldFrom k || b.readsFieldFrom (k + 1)
+
 /-- Does the expression read a column? One that doesn't is built from
 literals, whose kinds say nothing (a timestamp literal is an integer). -/
-def _root_.Substrait.Expr.readsField : Expr → Bool
-  | .lit _ => false
-  | .field _ => true
-  | .un _ a => a.readsField
-  | .bin _ a b => a.readsField || b.readsField
-  | .ifThen c t e => c.readsField || t.readsField || e.readsField
-  | .hof _ l _ => l.readsField
+def _root_.Substrait.Expr.readsField (e : Expr) : Bool := e.readsFieldFrom 0
 
 /-- The width of an argument: a literal's own type, or the expression's. -/
 def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
@@ -1671,27 +1594,45 @@ def hofFn? (name : String) : Option HoFn :=
 def entries (kvs : Std.TreeMap.Raw String Json compare) : List (String × Json) :=
   kvs.foldl (fun acc k v => acc ++ [(k, v)]) []
 
-/-- A lambda's body as an expression over the one-field row `[x]`: its
-parameter references (`lambdaParameterReference`, `stepsOut` 0) become
-references into the row. The model's lambdas are closed (#94), so a body
-that reads the row's columns or an outer lambda's parameter is refused.
-Nested lambdas are left alone: they are closed when they are parsed. -/
-partial def closeBody (j : Json) : J Json := do
+/-- A lambda's body as an expression over `x :: row` (D28): a reference to
+this lambda's parameter (`lambdaParameterReference` with `stepsOut` the
+number of lambdas between, `k`) becomes field 0, and a reference into the row
+(`rootReference`) moves up by one. A nested lambda's body is rewritten with
+`k + 1`, then again when it is parsed, so it reads its own parameter as 0,
+the outer one as 1 and the row from 2. `Write.closeRefs` is the inverse. -/
+partial def openBody (k : Nat) (j : Json) : J Json := do
   match j with
-  | .arr xs => return .arr (← xs.mapM closeBody)
+  | .arr xs => return .arr (← xs.mapM (openBody k))
   | .obj kvs =>
     let es := entries kvs
-    if es.any (·.1 == "lambda") then return j
-    if es.any fun (k, _) => k == "rootReference" || k == "outerReference" then
-      throw "a lambda body that reads the row's columns is not supported yet (#94)"
-    let es ← es.mapM fun (k, v) => do
-      if k == "lambdaParameterReference" then
-        if (v.getObjValAs? Nat "stepsOut").toOption.getD 0 != 0 then
-          throw "a lambda body that reads an outer lambda's parameter is not supported yet (#94)"
-        return ("rootReference", Json.mkObj [])
-      return (k, ← closeBody v)
+    if es.any fun (key, _) => key == "outerReference" then
+      throw "outer references are not supported"
+    if let some p := es.lookup "lambdaParameterReference" then
+      let s := (p.getObjValAs? Nat "stepsOut").toOption.getD 0
+      if s > k then throw "a lambda body reads the parameter of a lambda it is not in"
+      if s < k then return j
+      let some d := es.lookup "directReference"
+        | throw "a lambda parameter reference without a field"
+      let param := ((d.getObjValAs? Json "structField").toOption.bind
+          fun sf => (sf.getObjValAs? Nat "field").toOption).getD 0
+      if param != 0 then throw "lambdas have one parameter"
+      return Json.mkObj (es.map fun (key, v) =>
+        if key == "lambdaParameterReference" then ("rootReference", Json.mkObj []) else (key, v))
+    if es.any fun (key, _) => key == "rootReference" then
+      return Json.mkObj (es.map fun (key, v) =>
+        if key == "directReference" then (key, bumpField v) else (key, v))
+    let es ← es.mapM fun (key, v) => do
+      return (key, ← openBody (if key == "lambda" then k + 1 else k) v)
     return Json.mkObj es
   | _ => return j
+where
+  /-- The reference's first segment, one field further. -/
+  bumpField (d : Json) : Json :=
+    match d.getObjValAs? Json "structField" with
+    | .ok sf =>
+      let f := (sf.getObjValAs? Nat "field").toOption.getD 0
+      d.setObjVal! "structField" (sf.setObjVal! "field" (Lean.toJson (f + 1)))
+    | .error _ => d
 
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
@@ -1736,7 +1677,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let fmodExt := baseName name == "sverify_fmod"
     let name := if fmodExt then "modulus" else name
     let argJs ← (← arrD f "arguments").mapM fun a => field a "value"
-    -- `f(l, x -> body)`, with a closed lambda (#94).
+    -- `f(l, x -> body)`; the body reads `x :: row` (D28).
     if let some hf := hofFn? (baseName name) then
       let [lj, fj] := argJs | throw s!"{name} takes a list and a lambda"
       let some lam := field? fj "lambda" | throw s!"{name}: its second argument must be a lambda"
@@ -1747,7 +1688,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         | .list k => pure k
         | .other => pure .other
         | k => throw s!"{name} of a value of kind {repr k}"
-      let body ← parseExpr fns [elem] [] (← closeBody (← field lam "body"))
+      let body ← parseExpr fns (elem :: cols) (64 :: bits) (← openBody 0 (← field lam "body"))
       return .hof hf l body
     -- A black box (#325): its row's arguments, written as itself.
     if let some bb := BlackBox.scalar? (baseName name) then
@@ -2454,15 +2395,15 @@ partial def replaceNodes (key : String) (col : Nat → Json) : Json → StateM N
     return Json.mkObj kvs'
   | j => return j
 
-/-- `e` with column `i` replaced by `x` (a lambda's body reads its parameter,
-not the row). -/
+/-- `e` with column `i` replaced by `x` (in a lambda's body, column `i + 1`
+by `x` shifted, D28). -/
 def _root_.Substrait.Expr.replaceField (i : Nat) (x : Expr) : Expr → Expr
   | .field j => if j = i then x else .field j
   | .un f a => .un f (Expr.replaceField i x a)
   | .bin f a b => .bin f (Expr.replaceField i x a) (Expr.replaceField i x b)
   | .ifThen c t e => .ifThen (Expr.replaceField i x c) (Expr.replaceField i x t)
       (Expr.replaceField i x e)
-  | .hof f l b => .hof f (Expr.replaceField i x l) b
+  | .hof f l b => .hof f (Expr.replaceField i x l) (Expr.replaceField (i + 1) (x.shift 0) b)
   | e => e
 
 /-- The window functions inside an expression. -/
@@ -2915,6 +2856,19 @@ def Plan.catalog (p : Plan) : Catalog := fun t =>
   match p.tables.lookup t with
   | some (n, _) => ⟨n, []⟩
   | none => ⟨0, []⟩
+
+/-- The kinds of each named table's columns, from its `baseSchema`
+(`Rel.inferKinds` reads them). -/
+def Plan.tableKinds (p : Plan) (t : String) : List Kind :=
+  match p.tables.lookup t with
+  | some (_, s) => schemaKinds s
+  | none => []
+
+/-- The schema-only catalog has no rows, so they have any kinds. -/
+theorem Plan.catalog_hasKinds (p : Plan) : p.catalog.HasKinds p.tableKinds := by
+  intro t row h
+  simp only [catalog] at h
+  split at h <;> simp at h
 
 theorem Plan.catalog_wf (p : Plan) : p.catalog.WF := by
   intro t row h

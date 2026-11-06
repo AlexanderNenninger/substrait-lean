@@ -159,7 +159,7 @@ def callOpt (anchor : Nat) (args : List Json) (opt pref : String) : Json :=
     ("options", Json.arr #[obj [("name", toJson opt), ("preference", Json.arr #[toJson pref])]])])]
 
 /-- The (nullable) Substrait type of a kind, `i64` where it is unknown. -/
-def kindType : Parse.Kind → Json
+def kindType : Kind → Json
   | .float => fp64Type
   | .str => obj [("string", nullable)]
   | .bool => obj [("bool", nullable)]
@@ -189,7 +189,7 @@ inductive WKind where
   | dec (p s : Nat)
   deriving BEq
 
-def WKind.ofKind : Parse.Kind → WKind
+def WKind.ofKind : Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => ofKind k)
@@ -198,7 +198,7 @@ def WKind.ofKind : Parse.Kind → WKind
   | .timeTz => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
-def WKind.toKind : WKind → Parse.Kind
+def WKind.toKind : WKind → Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)
@@ -208,7 +208,7 @@ def WKind.toKind : WKind → Parse.Kind
 def isConst : Expr → Bool
   | .lit _ => true
   | .field _ => false
-  | .hof _ l _ => isConst l
+  | .hof _ l b => isConst l && !b.readsFieldFrom 1
   | .un _ a => isConst a
   | .bin _ a b => isConst a && isConst b
   | .ifThen c t e => isConst c && isConst t && isConst e
@@ -361,17 +361,35 @@ def reference (seg e : Json) : Json :=
 
 def HoFn.anchor (f : HoFn) : Nat := Functions.anchorOf (.hof f)
 
-/-- A closed lambda's body, written over the row `[x]`, with its references
-into the row as references to the lambda's parameter (`Parse.closeBody`
-reads them back). Nested lambdas are written already. -/
-partial def paramRefs : Json → Json
-  | .arr xs => .arr (xs.map paramRefs)
-  | j@(.obj kvs) =>
+/-- A lambda's body, written over `x :: row` (D28), with its references as
+Substrait reads them: field 0 is this lambda's parameter
+(`lambdaParameterReference`, `stepsOut` the `k` lambdas between), field
+`i + 1` the row's column `i`. A nested lambda's body is written already, with
+its own parameter's references in place; it is rewritten with `k + 1`.
+`Parse.openBody` is the inverse. -/
+partial def closeRefs (k : Nat) : Json → Json
+  | .arr xs => .arr (xs.map (closeRefs k))
+  | .obj kvs =>
     let es := Parse.entries kvs
-    if es.any (·.1 == "lambda") then j
-    else Json.mkObj (es.map fun (k, v) =>
-      if k == "rootReference" then ("lambdaParameterReference", obj []) else (k, paramRefs v))
+    if es.any (·.1 == "rootReference") then
+      let f := match es.lookup "directReference" with
+        | some d => ((d.getObjValAs? Json "structField").toOption.bind
+            fun sf => (sf.getObjValAs? Nat "field").toOption).getD 0
+        | none => 0
+      if f == 0 then
+        Json.mkObj (es.map fun (key, v) =>
+          if key == "rootReference" then ("lambdaParameterReference",
+            if k == 0 then obj [] else obj [("stepsOut", toJson k)]) else (key, v))
+      else Json.mkObj (es.map fun (key, v) =>
+        if key == "directReference" then (key, setField v (f - 1)) else (key, v))
+    else Json.mkObj (es.map fun (key, v) =>
+      (key, closeRefs (if key == "lambda" then k + 1 else k) v))
   | j => j
+where
+  setField (d : Json) (f : Nat) : Json :=
+    match d.getObjValAs? Json "structField" with
+    | .ok sf => d.setObjVal! "structField" (sf.setObjVal! "field" (toJson f))
+    | .error _ => d
 
 /-! ### Decimals (#27)
 
@@ -681,7 +699,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     let lam := obj [("lambda", obj [
       ("parameters", obj [("types", Json.arr #[kindType elem.toKind]),
         ("nullability", "NULLABILITY_REQUIRED")]),
-      ("body", paramRefs (writeExpr [elem] (wkind [elem] b) b))])]
+      ("body", closeRefs 0 (writeExpr (elem :: cols) (wkind (elem :: cols) b) b))])]
     call (HoFn.anchor f) [writeExpr cols kl l, lam]
 
 /-- `baseSchema` of each table: the parsed one, or a placeholder of `i64`
@@ -950,16 +968,17 @@ def andAll : List Expr → Option Expr
 
 /-- Does `e` read a field, and only fields `p` holds of? -/
 def readsOnly (p : Nat → Bool) (e : Expr) : Bool :=
-  let rec go : Expr → Bool × Bool  -- (reads a field, all fields satisfy p)
+  -- (reads a field, all fields satisfy p), past `k` lambda parameters
+  let rec go (k : Nat) : Expr → Bool × Bool
     | .lit _ => (false, true)
-    | .field i => (true, p i)
-    | .un _ a => go a
-    | .bin _ a b => let (x, y) := go a; let (z, w) := go b; (x || z, y && w)
+    | .field i => if i < k then (false, true) else (true, p (i - k))
+    | .un _ a => go k a
+    | .bin _ a b => let (x, y) := go k a; let (z, w) := go k b; (x || z, y && w)
     | .ifThen c t e =>
-      let (x, y) := go c; let (z, w) := go t; let (u, v) := go e; (x || z || u, y && w && v)
-    -- A lambda's body reads its parameter, not the row.
-    | .hof _ l _ => go l
-  let (reads, all) := go e
+      let (x, y) := go k c; let (z, w) := go k t; let (u, v) := go k e; (x || z || u, y && w && v)
+    -- A lambda's body reads its parameter, then the row (D28).
+    | .hof _ l b => let (x, y) := go k l; let (z, w) := go (k + 1) b; (x || z, y && w)
+  let (reads, all) := go 0 e
   reads && all
 
 /-- An `AggregateRel` of the written input `input`, whose columns have kinds
