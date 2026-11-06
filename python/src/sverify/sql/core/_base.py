@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
 
-from sverify import _functions, _plan_read, _support, black_box
+from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY
 from sverify._unsupported import Unsupported as _Unsupported
@@ -1396,12 +1396,12 @@ def _bb_kind(name: str) -> Any:
 
 def dsum_kind(a: Dec) -> Dec:
     """A decimal `SUM` has ten more digits (`Measure.kind`)."""
-    return Dec(min(38, a.p + 10), a.s)
+    return Dec(*_decimals.sum_of((a.p, a.s)))
 
 
 def davg_kind(a: Dec) -> Dec:
     """A decimal `AVG` has four more digits and decimal places (`decimalAvgs`)."""
-    return Dec(min(38, a.p + 4), a.s + 4)
+    return Dec(*_decimals.avg_of((a.p, a.s)))
 
 
 def _issue_free(e: Expr) -> bool:
@@ -2912,7 +2912,7 @@ class _Parser:
             case (("add" | "subtract"), [a, b], [(p1, s1), (p2, s2)]):
                 sc = max(s1, s2)
                 check_scale(sc)
-                p = dp if dp is not None else min(38, max(p1 - s1, p2 - s2) + sc + 1)
+                p = dp if dp is not None else _decimals.add((p1, s1), (p2, s2))[0]
                 return DecOp("add" if name == "add" else "sub", (a, b), p, sc)
             case "multiply", [a, b], [(p1, s1), (p2, s2)]:
                 sc = s1 + s2
@@ -2921,7 +2921,7 @@ class _Parser:
                         "a DECIMAL product with more than 38 decimal places is not supported"
                     )
                 check_scale(sc)
-                p = dp if dp is not None else min(38, p1 + p2 + 1)
+                p = dp if dp is not None else _decimals.mul((p1, s1), (p2, s2))[0]
                 return DecOp("mul", (a, b), p, sc)
             case (("negate" | "subtract"), [a], [(p, sc)]):
                 return DecOp("neg", (a,), p, sc)

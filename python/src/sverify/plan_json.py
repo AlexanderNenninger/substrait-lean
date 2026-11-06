@@ -345,6 +345,32 @@ def int_range(values: Any) -> tuple[int, int] | None:
     return (lo, hi) if hi - lo + 1 == len(ints) else None
 
 
+def between(x: Json, lo: Json, hi: Json, typed: bool = False) -> Json:
+    """`x BETWEEN lo AND hi`: `x >= lo AND x <= hi`, NULLs as SQL has them.
+    `typed` writes each call's boolean output type (as the SQL lift does)."""
+
+    def fn(name: str, args: list[Json]) -> Json:
+        c = call(name, args)
+        if typed:
+            c["scalarFunction"]["outputType"] = type_json(dt.boolean)
+        return c
+
+    return fn("and", [fn("gte", [x, lo]), fn("lte", [x, hi])])
+
+
+def in_values(
+    value: Json, options: list[Json], ints: list[Any] | None, typed: bool = False
+) -> Json:
+    """`value IN (options…)`. With `ints`, the options' integer values (None
+    where one is not a constant), a list that fills a range of integers is
+    `value BETWEEN lo AND hi`, NULLs included, and the checker reads a range
+    as one (#691); otherwise a `singularOrList`."""
+    if ints is not None and (span := int_range(ints)) is not None:
+        lo, hi = (options[ints.index(v)] for v in span)
+        return between(value, lo, hi, typed)
+    return {"singularOrList": {"value": value, "options": options}}
+
+
 def if_then(ifs: list[tuple[Json, Json]], default: Json) -> Json:
     return {"ifThen": {"ifs": [{"if": c, "then": t} for c, t in ifs], "else": default}}
 
