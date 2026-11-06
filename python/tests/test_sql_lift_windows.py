@@ -148,3 +148,19 @@ def test_range_frame_bounds_overflow_as_in_duckdb():
     plan = json.dumps(lift(sql, schema).plan)
     with pytest.raises(Exception, match="Overflow"):
         run_plan(con, written_plan(plan), "duckdb")
+
+
+def test_range_frame_bound_guard_is_written_for_spark():
+    """The guard on a RANGE frame's integer bounds (`sverify_raise`) is
+    written wherever the dialect raises: DuckDB and Spark. Snowflake refuses
+    it, with why (`_support._REASONS`)."""
+    from sverify.engine import written_plan
+    from sverify.sql import Unsupported, dialect_of, to_sql
+
+    sql = "SELECT x, sum(x) OVER (ORDER BY x RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS s FROM t"
+    plan = json.loads(written_plan(json.dumps(lift(sql, {"t": ibis.schema({"x": "int32"})}).plan)))
+    for name, fails in (("duckdb", "error("), ("spark", "raise_error(")):
+        written = to_sql(plan, dialect_of(name), deterministic=True)
+        assert fails in written and "RANGE frame bound" in written, name
+    with pytest.raises(Unsupported, match="grows past what it runs"):
+        to_sql(plan, dialect_of("snowflake"), deterministic=True)
