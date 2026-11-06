@@ -109,7 +109,7 @@ generators, then the trusted reading and writing.
 | `Text.lean` | String functions and `LIKE` |
 | `Time.lean` | `date_part` and `date_trunc` on the proleptic Gregorian calendar |
 | `Numeric.lean` | Elementary functions of doubles and 64-bit bitwise operations |
-| `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic |
+| `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic, over Lean's functions (`Impl.lean`) or an engine's (`Impl`) |
 | `Order.lean` | The orders on values and rows that sorts, windows and `MIN`/`MAX` use |
 | `Dedup.lean` | `dedup`, the first occurrence of each element, and its lemmas |
 | `Reflect.lean` | Boolean checks the tables are proved with, by reflection |
@@ -120,7 +120,7 @@ generators, then the trusted reading and writing.
 |---|---|
 | `Window.lean` | Window functions over partitions, orders and frames |
 | `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
-| `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval` |
+| `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
