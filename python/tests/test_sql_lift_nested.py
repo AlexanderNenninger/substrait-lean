@@ -78,6 +78,7 @@ def test_lists_lift_as_duckdb_reads_them(sql):
         ("SELECT list_contains([1.5::DOUBLE], 1.5::DOUBLE) AS x", "list of float64"),
         ("SELECT list_contains(l, 'x') AS x FROM t", "list_contains of"),
         ("SELECT array_length(l, 1) AS x FROM t", "dimension"),
+        ("SELECT ['nan'::DOUBLE] AS x", "DOUBLE constants"),
         ("SELECT l[1:2] AS x FROM t", "slices"),
         ("SELECT l[a] AS x FROM t", "constant index"),
         ("SELECT [1, 2.5] AS x", "decimal"),

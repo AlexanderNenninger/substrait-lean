@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import ibis.expr.datatypes as dt
@@ -37,6 +38,14 @@ def _array(lf: _Lift, node: sge.Array, sub: Sub, scope: list[Column]) -> E:
     if all(e.constant for e in es):
         values = [lf.to(e, t).value for e in es]
         return E(literal(values, lt), lt, values)
+    if t.is_floating() and not any("selection" in json.dumps(e.json) for e in es):
+        # Lean reads a double constant as its code, of no kind of its own: the
+        # list's elements would be integers to it (`Expr.kind`), as a cast
+        # `'nan'::DOUBLE` the lift does not fold is (`types/float/nested_nan`).
+        raise Unsupported(
+            f"{_shown(node)}: a list of DOUBLE constants that are not literals is not "
+            "supported yet; write them as numbers"
+        )
     out = literal([], lt)
     for e in reversed(es):
         out = _fn("list_prepend", [lf.to(e, t).json, out], lt)
