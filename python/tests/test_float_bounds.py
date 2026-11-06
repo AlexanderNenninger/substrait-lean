@@ -120,7 +120,8 @@ def test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum(xs: list[float]
     assert abs(Fraction(got_sum) - cr) <= gamma(2 * n) * (mag + n * TINY) + U * abs(s)
     cr_avg = Fraction(float(s / n))
     assert abs(cr_avg - s / n) <= U * abs(s / n)
-    assert abs(Fraction(got_avg) - cr_avg) <= gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n)
+    tol_avg = gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n)
+    assert abs(Fraction(got_avg) - cr_avg) <= tol_avg
 
 
 def kahan(xs: list[float]) -> float:
