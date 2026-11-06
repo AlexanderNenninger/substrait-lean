@@ -36,10 +36,12 @@ NAN = float("nan")
 ROWS = {
     "f": [(7.5,), (0.0,), (None,)],
     "t": [(0,), (18387 * DAY + 13 * 3600 * 10**6,)],
+    "n": [(None,), (None,)],
 }
 TABLES = {
     "f": pa.table({"x": [r[0] for r in ROWS["f"]]}),
     "t": pa.table({"ts": pa.array([r[0] for r in ROWS["t"]], pa.timestamp("us"))}),
+    "n": pa.table({"x": pa.array([None, None], pa.float64())}),
 }
 
 
@@ -181,6 +183,20 @@ def test_sverify_fmod_takes_doubles(con):
     ],
 )
 def test_aggregates_of_double_constants(con, sql, expected):
+    assert lean(con, sql) == expected
+    assert [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()] == expected
+
+
+# D26 (#922): two equalities for NULL. Grouping, `DISTINCT` and set
+# operations take all NULLs as one value; a predicate's `=` never matches one.
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT DISTINCT x FROM n", [(None,)]),
+        ("SELECT a.x FROM n AS a JOIN n AS b ON a.x = b.x", []),
+    ],
+)
+def test_two_equalities_for_null(con, sql, expected):
     assert lean(con, sql) == expected
     assert [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()] == expected
 
