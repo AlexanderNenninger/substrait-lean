@@ -416,8 +416,9 @@ the engine:
   equal as `Value`s;
 * aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
   counts the first row of each value, integer `SUM` raises outside 64 bits,
-  and doubles are added in Lean's order (`list_reduce` over a list ordered
-  by the ordinal), so the result has Lean's bits;
+  and a `SUM` or `AVG` of doubles is the engine's own, within the plan's
+  bound of the reference's correctly rounded sum
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
 * strings: lengths and positions count characters, a negative `substring`
   start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
   (either way the start is normalized before it reaches the engine), and

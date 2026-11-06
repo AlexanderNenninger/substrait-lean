@@ -156,8 +156,10 @@ Every engine runs the plans of the 187 verified operations, except:
 
 The engines refuse what they can't do as Lean does: `<` on strings is
 undefined in the model (it is NULL there, while SQL compares), and Snowflake
-and Spark tables have no row order for FETCH, for the ties of a sort or a
-window, or for the order a `SUM` or `AVG` of doubles adds in. See
+and Spark tables have no row order for FETCH or for the ties of a sort or a
+window. A `SUM` or `AVG` of doubles runs natively on every engine, within the
+plan's bound of the reference's correctly rounded sum
+([D25](docs/core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)). See
 [Engines and SQL](docs/guide.md#engines-and-sql).
 
 ## Development

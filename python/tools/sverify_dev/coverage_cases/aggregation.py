@@ -7,7 +7,6 @@ from ibis import _
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
     NO_LISTS,
-    NO_ROW_ORDER,
     Case,
     R,
     V,
@@ -151,8 +150,6 @@ REFUSED: dict[str, dict[str, str]] = {
     "median, quantile": DUCKDB_ONLY,
     "mode": DUCKDB_ONLY,
     "argmin, argmax": DUCKDB_ONLY,
-    "count, max, mean": NO_ROW_ORDER,
-    "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
     "collect ordered": NO_LISTS,
     "unnest": NO_LISTS,
