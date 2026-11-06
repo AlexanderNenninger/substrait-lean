@@ -95,8 +95,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             f"{node.sql(DIALECT)} in an aggregate with FILTER: DuckDB casts every row's "
             "argument before the FILTER, and raises on a row it filters out; use TRY_CAST"
         )
-    if from_string and (e := _from_varchar(lf, a, t, try_)) is not None:
-        return e
+    if from_string and (lifted := _from_varchar(lf, a, t, try_)) is not None:
+        return lifted
     if try_:
         raise Unsupported("TRY_CAST is only supported of strings yet")
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp() or t.is_time()):
