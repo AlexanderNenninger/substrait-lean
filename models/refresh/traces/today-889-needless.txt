@@ -1,0 +1,11 @@
+Error: Invariant NoNeedlessRewrite is violated.
+State 1 Initial predicate: source c0 | table none | s1: down | zombies: none | deployed P1
+State 2 Start: s1: idle P1 v0 view=none written=none
+State 3 Refresh: s1: ready P1 v1 view=P1(c0) written=none
+State 4 Prepare: s1: writing P1 v1 view=P1(c0) written=none pending=P1 v1 sending[replace P1 v1 P1(c0) if epoch=-1]
+State 5 Land: table P1(c0) | commit #1: replace P1 v1 c0 (digest 0) by s1 | s1: idle P1 v1 view=P1(c0) written=P1(c0)
+State 6 Crash: s1: down
+State 7 Start: s1: idle P1 v0 view=none written=none
+State 8 Refresh: s1: ready P1 v2 view=P1(c0) written=none
+State 9 Prepare: s1: writing P1 v2 view=P1(c0) written=none pending=P1 v2 sending[replace P1 v2 P1(c0) if epoch=1]
+State 10 Land: commit #2: replace P1 v2 c0 (digest 0) by s1 | s1: idle P1 v2 view=P1(c0) written=P1(c0)
