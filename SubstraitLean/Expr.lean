@@ -207,6 +207,30 @@ inductive UnFn where
   /-- A scalar black box of one argument (`SubstraitLean/BlackBox.lean`, #325):
   the table's row `name`. -/
   | bbox (name : String)
+  /-- `flatten(l)`: the elements of `l`'s lists, in order; a `NULL` inner
+  list adds none, and a `NULL` `l` is `NULL` (DuckDB, #810). `list(x)` keeps
+  `x`'s NULLs as `flatten(array_agg([x]))`. -/
+  | flatten
+  deriving Repr, DecidableEq
+
+/-- DuckDB's list functions of two arguments (#812), new functions that run
+on DuckDB only (#271). One `BinFn` constructor holds them all, so that
+`BinFn.apply` gains one case. -/
+inductive ListOp where
+  /-- `list_prepend(x, l)`: `x` before the list's elements, NULL elements
+  included; a `NULL` list is empty. A list of computed elements `[a, b]` is
+  `list_prepend(a, list_prepend(b, []))`. -/
+  | prepend
+  /-- `list_concat(l, m)`: the elements of both; a `NULL` list is empty, so
+  two `NULL`s give `[]` (DuckDB 2.0). -/
+  | concat
+  /-- `list_contains(l, x)`: whether an element equals `x`, NULL elements
+  equal to nothing; `NULL` for a `NULL` list or a `NULL` `x`. -/
+  | contains
+  /-- `list_position(l, x)`: the position, from 1, of the first element
+  equal to `x`, a `NULL` `x` finding the first `NULL` element; `NULL` when
+  none is, and for a `NULL` list (DuckDB 2.0). -/
+  | position
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -259,6 +283,8 @@ inductive BinFn where
   | greatest | least
   /-- A scalar black box of two arguments (`SubstraitLean/BlackBox.lean`, #325). -/
   | bbox2 (name : String)
+  /-- DuckDB's list functions of two arguments (`ListOp`, #812). -/
+  | listFn (op : ListOp)
   deriving Repr, DecidableEq
 
 /-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
@@ -330,6 +356,11 @@ def Value.listElement (off : Int) (vs : List Value) : Value :=
 #guard Value.listElement (-4) [.int 1, .int 2, .int 3] == .null
 #guard Value.listElement 0 [] == .null
 
+/-- DuckDB's `flatten(l)` (#810). -/
+def Value.flatten : Value → Value
+  | .list vs => .list (vs.flatMap fun | .list ws => ws | _ => [])
+  | _ => .null
+
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
   | .isNull, .null => .bool true
@@ -396,6 +427,7 @@ def UnFn.apply : UnFn → Value → Value
   | .structField i, .list vs => vs.getD i .null
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
+  | .flatten, v => Value.flatten v
   | .isNum, .int _ => .bool true
   | .isNum, _ => .bool false
   | .fit m w, .int i => .int (w.fit m i)
@@ -513,6 +545,38 @@ def Value.pick (better : Value → Value → Bool) : Value → Value → Value
   | a, .null => a
   | a, b => if better a b then b else a
 
+/-- DuckDB's `list_prepend(x, l)`: a `NULL` list is empty (#812). -/
+def Value.listPrepend (x : Value) : Value → Value
+  | .list vs => .list (x :: vs)
+  | .null => .list [x]
+  | _ => .null
+
+/-- DuckDB 2.0's `list_concat(l, m)`: a `NULL` list is empty (#812). -/
+def Value.listConcat : Value → Value → Value
+  | .list vs, .list ws => .list (vs ++ ws)
+  | .list vs, .null => .list vs
+  | .null, .list ws => .list ws
+  | .null, .null => .list []
+  | _, _ => .null
+
+/-- DuckDB's `list_contains(l, x)` (#812). -/
+def Value.listContains : Value → Value → Value
+  | .list vs, x => if x = .null then .null else .bool (vs.contains x)
+  | _, _ => .null
+
+/-- DuckDB 2.0's `list_position(l, x)`, from 1 (#812). -/
+def Value.listPosition : Value → Value → Value
+  | .list vs, x => match vs.findIdx? (· == x) with
+    | some i => .int (i + 1)
+    | none => .null
+  | _, _ => .null
+
+def ListOp.apply : ListOp → Value → Value → Value
+  | .prepend, x, l => Value.listPrepend x l
+  | .concat, a, b => Value.listConcat a b
+  | .contains, l, x => Value.listContains l x
+  | .position, l, x => Value.listPosition l x
+
 /-- Arithmetic and comparisons are null-propagating; ill-typed calls yield
 `null` (a well-typed plan never reaches those cases). -/
 def BinFn.apply : BinFn → Value → Value → Value
@@ -576,7 +640,19 @@ def BinFn.apply : BinFn → Value → Value → Value
     | none => .null
   | .pair, .null, _ | .pair, _, .null => .null
   | .pair, a, b => .list [a, b]
+  | .listFn op, a, b => op.apply a b
   | _, _, _ => .null
+
+#guard BinFn.apply (.listFn .prepend) (.int 1) .null == .list [.int 1]
+#guard BinFn.apply (.listFn .prepend) .null (.list [.int 2]) == .list [.null, .int 2]
+#guard BinFn.apply (.listFn .concat) .null .null == .list []
+#guard BinFn.apply (.listFn .concat) (.list [.int 1]) .null == .list [.int 1]
+#guard BinFn.apply (.listFn .contains) (.list [.int 1, .null]) (.int 2) == .bool false
+#guard BinFn.apply (.listFn .contains) (.list [.int 1]) .null == .null
+#guard BinFn.apply (.listFn .contains) .null (.int 1) == .null
+#guard BinFn.apply (.listFn .position) (.list [.int 1, .null, .int 1]) (.int 1) == .int 1
+#guard BinFn.apply (.listFn .position) (.list [.int 1, .null]) .null == .int 2
+#guard BinFn.apply (.listFn .position) (.list [.int 1]) (.int 2) == .null
 
 /-- An implementation of the scalar functions: Lean's own (`Impl.lean`, the
 reference) or an engine's, without run-time checks (`SubstraitLean/Guards.lean`,

@@ -142,9 +142,9 @@ SELECT i // 0 FROM t
 Division by zero
 
 query I
-SELECT list_value(i) FROM t WHERE i = 1
+SELECT list_sort([2, i]) FROM t WHERE i = 1
 ----
-[1]
+[1, 2]
 
 statement ok
 CREATE TABLE u(i BIGINT);
@@ -210,7 +210,7 @@ def test_replay(replayed):
     div = _result(replayed, "SELECT i // 0")
     assert (div.cls, div.side) == ("disagree", "lean")
     assert div.reason.startswith("verify: division by zero")
-    assert _result(replayed, "SELECT list_value").reason.startswith("lift: ")
+    assert _result(replayed, "SELECT list_sort").reason.startswith("lift: ")
     # Data-modifying CTEs are outside sverify's scope (#318); DuckDB still
     # runs them, so the next query sees the row.
     dml = _result(replayed, "WITH ins AS (INSERT")
