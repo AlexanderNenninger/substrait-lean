@@ -922,7 +922,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fmath f, a => partialAbs (f.safe a) a
   -- The abstraction does not look into lists: an element or a field is
   -- anything.
-  | .structField _, _ | .listElement _, _ => AVal.top
+  | .structField _, _ | .listElement _, _ | .flatten, _ => AVal.top
   | .cardinality, _ => ⟨true, some (.ge 0), false, false, false, none⟩
   | .raise _, _ => ⟨true, none, false, false, false, none⟩
   | .isNum, _ => ⟨false, none, true, true, false, none⟩
@@ -1152,6 +1152,8 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
        intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || strMayNe a b, false, none⟩
   -- A list, which the abstraction does not look into, or `NULL`.
   | .pair, _, _ => AVal.top
+  -- Of lists, which the abstraction does not look into (#812).
+  | .listFn _, _, _ => AVal.top
   | .lt, a, b =>
       -- Two strings may compare either way; FALSE < TRUE.
       let s := a.str && b.str
@@ -1572,7 +1574,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     mem_cases h with i b hb hi <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.Mem, Text.ascii_nonneg,
         Text.capped_le, Text.capped_nonneg]
-  case structField | listElement | fit => exact AVal.mem_top _
+  case structField | listElement | fit | flatten => exact AVal.mem_top _
   case raise => cases v <;> rfl
   case isNum => cases v <;> rfl
   case cardinality =>
@@ -2035,6 +2037,7 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     refine BlackBox.scalarAbs_mem fun hs => ?_
     cases v <;> cases w <;> simp_all [AVal.Mem]
   case pair => exact AVal.mem_top _
+  case listFn => exact AVal.mem_top _
   case greatest =>
     exact pickAbs_sound (fun hx hy => by simpa [Value.ltB] using Bound.mem_greatest hx hy)
       (fun _ w hw => by cases w <;> simp_all [Value.ltB])

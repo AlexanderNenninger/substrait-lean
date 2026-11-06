@@ -152,6 +152,8 @@ def loweringCache : List LoweringHint := [
     template := "native", note := "" },
   { table := "duckdbOn", construct := "UnFn.bbox",
     template := "native", note := "" },
+  { table := "duckdbOn", construct := "UnFn.flatten",
+    template := "native", note := "" },
   { table := "duckdbOn", construct := "BinFn.add",
     template := "native", note := "" },
   { table := "duckdbOn", construct := "BinFn.sub",
@@ -237,6 +239,8 @@ def loweringCache : List LoweringHint := [
   { table := "duckdbOn", construct := "BinFn.least",
     template := "native", note := "" },
   { table := "duckdbOn", construct := "BinFn.bbox2",
+    template := "native", note := "" },
+  { table := "duckdbOn", construct := "BinFn.listFn",
     template := "native", note := "" }
 ]
 

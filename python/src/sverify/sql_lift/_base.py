@@ -343,6 +343,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
+    _check_export_state(tree)
     catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
     }
@@ -469,7 +470,20 @@ _AGGREGATES: dict[type, str] = {
     sge.Mode: "mode",
     sge.ArgMin: "arg_min",
     sge.ArgMax: "arg_max",
+    # `bool_and`/`bool_or` are `min`/`max` of booleans, FALSE < TRUE, as the
+    # Ibis producer writes `all()`/`any()` (#810).
+    sge.LogicalAnd: "min",
+    sge.LogicalOr: "max",
+    # Aggregates that take their rows in an order (#810).
+    sge.GroupConcat: "string_agg",
+    sge.ArrayAgg: "array_agg",
+    sge.First: "first",
+    sge.Last: "last",
 }
+
+#: The aggregates that take their rows in the order of their ORDER BY,
+#: which `_Lift.ordered` reads (#810).
+_ORDERED = {"string_agg", "array_agg", "first", "last"}
 
 #: The aggregates that need every value of a group, which `_Lift.holistic`
 #: reads (#53).
@@ -949,8 +963,20 @@ class _Lift:
         if w.args.get("alias") is not None or w.args.get("first") is not None:
             raise Unsupported(f"{_shown(w)}: named windows are not supported yet")
         f = w.this
+        ignore_nulls = False
+        if isinstance(f, sge.RespectNulls) and isinstance(f.this, sge.FirstValue | sge.LastValue):
+            f = f.this  # their default
+        elif isinstance(f, sge.IgnoreNulls) and isinstance(f.this, sge.FirstValue | sge.LastValue):
+            f, ignore_nulls = f.this, True
         if isinstance(f, sge.IgnoreNulls | sge.RespectNulls | sge.Filter):
             raise Unsupported(f"{_shown(w)} is not supported yet")
+        if isinstance(f, sge.First | sge.Last):
+            # DuckDB's `first(x) OVER …` keeps NULLs: `first_value(x)`.
+            if isinstance(f.this, sge.Order):
+                raise Unsupported(f"{_shown(w)}: ORDER BY inside a window aggregate")
+            f = (sge.FirstValue if isinstance(f, sge.First) else sge.LastValue)(this=f.this)
+        if _AGGREGATES.get(type(f)) in _ORDERED:
+            raise Unsupported(f"{_shown(f)} over a window is not supported yet")
 
         def arg(n: sge.Expression) -> E:
             return self.expr(n, scope, bound)
@@ -995,6 +1021,14 @@ class _Lift:
                 else "nth_value"
             )
             args = [column(x)]
+            if ignore_nulls:
+                # `FIRST_VALUE(x IGNORE NULLS)`: the measure `first` (`last`)
+                # over the frame, which skips NULLs and takes the frame's rows
+                # in the window's order (`Parse.parseWindow`, #811).
+                agg = "first" if isinstance(f, sge.FirstValue) else "last"
+                fn = self.window_json(w, agg, args, scope, bound, column)
+                fn["windowFunction"]["outputType"] = type_json(out)
+                return [(fn, out)], lambda refs: E(refs[0], out)
             if isinstance(f, sge.NthValue):
                 k = arg(f.args["offset"])
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
@@ -1054,7 +1088,7 @@ class _Lift:
                     "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}",
                 }
             )
-        fr = frame or _frame(w, bool(sorts))
+        fr = frame or _frame(w, bool(sorts), self, key_types[0] if len(key_types) == 1 else None)
         fn = {
             "functionReference": anchor(name) if isinstance(name, str) else name,
             "partitions": partitions,
@@ -1208,6 +1242,8 @@ class _Lift:
         name = _AGGREGATES[type(node)]
         if name in _HOLISTIC:
             return self.holistic(node, name, where, scope, bound)
+        if name in _ORDERED:
+            return self.ordered(node, name, where, scope, bound)
         agg_rule = AGG_RULES.get(type(node))
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
@@ -1239,6 +1275,8 @@ class _Lift:
             elif name == "count":
                 out = dt.int64
             elif name in ("min", "max"):
+                if isinstance(node, sge.LogicalAnd | sge.LogicalOr) and not t.is_boolean():
+                    raise Unsupported(f"{_shown(node)} of {t} is not supported")
                 out = t
             elif not _numeric(t):
                 raise Unsupported(f"{name} of {t} is not supported")
@@ -1295,6 +1333,100 @@ class _Lift:
             types, finish = [out], lambda refs: E(refs[0], out)
         filt = {"filter": where} if where is not None else {}
         return [({"measure": m, **filt}, t) for m, t in zip(parts, types, strict=True)], finish
+
+    def ordered(
+        self,
+        node: sge.Expression,
+        name: str,
+        where: Json | None,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E] | None,
+    ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
+        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)` and
+        `last(x)`, each with an optional `ORDER BY` of columns (#810).
+        `string_agg` skips NULLs, as the model's measure does; DuckDB's
+        `list`, `first` and `last` keep them, so their measure takes `[x]`,
+        never NULL: `flatten(array_agg([x]))` and `first([x])[1]`. Without
+        an ORDER BY the order is the engine's: the plan verifies, and its
+        value is reported as the engine's choice (#505)."""
+        arg = node.this
+        order = None
+        if isinstance(arg, sge.Order):
+            order, arg = arg, arg.this
+        if isinstance(arg, sge.Distinct) or arg is None:
+            raise Unsupported(f"{_shown(node)}: DISTINCT is not supported")
+        a = self.expr(arg, scope, bound)
+        if a.midnight:
+            raise Unsupported(
+                f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
+                "TIMESTAMP is not supported yet (#240)"
+            )
+        t = a.type
+        sorts: list[Json] = []
+        for o in order.expressions if order is not None else []:
+            key = self.expr(o.this, scope, bound).json
+            if "selection" not in key or "expression" in key["selection"]:
+                raise Unsupported(f"{_shown(node)}: ORDER BY a column only")
+            desc = bool(o.args.get("desc"))
+            nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
+            sorts.append(
+                {
+                    "expr": key,
+                    "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}",
+                }
+            )
+        args = [a.json]
+        if name == "string_agg":
+            if not (t.is_string() or t.is_null()):
+                raise Unsupported(f"{_shown(node)} of {t} is not supported; cast it to VARCHAR")
+            sep = node.args.get("separator")
+            s_ = self.expr(sep, scope, bound) if sep is not None else E({}, dt.string, ",")
+            if not (s_.constant and isinstance(s_.value, str)):
+                raise Unsupported(f"{_shown(node)} needs a constant separator")
+            args.append(literal(s_.value, dt.string))
+            out: Any = dt.string
+            finish: Callable[[list[Json]], E] = lambda refs: E(refs[0], dt.string)  # noqa: E731
+        else:
+            if node.args.get("expressions") or node.args.get("expression"):
+                raise Unsupported(f"{_shown(node)} takes one argument")
+            if t.is_null():
+                raise Unsupported(f"{_shown(node)} of NULL has no type; cast it")
+            if t.is_decimal():
+                # The model holds a decimal unscaled; inside a list nothing rescales it.
+                raise Unsupported(f"{_shown(node)} of a DECIMAL is not supported yet")
+            one = dt.Array(value_type=t)
+            # `[x]`: a list, never NULL, so the measure keeps the rows where
+            # `x` is NULL, as DuckDB does.
+            args = [_fn("list_prepend", [a.json, literal([], one)], one)]
+            if name == "array_agg":
+                out = dt.Array(value_type=one)
+                flat = dt.Array(value_type=t)
+                finish = lambda refs: E(_fn("flatten", [refs[0]], flat), flat)  # noqa: E731
+            else:
+                out = one
+                finish = lambda refs: E(  # noqa: E731
+                    {
+                        "selection": {
+                            "directReference": {"listElement": {"offset": 0}},
+                            "expression": refs[0],
+                        }
+                    },
+                    t,
+                )
+        measure: Json = {
+            "functionReference": anchor(name),
+            "arguments": [{"value": j} for j in args],
+            "outputType": type_json(out),
+            "invocation": "AGGREGATION_INVOCATION_ALL",
+            **({"sorts": sorts} if sorts else {}),
+        }
+        if name == "array_agg":
+            # The model's `array_agg` is of the rows its filter keeps, which
+            # must skip NULLs; `[x]` is never NULL.
+            keep = _fn("is_not_null", [args[0]], dt.boolean)
+            where = keep if where is None else _fn("and", [where, keep], dt.boolean)
+        filt = {"filter": where} if where is not None else {}
+        return [({"measure": measure, **filt}, out)], finish
 
     def holistic(
         self,
@@ -1638,10 +1770,12 @@ _RANKING: dict[type, tuple[str, Any]] = {
 }
 
 
-def _frame(w: sge.Window, ordered: bool) -> Json:
+def _frame(w: sge.Window, ordered: bool, lf: _Lift | None = None, key: Any = None) -> Json:
     """The frame: the one written, else DuckDB's default, from the start of
     the partition to the current row and its peers with an ORDER BY (RANGE),
-    the whole partition without."""
+    the whole partition without. A RANGE offset over a timestamp or a date
+    may be a constant `INTERVAL` of days or less (#811): the model counts it
+    in microseconds (days for a date), the unit of its one sort key."""
     spec = w.args.get("spec")
     if spec is None:
         upper = {"currentRow": {}} if ordered else {"unbounded": {}}
@@ -1661,9 +1795,12 @@ def _frame(w: sge.Window, ordered: bool) -> Json:
             return {"unbounded": {}}
         if value is None or (isinstance(value, str) and value.upper() == "CURRENT ROW"):
             return {"currentRow": {}}
-        if not (isinstance(value, sge.Literal) and not value.is_string and value.this.isdigit()):
+        if isinstance(value, sge.Interval) and lf is not None:
+            n = _interval_offset(lf, value, kind, key)
+        elif not (isinstance(value, sge.Literal) and not value.is_string and value.this.isdigit()):
             raise Unsupported(f"frame offset {value} is not supported; use an integer constant")
-        n = int(value.this)
+        else:
+            n = int(value.this)
         if n == 0:
             return {"currentRow": {}}
         return {(side or "preceding").lower(): {"offset": str(n)}}
@@ -1673,6 +1810,26 @@ def _frame(w: sge.Window, ordered: bool) -> Json:
         "upperBound": bound(spec.args.get("end"), spec.args.get("end_side")),
         "boundsType": f"BOUNDS_TYPE_{kind}",
     }
+
+
+def _interval_offset(lf: _Lift, value: sge.Interval, kind: str, key: Any) -> int:
+    """A RANGE frame's `INTERVAL` offset in the unit of its sort key (#811):
+    microseconds for a timestamp, days for a date."""
+    if kind != "RANGE" or key is None or not (key.is_timestamp() or key.is_date()):
+        raise Unsupported(
+            f"frame offset {_shown(value)} needs a RANGE frame over one timestamp or date"
+        )
+    months, micros = lf.expr(value, [], Bound()).value
+    day = 86_400_000_000
+    if months or micros < 0:
+        raise Unsupported(
+            f"frame offset {_shown(value)}: months and years have no fixed length; use days or less"
+        )
+    if key.is_date():
+        if micros % day:
+            raise Unsupported(f"frame offset {_shown(value)} over a DATE must be whole days")
+        return micros // day
+    return micros
 
 
 def _bound_guard(fr: Json, key: Json, t: Any) -> Json | None:
@@ -1742,7 +1899,8 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
         if isinstance(n, sge.Window):
             # The window's own function is not an aggregate of the query; an
             # aggregate in its arguments, partitions or order is.
-            for child in [*n.this.iter_expressions(), *n.iter_expressions()]:
+            f = n.this.this if isinstance(n.this, sge.IgnoreNulls | sge.RespectNulls) else n.this
+            for child in [*f.iter_expressions(), *n.iter_expressions()]:
                 if child is not n.this:
                     walk(child)
             return
@@ -1901,6 +2059,20 @@ def _check_intervals(query: str) -> None:
             and re.search(r"\bago\b", tok.text, re.I)
         ):
             raise Unsupported(f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet")
+
+
+def _check_export_state(tree: Any) -> None:
+    """DuckDB's `agg(x) EXPORT_STATE` gives the aggregate's state, which
+    SQLGlot reads as the alias `EXPORT_STATE` of the aggregate's value
+    (upstream/bugs/SG-9.json): refused."""
+    for a in tree.find_all(sge.Alias):
+        name = a.args.get("alias")
+        if (
+            isinstance(name, sge.Identifier)
+            and not name.quoted
+            and name.name.upper() == "EXPORT_STATE"
+        ):
+            raise Unsupported(f"{_shown(a)}: EXPORT_STATE is not supported")
 
 
 def _check_using_stars(tree: Any) -> None:
