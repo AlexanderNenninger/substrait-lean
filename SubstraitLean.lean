@@ -1,5 +1,6 @@
 import SubstraitLean.FloatFormat
 import SubstraitLean.Value
+import SubstraitLean.FloatExact
 import SubstraitLean.BlackBox
 import SubstraitLean.Rounding
 import SubstraitLean.Conversions
