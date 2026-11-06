@@ -101,6 +101,7 @@ generators, then the trusted reading and writing.
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
 | `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
+| `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |

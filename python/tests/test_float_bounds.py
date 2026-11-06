@@ -61,11 +61,17 @@ def adversarial(draw: st.DrawFn) -> list[float]:
     return xs
 
 
+# One connection for the module; the values go in as one list parameter,
+# unnested in order, so an example costs one query (a table filled row by row
+# with `executemany` took most of these tests' time).
+_CON = duckdb.connect()
+
+
 def duckdb_aggregates(xs: list[float]) -> tuple[float, float, float | None, float | None]:
-    con = duckdb.connect()
-    con.execute("CREATE TABLE t (x DOUBLE)")
-    con.executemany("INSERT INTO t VALUES (?)", [(x,) for x in xs])
-    row = con.execute("SELECT SUM(x), AVG(x), VAR_POP(x), STDDEV_POP(x) FROM t").fetchone()
+    row = _CON.execute(
+        "SELECT SUM(x), AVG(x), VAR_POP(x), STDDEV_POP(x) FROM (SELECT unnest(?::DOUBLE[]) AS x)",
+        [xs],
+    ).fetchone()
     assert row is not None
     return row
 
@@ -95,6 +101,27 @@ def test_duckdb_meets_the_proved_bounds(xs: list[float]) -> None:
     assert abs(got_sd - sd) <= math.sqrt(tol_var) * (1 + 1e-12) + 1e-300 + 2 * float(U) * (
         sd + math.sqrt(tol_var)
     )
+
+
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(xs=adversarial())
+def test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum(xs: list[float]) -> None:
+    """D25: the reference's `SUM` is the exact sum rounded once
+    (`floatSumCR`), within `u` of it relatively (`FloatCode.ofExact_rel`), as
+    `math.fsum` is; DuckDB's sum is within its order's bound of the exact sum
+    plus that `u` (`epsilon_sum_cr`), and likewise for `AVG` (`epsilon_avg_cr`)."""
+    n = len(xs)
+    s, mag = exact(xs)
+    if abs(s) > 2**1000:
+        return
+    cr = Fraction(math.fsum(xs))
+    assert abs(cr - s) <= U * abs(s)
+    got_sum, got_avg, *_ = duckdb_aggregates(xs)
+    assert abs(Fraction(got_sum) - cr) <= gamma(2 * n) * (mag + n * TINY) + U * abs(s)
+    cr_avg = Fraction(float(s / n))
+    assert abs(cr_avg - s / n) <= U * abs(s / n)
+    tol_avg = gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n)
+    assert abs(Fraction(got_avg) - cr_avg) <= tol_avg
 
 
 def kahan(xs: list[float]) -> float:
@@ -273,10 +300,11 @@ def test_duckdb_var_covar_and_corr_have_the_generic_properties(
     `10⁶` keeps them small."""
     ps = [(x * scale + shift, y * scale - shift) for x, y in ps]
     n = len(ps)
-    con = duckdb.connect()
-    con.execute("CREATE TABLE t (x DOUBLE, y DOUBLE)")
-    con.executemany("INSERT INTO t VALUES (?, ?)", ps)
-    row = con.execute("SELECT VAR_POP(x), COVAR_POP(y, x), CORR(y, x) FROM t").fetchone()
+    row = _CON.execute(
+        "SELECT VAR_POP(x), COVAR_POP(y, x), CORR(y, x) "
+        "FROM (SELECT unnest(?::DOUBLE[]) AS x, unnest(?::DOUBLE[]) AS y)",
+        [[x for x, _ in ps], [y for _, y in ps]],
+    ).fetchone()
     assert row is not None
     var, cov, corr = row
     xs, ys = [Fraction(x) for x, _ in ps], [Fraction(y) for _, y in ps]

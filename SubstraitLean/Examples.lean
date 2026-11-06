@@ -26,6 +26,7 @@ import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
 import SubstraitLean.Robust
+import SubstraitLean.FloatExact
 
 /-!
 # Examples
@@ -173,6 +174,10 @@ end Substrait.Examples
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
 #print axioms Substrait.Rel.noIssue_of_sumsFit
+#print axioms Substrait.floatSumCR_mem
+#print axioms Substrait.floatAvgCR_mem
+#print axioms Substrait.floatSumCR_sign
+#print axioms Substrait.floatSumCR_perm
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
