@@ -1,6 +1,7 @@
 import SubstraitLean.Partition
 import SubstraitLean.Profile
 import SubstraitLean.StatProps
+import SubstraitLean.ObsEquiv
 
 /-!
 # What the reference allows
@@ -101,23 +102,6 @@ theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) {rows : Relat
   obtain ⟨s, hs, _, hv⟩ := h
   rw [AggFn.allowed_iff hm] at hv
   rw [hv, ← Measure.eval_eq (AggFn.ne_collect hm), Measure.eval_perm hm hs]
-
-/-- `R` relates the lists' elements pairwise. -/
-inductive Forall2 {α β : Type} (R : α → β → Prop) : List α → List β → Prop
-  | nil : Forall2 R [] []
-  | cons {a : α} {b : β} {l : List α} {l' : List β} : R a b → Forall2 R l l' →
-      Forall2 R (a :: l) (b :: l')
-
-theorem forall₂_map_self {α β : Type} {R : α → β → Prop} {f : α → β} :
-    ∀ l : List α, (∀ x ∈ l, R x (f x)) → Forall2 R l (l.map f)
-  | [], _ => .nil
-  | x :: l, h => .cons (h x (List.mem_cons_self ..))
-      (forall₂_map_self l fun y hy => h y (List.mem_cons_of_mem _ hy))
-
-theorem eq_map_of_forall₂ {α β : Type} {f : α → β} :
-    ∀ {l : List α} {l' : List β}, Forall2 (fun x y => y = f x) l l' → l' = l.map f
-  | _, _, .nil => rfl
-  | _, _, .cons h t => by rw [h, eq_map_of_forall₂ t]; rfl
 
 /-- What an aggregate's output may be, for the input rows `rows` in this
 order: a row per group (in their order of first appearance), each measure
