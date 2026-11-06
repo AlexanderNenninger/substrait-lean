@@ -303,7 +303,7 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
-  simp only [Measure.AllowedP, Measure.Allowed, Measure.inputsI_lean, AggFn.allowedP_reference]
+  simp only [Measure.AllowedP, Measure.Allowed, AggFn.allowedP_reference]
 
 theorem forall₂_iff {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R a b ↔ S a b) {l : List α}
     {l' : List β} : Forall2 R l l' ↔ Forall2 S l l' :=
@@ -347,24 +347,24 @@ theorem Rel.allowedI_reference (cat : Catalog) :
     ∀ (r : Rel) (out : Relation), r.AllowedI Profile.reference.table Impl.lean cat out ↔ r.Allowed cat out
   | .read _, _ | .values _ _, _ => Iff.rfl
   | .filter r c, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, Expr.evalI_lean, Rel.allowedI_reference cat r]
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .project r es, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, Expr.evalI_lean, Rel.allowedI_reference cat r]
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .emit r _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .cross a b, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
   | .join a b .inner on, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, Expr.evalI_lean, Rel.allowedI_reference cat a,
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
   | .join a b .left on, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, leftJoinRowI_lean, Rel.allowedI_reference cat a,
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
   | .fetch r _ _, _ => exists_congr fun i => and_congr_left' (Rel.allowedI_reference cat r i)
   | .unionAll a b, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
   | .window r _ _ _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
   | .semi a b _ _, out => by
-    simp only [Rel.AllowedI, Rel.Allowed, hasMatchI_lean, Rel.allowedI_reference cat a,
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
   | .orderBy r keys, out => by
     simp only [Rel.AllowedI, Rel.Allowed, SortedP.reference, Rel.allowedI_reference cat r]
