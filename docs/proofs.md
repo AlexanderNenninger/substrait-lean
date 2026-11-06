@@ -51,7 +51,7 @@ and that the input rows meet the contract's preconditions.
 | Contracts compose across a pipeline | `Rel.stack_sound`, `Rel.chain_sound` | `Compose.lean` |
 | The rows quarantine keeps meet every precondition and key | `Catalog.kept_sound`, `kept_pre`, `kept_keys` | `Quarantine.lean` |
 | Rewrites from contract facts and keys keep the result | `Rel.optimize_sound` | `Semantic.lean` |
-| A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum`, `StdModel.epsilon_avg`, `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
+| A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum_cr`, `StdModel.epsilon_avg_cr` (against the reference's correctly rounded value, D25), `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
 | Sharded double sums are near the sequential sum | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
 
 `Examples.lean` prints the axioms of the main theorems with
@@ -69,8 +69,8 @@ engines is trusted, and kept small:
   they call the checkers and print JSON.
 - The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
   and its siblings (`Float.lean`), `FloatCode.exp_fin` (`Safety.lean`),
-  `floatSum_mem`, `floatAvg_mem`, `floatSum_sign` (`Aggregate.lean`),
-  `floatSum_twoPhase`, `floatAvg_twoPhase` (`Partition.lean`) and
+  `floatSum_mem`, `floatAvg_mem`, `floatSum_sign` (`Aggregate.lean`, no
+  longer used since D25, retired by #916) and
   `varOf_props`, `covOf_props`, `corrOf_props` (`StatProps.lean`).
   `float-bounds/` proves them over the reals for the standard model of
   rounding (`StdModel.core_sum`, `StdModel.core_avg` in `Core.lean`), and

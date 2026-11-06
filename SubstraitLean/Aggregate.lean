@@ -1,5 +1,6 @@
 import SubstraitLean.Order
 import SubstraitLean.Dedup
+import SubstraitLean.FloatExact
 
 /-!
 # Aggregation
@@ -314,8 +315,9 @@ def AggFn.apply : AggFn → List Value → Value
   | .bbox n, vs => BlackBox.callAgg n vs
   | _, [] => .null
   | .sum, vs => .int (intSum vs)
-  | .fsum, vs => .int (floatSum vs)
-  | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
+  -- D25: the exact sum, and the exact mean, rounded once (`FloatExact.lean`).
+  | .fsum, vs => .int (floatSumCR vs)
+  | .avg, vs => .int (floatAvgCR vs)
   | .iavg, vs => .int (clampInts vs ((intSum vs).tdiv vs.length))
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs

@@ -326,6 +326,20 @@ theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = tru
   · simpa [SumOrder] using hs
   all_goals simp at h
 
+theorem AvgOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = true) {vs : List Value}
+    {c : Int} (hs : AvgOrder b vs c) : AvgOrder b' vs c := by
+  by_cases e : b = b'
+  · exact e ▸ hs
+  · have hne : b ≠ "EXACT" ∧ b' ≠ "EXACT" := by
+      simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
+        List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
+      rcases h with h | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩ | ⟨h, -⟩
+      · exact absurd h e
+      all_goals simp_all
+    simp only [AvgOrder, hne.1, hne.2, ↓reduceIte] at hs ⊢
+    obtain ⟨s, hs, rfl⟩ := hs
+    exact ⟨s, SumOrder.mono h hs, rfl⟩
+
 theorem StatAlgo.mono {b b' : Behaviour} (h : behaviourLe "stat_algo" b b' = true) {f : AggFn}
     {vs : List Value} {v : Value} (hs : StatAlgo b f vs v) : StatAlgo b' f vs v := by
   simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
@@ -382,13 +396,20 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
         · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hc
         · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
           exact hlit (by simp [AggFn.reads]) (fun _ _ hle => QuantInterp.mono hle) hc
-    case fsum | avg =>
+    case fsum =>
       simp only [AggFn.AllowedChoice] at hc ⊢
       split at hc
       · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hc
       · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
         exact hlit (by simp [AggFn.reads])
           (fun _ _ hle ⟨c, hs, hv⟩ => ⟨c, SumOrder.mono hle hs, hv⟩) hc
+    case avg =>
+      simp only [AggFn.AllowedChoice] at hc ⊢
+      split at hc
+      · rw [ite_eq_left_of_eq_true _ _ (eq_true (by assumption))]; exact hc
+      · rw [ite_eq_right_of_eq_false _ _ (eq_false (by assumption))]
+        exact hlit (by simp [AggFn.reads])
+          (fun _ _ hle ⟨c, hs, hv⟩ => ⟨c, AvgOrder.mono hle hs, hv⟩) hc
     case var | cov | corr =>
       exact hlit (by simp [AggFn.reads]) (fun _ _ hle => StatAlgo.mono hle) hc
     all_goals exact hc

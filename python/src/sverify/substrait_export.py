@@ -1167,6 +1167,11 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             if not missed:
                 h.up_to.append({"group": g, "option": o, "equivalence": r["q"]})
                 continue
+            if missed == ["floats"] and q.floats == "plan" and (met := _plan_bound_met(report)):
+                # D25: the consumer adds in its own order, within the plan's
+                # proved bound, which meets the postconditions' tolerance.
+                h.up_to.append({"group": g, "option": o, "equivalence": {"floats": met}})
+                continue
             observed = (
                 f"{where}: a Substrait consumer agrees with the reference only up to {q}, "
                 f"and the postconditions observe its {', '.join(missed)} ({report.observation}); "
@@ -1756,3 +1761,26 @@ __all__ = [
     "recheck",
     "resolve",
 ]
+
+
+def _plan_bound_met(report: Any) -> dict[str, float] | None:
+    """The plan's proved bound on its doubles (`Report.epsilon`) as a
+    tolerance, when it meets the one the postconditions state on every
+    double column; None otherwise."""
+    from sverify.observation import Within
+    from sverify.routes import _bounds
+
+    floats = report.observation.floats
+    if not isinstance(floats, Within) or not report._epsilon:
+        return None
+    met: dict[str, float] = {}
+    for eps in report._epsilon.values():
+        ok = False
+        for kind, (v, proved) in _bounds(eps).items():
+            tol = getattr(floats, kind)
+            if tol is not None and proved and v <= tol:
+                ok = True
+                met[kind] = max(met.get(kind, 0.0), v)
+        if not ok:
+            return None
+    return met or None

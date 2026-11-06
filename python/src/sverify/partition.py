@@ -56,14 +56,21 @@ error bound (#428). The sums of doubles round as the split makes them, so
 are within a tolerance τ of Lean's value; the rest of the plan is still what
 Lean computes. Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)`
 per split double, and `run_sharded(..., tolerance=True)` computes τ for each
-group from them (`floatSplit_sum`, `floatSplit_avg` in
-`SubstraitLean/Partition.lean`, proved over the reals in
-`float-bounds/FloatBounds/Shard.lean`). For `n` values in `k` shards of at
-most `m` values, with `A` the shards' rounded `SUM(|x|)`s added up and
-`γ j = j u / (1 − j u)`, `u = 2⁻⁵³`:
+group from them. For `n` values in `k` shards of at most `m` values, with
+`A` the shards' rounded `SUM(|x|)`s added up and `γ j = j u / (1 − j u)`,
+`u = 2⁻⁵³`, τ is the larger of two bounds. Lean's own split, each shard's
+exact sum rounded once and then the partials' (D25), is within
+`A / 2⁵⁰` of the whole's one rounding, and a split mean within
+`A / (n · 2⁴⁷) + 2⁻¹⁰⁷⁴` (`floatSplit_sum`, `floatSplit_avg` in
+`SubstraitLean/Partition.lean`, proved on integers). An engine adding the
+shards in its own order is within
 
     τ_sum = (γ(m + k) + γ(n)) · ((A + n·2⁻¹⁰²²) / (1 − γ(m)) + k·2⁻¹⁰²²)
     τ_avg = (γ(m + k + 2) + γ(n + 2)) · ((A + n·2⁻¹⁰²²) / (1 − γ(m)) + k·2⁻¹⁰²²) / n
+
+of the exact sum and the reference's rounding of it
+(`float-bounds/FloatBounds/Shard.lean`; its `γ(n)` term covers the
+reference's one rounding, at most `u` relatively).
 
 The bound needs `n ≤ 2³²` and `n · (max |x| + 2⁻¹⁰²¹) ≤ 2¹⁰²²`, far from
 overflow; a group that misses it, or holds NaN or an infinity, gets τ = ∞.
@@ -285,6 +292,19 @@ def shard_avg_tol_scaled(n: int, m: int, k: int, a: int) -> int:
     return _ceil_div(num, (2 * _K - (m + k + 2)) * (2 * _K - (n + 2)) * (2 * _K - 2 * m) * n)
 
 
+def shard_tol_cr(a: int) -> int:
+    """`FloatCode.shardTolCR` (`SubstraitLean/Partition.lean`): the bound of a
+    split double `SUM` that Lean computes (D25: each shard's exact sum rounded
+    once, then the partials'), scaled: `a / 2⁵⁰`."""
+    return a // 2**50
+
+
+def shard_avg_tol_cr(n: int, a: int) -> int:
+    """`FloatCode.shardAvgTolCR`: the same for an `AVG` of `n ≥ 1` values,
+    whose split sum is divided natively: `a / (n · 2⁴⁷) + 1`."""
+    return a // (n * 2**47) + 1
+
+
 def _up(q: Fraction) -> float:
     """The smallest double at least `q`."""
     f = float(q)
@@ -316,8 +336,11 @@ def group_tolerance(
     m = max(c for c, _, _ in parts)
     k = len(parts)
     a = sum(_scaled(a) for _, a, _ in parts)
-    tol = shard_tol_scaled if kind == "sum" else shard_avg_tol_scaled
-    return _up(Fraction(tol(n, m, k, a), _SCALE))
+    if kind == "sum":
+        tol = max(shard_tol_scaled(n, m, k, a), shard_tol_cr(a))
+    else:
+        tol = max(shard_avg_tol_scaled(n, m, k, a), shard_avg_tol_cr(n, a))
+    return _up(Fraction(tol, _SCALE))
 
 
 def apriori_tolerance(
@@ -348,10 +371,14 @@ def apriori_tolerance(
     b = Fraction(bound)
     if big_n * (b + 2 * t) > 2**1021:
         return math.inf
+    # D25: Lean's own split (`shardTolCR`), with `SUM(|x|)` at most
+    # `N · B · (1 + u)`, against an engine's order (`Shard.lean`).
     if kind == "sum":
         q = (gamma(big_n + k) + gamma(big_n)) * (big_n * (b + t) + k * t)
+        q = max(q, big_n * b * (1 + u) / 2**50)
     else:
         q = (gamma(big_n + k + 2) + gamma(big_n + 2)) * (b + t + k * t)
+        q = max(q, b * (1 + u) / 2**47 + Fraction(1, 2**1074))
     return _up(q)
 
 

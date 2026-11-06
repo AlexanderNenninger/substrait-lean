@@ -572,6 +572,16 @@ axiom div_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0
       (scaled (lift₂ (· / ·) a b)).natAbs ≤
         (scaled a).natAbs * (2 ^ 1074 + 2 ^ 1024) / (scaled b).natAbs + 1
 
+/-- `/` within its error, as `core_div` (`FloatBounds/Arith.lean`) states it:
+`|q − A / B| ≤ |A / B| / 2⁵⁰ + u · tiny`, here times `2⁵¹ · |B|`, scaled. The
+split `AVG` of D25 divides a rounded sum natively by the count
+(`twoPhaseAvg_near`, `SubstraitLean/Partition.lean`). -/
+axiom div_scaled_err {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
+    (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
+    IsFin (lift₂ (· / ·) a b) ∧
+      2 ^ 51 * (scaled (lift₂ (· / ·) a b) * scaled b - scaled a * 2 ^ 1074).natAbs ≤
+        2 * (scaled a).natAbs * 2 ^ 1074 + 2 ^ 50 * (scaled b).natAbs
+
 /-- Rounding keeps the sign (#441): a sum or product of non-negative finite
 doubles, and a quotient of one by a positive one, is non-negative, under the
 guards of `add_scaled`, `mul_scaled` and `div_scaled`. Code `0` is `+0.0`, and
