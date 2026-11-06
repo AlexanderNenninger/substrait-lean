@@ -30,7 +30,7 @@ The subset, after spaces at either end (DuckDB 2.0.0, probed;
   `epoch`; a time after the date, as below, is dropped.
 * timestamps: a date, then a space or `T` and `H:MM`, `H:MM:SS` or
   `H:MM:SS.f`, hours to 23; digits of a second past six are dropped, as
-  DuckDB truncates them.
+  DuckDB truncates them, and so is an offset (`Z`, `+HH`, `+HH:MM`).
 
 A string is `bad` when it is empty, when it is of the subset's form but out
 of range (a month 13, `2023-02-29`, a minute 60, a BIGINT beyond 64 bits),
@@ -205,6 +205,23 @@ def notADate (cs : List Char) : Bool :=
   cs.isEmpty || (!words.contains (lower cs) &&
     (runs cs < 3 || ((sign cs).2.filter ("-/ ".contains ·)).length < 2))
 
+/-- Nothing, or the offset DuckDB reads and drops from a timestamp: `Z`, or
+a sign, two digits and two more (`:MM` or `MM`), after a space or not. -/
+def offset : List Char → Bool
+  | [] | ['Z'] => true
+  | ' ' :: r => match r with
+    | c :: _ => (c == '+' || c == '-') && offset r
+    | [] => false
+  | c :: r =>
+    (c == '+' || c == '-') &&
+    match r with
+    | [a, b] | [a, b, ':', _, _] | [a, b, _, _] =>
+      a.isDigit && b.isDigit && (r.drop 2).all fun x => x.isDigit || x == ':'
+    | _ => false
+
+#guard offset [] && offset "Z".toList && offset "+00:00".toList && offset "-02".toList
+#guard offset " +01".toList && offset "+0130".toList && !offset "+1".toList && !offset "x".toList
+
 /-- `H:MM[:SS[.f]]` as microseconds: `bad` past 23:59:59, `unknown` at 24. -/
 def time? (cs : List Char) : Option Parsed := do
   let (h, r) ← field? cs true
@@ -224,7 +241,7 @@ def time? (cs : List Char) : Option Parsed := do
         some (digitsVal sd, us, f.drop fd.length)
       | r => some (digitsVal sd, 0, r)
     | r => some (0, 0, r)
-  if !rest.isEmpty then none
+  if !offset rest then none
   if h == 24 then return .unknown
   if h > 24 || mi > 59 || sec > 59 then return .bad
   return .val (.int (((h * 60 + mi) * 60 + sec) * 1000000 + us))
@@ -274,6 +291,7 @@ def timestamp (s : String) : Parsed :=
 #guard timestamp "2024-01-05 10:00:00." == .val (.int (19727 * Time.usPerDay + 36000000000))
 #guard timestamp "2024-01-05 25:00" == .bad && timestamp "2024-01-05 23:60:00" == .bad
 #guard timestamp "2024-01-05 24:00:00" == .unknown && timestamp "2024-01-05 1:2" == .unknown
-#guard timestamp "2024-01-05 10:00+01" == .unknown && timestamp "x" == .bad
+#guard timestamp "2024-01-05 10:00+01" == .val (.int (19727 * Time.usPerDay + 36000000000))
+#guard timestamp "2024-05-03T01:00:02+00:00" == timestamp "2024-05-03 01:00:02" && timestamp "x" == .bad
 
 end Substrait.VarcharCasts

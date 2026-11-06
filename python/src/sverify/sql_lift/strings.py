@@ -9,6 +9,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import _functions
+from sverify._plan_read import simple_regex
 from sverify.plan_json import (
     Json,
     Unsupported,
@@ -215,6 +216,8 @@ def _pattern(lf: _Lift, node: sge.Expression, sub: Sub, what: str) -> tuple[Json
     p = sub(node.expression)
     if not (p.constant and isinstance(p.value, str)):
         raise Unsupported(f"{what} needs a constant pattern")
+    if not simple_regex(p.value):
+        raise Unsupported(f"the regular expression {p.value!r} is outside the supported subset")
     (s_,) = _strings(lf, [sub(node.this)], what)
     return s_, p.value
 
@@ -253,8 +256,9 @@ def _regexp_extract(lf: _Lift, node: sge.RegexpExtract, sub: Sub, scope: list[Co
     s_, p = _pattern(lf, node, sub, "regexp_extract")
     group = node.args.get("group")
     g = 0 if group is None else _const(sub(group), "regexp_extract's group", int)
-    if g is None or g < 0:
-        raise Unsupported("regexp_extract needs a group number of at least 0")
+    if g is None or g < 0 or g > 9:
+        # DuckDB raises past group 9 ("Group index must be between 0 and 9").
+        raise Unsupported("regexp_extract needs a group number from 0 to 9")
     args = [s_, literal(p, dt.string), literal(g, dt.int64)]
     return E(call("regexp_extract", args), dt.string)
 

@@ -37,7 +37,7 @@ _FROM_VARCHAR = (
 )
 
 
-def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E:
+def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E | None:
     """`CAST(s AS t)` or `TRY_CAST(s AS t)` of a string: the black box of the
     target (`black_box.py`), DuckDB's rules. An integer narrower than a
     BIGINT is the BIGINT cast down, as DuckDB fails (or, trying, is NULL)
@@ -53,7 +53,7 @@ def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E:
             if _same(via, t):
                 return e
             return E(cast_json(e.json, t, or_null=try_), t)
-    raise Unsupported(f"a cast of a string to {t} is not supported")
+    return None  # other targets: the casts the model had before
 
 
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
@@ -79,8 +79,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise Unsupported(f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported")
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
-    if a.type.is_string() and not t.is_string() and (try_ or not a.constant):
-        return _from_varchar(lf, a, t, try_)
+    from_string = a.type.is_string() and not t.is_string() and (try_ or not a.constant)
+    if from_string and (e := _from_varchar(lf, a, t, try_)) is not None:
+        return e
     if try_:
         raise Unsupported("TRY_CAST is only supported of strings yet")
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp() or t.is_time()):

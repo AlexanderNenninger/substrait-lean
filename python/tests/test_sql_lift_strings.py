@@ -5,6 +5,8 @@ import json
 
 import ibis
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from _sql_lift import SCHEMAS, TABLES
 from sverify.engine import run_checker
@@ -97,6 +99,13 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT customer || 1 FROM orders", "|| of a int32"),
         ("SELECT sha2(customer, 512) FROM orders", "length other than 256"),
         ("SELECT regexp_matches(customer, 'a', 'i') FROM orders", "with options"),
+        # DuckDB's `~` matches anywhere; SQLGlot reads it as a full match (SG-10).
+        ("SELECT customer ~ 'a' AS m FROM orders", "operator ~"),
+        ("SELECT customer !~ 'a' AS m FROM orders", "operator ~"),
+        # Outside `Text.simpleRegex`, and past DuckDB's nine groups.
+        ("SELECT regexp_matches(customer, '*') FROM orders", "outside the supported subset"),
+        ("SELECT regexp_matches(customer, '\\x{0020}') FROM orders", "outside the supported subset"),
+        ("SELECT regexp_extract(customer, '(a)', 10) FROM orders", "from 0 to 9"),
         ("SELECT regexp_matches(customer, customer) FROM orders", "constant pattern"),
         ("SELECT regexp_replace(customer, 'a', 'b', 'i') FROM orders", "only 'g'"),
         ("SELECT lpad(customer, qty, 'x') FROM orders", "lpad needs a constant int"),
@@ -172,3 +181,15 @@ def test_a_surrogate_key_is_never_null():
         counterexamples=0,
     )
     assert report.proved
+
+
+@settings(max_examples=60, deadline=None)
+@given(p=st.text(alphabet="ab.*+?()[]{}|^$\\-0129,:dxC", max_size=8))
+def test_simple_regex_is_leans(p):
+    """`_plan_read.simple_regex` mirrors `Text.simpleRegex`: Lean reads a
+    plan's `regexp_extract` of the pattern exactly when Python accepts it."""
+    from sverify._plan_read import simple_regex
+
+    plan = json.dumps(lift("SELECT regexp_extract(s, 'a') AS e FROM t", {"t": SCHEMA_T}).plan)
+    code, out, err = run_checker((), plan.replace('"a"', json.dumps(p)))
+    assert (code == 0) == simple_regex(p), (p, err or out)
