@@ -216,7 +216,7 @@ def StrEquiv (q : Obs) (ctx : ObsCtx) (col : Nat) (a b : String) : Prop :=
 theorem Obs.stringsAt_of_ne {q : Obs} {ctx : ObsCtx} {col : Nat}
     (h : q.stringsAt ctx col ≠ .exact) : q.stringsAt ctx col = q.strings := by
   unfold Obs.stringsAt at *; split at h
-  · next hk => rw [if_pos hk]
+  · next hk => simp only [hk, ite_true]
   · exact absurd rfl h
 
 theorem Obs.stringsAt_rank {q' q : Obs} {ctx : ObsCtx} {col : Nat}
