@@ -14,7 +14,7 @@ prints the share of `in` targets covered, which is the number to track.
 `tests/test_coverage_targets.py` pins each target's `covered`, so a pull
 request that covers a target flips it in its area's file.
 
-The areas are those of CLAUDE.md's "Adding functions and coverage cases", so
+The areas are those of the add-function skill (.claude/skills/add-function), so
 that a batch of work on one area edits one file here.
 """
 
