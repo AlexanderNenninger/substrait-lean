@@ -19,7 +19,7 @@ running the plan *without* them gives the same result.
   so is a division that does whatever it likes when dividing by zero. This
   is the trusted part, the same per-function semantics each dialect's hooks
   already implement, minus the checks.
-* `Rel.evalI` runs a plan with those functions. Integer `SUM` keeps its check
+* `Rel.eval cat I` runs a plan with those functions. Integer `SUM` keeps its check
   (`Issue.sumWraps` comes from a group's rows, so contracts on rows rarely
   rule it out).
 * `Rel.evalI_eq`: if every issue a plan can run into is assumed, a `SUM`
@@ -43,49 +43,36 @@ namespace Substrait
 
 /-! ## Expressions -/
 
-/-- An engine's functions, without run-time checks. -/
-structure Impl where
-  un : UnFn → Value → Value
-  bin : BinFn → Value → Value → Value
-
 /-- Agrees with Lean wherever Lean reports no issue. -/
 def Impl.Faithful (I : Impl) : Prop :=
   (∀ f v, f.issue v = none → I.un f v = f.apply v) ∧
     ∀ f v w, f.issue v w = none → I.bin f v w = f.apply v w
 
 /-- Lean's own functions are faithful. -/
-theorem Impl.lean_faithful : Impl.Faithful ⟨UnFn.apply, BinFn.apply⟩ :=
+theorem Impl.lean_faithful : Impl.Faithful Impl.lean :=
   ⟨fun _ _ _ => rfl, fun _ _ _ _ => rfl⟩
-
-def Expr.evalI (I : Impl) (row : Row) : Expr → Value
-  | .lit v => v
-  | .field i => row.getD i .null
-  | .un f a => I.un f (a.evalI I row)
-  | .bin f a b => I.bin f (a.evalI I row) (b.evalI I row)
-  | .ifThen c t e => if (c.evalI I row).isTrue then t.evalI I row else e.evalI I row
-  | .hof f l b => f.apply (l.evalI I row) fun x => b.evalI I [x]
 
 /-- **Unchecked evaluation is exact** where no issue happens. -/
 theorem Expr.evalI_eq {I : Impl} (hI : I.Faithful) {row : Row} :
-    ∀ {e : Expr}, e.issues row = [] → e.evalI I row = e.eval row
+    ∀ {e : Expr}, e.issues row = [] → e.eval row I = e.eval row
   | .lit _, _ | .field _, _ => rfl
   | .un f a, h => by
     simp only [issues, List.append_eq_nil_iff, Option.toList_eq_nil_iff, Option.map_eq_none_iff] at h
-    simp only [evalI, eval, evalI_eq hI h.1]
+    simp only [eval, evalI_eq hI h.1]
     exact hI.1 f _ (Option.or_eq_none_iff.mp h.2).1
   | .bin f a b, h => by
     simp only [issues, List.append_eq_nil_iff, Option.toList_eq_nil_iff, Option.map_eq_none_iff] at h
-    simp only [evalI, eval, evalI_eq hI h.1.1, evalI_eq hI h.1.2]
+    simp only [eval, evalI_eq hI h.1.1, evalI_eq hI h.1.2]
     exact hI.2 f _ _ (Option.or_eq_none_iff.mp h.2).1
   | .ifThen c t e, h => by
     simp only [issues, List.append_eq_nil_iff] at h
-    simp only [evalI, eval, evalI_eq hI h.1]
+    simp only [eval, evalI_eq hI h.1]
     split
     · rename_i hc; simp only [hc, ↓reduceIte] at h; exact evalI_eq hI h.2
     · rename_i hc; simp only [hc, Bool.false_eq_true, ↓reduceIte] at h; exact evalI_eq hI h.2
   | .hof f l b, h => by
     simp only [issues, List.append_eq_nil_iff, List.flatMap_eq_nil_iff] at h
-    simp only [evalI, eval, evalI_eq hI h.1]
+    simp only [eval, evalI_eq hI h.1]
     exact HoFn.apply_congr f _ fun x hx => evalI_eq hI (h.2 x hx)
 
 theorem UnFn.issue_ne_sumWraps (f : UnFn) (v : Value) : f.issue v ≠ some .sumWraps := by
@@ -161,11 +148,11 @@ theorem issue_none_of_assumed {o i : Option Issue} {k : Issue} (h : o.or i = som
 `SUM` (which keeps its check) or an overflow to `±∞` (#575), where Lean keeps
 the IEEE value an engine gives. -/
 theorem Expr.evalI_eq_assumed {I : Impl} (hI : I.Faithful) {row : Row} :
-    ∀ {e : Expr}, (∀ p ∈ e.issues row, p.1.assumed = true) → e.evalI I row = e.eval row
+    ∀ {e : Expr}, (∀ p ∈ e.issues row, p.1.assumed = true) → e.eval row I = e.eval row
   | .lit _, _ | .field _, _ => rfl
   | .un f a, h => by
     have ha : ∀ p ∈ a.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
-    simp only [evalI, eval, evalI_eq_assumed hI ha]
+    simp only [eval, evalI_eq_assumed hI ha]
     apply hI.1 f _
     cases hk : f.issueAll (a.eval row) with
     | none => exact (Option.or_eq_none_iff.mp hk).1
@@ -175,7 +162,7 @@ theorem Expr.evalI_eq_assumed {I : Impl} (hI : I.Faithful) {row : Row} :
   | .bin f a b, h => by
     have ha : ∀ p ∈ a.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
     have hb : ∀ p ∈ b.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
-    simp only [evalI, eval, evalI_eq_assumed hI ha, evalI_eq_assumed hI hb]
+    simp only [eval, evalI_eq_assumed hI ha, evalI_eq_assumed hI hb]
     apply hI.2 f _ _
     cases hk : f.issueAll (a.eval row) (b.eval row) with
     | none => exact (Option.or_eq_none_iff.mp hk).1
@@ -184,7 +171,7 @@ theorem Expr.evalI_eq_assumed {I : Impl} (hI : I.Faithful) {row : Row} :
       exact issue_none_of_assumed hk this (f.issue_ne_sumWraps _ _) (f.issue_ne_infinite _ _)
   | .ifThen c t e, h => by
     have hc : ∀ p ∈ c.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
-    simp only [evalI, eval, evalI_eq_assumed hI hc]
+    simp only [eval, evalI_eq_assumed hI hc]
     split
     · rename_i hct
       exact evalI_eq_assumed hI fun p hp => h p (by simp [issues, hct, hp])
@@ -192,135 +179,79 @@ theorem Expr.evalI_eq_assumed {I : Impl} (hI : I.Faithful) {row : Row} :
       exact evalI_eq_assumed hI fun p hp => h p (by simp [issues, hct, hp])
   | .hof f l b, h => by
     have hl : ∀ p ∈ l.issues row, p.1.assumed = true := fun p hp => h p (by simp [issues, hp])
-    simp only [evalI, eval, evalI_eq_assumed hI hl]
+    simp only [eval, evalI_eq_assumed hI hl]
     exact HoFn.apply_congr f _ fun x hx => evalI_eq_assumed hI fun p hp =>
       h p (by simp only [issues, List.mem_append, List.mem_flatMap]; exact .inr ⟨x, hx, hp⟩)
 
 theorem Expr.evalI_eq_of {I : Impl} (hI : I.Faithful) {row : Row} {e : Expr}
-    (h : ∀ p ∈ e.issues row, p.1.assumed = true) : e.evalI I row = e.eval row :=
+    (h : ∀ p ∈ e.issues row, p.1.assumed = true) : e.eval row I = e.eval row :=
   evalI_eq_assumed hI h
 
 /-! ## Relations -/
 
-def leftJoinRowI (I : Impl) (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row) : Relation :=
-  let ms := (ys.map (x ++ ·)).filter fun row => (on.evalI I row).isTrue
-  if ms.isEmpty then [x ++ List.replicate rightArity .null] else ms
-
-def hasMatchI (I : Impl) (on : Expr) (ys : Relation) (x : Row) : Bool :=
-  ys.any fun y => (on.evalI I (x ++ y)).isTrue
-
-def Measure.keptI (I : Impl) (m : Measure) (rows : Relation) : Relation :=
-  match m.filter with
-  | none => rows
-  | some c => rows.filter fun row => (c.evalI I row).isTrue
-
-def Measure.inputsI (I : Impl) (m : Measure) (rows : Relation) : List Value :=
-  let vs := ((m.keptI I rows).map (m.arg.evalI I)).filter (· != .null)
-  if m.distinct then dedup vs else vs
-
-def Measure.evalI (I : Impl) (rows : Relation) (m : Measure) : Value :=
-  match m.fn with
-  | .collect => AggFn.collect.apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
-  | .pick last => (AggFn.pick last).apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
-  | .concat sep => (AggFn.concat sep).apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
-  | .mode => AggFn.mode.apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
-  | f => f.apply (m.inputsI I rows)
-
-def groupKeyI (I : Impl) (gs : List Expr) (row : Row) : Row := gs.map (·.evalI I row)
-
-def aggregateEvalI (I : Impl) (gs : List Expr) (ms : List Measure) (rows : Relation) : Relation :=
-  if gs.isEmpty then [ms.map (·.evalI I rows)]
-  else (dedup (rows.map (groupKeyI I gs))).map fun k =>
-    k ++ ms.map (·.evalI I (rows.filter fun row => groupKeyI I gs row == k))
-
-/-- `Rel.eval` with the engine's functions. -/
-def Rel.evalI (I : Impl) (cat : Catalog) : Rel → Relation
-  | .read t => (cat t).rows
-  | .values _ rows => rows
-  | .filter r c => (r.evalI I cat).filter fun row => (c.evalI I row).isTrue
-  | .project r es => (r.evalI I cat).map fun row => row ++ es.map (·.evalI I row)
-  | .emit r m => (r.evalI I cat).map fun row => m.map (row.getD · .null)
-  | .cross a b => crossRows (a.evalI I cat) (b.evalI I cat)
-  | .join a b .inner on =>
-      (crossRows (a.evalI I cat) (b.evalI I cat)).filter fun row => (on.evalI I row).isTrue
-  | .join a b .left on =>
-      (a.evalI I cat).flatMap (leftJoinRowI I on (b.arity cat) (b.evalI I cat))
-  | .fetch r off cnt =>
-      let rest := (r.evalI I cat).drop off
-      match cnt with
-      | none => rest
-      | some n => rest.take n
-  | .unionAll a b => a.evalI I cat ++ b.evalI I cat
-  | .window r part sort fns => windowEval part sort fns (r.evalI I cat)
-  | .semi a b anti on => (a.evalI I cat).filter fun x => hasMatchI I on (b.evalI I cat) x != anti
-  | .orderBy r keys => (r.evalI I cat).mergeSort (sortLe keys)
-  | .distinct r => dedup (r.evalI I cat)
-  | .unnest r c => (r.evalI I cat).flatMap (unnestRow c)
-  | .aggregate r gs ms => aggregateEvalI I gs ms (r.evalI I cat)
-
 /-! ## Congruence -/
 
 theorem aggregateEvalI_eq {I : Impl} {gs : List Expr} {ms : List Measure} {rows : Relation}
-    (h : ∀ row ∈ rows, ∀ e ∈ gs ++ ms.flatMap Measure.exprs, e.evalI I row = e.eval row) :
-    aggregateEvalI I gs ms rows = aggregateEval gs ms rows := by
-  have hk : ∀ row ∈ rows, groupKeyI I gs row = groupKey gs row := fun row hr =>
+    (h : ∀ row ∈ rows, ∀ e ∈ gs ++ ms.flatMap Measure.exprs, e.eval row I = e.eval row) :
+    aggregateEval gs ms rows I = aggregateEval gs ms rows := by
+  have hk : ∀ row ∈ rows, groupKey gs row I = groupKey gs row := fun row hr =>
     List.map_congr_left fun g hg => h row hr g (List.mem_append_left _ hg)
   -- A measure on rows of `rows`.
   have hin : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) →
-      m.inputsI I sub = m.inputs sub := by
+      m.inputs sub I = m.inputs sub := by
     intro m hm sub hsub
-    have he : ∀ row ∈ sub, ∀ e ∈ m.exprs, e.evalI I row = e.eval row := fun row hr e he =>
+    have he : ∀ row ∈ sub, ∀ e ∈ m.exprs, e.eval row I = e.eval row := fun row hr e he =>
       h row (hsub row hr) e (List.mem_append_right _ (List.mem_flatMap.mpr ⟨m, hm, he⟩))
-    have hkept : m.keptI I sub = m.kept sub := by
+    have hkept : m.kept sub I = m.kept sub := by
       cases hc : m.filter with
-      | none => simp only [Measure.keptI, Measure.kept, hc]
+      | none => simp only [Measure.kept, hc]
       | some c =>
-        simp only [Measure.keptI, Measure.kept, hc]
+        simp only [Measure.kept, hc]
         exact List.filter_congr fun row hr => by
           rw [he row hr c (by simp [Measure.exprs, hc])]
     have hsub' : ∀ row ∈ m.kept sub, row ∈ sub := fun row hr => by
       unfold Measure.kept at hr; split at hr
       · exact hr
       · exact (List.mem_filter.mp hr).1
-    simp only [Measure.inputsI, Measure.inputs, hkept]
+    simp only [Measure.inputs, hkept]
     rw [List.map_congr_left fun row hr => he row (hsub' row hr) m.arg (by simp [Measure.exprs])]
-  have hm : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) → m.evalI I sub = m.eval sub := by
+  have hm : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) → m.eval sub I = m.eval sub := by
     intro m hm sub hsub
     cases hf : m.fn
-    all_goals simp only [Measure.evalI, Measure.eval, hf]
+    all_goals simp only [Measure.eval, hf]
     case collect => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case pick => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case concat => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case mode => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     all_goals rw [hin m hm sub hsub]
-  unfold aggregateEvalI aggregateEval
+  unfold aggregateEval
   split
   · exact congrArg (fun x => [x]) (List.map_congr_left fun m hmm => hm m hmm rows fun _ h => h)
   · rw [List.map_congr_left hk]
     refine List.map_congr_left fun k _ => ?_
-    have hf : (rows.filter fun row => groupKeyI I gs row == k) = groupRows gs rows k :=
+    have hf : groupRows gs rows k I = groupRows gs rows k :=
       List.filter_congr fun row hr => by rw [hk row hr]
     rw [hf]
     exact congrArg (k ++ ·) (List.map_congr_left fun m hmm =>
       hm m hmm _ fun _ hr => (List.mem_filter.mp hr).1)
 
 theorem leftJoinRowI_eq {I : Impl} {on : Expr} {n : Nat} {ys : Relation} {x : Row}
-    (h : ∀ y ∈ ys, on.evalI I (x ++ y) = on.eval (x ++ y)) :
-    leftJoinRowI I on n ys x = leftJoinRow on n ys x := by
-  have : ((ys.map (x ++ ·)).filter fun row => (on.evalI I row).isTrue) =
+    (h : ∀ y ∈ ys, on.eval (x ++ y) I = on.eval (x ++ y)) :
+    leftJoinRow on n ys x I = leftJoinRow on n ys x := by
+  have : ((ys.map (x ++ ·)).filter fun row => (on.eval row I).isTrue) =
       (ys.map (x ++ ·)).filter fun row => (on.eval row).isTrue :=
     List.filter_congr fun row hr => by
       obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hr
       rw [h y hy]
-  simp only [leftJoinRowI, leftJoinRow, this]
+  simp only [leftJoinRow, this]
 
 theorem hasMatchI_eq {I : Impl} {on : Expr} {x : Row} :
-    ∀ {ys : Relation}, (∀ y ∈ ys, on.evalI I (x ++ y) = on.eval (x ++ y)) →
-      hasMatchI I on ys x = hasMatch on ys x
+    ∀ {ys : Relation}, (∀ y ∈ ys, on.eval (x ++ y) I = on.eval (x ++ y)) →
+      hasMatch on ys x I = hasMatch on ys x
   | [], _ => rfl
   | y :: ys, h => by
     have ih := hasMatchI_eq (ys := ys) fun z hz => h z (by simp [hz])
-    simp only [hasMatchI, hasMatch, List.any_cons] at ih ⊢
+    simp only [hasMatch, List.any_cons] at ih ⊢
     rw [h y (by simp), ih]
 
 /-! ## The loose plan has all the rows -/
@@ -481,42 +412,42 @@ an overflow to `±∞` (whose check the written SQL keeps, #575), running it
 with unchecked functions gives `Rel.eval`. -/
 theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
     ∀ {u : Bool} {r : Rel}, r.looseSub = true → (∀ p, r.HasIssue cat u p → p.1.assumed = true) →
-      r.evalI I cat = r.eval cat
+      r.eval cat I = r.eval cat
   | _, .read _, _, _ | _, .values _ _, _, _ => rfl
   | _, .filter r c, hs, h => by
     have ih := evalI_eq hI (u := true) (r := r) hs fun p hp => h p (.inl hp)
-    simp only [evalI, eval, ih]
+    simp only [eval, ih]
     exact List.filter_congr fun row hr => by
       rw [Expr.evalI_eq_of hI fun p hp => h p (.inr ⟨row, mem_loose (r := r) hs row hr, hp⟩)]
   | u, .project r es, hs, h => by
     have ih := evalI_eq hI (u := u) (r := r) hs fun p hp => h p (.inl hp)
-    simp only [evalI, eval, ih]
+    simp only [eval, ih]
     exact List.map_congr_left fun row hr => congrArg (row ++ ·) (List.map_congr_left fun e he =>
       Expr.evalI_eq_of hI fun p hp => h p (.inr ⟨row, mem_loose_if (r := r) hs u hr, e, he, hp⟩))
   | u, .emit r _, hs, h => by
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs h]
+    simp only [eval, evalI_eq hI (u := u) (r := r) hs h]
   | u, .fetch r _ cnt, hs, h => by
     simp only [looseSub] at hs
     have ih := evalI_eq hI (u := u) (r := r) hs h
-    cases cnt <;> simp only [evalI, eval, ih]
+    cases cnt <;> simp only [eval, ih]
   | u, .window r _ _ _, hs, h => by
     simp only [looseSub] at hs
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs fun p hp => h p (.inl hp)]
+    simp only [eval, evalI_eq hI (u := u) (r := r) hs fun p hp => h p (.inl hp)]
   | u, .orderBy r _, hs, h => by
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs h]
+    simp only [eval, evalI_eq hI (u := u) (r := r) hs h]
   | u, .distinct r, hs, h => by
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs h]
+    simp only [eval, evalI_eq hI (u := u) (r := r) hs h]
   | u, .cross a b, hs, h => by
     simp only [looseSub, Bool.and_eq_true] at hs
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := a) hs.1 fun p hp => h p (.inl hp),
+    simp only [eval, evalI_eq hI (u := u) (r := a) hs.1 fun p hp => h p (.inl hp),
       evalI_eq hI (u := u) (r := b) hs.2 fun p hp => h p (.inr hp)]
   | u, .unionAll a b, hs, h => by
     simp only [looseSub, Bool.and_eq_true] at hs
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := a) hs.1 fun p hp => h p (.inl hp),
+    simp only [eval, evalI_eq hI (u := u) (r := a) hs.1 fun p hp => h p (.inl hp),
       evalI_eq hI (u := u) (r := b) hs.2 fun p hp => h p (.inr hp)]
   | _, .join a b .inner on, hs, h => by
     simp only [looseSub, Bool.and_eq_true] at hs
-    simp only [evalI, eval, evalI_eq hI (u := true) (r := a) hs.1 fun p hp => h p (.inl hp),
+    simp only [eval, evalI_eq hI (u := true) (r := a) hs.1 fun p hp => h p (.inl hp),
       evalI_eq hI (u := true) (r := b) hs.2 fun p hp => h p (.inr (.inl hp))]
     exact List.filter_congr fun row hr => by
       obtain ⟨x, hx, y, hy, rfl⟩ := mem_crossRows.mp hr
@@ -524,8 +455,8 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
         h p (.inr (.inr ⟨x, mem_loose hs.1 x hx, y, mem_loose hs.2 y hy, hp⟩))]
   | _, .join a b .left on, hs, h => by
     simp only [looseSub, Bool.and_eq_true] at hs
-    simp only [evalI, eval, evalI_eq hI (u := true) (r := a) hs.1 fun p hp => h p (.inl hp)]
-    have hbi : b.evalI I cat = b.eval cat := by
+    simp only [eval, evalI_eq hI (u := true) (r := a) hs.1 fun p hp => h p (.inl hp)]
+    have hbi : b.eval cat I = b.eval cat := by
       refine evalI_eq hI (u := true) (r := b) ?_ fun p hp => h p (.inr (.inl hp))
       exact looseExact_sub hs.2
     rw [hbi]
@@ -534,7 +465,7 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
         (looseExact_mem hs.2 y).mpr hy, hp⟩))
   | _, .semi a b _ on, hs, h => by
     simp only [looseSub, Bool.and_eq_true] at hs
-    simp only [evalI, eval, evalI_eq hI (u := true) (r := a) hs.1 fun p hp => h p (.inl hp),
+    simp only [eval, evalI_eq hI (u := true) (r := a) hs.1 fun p hp => h p (.inl hp),
       evalI_eq hI (u := true) (r := b) hs.2 fun p hp => h p (.inr (.inl hp))]
     exact List.filter_congr fun x hx => by
       rw [hasMatchI_eq fun y hy => Expr.evalI_eq_of hI fun p hp =>
@@ -542,7 +473,7 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
   | u, .aggregate r gs ms, hs, h => by
     simp only [looseSub] at hs
     have ih := evalI_eq hI (u := u) (r := r) hs fun p hp => h p (.inl hp)
-    simp only [evalI, eval, ih]
+    simp only [eval, ih]
     exact aggregateEvalI_eq fun row hr e he =>
       Expr.evalI_eq_of hI fun p hp => h p (.inr (.inl ⟨row, mem_loose_if (r := r) hs u hr, e, he, hp⟩))
 
@@ -556,7 +487,7 @@ theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
-    {I : Impl} (hI : I.Faithful) : r.evalI I cat = r.eval cat :=
+    {I : Impl} (hI : I.Faithful) : r.eval cat I = r.eval cat :=
   evalI_eq hI (u := false) hs fun p hp => by
     have := List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)
     simpa using this
@@ -572,7 +503,7 @@ unchecked functions and the rest with Lean's. `Rel.evalG_marks`: the result is
 
 /-- Evaluate `e` unchecked (`u`) or with Lean's functions. -/
 def Expr.evalIf (I : Impl) (u : Bool) (row : Row) (e : Expr) : Value :=
-  if u then e.evalI I row else e.eval row
+  if u then e.eval row I else e.eval row
 
 /-- Which expressions of a plan run unchecked, as a tree parallel to the plan:
 a node's slots, then the marks of its inputs, in order. The slots of a
@@ -609,7 +540,7 @@ def Rel.evalG (I : Impl) (cat : Catalog) : Marks → Rel → Relation
         (on.evalIf I (m.slots.contains 0) row).isTrue
   | m, .join a b .left on =>
       (a.evalG I cat (m.input 0)).flatMap fun x =>
-        if m.slots.contains 0 then leftJoinRowI I on (b.arity cat) (b.evalG I cat (m.input 1)) x
+        if m.slots.contains 0 then leftJoinRow on (b.arity cat) (b.evalG I cat (m.input 1)) x I
         else leftJoinRow on (b.arity cat) (b.evalG I cat (m.input 1)) x
   | m, .fetch r off cnt =>
       let rest := (r.evalG I cat (m.input 0)).drop off
@@ -620,13 +551,13 @@ def Rel.evalG (I : Impl) (cat : Catalog) : Marks → Rel → Relation
   | m, .window r part sort fns => windowEval part sort fns (r.evalG I cat (m.input 0))
   | m, .semi a b anti on =>
       (a.evalG I cat (m.input 0)).filter fun x =>
-        (if m.slots.contains 0 then hasMatchI I on (b.evalG I cat (m.input 1)) x
+        (if m.slots.contains 0 then hasMatch on (b.evalG I cat (m.input 1)) x I
          else hasMatch on (b.evalG I cat (m.input 1)) x) != anti
   | m, .orderBy r keys => (r.evalG I cat (m.input 0)).mergeSort (sortLe keys)
   | m, .distinct r => dedup (r.evalG I cat (m.input 0))
   | m, .unnest r c => (r.evalG I cat (m.input 0)).flatMap (unnestRow c)
   | m, .aggregate r gs ms =>
-      if m.slots.contains 0 then aggregateEvalI I gs ms (r.evalG I cat (m.input 0))
+      if m.slots.contains 0 then aggregateEval gs ms (r.evalG I cat (m.input 0)) I
       else aggregateEval gs ms (r.evalG I cat (m.input 0))
 
 /-- The indices of the expressions `ok` accepts. -/
@@ -671,7 +602,7 @@ theorem ite_eq_right_of {α : Type} {c : Prop} [Decidable c] {a b : α} (h : c �
   · rfl
 
 theorem Expr.evalIf_eq {I : Impl} {u : Bool} {row : Row} {e : Expr}
-    (h : u = true → e.evalI I row = e.eval row) : e.evalIf I u row = e.eval row := by
+    (h : u = true → e.eval row I = e.eval row) : e.evalIf I u row = e.eval row := by
   cases u with
   | false => rfl
   | true => exact h rfl
@@ -698,7 +629,7 @@ include hcat hA hF hT hI in
 /-- An expression without abstract issues on `s` runs unchecked on `s`'s rows. -/
 theorem Expr.evalI_of_safe {s : Rel} (hwf : s.WF cat) (hsm : s.Small cat) {e : Expr}
     (he : (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty = true) {row : Row}
-    (hrow : row ∈ s.eval cat) : e.evalI I row = e.eval row :=
+    (hrow : row ∈ s.eval cat) : e.eval row I = e.eval row :=
   Expr.evalI_eq hI (List.eq_nil_iff_forall_not_mem.mpr fun p hp => by
     have := Expr.mayIssues_sound (Rel.aeval_sound hcat hA hF hT (sz := true) hwf (fun _ => hsm) row hrow)
       (Rel.facts_sound hcat hF hT hwf row hrow) (KsHold.nil row) e p hp
@@ -712,7 +643,7 @@ theorem Expr.evalI_of_safe_cond {a b : Rel} (ha : a.WF cat) (hb : b.WF cat) (hsa
     (he : (on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T true)
       ((Rel.cross a.loose b.loose).facts cat F T)).isEmpty = true) {x y : Row}
     (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) :
-    on.evalI I (x ++ y) = on.eval (x ++ y) :=
+    on.eval (x ++ y) I = on.eval (x ++ y) :=
   Expr.evalI_eq hI (List.eq_nil_iff_forall_not_mem.mpr fun _ hp => by
     have := condIssue_sound hcat hA hF hT ha hb hsa hsb hx hy hp
     simp [List.isEmpty_iff.mp he] at this)
