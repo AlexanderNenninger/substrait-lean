@@ -179,11 +179,6 @@ def Rel.AllowedP (t : ProfileTable) (cat : Catalog) (r : Rel) (out : Relation) :
 
 /-! ## Monotonicity -/
 
-theorem Forall2.imp {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R a b → S a b) :
-    ∀ {l : List α} {l' : List β}, Forall2 R l l' → Forall2 S l l'
-  | _, _, .nil => .nil
-  | _, _, .cons hab t => .cons (h _ _ hab) (Forall2.imp h t)
-
 section Mono
 variable {t u : ProfileTable} (h : t.Le u)
 include h

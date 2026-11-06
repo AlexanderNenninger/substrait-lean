@@ -1475,7 +1475,10 @@ An observation `q'` refines `q` when `q'` observes everything `q` observes:
 `ker q' ⊆ ker q`. Equality up to `q'` then implies equality up to `q`, so
 the finer guarantee refines the coarser one, as `Allowed_P' ⊆ Allowed_P`
 does for profiles. The identity is the finest observation, a constant the
-coarsest. Five consequences:
+coarsest. In Lean, equality up to `q` is `Relation.Equiv q`
+(`SubstraitLean/ObsEquiv.lean`), and `Relation.Equiv_mono` proves that
+`Obs.le q' q` gives it: equality up to `q'` implies equality up to `q`. Five
+consequences:
 
 1. The check. An engine function equal to the reference's up to `q_E`
    meets a postcondition that asks for `q_post` ([D11](#d11-postconditions-name-the-equivalence))
