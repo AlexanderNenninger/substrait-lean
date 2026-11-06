@@ -181,7 +181,8 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
   | .dayPart _ => need (t.okI Kind.isDate) (.kind .int)
   | .dayTrunc _ | .addMonths _ false => need (t.okI Kind.isDate) (.kind .date)
   | .addMonths _ true | .bucket _ _ => need (t.okI Kind.isTime) (.kind .time)
-  | .timeOfDay => need (t.okI Kind.isTime) (.kind .tod)
+  -- A time of day plus an interval wraps around midnight through `timeOfDay`.
+  | .timeOfDay => need (t.okI Kind.isTimeOrTod) (.kind .tod)
   | .asTime => need (t.okI Kind.isInt) (.kind .time)
   | .dateTime => need (t.okI Kind.isDate) (.kind .time)
   | .epochUs => need (t.okI Kind.isTime) (.kind .int)
