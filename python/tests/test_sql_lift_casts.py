@@ -64,6 +64,8 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ('SELECT 42::TINYINT::"null"', "CAST to"),
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT CAST(customer AS DECIMAL(10, 2)) AS d FROM orders", "#27"),
+        # DuckDB casts an aggregate's argument before its FILTER.
+        ("SELECT count(customer::INTEGER) FILTER (WHERE id > 1) AS c FROM orders", "use TRY_CAST"),
         ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
         # Unsigned integers are outside the core (#618): a constant above the
         # signed range is refused, never read as a negative.

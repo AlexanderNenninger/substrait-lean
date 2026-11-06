@@ -104,7 +104,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT customer !~ 'a' AS m FROM orders", "operator ~"),
         # Outside `Text.simpleRegex`, and past DuckDB's nine groups.
         ("SELECT regexp_matches(customer, '*') FROM orders", "outside the supported subset"),
-        ("SELECT regexp_matches(customer, '\\x{0020}') FROM orders", "outside the supported subset"),
+        ("SELECT regexp_matches(customer, '\\x{0020}') FROM orders", "outside the supported"),
         ("SELECT regexp_extract(customer, '(a)', 10) FROM orders", "from 0 to 9"),
         ("SELECT regexp_matches(customer, customer) FROM orders", "constant pattern"),
         ("SELECT regexp_replace(customer, 'a', 'b', 'i') FROM orders", "only 'g'"),

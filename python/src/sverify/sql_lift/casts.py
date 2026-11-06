@@ -56,6 +56,16 @@ def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E | None:
     return None  # other targets: the casts the model had before
 
 
+def _in_filtered_aggregate(node: sge.Expression) -> bool:
+    """Is `node` in the argument of an aggregate with `FILTER (WHERE …)`?"""
+    child, parent = node, node.parent
+    while parent is not None:
+        if isinstance(parent, sge.Filter):
+            return child.arg_key == "this"
+        child, parent = parent, parent.parent
+    return False
+
+
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     try_ = isinstance(node, sge.TryCast) or bool(node.args.get("safe"))
     if node.args.get("format"):
@@ -80,6 +90,11 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
     from_string = a.type.is_string() and not t.is_string() and (try_ or not a.constant)
+    if from_string and not try_ and _in_filtered_aggregate(node):
+        raise Unsupported(
+            f"{node.sql(DIALECT)} in an aggregate with FILTER: DuckDB casts every row's "
+            "argument before the FILTER, and raises on a row it filters out; use TRY_CAST"
+        )
     if from_string and (e := _from_varchar(lf, a, t, try_)) is not None:
         return e
     if try_:
