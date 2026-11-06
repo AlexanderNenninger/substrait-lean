@@ -98,6 +98,8 @@ SQL string ─► SQLGlot lift ────────────────�
   citations, and related tools.
 * [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
   a running pipeline reads, the contracts proved, and the Python API.
+* [docs/layers.md](docs/layers.md): the order in which the Python modules
+  import each other, and the readings the frontends share.
 
 ## The Lean project
 

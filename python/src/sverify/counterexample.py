@@ -29,6 +29,8 @@ from typing import Any
 
 import ibis.expr.datatypes as dt_types
 
+from sverify._lean_eval import lean_values, with_tables
+
 EPOCH = dt.datetime(1970, 1, 1)
 
 
@@ -191,12 +193,7 @@ class _Search:
 
 def evaluate(plan: dict, tables: Mapping[str, list[tuple]]) -> list[tuple]:
     """`Rel.eval` of a plan over the given rows."""
-    # Imported here: `sverify.testing` imports `sverify.contracts`, which imports this.
-    from sverify.testing import inline_tables, lean_values
-
-    return lean_values(
-        json.dumps(inline_tables(json.loads(json.dumps(plan)), tables)), rows_only=True
-    )
+    return lean_values(json.dumps(with_tables(plan, tables)), rows_only=True)
 
 
 def search(
