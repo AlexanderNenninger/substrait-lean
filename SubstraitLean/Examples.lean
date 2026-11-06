@@ -300,3 +300,8 @@ end Substrait.Examples
 #print axioms Substrait.ExtremeAgg.finish_iavg
 #print axioms Substrait.SemiDelta.semi_maintained
 #print axioms Substrait.SemiDelta.matchCount_by_key
+#print axioms Substrait.Relation.Equiv_mono
+#print axioms Substrait.Relation.Equiv_exact
+#print axioms Substrait.Relation.Near_add
+#print axioms Substrait.Rel.refines_of_same
+#print axioms Substrait.Rel.unsorted_refinesBag_not_refines

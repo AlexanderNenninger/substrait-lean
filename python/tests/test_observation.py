@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import math
+import subprocess
 import sys
 from datetime import datetime
+from typing import Any
 
 import ibis
 import pyarrow as pa
@@ -14,7 +17,8 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.observation import EXACT, Observation, Within
+from sverify.engine import checker_path
+from sverify.observation import _COMPONENTS, EXACT, Observation, Within
 
 T = ibis.table({"k": "int64", "x": "float64", "s": "string", "ts": "timestamp"}, name="t")
 
@@ -72,6 +76,32 @@ def test_a_finite_value_is_never_close_to_an_infinity(big: float) -> None:
     for w in (sv.within(ulps=1), sv.within(rel=1.0), sv.within(abs=sys.float_info.max)):
         assert not w.close(big, inf)
         assert not w.close(inf, big)
+
+
+def test_the_order_agrees_with_lean() -> None:
+    """`Observation.refines` orders each component's levels as `Obs.le`
+    does (`--options`' `levels`), on every pair of levels both sides name."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    levels = json.loads(out.stdout)["levels"]
+    assert set(levels) == {name for name, _ in _COMPONENTS}
+    for component, table in levels.items():
+        le = {tuple(p) for p in table["le"]}
+        names = [n for n in table["levels"] if n in _python_levels(component)]
+        assert len(names) >= 2, component
+        for a in names:
+            for b in names:
+                fine: dict[str, Any] = {component: a}
+                coarse: dict[str, Any] = {component: b}
+                mine = Observation(**fine).refines(Observation(**coarse))
+                assert mine == ((a, b) in le), (component, a, b)
+
+
+def _python_levels(component: str) -> tuple[str, ...]:
+    if component == "floats":
+        return ("exact", "plan")
+    return dict(_COMPONENTS)[component]
 
 
 def test_equal_up_to_the_observation() -> None:

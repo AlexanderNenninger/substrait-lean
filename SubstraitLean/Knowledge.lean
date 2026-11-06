@@ -187,7 +187,7 @@ theorem allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK
 /-- `Rel.refines_of_perm` on one hypothesis. -/
 theorem refines_of_perm {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat)
     {q r : Rel} (hwf : q.WF cat) (hd : q.detPlan cat K.cols K.facts K.keys = true)
-    (h : (q.eval cat).Perm (r.eval cat)) : q.Refines cat r :=
+    (h : (q.eval cat).Perm (r.eval cat)) : q.RefinesBag cat r :=
   Rel.refines_of_perm hcat hK.cols hK.facts hK.keys hwf hd h
 
 /-- `Rel.eval_sharded` with the window keys the knowledge derives. -/

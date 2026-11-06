@@ -613,5 +613,6 @@ def tablesJson : Json :=
       engineTables.map fun (t, obs) => (t.name, obsTableJson obs)))
     |>.setObjVal! "versions" (Json.mkObj (engineTables.map fun (t, _) => (t.name, toJson t.version)))
     |>.setObjVal! "tools" toolsJson
+    |>.setObjVal! "levels" obsLevelsJson
 
 end Substrait
