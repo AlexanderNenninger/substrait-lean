@@ -165,8 +165,12 @@ class DuckDBDialect(Dialect):
         return f"{fn}({v}) {over}" if over else f"{fn}({v})"
 
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
-        values = f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
-        return f"({values})[{1 if fn == 'first' else -1}]"
+        # DuckDB's own `first`/`last` of the non-NULL values: the group's
+        # values are not gathered into a list (4x faster on 5M rows, #810).
+        return f"{fn}({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
+
+    def window_pick(self, fn: str, v: str, w: str) -> str:
+        return f"{'FIRST' if fn == 'first' else 'LAST'}_VALUE({v} IGNORE NULLS) {w}"
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         return f"string_agg({v}, {sep} ORDER BY {', '.join(order)})"
@@ -210,6 +214,10 @@ class DuckDBDialect(Dialect):
 
     def cardinality(self, x: str) -> str:
         return f"len({x})"
+
+    def list_fn(self, name: str, args: list[str]) -> str:
+        # DuckDB's own, as the model states them (#810, #812).
+        return f"{name}({', '.join(args)})"
 
     def pair(self, a: str, b: str) -> str:
         return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"

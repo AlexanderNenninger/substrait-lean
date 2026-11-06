@@ -77,7 +77,7 @@ TARGETS = [
         "RANGE frames with an INTERVAL offset",
         "in",
         "rolling 7 days (catalogue range_frame 1); Ibis rolling sum (interval) verifies",
-        False,
+        True,
         sql="SELECT sum(qty) OVER (PARTITION BY name ORDER BY ts "
         "RANGE BETWEEN INTERVAL 7 DAY PRECEDING AND CURRENT ROW) FROM t",
         issue=811,
@@ -87,7 +87,7 @@ TARGETS = [
         "IGNORE NULLS",
         "in",
         "gap filling, last observation carried forward (#749, #765)",
-        False,
+        True,
         sql="SELECT last_value(amount IGNORE NULLS) OVER (PARTITION BY name ORDER BY ts "
         "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM t",
         issue=811,

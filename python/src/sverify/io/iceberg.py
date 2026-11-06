@@ -86,6 +86,7 @@ except ImportError as e:
 from sverify import _deprecated, _quarantine
 from sverify._duration import Duration, duration
 from sverify._scan import Scan, ScanSnapshot, local_path
+from sverify._unsupported import SverifyWarning
 from sverify._weighted import split
 from sverify.contracts import Fact
 from sverify.incremental import (
@@ -1462,6 +1463,7 @@ class IcebergSink(_TableSink[Table]):
             warnings.warn(
                 f"{self.identifier}: {self._create_options_ignored}: the existing table has "
                 + "; ".join(differs),
+                SverifyWarning,
                 stacklevel=2,
             )
 

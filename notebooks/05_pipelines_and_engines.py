@@ -997,8 +997,8 @@ def _(mo):
     |:---|:---|:---|
     | `"duckdb"` (default) | the SQL generator (`sverify.engines.to_sql`) writes the plan as DuckDB SQL | Tier 1: characterized against the model, translation proved |
     | `"polars"` | a translator turns the plan into a Polars `LazyFrame`, run on Polars's streaming engine | Tier 2: characterized, shims proved |
-    | `"datafusion"` | DataFusion's Substrait consumer (the `sverify[datafusion]` extra) | Tier 2 |
     | `"spark"`, or a Spark session | the SQL generator writes Spark SQL (the `sverify[spark]` extra) | Tier 2 |
+    | `"datafusion"` | DataFusion's Substrait consumer (the `sverify[datafusion]` extra) | experimental, outside the 1.x promise |
     | Snowflake | SQL only, checked on the [fakesnow](https://github.com/tekumara/fakesnow) emulator | Tier 3 |
 
     The tiers are explained in the
@@ -1139,8 +1139,7 @@ def _(mo):
     ### Choosing the engine for a node
 
     A node doesn't fix its engine. The plan is the same everywhere, and
-    `node.refresh(engine="polars")` (or `"datafusion"`, `"spark"`, a Spark
-    session) picks where it runs; DuckDB in memory is the default. A node
+    `node.refresh(engine="polars")` (or `"spark"`, a Spark session) picks where it runs; DuckDB in memory is the default. A node
     keeps its state between refreshes, so the next refresh may use another
     engine. Contracts checked on data take `engine=` too:
     `@sv.transform(ensures=[...], on_unproved="check", check_engine="duckdb")`.
@@ -1251,7 +1250,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(con, dialect, json, mo, sql_query, substrait_json):
     import sqlglot
-    from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, Unsupported, to_sql
+    from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, UnsupportedError, to_sql
 
     try:
         _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))
@@ -1259,8 +1258,8 @@ def _(con, dialect, json, mo, sql_query, substrait_json):
         _sql = to_sql(_plan, _dialects[dialect.value])
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
         _out = mo.md(f"```sql\n{_pretty}\n```")
-    except Unsupported as _e:
-        _out = mo.callout(mo.md(f"`Unsupported` in {dialect.value}: {_e}"), kind="warn")
+    except UnsupportedError as _e:
+        _out = mo.callout(mo.md(f"`UnsupportedError` in {dialect.value}: {_e}"), kind="warn")
     except Exception as _e:
         _out = mo.callout(mo.md(f"`{_e}`"), kind="danger")
     _out
@@ -1586,7 +1585,7 @@ def _(mo):
     You can now keep a join up to date from its changes, stack contracted
     transforms into layers that pass only their changes along, and rely on
     their guarantees in every state while only each batch is checked. You
-    can refresh a node on DuckDB, Polars, DataFusion or Spark, hand a plan
+    can refresh a node on DuckDB, Polars or Spark, hand a plan
     to Snowflake as SQL, and tell where an engine could depart from the
     model. That is the end of the tour. The
     [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)

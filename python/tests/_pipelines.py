@@ -120,7 +120,9 @@ def recomputed(node, *sources) -> list[tuple]:
     con = sv.connect()
     for src in sources:
         con.put(src.name, src.snapshot().table)
-    return sorted((tuple(r.values()) for r in run(con, node.plan).to_pylist()), key=_nulls_last)
+    return sorted(
+        (tuple(r.values()) for r in run(con, node.internal_plan).to_pylist()), key=_nulls_last
+    )
 
 
 def discharged(found) -> dict[tuple[str, str], str]:

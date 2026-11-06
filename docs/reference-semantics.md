@@ -272,6 +272,10 @@ The values are right; the rendering is not.
 | Order of lists | Lexicographic, element by element; a proper prefix sorts first. `lt`, `gt`, `lte` and `gte` are three-valued: a NULL element that decides the result makes it NULL (`[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is NULL). In `ORDER BY` and `MIN`/`MAX`, NULL elements sort after every other value. | ✓ (#207) |
 | Lambdas | `any_match`, `all_match`, `transform` and `filter` take closed lambdas only. `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ (#94) |
 | `UNNEST` | One row per element, none for an empty list or NULL (sverify's own extension). | ✓ |
+| `list_prepend`, `[a, b]` | `list_prepend(x, l)` is `x` before `l`'s elements, NULL elements kept; a NULL `l` is empty (`BinFn.listPrepend`). A list of computed elements `[a, b]` is `list_prepend(a, list_prepend(b, []))` at the elements' common type. | ✓ on DuckDB; other engines refuse it until #271 (#812) |
+| `list_concat` | The elements of both lists; a NULL list is empty, so two NULLs give `[]` (DuckDB 2.0, `BinFn.listConcat`). | ✓ on DuckDB; other engines refuse it until #271 (#812) |
+| `list_contains`, `list_position` | `list_contains(l, x)`: TRUE if an element equals `x`, NULL elements equal to nothing; NULL for a NULL `l` or `x`. `list_position(l, x)`: the position from 1 of the first element equal to `x`, a NULL `x` finding the first NULL element; NULL when none is or `l` is NULL, an `INTEGER`. Lists of doubles, decimals and nested values are refused, which DuckDB compares otherwise (`-0.0 = 0.0`). | ✓ on DuckDB; other engines refuse it until #271 (#812) |
+| `flatten` | The elements of a list's lists in order, a NULL inner list adding none; NULL for a NULL list (`UnFn.flatten`). DuckDB's `list(x)`, which keeps NULLs, is `flatten(array_agg([x]))`. | ✓ on DuckDB; other engines refuse it until #271 (#810) |
 
 Design notes: [nested-values.md](nested-values.md).
 
@@ -388,6 +392,7 @@ The rules for decimals are in [Decimals](#decimals).
 |---|---|---|
 | Aggregates | NULLs are skipped. `COUNT` of no rows is 0, a [black box](#black-boxes) its row's `empty`; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
 | `FIRST` / `LAST` (#55) | The first or last non-NULL value in the aggregate's own `ORDER BY`, NULL without one. Rows tied in the order go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. Without an `ORDER BY` every row ties (any row's value, as in Ibis's `distinct(on=)`), and an engine may take each measure's value from a different row. | ✓ on DuckDB; other engines refuse it until #271 |
+| `FIRST` / `LAST` / `list` in SQL (#810) | DuckDB's `first(x ORDER BY …)`, `last(x …)` and `list(x …)` (`array_agg`) keep NULLs: the lift aggregates `[x]`, never NULL, and takes `first([x])[1]` or `flatten(array_agg([x]))`. `bool_and` and `bool_or` are `MIN` and `MAX` of booleans. | ✓ on DuckDB; other engines refuse it until #271 |
 | `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Without an `ORDER BY` every row ties, and the strings may come in any order. It is determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. A contract sees some string or NULL, and until conditions are proved over every order (D1 in [core-semantics.md](core-semantics.md)) a postcondition over a plan with ties stays unproved. | ✓ on DuckDB; other engines refuse it until #271 |
 
 ## Windows
@@ -395,6 +400,8 @@ The rules for decimals are in [Decimals](#decimals).
 | Topic | Reference | Status |
 |---|---|---|
 | `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out ([DF-11](../upstream/bugs/DF-11.json)) |
+| `FIRST_VALUE(x IGNORE NULLS)`, `LAST_VALUE(…)` | The frame's first (last) non-NULL `x` in the window's order, NULL without one: the measure `FIRST` (`LAST`) over the frame, whose rows come in that order (`Parse.parseWindow`). Last observation carried forward is `LAST_VALUE(x IGNORE NULLS)` over `ROWS UNBOUNDED PRECEDING`. | ✓ on DuckDB; other engines refuse it until #271 (#811) |
+| `RANGE` frames with an `INTERVAL` | A constant interval of days or less, over one timestamp (in microseconds) or date (whole days) sort key; months and years have no fixed length and are refused. | ✓ (#811) |
 | `VARIANCE` / `STDDEV` over a frame | The reference's own two passes over the frame's doubles (`varOf`): their mean as a sum from `0.0` in frame order over the count, then the squared deviations added in the same order, over `n - 1` or `n`, at least `0`, and the square root for `STDDEV`. NULL, NaN and an infinity as for the aggregate. | ✓ on DuckDB, which computes these passes over the frame's list ([`window_float_var`](../python/src/sverify/sql/duckdb.py)); other engines refuse it until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271); `COVAR_*` and `CORR` over a frame are refused |
 
 ## Relations

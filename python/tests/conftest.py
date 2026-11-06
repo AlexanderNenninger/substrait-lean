@@ -5,7 +5,8 @@ Every test runs under one backend, which is also a marker: `poe test-polars`
 A test's backend is its `engine` parameter (or `sv_engine`, from sverify's
 pytest plugin), else its `backend` mark (on the test or as the module's
 `pytestmark`), else `core`: Lean, the producers, and DuckDB as the oracle.
-Tests comparing two engines with each other stay in `core`. DataFusion is an
+Tests comparing two engines with each other stay in `core`. The engine
+tests run on every engine with a profile, Spark's too (`_engines.py`). DataFusion is an
 optional extra of `sverify`, but the tests need it (it is in the `dev`
 group); `test_without_datafusion.py` blocks it.
 
@@ -54,7 +55,7 @@ from hypothesis import settings
 from sverify.engines import ENGINES
 
 #: Keep in step with the `test-*` poe tasks and the CI matrix.
-BACKENDS = ("core", *ENGINES, "snowflake", "spark")
+BACKENDS = ("core", *ENGINES, "datafusion", "snowflake", "spark")
 
 PROFILE = os.environ.get("SVERIFY_PROFILE") or ("ci" if os.environ.get("CI") else "dev")
 if PROFILE not in ("dev", "ci"):

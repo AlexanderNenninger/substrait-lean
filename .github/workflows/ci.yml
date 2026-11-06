@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
   pull_request:
   merge_group:
   # `retarget.yml` starts a run when a pull request is retargeted to main.
@@ -60,7 +60,12 @@ permissions:
 # `lean` saves on main for the pull requests after it). The batch merger's
 # merges are such pushes; testing them twice held runner slots for nothing.
 #
-# A pull request into a branch other than main (a stacked one) runs `static`
+# A release branch (`release/<major>.<minor>`, cut from main for a release)
+# counts as main: pushes to it and pull requests into it run everything, so
+# a release is tested on its branch while main moves on.
+#
+# A pull request into another branch than main or a release branch (a
+# stacked one) runs `static`
 # only, and `qa` fails, saying so: a green `qa` would stay on the commit after
 # the retarget to main, while the full run that replaces it is still going.
 # When the pull request is retargeted to main, `retarget.yml` starts this
@@ -106,7 +111,7 @@ jobs:
           # and `test (duckdb)`, can read.
           src=python/src/sverify
           tests=python/tests
-          spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark)\.py$"
+          spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark|test_spark_[a-z0-9_]+)\.py$"
           snowflake="$src/sql/snowflake\.py$|$tests/test_sql_snowflake\.py$"
           polars="$src/(polars_engine|_polars_shims)\.py$|$tests/test_(polars|polars_shims|probe_polars)\.py$|python/tools/sverify_dev/probe_polars\.py$"
           datafusion="$tests/test_datafusion_quirks\.py$"
@@ -165,7 +170,7 @@ jobs:
             all
             exit 0
           fi
-          if [ "$BASE_REF" != main ]; then
+          if [ "$BASE_REF" != main ] && [[ "$BASE_REF" != release/* ]]; then
             echo "Base is $BASE_REF: static only until the pull request targets main."
             out code=false
             out floats=false

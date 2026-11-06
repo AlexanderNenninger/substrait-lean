@@ -56,7 +56,7 @@ class Unsupported(_Unsupported):
     DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
-    `ValueError`, and of `sverify.errors.Unsupported`, which every refusal
+    `ValueError`, and of `sverify.errors.UnsupportedError`, which every refusal
     raises.
     """
 
@@ -641,6 +641,13 @@ class Dialect:
         """`UnFn.cardinality`: the number of elements, NULL ones included."""
         raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
 
+    def list_fn(self, name: str, args: list[str]) -> str:
+        """DuckDB's list functions (#810, #812): `list_prepend`,
+        `list_concat`, `list_contains`, `list_position` (`BinFn` of the same
+        names) and `flatten` (`UnFn.flatten`). New functions run on DuckDB
+        only (#271)."""
+        raise Unsupported(f"{name} is not supported on {self.name}; " + DUCKDB_ONLY)
+
     def list_lt(self, a: str, b: str) -> str:
         """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
         prefix is smaller, two NULL elements are equal, and a NULL element
@@ -667,23 +674,29 @@ class Dialect:
         text = f"{sign}{digits[: len(digits) - k.s]}" + (f".{digits[-k.s :]}" if k.s else "")
         return self.cast(f"'{text}'", k)
 
-    def decimal_arith(self, op: str, a: str, b: str, sa: int, k: Dec) -> str:
-        """`a op b` of decimals or integers, exactly, as a `DECIMAL(p, s)`. A
-        product widens `a` (of scale `sa`) to 38 digits first, so that the
-        engine's own result type cannot overflow before the reference's."""
+    def decimal_arith(
+        self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
+    ) -> str:
+        """`a op b` of decimals or integers (of kinds `kinds`), exactly, as a
+        `DECIMAL(p, s)`. A product widens `a` (of scale `sa`) to 38 digits
+        first, so that the engine's own result type cannot overflow before the
+        reference's."""
         if op == "*":
             a = self.cast(a, Dec(38, sa))
         return self.cast(f"({a} {op} {b})", k)
 
-    def decimal_neg(self, a: str) -> str:
+    def decimal_neg(self, a: str, k: Dec | None = None) -> str:
+        """`-a` of a `DECIMAL` of type `k`, exactly."""
         return f"(-{a})"
 
-    def decimal_abs(self, a: str) -> str:
+    def decimal_abs(self, a: str, k: Dec | None = None) -> str:
+        """`|a|` of a `DECIMAL` of type `k`, exactly."""
         return f"ABS({a})"
 
-    def decimal_cast(self, a: str, k: Dec) -> str:
-        """A decimal, integer or double as a `DECIMAL(p, s)`, rounding half away
-        from zero to a smaller scale."""
+    def decimal_cast(self, a: str, k: Dec, src: Kind | None = None) -> str:
+        """A decimal, integer or double (`src`) as a `DECIMAL(p, s)`, rounding
+        half away from zero to a smaller scale; a double as `round(x · 10ˢ)`
+        in doubles (`FloatCode.toDecimal?`)."""
         return self.cast(a, k)
 
     def decimal_to_int(self, a: str) -> str:
@@ -747,6 +760,12 @@ class Dialect:
         """`AggFn.pick` (#55): the first or last value of the column `v`, NULLs
         skipped, in the order `order`; NULL without values."""
         raise self.refused(fn)
+
+    def window_pick(self, fn: str, v: str, w: str) -> str:
+        """`AggFn.pick` over the frame `w` (#811): the frame's first or last
+        non-NULL value of `v` in the window's order, NULL without one
+        (`FIRST_VALUE(v IGNORE NULLS)`). New on DuckDB only (#271)."""
+        raise Unsupported(f"{fn} over a window is not supported on {self.name}; " + DUCKDB_ONLY)
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
@@ -968,8 +987,8 @@ TemporalUnOp = Literal[
 TemporalBinOp = Literal["date_add", "date_diff"]
 
 #: Lists (`nested.py`).
-NestedUnOp = Literal["list_elem", "cardinality"]
-NestedBinOp = Literal["list_lt"]
+NestedUnOp = Literal["list_elem", "cardinality", "flatten"]
+NestedBinOp = Literal["list_lt", "list_prepend", "list_concat", "list_contains", "list_position"]
 
 
 @dataclass(frozen=True)
@@ -1444,6 +1463,19 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
         case Un(op="list_elem", arg=a):
             k = lean_expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else "other"
+        # DuckDB's list functions (#810, #812), as `Expr.kind` has them: an
+        # empty or NULL list says nothing of its elements.
+        case Un(op="flatten", arg=a):
+            k = lean_expr_kind(a, cols)
+            return k.elem if isinstance(k, Lst) else "other"
+        case Bin(op="list_prepend", left=x, right=lst):
+            k = lean_expr_kind(lst, cols)
+            known = isinstance(k, Lst) and k.elem != "other"
+            return k if known else Lst(lean_expr_kind(x, cols))
+        case Bin(op="list_concat", left=a, right=b):
+            k = lean_expr_kind(a, cols)
+            known = isinstance(k, Lst) and k.elem != "other"
+            return k if known else lean_expr_kind(b, cols)
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
@@ -1483,8 +1515,15 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="list_elem", arg=a):
             k = expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else None
-        case Un(op="raise"):
-            return None
+        case Un(op="flatten", arg=a):
+            k = expr_kind(a, cols)
+            return k.elem if isinstance(k, Lst) else None
+        case Bin(op="list_prepend", left=x, right=lst):
+            k = expr_kind(lst, cols)
+            return k if isinstance(k, Lst) and k.elem is not None else Lst(expr_kind(x, cols))
+        case Bin(op="list_concat", left=a, right=b):
+            k = expr_kind(a, cols)
+            return k if isinstance(k, Lst) and k.elem is not None else expr_kind(b, cols)
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
         case Un(op="black_box", param=n) | Bin(op="black_box", param=n):
@@ -2505,8 +2544,12 @@ class _Parser:
                 c = self.column(args[0], cols, "function arguments")
                 n = self.positive(args, 1, name) if name == "nth_value" else 0
                 return part, sort, WinFn(name, c, n, frame=self.frame(w, cols, sort))
-            case "count" | "sum" | "avg" | "min" | "max" | "variance" | "std_dev":
-                # The window's sort keys order the frame, not the aggregate.
+            case (
+                "count" | "sum" | "avg" | "min" | "max" | "variance" | "std_dev" | "first" | "last"
+            ):
+                # The window's sort keys order the frame, not the aggregate;
+                # `first`/`last` take the frame's first (last) non-NULL value
+                # in that order (#811).
                 keys = ("functionReference", "arguments", "outputType", "options")
                 m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
                 if m.distinct:
@@ -3230,9 +3273,6 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", a)
         case "is_null", [a]:
             return Un("is_null", a)
-        case "sverify_raise", [a, Lit(value=str() as message)]:
-            # A guard's failure (`UnFn.raise`): the lift's RANGE frame bounds.
-            return Un("raise", a, param=message)
         case "is_not_null", [a]:
             return Un("not", Un("is_null", a))
         case (("negate" | "subtract"), [a]):
@@ -4155,6 +4195,8 @@ class _Writer:
                 return d.decimal_window_sum(v, w, dsum_kind(a))
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 return self.window_var(m.fn, v, w)
+            case "first" | "last":
+                return d.window_pick(m.fn, v, w)
             case "fsum" | "avg":
                 total = d.window_float_sum(v, w)
                 if m.fn == "avg":
@@ -4274,10 +4316,6 @@ class _Writer:
                 return d.raise_(msg, go(a, kind(a)), ctx or "int")
             case Un(op="is_null", arg=a):
                 return d.is_null(go(a))
-            case Un(op="raise", arg=a, param=message):
-                if ctx is None:
-                    raise Unsupported("a guard's failure of an unknown type")
-                return d.raise_(message, go(a), ctx)
             case Un(op="neg", arg=a):
                 if kind(a) == "interval":
                     return d.interval_sub(d.interval_lit(0), go(a))
@@ -4457,13 +4495,18 @@ class _Writer:
             case ("add" | "sub" | "mul") as op, [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 sa = ka.s if isinstance(ka, Dec) else 0
-                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k)
+                kb = expr_kind(e.args[1], cols)
+                if ka is None or kb is None:
+                    raise Unsupported(f"decimal {op} of an operand of unknown type")
+                return d.decimal_arith(
+                    {"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, (ka, kb)
+                )
             case "neg", [a]:
-                return d.decimal_neg(a)
+                return d.decimal_neg(a, k)
             case "abs", [a]:
-                return d.decimal_abs(a)
+                return d.decimal_abs(a, k)
             case "cast", [a]:
-                return d.decimal_cast(a, k)
+                return d.decimal_cast(a, k, expr_kind(e.args[0], cols))
             case "div", [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)
@@ -4759,7 +4802,6 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    tie_free: bool | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -4799,7 +4841,6 @@ def to_sql(
             `±∞` (`Dialect.finite`), the reference's precondition (#575).
             Default: True; False for a plan verified with
             `semantics="duckdb"`.
-        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4833,15 +4874,6 @@ def to_sql(
         # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
-    if tie_free is not None:
-        import warnings
-
-        warnings.warn(
-            "to_sql(tie_free=...) is deprecated; write deterministic=... (as Report.run takes it)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        deterministic = tie_free
     if isinstance(plan, str):
         plan = json.loads(plan)
     if not guards:

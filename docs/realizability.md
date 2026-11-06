@@ -41,7 +41,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 24 | 1 | 1 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 14 | 14 | 1 | 2 | 8 | 0 | 15 | 7 |
-| spark | 4.3.0 | `Rel.spark_sound` | 5 | 25 | 1 | 1 | 3 | 0 | 14 | 0 |
+| spark | 4.3.0 | `Rel.spark_sound` | 6 | 25 | 1 | 1 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
@@ -49,7 +49,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | DuckDB | 3 | 12 | 10 | 2 | 0 | 0 | 21 |
 | Polars | 28 | 0 | 13 | 0 | 0 | 0 | 16 |
-| spark | 15 | 9 | 11 | 0 | 0 | 0 | 14 |
+| spark | 16 | 9 | 11 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -72,6 +72,7 @@ Rows per evidence level:
 | Polars | `sum_empty_null` | expression | `empty_group_aggregates` |
 | Polars | `substring_wrap` | expression | str.sub: `string_positions` |
 | Polars | `strpos_chars` | expression | str.match: `string_positions` |
+| spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
 | spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
 | spark | `Dialect.canon` | expression | `zero_sign` |
 | spark | `int_avg_decimal` | expression | `avg_int_result` |
@@ -209,12 +210,13 @@ Refused on Polars, with no expression there:
 
 ## spark 4.3.0
 
-5 shims (1 argument, 3 expression, 1 sort). The translation as a whole rests on `Rel.spark_sound`.
+6 shims (1 argument, 4 expression, 1 sort). The translation as a whole rests on `Rel.spark_sound`.
 
 | Group | Option | Reference's tool | Reference | spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
 | every | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-arith](../characterization/spark/facts/spark-int-arith.json), [spark-int-abs](../characterization/spark/facts/spark-int-abs.json) |
 | int.arith | `overflow` | raise | `ERROR` | `ERROR` | native; stated `SILENT`, `SATURATE`: not native | proof | proved `Rel.spark_sound`; [spark-int-arith](../characterization/spark/facts/spark-int-arith.json), [spark-int-abs](../characterization/spark/facts/spark-int-abs.json) |
+| dec.arith | `overflow` | raise | `ERROR` | `ERROR` | shim `decimal_negate_sub` (expression) | proof | proved `Spark.decimal_negate_sub`; [spark-decimal-negate](../characterization/spark/facts/spark-decimal-negate.json), [spark-decimal-arith](../characterization/spark/facts/spark-decimal-arith.json) |
 | agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Spark.int_sum_decimal`; [spark-sum-int](../characterization/spark/facts/spark-sum-int.json), [spark-exec-parallel](../characterization/spark/facts/spark-exec-parallel.json) |
 | int.div | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-divide](../characterization/spark/facts/spark-int-divide.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../characterization/spark/facts/spark-int-divide.json), [spark-int-modulus](../characterization/spark/facts/spark-int-modulus.json) |

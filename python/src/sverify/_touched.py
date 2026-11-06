@@ -113,7 +113,7 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
     """How to maintain the view `name` of `query` by touched groups, or why
     it cannot be."""
     from sverify.engine import plan_json, written_plan
-    from sverify.incremental import NotIncremental, delta_plans
+    from sverify.incremental import NotIncrementalError, delta_plans
 
     if isinstance(query, str):
         return SQL
@@ -127,7 +127,7 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
     parent = node.parent.to_expr()  # type: ignore[attr-defined]
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
-    except NotIncremental as e:
+    except NotIncrementalError as e:
         return f"the {what}'s input has no delta rules ({e})"
     groups = list(by.values())
     agg: Any = node

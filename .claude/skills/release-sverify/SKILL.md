@@ -6,7 +6,7 @@ argument-hint: "Optional: the version to release (e.g. 0.3.0)"
 
 # Release sverify
 
-A release is a `v<version>` tag on `main`. It releases two packages at that one version: `sverify` (`python/`) and `sverify-dbt` (`dbt/`, #732), which pins `sverify==<version>`. The tag triggers two workflows:
+A release is a `v<version>` tag on a release branch, `release/<major>.<minor>`, cut from `main`. It releases two packages at that one version: `sverify` (`python/`) and `sverify-dbt` (`dbt/`, #732), which pins `sverify==<version>`. The tag triggers two workflows:
 
 - **Wheels** (`.github/workflows/wheels.yml`):
   1. `build` builds sverify's wheels for Linux and macOS and an sdist; `build-dbt` builds sverify-dbt's sdist and wheel (pure Python) and runs its CLI against the Linux sverify wheel.
@@ -40,12 +40,21 @@ gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deploym
 - **Stability** ([docs/stability.md](../../../docs/stability.md)): every entry under "Breaking changes" has a migration note, what to write instead with an example, and a unit test of the old form; every soundness fix that refuses a proof names an engine fact or an upstream record. Within 1.x a break of the formats or a tightening of the reference semantics waits for 2.0, so hold back a PR that does either and tell the user.
 - **Version:** if the user gave none, propose one by [semver](https://semver.org) for 0.x: minor for new features or breaking changes, patch for fixes only.
 
-## 2. Version-bump PR
+## 2. Release branch and version bump
 
-`main` only accepts changes through PRs with a passing `qa` check, so the bump is a PR:
+Main never freezes for a release. Cut a release branch from main, and do all the release work there:
 
 ```bash
-git switch -c release-<version> origin/main
+git fetch origin
+git push origin origin/main:refs/heads/release/<major>.<minor>   # e.g. release/0.8
+```
+
+CI treats `release/*` as main: pushes to it and pull requests into it run everything. The batch merger keeps merging into main meanwhile; nothing reaches the release branch unless a PR targets it.
+
+The version bump is a PR into the release branch:
+
+```bash
+git switch -c release-<version> origin/release/<major>.<minor>
 # python/pyproject.toml: version = "<version>"
 # dbt/pyproject.toml: version = "<version>", and the dependency "sverify==<version>"
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
@@ -59,27 +68,36 @@ cd dbt && uv lock && cd ..           # sverify-dbt's and the sverify it pins
 git diff --stat                      # these five files, the removed fragments and the fixtures
 git commit -am "Release <version>"
 git push -u origin release-<version>
-gh pr create --base main --title "Release <version>" --body "…"
+gh pr create --base release/<major>.<minor> --title "Release <version>" --body "…"
 ```
 
-In the PR body, say what the tag will trigger. Once `qa` is green, merge it (`gh pr merge <n> --merge`), or ask the user to.
+A pull request into `release/*`, or from a `release-*` branch, runs the Wheels workflow's whole installed-wheel test, so a test the wheel fails shows up here. Merge the PR once it's green. Fixes the release needs go to the release branch the same way, as PRs into it.
 
-## 3. Tag
+## 3. Dry run, then tag
 
-Only after the user says to release:
+Before tagging, run the Wheels workflow by hand on the release branch. A manual run builds and tests every platform and Python version as a tag does, but never publishes, because only `v*` tags publish:
+
+```bash
+gh workflow run wheels.yml --ref release/<major>.<minor>
+gh run list --workflow wheels.yml --branch release/<major>.<minor> --limit 1   # wait until green
+```
+
+Only after the user says to release, and with the dry run green:
 
 ```bash
 git fetch origin
-git show origin/main:python/pyproject.toml | grep '^version'   # must be <version>
-gh run list --workflow ci.yml --commit "$(git rev-parse origin/main)"
-git tag -a v<version> <merge-commit-sha> -m "sverify <version>
+git show origin/release/<major>.<minor>:python/pyproject.toml | grep '^version'   # must be <version>
+sha=$(git rev-parse origin/release/<major>.<minor>)
+git tag -a v<version> "$sha" -m "sverify <version>
 
 See CHANGELOG.md."
 git push origin v<version>
 gh run list --branch v<version>                                # Wheels and Docs started
 ```
 
-Tag the release PR's merge commit by its SHA, not whatever `main` is by then. If CI on the merge commit is still running, it's acceptable to tag when the commit before it passed and the merge only changes the five version files. Say so to the user.
+Tag the commit the dry run tested.
+
+Then merge the release branch back into main, so main gets the version, the folded changelog and any release fixes: open a PR from `release/<major>.<minor>` into `main` and merge it with a merge commit (it goes through a batch like any other). Keep the branch for patch releases (`<major>.<minor>.<patch+1>`): their fixes go into it by PR, and the same steps follow.
 
 ## 4. Afterwards
 
@@ -94,7 +112,7 @@ The macOS wheel jobs can wait a long time for runners, so the publish may take a
 
 - **`publish` says `dbt/` is at another version, or doesn't pin this sverify:** the bump missed `dbt/pyproject.toml`. Nothing was uploaded; handle it as a tag that doesn't match.
 - **`publish` says the tag doesn't match the version:** the bump didn't land in the tagged commit. Nothing was uploaded. Delete the tag (`git push origin :refs/tags/v<version>` and `git tag -d v<version>`), fix it, and tag again. Ask the user first, since deleting a pushed tag is visible.
-- **`build` or `test-pythons` fails:** nothing was uploaded. Fix it on `main` through a PR, then either re-run the workflow, if the fix doesn't change the tagged code, or release the next patch version. Don't move a tag that others may have fetched without asking.
+- **`build` or `test-pythons` fails:** nothing was uploaded. If the failure is a flaky test and the tagged code needs no change, re-run the failed jobs (`gh run rerun <run> --failed`); a passing re-run publishes. Otherwise fix it on the release branch through a PR, run the dry run again, and tag the next patch version there. Don't move a tag that others may have fetched without asking.
 - **`publish` succeeded but `publish-notebooks` failed:** PyPI already has the version, so don't re-tag. Re-run only the notebook publish with **Actions → Wheels → Run workflow** and `notebooks: <version>` (`dry_run: true` first, to check without pushing).
 - **Docs failed:** re-run the Docs workflow on the tag (`workflow_dispatch`). The package itself is unaffected.
 - **A broken release is already on PyPI:** release a fixed patch version. Yanking (`pip`'s yank on PyPI) is for the user to decide.
