@@ -17,6 +17,7 @@ from sverify.sql.core._base import Bin, Expr, Kind, Lit, Un, _Writer, register
 #: The kind of each `black_box.Ty`; `any` takes the argument's own.
 KINDS: dict[str, Kind] = {
     "int": "int", "double": "float", "str": "str", "bool": "bool", "date": "date",
+    "timestamp": "time",
 }  # fmt: skip
 
 

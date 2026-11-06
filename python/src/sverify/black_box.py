@@ -23,7 +23,9 @@ from typing import Literal
 #: The URN of sverify's black-box functions (`BlackBox.blackBoxUrn`).
 URN = "extension:io.sverify:black_box"
 
-Ty = Literal["int", "double", "str", "bool", "date", "atom", "doubles", "ints", "strs", "any"]
+Ty = Literal[
+    "int", "double", "str", "bool", "date", "timestamp", "atom", "doubles", "ints", "strs", "any"
+]
 """`atom` is an integer, string or boolean (`BlackBox.Ty.atom`); `doubles`,
 `ints` and `strs` are lists of doubles, integers and strings."""
 
@@ -178,6 +180,60 @@ TABLE: tuple[BlackBox, ...] = (
         "string_split({0}, {1})",
         strict=False,
         laws=(("non_null",),),
+    ),
+    # `CAST` and `TRY_CAST` of a string (#806): DuckDB's rules
+    # (`duckdb-cast-varchar`); `CAST` raises where `TRY_CAST` is NULL.
+    BlackBox(
+        "varchar_bigint",
+        "scalar",
+        ("str",),
+        "int",
+        "CAST({0} AS BIGINT)",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox("try_varchar_bigint", "scalar", ("str",), "int", "TRY_CAST({0} AS BIGINT)"),
+    BlackBox(
+        "varchar_double",
+        "scalar",
+        ("str",),
+        "double",
+        "CAST({0} AS DOUBLE)",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox("try_varchar_double", "scalar", ("str",), "double", "TRY_CAST({0} AS DOUBLE)"),
+    BlackBox(
+        "varchar_boolean",
+        "scalar",
+        ("str",),
+        "bool",
+        "CAST({0} AS BOOLEAN)",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox("try_varchar_boolean", "scalar", ("str",), "bool", "TRY_CAST({0} AS BOOLEAN)"),
+    BlackBox(
+        "varchar_date",
+        "scalar",
+        ("str",),
+        "date",
+        "CAST({0} AS DATE)",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox("try_varchar_date", "scalar", ("str",), "date", "TRY_CAST({0} AS DATE)"),
+    BlackBox(
+        "varchar_timestamp",
+        "scalar",
+        ("str",),
+        "timestamp",
+        "CAST({0} AS TIMESTAMP)",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox(
+        "try_varchar_timestamp", "scalar", ("str",), "timestamp", "TRY_CAST({0} AS TIMESTAMP)"
     ),
     BlackBox(
         "entropy",

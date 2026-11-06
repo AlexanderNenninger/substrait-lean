@@ -784,8 +784,8 @@ def BlackBox.Law.bound : BlackBox.Law → Bound
 (`set`) or some may be. -/
 def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bool) : AVal :=
   ⟨!(set && laws.contains .nonNull),
-   if result == .int || result == .double || result == .date || result == .atom ||
-       result == .any then
+   if result == .int || result == .double || result == .date || result == .timestamp ||
+       result == .atom || result == .any then
      some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
    else none,
    -- A list is a member where booleans and strings are (`AVal.Mem`).
