@@ -2224,7 +2224,9 @@ SCHEMA = "schema"
 # Metadata facts of tables read from a table format (`sverify.io`), keyed
 # by backend identity and table name. Tables without an entry only have
 # their preconditions checked on the data: an in-memory schema is not enforced.
-_facts: dict[tuple[int, str], list[Fact]] = {}
+# Each entry keeps a weak reference to its backend: a backend that is gone
+# may leave its `id` to a new one, which must not inherit its facts.
+_facts: dict[tuple[int, str], tuple[weakref.ref[Any], list[Fact]]] = {}
 
 
 def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> None:
@@ -2233,7 +2235,9 @@ def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> 
     if facts is None:
         _facts.pop(key, None)
     else:
-        _facts[key] = list(facts)
+        for k in [k for k, (ref, _) in _facts.items() if ref() is None]:
+            del _facts[k]
+        _facts[key] = (weakref.ref(con._ibis), list(facts))
 
 
 def table_facts(table: ir.Table) -> list[Fact] | None:
@@ -2241,7 +2245,10 @@ def table_facts(table: ir.Table) -> list[Fact] | None:
     op = table.op()
     if not isinstance(op, ops.DatabaseTable):
         return None
-    return _facts.get((id(op.source), op.name))
+    entry = _facts.get((id(op.source), op.name))
+    if entry is None or entry[0]() is not op.source:
+        return None
+    return entry[1]
 
 
 _proved_from: dict[tuple, frozenset[str]] = {}
