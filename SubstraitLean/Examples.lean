@@ -294,3 +294,5 @@ end Substrait.Examples
 #print axioms Substrait.Relation.Equiv_mono
 #print axioms Substrait.Relation.Equiv_exact
 #print axioms Substrait.Relation.Near_add
+#print axioms Substrait.Rel.refines_of_same
+#print axioms Substrait.Rel.unsorted_refinesBag_not_refines

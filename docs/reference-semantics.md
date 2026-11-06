@@ -118,10 +118,15 @@ fires, `Rel.eval`'s value is not the answer.
 * **An error means "may raise".** The reference may raise wherever the plan
   hits an error issue. ✓
 * **Rewrites are refinements.** An optimized plan may raise in fewer cases
-  than the original, and allow fewer results (`Rel.Refines`). It never gives a
-  result the original doesn't allow and never raises where the original
-  didn't. A rewrite to a plan without choices whose rows are the original's
-  refines it (`Rel.refines_of_perm`). ✓ (#185)
+  than the original, and allow fewer results. It never gives a result the
+  original doesn't allow, up to an observation, and never raises where the
+  original didn't (`Rel.RefinesUpTo`, #897). `Rel.Refines` is the exact case,
+  which keeps the order an `ORDER BY` fixes, and `Rel.RefinesBag` the case up
+  to the order of rows. A rewrite to a plan without choices whose rows are
+  the original's refines it up to the order of rows (`Rel.refines_of_perm`,
+  `Rel.refines_of_same`); `optimize`'s rewrites do (`Rel.optimize_refines`).
+  An unsorted plan refines its `ORDER BY` twin up to the order of rows and
+  not exactly (`Rel.unsorted_refinesBag_not_refines`). ✓ (#185)
 * **An error that can't be ruled out makes the report unproved.**
   `Report.proved` is false until a precondition excludes it. ✓ for division
   by zero, casts out of range, domain errors, decimal precision and the
