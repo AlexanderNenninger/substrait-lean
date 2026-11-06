@@ -185,6 +185,9 @@ end Substrait.Examples
 #print axioms Substrait.Rel.keyedWindows_soundAll
 #print axioms Substrait.Rel.analyse_sound_all
 #print axioms Substrait.Rel.analyse_sound
+#print axioms Substrait.Rel.lane_eq
+#print axioms Substrait.Rel.aeval_csimp
+#print axioms Substrait.Rel.ratioPart_csimp
 #print axioms Substrait.Knowledge.contract_sound
 #print axioms Substrait.Knowledge.contract_sound_all
 #print axioms Substrait.Knowledge.mayIssues_sound
