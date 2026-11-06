@@ -43,19 +43,19 @@ Engines, SQL dialects and plans are in `sverify.engines`, the exceptions in
 import importlib as _importlib
 import sys as _sys
 import types as _types
-from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
-from importlib.metadata import version as _version
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 from typing import Any as _Any
 
+from sverify import _meta
+
 if _TYPE_CHECKING:
     from sverify.asof import asof_join
+    from sverify.conditions import key
     from sverify.contracts import (
         ContractedTransform,
         Report,
         approx,
         arrives_within,
-        key,
         max_rows,
         references,
         rows_per,
@@ -77,7 +77,7 @@ _LAZY = {
     "Report": "sverify.contracts",
     "approx": "sverify.contracts",
     "arrives_within": "sverify.contracts",
-    "key": "sverify.contracts",
+    "key": "sverify.conditions",
     "max_rows": "sverify.contracts",
     "references": "sverify.contracts",
     "rows_per": "sverify.contracts",
@@ -161,10 +161,7 @@ __all__ = [
     "within",
 ]
 
-try:
-    __version__: str = _version("sverify")
-except _PackageNotFoundError:  # a source tree without an install
-    __version__ = "0+unknown"
+__version__: str = _meta.VERSION
 
 
 def __dir__() -> list[str]:

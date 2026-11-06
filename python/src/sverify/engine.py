@@ -17,12 +17,7 @@ only to run plans with `engine="datafusion"`.
 
 from __future__ import annotations
 
-import atexit
-import functools
 import json
-import os
-import subprocess
-import threading
 import warnings
 from collections.abc import Iterable, Iterator, MutableMapping
 from dataclasses import replace
@@ -38,7 +33,18 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb, _proof_cache, _stages, _support
+from sverify import _duckdb, _stages, _support
+from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
+    _CHECKER,
+    _REBUILD,
+    PROTOCOL,
+    CheckerVersionError,
+    _checker_file,
+    _run_checker,
+    checker_env,
+    checker_path,
+    run_checker,
+)
 from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
 from sverify._support import DUCKDB_ONLY
@@ -476,50 +482,47 @@ def canonical(table: pa.Table) -> pa.Table:
     return pa.Table.from_arrays(columns, schema=table.schema)
 
 
-#: The checker protocol this sverify speaks: `protocol` in `Main.lean`, bumped
-#: with it whenever a mode's output changes shape.
-PROTOCOL = 2
+class NotIncrementalError(SverifyError):
+    """The plan is outside the fragment with verified delta rules.
+
+    Raised by `sverify.engines.delta_plans` for a plan with an operator
+    without a delta rule (a left join, aggregate, window, `DISTINCT` or
+    `LIMIT`). A node over such a plan is recomputed and diffed instead, so
+    refreshing it does not raise this. (A view that ends in `COUNT` and `SUM`
+    per group, or in `DISTINCT`, is maintained from a state per group,
+    `sverify._linear`.) The message is the checker's reason.
+    """
+
+    code = "not_incremental"
 
 
-class CheckerVersionError(SverifyError, RuntimeError):
-    """The `substrait-check` binary speaks another protocol than this sverify:
-    a stale build of the checker, or a checker newer than the package."""
+def delta_plans(plan_json: str) -> list[str]:
+    """Ask Lean for the weighted delta plans of a Substrait JSON plan; the
+    change to the view is the concatenation of their outputs.
 
-    code = "checker_version"
+    Each delta plan reads the view's input tables `t` at their old contents
+    and their changes as tables `t$delta`, which have the columns of `t` and
+    an extra `__weight` column (+1 for an inserted row, -1 for a deleted
+    one). Its output has the view's columns and a weight column likewise.
 
+    Args:
+        plan_json: A Substrait plan as protobuf JSON, as
+            `sverify.engines.substrait_json` or a node's `plan` write it.
 
-_REBUILD = (
-    "rebuild it with `uv sync` (an editable install) or `lake build substrait-check`, "
-    "or reinstall sverify"
-)
+    Returns:
+        The delta plans, each a Substrait JSON plan in Lean's written form.
 
-
-@functools.cache
-def _check_protocol(path: str) -> None:
-    """Ask the checker at `path` for its protocol, once per process."""
-    try:
-        out = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=60
-        ).stdout.split()
-    except OSError as e:
-        raise FileNotFoundError(f"cannot run the checker at {path}: {e}") from e
-    if out[:2] != ["substrait-check", "protocol"] or len(out) != 3 or not out[2].isdigit():
-        raise CheckerVersionError(
-            f"the checker at {path} is older than this sverify "
-            f"(it does not report its protocol); {_REBUILD}"
-        )
-    found = int(out[2])
-    if found < PROTOCOL:
-        raise CheckerVersionError(
-            f"the checker at {path} is older than this sverify (protocol {found}, "
-            f"sverify needs {PROTOCOL}); {_REBUILD}"
-        )
-    if found > PROTOCOL:
-        raise CheckerVersionError(
-            f"the checker at {path} is newer than this sverify (protocol {found}, "
-            f"sverify speaks {PROTOCOL}); upgrade sverify, or build the checker "
-            "from the same commit"
-        )
+    Raises:
+        sverify.errors.NotIncrementalError: The plan has an operator without a
+            verified delta rule.
+        ValueError: The checker rejects the plan.
+    """
+    code, out, err = run_checker(("--delta",), plan_json)
+    if code == 3:
+        raise NotIncrementalError(err.strip())
+    if code != 0:
+        raise checker_failed("--delta", err)
+    return out.splitlines()
 
 
 def stale_checker(path: Path | None = None) -> str | None:
@@ -554,127 +557,6 @@ def checker_failed(mode: str, err: str) -> Exception:
     if (why := stale_checker()) is not None:
         return CheckerVersionError(f"{why}. The checker said: {err.strip()}")
     return ValueError(f"substrait-check {mode} failed: {err.strip()}")
-
-
-def checker_env() -> str | None:
-    """`$SVERIFY_CHECKER`, else the deprecated `$SVERIFY_CHECK` with a
-    `DeprecationWarning`, else None."""
-    if env := os.environ.get("SVERIFY_CHECKER"):
-        return env
-    if env := os.environ.get("SVERIFY_CHECK"):
-        warnings.warn(
-            "SVERIFY_CHECK is deprecated; set SVERIFY_CHECKER", DeprecationWarning, stacklevel=3
-        )
-        return env
-    return None
-
-
-def checker_path() -> Path:
-    """`$SVERIFY_CHECKER` if set, else the `substrait-check` the wheel ships
-    with (a symlink to the lake build in an editable install). The first call
-    for a path checks that the checker speaks this sverify's protocol
-    (`CheckerVersionError` if not). `SVERIFY_CHECK`, its name before 1.0, is
-    read with a `DeprecationWarning`."""
-    path = _checker_file()
-    _check_protocol(str(path))
-    return path
-
-
-def _checker_file() -> Path:
-    """`checker_path` without the protocol check: the cache's answers were
-    given by a checker of this protocol (`sverify._proof_cache`), so a hit
-    needs no process."""
-    if env := checker_env():
-        return Path(env)
-    path = Path(__file__).parent / "_bin" / "substrait-check"
-    if not path.exists():
-        raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECKER")
-    return path
-
-
-class _Checker:
-    """One `substrait-check --serve` process, started on first use and
-    reused by every request of the Python process (#182).
-
-    A request interrupted before its answer is read (the CLI's time budget
-    raises `BudgetExceeded`, a notebook's interrupt raises
-    `KeyboardInterrupt`) kills the process: its answer would otherwise be
-    read as the next request's. The next request starts a new one."""
-
-    def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.proc: subprocess.Popen[bytes] | None = None
-        self.path: str | None = None
-
-    def ask(self, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
-        path = str(checker_path())
-        flag = " ".join(flags) or "-"
-        data = stdin.encode()
-        with self.lock:
-            if self.proc is None or self.proc.poll() is not None or self.path != path:
-                self.close()
-                self.proc = subprocess.Popen(
-                    [path, "--serve"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
-                )
-                self.path = path
-            assert self.proc.stdin is not None and self.proc.stdout is not None
-            try:
-                self.proc.stdin.write(f"{flag} {len(data)}\n".encode() + data)
-                self.proc.stdin.flush()
-                header = self.proc.stdout.readline()
-                if not header:
-                    raise RuntimeError("substrait-check --serve exited")
-                code, m, k = map(int, header.split())
-                out, err = self.proc.stdout.read(m), self.proc.stdout.read(k)
-                if len(out) != m or len(err) != k:
-                    raise RuntimeError("substrait-check --serve exited mid-answer")
-            except BaseException:
-                self.close()
-                raise
-        return code, out.decode(), err.decode()
-
-    def close(self) -> None:
-        if self.proc is not None:
-            self.proc.kill()
-            self.proc.wait()
-            # Close the pipes too, or the interpreter warns at exit
-            # (ResourceWarning: unclosed file).
-            for pipe in (self.proc.stdin, self.proc.stdout):
-                if pipe is not None:
-                    pipe.close()
-            self.proc = None
-
-
-_CHECKER = _Checker()
-atexit.register(_CHECKER.close)
-
-
-@functools.lru_cache(maxsize=8192)
-def _run_checker(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
-    if (answer := _proof_cache.get(path, flags, stdin)) is not None:
-        _stages.hit("disk")
-        return answer
-    with _stages.stage("checker", within=("counterexamples",)):
-        answer = _CHECKER.ask(flags, stdin)
-    _proof_cache.put(path, flags, stdin, answer)
-    return answer
-
-
-def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
-    """`substrait-check <flags>` on `stdin`: exit code, stdout, stderr.
-
-    Requests go to one long-lived `substrait-check --serve` process (a process
-    start costs ~20 ms, most of it Lean's module initialization; a request
-    ~0.04 ms) and are memoized: the checker is a pure function of its input.
-    The answers that prove or write a plan are also kept on disk
-    (`sverify._proof_cache`), so the next process does not prove an
-    unchanged transform again."""
-    path = str(_checker_file())
-    hits = _run_checker.cache_info().hits
-    answer = _run_checker(path, flags, stdin)
-    if _run_checker.cache_info().hits > hits:
-        _stages.hit("memo")
-    return answer
 
 
 def read_tables(plan: dict) -> list[str]:
