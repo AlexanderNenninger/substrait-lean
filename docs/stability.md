@@ -109,6 +109,15 @@ soundness fix. The [catalogue](../catalogue/INDEX.md)'s expected results
 golden tests pin what is proved, so a change to a proof shows in a pull
 request's diff.
 
+Reference changes made before 1.0, so that 1.0 starts from the tighter
+reference:
+
+- [D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)
+  ([#919](https://github.com/AlexanderNenninger/substrait-lean/issues/919)):
+  a `SUM`, `AVG` or statistical aggregate of doubles is the correctly rounded
+  value of the exact sum or moments. A postcondition at a rounding boundary
+  can move by one ulp, which `sv.approx` absorbs.
+
 ## The Python API
 
 The public API is what the [API reference](https://alexandernenninger.github.io/substrait-lean/)
