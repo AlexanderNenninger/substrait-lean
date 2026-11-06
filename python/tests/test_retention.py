@@ -13,6 +13,7 @@ from deltalake import write_deltalake
 from ibis import _
 
 import sverify as sv
+from _engines import PROFILED
 from _pipelines import recomputed
 from sverify._state import arrow_of
 from sverify.errors import PreconditionError
@@ -90,7 +91,7 @@ def full(node, src):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_long_stream_keeps_its_state_bounded(engine):
     src = StaticSource(samples([("a", m, 1) for m in range(0, 60, 10)]), name="samples")
     node = src.pipe(rollup())
@@ -168,7 +169,7 @@ def test_the_bound_is_lateness_over_width_plus_one(lateness, bound):
 # -- the precondition ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_late_row_is_rejected(engine):
     src = StaticSource(samples([("a", m, 1) for m in range(0, 300, 30)]), name="samples")
     node = src.pipe(rollup())
@@ -284,7 +285,7 @@ def random_stream(seed, batches=80, expire=False):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 @pytest.mark.parametrize("seed", range(4))
 @pytest.mark.parametrize("expire", [False, True])
 def test_retention_matches_a_full_recompute(seed, engine, expire):

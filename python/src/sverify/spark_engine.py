@@ -154,6 +154,7 @@ def run(
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,
+    finite: bool = True,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
     `sverify.engines.run_spark`, deprecated, calls it.
@@ -173,6 +174,9 @@ def run(
             `PARTITION BY` and `ORDER BY` columns (what a contract report's
             `deterministic` says), so windows run without a row-order
             tiebreak (see `sverify.engines.to_sql`). Default False.
+        finite: Check that no operation on finite doubles gives `±∞`, the
+            reference's precondition (#575); False for a plan verified
+            under a profile that allows `±∞`, as Spark's does. Default True.
 
     Returns:
         The plan's result, as an Arrow table.
@@ -185,6 +189,6 @@ def run(
             timestamp with a time zone.
     """
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic)
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
     put_tables(tables, spark)
     return spark.sql(sql).toArrow()
