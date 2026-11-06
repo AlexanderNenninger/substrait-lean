@@ -1122,7 +1122,23 @@ option the proof depends on. What is proved
   assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
   error side (NaN, a `date_add` wrapped past 2³¹ days, SP-2) are where the
   reference raises.
+- `Spark.decimal_negate_sub`: Spark's `-x` and `abs` round a decimal past 34
+  significant digits ([SP-1](../upstream/bugs/SP-1.json)); the writer
+  negates as `0 - x` there, exact where its type keeps the scale (up to 37
+  digits, or 38 at scale 6 or less), and refuses a `DECIMAL(38, s)` with
+  `s > 6`.
 - `Rel.allowed_spark_core`: `Allowed_spark ⊆ Allowed_core`.
+
+Decimals (#27) run on Spark at the reference's types, which are Spark's own
+up to 38 digits. Past them Spark cuts the scale to no less than 6
+([decimal-arith](../characterization/spark/facts/spark-decimal-arith.json)),
+so a sum or product whose type would pass 38 digits at a scale above 6 is
+refused. A double becomes a decimal as `round(x · 10ˢ)` in doubles, through
+`BIGINT`, since Spark's own cast reads the double's shortest text
+(`CAST(0.145 AS DECIMAL(10,2))` is 0.15 there, 0.14 in the reference), so a
+target past 18 digits is refused. Division by an integer, which an `AVG`
+of decimals is, is refused: Spark's decimal quotient rounds at a scale of
+its own first.
 
 A run on Spark reads the session's settings (`sverify._engine_settings`):
 ANSI mode, `timestampType`, the session time zone, `caseSensitive` and

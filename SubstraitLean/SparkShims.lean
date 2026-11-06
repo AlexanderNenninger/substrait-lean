@@ -29,6 +29,9 @@ shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`.
   key; the writer states the placement on every key.
 * `one_zero` (spark-zero-sign, spark-zero-order): `-0.0` as `0.0` where a
   result's zero is observed (`Dialect.canon`).
+* `decimal_negate_sub` (spark-decimal-negate, SP-1): Spark's `-x` rounds a
+  decimal past 34 significant digits; the writer negates as `0 - x` there,
+  exact where its type keeps the scale, and refuses the rest.
 * Error side: under ANSI, integer `+ - *` and `MIN div -1` raise where the
   reference raises (spark-int-arith, spark-int-divide); a zero divisor
   raises; `0 · ∞`, `∞ - ∞` and `sqrt(-1)` are NaN (spark-double-arith,
@@ -122,6 +125,36 @@ def oneZero (c : Int) : Int := Polars.oneZero c
 NaN, which Spark keeps (spark-nan-sign: `nan_kind` refines up to `canon`). -/
 theorem one_zero {c : Int} (h : c ≠ FloatCode.negNan) : oneZero c = FloatCode.canon c :=
   Polars.one_zero h
+
+/-! ## Decimals: `-x` past 34 digits (SP-1) -/
+
+/-- Spark's `-x` of a decimal, on its unscaled value `u`: exact below 34
+significant digits, past them rounded to 34 by some `r`
+(spark-decimal-negate, SP-1). `abs` negates a negative value the same way. -/
+def negate (r : Int → Int) (u : Int) : Int := if u.natAbs < 10 ^ 34 then -u else r (-u)
+
+/-- Spark's `0 - x` with `0` a `DECIMAL(1, 0)`: exact where its type keeps
+the scale, up to 37 digits, or 38 at scale 6 or less (spark-decimal-negate). -/
+def subZero (u : Int) : Int := 0 - u
+
+/-- `decimal_negate_sub`, the writer's negation of a `DECIMAL(p, s)`: `-x`
+up to 34 digits, `0 - x` past them where its type keeps the scale, refused
+(`none`) otherwise. -/
+def decimalNegate (r : Int → Int) (p s : Nat) (u : Int) : Option Int :=
+  if p ≤ 34 then some (negate r u) else if p ≤ 37 ∨ s ≤ 6 then some (subZero u) else none
+
+/-- **`Spark.decimal_negate_sub`**: on a value of a `DECIMAL(p, s)`, the
+shimmed negation is the reference's, `-u`, however Spark rounds past 34
+digits; it is refused exactly at 38 digits past scale 6. -/
+theorem decimal_negate_sub (r : Int → Int) {p s : Nat} {u : Int} (hu : u.natAbs < 10 ^ p) :
+    decimalNegate r p s u = if p ≤ 37 ∨ s ≤ 6 then some (-u) else none := by
+  unfold decimalNegate negate subZero
+  by_cases hp : p ≤ 34
+  · have h34 : u.natAbs < 10 ^ 34 :=
+      Nat.lt_of_lt_of_le hu (Nat.pow_le_pow_right (by decide) hp)
+    have h37 : p ≤ 37 ∨ s ≤ 6 := .inl (by omega)
+    simp [hp, h34, h37]
+  · by_cases h : p ≤ 37 ∨ s ≤ 6 <;> simp [hp, h]
 
 /-! ## The error side: no shim for a verified plan -/
 

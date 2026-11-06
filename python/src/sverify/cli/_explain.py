@@ -57,7 +57,7 @@ CODES: dict[str, str] = {
     ),
     "sum_overflow": (
         "A SUM may leave its type. sverify assumes it fits and checks that on the data "
-        "while the job runs; with `infer=False`, state the bound yourself."
+        'while the job runs; with `on_inferred="off"`, state the bound yourself.'
     ),
     "division_by_zero": (
         "A divisor may be 0. State `_.d != 0` in `requires`, or guard the division "
@@ -96,7 +96,7 @@ CODES: dict[str, str] = {
     ),
     "unsupported": (
         "sverify refuses a construct of the file: a function, type or operator outside "
-        "its model (`sverify.errors.Unsupported`). The message names it. Rewrite it in "
+        "its model (`sverify.errors.UnsupportedError`). The message names it. Rewrite it in "
         "what sverify reads, or open an issue."
     ),
     "timeout": (

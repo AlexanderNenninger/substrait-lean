@@ -214,13 +214,14 @@ def _(dt, pa, tables):
     import duckdb
     import ibis
     import polars as pl
+
     import sverify as sv
     from sverify import duckdb_engine, polars_engine
     from sverify.engine import put_table, read_tables, run_checker
     from sverify.engines import (
         SNOWFLAKE,
         SPARK,
-        Unsupported,
+        UnsupportedError,
         substrait_json,
         written_plan,
     )
@@ -291,7 +292,7 @@ def _(dt, pa, tables):
     def generated(plan: str, dialect) -> str:
         try:
             plan_sql(json.loads(plan), dialect)
-        except Unsupported as e:
+        except UnsupportedError as e:
             return "refused: " + str(e).split(" (")[0][:90]
         return "SQL generated"
 
@@ -424,7 +425,7 @@ def _(dt, pa, tables):
             )
             o["sv"] = [("Polars", pt), ("DuckDB", dt_)]
 
-            if pv[:1] == dv[:1] == ("error",) and {pv[1], dv[1]} == {"Unsupported"}:
+            if pv[:1] == dv[:1] == ("error",) and {pv[1], dv[1]} == {"UnsupportedError"}:
                 # Both translators refuse the plan: compare with `Rel.eval` itself.
                 rows = {n: arrow_rows(t) for n, t in tabs.items()}
                 lean = lean_values(json.dumps(inline_tables(json.loads(wp), rows)))

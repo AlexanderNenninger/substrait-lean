@@ -49,6 +49,14 @@ files (docs, the catalogue, facts, Lean sources) carries `needs_repo`
 that script's list, or the test uses `pytest.importorskip`. Run it locally
 with `bash python/scripts/wheel_tests.sh --editable python --fast`.
 
+### Releases
+
+Main never freezes for a release. A release is cut as a branch,
+`release/<major>.<minor>`, which CI treats like main; the version bump, the
+release's fixes and the tag happen there, and the branch is merged back into
+main afterwards (`.claude/skills/release-sverify/SKILL.md`). Keep merging into
+main meanwhile.
+
 ### Runner slots
 
 GitHub runs at most 20 jobs at once for this repository, and a full CI run

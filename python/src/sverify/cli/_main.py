@@ -99,7 +99,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
         AuditError,
         PostconditionError,
         PreconditionError,
-        Unsupported,
+        UnsupportedError,
         VerificationError,
     )
 
@@ -109,7 +109,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
         return BUDGET, "memory"
     if isinstance(e, UsageError | FileNotFoundError):
         return USAGE, "usage"
-    if isinstance(e, Unsupported):
+    if isinstance(e, UnsupportedError):
         return UNSUPPORTED, "unsupported"
     if isinstance(e, VerificationError | PreconditionError | PostconditionError | AuditError):
         return NOT_PROVED, "not_proved"

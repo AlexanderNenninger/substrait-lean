@@ -8,8 +8,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import InferredPreconditionWarning
-from sverify.errors import PreconditionError, RouteError, VerificationError
+from sverify.errors import InferredWarning, PreconditionError, RouteError, VerificationError
 from sverify.io import StaticSource
 
 
@@ -80,11 +79,11 @@ def test_filtering_first_needs_no_precondition(con) -> None:
 def test_warn_and_silent_assume_it(con) -> None:
     t = con.table("t")
     expr = t.select(t.k, per=t.total // t.qty)
-    with pytest.warns(InferredPreconditionWarning, match=r"\(_.qty != 0\) on t, inferred from"):
+    with pytest.warns(InferredWarning, match=r"\(_.qty != 0\) on t, inferred from"):
         warned = sv.verify(expr, on_inferred="warn")
     assert warned.proved and _needed(warned) == {}
     with warnings.catch_warnings():
-        warnings.simplefilter("error", InferredPreconditionWarning)
+        warnings.simplefilter("error", InferredWarning)
         silent = sv.verify(expr, on_inferred="ignore")
     assert silent.proved
     assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(silent)

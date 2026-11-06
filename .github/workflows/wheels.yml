@@ -159,37 +159,21 @@ jobs:
       # a test the wheel fails shows up before the tag.
       - name: Test installed wheel
         env:
-          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') }}
+          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') && !startsWith(github.base_ref, 'release/') }}
         run: |
           fast=()
           if [ "$FAST" = true ]; then fast=(--fast); fi
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl ${fast[@]+"${fast[@]}"}
 
-      # Without extras the wheel has no DataFusion, and needs none on DuckDB.
-      - name: Run the installed wheel without DataFusion
+      # Without extras: no optional package is installed or imported, a node
+      # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
+      # under a budget (python/scripts/check_plain_wheel.py).
+      - name: Run the installed wheel without extras
         run: |
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          script="$PWD/python/scripts/check_plain_wheel.py"
           cd "$RUNNER_TEMP"
-          uv run --isolated --no-project --with "$wheel" python - <<'PY'
-          import importlib.util
-          import pyarrow as pa
-          import sverify as sv
-          from sverify.io import Changes, StaticSource
-
-          assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
-          t = StaticSource(pa.table({"a": [1, 5]}), name="t")
-
-          @sv.transform()
-          def big(t):
-              return t.filter(t.a > 2)
-
-          node = big(t)
-          node.refresh()
-          t.apply(Changes(inserts=[(7,)]))
-          node.refresh()
-          rows = sorted(r["a"] for r in node.to_arrow().to_pylist())
-          assert rows == [5, 7], rows
-          PY
+          uv run --isolated --no-project --with "$wheel" python "$script" --import-budget 5
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -311,30 +295,15 @@ jobs:
           if [ "$FULL" != true ]; then fast=(--fast); fi
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl --python ${{ matrix.python }} ${fast[@]+"${fast[@]}"}
 
-      - name: Run the installed wheel without DataFusion
+      # Without extras: no optional package is installed or imported, a node
+      # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
+      # under a budget (python/scripts/check_plain_wheel.py).
+      - name: Run the installed wheel without extras
         run: |
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          script="$PWD/python/scripts/check_plain_wheel.py"
           cd "$RUNNER_TEMP"
-          uv run --isolated --no-project --python ${{ matrix.python }} --with "$wheel" python - <<'PY'
-          import importlib.util
-          import pyarrow as pa
-          import sverify as sv
-          from sverify.io import Changes, StaticSource
-
-          assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
-          t = StaticSource(pa.table({"a": [1, 5]}), name="t")
-
-          @sv.transform()
-          def big(t):
-              return t.filter(t.a > 2)
-
-          node = big(t)
-          node.refresh()
-          t.apply(Changes(inserts=[(7,)]))
-          node.refresh()
-          rows = sorted(r["a"] for r in node.to_arrow().to_pylist())
-          assert rows == [5, 7], rows
-          PY
+          uv run --isolated --no-project --python ${{ matrix.python }} --with "$wheel" python "$script" --import-budget 5
 
   # Weekly: each tour notebook in the sandbox its own header describes, with
   # sverify from this checkout, as molab runs the published ones. CI runs them

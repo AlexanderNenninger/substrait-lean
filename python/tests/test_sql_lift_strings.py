@@ -113,7 +113,7 @@ def test_refusals_say_what(query, message):
 def _kinds(sql: str, **kw) -> list[str]:
     import sverify as sv
 
-    kw.setdefault("infer", False)
+    kw.setdefault("on_inferred", "off")
     return [i.kind for i in sv.verify(sql, tables=SCHEMAS, counterexamples=0, **kw).errors]
 
 

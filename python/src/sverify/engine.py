@@ -46,11 +46,18 @@ from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
 
-Engine = Literal["duckdb", "polars", "datafusion"]
-ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
-"""The engines a `Connection` runs plans on: `"duckdb"` (the default),
-`"polars"` and `"datafusion"`. Loop over it to run a plan on each, as the
-tests do. `sverify.engines.run` also takes `"spark"` or a Spark session."""
+Engine = Literal["duckdb", "polars", "spark"]
+"""The engines sverify 1.x supports. A `Connection` runs plans on DuckDB and
+Polars; `sverify.engines.run` and `Node.refresh` also run them on Spark.
+`"datafusion"` is still accepted where a `Connection` runs plans: it is
+experimental, outside the 1.x promise (`docs/stability.md`)."""
+ENGINES: tuple[Engine, ...] = ("duckdb", "polars")
+"""The engines a `Connection` runs plans on: `"duckdb"` (the default) and
+`"polars"`. Loop over it to run a plan on each, as the tests do.
+`sverify.engines.run` also takes `"spark"` or a Spark session."""
+_LOCAL_ENGINES = (*ENGINES, "datafusion")
+"""The engines a `Connection` accepts: `ENGINES` and the experimental
+DataFusion engine."""
 
 
 def _datafusion() -> Any:
@@ -147,8 +154,8 @@ class Connection:
       on first use.
 
     Args:
-        engine: `"duckdb"`, `"polars"` or `"datafusion"`. Default:
-            `"duckdb"`.
+        engine: `"duckdb"` or `"polars"` (`"datafusion"` is
+            experimental). Default: `"duckdb"`.
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
@@ -164,7 +171,7 @@ class Connection:
     """
 
     def __init__(self, engine: Engine = "duckdb"):
-        if engine not in ENGINES:
+        if engine not in _LOCAL_ENGINES:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
         self.engine: Engine = engine
         self._tables: dict[str, pa.Table | Native] = {}
@@ -395,6 +402,8 @@ def quote(name: str) -> str:
 class SqlError(SverifyError, ValueError):
     """A SQL producer refused a query."""
 
+    code = "sql_refused"
+
 
 def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
     """Run a Substrait plan on DataFusion.
@@ -476,6 +485,8 @@ class CheckerVersionError(SverifyError, RuntimeError):
     """The `substrait-check` binary speaks another protocol than this sverify:
     a stale build of the checker, or a checker newer than the package."""
 
+    code = "checker_version"
+
 
 _REBUILD = (
     "rebuild it with `uv sync` (an editable install) or `lake build substrait-check`, "
@@ -514,7 +525,7 @@ def _check_protocol(path: str) -> None:
 def stale_checker(path: Path | None = None) -> str | None:
     """Why the checker at `path` is older than this sverify, where it is a
     build in a source checkout (`.lake/build/bin/substrait-check`, an
-    editable install or `SVERIFY_CHECK`) and a Lean source of that checkout
+    editable install or `SVERIFY_CHECKER`) and a Lean source of that checkout
     is newer than it; None otherwise. A checker that speaks this sverify's
     protocol may still lack a feature the Python side asks for (#687)."""
     try:
@@ -532,7 +543,7 @@ def stale_checker(path: Path | None = None) -> str | None:
     return (
         f"the checker at {path} is older than this sverify: {len(newer)} Lean source(s) "
         f"changed since it was built (e.g. {newer[0].relative_to(root)}); {_REBUILD}, "
-        "or unset SVERIFY_CHECK"
+        "or unset SVERIFY_CHECKER"
     )
 
 
@@ -545,11 +556,25 @@ def checker_failed(mode: str, err: str) -> Exception:
     return ValueError(f"substrait-check {mode} failed: {err.strip()}")
 
 
+def checker_env() -> str | None:
+    """`$SVERIFY_CHECKER`, else the deprecated `$SVERIFY_CHECK` with a
+    `DeprecationWarning`, else None."""
+    if env := os.environ.get("SVERIFY_CHECKER"):
+        return env
+    if env := os.environ.get("SVERIFY_CHECK"):
+        warnings.warn(
+            "SVERIFY_CHECK is deprecated; set SVERIFY_CHECKER", DeprecationWarning, stacklevel=3
+        )
+        return env
+    return None
+
+
 def checker_path() -> Path:
-    """`$SVERIFY_CHECK` if set, else the `substrait-check` the wheel ships with
-    (a symlink to the lake build in an editable install). The first call for a
-    path checks that the checker speaks this sverify's protocol
-    (`CheckerVersionError` if not)."""
+    """`$SVERIFY_CHECKER` if set, else the `substrait-check` the wheel ships
+    with (a symlink to the lake build in an editable install). The first call
+    for a path checks that the checker speaks this sverify's protocol
+    (`CheckerVersionError` if not). `SVERIFY_CHECK`, its name before 1.0, is
+    read with a `DeprecationWarning`."""
     path = _checker_file()
     _check_protocol(str(path))
     return path
@@ -559,11 +584,11 @@ def _checker_file() -> Path:
     """`checker_path` without the protocol check: the cache's answers were
     given by a checker of this protocol (`sverify._proof_cache`), so a hit
     needs no process."""
-    if env := os.environ.get("SVERIFY_CHECK"):
+    if env := checker_env():
         return Path(env)
     path = Path(__file__).parent / "_bin" / "substrait-check"
     if not path.exists():
-        raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECK")
+        raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECKER")
     return path
 
 
@@ -863,8 +888,9 @@ def run_plan(
         con: The connection whose tables the plan reads.
         plan_json: A plan in Lean's written form (a node's `plan`, or
             `sverify.engines.written_plan`'s output).
-        engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
-            Spark session. Default: the connection's engine.
+        engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session
+            (`"datafusion"` is experimental). Default: the connection's
+            engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
         finite: On DuckDB and Polars, check that no operation on finite
@@ -884,7 +910,7 @@ def run_plan(
     Raises:
         ValueError: `engine` is unknown, or the checker rejects the plan.
         ImportError: The engine is an extra that is not installed.
-        sverify.engines.Unsupported: The plan uses something the engine's
+        sverify.engines.UnsupportedError: The plan uses something the engine's
             SQL dialect cannot express (DuckDB, Spark). Polars refuses what
             its translation does not cover with a `ValueError` of its own.
 

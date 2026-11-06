@@ -16,8 +16,8 @@ from hypothesis import strategies as st
 
 import sverify as sv
 from _pipelines import connect_with, doubled, paid
-from sverify.engines import ENGINES
-from sverify.errors import NotIncremental
+from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
+from sverify.errors import NotIncrementalError
 from sverify.incremental import IncrementalView, Pipeline
 from sverify.io import Changes
 from sverify_dev.examples import PIPELINES, UNSUPPORTED
@@ -77,13 +77,13 @@ def test_sql_view_matches_recompute(engine, data):
 
 def test_left_join_is_rejected():
     con = connect_with([], [])
-    with pytest.raises(NotIncremental):
+    with pytest.raises(NotIncrementalError):
         IncrementalView(con, UNSUPPORTED["left_join"], "v")
 
 
 def test_aggregate_is_rejected():
     con = connect_with([], [])
-    with pytest.raises(NotIncremental):
+    with pytest.raises(NotIncrementalError):
         IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 

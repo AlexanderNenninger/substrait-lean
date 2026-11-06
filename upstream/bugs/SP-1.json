@@ -13,7 +13,7 @@
     "At 10³⁸ - 1 the rounding reaches 10³⁸, which does not fit `DECIMAL(38,0)`, so `-x` raises `NUMERIC_VALUE_OUT_OF_RANGE` even with ANSI off. `Decimal.unary_-` (sql/api/.../types/Decimal.scala#L567-L575) builds `-decimalVal` on a Scala `BigDecimal`, which rounds to its default `MathContext.DECIMAL128` (34 digits, `HALF_EVEN`); `abs` calls it for a negative value."
   ],
   "repro": "SELECT CAST(-a AS STRING), CAST(abs(-a) AS STRING), CAST(0 - a AS STRING)\nFROM VALUES (CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0))) AS s(a);\n-- -12345678901234567890123456789012350000, 12345678901234567890123456789012350000, -12345678901234567890123456789012345678\nSELECT -CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0));\n-- NUMERIC_VALUE_OUT_OF_RANGE, with spark.sql.ansi.enabled true or false",
-  "handling": "The Spark profile (#739) should spell `negate` of a decimal as `0 - x` and `abs` as `CASE WHEN x < 0 THEN 0 - x ELSE x END`. With precision loss on (the default) `0 - x` of a `DECIMAL(38,s)` drops one digit of scale past `s = 6` (it needs 39 digits), so for those scales the profile needs another spelling or `spark.sql.decimalOperations.allowPrecisionLoss` off. The fix upstream is to negate the Java `BigDecimal` (`decimalVal.underlying.negate()`), which is exact.",
+  "handling": "The Spark profile (#739) writes `negate` of a `DECIMAL(p,s)` as `-x` up to 34 digits and as `0 - x` past them, with `0` a `DECIMAL(1,0)`, where its type keeps the scale: up to 37 digits, or 38 at a scale of 6 or less (`SparkDialect.decimal_neg`); `abs` as `CASE WHEN x < 0 THEN <that> ELSE x END`. A `DECIMAL(38,s)` with `s > 6` is refused, naming SP-1: with precision loss on (the default, which the profile requires) `0 - x` needs 39 digits and drops one of scale. `Spark.decimal_negate_sub` (SubstraitLean/SparkShims.lean) proves the choice. The fix upstream is to negate the Java `BigDecimal` (`decimalVal.underlying.negate()`), which is exact.",
   "found_by": "the Spark characterization (#738): sverify_dev.probe_spark, then a manual repro of `decimal-overflow-subtract`",
   "issues": [
     738,
@@ -22,7 +22,10 @@
   "files": [
     "characterization/spark/probes.json",
     "characterization/spark/facts/spark-decimal-negate.json",
-    "characterization/spark/fuzz.json"
+    "characterization/spark/fuzz.json",
+    "python/src/sverify/sql/spark.py",
+    "SubstraitLean/SparkShims.lean",
+    "python/tests/test_spark_decimal.py"
   ],
   "facts": [
     "spark-decimal-negate"

@@ -56,7 +56,7 @@ class Unsupported(_Unsupported):
     DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
-    `ValueError`, and of `sverify.errors.Unsupported`, which every refusal
+    `ValueError`, and of `sverify.errors.UnsupportedError`, which every refusal
     raises.
     """
 
@@ -674,23 +674,29 @@ class Dialect:
         text = f"{sign}{digits[: len(digits) - k.s]}" + (f".{digits[-k.s :]}" if k.s else "")
         return self.cast(f"'{text}'", k)
 
-    def decimal_arith(self, op: str, a: str, b: str, sa: int, k: Dec) -> str:
-        """`a op b` of decimals or integers, exactly, as a `DECIMAL(p, s)`. A
-        product widens `a` (of scale `sa`) to 38 digits first, so that the
-        engine's own result type cannot overflow before the reference's."""
+    def decimal_arith(
+        self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
+    ) -> str:
+        """`a op b` of decimals or integers (of kinds `kinds`), exactly, as a
+        `DECIMAL(p, s)`. A product widens `a` (of scale `sa`) to 38 digits
+        first, so that the engine's own result type cannot overflow before the
+        reference's."""
         if op == "*":
             a = self.cast(a, Dec(38, sa))
         return self.cast(f"({a} {op} {b})", k)
 
-    def decimal_neg(self, a: str) -> str:
+    def decimal_neg(self, a: str, k: Dec | None = None) -> str:
+        """`-a` of a `DECIMAL` of type `k`, exactly."""
         return f"(-{a})"
 
-    def decimal_abs(self, a: str) -> str:
+    def decimal_abs(self, a: str, k: Dec | None = None) -> str:
+        """`|a|` of a `DECIMAL` of type `k`, exactly."""
         return f"ABS({a})"
 
-    def decimal_cast(self, a: str, k: Dec) -> str:
-        """A decimal, integer or double as a `DECIMAL(p, s)`, rounding half away
-        from zero to a smaller scale."""
+    def decimal_cast(self, a: str, k: Dec, src: Kind | None = None) -> str:
+        """A decimal, integer or double (`src`) as a `DECIMAL(p, s)`, rounding
+        half away from zero to a smaller scale; a double as `round(x · 10ˢ)`
+        in doubles (`FloatCode.toDecimal?`)."""
         return self.cast(a, k)
 
     def decimal_to_int(self, a: str) -> str:
@@ -4489,13 +4495,18 @@ class _Writer:
             case ("add" | "sub" | "mul") as op, [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 sa = ka.s if isinstance(ka, Dec) else 0
-                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k)
+                kb = expr_kind(e.args[1], cols)
+                if ka is None or kb is None:
+                    raise Unsupported(f"decimal {op} of an operand of unknown type")
+                return d.decimal_arith(
+                    {"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, (ka, kb)
+                )
             case "neg", [a]:
-                return d.decimal_neg(a)
+                return d.decimal_neg(a, k)
             case "abs", [a]:
-                return d.decimal_abs(a)
+                return d.decimal_abs(a, k)
             case "cast", [a]:
-                return d.decimal_cast(a, k)
+                return d.decimal_cast(a, k, expr_kind(e.args[0], cols))
             case "div", [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)
@@ -4791,7 +4802,6 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    tie_free: bool | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -4831,7 +4841,6 @@ def to_sql(
             `±∞` (`Dialect.finite`), the reference's precondition (#575).
             Default: True; False for a plan verified with
             `semantics="duckdb"`.
-        tie_free: Deprecated alias of `deterministic`.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -4865,15 +4874,6 @@ def to_sql(
         # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
-    if tie_free is not None:
-        import warnings
-
-        warnings.warn(
-            "to_sql(tie_free=...) is deprecated; write deterministic=... (as Report.run takes it)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        deterministic = tie_free
     if isinstance(plan, str):
         plan = json.loads(plan)
     if not guards:

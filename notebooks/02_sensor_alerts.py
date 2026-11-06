@@ -90,7 +90,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
-    from sverify.engines import ENGINES, SNOWFLAKE, Unsupported, to_sql
+    from sverify.engines import ENGINES, SNOWFLAKE, UnsupportedError, to_sql
     from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
@@ -136,7 +136,7 @@ def _():
         PreconditionError,
         READING,
         SNOWFLAKE,
-        Unsupported,
+        UnsupportedError,
         catalog,
         first,
         ibis,
@@ -350,7 +350,7 @@ def _(mo):
     ## 5. Every engine, and the warehouses
 
     The alerts may run on a laptop today and in a warehouse tomorrow.
-    DuckDB (Tier 1), Polars and DataFusion run the checked plan with the
+    DuckDB (Tier 1) and Polars run the checked plan with the
     same rows, whichever `engine=` the node is refreshed with. Snowflake
     and Spark tables have no row order, so sverify refuses to write a window
     for them unless you promise that the order keys have no ties. The
@@ -361,7 +361,7 @@ def _(mo):
 
 
 @app.cell
-def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to_sql):
+def _(ENGINES, SNOWFLAKE, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -371,7 +371,7 @@ def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to
 
     try:
         to_sql(alerts_node.internal_plan, SNOWFLAKE)
-    except Unsupported as e:
+    except UnsupportedError as e:
         refused = str(e)
     _sql = to_sql(alerts_node.internal_plan, SNOWFLAKE, deterministic=report.deterministic)
     assert _sql.startswith("SELECT")
@@ -481,8 +481,8 @@ def _(mo):
     two bugs before anything ran, an alert that depended on how ties were
     broken and a NaN reading that would have paged someone. The key is
     checked on every batch, so a sensor that sends twice stops the job and
-    leaves the alerts as they were. The same plan runs on DuckDB, Polars and
-    DataFusion, and Snowflake or Spark SQL is written once the tie-freedom
+    leaves the alerts as they were. The same plan runs on DuckDB and Polars,
+    and Snowflake or Spark SQL is written once the tie-freedom
     it needs is proved. The window node says it isn't incremental and stays
     up to date by recomputation, with its change written to the sink.
 

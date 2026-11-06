@@ -107,7 +107,8 @@ def shimCosts : List (String × String × ShimCost) := [
   ("spark", "int_avg_decimal", .expression),
   ("spark", "Dialect.canon", .expression),
   ("spark", "null_order", .argument),
-  ("spark", "sort on the keys", .sort)]
+  ("spark", "sort on the keys", .sort),
+  ("spark", "decimal_negate_sub", .expression)]
 
 def shimCost? (engine name : String) : Option ShimCost :=
   (shimCosts.find? fun (e, n, _) => e == engine && n == name).map (·.2.2)
