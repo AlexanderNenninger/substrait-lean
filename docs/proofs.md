@@ -39,7 +39,8 @@ and that the input rows meet the contract's preconditions.
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
-| A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `Lipschitz.lean` |
+| A `SUM` or `AVG` of a tolerated column is within the fold's bound, from the column's range and the input's rows in the sources' knowledge; the engine's columns of reference codes are tracked | `Measure.tolOut_cell`, `aggregateEval_near`, `Rel.refOn`, `Rel.rowsK_sound` | `Lipschitz.lean` |
+| A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `Rel.weighted_eval` | `Weighted.lean` |
@@ -209,6 +210,7 @@ generators, then the trusted reading and writing.
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
 | `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
+| `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |

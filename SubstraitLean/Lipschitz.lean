@@ -12,18 +12,25 @@ A result within `t c` codes of the reference in each double column `c`
 operator the plan applies. This module gives the fold, its theorem and the
 pipeline rule:
 
-* `Rel.tol cat T r`: the tolerance of `r`'s output when each source `s` is
-  within `T s` of the reference's: #929's table on its rows whose constant
-  is `0` or `1`. Pass-through columns, emits, `UNION ALL` (the larger of its
-  inputs'), crosses, joins and semi-joins on exact columns carry a tolerance
-  with `M∞ = 1`; an expression of exact columns, a group key and an
-  order-free measure of exact columns are exact. It is `none` where the plan
-  compares a tolerated column (a filter, join or semi-join condition, a group
-  key, a measure's argument or filter, `DISTINCT`): #929's discontinuity
-  rows, the `rows_exact` rule of #568. `FETCH` and windows read an order the
-  multiset observation does not fix, and `UNNEST` is not in the table yet.
+* `Rel.tol cat K T r`: the tolerance of `r`'s output when each source `s` is
+  within `T s` of the reference's: #929's table. Pass-through columns, emits,
+  `UNION ALL` (the larger of its inputs'), crosses, joins and semi-joins on
+  exact columns carry a tolerance with `M∞ = 1`; an expression of exact
+  columns, a group key and an order-free measure of exact columns are exact.
+  A `SUM` or `AVG` of a tolerated column has the table's `g·ε + r` and
+  `ε + r` (`Measure.tolOut`), where the knowledge `K` of the reference's
+  sources bounds the column's codes and the group's rows (`Rel.rowsK`). It is
+  `none` where the plan compares a tolerated column (a filter, join or
+  semi-join condition, a group key, `DISTINCT`, any other measure of it):
+  #929's discontinuity rows, the `rows_exact` rule of #568. `FETCH` and
+  windows read an order the multiset observation does not fix, and `UNNEST`
+  is not in the table yet.
 * `Rel.plan_near`: **the theorem.** An engine's sources within `T` of the
-  reference's give a result within `Rel.tol cat T r` of the reference's.
+  reference's, of reference codes (`Relation.RefCodes`), give a result within
+  `Rel.tol cat K T r` of the reference's, `K` sound for the reference's
+  sources. `Rel.refCols` and `Rel.refOn` follow the columns that keep
+  reference codes: a `SUM` reads `-0.0`'s code as `-∞`, while the tolerance
+  takes `-0.0` for `+0.0`.
 * `Relation.NearT.add`: the triangle rule, and `Rel.pipeline_near`, the
   pipeline rule `εₖ = Lₖ·εₖ₋₁ + rₖ`: a node's bound is the next node's
   source tolerance (`Triple.ε` of #929), and the node's own rounding `rₖ`
@@ -33,16 +40,16 @@ pipeline rule:
   reflexivity, symmetry and the triangle rule.
 * `Measure.fsum_near`, `Measure.avg_near`: a `SUM` or `AVG` of a tolerated
   column on groups within a tolerance, the table's `g·ε + r` and `ε + r`
-  (`floatSumCR_near`, `floatAvgCR_near` on the values), with finite values
-  and results as named hypotheses.
+  (`floatSumCR_near`, `floatAvgCR_near` in `FloatNear.lean`), with finite
+  values and results as named hypotheses; `Measure.tolOut_cell` discharges
+  them from the fold's checks.
 
 The tolerance is in codes (`Tol`): a finite double's code is twice its
 magnitude in units of `2⁻¹⁰⁷⁴`, plus one, with its sign (`FloatFormat`), so
 codes measure absolute distance and a Lipschitz constant on codes is one on
-values. The `SUM` and `AVG` rows enter `Rel.tol` once the fold reads group
-sizes and ranges from `Knowledge` (after #923); the arithmetic rows (`c · x`,
-`x · y`, `x / y`), `MIN`, `MAX` and the `M₁` fold follow (#929 step 5) and
-extend `Expr.tol?` and `Measure.tolOk`.
+values. `MIN` and `MAX`, the `M₁` fold and the arithmetic rows (`c · x`,
+`x ± y`, `x · y`, `x / y`, exact since D31) follow (#929) and extend
+`Measure.tolOut` and `Expr.tol?`.
 
 A tolerance leaves its other columns exact, and compares them exactly:
 `Tol.kind t` marks only the tolerated columns as doubles, so a filter on an
@@ -823,44 +830,523 @@ theorem Rel.refOn {cat : Catalog} (hcat : cat.WF) (hR : ∀ s, (cat s).rows.RefC
         simp only [he, Option.map_some, Option.getD_some] at h'
         exact Expr.refCol_sound hi (hI x hx) h'
 
+/-! ### The `SUM` and `AVG` rows of the fold (#929 step 3c)
+
+A `SUM` or `AVG` of a tolerated column `i`, within `e` codes, has a bound
+when the reference's analysis gives column `i` a range of codes `[lo, hi]`
+that stays finite `e` codes beyond each end, and the input at most `N` rows:
+the values are finite on both sides, and their exact sums at most
+`N · (M + e)` in units of `2⁻¹⁰⁷⁴`, `M` the larger magnitude of `lo` and
+`hi`. The engine's codes in column `i` must be the reference's
+(`Rel.refCols`): `-0.0` is within any tolerance of `+0.0`, and a `SUM` reads
+its code as `-∞`. -/
+
+/-- The larger magnitude of the ends of a range of codes. -/
+def magOf (lo hi : Int) : Nat := max (scaled lo).natAbs (scaled hi).natAbs
+
+/-- A `SUM`'s bound: `N` values within `e`, and the two roundings. -/
+def sumTol (N e M : Nat) : Nat := N * (e + 1) + 2 * ulpDiv ((N * (M + e) : Nat) : Int) 1 + 4
+
+/-- An `AVG`'s bound. -/
+def avgTol (e M : Nat) : Nat := (e + 1) + 2 * ulpDiv ((M + e : Nat) : Int) 1 + 4
+
+/-- The range of codes the analysis gives column `i`, where it bounds both ends. -/
+def colRange (env : List AVal) (i : Nat) : Option (Int × Int) :=
+  match (env.getD i AVal.top).int with
+  | some ⟨some lo, some hi⟩ => some (lo, hi)
+  | _ => none
+
+set_option exponentiation.threshold 2100 in
+/-- **A measure's output tolerance**, its input within `t`: `some none` for a
+measure that reads exact columns only, `some (some b)` for a `SUM` or `AVG`
+of a tolerated column it bounds, `none` otherwise. `mask` names the input's
+columns of reference codes, `env` its abstract values, `N` its row bound. -/
+def Measure.tolOut (t : Tol) (mask : Nat → Bool) (env : List AVal) (N : Option Nat)
+    (m : Measure) : Option (Option Nat) :=
+  if m.tolOk t then some none else
+  match m.arg, N with
+  | .field i, some N =>
+    match t i, colRange env i with
+    | some e, some (lo, hi) =>
+      if !m.distinct && (m.filter.all fun c => t.exactOn c.cols) && mask i &&
+          decide (negInf < lo - e) && decide (hi + e < posInf) &&
+          decide (N * (magOf lo hi + e) ≤ 2 ^ 2097) then
+        match m.fn with
+        | .fsum => some (some (sumTol N e (magOf lo hi)))
+        | .avg => some (some (avgTol e (magOf lo hi)))
+        | _ => none
+      else none
+    | _, _ => none
+  | _, _ => none
+
+theorem Forall2.mem_left {α β : Type} {R : α → β → Prop} {l : List α} {l' : List β}
+    (h : Forall2 R l l') {a : α} (ha : a ∈ l) : ∃ b ∈ l', R a b :=
+  Forall2.mem_right (Forall2.flip h) ha
+
+theorem scaled_natAbs_le {lo hi c : Int} (h1 : lo ≤ c) (h2 : c ≤ hi) :
+    (scaled c).natAbs ≤ magOf lo hi := by
+  have a := scaled_mono h1; have b := scaled_mono h2
+  unfold magOf
+  generalize scaled lo = x at *; generalize scaled hi = y at *; generalize scaled c = z at *
+  omega
+
+theorem exactSum_natAbs_le_mul {B : Nat} :
+    ∀ {vs : List Value}, (∀ c, Value.float c ∈ vs → (scaled c).natAbs ≤ B) →
+      (exactSum vs).natAbs ≤ vs.length * B
+  | [], _ => by simp [exactSum]
+  | v :: vs, h => by
+    have ih := exactSum_natAbs_le_mul (vs := vs) fun c hc => h c (List.mem_cons_of_mem _ hc)
+    rw [exactSum_cons]
+    have hv : (exactOf v).natAbs ≤ B := by
+      cases v with
+      | float c => exact h c (List.mem_cons_self ..)
+      | _ => simp [exactOf]
+    have := Int.natAbs_add_le (exactOf v) (exactSum vs)
+    simp only [List.length_cons, Nat.succ_mul]
+    omega
+
+theorem ulpDiv_mono {v w : Int} (n : Nat) (h : v.natAbs ≤ w.natAbs) : ulpDiv v n ≤ ulpDiv w n :=
+  Nat.pow_le_pow_right (by decide) (gridExp_mono n h)
+
+/-- The ulp of a mean is at most the ulp of a bound on its values. -/
+theorem ulpDiv_le_of_mean {S : Int} {n B : Nat} (h : S.natAbs ≤ n * B) :
+    ulpDiv S n ≤ ulpDiv (B : Int) 1 := by
+  unfold ulpDiv
+  apply Nat.pow_le_pow_right (by decide)
+  unfold gridExp
+  have : S.natAbs / n ≤ B := by
+    rcases Nat.eq_zero_or_pos n with rfl | hn
+    · simp
+    · exact Nat.div_le_of_le_mul h
+  have := log2_mono this
+  simp only [Int.natAbs_natCast, Nat.div_one]
+  omega
+
+theorem Tol.cell_float {t : Tol} {j e : Nat} (hj : t j = some e) {a b : Int}
+    (h : (fp64.canon a - fp64.canon b).natAbs ≤ e) : t.Cell j (.float a) (.float b) := by
+  show IntEquiv nearObs t.ctx j a b
+  simp only [IntEquiv, Tol.ctx, ObsCtx.ofTol, Tol.kind, hj, Option.isSome_some, ite_true, nearObs,
+    Tol.near]
+  exact h
+
+theorem Tol.cell_float_iff {e : Nat} {a b : Int} :
+    (Tol.all e).Cell 0 (.float a) (.float b) ↔ (fp64.canon a - fp64.canon b).natAbs ≤ e := by
+  show IntEquiv nearObs (Tol.all e).ctx 0 a b ↔ _
+  simp [IntEquiv, Tol.ctx, ObsCtx.ofTol, Tol.kind, Tol.all, nearObs, Tol.near]
+
+/-- The inputs of a measure, value by value within `e` (`Measure.inputs_near`
+without the finiteness). -/
+theorem Measure.inputs_cells {t : Tol} {m : Measure} {e : Nat} (hd : m.distinct = false)
+    (hf : m.filter.all (fun c => t.exactOn c.cols) = true)
+    (ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e)) {g g' : Relation}
+    (f : Forall2 t.Rows g g') : Forall2 ((Tol.all e).Cell 0) (m.inputs g) (m.inputs g') := by
+  obtain ⟨o, ho, hle⟩ := ha
+  have hk : Forall2 t.Rows (m.kept g) (m.kept g') := by
+    unfold Measure.kept
+    cases hc : m.filter with
+    | none => exact f
+    | some c =>
+      simp only [hc, Option.all_some] at hf
+      exact f.filter fun x y r => by rw [Expr.eval_rows hf r]
+  have hm : Forall2 ((Tol.all e).Cell 0) ((m.kept g).map fun row => m.arg.eval row)
+      ((m.kept g').map fun row => m.arg.eval row) :=
+    hk.map (f := fun row => m.arg.eval row) (g := fun row => m.arg.eval row)
+      fun x y r => Expr.tol?_sound ho r (t' := Tol.all e) (j := 0) hle
+  have hn := hm.filter (p := (· != .null)) (p' := (· != .null)) fun v w h => Tol.cell_null_iff h
+  unfold Measure.inputs
+  simp only [hd, Bool.false_eq_true, ite_false]
+  exact hn
+
+/-- One pair of a `SUM`'s values: the engine's a reference code, the
+reference's in `[lo, hi]`, within `e` after `canon`. Then both are finite,
+within `e` as codes, and the engine's magnitude at most `M + e`. -/
+theorem pair_near {e : Nat} {lo hi : Int} (hlo : negInf < lo - e) (hhi : hi + e < posInf)
+    {v w : Value} (hc : (Tol.all e).Cell 0 v w) (hv : ∀ c, v = .float c → IsRef c)
+    (hw : ∀ c, w = .float c → lo ≤ c ∧ c ≤ hi) :
+    CodeNear e v w ∧ (∀ c, v = .float c → IsFin c ∧ (scaled c).natAbs ≤ magOf lo hi + e) ∧
+      (∀ c, w = .float c → IsFin c ∧ (scaled c).natAbs ≤ magOf lo hi) := by
+  cases w with
+  | float b =>
+    cases v with
+    | float a =>
+      obtain ⟨hb1, hb2⟩ := hw b rfl
+      have fb : IsFin b := ⟨by omega, by omega⟩
+      have h := Tol.cell_float_iff.1 hc
+      rw [show fp64.canon a = a from canon_of_isRef (hv a rfl),
+        show fp64.canon b = b from canon_of_isRef (isRef_of_bounds fb)] at h
+      have fa : IsFin a := ⟨by omega, by omega⟩
+      have hs := scaled_sub_le a b
+      have hmb := scaled_natAbs_le hb1 hb2
+      refine ⟨h, fun c hc' => ?_, fun c hc' => ?_⟩
+      · cases hc'
+        refine ⟨fa, ?_⟩
+        have := Int.natAbs_add_le (scaled a - scaled b) (scaled b)
+        rw [Int.sub_add_cancel] at this
+        omega
+      · cases hc'; exact ⟨fb, hmb⟩
+    | _ => exact hc.elim
+  | _ =>
+    cases v with
+    | float a => exact hc.elim
+    | _ =>
+      exact ⟨⟨fun _ h => (nomatch h), fun _ h => (nomatch h)⟩, fun _ h => (nomatch h),
+        fun _ h => (nomatch h)⟩
+
+/-- A `SUM`'s or `AVG`'s inputs on two groups within `t`: paired within `e`,
+finite, of bounded magnitude, at most `N` of them. -/
+theorem Measure.sum_facts {t : Tol} {m : Measure} {mask : Nat → Bool} {env : List AVal}
+    {i e N : Nat} {lo hi : Int} (harg : m.arg = .field i) (hti : t i = some e)
+    (hcr : colRange env i = some (lo, hi)) (hd : m.distinct = false)
+    (hf : m.filter.all (fun c => t.exactOn c.cols) = true) (hmask : mask i = true)
+    (hlo : negInf < lo - e) (hhi : hi + e < posInf) {g g' : Relation} (f : Forall2 t.Rows g g')
+    (henv : ∀ row ∈ g', EnvMem env row) (hN : g'.length ≤ N) (hR : Relation.RefOn mask g) :
+    Forall2 (CodeNear e) (m.inputs g) (m.inputs g') ∧ FinCodes (m.inputs g) ∧
+      FinCodes (m.inputs g') ∧
+      (exactSum (m.inputs g)).natAbs ≤ (m.inputs g).length * (magOf lo hi + e) ∧
+      (exactSum (m.inputs g')).natAbs ≤ (m.inputs g').length * (magOf lo hi + e) ∧
+      (m.inputs g).length ≤ N ∧ (m.inputs g').length ≤ N := by
+  have ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e) :=
+    ⟨some e, by simp [harg, Expr.tol?, hti], by simp [OLe]⟩
+  have hcells := Measure.inputs_cells hd hf ha f
+  have hP : ∀ v ∈ m.inputs g, ∀ c, v = .float c → IsRef c := by
+    intro v hv c hc
+    obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hv
+    rw [harg] at hc
+    exact hR row hr i c hmask hc
+  have hQ : ∀ w ∈ m.inputs g', ∀ c, w = .float c → lo ≤ c ∧ c ≤ hi := by
+    intro w hw c hc
+    obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hw
+    rw [harg] at hc
+    have hm := henv row hr i
+    simp only [Expr.eval] at hc
+    rw [hc] at hm
+    obtain ⟨b, hb, hbm, -⟩ := hm
+    unfold colRange at hcr
+    split at hcr
+    · rename_i lo' hi' hint
+      simp only [Option.some.injEq, Prod.mk.injEq] at hcr
+      obtain ⟨rfl, rfl⟩ := hcr
+      rw [hint] at hb; cases hb
+      exact ⟨hbm.1 _ rfl, hbm.2 _ rfl⟩
+    · cases hcr
+  have hpairs := (hcells.and_mem hP hQ).imp fun v w ⟨h, pv, qw⟩ => pair_near hlo hhi h pv qw
+  have hlen := hcells.length_eq
+  have hl' := Nat.le_trans (Measure.inputs_length_le m g') hN
+  refine ⟨hpairs.imp fun _ _ h => h.1, fun c hc => ?_, fun c hc => ?_, ?_, ?_, by omega, hl'⟩
+  · obtain ⟨w, -, h⟩ := hpairs.mem_left hc; exact (h.2.1 c rfl).1
+  · obtain ⟨v, -, h⟩ := hpairs.mem_right hc; exact (h.2.2 c rfl).1
+  · exact exactSum_natAbs_le_mul fun c hc => by
+      obtain ⟨w, -, h⟩ := hpairs.mem_left hc; exact (h.2.1 c rfl).2
+  · exact exactSum_natAbs_le_mul fun c hc => by
+      obtain ⟨v, -, h⟩ := hpairs.mem_right hc
+      have := (h.2.2 c rfl).2; omega
+
+/-- A `SUM`'s or `AVG`'s value: NULL, or a reference code. -/
+theorem Measure.eval_refOut {m : Measure} (hm : m.refOut = true) (rows : Relation) :
+    m.eval rows = .null ∨ ∃ a, m.eval rows = .float a ∧ IsRef a := by
+  cases h : m.eval rows with
+  | null => exact .inl rfl
+  | float a => exact .inr ⟨a, rfl, Measure.refOut_sound hm rows h⟩
+  | _ =>
+    exfalso
+    unfold Measure.refOut at hm
+    have hs : m.fn.sorts = false := by
+      cases hfn : m.fn <;> simp only [hfn, Bool.false_eq_true] at hm <;> rfl
+    rw [Measure.eval_eq hs] at h
+    cases hfn : m.fn <;> simp only [hfn, Bool.false_eq_true] at hm <;> rw [hfn] at h <;>
+      cases hi : m.inputs rows <;> rw [hi] at h <;> simp [AggFn.apply] at h
+
+theorem Tol.cell_of_codeNear {tm : Tol} {j B B' : Nat} (hj : tm j = some B') (hB : B ≤ B')
+    {v w : Value} (hv : v = .null ∨ ∃ a, v = .float a ∧ IsRef a)
+    (hw : w = .null ∨ ∃ b, w = .float b ∧ IsRef b) (h : CodeNear B v w) : tm.Cell j v w := by
+  rcases hv with rfl | ⟨a, rfl, ra⟩ <;> rcases hw with rfl | ⟨b, rfl, rb⟩
+  · exact Tol.cell_null _ _
+  · exact absurd rfl (h.2 b)
+  · exact absurd rfl (h.1 a)
+  · refine Tol.cell_float hj ?_
+    rw [show fp64.canon a = a from canon_of_isRef ra, show fp64.canon b = b from canon_of_isRef rb]
+    exact Nat.le_trans h hB
+
+set_option exponentiation.threshold 2100 in
+/-- **A measure's output on two groups within `t` is within its output
+tolerance.** -/
+theorem Measure.tolOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
+    {m : Measure} {o : Option Nat} (h : m.tolOut t mask env N = some o) {g g' : Relation}
+    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
+    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) {tm : Tol} {j : Nat}
+    (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
+  unfold Measure.tolOut at h
+  by_cases hok : m.tolOk t = true
+  · rw [Measure.eval_rows hok f]; exact Tol.cell_refl _ _ _
+  simp only [hok, Bool.false_eq_true, ite_false] at h
+  cases harg : m.arg with
+  | field i =>
+    rw [harg] at h
+    cases N with
+    | none => simp at h
+    | some n =>
+      simp only at h
+      cases hti : t i with
+      | none => simp [hti] at h
+      | some e =>
+        cases hcr : colRange env i with
+        | none => simp [hti, hcr] at h
+        | some r =>
+          obtain ⟨lo, hi⟩ := r
+          simp only [hti, hcr] at h
+          split at h
+          · rename_i hc
+            simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq] at hc
+            obtain ⟨⟨⟨⟨⟨hd, hf⟩, hmask⟩, hlo⟩, hhi⟩, hbig⟩ := hc
+            obtain ⟨hp, hv, hw, hS, hS', hl, hl'⟩ :=
+              Measure.sum_facts harg hti hcr hd hf hmask hlo hhi f henv (hN n rfl) hR
+            have ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e) :=
+              ⟨some e, by simp [harg, Expr.tol?, hti], by simp [OLe]⟩
+            have hlen := hp.length_eq
+            generalize hM : magOf lo hi = M at hS hS' hbig h
+            cases hfn : m.fn <;> simp only [hfn, reduceCtorEq] at h
+            · -- SUM
+              simp only [Option.some.injEq] at h; subst h
+              have hro : m.refOut = true := by simp [Measure.refOut, hfn]
+              have big : ((n * (M + e) : Nat) : Int).natAbs = n * (M + e) := Int.natAbs_natCast _
+              have hS1 : (exactSum (m.inputs g)).natAbs ≤ n * (M + e) :=
+                Nat.le_trans hS (Nat.mul_le_mul_right _ hl)
+              have hS2 : (exactSum (m.inputs g')).natAbs ≤ n * (M + e) :=
+                Nat.le_trans hS' (Nat.mul_le_mul_right _ hl')
+              have rv := ofExactDiv_fin (v := exactSum (m.inputs g)) (n := 1) (by omega) (by omega)
+              have rw' := ofExactDiv_fin (v := exactSum (m.inputs g')) (n := 1) (by omega) (by omega)
+              have hc := Measure.fsum_near hfn hd hf ha f hv hw rv rw'
+              refine Tol.cell_of_codeNear hj ?_ (Measure.eval_refOut hro g)
+                (Measure.eval_refOut hro g') hc
+              have u1 := ulpDiv_mono (v := exactSum (m.inputs g))
+                (w := ((n * (M + e) : Nat) : Int)) 1 (by rw [big]; exact hS1)
+              have u2 := ulpDiv_mono (v := exactSum (m.inputs g'))
+                (w := ((n * (M + e) : Nat) : Int)) 1 (by rw [big]; exact hS2)
+              have := Nat.mul_le_mul_right (e + 1) hl
+              unfold sumTol; omega
+            · -- AVG
+              simp only [Option.some.injEq] at h; subst h
+              have hro : m.refOut = true := by simp [Measure.refOut, hfn]
+              have hfin : ∀ {I : List Value}, (exactSum I).natAbs ≤ I.length * (M + e) →
+                  I.length ≤ n → IsFin (ofExactDiv (exactSum I) I.length) := by
+                intro I hI hIn
+                rcases Nat.eq_zero_or_pos I.length with h0 | hpos
+                · rw [h0] at hI ⊢
+                  have : exactSum I = 0 := by omega
+                  rw [this, ofExactDiv_zero]
+                  exact ⟨by have := negInf_eq; omega, by have := posInf_eq; omega⟩
+                · refine ofExactDiv_fin hpos (Nat.le_trans hI (Nat.mul_le_mul_left _ ?_))
+                  have : 1 * (M + e) ≤ n * (M + e) := Nat.mul_le_mul_right _ (by omega)
+                  omega
+              have hc := Measure.avg_near hfn hd hf ha f hv hw (hfin hS hl) (hfin hS' hl')
+              refine Tol.cell_of_codeNear hj ?_ (Measure.eval_refOut hro g)
+                (Measure.eval_refOut hro g') hc
+              have u1 := ulpDiv_le_of_mean hS
+              have u2 := ulpDiv_le_of_mean hS'
+              simp only [Int.natCast_add] at u1 u2
+              unfold avgTol; push_cast; omega
+          · cases h
+  | _ => rw [harg] at h; simp at h
+
+/-- The tolerance of a list of measure outputs. -/
+def Tol.ofOuts (os : List (Option (Option Nat))) : Tol := fun k => (os.getD k none).getD none
+
+set_option exponentiation.threshold 2100 in
+theorem Measure.tolOut_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
+    {m : Measure} {o : Option Nat} (h : m.tolOut t mask env N = some o) : m.orderFree = true := by
+  by_cases hok : m.tolOk t = true
+  · simp only [Measure.tolOk, Bool.and_eq_true] at hok; exact hok.1.1.1
+  unfold Measure.orderFree
+  cases hfn : m.fn <;> first
+    | (simp [AggFn.orderFree, AggFn.decomposable]; done)
+    | (exfalso
+       unfold Measure.tolOut at h
+       simp only [hok, Bool.false_eq_true, ite_false] at h
+       repeat' (split at h)
+       all_goals simp_all)
+
+theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
+    {ms : List Measure} (hos : (ms.map (·.tolOut t mask env N)).all Option.isSome = true)
+    {g g' : Relation} (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
+    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) :
+    (Tol.ofOuts (ms.map (·.tolOut t mask env N))).Rows (ms.map (·.eval g)) (ms.map (·.eval g')) := by
+  refine ⟨by simp, fun j => ?_⟩
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases hj : ms[j]? with
+  | none => exact Tol.cell_null _ _
+  | some m =>
+    simp only [Option.map_some, Option.getD_some]
+    have hm : m ∈ ms := List.mem_of_getElem? hj
+    obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1
+      (List.all_eq_true.1 hos _ (List.mem_map_of_mem (f := (·.tolOut t mask env N)) hm))
+    exact Measure.tolOut_cell ho f henv hN hR
+      (by simp [Tol.ofOuts, List.getD_eq_getElem?_getD, List.getElem?_map, hj, ho])
+
+/-- **`GROUP BY` on exact keys with measures the fold bounds**: the groups
+pair up, and each output row is within the measures' tolerances. -/
+theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask : Nat → Bool}
+    {env : List AVal} {N : Option Nat} (hg : gs.all (fun g => t.exactOn g.cols) = true)
+    (hos : (ms.map (·.tolOut t mask env N)).all Option.isSome = true) {a p : Relation}
+    (f : Forall2 t.Rows a p) (henv : ∀ row ∈ p, EnvMem env row)
+    (hN : ∀ n, N = some n → p.length ≤ n) (hR : Relation.RefOn mask a) :
+    Forall2 (Tol.cat gs.length Tol.exact (Tol.ofOuts (ms.map (·.tolOut t mask env N)))).Rows
+      (aggregateEval gs ms a) (aggregateEval gs ms p) := by
+  have hkey : ∀ x y, t.Rows x y → groupKey gs x = groupKey gs y := fun x y r =>
+    List.map_congr_left fun g hg' => Expr.eval_rows (List.all_eq_true.1 hg g hg') r
+  unfold aggregateEval
+  split
+  · rename_i he
+    have h0 : gs.length = 0 := by simpa using he
+    refine .cons ?_ .nil
+    have := Tol.rows_append (n := 0) (t := Tol.exact) (x := []) (x' := []) (Tol.rows_refl _ _)
+      (measures_rows hos f henv hN hR) rfl
+    rw [h0]; simpa using this
+  · rw [f.map_eq hkey]
+    have hl : Forall2 (fun k k' => k = k' ∧ k ∈ dedup (p.map (groupKey gs)))
+        (dedup (p.map (groupKey gs))) (dedup (p.map (groupKey gs))) := Forall2.refl fun k hk => ⟨rfl, hk⟩
+    refine hl.map fun k k' ⟨hkk, hk⟩ => ?_
+    subst hkk
+    obtain ⟨y, -, rfl⟩ := List.mem_map.1 (mem_dedup.1 hk)
+    have fg : Forall2 t.Rows (groupRows gs a (groupKey gs y)) (groupRows gs p (groupKey gs y)) :=
+      f.filter fun x y' r => by rw [hkey x y' r]
+    refine Tol.rows_append (Tol.rows_refl _ _) (measures_rows hos fg ?_ ?_ ?_) (by simp [groupKey])
+    · exact fun row h => henv row (List.mem_filter.1 h).1
+    · exact fun n hn => Nat.le_trans (List.length_filter_le _ _) (hN n hn)
+    · exact hR.mono fun row h => (List.mem_filter.1 h).1
+
+/-- The engine's catalog is well-formed when its tables are within a
+tolerance of the reference's well-formed ones, with the same arities. -/
+theorem Catalog.wf_of_near {cat cat' : Catalog} (hcat : cat.WF)
+    (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
+    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows) : cat'.WF := fun s row hr => by
+  obtain ⟨p, fp, hp⟩ := hT s
+  obtain ⟨y, hy, rxy⟩ := fp.mem_left hr
+  rw [rxy.1, hcat s y (hp.mem_iff.1 hy), ha]
+
+/-- **A bound on a plan's rows** from the knowledge of its sources: `Rel.maxRows`
+with each table's own cap (`Knowledge.rows`). A `SUM`'s group is at most its
+input. -/
+def Rel.rowsK (K : KnowledgeEnv) : Rel → Option Nat
+  | .read s => (K s).rows
+  | .values _ rows => some rows.length
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r | .semi r _ _ _ =>
+      r.rowsK K
+  | .fetch r _ cnt => match cnt, r.rowsK K with
+    | some k, some n => some (min k n)
+    | some k, none => some k
+    | none, n => n
+  | .cross a b | .join a b .inner _ => (a.rowsK K).bind fun n => (b.rowsK K).map (n * ·)
+  | .unionAll a b => (a.rowsK K).bind fun n => (b.rowsK K).map (n + ·)
+  | .aggregate r gs _ => if gs.isEmpty then some 1 else r.rowsK K
+  | .join _ _ .left _ | .window .. | .unnest .. => none
+
+theorem Rel.rowsK_sound {cat : Catalog} {K : KnowledgeEnv} (hK : K.Sound cat) :
+    ∀ {r : Rel} {n : Nat}, r.rowsK K = some n → (r.eval cat).length ≤ n
+  | .read s, _, h => (hK s).2.2.2 _ h
+  | .values _ _, _, h => by simp only [Rel.rowsK, Option.some.injEq] at h; simp [Rel.eval, h]
+  | .filter r _, _, h | .semi r _ _ _, _, h => by
+    simp only [Rel.rowsK] at h
+    exact Nat.le_trans (List.length_filter_le _ _) (Rel.rowsK_sound hK (r := r) h)
+  | .project r _, _, h | .emit r _, _, h => by
+    simp only [Rel.rowsK] at h; simp only [Rel.eval, List.length_map]
+    exact Rel.rowsK_sound hK (r := r) h
+  | .orderBy r _, _, h => by
+    simp only [Rel.rowsK] at h; simp only [Rel.eval, List.length_mergeSort]
+    exact Rel.rowsK_sound hK (r := r) h
+  | .distinct r, _, h => by
+    simp only [Rel.rowsK] at h
+    exact Nat.le_trans (dedup_length_le _) (Rel.rowsK_sound hK (r := r) h)
+  | .fetch r _ cnt, n, h => by
+    simp only [Rel.eval]
+    cases cnt with
+    | none =>
+      simp only [Rel.rowsK] at h
+      have := Rel.rowsK_sound hK (r := r) h
+      simp only [List.length_drop]; omega
+    | some k =>
+      cases hr : r.rowsK K with
+      | none =>
+        simp only [Rel.rowsK, hr, Option.some.injEq] at h
+        subst h; simp only [List.length_take]; exact Nat.min_le_left _ _
+      | some m =>
+        simp only [Rel.rowsK, hr, Option.some.injEq] at h
+        subst h
+        have := Rel.rowsK_sound hK hr
+        simp only [List.length_take, List.length_drop]; omega
+  | .cross a b, n, h => by
+    simp only [Rel.rowsK, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨na, ha, nb, hb, rfl⟩ := h
+    simp only [Rel.eval, length_crossRows]
+    exact Nat.mul_le_mul (Rel.rowsK_sound hK ha) (Rel.rowsK_sound hK hb)
+  | .join a b .inner _, n, h => by
+    simp only [Rel.rowsK, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨na, ha, nb, hb, rfl⟩ := h
+    simp only [Rel.eval]
+    exact Nat.le_trans (List.length_filter_le _ _)
+      (by rw [length_crossRows]; exact Nat.mul_le_mul (Rel.rowsK_sound hK ha) (Rel.rowsK_sound hK hb))
+  | .unionAll a b, n, h => by
+    simp only [Rel.rowsK, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨na, ha, nb, hb, rfl⟩ := h
+    simp only [Rel.eval, List.length_append]
+    exact Nat.add_le_add (Rel.rowsK_sound hK ha) (Rel.rowsK_sound hK hb)
+  | .aggregate r gs _, n, h => by
+    simp only [Rel.rowsK] at h
+    simp only [Rel.eval, aggregateEval]
+    split at h
+    · rename_i hg
+      simp only [Option.some.injEq] at h; subst h
+      simp [hg]
+    · rename_i hg
+      simp only [hg, Bool.false_eq_true, ite_false, List.length_map]
+      exact Nat.le_trans (dedup_length_le _) (by simpa using Rel.rowsK_sound hK (r := r) h)
+  | .join _ _ .left _, _, h | .window .., _, h | .unnest .., _, h => by simp [Rel.rowsK] at h
+
 /-! ## The fold and its theorem -/
 
 /-- **The tolerance of a plan's output**, when each source `s` is within
 `T s` of the reference's: the table of #929 on its constant-`1` rows. `none`
 where the plan compares a tolerated column (a filter, join or semi-join
-condition, a group key, a measure's argument, `DISTINCT`), and for the
-operators whose rows depend on an order the multiset observation does not
-fix (`FETCH`, windows) or not yet in the table (`UNNEST`). -/
-def Rel.tol (cat : Catalog) (T : String → Tol) : Rel → Option Tol
+condition, a group key, `DISTINCT`, a measure's argument other than a `SUM`
+or `AVG` the analysis bounds, `Measure.tolOut`), and for the operators whose
+rows depend on an order the multiset observation does not fix (`FETCH`,
+windows) or not yet in the table (`UNNEST`). `K` is the knowledge of the
+reference's sources, which bounds a `SUM`'s values. -/
+def Rel.tol (cat : Catalog) (K : KnowledgeEnv) (T : String → Tol) : Rel → Option Tol
   | .read s => some (T s)
   | .values _ _ => some Tol.exact
-  | .filter r c => (r.tol cat T).bind fun t => if t.exactOn c.cols then some t else none
-  | .project r es => (r.tol cat T).bind fun t =>
+  | .filter r c => (r.tol cat K T).bind fun t => if t.exactOn c.cols then some t else none
+  | .project r es => (r.tol cat K T).bind fun t =>
       if es.all (fun e => (e.tol? t).isSome) then some (Tol.cat (r.arity cat) t (Tol.exprs t es))
       else none
-  | .emit r m => (r.tol cat T).map (Tol.emit · m)
-  | .cross a b => (a.tol cat T).bind fun ta => (b.tol cat T).map fun tb => Tol.cat (a.arity cat) ta tb
-  | .join a b _ on => (a.tol cat T).bind fun ta => (b.tol cat T).bind fun tb =>
+  | .emit r m => (r.tol cat K T).map (Tol.emit · m)
+  | .cross a b => (a.tol cat K T).bind fun ta => (b.tol cat K T).map fun tb => Tol.cat (a.arity cat) ta tb
+  | .join a b _ on => (a.tol cat K T).bind fun ta => (b.tol cat K T).bind fun tb =>
       if (Tol.cat (a.arity cat) ta tb).exactOn on.cols then some (Tol.cat (a.arity cat) ta tb)
       else none
   | .fetch .. | .window .. | .unnest .. => none
-  | .unionAll a b => (a.tol cat T).bind fun ta => (b.tol cat T).map fun tb => Tol.max ta tb
-  | .semi a b _ on => (a.tol cat T).bind fun ta => (b.tol cat T).bind fun tb =>
+  | .unionAll a b => (a.tol cat K T).bind fun ta => (b.tol cat K T).map fun tb => Tol.max ta tb
+  | .semi a b _ on => (a.tol cat K T).bind fun ta => (b.tol cat K T).bind fun tb =>
       if (Tol.cat (a.arity cat) ta tb).exactOn on.cols then some ta else none
-  | .orderBy r _ => r.tol cat T
-  | .distinct r => (r.tol cat T).bind fun t =>
+  | .orderBy r _ => r.tol cat K T
+  | .distinct r => (r.tol cat K T).bind fun t =>
       if t.exactBelow (r.arity cat) then some Tol.exact else none
-  | .aggregate r gs ms => (r.tol cat T).bind fun t =>
-      if gs.all (fun g => t.exactOn g.cols) && ms.all (·.tolOk t) then some Tol.exact else none
+  | .aggregate r gs ms => (r.tol cat K T).bind fun t =>
+      let os := ms.map (·.tolOut t (r.refCols cat) (r.analyse cat K).cols (r.rowsK K))
+      if gs.all (fun g => t.exactOn g.cols) && os.all Option.isSome then
+        some (Tol.cat gs.length Tol.exact (Tol.ofOuts os))
+      else none
 
 /-- **`plan_near` (#929)**: an engine's sources within `T` of the
-reference's give a result within `Rel.tol cat T r` of the reference's, rows
-as a multiset. `cat'` is the engine's catalog, with the reference's arities;
-the reference's catalog is well-formed. -/
-theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
-    (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
-    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows) :
-    ∀ {r : Rel} {t : Tol}, r.WF cat → r.tol cat T = some t →
+reference's give a result within `Rel.tol cat K T r` of the reference's,
+rows as a multiset. `cat'` is the engine's catalog, with the reference's
+arities and reference codes (`Relation.RefCodes`, as Sverify reads an
+engine's values); the reference's catalog is well-formed, and `K` sound for
+it. -/
+theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
+    (hK : K.Sound cat) (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
+    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows)
+    (hR : ∀ s, (cat' s).rows.RefCodes) :
+    ∀ {r : Rel} {t : Tol}, r.WF cat → r.tol cat K T = some t →
       Relation.NearT t (r.eval cat') (r.eval cat)
   | .read s, t, _, h => by
     simp only [Rel.tol, Option.some.injEq] at h; subst h; exact hT s
@@ -871,25 +1357,25 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
     obtain ⟨t0, hr, h⟩ := h
     split at h
     · simp only [Option.some.injEq] at h; subst h
-      exact (plan_near hcat ha hT hwf.1 hr).filter fun x y r => by rw [Expr.eval_rows (by assumption) r]
+      exact (plan_near hcat hK ha hT hR hwf.1 hr).filter fun x y r => by rw [Expr.eval_rows (by assumption) r]
     · exact absurd h (by simp)
   | .project r es, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
     obtain ⟨t0, hr, h⟩ := h
     split at h
     · simp only [Option.some.injEq] at h; subst h
-      exact (plan_near hcat ha hT hwf.1 hr).map_of (Rel.eval_arity hcat hwf.1) fun x y rxy hy =>
+      exact (plan_near hcat hK ha hT hR hwf.1 hr).map_of (Rel.eval_arity hcat hwf.1) fun x y rxy hy =>
         Tol.rows_append rxy (Tol.rows_exprs (by assumption) rxy) hy
     · exact absurd h (by simp)
   | .emit r m, t, hwf, h => by
     simp only [Rel.tol, Option.map_eq_some_iff] at h
     obtain ⟨t0, hr, rfl⟩ := h
-    exact (plan_near hcat ha hT hwf.1 hr).map fun x y rxy => Tol.rows_emit rxy m
+    exact (plan_near hcat hK ha hT hR hwf.1 hr).map fun x y rxy => Tol.rows_emit rxy m
   | .cross a b, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, rfl⟩ := h
-    have hb := plan_near hcat ha hT hwf.2 htb
-    exact (plan_near hcat ha hT hwf.1 hta).bind_of (Rel.eval_arity hcat hwf.1) fun x y rxy hy =>
+    have hb := plan_near hcat hK ha hT hR hwf.2 htb
+    exact (plan_near hcat hK ha hT hR hwf.1 hta).bind_of (Rel.eval_arity hcat hwf.1) fun x y rxy hy =>
       hb.map fun u v ruv => Tol.rows_append rxy ruv hy
   | .join a b jt on, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
@@ -897,8 +1383,8 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
     split at h
     · rename_i hon
       simp only [Option.some.injEq] at h; subst h
-      have hA := plan_near hcat ha hT hwf.1 hta
-      have hb := plan_near hcat ha hT hwf.2.1 htb
+      have hA := plan_near hcat hK ha hT hR hwf.1 hta
+      have hb := plan_near hcat hK ha hT hR hwf.2.1 htb
       have hcross : ∀ x y, ta.Rows x y → y.length = a.arity cat →
           Relation.NearT (Tol.cat (a.arity cat) ta tb) ((b.eval cat').map (x ++ ·))
             ((b.eval cat).map (y ++ ·)) :=
@@ -931,16 +1417,16 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
   | .unionAll a b, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, rfl⟩ := h
-    exact ((plan_near hcat ha hT hwf.1 hta).mono (Tol.le_max_left ta tb)).append
-      ((plan_near hcat ha hT hwf.2.1 htb).mono (Tol.le_max_right ta tb))
+    exact ((plan_near hcat hK ha hT hR hwf.1 hta).mono (Tol.le_max_left ta tb)).append
+      ((plan_near hcat hK ha hT hR hwf.2.1 htb).mono (Tol.le_max_right ta tb))
   | .semi a b anti on, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, h⟩ := h
     split at h
     · rename_i hon
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, fp, hp⟩ := plan_near hcat ha hT hwf.2.1 htb
-      refine (plan_near hcat ha hT hwf.1 hta).filter_of (Rel.eval_arity hcat hwf.1)
+      obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hR hwf.2.1 htb
+      refine (plan_near hcat hK ha hT hR hwf.1 hta).filter_of (Rel.eval_arity hcat hwf.1)
         fun x y rxy hy => ?_
       simp only [hasMatch]
       rw [fp.any_eq (p' := fun v => (on.eval (y ++ v)).isTrue) fun u v ruv => by
@@ -948,7 +1434,7 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
     · exact absurd h (by simp)
   | .orderBy r _, t, hwf, h => by
     simp only [Rel.tol] at h
-    exact ((plan_near hcat ha hT hwf.1 h).perm_left (List.mergeSort_perm _ _)).perm_right
+    exact ((plan_near hcat hK ha hT hR hwf.1 h).perm_left (List.mergeSort_perm _ _)).perm_right
       (List.mergeSort_perm _ _).symm
   | .distinct r, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
@@ -957,7 +1443,7 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
     · rename_i he
       simp only [Option.some.injEq] at h; subst h
       have hw : r.WF cat := hwf
-      obtain ⟨p, fp, hp⟩ := (plan_near hcat ha hT hw hr).forall2_mem (Rel.eval_arity hcat hw)
+      obtain ⟨p, fp, hp⟩ := (plan_near hcat hK ha hT hR hw hr).forall2_mem (Rel.eval_arity hcat hw)
       have : r.eval cat' = p := Forall2.eq (fp.imp fun x y rxy => Tol.rows_eq he rxy.1 rxy.2)
       simp only [Rel.eval, this]
       exact .of_perm (dedup_perm_of_mem fun z => hp.mem_iff)
@@ -969,14 +1455,19 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF)
     · rename_i hok
       simp only [Bool.and_eq_true] at hok
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, fp, hp⟩ := plan_near hcat ha hT hwf.1 hr
+      obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hR hwf.1 hr
       have hof : ∀ m ∈ ms, m.orderFree = true := fun m hm => by
-        have := List.all_eq_true.1 hok.2 m hm
-        simp only [Measure.tolOk, Bool.and_eq_true] at this
-        exact this.1.1.1
+        obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 (List.all_eq_true.1 hok.2 _ (List.mem_map_of_mem hm))
+        exact Measure.tolOut_orderFree ho
+      have henv : ∀ row ∈ p, EnvMem (r.analyse cat K).cols row := fun row h' =>
+        (Rel.analyse_sound hcat hK hwf.1 (sz := false) (by simp)).1 row (hp.mem_iff.1 h')
+      have hN : ∀ n, r.rowsK K = some n → p.length ≤ n := fun n hn => by
+        rw [hp.length_eq]; exact Rel.rowsK_sound hK hn
+      have hcat' := Catalog.wf_of_near hcat ha hT
+      have hR' : Relation.RefOn (r.refCols cat) (r.eval cat') := by
+        rw [← Rel.refCols_congr ha r]; exact Rel.refOn hcat' hR (Rel.wf_congr ha hwf.1)
       simp only [Rel.eval]
-      rw [aggregateEval_rows hok.1 hok.2 fp]
-      exact .of_perm (aggregateEval_perm hof hp)
+      exact ⟨_, aggregateEval_near hok.1 hok.2 fp henv hN hR', aggregateEval_perm hof hp⟩
     · exact absurd h (by simp)
 
 /-! ## The triangle rule and pipelines -/
@@ -1063,18 +1554,25 @@ engine's inputs (its own rounding, `contract_sound_allowed`'s `ε`), is within
 theorem Rel.pipeline_near {cat cat' : Catalog} (hcat : cat.WF)
     (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
     (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows)
+    (hR : ∀ s, (cat' s).rows.RefCodes)
     {x : String} {n : Nat} {Eg Rg : Relation} {tg : Tol} (hg : Relation.NearT tg Eg Rg)
-    (hRg : ∀ row ∈ Rg, row.length = n)
+    (hRg : ∀ row ∈ Rg, row.length = n) (hEg : Eg.RefCodes) {K : KnowledgeEnv}
+    (hK : K.Sound (cat.bind x ⟨n, Rg⟩))
     {f : Rel} (hf : f.WF (cat.bind x ⟨n, Rg⟩)) {tf : Tol}
-    (htf : f.tol (cat.bind x ⟨n, Rg⟩) (fun s => if s = x then tg else T s) = some tf)
+    (htf : f.tol (cat.bind x ⟨n, Rg⟩) K (fun s => if s = x then tg else T s) = some tf)
     {rf : Tol} {Ef : Relation} (hE : Relation.NearT rf Ef (f.eval (cat'.bind x ⟨n, Eg⟩))) :
     Relation.NearT (rf.add tf) Ef (f.eval (cat.bind x ⟨n, Rg⟩)) := by
-  refine hE.add (Rel.plan_near (Catalog.bind_wf hcat hRg) (fun s => ?_) (fun s => ?_) hf htf)
+  refine hE.add (Rel.plan_near (Catalog.bind_wf hcat hRg) hK (fun s => ?_) (fun s => ?_)
+    (fun s => ?_) hf htf)
   · unfold Catalog.bind; split <;> simp [ha]
   · unfold Catalog.bind
     by_cases h : s = x
     · simp only [h, ite_true]; exact hg
     · simp only [h, ite_false]; exact hT s
+  · unfold Catalog.bind
+    by_cases h : s = x
+    · simp only [h, ite_true]; exact hEg
+    · simp only [h, ite_false]; exact hR s
 
 /-! ## `M₁`: a budget summed over the matching -/
 
@@ -1204,7 +1702,7 @@ A table `t` of three columns whose third, a double, is within 8 codes. -/
 private def exCat : Catalog := fun _ => ⟨3, []⟩
 private def exT : String → Tol := fun _ c => if c = 2 then some 8 else none
 private def exCols (r : Rel) : Option (List (Option Nat)) :=
-  (r.tol exCat exT).map fun t => (List.range 4).map t
+  (r.tol exCat (fun _ => ⟨[], [], [], none⟩) exT).map fun t => (List.range 4).map t
 
 -- Pass-through and emit carry the tolerance; an exact filter keeps it.
 #guard exCols (.emit (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 5)))) [2, 0]) ==
@@ -1223,6 +1721,24 @@ private def exCols (r : Rel) : Option (List (Option Nat)) :=
 #guard exCols (.aggregate (.read "t") [.field 2] [{ fn := .count, arg := .lit (.int 1) }]) == none
 -- `FETCH` reads an order the multiset observation does not fix.
 #guard exCols (.fetch (.read "t") 0 (some 1)) == none
+
+/-- The table's knowledge: at most 1000 rows, the double in `[-10⁶, 10⁶]`. -/
+private def exK : KnowledgeEnv := fun _ =>
+  ⟨[AVal.top, AVal.top, AVal.num false ⟨some (FloatCode.ofFloat (-1.0e6)), some (FloatCode.ofFloat 1.0e6)⟩ .float],
+    [], [], some 1000⟩
+/-- Which of the first four output columns are tolerated, under `exK`. -/
+private def exSum (r : Rel) : Option (List Bool) :=
+  (r.tol exCat exK exT).map fun t => (List.range 4).map fun c => (t c).isSome
+
+-- `SUM` and `AVG` of the tolerated double, grouped by an exact column, are tolerated.
+#guard exSum (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }, { fn := .avg, arg := .field 2 }]) ==
+  some [false, true, true, false]
+-- Without a range for the double, or of a `DISTINCT` or a computed argument, refused.
+#guard exCols (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }]) == none
+#guard exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2, distinct := true }]) == none
+#guard exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .un .fneg (.field 2) }]) == none
+-- `MIN` of the double waits for its own row (#929 step 2).
+#guard exSum (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }]) == none
 
 private def tie : Tol := fun c => if c = 0 then some 2 else none
 
