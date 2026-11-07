@@ -4,8 +4,11 @@
 when the processes that refresh it crash, restart, race each other and lose
 acknowledgements. It is step 1 of [#933](https://github.com/AlexanderNenninger/substrait-lean/issues/933):
 TLC checks it exhaustively at small scopes, and finds the interleavings the
-chaos suite (`python/tests/chaos/`) can only sample. Step 2 states the same
-transition system in Lean.
+chaos suite (`python/tests/chaos/`) can only sample. Step 2,
+[`SubstraitLean/Refresh.lean`](../../SubstraitLean/Refresh.lean), states the
+fixed protocol for a durable source as a transition system and proves
+`NoCorruption` and `RecordDescribesTable` for every scope
+(`Refresh.no_corruption`, `Refresh.record_describes_table`).
 
 ## What it models
 
@@ -200,7 +203,9 @@ TLC_OUT=/tmp/tlc bash models/refresh/check.sh today-zombie-resume && python3 mod
 
 `check.sh` runs every config in `configs/` except the `deep-*` ones (add
 `DEEP=1`, or name them) and fails unless each finds what its first line
-expects. `TLC_WORKERS` (2) and `TLC_HEAP` (2g) set TLC's threads and heap.
+expects. `TLC_WORKERS` (2) and `TLC_HEAP` (2g) set TLC's threads and heap
+per config, and `TLC_JOBS` (1) how many configs run side by side: on a
+4-core runner, 3 take the set from 133 s to 119 s.
 CI runs it in the `refresh-model` job when `models/` changes.
 
 The safety configs fingerprint states by `LogView`: the log only grows, and

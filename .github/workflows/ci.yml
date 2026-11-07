@@ -629,7 +629,8 @@ jobs:
         env:
           TLA2TOOLS: ${{ runner.temp }}/tla2tools.jar
           TLC_WORKERS: "4"
-          TLC_HEAP: 6g
+          TLC_JOBS: "3"
+          TLC_HEAP: 2g
 
   # The check the `main` ruleset requires: green only if every job above
   # passed or was skipped by `changes`. A job skipped for any other reason

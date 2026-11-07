@@ -10,7 +10,8 @@
 # anything else, and prints the states, the time and the outcome of each.
 #
 # Environment: TLA2TOOLS (default ~/.local/share/tlaplus/tla2tools.jar),
-# TLC_WORKERS (2), TLC_HEAP (2g), TLC_OUT (a directory to keep TLC's output
+# TLC_WORKERS (2), TLC_HEAP (2g, per config), TLC_JOBS (1: configs run one
+# after another; more run them side by side), TLC_OUT (a directory to keep TLC's output
 # and traces in; default a temporary one, deleted).
 set -euo pipefail
 
@@ -32,9 +33,11 @@ if [ $# -eq 0 ]; then
     set -- $(cd "$here/configs" && ls *.cfg | sed 's/\.cfg$//' | { if [ -n "${DEEP:-}" ]; then cat; else grep -v '^deep-'; fi; })
 fi
 
-failed=0
-printf '%-26s %-30s %-30s %12s %8s\n' config expected found distinct seconds
-for name in "$@"; do
+jobs=${TLC_JOBS:-1}
+
+run() {
+    # One config: its row of the table in "$out/$1.row", its log in "$out/$1.out".
+    name=$1
     cfg="$here/configs/$name.cfg"
     expect=$(sed -n '1s/^\\\* expect: //p' "$cfg")
     start=$(date +%s)
@@ -55,11 +58,32 @@ for name in "$@"; do
         found=error
     fi
     distinct=$(sed -n 's/.* \([0-9][0-9]*\) distinct states found.*/\1/p' "$log" | tail -1)
-    printf '%-26s %-30s %-30s %12s %8s\n' "$name" "$expect" "$found" "${distinct:-?}" "$secs"
-    if [ "$found" != "$expect" ]; then
-        failed=1
-        echo "  unexpected: see $log" >&2
-        [ -z "${TLC_OUT:-}" ] && tail -30 "$log" >&2
+    printf '%s\t%s\t%s\t%s\n' "$expect" "$found" "${distinct:-?}" "$secs" > "$out/$name.row"
+}
+
+# With TLC_JOBS above 1, configs run side by side, the largest first: most
+# of them take a second or two, spent starting the JVM.
+start_all=$(date +%s)
+for name in $(printf '%s\n' "$@" | awk '{print (/^(deep-|fixed-two)/ ? 0 : 1) "\t" $0}' | sort -s -k1,1n | cut -f2); do
+    if [ "$jobs" -le 1 ]; then
+        run "$name"
+    else
+        while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do sleep 0.2; done
+        run "$name" &
     fi
 done
+wait
+
+failed=0
+printf '%-26s %-30s %-30s %12s %8s\n' config expected found distinct seconds
+for name in "$@"; do
+    IFS=$(printf '\t') read -r expect found distinct secs < "$out/$name.row"
+    printf '%-26s %-30s %-30s %12s %8s\n' "$name" "$expect" "$found" "$distinct" "$secs"
+    if [ "$found" != "$expect" ]; then
+        failed=1
+        echo "  unexpected: see $out/$name.out" >&2
+        [ -z "${TLC_OUT:-}" ] && tail -30 "$out/$name.out" >&2
+    fi
+done
+echo "all configs: $(( $(date +%s) - start_all )) s"
 exit $failed
