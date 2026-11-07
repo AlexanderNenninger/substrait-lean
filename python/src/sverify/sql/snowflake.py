@@ -290,11 +290,10 @@ class SnowflakeDialect(Dialect):
         return f"CAST(({total} - MOD({total}, {n})) / {n} AS NUMBER(38,0))"
 
     def window_float_sum(self, v: str, over: str, moving: bool) -> str:
-        # Snowflake's window SUM of doubles subtracts the rows that leave a
-        # moving frame, so a value long gone keeps its rounding in the result
-        # (Snowflake behaviour recorded privately). A moving frame's values
-        # are collected and added anew: some order of the frame's own values,
-        # within the plan's bound. ARRAY_AGG skips NULLs, as SUM does.
+        # Snowflake's own SUM over a moving frame can fall outside the plan's
+        # bound (Snowflake behaviour recorded privately). A moving frame's
+        # values are collected and added anew: some order of the frame's own
+        # values, within the plan's bound. ARRAY_AGG skips NULLs, as SUM does.
         if not moving:
             return f"SUM({v}) {over}"
         return (

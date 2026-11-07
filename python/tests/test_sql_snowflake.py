@@ -243,9 +243,9 @@ def test_float_literals():
     ("label", "native"), [("rolling mean (rows)", False), ("running mean", True)]
 )
 def test_moving_window_sums_of_doubles_add_the_frame_anew(label, native):
-    """Snowflake's window SUM of doubles subtracts the rows that leave a
-    moving frame (Snowflake behaviour recorded privately): a moving frame's
-    values are collected and added anew, a running frame keeps `SUM`."""
+    """Snowflake's own SUM over a moving frame can fall outside the plan's
+    bound (Snowflake behaviour recorded privately): a moving frame's values
+    are collected and added anew, a running frame keeps `SUM`."""
     from sverify.engine import written_plan
     from sverify_dev import coverage
 
