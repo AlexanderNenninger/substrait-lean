@@ -35,7 +35,8 @@ def Expr.cols : Expr → List Nat
   | .un _ a => a.cols
   | .bin _ a b => a.cols ++ b.cols
   | .ifThen c t e => c.cols ++ t.cols ++ e.cols
-  | .hof _ l _ => l.cols
+  -- A lambda's body reads its parameter as field 0 and the row from 1 (D28).
+  | .hof _ l b => l.cols ++ b.cols.filterMap fun i => if i = 0 then none else some (i - 1)
 
 /-- An expression's value depends only on the columns it reads. -/
 theorem Expr.eval_congr_cols {r r' : Row} :
@@ -51,7 +52,14 @@ theorem Expr.eval_congr_cols {r r' : Row} :
     simp only [Expr.cols, List.mem_append] at h
     simp only [Expr.eval, Expr.eval_congr_cols c fun i hi => h i (.inl (.inl hi)),
       Expr.eval_congr_cols t fun i hi => h i (.inl (.inr hi)), Expr.eval_congr_cols e fun i hi => h i (.inr hi)]
-  | .hof _ l _, h => by simp only [Expr.eval, Expr.eval_congr_cols l h]
+  | .hof _ l b, h => by
+    simp only [Expr.cols, List.mem_append, List.mem_filterMap] at h
+    simp only [Expr.eval, Expr.eval_congr_cols l fun i hi => h i (.inl hi)]
+    congr 1; funext x
+    refine Expr.eval_congr_cols b fun i hi => ?_
+    cases i with
+    | zero => rfl
+    | succ i => exact h i (.inr ⟨i + 1, hi, by simp⟩)
 
 /-! ## Columns observed exactly -/
 
