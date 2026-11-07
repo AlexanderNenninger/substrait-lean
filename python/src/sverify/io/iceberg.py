@@ -529,7 +529,9 @@ class IcebergSource(_TableSource):
         if mine.record is None:
             return None
         where = f"{self.identifier}@v{_version(s)}"
-        return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
+        return Stored(
+            where, self.identifier, c.plan, c.sources, c.digests, _read(t, s), c.table_ids
+        )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from sequence number `since` to `until`, as a refresh
