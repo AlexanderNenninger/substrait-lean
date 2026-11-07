@@ -14,7 +14,7 @@ from __future__ import annotations
 import functools
 import json
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, overload
 
 import duckdb
@@ -55,6 +55,20 @@ def setting(name: str) -> object:
             _DB = _duckdb.cursor()
         rows = _DB.execute("SELECT current_setting(?)", [name]).fetchall()
     return rows[0][0] if rows else None
+
+
+def settings(names: Sequence[str]) -> dict[str, object]:
+    """The values of DuckDB settings `names` on the engine's cursor, as
+    `setting` reads each, in one query."""
+    if not names:
+        return {}
+    global _DB
+    with _LOCK:
+        if _DB is None:
+            _DB = _duckdb.cursor()
+        sql = "SELECT " + ", ".join(["current_setting(?)"] * len(names))
+        (row,) = _DB.execute(sql, list(names)).fetchall()
+    return dict(zip(names, row, strict=True))
 
 
 @overload

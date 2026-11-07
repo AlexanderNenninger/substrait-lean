@@ -42,7 +42,7 @@ defence in depth.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -264,10 +264,10 @@ def _norm(v: Any) -> Any:
     return v
 
 
-def _duckdb_reader() -> Callable[[str], Any]:
+def _duckdb_reader() -> Callable[[Sequence[str]], dict[str, Any]]:
     from sverify import duckdb_engine
 
-    return duckdb_engine.setting
+    return duckdb_engine.settings
 
 
 #: Polars's environment variables for its settings (`pl.Config` writes them).
@@ -276,10 +276,9 @@ _POLARS_ENV = {
 }
 
 
-def _polars_reader() -> Callable[[str], Any]:
-    def read(name: str) -> Any:
-        var, default = _POLARS_ENV[name]
-        return os.environ.get(var, default)
+def _polars_reader() -> Callable[[Sequence[str]], dict[str, Any]]:
+    def read(names: Sequence[str]) -> dict[str, Any]:
+        return {n: os.environ.get(*_POLARS_ENV[n]) for n in names}
 
     return read
 
@@ -314,7 +313,8 @@ def _spark_session() -> Any:
     return engine.session()
 
 
-_READERS: Mapping[str, Callable[[], Callable[[str], Any]]] = {
+#: Each engine's reader of its settings, all in one call.
+_READERS: Mapping[str, Callable[[], Callable[[Sequence[str]], dict[str, Any]]]] = {
     "duckdb": _duckdb_reader,
     "polars": _polars_reader,
 }
@@ -330,8 +330,7 @@ def current(engine: str) -> dict[str, Any]:
     if engine == "spark":
         spark = _spark_session()
         return {} if spark is None else spark_values(spark)
-    read = _READERS[engine]()
-    return {s.name: read(s.name) for s in settings}
+    return _READERS[engine]()([s.name for s in settings])
 
 
 def differences(engine: str, values: Mapping[str, Any] | None = None) -> list[tuple[Setting, Any]]:
