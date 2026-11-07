@@ -254,7 +254,7 @@ theorem Expr.evalP_reference : ∀ (e : Expr) (row : Row),
 
 /-- A number: what `UnFn.isNum` tests. -/
 def Value.isNum : Value → Bool
-  | .int _ => true
+  | .int _ | .float _ | .dec _ _ => true
   | _ => false
 
 theorem UnFn.apply_isNum (v : Value) : UnFn.apply .isNum v = .bool v.isNum := by
@@ -364,6 +364,11 @@ def duckShl (a b : Int) : Outcome :=
   else if 2 ^ 63 ≤ a * 2 ^ b.toNat then .error .overflow
   else .ok (.int (a * 2 ^ b.toNat))
 
+/-- The functions of doubles among `duckBin`'s; the others take integers. -/
+def BinFn.onFloats : BinFn → Bool
+  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 => true
+  | _ => false
+
 /-- **DuckDB's binary functions** on non-NULL arguments where they differ from
 the reference (`none`: as the reference), from the probes of
 `characterization/duckdb/probes.json` (FACTS R15). -/
@@ -374,23 +379,23 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
     if b = 0 then some (duckZero s)
     else if b = -1 ∧ a = -2 ^ 63 then some (.error .overflow) else none
   -- `∞ - ∞`, `0 · ∞`, `∞ / ∞`: NaN under any setting.
-  | .fadd, a, b => if nanCase .fadd a b then some (.ok (.int FloatCode.nan)) else none
-  | .fsub, a, b => if nanCase .fsub a b then some (.ok (.int FloatCode.nan)) else none
-  | .fmul, a, b => if nanCase .fmul a b then some (.ok (.int FloatCode.nan)) else none
+  | .fadd, a, b => if nanCase .fadd a b then some (.ok (.float FloatCode.nan)) else none
+  | .fsub, a, b => if nanCase .fsub a b then some (.ok (.float FloatCode.nan)) else none
+  | .fmul, a, b => if nanCase .fmul a b then some (.ok (.float FloatCode.nan)) else none
   | .fdiv, a, b =>
-    if b = 0 then some (if s.ieeeOps then .ok (.int (ieeeDivZero a)) else duckZero s)
-    else if nanCase .fdiv a b then some (.ok (.int FloatCode.nan)) else none
+    if b = 0 then some (if s.ieeeOps then .ok (.float (ieeeDivZero a)) else duckZero s)
+    else if nanCase .fdiv a b then some (.ok (.float FloatCode.nan)) else none
   | .fmod, a, b =>
-    if b = 0 then some (if s.ieeeOps then .ok (.int FloatCode.nan) else duckZero s)
-    else if nanCase .fmod a b then some (.ok (.int FloatCode.nan)) else none
+    if b = 0 then some (if s.ieeeOps then .ok (.float FloatCode.nan) else duckZero s)
+    else if nanCase .fmod a b then some (.ok (.float FloatCode.nan)) else none
   -- `(-∞) ^ y` for a finite `y` that is not an integer: IEEE's `+∞` or `0`,
   -- under any setting, where the reference raises (`negInfPow`).
   | .fpow, a, b =>
-    if negInfPow a b then some (.ok (.int (duckNegInfPow b)))
-    else if s.ieeeOps then (if nanCase .fpow a b then some (.ok (.int FloatCode.nan)) else none)
+    if negInfPow a b then some (.ok (.float (duckNegInfPow b)))
+    else if s.ieeeOps then (if nanCase .fpow a b then some (.ok (.float FloatCode.nan)) else none)
     -- Without IEEE operations `0 ^ y` raises for a negative `y` (the reference: `∞`).
     else if a = 0 ∧ b < 0 then some (.error .domain) else none
-  | .fatan2, a, b => if a = 0 ∧ b = 0 then some (.ok (.int 0)) else none
+  | .fatan2, a, b => if a = 0 ∧ b = 0 then some (.ok (.float 0)) else none
   | .bit .shl, a, b => some (duckShl a b)
   | .bit .shr, _, b => if b < 0 ∨ 64 ≤ b then some (.ok (.int 0)) else none
   | _, _, _ => none
@@ -400,7 +405,7 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
 logarithm of zero (R15). -/
 def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
   | .fmath f, x =>
-    if s.ieeeOps ∧ f.apply x = none then some (.ok (.int (duckElementary f x))) else none
+    if s.ieeeOps ∧ f.apply x = none then some (.ok (.float (duckElementary f x))) else none
   | _, _ => none
 
 /-- **DuckDB's profile**, as a diff against the reference (`duckBin`,
@@ -408,11 +413,12 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
 (`sverify_dev.probe`). Functions not probed are taken to be the reference's. -/
 def Profile.duckdb (s : DuckDBSettings) : Profile where
   un f v := match v with
-    | .int x => (duckUn s f x).getD (Profile.reference.un f v)
+    | .float x => (duckUn s f x).getD (Profile.reference.un f v)
     | _ => Profile.reference.un f v
-  bin f v w := match v, w with
-    | .int x, .int y => (duckBin s f x y).getD (Profile.reference.bin f v w)
-    | _, _ => Profile.reference.bin f v w
+  bin f v w := match f.onFloats, v, w with
+    | true, .float x, .float y | false, .int x, .int y =>
+      (duckBin s f x y).getD (Profile.reference.bin f v w)
+    | _, _, _ => Profile.reference.bin f v w
 
 /-- DuckDB's `%` by a positive divisor is the reference's (the wrap-around
 schema computes with it, `LoweringSearch.schema?`). -/
@@ -420,7 +426,7 @@ theorem Profile.duckdb_imod_pos (s : DuckDBSettings) (a m : Int) (hm : 0 < m) :
     (Profile.duckdb s).bin .imod (.int a) (.int m) = Profile.reference.bin .imod (.int a) (.int m) := by
   have h0 : m ≠ 0 := by omega
   have h1 : m ≠ -1 := by omega
-  simp [Profile.duckdb, duckBin, h0, h1]
+  simp [Profile.duckdb, duckBin, BinFn.onFloats, h0, h1]
 
 /-! ## Agreeing outcomes -/
 
@@ -505,11 +511,11 @@ theorem Profile.duckdbWritten_faithful (s : DuckDBSettings) (hs : s.ieeeOps = tr
     · rename_i hw
       simp only [Profile.duckdb]
       split
-      · rename_i x y
-        cases f <;> simp only [duckBin, BinFn.duckdbWritten] at hw ⊢ <;> (try split) <;>
-          (try split) <;> (try split) <;>
-          simp_all [BinFn.issue, nanIssue, domainIssue, BitOp.apply, atan2?] <;> omega
-      · exact hr
+      case h_3 => exact hr
+      all_goals
+        cases f <;> simp only [duckBin, BinFn.duckdbWritten] at hw ⊢ <;>
+          (try split) <;> (try split) <;> (try split) <;>
+          simp_all [BinFn.issue, nanIssue, domainIssue, BitOp.apply, atan2?, BinFn.onFloats] <;> omega
 
 /-- **A verified plan runs correctly on DuckDB.** When `Rel.mayIssues` reports
 nothing but integer `SUM`s that may wrap (which keep their check), on every
