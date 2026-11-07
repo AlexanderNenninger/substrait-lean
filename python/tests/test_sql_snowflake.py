@@ -260,10 +260,9 @@ def test_temporal_literals():
 
 
 def test_time_range_frames_order_by_microseconds():
-    """A RANGE offset over a timestamp must be an INTERVAL on Snowflake, which
-    holds whole milliseconds at most and cuts finer ones (Snowflake behaviour
-    recorded privately): the frame orders by the key in microseconds and
-    takes the offset as a number, exactly."""
+    """A RANGE frame with offsets over a timestamp orders by the key in
+    microseconds and takes the offset as a number (Snowflake behaviour
+    recorded privately)."""
     from sverify.engine import written_plan
     from sverify_dev import coverage
 
@@ -280,9 +279,8 @@ def test_time_range_frames_order_by_microseconds():
 
 @pytest.mark.parametrize("label", ["intersect", "difference all"])
 def test_set_operations_compare_with_equal_null(label):
-    """Set operations compare rows with NULL equal to NULL. Snowflake failed
-    to compile the correlated `EXISTS` on the `CASE` form on some tables
-    (`002031`, recorded privately), so it is `EQUAL_NULL`."""
+    """Set operations compare rows with NULL equal to NULL, written as
+    `EQUAL_NULL` (Snowflake behaviour recorded privately)."""
     from sverify.engine import written_plan
     from sverify_dev import coverage
 
