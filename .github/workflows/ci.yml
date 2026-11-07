@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
   pull_request:
   merge_group:
   # `retarget.yml` starts a run when a pull request is retargeted to main.
@@ -163,7 +163,7 @@ jobs:
             all
             exit 0
           fi
-          if [ "$BASE_REF" != main ]; then
+          if [ "$BASE_REF" != main ] && [[ "$BASE_REF" != release/* ]]; then
             echo "Base is $BASE_REF: static only until the pull request targets main."
             out code=false
             out floats=false
