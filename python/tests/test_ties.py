@@ -46,6 +46,40 @@ def test_a_pick_over_ties_allows_each_tied_row() -> None:
     assert not allows_rows([(1, 20)], got)
 
 
+def test_a_near_tie_matches_as_relation_near_does() -> None:
+    """#929 step 6: two rows tie on the exact column `s` order, and their
+    doubles swap order under a perturbation within the tolerance. Sorting
+    both results and comparing row by row pairs "a" with "b"; the matching,
+    `Relation.Near`'s (the near-tie example in `Lipschitz.lean`), pairs each
+    row with its own."""
+    want = [[("v", 1.0 + 2e-9), ("v", "a")], [("v", 1.0), ("v", "b")]]
+    got = [(1.0, "a"), (1.0 + 2e-9, "b")]
+
+    def near(a: object, b: object) -> bool:
+        if isinstance(a, float) and isinstance(b, float):
+            return abs(a - b) <= 4e-9
+        return a == b
+
+    assert allows_rows(got, want, near)
+    pairs = zip(sorted(got), sorted((r[0][1], r[1][1]) for r in want), strict=True)
+    assert not all(near(a, b) and s == t for (a, s), (b, t) in pairs)
+    assert not allows_rows(got, want)  # exactly, the doubles differ
+    assert not allows_rows([(1.0, "a"), (1.0, "a")], want, near)
+
+
+def test_the_index_on_fixed_columns_keeps_every_answer() -> None:
+    """`allows_rows` looks only at the choice rows that agree on the columns
+    every choice row fixes: the same answers as trying every pair."""
+    import itertools
+
+    want = [[("v", 1), ("any", [10, 20])], [("v", 1), ("v", 30)], [("v", 2), ("v", None)]]
+    values = [(1, 10), (1, 20), (1, 30), (2, None), (2, 10), (1, None)]
+    for got in itertools.permutations(values, 3):
+        slow = allows_rows(got, want, lambda a, b: a == b)
+        assert allows_rows(got, want) == slow
+    assert allows_rows([(1, [1]), (2, [2])], [[("v", 1), ("v", [1])], [("v", 2), ("v", [2])]])
+
+
 def test_an_unordered_string_agg_allows_every_order() -> None:
     expr = T.group_by("k").aggregate(s=T.s.group_concat(","))
     got = choices(expr)
