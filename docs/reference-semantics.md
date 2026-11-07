@@ -384,7 +384,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Topic | Reference | Status |
 |---|---|---|
 | `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out ([DF-11](../upstream/bugs/DF-11.json)) |
-| `VARIANCE` / `STDDEV` over a frame | The reference's own two passes over the frame's doubles (`varOf`): their mean as a sum from `0.0` in frame order over the count, then the squared deviations added in the same order, over `n - 1` or `n`, at least `0`, and the square root for `STDDEV`. NULL, NaN and an infinity as for the aggregate. | refused on every engine until the plan's bound covers windows ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)), as are `SUM` and `AVG` of doubles over a frame; `COVAR_*` and `CORR` over a frame are refused |
+| `VARIANCE` / `STDDEV` over a frame | The reference's own two passes over the frame's doubles (`varOf`): their mean as a sum from `0.0` in frame order over the count, then the squared deviations added in the same order, over `n - 1` or `n`, at least `0`, and the square root for `STDDEV`. NULL, NaN and an infinity as for the aggregate. | ✓ on DuckDB, which computes these passes over the frame's list ([`window_float_var`](../python/src/sverify/sql/duckdb.py)); other engines refuse it until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271); `COVAR_*` and `CORR` over a frame are refused |
 
 ## Relations
 

@@ -47,9 +47,9 @@ SUPPORT: dict[str, frozenset[str]] = {
     **{name: _DUCKDB for name in sorted(black_box.NAMES)},
 }
 
-#: Functions that run on fewer engines over a window than as aggregates: the
-#: variance over a frame, which DuckDB's writer refuses too until the plan's
-#: bound covers windows (#1032).
+#: Functions that run on fewer engines over a window than as aggregates:
+#: the variance over a frame is the reference's own two passes (`varOf`),
+#: which only DuckDB's writer computes so far.
 WINDOW_SUPPORT: dict[str, frozenset[str]] = {
     "variance": _DUCKDB,
     "std_dev": _DUCKDB,

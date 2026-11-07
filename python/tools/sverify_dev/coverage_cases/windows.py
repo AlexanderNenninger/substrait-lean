@@ -6,6 +6,7 @@ import ibis
 
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
+    FRAME_DOUBLES,
     NO_ROW_ORDER,
     Case,
     V,
@@ -119,7 +120,7 @@ CASES: list[Case] = [
         V,
         lambda: t.mutate(s=(t.qty * 2).sum().over(group_by="name")),
     ),
-    # `varOf` over a frame (#54).
+    # `varOf` over a frame (#54): the reference's own two passes.
     case(
         "windows",
         "stddev over group",
@@ -136,16 +137,6 @@ CASES: list[Case] = [
     ),
 ]
 
-#: A window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (#1032).
-NO_FLOAT_BOUND = {
-    "duckdb": "#1032",
-    "polars": "#1032",
-    "snowflake": "no row order|#1032",
-    "spark": "no row order|#1032",
-}
-#: Only DuckDB runs a window VARIANCE or STDDEV (#271), and it refuses doubles.
-NO_VAR_BOUND = {**DUCKDB_ONLY, "duckdb": "#1032"}
-
 REFUSED: dict[str, dict[str, str]] = {
     "row_number": NO_ROW_ORDER,
     "lag": NO_ROW_ORDER,
@@ -158,15 +149,15 @@ REFUSED: dict[str, dict[str, str]] = {
     "percent_rank, cume_dist": NO_ROW_ORDER,
     "rolling sum (range)": NO_ROW_ORDER,
     "rolling sum (interval)": NO_ROW_ORDER,
-    "running mean": NO_FLOAT_BOUND,
-    "rolling mean (rows)": NO_FLOAT_BOUND,
-    "rolling mean (interval)": NO_FLOAT_BOUND,
+    "running mean": FRAME_DOUBLES,
+    "rolling mean (rows)": FRAME_DOUBLES,
+    "rolling mean (interval)": FRAME_DOUBLES,
     "min over a sliding frame": NO_ROW_ORDER,
     "window sum of an expression": NO_ROW_ORDER,
     "last, nth": NO_ROW_ORDER,
     "max, count over frame": NO_ROW_ORDER,
-    "stddev over group": NO_VAR_BOUND,
-    "rolling variance (rows)": NO_VAR_BOUND,
+    "stddev over group": DUCKDB_ONLY,
+    "rolling variance (rows)": DUCKDB_ONLY,
 }
 
 TIE_FREE = {
@@ -184,3 +175,7 @@ TIE_FREE = {
     "max, count over frame",
     "min over a sliding frame",
 }
+
+# A plan's frame and Ibis's own SQL may sum in another order, so variances
+# agree to the last digit only up to rounding (#54).
+APPROXIMATE = {"stddev over group", "rolling variance (rows)"}
