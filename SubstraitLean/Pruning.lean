@@ -71,7 +71,7 @@ theorem Sharding.prune {S : String → Bool} {K : String → Option (List Nat)} 
 tables gives, up to order, the union of its results on the shards kept, when
 every shard dropped holds no rows of a sharded table. -/
 theorem Rel.eval_pruned {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys}
-    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat)
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.SoundAll cat)
     (keep : Catalog → Bool)
     (hempty : ∀ c ∈ cs, keep c = false → ∀ t, S t = true → (c t).rows = [])
     {r : Rel} (hw : r.WF cat) (hl : r.linear S K T cat = true) :

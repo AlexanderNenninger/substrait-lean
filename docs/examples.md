@@ -171,7 +171,7 @@ mean_x = r.group_by("k").aggregate(mean_x=r.x.mean())
 bounded = {"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]}
 means = sv.verify(mean_x, requires=bounded)
 print(means.observation)
-# equivalent(floats=plan, ≤ 2.2e-10)
+# equivalent(floats=plan, ≤ 1.1e-10)
 on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")
 print(means.equivalence.equal(on_duckdb, on_polars))
@@ -195,8 +195,8 @@ tight = sv.verify(
 print(tight.proved)
 # False
 print(tight)
-# observes: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 2.2e-10; NOT met: no engine meets the tolerance
-#   on duckdb: agg.fsum's sum_order: mean_x is within abs=2.22933e-10 of the reference, and the postcondition asks within(abs=1e-12): state sv.equivalent(floats=sv.within(abs=3e-10)) or looser in ensures, ...
+# observes: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 1.1e-10; NOT met: no engine meets the tolerance
+#   on duckdb: agg.fsum's sum_order: mean_x is within abs=1.11577e-10 of the reference, and the postcondition asks within(abs=1e-12): state sv.equivalent(floats=sv.within(abs=2e-10)) or looser in ensures, ...
 ```
 
 `floats="exact"` asks for the same bits, and the report lists the engines

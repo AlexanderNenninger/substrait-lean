@@ -78,7 +78,7 @@ class Sink(Protocol):
     name: str
     location: str
 
-    def _attach(self, view: IncrementalView) -> None: ...
+    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None: ...
 
     def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
 
@@ -764,8 +764,10 @@ def _recreated(sink: Sink, leaves: Sequence[Node], stored: Stored) -> bool:
     state of the sources, and the node is computed again."""
     from sverify.io._common import _TableSource
 
-    committed = sink.contract()
-    ids = committed.table_ids if committed is not None else None
+    ids = stored.table_ids
+    if ids is None:
+        committed = sink.contract()
+        ids = committed.table_ids if committed is not None else None
     if not ids:
         return False
     for leaf in leaves:
@@ -813,7 +815,7 @@ class _Stage:
                 stored = None
             else:
                 if sink is not None:
-                    sink._attach(stage.view)
+                    sink._attach(stage.view, stored)
                 return stage
         stage = _Stage._load(node, leaves, versions, engine, None, target=target)
         if sink is not None:
@@ -1476,7 +1478,10 @@ def _continue_versions(node: _Stored) -> None:
     process (`sverify.io.Source`) start at the versions and cursors its
     sink recorded, if they can restore their table there; else they number
     their versions above, so that its epochs keep growing and it writes
-    exactly once."""
+    exactly once. A source that cannot restore restores by the content
+    digest the sink recorded (#889)."""
+    from sverify.io._common import UNRECORDED
+
     resumes = {}
     for leaf in node._leaves():
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
@@ -1487,11 +1492,11 @@ def _continue_versions(node: _Stored) -> None:
     if contract is None:
         return
     cursors = getattr(contract, "cursors", {})
+    digests = getattr(contract, "digests", {})
     for name, resume in resumes.items():
-        if name in cursors:
-            resume(contract.sources[name], cursors[name])
-        elif name in contract.sources:
-            resume(contract.sources[name])
+        if name not in contract.sources:
+            continue
+        resume(contract.sources[name], cursors.get(name, UNRECORDED), digest=digests.get(name))
 
 
 def _proof(node: Node) -> Report | None:

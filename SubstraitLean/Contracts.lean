@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import SubstraitLean.OrderAllowed
 
 /-!
 # Pre- and postconditions: a verified abstract interpreter
@@ -3177,6 +3177,22 @@ theorem eq_true_same {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) :
         · simp [hxy]
         · simp [hxy] at h
 
+/-- `<` with a NULL side is never TRUE, nor is its negation; by `rfl` on each
+value, without unfolding `BinFn.apply` under `simp`. -/
+theorem lt_null_left (w : Value) : (BinFn.apply .lt .null w).isTrue = false := by
+  cases w <;> rfl
+
+theorem lt_null_right (v : Value) : (BinFn.apply .lt v .null).isTrue = false := by
+  cases v <;> rfl
+
+theorem not_lt_null_left (w : Value) :
+    (UnFn.apply .not (BinFn.apply .lt .null w)).isTrue = false := by
+  cases w <;> rfl
+
+theorem not_lt_null_right (v : Value) :
+    (UnFn.apply .not (BinFn.apply .lt v .null)).isTrue = false := by
+  cases v <;> rfl
+
 theorem lt_fields_ord {v w : Value} (h : (BinFn.apply .lt v w).isTrue = true) :
     v.isOrd = true ∧ w.isOrd = true := by
   cases v <;> cases w <;> first | exact ⟨rfl, rfl⟩ |
@@ -4070,7 +4086,7 @@ theorem Expr.linTerm_of_num {e : Expr} {j : Nat} {c v : Int} {k : NumKind} {row 
     have hy := Value.numOf?_some hr
     have := Expr.linTerm_num h hy hne
     rw [hv] at this
-    obtain ⟨rfl, rfl⟩ := NumKind.val_inj this
+    obtain ⟨rfl, rfl⟩ := NumKind.val_inj₂ this
     exact ⟨y, hy, rfl⟩
   | none =>
     exfalso; apply hne
@@ -4206,7 +4222,7 @@ theorem not_and3_notnull_true {x w : Value} (hx : x ≠ .null)
     (h : (UnFn.apply .not (and3 (UnFn.apply .not (UnFn.apply .isNull x)) w)).isTrue = true) :
     (UnFn.apply .not w).isTrue = true := by
   have : UnFn.apply .not (UnFn.apply .isNull x) = .bool true := by
-    cases x <;> simp_all [UnFn.apply]
+    cases x <;> first | exact absurd rfl hx | rfl
   rw [this] at h
   match w with
   | .bool false => simp [UnFn.apply, Value.isTrue]
@@ -4279,10 +4295,10 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
           · rename_i h0
             simp only [Bool.and_eq_true, decide_eq_true_eq] at h0
             refine neFact_sound (fun hv => ?_) hnn f hf
-            rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj hv; omega
+            rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hv; omega
           · simp at hf
         · refine neFact_sound (fun hv => ?_) hnn f hf
-          rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj hv; omega
+          rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hv; omega
       · simp at hf
     · simp at hf
   · simp at hf
@@ -4302,7 +4318,7 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
     refine diffFact_sound (P := fun u w => u = w) hsame.2 (hsame.1 ▸ hsame.2)
       (fun k u w hu hw => ?_) (fun c₁ c₂ x y h => ?_)
     · have := hsame.1
-      rw [hu, hw] at this; exact (NumKind.val_inj this).2
+      rw [hu, hw] at this; exact (NumKind.val_inj₂ this).2
     · simp only [Bound.Mem, Bound.exact, Option.some.injEq]
       constructor <;> intro _ h' <;> subst h' <;> omega
   case case5 t₁ t₂ =>
@@ -4690,7 +4706,7 @@ theorem linFacts_sound {n : Nat} {row row' : Row}
               rw [hcol] at hx
               obtain ⟨y', hy', hxy⟩ := Expr.linTerm_of_num hl hx
               rw [hpre j hjn, hy'] at hy
-              obtain ⟨_, hy⟩ := NumKind.val_inj hy; subst hy
+              obtain ⟨_, hy⟩ := NumKind.val_inj₂ hy; subst hy
               simp only [Bound.Mem, Bound.exact, Option.some.injEq]
               constructor <;> intro _ h <;> subst h <;> omega
             · intro g hg; simp at hg
@@ -4767,7 +4783,7 @@ theorem orderFact_sound {sort : List SortKey} {c w : Nat} {before : Bool} {gap :
           subst he; exact hne h1 k (by simp) (by rw [hyc, hX])
         rcases hy with rfl | hy
         · rw [hX] at hyc
-          obtain ⟨_, hyc⟩ := NumKind.val_inj hyc
+          obtain ⟨_, hyc⟩ := NumKind.val_inj₂ hyc
           subst hyc
           rcases hgap with rfl | rfl
           · split <;> omega
@@ -4804,7 +4820,7 @@ theorem partFact_sound {part : List Nat} {c w : Nat} {row x : Row}
       · rfl
       · simp only [samePart, decide_eq_true_eq, List.map_inj_left] at hy; exact hy c hc
     rw [hxc, this, hyc] at hX
-    obtain ⟨_, rfl⟩ := NumKind.val_inj hX
+    obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hX
     simp [Bound.Mem, Bound.exact]
   · intro f hf; simp at hf
 
@@ -4947,7 +4963,7 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
     fun hf nk A hA hne => by
       obtain ⟨a, ha, hl, hh⟩ := AggFn.apply_iavg_between hne
       rw [hj, evj _ hf rfl, ha] at hA
-      obtain ⟨rfl, rfl⟩ := NumKind.val_inj (k := .int) hA
+      obtain ⟨rfl, rfl⟩ := NumKind.val_inj₂ (k := .int) hA
       exact ⟨rfl, hl, hh⟩
   -- An integer `AVG` that is not NULL is an integer.
   have iavgKind : mj.fn = .iavg → ∀ {nk : NumKind} {A}, row.getD cj .null = nk.val A → nk = .int :=
@@ -4956,7 +4972,7 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
       generalize mj.inputs grp = vs at hA
       cases vs with
       | nil => exact absurd hA.symm (NumKind.val_ne_null nk A)
-      | cons v vs => simp only [AggFn.apply] at hA; exact (NumKind.val_inj (k := .int) hA).1.symm
+      | cons v vs => simp only [AggFn.apply] at hA; exact (NumKind.val_inj₂ (k := .int) hA).1.symm
   have ne_of : ∀ {t : Int}, .int t ∈ mj.inputs grp → intsOf (mj.inputs grp) ≠ [] :=
     fun h => List.ne_nil_of_mem (mem_intsOf.2 h)
   have ge0 : ∀ {d : Int}, 0 ≤ d → Bound.Mem ⟨some 0, none⟩ d :=
@@ -5013,19 +5029,56 @@ theorem aggFacts_sound {g : Nat} {ms : List Measure} {grp : Relation} {k : Row}
     exact pairFacts_sound (col i mi hmi) (col j mj hmj) f hf
   · simp at hf
 
-theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fact}
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat) :
-    ∀ {r : Rel}, r.WF cat → ∀ row ∈ r.eval cat, FactsHold (r.facts cat F T) row
-  | .read t, _, row, h => hF t row h
-  | .values _ _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
-  | .filter r c, hwf, row, h => by
-      simp only [eval, List.mem_filter] at h
-      exact (facts_sound hcat hF hT hwf.1 row h.1).append (c.factsOf_sound h.2)
-  | .project r es, hwf, row, h => by
-      simp only [eval, List.mem_map] at h
-      obtain ⟨x, hx, rfl⟩ := h
-      have hlen := eval_arity hcat hwf.1 x hx
-      have hfx := facts_sound hcat hF hT hwf.1 x hx
+/-- The facts relating two measures are about measures that do not sort. -/
+theorem pairFacts_sorts {ci cj : Nat} {mi mj : Measure} (h : pairFacts ci cj mi mj ≠ []) :
+    mi.fn.sorts = false ∧ mj.fn.sorts = false := by
+  unfold pairFacts at h
+  repeat' split at h
+  all_goals first | exact absurd rfl h | (simp_all [AggFn.sorts])
+
+/-- `aggFacts_sound` for any row whose measures that do not sort hold their
+values over `grp`. -/
+theorem aggFacts_sound_of {g : Nat} {ms : List Measure} {grp : Relation} {row : Row}
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false →
+      row.getD (g + i) .null = m.eval grp) :
+    FactsHold (aggFacts g ms) row := by
+  intro f hf
+  simp only [aggFacts, List.mem_flatMap, List.mem_range] at hf
+  obtain ⟨i, _, j, _, hf⟩ := hf
+  split at hf
+  · rename_i mi mj hmi hmj
+    have hs := pairFacts_sorts (List.ne_nil_of_mem hf)
+    exact pairFacts_sound (col i mi hmi hs.1) (col j mj hmj hs.2) f hf
+  · simp at hf
+
+/-- The measures' columns of an aggregate's row, for `aggFacts_sound_of`. -/
+theorem aggCol {ms : List Measure} {grp : Relation} {k : Row} {vs : List Value}
+    (hv : Forall2 (fun m v => m.OrderAllowed grp v) ms vs) :
+    ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false →
+      (k ++ vs).getD (k.length + i) .null = m.eval grp := by
+  intro i m hm hs
+  rw [getD_append_right']
+  rcases hv.getElem? i with ⟨a, v, ha, hb, hr⟩ | ⟨ha, _⟩
+  · rw [hm] at ha; cases ha
+    simp only [List.getD_eq_getElem?_getD, hb, Option.getD_some]
+    obtain ⟨_, _, _, h⟩ := hr.eval
+    exact h hs
+  · rw [hm] at ha; cases ha
+
+/-- **The facts hold on every row of every order.** -/
+theorem Rel.facts_sound_all {cat : Catalog} (hcat : cat.WF) {F : String → List Fact}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat) :
+    ∀ {r : Rel}, r.WF cat → ∀ {out : Relation}, r.OrderAllowed cat out →
+      ∀ row ∈ out, FactsHold (r.facts cat F T) row
+  | .read t, _, _, h, row, hr => hF t row (h.mem_iff.mp hr)
+  | .values _ _, _, _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
+  | .filter r c, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      rw [List.mem_filter] at hr
+      exact (facts_sound_all hcat hF hT hwf.1 hi row hr.1).append (c.factsOf_sound hr.2)
+  | .project r es, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
+      have hlen := orderAllowed_arity hcat hwf.1 hi x hx
+      have hfx := facts_sound_all hcat hF hT hwf.1 hi x hx
       have hpre : ∀ i < r.arity cat, (x ++ es.map (·.eval x)).getD i .null = x.getD i .null :=
         fun i hi => getD_append_left' (hlen ▸ hi)
       simp only [Rel.facts]
@@ -5036,30 +5089,27 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
         exact Fact.rename_holds_inRange (fun i hi p hp => copyCols_getD hlen hi hp) hfr (hfx f hf) g hg
       · rw [← hlen, getD_append_right']
         simp [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hk]
-  | .emit r m, hwf, row, h => by
-      simp only [eval, List.mem_map] at h
-      obtain ⟨x, hx, rfl⟩ := h
-      exact (facts_sound hcat hF hT hwf.1 x hx).rename fun i p hp => positions_getD hp
-  | .cross a b, hwf, row, h => by
-      simp only [eval, mem_crossRows] at h
-      obtain ⟨x, hx, y, hy, rfl⟩ := h
-      have hlen := eval_arity hcat hwf.1 x hx
+  | .emit r m, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
+      exact (facts_sound_all hcat hF hT hwf.1 hi x hx).rename fun i p hp => positions_getD hp
+  | .cross a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      obtain ⟨u, hu, v, hv, rfl⟩ := mem_crossRows.mp (h.mem_iff.mp hr)
+      have hlen := orderAllowed_arity hcat hwf.1 hx u hu
       simp only [Rel.facts]
-      exact ((facts_sound hcat hF hT hwf.1 x hx).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
-        ((facts_sound hcat hF hT hwf.2 y hy).shift fun i => hlen ▸ getD_append_right' i)
-  | .join a b .inner on, hwf, row, h => by
-      simp only [eval, List.mem_filter, mem_crossRows] at h
-      obtain ⟨⟨x, hx, y, hy, rfl⟩, ht⟩ := h
-      have hlen := eval_arity hcat hwf.1 x hx
+      exact ((facts_sound_all hcat hF hT hwf.1 hx u hu).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
+        ((facts_sound_all hcat hF hT hwf.2 hy v hv).shift fun i => hlen ▸ getD_append_right' i)
+  | .join a b .inner on, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      obtain ⟨hc, ht⟩ := List.mem_filter.mp (h.mem_iff.mp hr)
+      obtain ⟨u, hu, v, hv, rfl⟩ := mem_crossRows.mp hc
+      have hlen := orderAllowed_arity hcat hwf.1 hx u hu
       simp only [Rel.facts]
-      exact (((facts_sound hcat hF hT hwf.1 x hx).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
-        ((facts_sound hcat hF hT hwf.2.1 y hy).shift fun i => hlen ▸ getD_append_right' i)).append
+      exact (((facts_sound_all hcat hF hT hwf.1 hx u hu).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
+        ((facts_sound_all hcat hF hT hwf.2.1 hy v hv).shift fun i => hlen ▸ getD_append_right' i)).append
         (on.factsOf_sound ht)
-  | .join a b .left on, hwf, row, h => by
-      simp only [eval, List.mem_flatMap] at h
-      obtain ⟨x, hx, h⟩ := h
-      have hlen := eval_arity hcat hwf.1 x hx
-      have hfx := facts_sound hcat hF hT hwf.1 x hx
+  | .join a b .left on, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      obtain ⟨u, hu, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
+      have hlen := orderAllowed_arity hcat hwf.1 hx u hu
+      have hfx := facts_sound_all hcat hF hT hwf.1 hx u hu
       simp only [Rel.facts]
       unfold leftJoinRow at h
       simp only [] at h
@@ -5072,56 +5122,54 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
             simp [List.getD_eq_getElem?_getD, List.getElem?_replicate]; split <;> rfl)).append
           (FactsHold.rightOf_nulls fun i hi => getD_pad_null (hlen ▸ hi))
       · simp only [List.mem_filter, List.mem_map] at h
-        obtain ⟨⟨y, hy, rfl⟩, ht⟩ := h
+        obtain ⟨⟨v, hv, rfl⟩, ht⟩ := h
         exact ((hfx.prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
-          (((facts_sound hcat hF hT hwf.2.1 y hy).filter _).shift
+          (((facts_sound_all hcat hF hT hwf.2.1 hy v hv).filter _).shift
             fun i => hlen ▸ getD_append_right' i)).append
           fun f hf => on.factsOf_sound ht f (List.mem_filter.mp hf).1
-  | .fetch r _ _, hwf, row, h => by
-      simp only [eval] at h
-      have := facts_sound hcat hF hT (r := r) hwf
-      split at h
-      · exact this row (List.mem_of_mem_drop h)
-      · exact this row (List.mem_of_mem_drop (List.mem_of_mem_take h))
-  | .semi a _ _ _, hwf, row, h => by
-      simp only [eval, List.mem_filter] at h
-      exact facts_sound hcat hF hT hwf.1 row h.1
-  | .orderBy r _, hwf, row, h => by
-      simp only [eval, List.mem_mergeSort] at h
-      exact facts_sound hcat hF hT (r := r) hwf.1 row h
-  | .distinct r, hwf, row, h => by
-      simp only [eval, mem_dedup] at h
-      exact facts_sound hcat hF hT (r := r) hwf row h
-  | .aggregate _ gs ms, _, row, h => by
-      obtain ⟨k, grp, rfl, -, hk⟩ := mem_aggregateEval h
+  | .fetch r _ cnt, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      have := facts_sound_all hcat hF hT (r := r) hwf hi
+      cases cnt with
+      | none => exact this row (List.mem_of_mem_drop hr)
+      | some _ => exact this row (List.mem_of_mem_drop (List.mem_of_mem_take hr))
+  | .semi a _ _ _, hwf, _, ⟨x, _, hx, _, h⟩, row, hr =>
+      facts_sound_all hcat hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
+  | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
+      facts_sound_all hcat hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
+  | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
+      facts_sound_all hcat hF hT (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+  | .aggregate _ gs ms, _, _, ⟨_, _, _, h, ho⟩, row, hr => by
+      obtain ⟨k, vs, grp, rfl, hv, _, hk, _⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
+      have hkl : k.length = gs.length := by
+        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
       simp only [Rel.facts]
-      refine aggFacts_sound ?_
-      rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
-  | .unnest _ _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
-  | .unionAll a b, hwf, row, h => by
-      simp only [eval, List.mem_append] at h
+      exact aggFacts_sound_of (grp := grp) (hkl ▸ aggCol hv)
+  | .unnest _ _, _, _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
+  | .unionAll a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       intro f hf
       simp only [Rel.facts, List.mem_filter, List.contains_iff_mem] at hf
-      rcases h with h | h
-      · exact facts_sound hcat hF hT hwf.1 row h f hf.1
-      · exact facts_sound hcat hF hT hwf.2.1 row h f hf.2
-  | .window r part sort _, hwf, row, h => by
-      obtain ⟨b, x, a, he, hx, rfl⟩ := mem_windowEval h
-      obtain ⟨hb, ha, _⟩ := sorted_split he
-      have hlen := eval_arity hcat hwf.1 x hx
+      rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
+      · exact facts_sound_all hcat hF hT hwf.1 hx row h f hf.1
+      · exact facts_sound_all hcat hF hT hwf.2.1 hy row h f hf.2
+  | .window r part sort _, hwf, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
+      obtain ⟨b, x, a, he, rfl, hb, ha, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
+      have hx := hp.mem_iff.mp (hin x (.inl rfl))
+      have hlen := orderAllowed_arity hcat hwf.1 hi x hx
       simp only [Rel.facts]
-      refine ((facts_sound hcat hF hT hwf.1 x hx).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
-        (winFacts_sound hlen hwf.2.2.2 hb ha fun hs y hy _ => ?_)
+      refine ((facts_sound_all hcat hF hT hwf.1 hi x hx).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
+        (winFacts_sound hlen hwf.2.2.2 hb ha fun hT' y hy _ => ?_)
       -- With a key, rows at different positions of the sorted input differ on it.
-      have hk := (hT _ _ _ hs hwf.1).perm (List.mergeSort_perm _ (sortLe sort)).symm
-        fun h => Ne.symm h
+      have hk := (hT _ _ _ hT' hwf.1 hi).perm hp.symm fun h => Ne.symm h
       unfold KeyOn at hk
       rw [he, List.pairwise_append, List.pairwise_cons] at hk
       rcases hy with hy | hy
       · exact hk.2.2 y hy x (by simp)
       · exact Ne.symm (hk.2.1.1 y hy)
 
-/-! ### Using facts when evaluating expressions -/
+theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fact}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r : Rel} (hwf : r.WF cat) : ∀ row ∈ r.eval cat, FactsHold (r.facts cat F T) row :=
+  Rel.facts_sound_all hcat hF hT hwf (r.eval_orderAllowed cat)
 
 /-- A bound on `x - y` for columns `i` and `j`, from the facts. -/
 def Fact.diffBound (i j : Nat) : Fact → Option Bound
@@ -5795,33 +5843,35 @@ theorem length_crossRows (xs ys : Relation) : (crossRows xs ys).length = xs.leng
     simp only [crossRows, List.flatMap_cons, List.length_append, List.length_map] at ih ⊢
     rw [ih, List.length_cons, Nat.add_mul, Nat.one_mul]; omega
 
-theorem Rel.maxRows_sound {cat : Catalog} :
-    ∀ {r : Rel} {n : Nat}, r.maxRows = some n → (r.eval cat).length ≤ n
-  | .read _, _, h => by simp [maxRows] at h
-  | .values _ _, _, h => by simp only [maxRows, Option.some.injEq] at h; simp [eval, h]
-  | .filter r _, _, h => by
-    simp only [maxRows] at h; simp only [eval]
-    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound (r := r) h)
-  | .project r _, _, h | .emit r _, _, h => by
-    simp only [maxRows] at h; simp only [eval, List.length_map]; exact maxRows_sound (r := r) h
-  | .orderBy r _, _, h => by
-    simp only [maxRows] at h; simp only [eval, List.length_mergeSort]; exact maxRows_sound (r := r) h
-  | .distinct r, _, h => by
-    simp only [maxRows] at h; simp only [eval]
-    exact Nat.le_trans (dedup_length_le _) (maxRows_sound (r := r) h)
-  | .semi r _ _ _, _, h => by
-    simp only [maxRows] at h; simp only [eval]
-    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound (r := r) h)
-  | .window r _ _ _, _, h => by
+/-- **Row bounds hold on every order**, `Rel.eval`'s among them. -/
+theorem Rel.maxRows_sound_all {cat : Catalog} :
+    ∀ {r : Rel} {n : Nat}, r.maxRows = some n → ∀ {out : Relation}, r.OrderAllowed cat out →
+      out.length ≤ n
+  | .read _, _, h, _, _ => by simp [maxRows] at h
+  | .values _ _, _, h, _, ho => by
+    simp only [maxRows, Option.some.injEq] at h; rw [ho.length_eq, h]; exact Nat.le_refl _
+  | .filter r _, _, h, _, ⟨i, hi, rfl⟩ => by
     simp only [maxRows] at h
-    simp only [eval, windowEval, windowRows_length, List.length_mergeSort]
-    exact maxRows_sound (r := r) h
-  | .fetch r _ cnt, n, h => by
-    simp only [eval]
+    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound_all (r := r) h hi)
+  | .project r _, _, h, _, ⟨i, hi, rfl⟩ | .emit r _, _, h, _, ⟨i, hi, rfl⟩ => by
+    simp only [maxRows] at h; simp only [List.length_map]; exact maxRows_sound_all (r := r) h hi
+  | .orderBy r _, _, h, _, ⟨i, hi, hp, _⟩ => by
+    simp only [maxRows] at h; rw [hp.length_eq]; exact maxRows_sound_all (r := r) h hi
+  | .distinct r, _, h, _, ⟨i, hi, hp⟩ => by
+    simp only [maxRows] at h; rw [hp.length_eq]
+    exact Nat.le_trans (dedup_length_le _) (maxRows_sound_all (r := r) h hi)
+  | .semi r _ _ _, _, h, _, ⟨i, _, hi, _, hp⟩ => by
+    simp only [maxRows] at h; rw [hp.length_eq]
+    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound_all (r := r) h hi)
+  | .window r _ _ _, _, h, _, ⟨i, hi, s, hs, _, hp⟩ => by
+    simp only [maxRows] at h
+    rw [hp.length_eq, windowRows_length, hs.length_eq]
+    exact maxRows_sound_all (r := r) h hi
+  | .fetch r _ cnt, n, h, _, ⟨i, hi, rfl⟩ => by
     cases cnt with
     | none =>
       simp only [maxRows] at h
-      have := maxRows_sound (cat := cat) h
+      have := maxRows_sound_all (cat := cat) h hi
       simp only [List.length_drop]; omega
     | some k =>
       cases hr : r.maxRows with
@@ -5831,30 +5881,43 @@ theorem Rel.maxRows_sound {cat : Catalog} :
       | some m =>
         simp only [maxRows, hr, Option.some.injEq] at h
         subst h
-        have := maxRows_sound (cat := cat) hr
+        have := maxRows_sound_all (cat := cat) hr hi
         simp only [List.length_take, List.length_drop]; omega
-  | .cross a b, n, h | .join a b .inner _, n, h => by
+  | .cross a b, n, h, _, ⟨x, y, hx, hy, hp⟩ => by
     simp only [maxRows, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨na, ha, nb, hb, rfl⟩ := h
-    simp only [eval]
-    first
-      | exact Nat.le_trans (List.length_filter_le _ _)
-          (by rw [length_crossRows]; exact Nat.mul_le_mul (maxRows_sound ha) (maxRows_sound hb))
-      | (rw [length_crossRows]; exact Nat.mul_le_mul (maxRows_sound ha) (maxRows_sound hb))
-  | .join _ _ .left _, _, h => by simp [maxRows] at h
-  | .unionAll a b, n, h => by
+    rw [hp.length_eq, length_crossRows]
+    exact Nat.mul_le_mul (maxRows_sound_all ha hx) (maxRows_sound_all hb hy)
+  | .join a b .inner _, n, h, _, ⟨x, y, hx, hy, hp⟩ => by
     simp only [maxRows, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨na, ha, nb, hb, rfl⟩ := h
-    simp only [eval, List.length_append]
-    exact Nat.add_le_add (maxRows_sound ha) (maxRows_sound hb)
-  | .aggregate r gs _, n, h => by
+    rw [hp.length_eq]
+    exact Nat.le_trans (List.length_filter_le _ _)
+      (by rw [length_crossRows]; exact Nat.mul_le_mul (maxRows_sound_all ha hx) (maxRows_sound_all hb hy))
+  | .join _ _ .left _, _, h, _, _ => by simp [maxRows] at h
+  | .unionAll a b, n, h, _, ⟨x, y, hx, hy, hp⟩ => by
+    simp only [maxRows, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨na, ha, nb, hb, rfl⟩ := h
+    rw [hp.length_eq, List.length_append]
+    exact Nat.add_le_add (maxRows_sound_all ha hx) (maxRows_sound_all hb hy)
+  | .aggregate r gs _, n, h, _, ⟨i, hi, o, hp, ho⟩ => by
     simp only [maxRows] at h
-    simp only [eval, aggregateEval]
+    rw [hp.length_eq]
+    unfold aggOrderAllowed at ho
     split at h
-    · rename_i hg; simp only [Option.some.injEq] at h; subst h; simp [hg]
-    · rename_i hg; simp only [hg, Bool.false_eq_true, ↓reduceIte, List.length_map]
-      exact Nat.le_trans (dedup_length_le _) (by simpa using maxRows_sound (r := r) h)
-  | .unnest _ _, _, h => by simp [maxRows] at h
+    · rename_i hg
+      simp only [Option.some.injEq] at h; subst h
+      simp only [hg, ite_true] at ho
+      obtain ⟨_, rfl, _⟩ := ho; exact Nat.le_refl _
+    · rename_i hg
+      simp only [hg, Bool.false_eq_true, ite_false] at ho
+      rw [← ho.length_eq]
+      exact Nat.le_trans (dedup_length_le _) (by simpa using maxRows_sound_all (r := r) h hi)
+  | .unnest _ _, _, h, _, _ => by simp [maxRows] at h
+
+theorem Rel.maxRows_sound {cat : Catalog} {r : Rel} {n : Nat} (h : r.maxRows = some n) :
+    (r.eval cat).length ≤ n :=
+  Rel.maxRows_sound_all h (r.eval_orderAllowed cat)
 
 /-- Each read of a table with a row cap, as a `FETCH` of at most that many
 rows. On tables within their caps it changes nothing (`Rel.capReads_eval`),
@@ -5915,13 +5978,12 @@ theorem Rel.capReads_eval {caps : String → Option Nat} {cat : Catalog}
       capReads_arity caps cat b]
 
 /-- The mean of the doubles `cs`, as `AggFn.avg` computes it. -/
-def avgCode (cs : List Int) : Int :=
-  FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length)
+def avgCode (cs : List Int) : Int := floatAvgCR (cs.map .float)
 
 /-- The codes a `SUM` (`avg = false`) or an `AVG` of doubles in `b` lies in:
-signs are exact (`floatSum_sign`), and with at most `rows` values, finite
+signs are exact (`floatSumCR_sign`), and with at most `rows` values, finite
 bounds and at most `2³²` rows, the result is within the proved tolerance of
-the exact one (`floatSum_mem`, `floatAvg_mem`). -/
+the exact one (`floatSumCR_mem`, `floatAvgCR_mem`). -/
 def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
   let signed : Bound :=
     ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
@@ -5944,12 +6006,12 @@ def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
 
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
-    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSum (cs.map .float)) := by
+    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
   obtain ⟨blo, bhi⟩ := b
-  have hsign := floatSum_sign hne
+  have hsign := floatSumCR_sign hne
   have hsigned : (Bound.mk (blo.bind fun l => if 0 ≤ l then some 0 else none)
       (bhi.bind fun h => if h ≤ 0 then some 0 else none)).Mem
-      (if avg then avgCode cs else floatSum (cs.map .float)) := by
+      (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
     constructor
     · intro l hl
       simp only [Option.bind_eq_some_iff] at hl
@@ -5985,12 +6047,12 @@ theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List
     obtain ⟨h32, hlo, hhi⟩ := hok
     cases avg
     · simp only [Bool.false_eq_true, ↓reduceIte] at hsigned ⊢
-      obtain ⟨l, u⟩ := floatSum_mem hne hlen h32 hlo hhi hsc
+      obtain ⟨l, u⟩ := floatSumCR_mem hne hlen h32 hlo hhi hsc
       refine Bound.mem_meet hsigned ⟨?_, ?_⟩
       · intro x hx; cases hx; exact FloatCode.codeLo_le l
       · intro x hx; cases hx; exact FloatCode.le_codeHi u
     · simp only [↓reduceIte] at hsigned ⊢
-      obtain ⟨l, u⟩ := floatAvg_mem hne hlen h32 hlo hhi hsc
+      obtain ⟨l, u⟩ := floatAvgCR_mem hne hlen h32 hlo hhi hsc
       refine Bound.mem_meet hsigned ⟨?_, ?_⟩
       · intro x hx; cases hx; exact FloatCode.codeLo_le l
       · intro x hx; cases hx; exact FloatCode.le_codeHi u
@@ -6139,74 +6201,69 @@ structure Rel.Lane where
   env : List AVal
   ratio : List Fact
   rows : Option Nat
+  deriving Inhabited
 
-/-- The analyses of every subplan in one bottom-up pass. -/
-def Rel.lane (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
-    (sz : Bool) : Rel → Rel.Lane
-  | .read t => ⟨(cat t).arity, F t, useFacts (F t) (fit (cat t).arity (A t)), [], none⟩
-  | .values n rows => ⟨n, [], List.replicate n AVal.top, [], some rows.length⟩
-  | .filter r c =>
-      let l := r.lane cat A F T sz
+/-- One node's lane from its inputs' lanes (`l`, `l₂`; unused ones are ignored). -/
+def Rel.laneStep (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
+    (sz : Bool) : Rel → Rel.Lane → Rel.Lane → Rel.Lane
+  | .read t, _, _ => ⟨(cat t).arity, F t, useFacts (F t) (fit (cat t).arity (A t)), [], none⟩
+  | .values n rows, _, _ => ⟨n, [], List.replicate n AVal.top, [], some rows.length⟩
+  | .filter _ c, l, _ =>
       ⟨l.arity, l.facts ++ c.factsOf, useFacts (l.facts ++ c.factsOf) (c.refine l.env), [], l.rows⟩
-  | .project r es =>
-      let l := r.lane cat A F T sz
+  | .project _ es, l, _ =>
       ⟨l.arity + es.length,
         (l.facts.filter (·.inRange l.arity)).flatMap (Fact.rename (copyCols l.arity es)) ++
           linFacts l.arity l.arity es,
         l.env ++ es.map (·.absF l.env (l.facts ++ l.ratio)), [], l.rows⟩
-  | .emit r m =>
-      let l := r.lane cat A F T sz
+  | .emit _ m, l, _ =>
       ⟨m.length, l.facts.flatMap (Fact.rename (positions m)), m.map (l.env.getD · AVal.top), [],
         l.rows⟩
-  | .cross a b =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .cross _ _, la, lb =>
       ⟨la.arity + lb.arity, la.facts.filter (·.inRange la.arity) ++ lb.facts.map (·.shift la.arity),
         la.env ++ lb.env, [], la.rows.bind fun n => lb.rows.map (n * ·)⟩
-  | .join a b .inner on =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .join _ _ .inner on, la, lb =>
       ⟨la.arity + lb.arity,
         la.facts.filter (·.inRange la.arity) ++ lb.facts.map (·.shift la.arity) ++ on.factsOf,
         on.refine (la.env ++ lb.env), [], la.rows.bind fun n => lb.rows.map (n * ·)⟩
-  | .join a b .left on =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .join _ _ .left on, la, lb =>
       ⟨la.arity + lb.arity,
         la.facts.filter (·.inRange la.arity) ++
           (lb.facts.filter Fact.intsOnly).map (·.shift la.arity) ++
           on.factsOf.filter (·.rightOf la.arity),
         la.env ++ lb.env.map AVal.nullable, [], none⟩
-  | .fetch r _ cnt =>
-      let l := r.lane cat A F T sz
+  | .fetch _ _ cnt, l, _ =>
       ⟨l.arity, l.facts, l.env, [], match cnt, l.rows with
         | some k, some n => some (min k n)
         | some k, none => some k
         | none, n => n⟩
-  | .unionAll a b =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .unionAll _ _, la, lb =>
       ⟨la.arity, la.facts.filter (lb.facts.contains ·), List.zipWith AVal.join la.env lb.env, [],
         la.rows.bind fun n => lb.rows.map (n + ·)⟩
-  | .window r part sort fns =>
-      let l := r.lane cat A F T sz
+  | .window r part sort fns, l, _ =>
       ⟨l.arity + fns.length,
         l.facts.filter (·.inRange l.arity) ++ winFacts part sort (T r part sort) l.arity fns,
         l.env ++ fns.map (WinFn.abs sz l.env), [], l.rows⟩
-  | .semi a _ _ _ =>
-      let l := a.lane cat A F T sz
+  | .semi _ _ _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
-  | .orderBy r _ | .distinct r =>
-      let l := r.lane cat A F T sz
+  | .orderBy _ _, l, _ | .distinct _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
-  | .aggregate r gs ms =>
-      let l := r.lane cat A F T sz
+  | .aggregate _ gs ms, l, _ =>
       ⟨gs.length + ms.length, aggFacts gs.length ms,
         gs.map (·.absD l.env l.facts) ++ ms.map fun m => Measure.abs l.env l.facts m (!gs.isEmpty) l.rows,
         ratioFacts gs.length l.env l.facts ms, if gs.isEmpty then some 1 else l.rows⟩
-  | .unnest r c =>
-      let l := r.lane cat A F T sz
+  | .unnest _ c, l, _ =>
       ⟨l.arity, [], l.env.set c AVal.top, [], none⟩
+
+
+/-- The analyses of every subplan in one bottom-up pass. -/
+def Rel.lane (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
+    (sz : Bool) : Rel → Rel.Lane
+  | r@(.filter a _) | r@(.project a _) | r@(.emit a _) | r@(.fetch a _ _) | r@(.window a _ _ _)
+  | r@(.semi a _ _ _) | r@(.orderBy a _) | r@(.distinct a) | r@(.aggregate a _ _) | r@(.unnest a _) =>
+      r.laneStep cat A F T sz (a.lane cat A F T sz) default
+  | r@(.cross a b) | r@(.join a b _ _) | r@(.unionAll a b) =>
+      r.laneStep cat A F T sz (a.lane cat A F T sz) (b.lane cat A F T sz)
+  | r@(.read _) | r@(.values _ _) => r.laneStep cat A F T sz default default
 
 /-- **The lane is the analyses**, field by field. -/
 theorem Rel.lane_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
@@ -6215,12 +6272,12 @@ theorem Rel.lane_eq (cat : Catalog) (A : String → List AVal) (F : String → L
       r.ratioPart cat A F T sz, r.maxRows⟩ := by
   induction r with
   | join a b ty on iha ihb =>
-    cases ty <;> simp only [Rel.lane, iha, ihb, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
+    cases ty <;> simp only [Rel.lane, Rel.laneStep, iha, ihb, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
       Rel.maxRows]
   | fetch r _ cnt ih =>
-    cases cnt <;> simp only [Rel.lane, ih, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
+    cases cnt <;> simp only [Rel.lane, Rel.laneStep, ih, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
       Rel.maxRows]
-  | _ => simp_all only [Rel.lane, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart, Rel.maxRows]
+  | _ => simp_all only [Rel.lane, Rel.laneStep, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart, Rel.maxRows]
 
 /-- `Rel.aeval` by the lane. -/
 def Rel.aevalLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
@@ -6696,8 +6753,8 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := false) hne' hb hlen
-        have e : floatSum (v :: vs) = floatSum ((floatsOf (v :: vs)).map .float) :=
-          congrArg floatSum hcs
+        have e : floatSumCR (v :: vs) = floatSumCR ((floatsOf (v :: vs)).map .float) :=
+          congrArg floatSumCR hcs
         rw [e]; simpa using key
       · exact Bound.mem_top _
   case avg =>
@@ -6727,8 +6784,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := true) hne' hb hlen
-        have e := congrArg (fun l => FloatCode.lift₂ (· / ·) (floatSum l) (FloatCode.ofInt l.length)) hcs
-        simp only [List.length_map] at e
+        have e := congrArg floatAvgCR hcs
         rw [e]; simpa [avgCode] using key
       · exact Bound.mem_top _
   case iavg =>
@@ -6980,7 +7036,7 @@ mutual
 theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {sz : Bool} :
     ∀ {r : Rel}, r.WF cat → (sz = true → r.Small cat) → ∀ row ∈ r.eval cat,
       EnvMem (r.aeval cat A F T sz) row
@@ -7077,7 +7133,7 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
 theorem Rel.ratioPart_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {sz : Bool} :
     ∀ {r : Rel}, r.WF cat → (sz = true → r.Small cat) → ∀ row ∈ r.eval cat,
       FactsHold (r.ratioPart cat A F T sz) row
@@ -7091,6 +7147,173 @@ theorem Rel.ratioPart_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | .join _ _ _ _, _, _, _, _ | .fetch _ _ _, _, _, _, _ | .unionAll _ _, _, _, _, _
   | .window _ _ _ _, _, _, _, _ | .semi _ _ _ _, _, _, _, _ | .orderBy _ _, _, _, _, _
   | .distinct _, _, _, _, _ | .unnest _ _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
+end
+
+/-- `ratioFacts_sound` for any row whose measures that do not sort hold their
+values over `grp`. -/
+theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
+    {grp : Relation} {row : Row}
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false →
+      row.getD (g + i) .null = m.eval grp)
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
+    FactsHold (ratioFacts g env fs ms) row := by
+  intro f hf
+  simp only [ratioFacts, List.mem_flatMap, List.mem_range] at hf
+  obtain ⟨i, _, j, _, hf⟩ := hf
+  split at hf
+  · rename_i mi mj hmi hmj
+    split at hf
+    · rename_i hc
+      obtain ⟨hsum, hcount, harg, hfil, hdis, honly⟩ := hc
+      split at hf
+      · rename_i b hb
+        simp only [List.mem_singleton] at hf; subst hf
+        intro x n hx hn
+        rw [col i mi hmi (by rw [hsum]; rfl), Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
+        rw [col j mj hmj (by rw [hcount]; rfl), Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
+        have hsame : mj.inputs grp = mi.inputs grp := by
+          simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
+        rw [hsame] at hn
+        cases hvs : mi.inputs grp with
+        | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
+        | cons v vs =>
+          rw [hvs] at hx hn
+          simp only [AggFn.apply, Value.int.injEq] at hx hn
+          subst hx hn
+          have hint : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i := by
+            intro w hw
+            have hw' : w ∈ mi.inputs grp := hvs ▸ hw
+            obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
+            have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
+            obtain ⟨i, b', he, hb', hi⟩ := AVal.intsOnly_mem honly hm hnn
+            rw [hb] at hb'; cases hb'
+            exact ⟨i, he, hi⟩
+          obtain ⟨hlo, hhi⟩ := intSum_bounds hint
+          exact ⟨by simp, hlo, hhi⟩
+      · simp at hf
+    · simp at hf
+  · simp at hf
+
+theorem EnvMem.measures_all {env : List AVal} {fs : List Fact} {grp : Relation}
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) {ms : List Measure} {vs : List Value}
+    (hv : Forall2 (fun m v => m.OrderAllowed grp v) ms vs) (grouped : Bool := false)
+    (hne : grouped = true → grp ≠ [] := by simp) (rows : Option Nat := none)
+    (hrows : ∀ n, rows = some n → grp.length ≤ n := by simp) :
+    EnvMem (ms.map fun m => Measure.abs env fs m grouped rows) vs := by
+  intro j
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+  rcases hv.getElem? j with ⟨m, v, hm, hb, hr⟩ | ⟨hm, hb⟩
+  · obtain ⟨s, hp, rfl, _⟩ := hr.eval
+    simp only [hm, hb, Option.map_some, Option.getD_some]
+    exact Measure.abs_sound (grp := s) (fun y hy => hall y (hp.mem_iff.mp hy)) m grouped
+      (fun hg hs => hne hg (List.eq_nil_of_length_eq_zero (by rw [← hp.length_eq, hs]; rfl))) rows
+      (fun n hn => hp.length_eq ▸ hrows n hn)
+  · simp [hm, hb, AVal.mem_top]
+
+mutual
+/-- **The abstract interpreter describes every row of every order.** -/
+theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat) :
+    ∀ {r : Rel}, r.WF cat → ∀ {out : Relation}, r.OrderAllowed cat out →
+      ∀ row ∈ out, EnvMem (r.aeval cat A F T) row
+  | .read t, _, _, h, row, hr =>
+      useFacts_sound (hF t row (h.mem_iff.mp hr)) ((hA t row (h.mem_iff.mp hr)).fit _)
+  | .values _ _, _, _, _, row, _ => EnvMem.replicate _ row
+  | .filter r c, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      rw [List.mem_filter] at hr
+      exact useFacts_sound ((Rel.facts_sound_all hcat hF hT hwf.1 hi row hr.1).append
+        (c.factsOf_sound hr.2)) (Expr.refine_sound _ c (aeval_sound_all hcat hA hF hT hwf.1 hi row hr.1) hr.2)
+  | .project r es, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
+      have hm := aeval_sound_all hcat hA hF hT hwf.1 hi x hx
+      have hrp := ratioPart_sound_all hcat hA hF hT hwf.1 hi x hx
+      exact hm.append (hm.mapF ((Rel.facts_sound_all hcat hF hT hwf.1 hi x hx).append hrp) es)
+        (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hi x hx])
+  | .emit r m, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
+      exact (aeval_sound_all hcat hA hF hT hwf.1 hi x hx).emit m
+  | .cross a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      obtain ⟨u, hu, v, hv, rfl⟩ := mem_crossRows.mp (h.mem_iff.mp hr)
+      exact (aeval_sound_all hcat hA hF hT hwf.1 hx u hu).append
+        (aeval_sound_all hcat hA hF hT hwf.2 hy v hv)
+        (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hx u hu])
+  | .join a b .inner on, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      obtain ⟨hc, ht⟩ := List.mem_filter.mp (h.mem_iff.mp hr)
+      obtain ⟨u, hu, v, hv, rfl⟩ := mem_crossRows.mp hc
+      exact Expr.refine_sound _ on ((aeval_sound_all hcat hA hF hT hwf.1 hx u hu).append
+        (aeval_sound_all hcat hA hF hT hwf.2.1 hy v hv)
+        (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hx u hu])) ht
+  | .join a b .left on, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      obtain ⟨u, hu, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
+      have hum := aeval_sound_all hcat hA hF hT hwf.1 hx u hu
+      have hl : (a.aeval cat A F T).length = u.length := by
+        rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hx u hu]
+      unfold leftJoinRow at h
+      simp only [] at h
+      split at h
+      · simp only [List.mem_singleton] at h
+        subst h
+        exact hum.append (EnvMem.nulls _ _) hl
+      · simp only [List.mem_filter, List.mem_map] at h
+        obtain ⟨⟨v, hv, rfl⟩, _⟩ := h
+        exact hum.append (aeval_sound_all hcat hA hF hT hwf.2.1 hy v hv).nullable hl
+  | .fetch r _ cnt, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+      have := aeval_sound_all hcat hA hF hT (r := r) hwf hi
+      cases cnt with
+      | none => exact this row (List.mem_of_mem_drop hr)
+      | some _ => exact this row (List.mem_of_mem_drop (List.mem_of_mem_take hr))
+  | .semi a _ _ _, hwf, _, ⟨x, _, hx, _, h⟩, row, hr =>
+      aeval_sound_all hcat hA hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
+  | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
+      aeval_sound_all hcat hA hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
+  | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
+      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+  | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
+      obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
+      obtain ⟨_, v, _, _, rfl⟩ := mem_unnestRow h
+      exact (aeval_sound_all hcat hA hF hT hwf.1 hi x hx).set_top c v
+  | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
+      obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, hne, hglen⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
+      have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T) y ∧ FactsHold (r.facts cat F T) y :=
+        fun y hy => ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
+          Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
+      have hm := EnvMem.measures_all hall hv (!gs.isEmpty) (fun hg => hne (by simpa using hg))
+        (rows := r.maxRows) (fun n hn => Nat.le_trans hglen (Rel.maxRows_sound_all hn hi))
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
+      · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
+      · exact (EnvMem.mapD (aeval_sound_all hcat hA hF hT hwf.1 hi x hx)
+          (Rel.facts_sound_all hcat hF hT hwf.1 hi x hx) gs).append hm (by simp)
+  | .unionAll a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
+      · exact (aeval_sound_all hcat hA hF hT hwf.1 hx row h).zip_left
+      · exact (aeval_sound_all hcat hA hF hT hwf.2.1 hy row h).zip_right
+  | .window r _ _ fns, hwf, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
+      obtain ⟨b, x, a, _, rfl, _, _, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
+      have hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem (r.aeval cat A F T) y :=
+        fun y hy => aeval_sound_all hcat hA hF hT hwf.1 hi y (hp.mem_iff.mp (hin y hy))
+      exact (hall x (.inl rfl)).append (EnvMem.window (sz := false) hall nofun fns)
+        (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hi x (hp.mem_iff.mp (hin x (.inl rfl)))])
+
+theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat) :
+    ∀ {r : Rel}, r.WF cat → ∀ {out : Relation}, r.OrderAllowed cat out →
+      ∀ row ∈ out, FactsHold (r.ratioPart cat A F T) row
+  | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
+      obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, -⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
+      have hkl : k.length = gs.length := by
+        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
+      exact ratioFacts_sound_of (hkl ▸ aggCol hv) fun y hy =>
+        ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
+          Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
+  | .read _, _, _, _, _, _ | .values _ _, _, _, _, _, _ | .filter _ _, _, _, _, _, _
+  | .project _ _, _, _, _, _, _ | .emit _ _, _, _, _, _, _ | .cross _ _, _, _, _, _, _
+  | .join _ _ _ _, _, _, _, _, _ | .fetch _ _ _, _, _, _, _, _ | .unionAll _ _, _, _, _, _, _
+  | .window _ _ _ _, _, _, _, _, _ | .semi _ _ _ _, _, _, _, _, _ | .orderBy _ _, _, _, _, _, _
+  | .distinct _, _, _, _, _, _ | .unnest _ _, _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
 end
 
 /-! ## Contracts -/
@@ -7188,6 +7411,36 @@ theorem tableEnv_sound {row : Row} :
       exact tableEnv_sound (Expr.refine_sound _ e h (hpre e (by simp)))
         fun e' he' => hpre e' (by simp [he'])
 
+/-- **Contract soundness for every order.** Under `contract_sound`'s
+hypotheses, every postcondition holds on every row of every order the
+reference allows: for every way an engine breaks ties, takes the rows of a
+`FETCH` or orders the rows of `FIRST`, `STRING_AGG` or a window. -/
+theorem contract_sound_all {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
+    {pre : String → List Expr} {Q : Rel}
+    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
+    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
+    (hQ : Q.WF cat) {T : WindowKeys} (hT : T.SoundAll cat)
+    (hproved : (Q.aeval cat (fun t => tableEnv (S t) (pre t))
+      (fun t => (pre t).flatMap Expr.factsOf) T).all AVal.certainlyTrue = true) :
+    ∀ {out : Relation}, Q.OrderAllowed cat out → ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
+  intro out hout row hrow v hv
+  have hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold ((pre t).flatMap Expr.factsOf) row := by
+    intro t row h f hf
+    simp only [List.mem_flatMap] at hf
+    obtain ⟨e, he, hf⟩ := hf
+    exact Expr.factsOf_sound e (hpre t row h e he) f hf
+  have hm := Q.aeval_sound_all hcat (fun t row h => tableEnv_sound (hS t row h) (hpre t row h)) hF
+    hT hQ hout row hrow
+  obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hv
+  have hlen : j < (Q.aeval cat (fun t => tableEnv (S t) (pre t))
+      (fun t => (pre t).flatMap Expr.factsOf) T).length := by
+    rw [Rel.aeval_length hQ, ← Rel.orderAllowed_arity hcat hQ hout row hrow]; exact hj
+  have hc := List.all_eq_true.mp hproved _ (List.getElem_mem hlen)
+  have := hm j
+  simp only [List.getElem?_eq_getElem hlen, Option.getD_some, List.getD,
+    List.getElem?_eq_getElem hj] at this
+  exact AVal.certainlyTrue_mem hc this
+
 /-- **Contract soundness.** Suppose every row of every table matches its
 schema and satisfies its preconditions, the postcondition plan `Q` (the
 transformation followed by a select of the postconditions) is well-formed. If
@@ -7197,26 +7450,10 @@ theorem contract_sound {cat : Catalog} (hcat : cat.WF) {S : String → List AVal
     {pre : String → List Expr} {Q : Rel}
     (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
     (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
-    (hQ : Q.WF cat) {T : WindowKeys} (hT : T.Sound cat)
+    (hQ : Q.WF cat) {T : WindowKeys} (hT : T.SoundAll cat)
     (hproved : (Q.aeval cat (fun t => tableEnv (S t) (pre t))
       (fun t => (pre t).flatMap Expr.factsOf) T).all AVal.certainlyTrue = true) :
-    ∀ row ∈ Q.eval cat, ∀ v ∈ row, v = .bool true := by
-  intro row hrow v hv
-  have hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold ((pre t).flatMap Expr.factsOf) row := by
-    intro t row h f hf
-    simp only [List.mem_flatMap] at hf
-    obtain ⟨e, he, hf⟩ := hf
-    exact Expr.factsOf_sound e (hpre t row h e he) f hf
-  have hm := Q.aeval_sound hcat (fun t row h => tableEnv_sound (hS t row h) (hpre t row h)) hF hT
-    (sz := false) hQ nofun row hrow
-  obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hv
-  have hlen : j < (Q.aeval cat (fun t => tableEnv (S t) (pre t))
-      (fun t => (pre t).flatMap Expr.factsOf) T).length := by
-    rw [Rel.aeval_length hQ, ← Rel.eval_arity hcat hQ row hrow]; exact hj
-  have hc := List.all_eq_true.mp hproved _ (List.getElem_mem hlen)
-  have := hm j
-  simp only [List.getElem?_eq_getElem hlen, Option.getD_some, List.getD,
-    List.getElem?_eq_getElem hj] at this
-  exact AVal.certainlyTrue_mem hc this
+    ∀ row ∈ Q.eval cat, ∀ v ∈ row, v = .bool true :=
+  contract_sound_all hcat hS hpre hQ hT hproved (Q.eval_orderAllowed cat)
 
 end Substrait

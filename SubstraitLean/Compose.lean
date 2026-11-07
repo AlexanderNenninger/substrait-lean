@@ -150,7 +150,7 @@ postcondition certainly TRUE (for some sound window-key oracle), then
 theorem Triple.of_contract {S : String → List AVal} {pre : String → List Expr}
     {K : String → List (List Nat)} {r : Rel} {es : List Expr}
     (h : ∀ cat : Catalog, cat.WF → Sat (Spec S pre K) cat → r.WF cat →
-      ∃ T : WindowKeys, T.Sound cat ∧ (r.post (r.arity cat) es).WF cat ∧
+      ∃ T : WindowKeys, T.SoundAll cat ∧ (r.post (r.arity cat) es).WF cat ∧
         ((r.post (r.arity cat) es).aeval cat (Spec.env S pre) (Spec.facts pre) T).all
           AVal.certainlyTrue = true) :
     Triple (Spec S pre K) r.query (RowsSat es) := by
@@ -177,7 +177,7 @@ schema `Sx` that admits every value the abstract evaluation admits. -/
 theorem Triple.of_aeval {S : String → List AVal} {pre : String → List Expr}
     {K : String → List (List Nat)} {r : Rel} {Sx : List AVal}
     (h : ∀ cat : Catalog, cat.WF → Sat (Spec S pre K) cat → r.WF cat →
-      ∃ T : WindowKeys, T.Sound cat ∧ ∀ i v,
+      ∃ T : WindowKeys, T.SoundAll cat ∧ ∀ i v,
         ((r.aeval cat (Spec.env S pre) (Spec.facts pre) T).getD i AVal.top).Mem v →
           (Sx.getD i AVal.top).Mem v) :
     Triple (Spec S pre K) r.query fun rows => ∀ row ∈ rows, EnvMem Sx row := by

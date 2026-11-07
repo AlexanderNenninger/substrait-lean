@@ -72,7 +72,8 @@ structure Profile where
   (`StatProps`). -/
   statAlgo : Option AggAlgo := none
   /-- The algorithm of `SUM` and `AVG` of doubles, likewise; `none`: any order
-  and grouping of the additions (`FloatSums`). -/
+  and grouping of the additions (`FloatSums`), within #85's bound of the
+  reference's correctly rounded sum (D25). -/
   sumAlgo : Option AggAlgo := none
 
 /-- Raise an error issue; a warning (wrap-around) keeps the value. -/
@@ -530,11 +531,12 @@ scalar functions. For a double `SUM` or `AVG` that last part does not hold in
 general: DuckDB merges partial sums in finishing order and adds a constant
 vector as one `fl(k · x)` (#633), so on those the conclusion holds of the
 model, and what DuckDB gives is within #85's bound of it (`Profile.duckdb.table`'s
-`sum_order` row, `approx`, proved in `float-bounds` as `StdModel.epsilon_sum`). -/
+`sum_order` row, `approx`, proved in `float-bounds` as `StdModel.epsilon_sum_cr`
+against the reference's correctly rounded sum, D25). -/
 theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
     (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
     r.eval cat (Profile.duckdbWritten s).impl = r.eval cat :=

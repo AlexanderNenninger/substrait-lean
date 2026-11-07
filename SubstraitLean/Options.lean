@@ -97,15 +97,17 @@ def options : List OptionSpec := [
   { id := "list_null_order", substrait := none, core := ["NULL", "GREATEST", "LEAST"],
     extra := [("GREATEST", "duckdb-R11")] },
   -- Aggregates, windows and relations
+  -- `EXACT`: the correctly rounded exact sum, the reference's (D25, `floatSumCR`).
   -- `ANY`: a tree of additions in any order (`FloatSums`); `SEQUENTIAL` and
   -- `PAIRWISE` are such trees. `COMPENSATED` (Kahan's) and `SCALED_CONSTANT`
   -- (a constant vector added as one `fl(k · x)`) are not known to be (#633):
   -- they are within #85's bound only.
   { id := "sum_order", substrait := none,
-    core := ["ANY", "SEQUENTIAL", "PAIRWISE", "COMPENSATED", "SCALED_CONSTANT"],
+    core := ["ANY", "SEQUENTIAL", "PAIRWISE", "COMPENSATED", "SCALED_CONSTANT", "EXACT"],
     extra := [("SEQUENTIAL", "polars-sum-float"), ("PAIRWISE", "polars-sum-float"),
       ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
-  { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN"],
+  -- `EXACT`: the correctly rounded formula over the exact moments (D25, #918).
+  { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN", "EXACT"],
     extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
   { id := "stat_degenerate", substrait := none, core := ["NULL", "NAN", "ERROR"],
     extra := [("NAN", "duckdb-corr")] },
@@ -490,7 +492,8 @@ def Profile.reference.table : ProfileTable where
     -- `NULL` in `<` of lists, last in `ORDER BY`, `MIN` and `MAX` (#207).
     (none, "list_null_order", .oneOf ["NULL"]),
     (some "agg.order", "list_null_order", .oneOf ["GREATEST"]),
-    (none, "sum_order", .oneOf ["ANY"]),
+    -- D25: the exact sum rounded once; engines add in their own order.
+    (none, "sum_order", .oneOf ["EXACT"]),
     (none, "stat_algo", .oneOf ["GENERIC"]),
     (none, "stat_degenerate", .oneOf ["NULL"]),
     (none, "avg_int_result", .oneOf ["DECLARED_TYPE"]),

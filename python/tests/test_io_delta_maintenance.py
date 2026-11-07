@@ -78,6 +78,32 @@ def test_another_writers_rows_after_the_sink_are_not_resumed_from(tmp_path):
     assert entry.started == "computed"
 
 
+def sink_rows(uri):
+    return sorted(DeltaTable(uri).to_pyarrow_table().to_pylist(), key=lambda r: r["id"])
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("restart", [False, True])
+def test_rows_another_writer_changed_are_replaced(tmp_path, engine, restart):
+    """#966 (the TLA+ model's `today-foreign` traces): another application
+    deletes a row of the sink. The next refresh, of this process or a new
+    one, must neither skip (the epoch is committed) nor write a change on
+    those rows: it writes the node's rows again."""
+    src, stored = job(tmp_path)
+    stored.refresh(engine=engine)
+    uri = str(tmp_path / "big")
+    want = sink_rows(uri)
+    DeltaTable(uri).delete("customer = 'ada'")
+    node = job(tmp_path, src)[1] if restart else stored
+    w = node.refresh(engine=engine)["big"].write
+    assert w is not None and w.mode == "overwrite"
+    assert sink_rows(uri) == want
+    grow(src, 1)
+    node.refresh(engine=engine)
+    assert sorted(tuple(r.values()) for r in sink_rows(uri)) == recomputed(doubled(paid(src)), src)
+    assert node.refresh(engine=engine)["big"].write.mode == "skipped"
+
+
 def test_table_properties_on_create_and_on_an_existing_table(tmp_path):
     src, stored = job(tmp_path, checkpoint_interval=5, log_retention=timedelta(days=2))
     stored.refresh()

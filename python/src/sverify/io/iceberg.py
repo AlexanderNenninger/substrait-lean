@@ -529,7 +529,9 @@ class IcebergSource(_TableSource):
         if mine.record is None:
             return None
         where = f"{self.identifier}@v{_version(s)}"
-        return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
+        return Stored(
+            where, self.identifier, c.plan, c.sources, c.digests, _read(t, s), c.table_ids
+        )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from sequence number `since` to `until`, as a refresh
@@ -1325,14 +1327,36 @@ class IcebergSink(_TableSink[Table]):
         text = table.properties.get(KEY)
         return None if text is None else Contract.from_json(text)
 
+    def _head_of(self, table: Table) -> tuple[int | None, Contract | None, bool]:
+        """In one walk of the current snapshot's ancestry: the app's last
+        epoch, the contract, and whether the snapshots after the app's last
+        one only rewrite files (a compaction keeps the rows)."""
+        kept = True
+        for s in _ancestry(table):
+            if s.summary is not None and s.summary.get(APP) == self.app_id:
+                return int(s.summary.get(EPOCH, "-1")), self._contract_of(table), kept
+            if s.summary is None or not _rewrites(s.summary):
+                kept = False
+        return None, None, True
+
+    def _app_snapshot(self, table: Table) -> int | None:
+        """The id of the last snapshot this sink's `app_id` wrote."""
+        for s in _ancestry(table):
+            if s.summary is not None and s.summary.get(APP) == self.app_id:
+                return s.snapshot_id
+        return None
+
     def _transaction(self, t: Table) -> Transaction:
-        """A transaction on `t` that commits only while the table has the
-        epoch `committed` read (`_Guarded`)."""
+        """A transaction on `t`, the table `contract()` read: its commit
+        asserts `t`'s snapshot, and a retry on a newer one (`_Guarded`) is
+        made only while the app's last snapshot is still `t`'s, the same
+        snapshot and not only the same epoch (#964)."""
         then = self._read
+        mine = self._app_snapshot(t)
 
         def check(now: Table) -> None:
-            if then is not _UNREAD and (epoch := self._epoch_of(now)) != then:
-                raise _Conflict(f"the table now has epoch {epoch}")
+            if then is not _UNREAD and self._app_snapshot(now) != mine:
+                raise _Conflict(f"the table now has epoch {self._epoch_of(now)}")
 
         return _Guarded(t, check)
 

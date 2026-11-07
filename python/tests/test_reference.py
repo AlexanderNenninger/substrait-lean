@@ -14,7 +14,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from _engines import PROFILED, PROFILED_ORDERED
+from _engines import PROFILED
 from sverify.engine import (
     connect,
     put_table,
@@ -703,7 +703,7 @@ def test_a_nan_in_the_input_stays_nan(icon, engine):
     assert got == [(3.5,), ("NaN",)]
 
 
-@pytest.mark.parametrize("engine", PROFILED_ORDERED)
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_double_sum_of_both_infinities_raises(icon, engine):
     n = icon.table("n")
     both = n.select(v=n.x).union(n.select(v=n.y))

@@ -360,11 +360,6 @@ class SparkDialect(Dialect):
         # to the zero, which `canon` makes the one zero (`Spark.one_zero`).
         return self.canon(f"{fn}({v}) {over}" if over else f"{fn}({v})")
 
-    def float_sum(self, v: str, o: str) -> str:
-        pairs = f"collect_list(named_struct('o', {o}, 'v', {v})) FILTER (WHERE {v} IS NOT NULL)"
-        values = f"transform(array_sort({pairs}), p -> p.v)"
-        return f"aggregate({values}, {self.float_lit(0.0)}, (acc, x) -> acc + x)"
-
     def like_pattern(self, p: str) -> str:
         odd = f"({p} RLIKE {self.str_lit(r'(^|[^\\])(\\\\)*\\$')})"
         return f"(CASE WHEN {odd} THEN concat({p}, {self.str_lit(chr(92))}) ELSE {p} END)"

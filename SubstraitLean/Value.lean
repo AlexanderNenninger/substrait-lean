@@ -122,8 +122,12 @@ def Value.numOf? : Value → Option (NumKind × Int)
 @[simp] theorem NumKind.numOf?_val (k : NumKind) (i : Int) : (k.val i).numOf? = some (k, i) := by
   cases k <;> rfl
 
-theorem NumKind.val_inj {k k' : NumKind} {x y : Int} (h : k.val x = k'.val y) : k = k' ∧ x = y := by
+theorem NumKind.val_inj₂ {k k' : NumKind} {x y : Int} (h : k.val x = k'.val y) : k = k' ∧ x = y := by
   cases k <;> cases k' <;> simp_all [NumKind.val]
+
+/-- One kind's numbers are its integers. -/
+theorem NumKind.val_inj {k : NumKind} {i j : Int} (h : k.val i = k.val j) : i = j :=
+  (NumKind.val_inj₂ h).2
 
 theorem NumKind.val_ne_null (k : NumKind) (i : Int) : k.val i ≠ .null := by
   cases k <;> simp [NumKind.val]
@@ -144,6 +148,24 @@ abbrev Relation := List Row
 def Value.isTrue : Value → Bool
   | .bool true => true
   | _ => false
+
+/-! ## Numbers by kind (#923)
+
+The interface the analyses read numbers through (#1005): `NumKind.val`,
+`Value.numOf?` and `Value.num?` above and below, and these lemmas. -/
+
+/-- The integer a number carries, of whatever kind. -/
+def Value.num? (v : Value) : Option Int := v.numOf?.map (·.2)
+
+@[simp] theorem NumKind.num?_val (k : NumKind) (i : Int) : (k.val i).num? = some i := by
+  cases k <;> rfl
+
+theorem Value.num?_some {v : Value} {i : Int} (h : v.num? = some i) : ∃ k : NumKind, v = k.val i := by
+  simp only [Value.num?, Option.map_eq_some_iff] at h
+  obtain ⟨⟨k, j⟩, hk, rfl⟩ := h
+  exact ⟨k, Value.numOf?_some hk⟩
+
+theorem Value.num?_null : Value.null.num? = none := rfl
 
 /-! ## Column kinds
 

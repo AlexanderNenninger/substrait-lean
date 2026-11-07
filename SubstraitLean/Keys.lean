@@ -445,6 +445,67 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   -- An element can repeat.
   | .unnest _ _ => []
 
+/-! ### Keys in the same pass (#904)
+
+`Rel.keys` reads its inputs' arity and description (`Rel.aeval` without
+window keys) at every node, each a walk of the input. `Rel.laneK` carries
+the keys next to the lane (`Rel.lane`, `SubstraitLean/Contracts.lean`) in one
+bottom-up pass; `Rel.laneK_eq` proves it computes `Rel.keys`, and the
+`@[csimp]` lemma makes compiled code use it. -/
+
+/-- One node's keys from its inputs' lanes and keys. -/
+def Rel.keysStep (K : String → List (List Nat)) :
+    Rel → Rel.Lane → Rel.Lane → List (List Nat) → List (List Nat) → List (List Nat)
+  | .read t, _, _, _, _ => K t
+  | .values _ rows, _, _, _, _ => if rows.length ≤ 1 then [[]] else []
+  | .filter _ c, _, _, ka, _ =>
+      dedup ((ka.map (·.filter (!c.pinned.contains ·))).flatMap (eqVariants c))
+  | .project _ es, l, _, ka, _ =>
+      (ka.filter (·.all (· < l.arity))).flatMap
+        (variants fun i => copyCols l.arity es i ++ linCols l.arity es l.env i)
+  | .emit _ m, _, _, ka, _ => ka.filterMap (emitKey m)
+  | .cross _ _, la, _, ka, kb => crossKeys la.arity ka kb
+  | .join _ _ ty on, la, _, ka, kb => joinEqKeys ty on (joinKeys la.arity on ka kb)
+  | .fetch _ _ cnt, _, _, ka, _ => (if cnt.any (· ≤ 1) then [[]] else []) ++ ka
+  | .unionAll _ _, la, lb, ka, kb => unionKeys la.env lb.env ka kb
+  | .window _ part _ fns, l, _, ka, _ =>
+      ka.filter (·.all (· < l.arity)) ++ windowKeys part l.arity fns
+  | .semi _ _ _ _, _, _, ka, _ | .orderBy _ _, _, _, ka, _ => ka
+  | .distinct _, l, _, ka, _ => List.range l.arity :: ka
+  | .aggregate _ gs _, _, _, _, _ => [List.range gs.length]
+  | .unnest _ _, _, _, _, _ => []
+
+/-- The lane without window keys and the keys of every subplan, in one pass. -/
+def Rel.laneK (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) : Rel → Rel.Lane × List (List Nat)
+  | r@(.filter a _) | r@(.project a _) | r@(.emit a _) | r@(.fetch a _ _) | r@(.window a _ _ _)
+  | r@(.semi a _ _ _) | r@(.orderBy a _) | r@(.distinct a) | r@(.aggregate a _ _) | r@(.unnest a _) =>
+      let p := a.laneK cat A F K
+      (r.laneStep cat A F .none false p.1 default, r.keysStep K p.1 default p.2 [])
+  | r@(.cross a b) | r@(.join a b _ _) | r@(.unionAll a b) =>
+      let p := a.laneK cat A F K
+      let q := b.laneK cat A F K
+      (r.laneStep cat A F .none false p.1 q.1, r.keysStep K p.1 q.1 p.2 q.2)
+  | r@(.read _) | r@(.values _ _) =>
+      (r.laneStep cat A F .none false default default, r.keysStep K default default [] [])
+
+/-- **The pass computes the lane and `Rel.keys`.** -/
+theorem Rel.laneK_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) :
+    r.laneK cat A F K = (r.lane cat A F .none false, r.keys cat A F K) := by
+  induction r with
+  | join a b ty on iha ihb =>
+    cases ty <;> simp only [Rel.laneK, Rel.lane, iha, ihb, Rel.keysStep, Rel.keys, Rel.lane_eq]
+  | _ => simp_all only [Rel.laneK, Rel.lane, Rel.keysStep, Rel.keys, Rel.lane_eq]
+
+/-- `Rel.keys` by the pass. -/
+def Rel.keysLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) : List (List Nat) :=
+  (r.laneK cat A F K).2
+
+@[csimp] theorem Rel.keys_csimp : @Rel.keys = @Rel.keysLane := by
+  funext cat A F K r; simp only [Rel.keysLane, Rel.laneK_eq]
+
 theorem crossRows_key {A B : Relation} {n : Nat} {ka kb : List Nat}
     (hA : ∀ x ∈ A, x.length = n) (hka : ∀ c ∈ ka, c < n)
     (hkA : KeyOn ka A) (hkB : KeyOn kb B) :
@@ -620,29 +681,54 @@ theorem aggregateEval_key (gs : List Expr) (ms : List Measure) (rows : Relation)
     rw [hlx, ← hly, keyOf_range_append]
     exact hne
 
-/-- **Soundness of key derivation.** -/
-theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+/-- An aggregate's group columns are a key of its output, in every order. -/
+theorem aggOrderAllowed_key {gs : List Expr} {ms : List Measure} {rows out : Relation}
+    (h : aggOrderAllowed gs ms rows out) : KeyOn (List.range gs.length) out := by
+  unfold aggOrderAllowed at h
+  split at h
+  · obtain ⟨_, rfl, _⟩ := h; exact List.pairwise_singleton _ _
+  · have hmap : ∀ {ks : List Row} {out : Relation}, (∀ k ∈ ks, k.length = gs.length) →
+        Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+          Forall2 (fun m v => m.OrderAllowed (groupRows gs rows k) v) ms vs) ks out →
+        out.map (keyOf (List.range gs.length)) = ks := by
+      intro ks out hl h
+      induction h with
+      | nil => rfl
+      | cons hk _ ih =>
+        obtain ⟨vs, rfl, _⟩ := hk
+        have hlk := hl _ (List.mem_cons_self ..)
+        rw [List.map_cons, ih fun k hk => hl k (List.mem_cons_of_mem _ hk)]
+        simp only [List.cons.injEq, and_true]
+        rw [← hlk]; exact keyOf_range_append
+    have hl : ∀ k ∈ dedup (rows.map (groupKey gs)), k.length = gs.length := fun k hk => by
+      obtain ⟨x, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk); simp [groupKey]
+    unfold KeyOn
+    rw [← List.pairwise_map, hmap hl h]
+    exact dedup_pairwise _
+
+/-- **Derived keys hold on every order.** -/
+theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
     (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
-    ∀ {r : Rel}, r.WF cat → ∀ k ∈ r.keys cat A F K, KeyOn k (r.eval cat)
-  | .read t, _, k, hk => hK t k hk
-  | .values _ rows, _, k, hk => by
+    ∀ {r : Rel}, r.WF cat → ∀ k ∈ r.keys cat A F K, ∀ {out : Relation}, r.OrderAllowed cat out →
+      KeyOn k out
+  | .read t, _, k, hk, _, h => (hK t k hk).perm h.symm fun h => Ne.symm h
+  | .values _ rows, _, k, hk, _, h => by
       simp only [Rel.keys] at hk
       split at hk
       · simp only [List.mem_singleton] at hk
         subst hk
-        exact KeyOn.of_length_le_one ‹_›
+        exact KeyOn.of_length_le_one (h.length_eq ▸ ‹_›)
       · simp at hk
-  | .filter r c, hwf, k, hk => by
+  | .filter r c, hwf, k, hk, _, ⟨i, hi, rfl⟩ => by
       simp only [Rel.keys, mem_dedup, List.mem_flatMap, List.mem_map] at hk
       obtain ⟨_, ⟨k₀, hk₀, rfl⟩, hv⟩ := hk
       refine KeyOn.eqVariants ?_ (fun x hx => by
-        simp only [eval, List.mem_filter] at hx; exact hx.2) hv
-      have := keys_sound hcat hA hF hK hwf.1 k₀ hk₀
+        simp only [List.mem_filter] at hx; exact hx.2) hv
+      have := keys_sound_all hcat hA hF hK hwf.1 k₀ hk₀ hi
       unfold KeyOn at *
-      simp only [eval]
       rw [List.pairwise_filter]
       refine this.imp fun {x y} hne hx hy heq => hne ?_
       have hp := Expr.pinned_sound hx hy
@@ -651,74 +737,79 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       by_cases h : i ∈ c.pinned
       · exact hp i h
       · exact heq i ⟨hi, by simpa using h⟩
-  | .project r es, hwf, k, hk => by
+  | .project r es, hwf, k, hk, _, ⟨i, hi, rfl⟩ => by
       simp only [Rel.keys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq] at hk
       obtain ⟨k₀, ⟨hk₀, hr⟩, hv⟩ := hk
-      have := keys_sound hcat hA hF hK hwf.1 k₀ hk₀
+      have := keys_sound_all hcat hA hF hK hwf.1 k₀ hk₀ hi
       unfold KeyOn at *
-      simp only [eval]
       rw [List.pairwise_map]
       refine this.imp_of_mem fun {x y} hx hy hne heq => hne ?_
       refine variants_inj (fun c hc p hp he => ?_) hv heq
       rcases List.mem_append.mp hp with hp | hp
-      · rwa [copyCols_getD (eval_arity hcat hwf.1 _ hx) (hr c hc) hp,
-          copyCols_getD (eval_arity hcat hwf.1 _ hy) (hr c hc) hp] at he
-      · exact linCols_inj (eval_arity hcat hwf.1 _ hx) (eval_arity hcat hwf.1 _ hy)
-          (aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.1 nofun _ hx)
-          (aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.1 nofun _ hy) hp he
-  | .emit r m, hwf, k, hk => by
+      · rwa [copyCols_getD (orderAllowed_arity hcat hwf.1 hi _ hx) (hr c hc) hp,
+          copyCols_getD (orderAllowed_arity hcat hwf.1 hi _ hy) (hr c hc) hp] at he
+      · exact linCols_inj (orderAllowed_arity hcat hwf.1 hi _ hx)
+          (orderAllowed_arity hcat hwf.1 hi _ hy)
+          (aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.1 hi _ hx)
+          (aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.1 hi _ hy) hp he
+  | .emit r m, hwf, k, hk, _, ⟨i, hi, rfl⟩ => by
       simp only [Rel.keys, List.mem_filterMap] at hk
       obtain ⟨k₀, hk₀, he⟩ := hk
-      have := keys_sound hcat hA hF hK hwf.1 k₀ hk₀
+      have := keys_sound_all hcat hA hF hK hwf.1 k₀ hk₀ hi
       unfold KeyOn at *
-      simp only [eval]
       rw [List.pairwise_map]
       refine this.imp fun hne heq => hne ?_
       rwa [emitKey_keyOf he, emitKey_keyOf he] at heq
-  | .cross a b, hwf, k, hk => by
+  | .cross a b, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
       simp only [Rel.keys, crossKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
-      exact crossRows_key (eval_arity hcat hwf.1) hkr (keys_sound hcat hA hF hK hwf.1 ka hka)
-        (keys_sound hcat hA hF hK hwf.2 kb hkb)
-  | .join a b .inner on, hwf, k, hk => by
+      exact (crossRows_key (orderAllowed_arity hcat hwf.1 hx) hkr
+        (keys_sound_all hcat hA hF hK hwf.1 ka hka hx)
+        (keys_sound_all hcat hA hF hK hwf.2 kb hkb hy)).perm h.symm fun h => Ne.symm h
+  | .join a b .inner on, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
       simp only [Rel.keys, joinEqKeys, mem_dedup, List.mem_flatMap] at hk
       obtain ⟨k₁, hk₁, hv⟩ := hk
-      refine KeyOn.eqVariants ?_ (fun x hx => by
-        simp only [eval, List.mem_filter] at hx; exact hx.2) hv
+      refine KeyOn.eqVariants ?_ (fun u hu => by
+        have := h.subset hu
+        simp only [List.mem_filter] at this; exact this.2) hv
       simp only [joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk₁
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk₁
-      have hA' := eval_arity hcat hwf.1
-      simp only [eval, crossRows, List.filter_flatMap]
-      exact flatMap_key (keys_sound hcat hA hF hK hwf.1 ka hka)
-        (fun x hx r hr => by
+      have hA' := orderAllowed_arity hcat hwf.1 hx
+      refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+      show KeyOn _ _
+      simp only [crossRows, List.filter_flatMap]
+      exact flatMap_key (keys_sound_all hcat hA hF hK hwf.1 ka hka hx)
+        (fun u hu r hr => by
           simp only [List.mem_filter, List.mem_map] at hr
-          obtain ⟨⟨y, _, rfl⟩, _⟩ := hr
-          exact keyOf_append_left fun c hc => hA' x hx ▸ hkr c hc)
-        (fun x hx => match_block (hA' x hx) (keys_sound hcat hA hF hK hwf.2.1 kb hkb))
-  | .join a b .left on, hwf, k, hk => by
+          obtain ⟨⟨v, _, rfl⟩, _⟩ := hr
+          exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc)
+        (fun u hu => match_block (hA' u hu) (keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy))
+  | .join a b .left on, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
       simp only [Rel.keys, joinEqKeys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
-      have hA' := eval_arity hcat hwf.1
-      simp only [eval]
-      refine flatMap_key (keys_sound hcat hA hF hK hwf.1 ka hka) (fun x hx r hr => ?_) (fun x hx => ?_)
+      have hA' := orderAllowed_arity hcat hwf.1 hx
+      refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+      show KeyOn _ _
+      refine flatMap_key (keys_sound_all hcat hA hF hK hwf.1 ka hka hx) (fun u hu r hr => ?_)
+        (fun u hu => ?_)
       · unfold leftJoinRow at hr
         simp only [] at hr
         split at hr
         · simp only [List.mem_singleton] at hr; subst hr
-          exact keyOf_append_left fun c hc => hA' x hx ▸ hkr c hc
+          exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc
         · simp only [List.mem_filter, List.mem_map] at hr
-          obtain ⟨⟨y, _, rfl⟩, _⟩ := hr
-          exact keyOf_append_left fun c hc => hA' x hx ▸ hkr c hc
+          obtain ⟨⟨v, _, rfl⟩, _⟩ := hr
+          exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc
       · unfold leftJoinRow
         simp only []
         split
         · exact List.pairwise_singleton _ _
-        · exact match_block (hA' x hx) (keys_sound hcat hA hF hK hwf.2.1 kb hkb)
-  | .fetch r _ cnt, hwf, k, hk => by
+        · exact match_block (hA' u hu) (keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy)
+  | .fetch r _ cnt, hwf, k, hk, _, ⟨i, hi, rfl⟩ => by
       simp only [Rel.keys, List.mem_append] at hk
       rcases hk with hk | hk
       · split at hk
@@ -726,15 +817,13 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
           subst hk
           obtain ⟨n, rfl, hn⟩ : ∃ n, cnt = some n ∧ n ≤ 1 := by
             cases cnt <;> simp_all
-          simp only [eval]
           exact KeyOn.of_length_le_one (Nat.le_trans (List.length_take_le _ _) hn)
         · simp at hk
-      simp only [eval]
-      have := keys_sound hcat hA hF hK (r := r) hwf k hk
-      split
-      · exact this.sublist (List.drop_sublist _ _)
-      · exact this.sublist ((List.take_sublist _ _).trans (List.drop_sublist _ _))
-  | .unionAll a b, hwf, k, hk => by
+      have := keys_sound_all hcat hA hF hK (r := r) hwf k hk hi
+      cases cnt with
+      | none => exact this.sublist (List.drop_sublist _ _)
+      | some _ => exact this.sublist ((List.take_sublist _ _).trans (List.drop_sublist _ _))
+  | .unionAll a b, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
       simp only [Rel.keys, unionKeys] at hk
       split at hk
       · rename_i c hc
@@ -745,39 +834,43 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
           simp only [List.mem_flatMap, List.mem_map] at this
           obtain ⟨ka, hka, kb, hkb, rfl⟩ := this
           exact ⟨ka, hka, kb, hkb, rfl⟩
-        simp only [eval]
+        refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+        show KeyOn _ _
         unfold KeyOn
         rw [List.pairwise_append]
-        refine ⟨(keys_sound hcat hA hF hK hwf.1 ka hka).superset (by simp_all),
-          (keys_sound hcat hA hF hK hwf.2.1 kb hkb).superset (by simp_all), ?_⟩
-        intro x hx y hy heq
-        have hxm := aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.1 nofun x hx c
-        have hym := aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.2.1 nofun
-          y hy c
-        apply AVal.disjoint_ne hdis hxm hym
+        refine ⟨(keys_sound_all hcat hA hF hK hwf.1 ka hka hx).superset (by simp_all),
+          (keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy).superset (by simp_all), ?_⟩
+        intro u hu v hv heq
+        have hum := aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.1 hx u hu c
+        have hvm := aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.2.1 hy v hv c
+        apply AVal.disjoint_ne hdis hum hvm
         simp only [keyOf, List.map_inj_left] at heq
         exact heq c (by simp)
       · simp at hk
-  | .semi a _ _ _, hwf, k, hk =>
-      (keys_sound hcat hA hF hK hwf.1 k hk).sublist List.filter_sublist
-  | .orderBy r _, hwf, k, hk =>
-      (keys_sound hcat hA hF hK (r := r) hwf.1 k hk).perm (List.mergeSort_perm _ _).symm
+  | .semi a _ _ _, hwf, k, hk, _, ⟨x, _, hx, _, h⟩ =>
+      ((keys_sound_all hcat hA hF hK hwf.1 k hk hx).sublist List.filter_sublist).perm h.symm
         fun h => Ne.symm h
-  | .unnest _ _, _, k, hk => by simp [Rel.keys] at hk
-  | .distinct r, hwf, k, hk => by
+  | .orderBy r _, hwf, k, hk, _, ⟨i, hi, h, _⟩ =>
+      (keys_sound_all hcat hA hF hK (r := r) hwf.1 k hk hi).perm h.symm fun h => Ne.symm h
+  | .unnest _ _, _, k, hk, _, _ => by simp [Rel.keys] at hk
+  | .distinct r, hwf, k, hk, _, ⟨i, hi, h⟩ => by
+      refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
       simp only [Rel.keys, List.mem_cons] at hk
       rcases hk with rfl | hk
-      · show (dedup (r.eval cat)).Pairwise _
-        refine (dedup_pairwise (r.eval cat)).imp_of_mem fun hx hy hne => ?_
-        rw [keyOf_range (eval_arity hcat (r := r) hwf _ (mem_dedup.mp hx)),
-          keyOf_range (eval_arity hcat (r := r) hwf _ (mem_dedup.mp hy))]
+      · refine (dedup_pairwise i).imp_of_mem fun hx hy hne => ?_
+        rw [keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (mem_dedup.mp hx)),
+          keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (mem_dedup.mp hy))]
         exact hne
-      · exact (keys_sound hcat hA hF hK (r := r) hwf k hk).sublist (dedup_sublist _)
-  | .aggregate r gs ms, _, k, hk => by
+      · exact (keys_sound_all hcat hA hF hK (r := r) hwf k hk hi).sublist (dedup_sublist _)
+  | .aggregate _ gs _, _, k, hk, _, ⟨_, _, _, h, ho⟩ => by
       simp only [Rel.keys, List.mem_singleton] at hk
       subst hk
-      exact aggregateEval_key gs ms (r.eval cat)
-  | .window r part sort fns, hwf, k, hk => by
+      exact (aggOrderAllowed_key ho).perm h.symm fun h => Ne.symm h
+  | .window r part sort fns, hwf, k, hk, _, ⟨i, hi, s, hp, hs, h⟩ => by
+      refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+      show KeyOn _ _
+      have harity : ∀ x ∈ s, x.length = r.arity cat :=
+        fun x hx => orderAllowed_arity hcat hwf.1 hi x (hp.mem_iff.mp hx)
       simp only [Rel.keys, List.mem_append] at hk
       rcases hk with hk | hk
       rotate_left
@@ -788,25 +881,29 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
           subst hf
           simp only [Option.some.injEq] at hk
           subst hk
-          exact windowRows_rowNumber_key hwf.2.1 (List.mem_zipIdx_iff_getElem?.mp hft)
-            fun x hx => eval_arity hcat hwf.1 x (List.mem_mergeSort.mp hx)
+          exact windowRows_rowNumber_key hwf.2.1 (List.mem_zipIdx_iff_getElem?.mp hft) harity
         · simp at hk
       simp only [List.mem_filter, List.all_eq_true, decide_eq_true_eq] at hk
-      have hs : KeyOn k ((r.eval cat).mergeSort (sortLe sort)) :=
-        (keys_sound hcat hA hF hK hwf.1 k hk.1).perm (List.mergeSort_perm _ _).symm fun h => Ne.symm h
-      have hmap : (windowEval part sort fns (r.eval cat)).map (keyOf k) =
-          ((r.eval cat).mergeSort (sortLe sort)).map (keyOf k) := by
+      have hks : KeyOn k s :=
+        (keys_sound_all hcat hA hF hK hwf.1 k hk.1 hi).perm hp.symm fun h => Ne.symm h
+      have hmap : (windowRows part fns [] s).map (keyOf k) = s.map (keyOf k) := by
         have ht := windowRows_take (part := part) (fns := fns) (pre := []) (n := r.arity cat)
-          (l := (r.eval cat).mergeSort (sortLe sort))
-          (fun x hx => eval_arity hcat hwf.1 x (List.mem_mergeSort.mp hx))
-        unfold windowEval
+          (l := s) harity
         conv => rhs; rw [← ht]
         rw [List.map_map]
         exact List.map_congr_left fun row _ => (keyOf_take hk.2).symm
-      have h1 : List.Pairwise (· ≠ ·) (((r.eval cat).mergeSort (sortLe sort)).map (keyOf k)) :=
-        List.pairwise_map.mpr hs
+      have h1 : List.Pairwise (· ≠ ·) (s.map (keyOf k)) := List.pairwise_map.mpr hks
       rw [← hmap] at h1
       exact List.pairwise_map.mp h1
+
+/-- **Soundness of key derivation.** -/
+theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} (hwf : r.WF cat) :
+    ∀ k ∈ r.keys cat A F K, KeyOn k (r.eval cat) :=
+  fun k hk => Rel.keys_sound_all hcat hA hF hK hwf k hk (r.eval_orderAllowed cat)
 
 /-! ## Fan-out of a join on a key
 
@@ -1400,14 +1497,15 @@ def Rel.keyedWindows (cat : Catalog) (A : String → List AVal) (F : String → 
     (K : String → List (List Nat)) : WindowKeys := fun r part sort =>
   (r.keys cat A F K).any fun k => k.all (· ∈ part ++ sort.map (·.col))
 
-theorem Rel.keyedWindows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+/-- The window-key oracle of `ContractCheck` holds on every order. -/
+theorem Rel.keyedWindows_soundAll {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) : (Rel.keyedWindows cat A F K).Sound cat := by
-  intro r part sort h hwf
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) : (Rel.keyedWindows cat A F K).SoundAll cat := by
+  intro r part sort h hwf i hi
   obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp h
   simp only [List.all_eq_true, decide_eq_true_eq] at hsub
-  exact (keys_sound hcat hA hF hK hwf k hk).superset hsub
+  exact (keys_sound_all hcat hA hF hK hwf k hk hi).superset hsub
 
 end Substrait

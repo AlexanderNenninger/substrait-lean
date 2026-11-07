@@ -154,7 +154,7 @@ open Stat
 `varOf`, `covOf` and `corrOf` compute with native doubles. Proved for IEEE
 rounding to nearest in `float-bounds/FloatBounds/CoreStats.lean` (`core_var`,
 `core_stddev`, `core_cov`, `core_corr`), given `NativeLink` and the code
-conversions of `Float.lean`, like `floatSum_mem` in `Aggregate.lean`. -/
+conversions of `Float.lean`, as `add_scaled` is. -/
 
 axiom varOf_props {sample sqrt : Bool} {vs : List Value} (hne : vs ≠ [])
     (hs : ¬(sample = true ∧ vs.length = 1)) (hi : allInts vs) (hf : fits (intsOf vs) = true) :

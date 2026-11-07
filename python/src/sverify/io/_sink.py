@@ -224,6 +224,10 @@ class Sink:
     """The view's serial (`IncrementalView.serial`) at the state written
     last; None: the sink's contents are replaced on the next write."""
     _last: Contract | None = None
+    _synced: tuple | None = None
+    """The record (`_state_key`) of the commit `_written` is: the one this
+    process wrote, skipped to or resumed from. A change is written only on
+    top of it; another commit there means another writer's state (#963)."""
     _kept: _Kept | None = None
     _pending: tuple[int, Contract] | None = None
     """The view's serial and the contract of a write that raised: its commit
@@ -318,13 +322,20 @@ class Sink:
 
     # -- what `Node.write` and `refresh` call --------------------------------
 
-    def _attach(self, view: IncrementalView) -> None:
-        """Write `view` from now on."""
+    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None:
+        """Write `view` from now on; `stored` is what the view resumed from."""
         self._view = view
         view._sinks.append(self)
-        self._written, self._pending = None, None
-        if view.stored is not None and view.stored[0] == self.location:
+        self._written, self._pending, self._synced = None, None, None
+        if view.stored is not None and view.stored[0] == self.location and stored is not None:
             self._written = view.serial
+            self._synced = _state_key(stored)
+
+    def _foreign(self) -> bool:
+        """Whether another writer changed rows after the commit `contract()`
+        read last (#966): then the sink does not hold the state its record
+        names. False by default: the sink is trusted as its only writer."""
+        return False
 
     def _stored(self) -> Stored | None:
         """The state a restarted job resumes from: none by default."""
@@ -369,25 +380,43 @@ class Sink:
         if (
             pending is not None
             and done is not None
-            and (done.plan, done.epoch) == (pending[1].plan, pending[1].epoch)
+            and (done.plan, done.epoch, done.digests)
+            == (pending[1].plan, pending[1].epoch, pending[1].digests)
         ):
             # The last write raised after its commit landed: the sink holds
             # that state, as a restarted job finds it. Write on from there.
             self._written, self._last = pending
-        if done is not None and (done.plan != contract.plan or other_tables(done, contract)):
-            # Another plan's rows, or rows computed from other tables (a
-            # source dropped and created again, #516): neither skip this
-            # epoch, which says nothing about these inputs, nor write a
-            # change on top of them; replace them.
+            self._synced = _state_key(pending[1])
+        if done is not None and done.plan == contract.plan and not other_tables(done, contract):
+            contract = _align(view, done, contract)
+        if done is not None and (
+            done.plan != contract.plan or other_tables(done, contract) or self._foreign()
+        ):
+            # Another plan's rows, rows computed from other tables (a
+            # source dropped and created again, #516), or rows another
+            # writer changed since (#966): neither skip this epoch, which
+            # says nothing about these rows, nor write a change on top of
+            # them; replace them.
             self._written = None
-        elif done is not None and done.epoch >= contract.epoch:
+        elif done is not None and (
+            done.epoch >= contract.epoch or _same_contents(view, done, contract)
+        ):
             check_same_state(self.location, done, contract)
             # The sink holds this view's state only if it was computed from
-            # the same source versions; else (another writer is ahead, #517)
-            # the next write replaces it.
-            self._written = view.serial if done.sources == contract.sources else None
+            # the same source versions (or the same contents of a source that
+            # cannot restore); else (another writer is ahead, #517) the next
+            # write replaces it.
+            same = done.sources == contract.sources or _same_contents(view, done, contract)
+            self._written = view.serial if same else None
+            self._synced = _state_key(done) if self._written is not None else None
             self._keep(view, contract, None)
             return SinkWrite("skipped", self._version(), contract)
+        elif self._written is not None and done is not None and _state_key(done) != self._synced:
+            # Another commit than the one this process wrote, skipped to or
+            # resumed from: a change since `_written` would land on a state
+            # it was not computed from (a second writer, or the late commit
+            # of a crashed one). Replace the rows (#963).
+            self._written = None
         since = None if self._written is None else view.changes_since(self._written)
         change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
         self._pending = (view.serial, contract)
@@ -405,6 +434,7 @@ class Sink:
             out = SinkWrite(mode, self._version(), contract, n_in, n_out)
         self._written = view.serial
         self._last = contract
+        self._synced = _state_key(contract)
         self._keep(view, contract, change)
         return out
 
@@ -469,6 +499,14 @@ class _TableSink[T](Sink, ABC):
         self._read: int | None | object = _UNREAD
         """The epoch of this sink's `app_id` that `committed` read last: a
         write commits only on top of it (#517, #534)."""
+        self._read_kept = True
+        """Whether every commit after the app's last one, when `contract()`
+        read it, kept its rows (`last_record(...).kept`)."""
+        self._read_table: T | None = None
+        """The table `contract()` read, which the next write goes through: the
+        table format's own conflict check then covers every commit since the
+        read. An epoch's value can come back (another plan's commit at the
+        same epoch, #964), so comparing it alone lets a stale write through."""
 
     # -- what a table format implements --------------------------------------
 
@@ -483,6 +521,13 @@ class _TableSink[T](Sink, ABC):
     @abstractmethod
     def _contract_of(self, table: T) -> Contract | None:
         """The contract `table` records, or None."""
+
+    def _head_of(self, table: T) -> tuple[int | None, Contract | None, bool]:
+        """The epoch of the app's last commit in `table` (or None), the
+        contract `table` records, and whether every commit after the app's
+        last one keeps its rows. Default: `_epoch_of`, `_contract_of`, kept."""
+        done = self._epoch_of(table)
+        return done, None if done is None else self._contract_of(table), True
 
     @abstractmethod
     def _create(self, change: SinkChange) -> T:
@@ -524,12 +569,14 @@ class _TableSink[T](Sink, ABC):
         if version is not None:
             return self.source().contract(version)  # type: ignore[union-attr]
         table = self._open()
-        done = None if table is None else self._epoch_of(table)
-        self._read = done
-        if table is None or done is None:
+        done, contract, kept = (None, None, True) if table is None else self._head_of(table)
+        self._read, self._read_kept, self._read_table = done, kept, table
+        if done is None or contract is None:
             return None
-        contract = self._contract_of(table)
-        return None if contract is None else replace(contract, epoch=done)
+        return replace(contract, epoch=done)
+
+    def _foreign(self) -> bool:
+        return not self._read_kept
 
     def write(self, change: SinkChange) -> SinkWrite:
         """Create the table, overwrite it, or write the change, in a commit
@@ -572,7 +619,9 @@ class _TableSink[T](Sink, ABC):
 
     def _write(self, change: SinkChange) -> SinkWrite:
         contract, read = change.contract, self._read
-        table = self._open()
+        table, self._read_table = self._read_table, None
+        if table is None:
+            table = self._open()
         created = table is None
         if table is None:
             if read not in (None, _UNREAD):
@@ -611,6 +660,63 @@ class _TableSink[T](Sink, ABC):
         return out
 
 
+def _state_key(record: Contract | Stored) -> tuple:
+    """What identifies the state a sink's record names: the plan, the source
+    versions and the static tables' digests."""
+    return record.plan, sorted(record.sources.items()), sorted(record.digests.items())
+
+
+def _snapshot_sources(view: IncrementalView) -> dict[str, Any]:
+    """The sources of `view` that cannot restore (`Source` without
+    `restore`): their versions count this process's reads."""
+    from sverify.io._source import Source
+
+    return {
+        t: s for t, s in view.pipeline.sources.items() if isinstance(s, Source) and not s._durable()
+    }
+
+
+def _same_contents(view: IncrementalView, done: Contract, contract: Contract) -> bool:
+    """Whether `done` names the state `contract` does: the same versions,
+    or for a source that cannot restore, the same content digest."""
+    if done.sources.keys() != contract.sources.keys():
+        return False
+    snapshots = _snapshot_sources(view)
+    return all(
+        n == done.sources[t]
+        or (
+            t in snapshots
+            and contract.digests.get(t) is not None
+            and contract.digests.get(t) == done.digests.get(t)
+        )
+        for t, n in contract.sources.items()
+    )
+
+
+def _align(view: IncrementalView, done: Contract, contract: Contract) -> Contract:
+    """Number a source that cannot restore above the version `done`
+    records, where `done` records other contents at a version not below
+    this process's: two processes number their reads independently, so an
+    equal or higher version says nothing about which contents are newer
+    (#965). The renumbered version changes nothing (`Source._above`); the
+    contract to write is then above `done`'s."""
+    moved = False
+    versions = view.pipeline.versions
+    for t, src in _snapshot_sources(view).items():
+        theirs, ours = done.sources.get(t), contract.sources.get(t)
+        if theirs is None or ours is None or theirs < ours:
+            continue
+        if done.digests.get(t) == contract.digests.get(t):
+            continue
+        st = src._state
+        if st is None or st.version != ours or versions.get(t) != ours:
+            continue
+        src._above(theirs)
+        versions[t] = st.version
+        moved = True
+    return view_contract_record(view) if moved else contract
+
+
 @dataclass
 class _Write:
     inserts: pa.Table | None
@@ -639,7 +745,7 @@ class _Kept:
         else:
             self.log.add(self.version, _Write(*change))
 
-    def _resume_after(self, version: int, cursor: object = None) -> None:
+    def _resume_after(self, version: int, cursor: object = None, digest: object = None) -> None:
         """Number the versions above `version`, which a sink downstream
         recorded in an earlier process (`sverify.io.Source._resume_after`;
         a stored node records no cursor)."""

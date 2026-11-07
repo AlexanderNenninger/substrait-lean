@@ -332,7 +332,9 @@ translator pins the semantics and takes no Polars defaults:
   compares. Each measure skips NULLs and the rows its `FILTER` drops;
   `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
   and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
-  and `AVG` of doubles add one by one in Lean's list order.
+  and `AVG` of doubles are the exact sum and mean rounded once
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+  whatever the order of the rows.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, and `substring` with
   a start below 1 keeps only the positions that exist. `LIKE` escapes with a
@@ -414,8 +416,9 @@ the engine:
   equal as `Value`s;
 * aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
   counts the first row of each value, integer `SUM` raises outside 64 bits,
-  and doubles are added in Lean's order (`list_reduce` over a list ordered
-  by the ordinal), so the result has Lean's bits;
+  and a `SUM` or `AVG` of doubles is the engine's own, within the plan's
+  bound of the reference's correctly rounded sum
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
 * strings: lengths and positions count characters, a negative `substring`
   start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
   (either way the start is normalized before it reaches the engine), and
@@ -571,6 +574,13 @@ one, which sverify infers (#244).
   ([docs/optimizations.md](optimizations.md)).
 * `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
   runs correctly without per-row checks.
+* `contract_sound_allowed`: a postcondition narrowed by its columns' tolerances and proved on
+  every order holds on every result the reference allows, for a plan that reads no open
+  measure to choose its rows (`Rel.FloatOpenSafe`;
+  [AllowedNear.lean](../SubstraitLean/AllowedNear.lean)). `contract_sound_allowed_closed` takes
+  the decidable `Rel.closedB` in its place: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or
+  `QUANTILE_CONT`, whose values are still choices of the reference (a double `SUM` or `AVG` is
+  one value since D25). The report marks such a postcondition `allowed`.
 
 ### Contracts
 
@@ -643,7 +653,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   `Rel.eval`. So the proofs describe what an engine computes, however it breaks ties.
 * `orderFact_sound`, `winFacts_sound`, `WinFn.abs_sound`: what is known about
   `LAG`/`LEAD`/`ROW_NUMBER` columns holds. Strict order uses an oracle saying
-  which windows have a key (`WindowKeys`); `Rel.keyedWindows_sound` proves the
+  which windows have a key (`WindowKeys`); `Rel.keyedWindows_soundAll` proves the
   one computed from `Rel.keys` right, which is what `contract_sound` asks for.
 * `IoT.window_complete` ([Completeness.lean](../SubstraitLean/Completeness.lean)): the
   converse of the contracts. If both sensors have valid readings at `t` and `t + 60`,
@@ -804,7 +814,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`). The bound of a sharded `SUM` or `AVG` of doubles (`floatSplit_sum`, `floatSplit_avg`) rests on two more, `floatSum_twoPhase` and `floatAvg_twoPhase` in `Partition.lean`. `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. The bounds of one double `+`, `-`, `*`, `/` and `exp` (#582) rest on five: `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled` in `Float.lean` and `exp_fin` in `Safety.lean`; their signs (#441) on three: `add_nonneg`, `mul_nonneg`, `div_nonneg` in `Float.lean`. [`float-bounds/`](float-bounds.md) proves all sixteen for IEEE rounding with Mathlib, kept out of the core build.
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none since D25: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`); a sharded `AVG` divides natively and rests on `div_scaled_err` in `Float.lean`. `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. The bounds of one double `+`, `-`, `*`, `/` and `exp` (#582) rest on five: `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled` in `Float.lean` and `exp_fin` in `Safety.lean`; their signs (#441) on three: `add_nonneg`, `mul_nonneg`, `div_nonneg` in `Float.lean`. [`float-bounds/`](float-bounds.md) proves them for IEEE rounding with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
 
 ## Modelling choices
 

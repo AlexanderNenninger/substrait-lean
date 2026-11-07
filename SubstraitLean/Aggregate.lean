@@ -1,5 +1,6 @@
 import SubstraitLean.Order
 import SubstraitLean.Dedup
+import SubstraitLean.FloatExact
 
 /-!
 # Aggregation
@@ -320,45 +321,6 @@ def corrOf (vs : List Value) : Value :=
       (FloatCode.ofFloat (FloatCode.toFloat (FloatCode.lift₂ (· * ·) sxx syy)).sqrt)
     .float r
 
-/-! ## Trusted: error bounds of `SUM` and `AVG` of doubles (#85)
-
-`floatSum` adds with native doubles, and the contract checker otherwise knows
-nothing of the result but "some double". The three facts below are all it
-assumes about rounding. They are stated on scaled values (`FloatCode.scaled`)
-and proved for IEEE 754 rounding to nearest in the separate package
-`float-bounds/`, as `core_sum`, `core_avg` and `core_sign`
-(`float-bounds/FloatBounds/Core.lean`), given its `NativeLink` (Lean's
-`Float` rounds to nearest) and the code conversions of `Float.lean`. They are
-axioms here so that the core needs no Mathlib (`docs/float-bounds.md`).
-
-A sum of `n ≤ N ≤ 2³²` doubles in `[lo, hi]` (scaled, at most `2¹⁴⁷⁴`, so
-`2⁴⁰⁰` unscaled) lies in `[min(lo, N·lo) − τ, max(hi, N·hi) + τ]`, their mean
-in `[lo − τ', hi + τ']`, and both keep the sign of the values. -/
-
-axiom floatSum_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
-    (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
-    (hb : ∀ c ∈ cs, lo ≤ FloatCode.scaled c ∧ FloatCode.scaled c ≤ hi) :
-    min lo (N * lo) - FloatCode.sumTolScaled N (max lo.natAbs hi.natAbs)
-        ≤ FloatCode.scaled (floatSum (cs.map .float)) ∧
-      FloatCode.scaled (floatSum (cs.map .float))
-        ≤ max hi (N * hi) + FloatCode.sumTolScaled N (max lo.natAbs hi.natAbs)
-
-axiom floatAvg_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
-    (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
-    (hb : ∀ c ∈ cs, lo ≤ FloatCode.scaled c ∧ FloatCode.scaled c ≤ hi) :
-    lo - FloatCode.avgTolScaled N (max lo.natAbs hi.natAbs)
-        ≤ FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .float))
-          (FloatCode.ofInt cs.length)) ∧
-      FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .float))
-          (FloatCode.ofInt cs.length))
-        ≤ hi + FloatCode.avgTolScaled N (max lo.natAbs hi.natAbs)
-
-axiom floatSum_sign {cs : List Int} (hne : cs ≠ []) :
-    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSum (cs.map .float) ∧
-        0 ≤ FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length)) ∧
-      ((∀ c ∈ cs, c ≤ 0) → floatSum (cs.map .float) ≤ 0 ∧
-        FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length) ≤ 0)
-
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
@@ -423,8 +385,9 @@ def AggFn.apply : AggFn → List Value → Value
   | .bbox n, vs => BlackBox.callAgg n vs
   | _, [] => .null
   | .sum, vs => sumOf vs
-  | .fsum, vs => .float (floatSum vs)
-  | .avg, vs => .float (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
+  -- D25: the exact sum, and the exact mean, rounded once (`FloatExact.lean`).
+  | .fsum, vs => .float (floatSumCR vs)
+  | .avg, vs => .float (floatAvgCR vs)
   | .iavg, vs => .int (clampInts vs ((intSum vs).tdiv vs.length))
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs

@@ -21,7 +21,7 @@ on those columns, in any keyed table, are on the same shard
 (`Sharding.keyDisj`); the caller checks it on the data. `unique` lists
 columns with no two equal rows in the whole table (checked by the caller,
 like a contract's `unique`); a window splits when they show it has no ties
-(`Rel.keyedWindows`, sound by `Rel.keyedWindows_sound` for rows of the
+(`Rel.keyedWindows`, sound by `Rel.keyedWindows_soundAll` for rows of the
 declared types). An integer `AVG` splits into a `SUM` and a `COUNT` when the
 declared types make its argument an integer (`IntArgs.ofTypes`, sound by
 `IntArgs.ofTypes_sound` for the same rows).
@@ -43,9 +43,12 @@ double `SUM`s and `AVG`s then round as the split makes them, and
 
 Each split double measure `j` adds `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` to the
 partial rows at those columns (`floatBoundParts`); from them, per group, the
-output columns `{"bounded": j}` are within `shardTolScaled` (`"sum"`) or
-`shardAvgTolScaled` (`"avg"`) of Lean's value (`floatSplit_sum`,
-`floatSplit_avg`). `{"key": i}` copies grouping key `i`, `{"exact": true}`
+output columns `{"bounded": j}` are within `shardTolCR` (`"sum"`) or
+`shardAvgTolCR` (`"avg"`) of Lean's value when Lean computes the split
+(`floatSplit_sum`, `floatSplit_avg`, D25), and within `shardTolScaled` or
+`shardAvgTolScaled` when an engine adds the shards in its own order
+(`float-bounds/FloatBounds/Shard.lean`, whose `γ n` term covers the
+reference's one rounding); `sverify.partition` reports the larger. `{"key": i}` copies grouping key `i`, `{"exact": true}`
 is Lean's value, and `{"unbounded": true}` is computed from a split double
 by an expression the bound does not carry over to. With
 `filters_read_doubles`, a filter above the aggregate (`HAVING`) reads a split

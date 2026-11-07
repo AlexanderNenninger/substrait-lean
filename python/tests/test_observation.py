@@ -222,3 +222,27 @@ def test_transform_takes_an_observation() -> None:
 def test_two_observations_are_refused() -> None:
     with pytest.raises(ValueError, match="observations"):
         sv.verify(T, ensures=[sv.equivalent(), sv.equivalent(rows="sequence")])
+
+
+def test_proved_on_every_allowed_result() -> None:
+    """A postcondition is proved on every result the reference allows
+    (`contract_sound_allowed`, #899). Since D25 a double sum is the exact sum
+    rounded once, one value whatever the order, so a postcondition that reads
+    it is too."""
+    expr = T.group_by("k").aggregate(total=T.x.sum(), n=T.k.count())
+    report = sv.verify(
+        expr,
+        requires={"t": [_.x.between(0, 100), _.x.notnull(), sv.max_rows(1000)]},
+        ensures=[_.n >= 0, sv.approx(_.total <= 1e6)],
+        counterexamples=0,
+    )
+    count, total = report.ensures
+    assert count.proved and count.allowed
+    assert total.proved and total.allowed
+    plain = sv.verify(
+        T.select("k", y=T.k + 1),
+        requires={"t": [_.k.between(0, 9)]},
+        ensures=[_.y >= 1],
+        counterexamples=0,
+    )
+    assert plain.ensures[0].proved and plain.ensures[0].allowed

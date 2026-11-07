@@ -523,7 +523,7 @@ theorem crossDemand_sound {cat₁ : Catalog} {A : String → List AVal} {F : Str
       simp only [Option.some.injEq, Prod.mk.injEq, true_and] at hcd; subst hcd
       refine ⟨by simpa using hb, fun x hx y hy hg => envCond_of_mem (envMem_take (y := y) ?_ ?_)⟩
       · exact Expr.refineAll_sound g (EnvMem.append (envMem_top _ _)
-          (Rel.aeval_sound hc₁ hA hF (WindowKeys.none_sound _) (sz := false) hwb (by simp) y hy)
+          (Rel.aeval_sound hc₁ hA hF (WindowKeys.none_soundAll _) (sz := false) hwb (by simp) y hy)
           (by rw [List.length_replicate, Rel.eval_arity hc (Rel.wf_congr har hwa) x hx,
             Rel.arity_congr har])) hg
       · rw [Rel.eval_arity hc (Rel.wf_congr har hwa) x hx, Rel.arity_congr har]
@@ -538,7 +538,7 @@ theorem crossDemand_sound {cat₁ : Catalog} {A : String → List AVal} {F : Str
         simp only [Option.some.injEq, Prod.mk.injEq] at hcd; obtain ⟨-, rfl⟩ := hcd
         refine ⟨by simpa using ha, fun x hx y hy hg => envCond_of_mem (envMem_drop (x := x) ?_ ?_)⟩
         · exact Expr.refineAll_sound g (EnvMem.append
-            (Rel.aeval_sound hc₁ hA hF (WindowKeys.none_sound _) (sz := false) hwa (by simp) x hx)
+            (Rel.aeval_sound hc₁ hA hF (WindowKeys.none_soundAll _) (sz := false) hwa (by simp) x hx)
             (envMem_top _ _) (by rw [Rel.aeval_length hwa, Rel.eval_arity hc₁ hwa x hx])) hg
         · exact Rel.eval_arity hc₁ hwa x hx
       · cases hcd

@@ -36,13 +36,32 @@ namespace Substrait
 
 /-! ## The relational options' behaviours -/
 
-/-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour. -/
+/-- The doubles an engine's `SUM` of `vs` may give when it adds in an order
+of its own: the values added one by one in any order, or two such sums of a
+split of `vs` added together (a two-phase or a tree sum). The reference does
+not (D25); `float-bounds` bounds this set's distance from it
+(`epsilon_sum_cr`). -/
+inductive FloatSums : List Value → Int → Prop
+  | seq {vs ws : List Value} : ws.Perm vs → FloatSums vs (floatSum ws)
+  | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSums xs a →
+      FloatSums ys b → FloatSums vs (FloatCode.lift₂ (· + ·) a b)
+
+/-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour: the
+correctly rounded exact sum for `EXACT`, the reference's (D25). -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
-  if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
+  if b = "EXACT" then c = floatSumCR vs
+  else if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
   else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
   -- Not modelled here (Kahan's compensated sum, a constant run's product):
   -- any double. `float-bounds` bounds both (`StdModel.Summed`).
   else True
+
+/-- The doubles an `AVG` of `vs` gives under a `sum_order` behaviour: the
+exact mean rounded once for `EXACT`, else a sum `SumOrder` allows divided by
+the count. -/
+def AvgOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
+  if b = "EXACT" then c = floatAvgCR vs
+  else ∃ s, SumOrder b vs s ∧ c = FloatCode.lift₂ (· / ·) s (FloatCode.ofInt vs.length)
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour. An
 engine's own algorithm (`WELFORD_CHAN`) is not modelled here: it meets the
@@ -75,8 +94,7 @@ def AggFn.AllowedChoice (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Va
   | .fsum => if vs = [] then v = .null else
       ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, SumOrder b vs c ∧ v = .float c
   | .avg => if vs = [] then v = .null else
-      ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, SumOrder b vs c ∧
-        v = .float (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
+      ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, AvgOrder b vs c ∧ v = .float c
   | .var _ _ => ∃ b ∈ t.allows "agg.var" "stat_algo" [], StatAlgo b f vs v
   | .cov _ | .corr => ∃ b ∈ t.allows "agg.stat" "stat_algo" [], StatAlgo b f vs v
   | .quantile true num scale => if vs = [] then v = .null else
@@ -278,7 +296,8 @@ theorem groupRowsI_lean (gs : List Expr) (rows : Relation) (k : Row) :
     groupRows gs rows k Impl.lean = groupRows gs rows k := rfl
 
 /-- The reference's choices of the relational options. -/
-theorem reference_allows_sum : Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["ANY"] := by
+theorem reference_allows_sum :
+    Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["EXACT"] := by
   decide +kernel
 theorem reference_allows_var :
     Profile.reference.table.allows "agg.var" "stat_algo" [] = ["GENERIC"] := by decide +kernel
@@ -298,8 +317,14 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
   cases f
   case quantile cont num scale =>
     cases cont <;> simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_quant, QuantInterp]
-  all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_sum, reference_allows_var,
-    reference_allows_stat, SumOrder, StatAlgo]
+  case fsum | avg =>
+    cases vs with
+    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply]
+    | cons w ws =>
+      simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, reference_allows_sum, SumOrder,
+        AvgOrder]
+  all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_var,
+    reference_allows_stat, StatAlgo]
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by

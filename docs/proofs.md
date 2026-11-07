@@ -17,15 +17,16 @@ and that the input rows meet the contract's preconditions.
 | Guarantee | Theorem | Module |
 |---|---|---|
 | A proved postcondition is TRUE on every output row | `contract_sound` | `Contracts.lean` |
-| … in every row order the reference allows | `contract_sound_all` | `Ties.lean` |
-| A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean`, `Ties.lean` |
-| A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_sound` | `Keys.lean` |
+| … in every row order the reference allows | `contract_sound_all` | `Contracts.lean` |
+| A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean` |
+| A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `Rel.mayIssues_sound` | `Safety.lean` |
 | Row caps rule out `SUM` overflow | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | The checker decides well-formedness | `Rel.checkWF_iff` | `Check.lean` |
 | A well-kinded plan evaluates to its kinds | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
 | The fast evaluator computes the specification | `Rel.evalFast_eq` | `EvalFast.lean` |
 | `Rel.eval` gives a result the reference allows | `Rel.eval_allowed` | `Allowed.lean` |
+| An operator that factors through the multiset has one meaning over every order; a plan without choices one multiset, an unordered `FETCH` several | `Sem.eq_iff_of_permInv`, `Measure.orderAllowed_eq`, `Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two` | `Seam.lean` |
 | DuckDB, under its default settings, computes the reference | `Rel.duckdb_sound` | `Profile.lean` |
 | The generated DuckDB lowering computes the reference | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | Polars, after the shims, computes the reference | `Rel.polars_sound` and one `Polars.<shim>` lemma per shim | `PolarsShims.lean` |
@@ -35,7 +36,9 @@ and that the input rows meet the contract's preconditions.
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
+| A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
+| Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `Rel.weighted_eval` | `Weighted.lean` |
@@ -53,7 +56,7 @@ and that the input rows meet the contract's preconditions.
 | Contracts compose across a pipeline | `Rel.stack_sound`, `Rel.chain_sound` | `Compose.lean` |
 | The rows quarantine keeps meet every precondition and key | `Catalog.kept_sound`, `kept_pre`, `kept_keys` | `Quarantine.lean` |
 | Rewrites from contract facts and keys keep the result | `Rel.optimize_sound` | `Semantic.lean` |
-| A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum`, `StdModel.epsilon_avg`, `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
+| A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum_cr`, `StdModel.epsilon_avg_cr` (against the reference's correctly rounded value, D25), `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
 | Sharded double sums are near the sequential sum | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
 
 `Examples.lean` prints the axioms of the main theorems with
@@ -74,12 +77,13 @@ engines is trusted, and kept small:
 - The CLI's glue, `Main.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON.
 - The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
-  and its siblings (`Float.lean`), `FloatCode.exp_fin` (`Safety.lean`),
-  `floatSum_mem`, `floatAvg_mem`, `floatSum_sign` (`Aggregate.lean`),
-  `floatSum_twoPhase`, `floatAvg_twoPhase` (`Partition.lean`) and
-  `varOf_props`, `covOf_props`, `corrOf_props` (`StatProps.lean`).
-  `float-bounds/` proves them over the reals for the standard model of
-  rounding (`StdModel.core_sum`, `StdModel.core_avg` in `Core.lean`), and
+  and its siblings (`Float.lean`, `div_scaled_err` among them),
+  `FloatCode.exp_fin` (`Safety.lean`) and `varOf_props`, `covOf_props`,
+  `corrOf_props` (`StatProps.lean`). A `SUM` or `AVG` of doubles needs none
+  since D25: `floatSumCR`'s bounds are theorems (`FloatExact.lean`).
+  `float-bounds/` proves the axioms over the reals for the standard model of
+  rounding (`StdModel.core_add` … in `Arith.lean`, `core_var` … in
+  `CoreStats.lean`), and
   there only `NativeLink` (`Link.lean`) stays trusted: Lean's `Float` rounds
   as IEEE 754 binary64 does.
 - The models of the engines' own functions: `Impl.Faithful` (`Guards.lean`)
@@ -119,6 +123,7 @@ generators, then the trusted reading and writing.
 | `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic, over Lean's functions (`Impl.lean`) or an engine's (`Impl`) |
 | `Order.lean` | The orders on values and rows that sorts, windows and `MIN`/`MAX` use |
 | `Dedup.lean` | `dedup`, the first occurrence of each element, and its lemmas |
+| `Forall2.lean` | `Forall2`, lists related element by element |
 | `Reflect.lean` | Boolean checks the tables are proved with, by reflection |
 
 ### Relations and their evaluation
@@ -128,6 +133,7 @@ generators, then the trusted reading and writing.
 | `Window.lean` | Window functions over partitions, orders and frames |
 | `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
 | `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
+| `OrderAllowed.lean` | `Rel.OrderAllowed`, the results of every order the reference leaves open, and `Rel.eval` as one of them |
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
@@ -176,9 +182,10 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
-| `Ties.lean` | Every row order the reference allows, and the checkers' soundness under all of them |
+| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows, and row caps keep them |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
+| `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps |
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
 | `Options.lean` | The option catalogue and each profile's choices |
@@ -186,6 +193,8 @@ generators, then the trusted reading and writing.
 | `Observations.lean` | Observations and classes against the reference |
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
+| `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
+| `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |

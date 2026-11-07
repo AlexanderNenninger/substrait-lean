@@ -653,8 +653,8 @@ is a choice that accepts every value the plan states.
 | `time_interval_months` | all others | `DROP_MONTHS`, `ERROR` | refused | raise |
 | `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
-| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT` | `ANY` | leave open |
-| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN` | `GENERIC` | leave open |
+| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
+| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `GENERIC` | leave open |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
@@ -1661,7 +1661,7 @@ The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
 first rows of any order the plan allows, and `FIRST`, `LAST`,
 `ARG_MIN`/`ARG_MAX`, `STRING_AGG`, `collect` and `MODE` take the rows that
 tie in their own order in any order. `Rel.OrderAllowed`
-(`SubstraitLean/Ties.lean`) holds the results of every such order, and a
+(`SubstraitLean/OrderAllowed.lean`) holds the results of every such order, and a
 contract holds on all of them: `contract_sound_all` for postconditions,
 `Rel.keys_sound_all` for keys. An engine's own pick is one of these orders,
 so it runs natively.
@@ -1677,6 +1677,15 @@ profile needs a plan whose order is total, by a tie-break key or a
 uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
 refuses a plan without one. The refusal names each place where ties stay
 open (`str(report)`, with the keys that would close them in `Report.ties`).
+
+An order-sensitive operator reads one sorted enumeration of its input, and
+its meaning is the set over all of them (`Lin` and `Sem`,
+`SubstraitLean/Seam.lean`, #928). Below an unordered operator, as with a
+`FETCH` without a total `ORDER BY` under a join, the order is forgotten and
+the result is a set of multisets (`Rel.Bags`): this is where the tie order's
+nondeterminism lives. `verify` and `run` allow such a plan, and the proofs
+hold for every member; `refresh` commits one member and refuses it unless
+the plan has one (`Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two`).
 
 Why: `Rel.eval`'s one order leaked into four places
 ([#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)).

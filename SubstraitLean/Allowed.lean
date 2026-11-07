@@ -19,11 +19,14 @@ The reference leaves these choices to the engine:
 * the order in which an aggregate takes its rows: `FIRST`/`LAST`, `collect`
   and `string_agg` take them in their sort order with ties broken any way,
   and without a sort in any order;
-* the order and grouping in which a double `SUM` or `AVG` adds its values
-  (`FloatSums`); the error bound of #85 (`float-bounds/`) is a theorem about
-  this set;
 * the value of a statistical aggregate, within its generic properties
   (`StatProps`, `SubstraitLean/StatProps.lean`).
+
+A double `SUM` or `AVG` is no choice (D25): it is the exact sum, or mean,
+rounded once (`floatSumCR`, `SubstraitLean/FloatExact.lean`), whatever the
+order of the rows. An engine's order of additions is a behaviour of its
+profile (`SumOrder`, `SubstraitLean/AllowedP.lean`), within #85's bound of it
+(`epsilon_sum_cr` in `float-bounds/`).
 
 For a plan without these choices (`Rel.detPlan`), every allowed result is
 `Rel.eval`'s up to the order of rows (`Rel.allowed_perm_eval`), so whatever
@@ -41,20 +44,9 @@ namespace Substrait
 
 /-! ## Aggregates -/
 
-/-- The doubles a `SUM` of `vs` may give: the values added one by one in any
-order, or two such sums of a split of `vs` added together (a two-phase or a
-tree sum). -/
-inductive FloatSums : List Value → Int → Prop
-  | seq {vs ws : List Value} : ws.Perm vs → FloatSums vs (floatSum ws)
-  | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSums xs a →
-      FloatSums ys b → FloatSums vs (FloatCode.lift₂ (· + ·) a b)
-
 /-- What an aggregate of the values `vs`, taken in this order, may give. -/
 def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
-  | .fsum => if vs = [] then v = .null else ∃ c, FloatSums vs c ∧ v = .float c
-  | .avg => if vs = [] then v = .null else
-      ∃ c, FloatSums vs c ∧ v = .float (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
   | .var _ _ | .cov _ | .corr => StatProps f vs v
   -- A double between the two neighbours (#53).
   | .quantile true num scale => if vs = [] then v = .null else contAllowed num scale (sortVals vs) v
@@ -62,12 +54,6 @@ def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
 
 theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.apply vs) := by
   cases f
-  case fsum | avg =>
-    cases vs with
-    | nil => simp [Allowed, apply]
-    | cons v vs =>
-      simp only [Allowed, reduceCtorEq, ite_false]
-      exact ⟨_, .seq (.refl _), rfl⟩
   case var | cov | corr => simp only [Allowed]; exact StatProps.apply _ vs
   case quantile cont num scale =>
     cases cont
@@ -78,19 +64,15 @@ theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.appl
   all_goals rfl
 
 /-- An aggregate that combines in two phases is a function of its values. -/
-theorem AggFn.allowed_iff {f : AggFn} (hf : f.decomposable = true) (vs : List Value) (v : Value) :
+theorem AggFn.allowed_iff {f : AggFn} (hf : f.orderFree = true) (vs : List Value) (v : Value) :
     f.Allowed vs v ↔ v = f.apply vs := by
-  cases f <;> simp_all [decomposable, Allowed]
+  cases f <;> simp_all [orderFree, decomposable, Allowed]
 
 /-- What a measure over a group's `rows` may give: its aggregate of the rows
 in some order, sorted by the measure's own order where it takes one. -/
 def Measure.Allowed (m : Measure) (rows : Relation) (v : Value) : Prop :=
   ∃ s, s.Perm rows ∧ (m.fn.sorts = true → s.Pairwise (sortLe m.sort · · = true)) ∧
     m.fn.Allowed (m.inputs s) v
-
-theorem Measure.eval_sorts {m : Measure} (h : m.fn.sorts = true) (rows : Relation) :
-    m.eval rows = m.fn.apply (m.inputs (rows.mergeSort (sortLe m.sort))) := by
-  cases hf : m.fn <;> simp [Measure.eval, hf, AggFn.sorts] at h ⊢
 
 theorem Measure.eval_allowed (m : Measure) (rows : Relation) : m.Allowed rows (m.eval rows) := by
   by_cases hs : m.fn.sorts = true
@@ -105,7 +87,7 @@ theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) {rows : Relat
     (h : m.Allowed rows v) : v = m.eval rows := by
   obtain ⟨s, hs, _, hv⟩ := h
   rw [AggFn.allowed_iff hm] at hv
-  rw [hv, ← Measure.eval_eq (AggFn.ne_collect hm), Measure.eval_perm hm hs]
+  rw [hv, ← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm), Measure.eval_perm hm hs]
 
 /-- What an aggregate's output may be, for the input rows `rows` in this
 order: a row per group (in their order of first appearance), each measure
@@ -210,7 +192,8 @@ theorem Rel.eval_allowed (cat : Catalog) : ∀ r : Rel, r.Allowed cat (r.eval ca
 /-- Does `r` leave the engine no choice but the order of its rows? No
 `FETCH` (which rows come first), each window's ties broken alike
 (`Rel.windowsTotal`'s checks), and aggregates that are functions of their
-values (`Measure.orderFree`: `COUNT`, integer `SUM`, `MIN`, `MAX`). -/
+values (`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of doubles too (D25),
+`MIN`, `MAX`). -/
 def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
@@ -394,7 +377,7 @@ allowed result. -/
 theorem Rel.guardFree_allowed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     {I : Impl} (hI : I.Faithful) : r.Allowed cat (r.eval cat I) := by

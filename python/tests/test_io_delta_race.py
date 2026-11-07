@@ -3,6 +3,8 @@ committed, B commits, then A writes. A's commit must fail, with an error
 naming the sink, and A's next refresh must recover. On DuckDB the sink
 commits the files DuckDB wrote (`_write_native`); on Polars it MERGEs."""
 
+import threading
+
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
@@ -129,3 +131,105 @@ def test_two_writers_creating_the_table(jobs, monkeypatch, engine):
         a.refresh(engine=engine)
     assert ids(sink) == [1, 2]
     assert a.refresh(engine=engine).writes[0].mode == "skipped"
+
+
+def delete(src: str, i: int) -> None:
+    DeltaTable(src).delete(f"id = {i}")
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_change_does_not_land_on_another_writers_commit(jobs, engine):
+    """#963: A wrote orders@v1; B commits v2 (row 3 in); the source drops
+    row 3 again (v3). A's change since v1 is empty for row 3, so written on
+    B's commit it would keep row 3. A replaces the rows instead."""
+    src, sink, a, b = jobs
+    a.refresh(engine=engine)
+    b.refresh(engine=engine)
+    append(src, [3])
+    b.refresh(engine=engine)
+    delete(src, 3)
+    a.refresh(engine=engine)
+    assert ids(sink) == [1, 2]
+    append(src, [4])
+    a.refresh(engine=engine)
+    assert ids(sink) == [1, 2, 4]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_restart_does_not_write_on_a_late_commit(tmp_path, monkeypatch, engine):
+    """#963, the TLA+ model's trace (models/refresh/traces/today-zombie-resume.txt):
+    the old process has computed v2 when a new one starts at v3 and resumes
+    from the sink's v1; then the old process's commit lands. The new
+    process's change since v1 must not be written on it."""
+    src, sink = str(tmp_path / "orders"), str(tmp_path / "paid")
+    DeltaTable.create(src, SCHEMA, configuration={"delta.enableChangeDataFeed": "true"})
+    append(src, [1, 2])
+
+    def job():
+        return paid(DeltaSource(src)).write(DeltaSink(sink))
+
+    old = job()
+    old.refresh(engine=engine)
+    append(src, [3])
+    new = job()
+    computed, land = threading.Event(), threading.Event()
+    contract, stored = DeltaSink.contract, DeltaSink._stored
+
+    def held_contract(self, *args):
+        if self is old.sink:
+            computed.set()  # the old process is about to write v2
+            assert land.wait(60)
+        return contract(self, *args)
+
+    def held_stored(self):
+        out = stored(self)
+        if self is new.sink:
+            land.set()  # the new process has read v1: the old commit lands
+            writer.join(60)
+        return out
+
+    monkeypatch.setattr(DeltaSink, "contract", held_contract)
+    monkeypatch.setattr(DeltaSink, "_stored", held_stored)
+    errors: list[BaseException] = []
+
+    def run_old():
+        try:
+            old.refresh(engine=engine)
+        except BaseException as e:  # noqa: BLE001 - reported below
+            errors.append(e)
+
+    writer = threading.Thread(target=run_old)
+    writer.start()
+    assert computed.wait(60)
+    delete(src, 3)
+    new.refresh(engine=engine)
+    writer.join(60)
+    assert not errors
+    assert ids(sink) == [1, 2]
+    assert DeltaTable(sink).transaction_version("sverify:paid") == 3
+
+
+@sv.transform(requires={"other": [_.amount >= 0]})
+def paid_other(other):
+    """Another plan for the same sink, as a deploy brings it."""
+    return other.filter(other.amount > 1)
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_another_plans_commit_at_the_same_epoch_fails_the_write(
+    jobs, tmp_path, monkeypatch, engine
+):
+    """#964 (the TLA+ model's `today-aba` trace): A read epoch 1; another
+    plan replaces the rows at epoch 1 too. The epoch's value is the same, but
+    A's change must not land on the other plan's rows."""
+    src, sink, a, _b = jobs
+    a.refresh(engine=engine)
+    other = str(tmp_path / "other")
+    DeltaTable.create(other, SCHEMA, configuration={"delta.enableChangeDataFeed": "true"})
+    append(other, [7, 8])
+    b = paid_other(DeltaSource(other)).write(DeltaSink(sink))
+    append(src, [3])
+    hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
+    with pytest.raises(ConcurrentWriteError):
+        a.refresh(engine=engine)
+    assert ids(sink) == [7, 8]

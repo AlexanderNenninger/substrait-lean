@@ -44,7 +44,7 @@
       "items": {"type": "array", "items": {"type": "string"}}
     },
     "digests": {
-      "description": "A content digest of each static table (StaticSource) the node read, by source name.",
+      "description": "A content digest of each static table (StaticSource) and each source that cannot restore (a Source without restore) the node read, by source name.",
       "type": "object",
       "additionalProperties": {"type": "string"}
     },
