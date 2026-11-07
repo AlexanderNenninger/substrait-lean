@@ -39,7 +39,8 @@
   "description": [
     "Any ±inf input makes `var_*`, `stddev_*` and `corr` NaN: the update computes `inf - inf`. `fsum` and `favg` of `[inf, 1]` are NaN, while `sum` and `avg` are `inf`.",
     "One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN.",
-    "The docs are silent on NaN and infinity in every aggregate: a docs gap. No upstream test pins `fsum` and `favg` of `[inf, 1]`; it may change between versions."
+    "The docs are silent on NaN and infinity in every aggregate: a docs gap. No upstream test pins `fsum` and `favg` of `[inf, 1]`; it may change between versions.",
+    "`COVAR_*` follow the same rule: a NaN or ±inf on either side, or two equal infinities, make every moment NaN, without an error."
   ],
   "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.",
   "status": "open",
@@ -107,8 +108,34 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "no aggregate's entry mentions NaN or infinity; fsum/favg of [inf, 1] has no upstream test"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "no aggregate's entry mentions NaN or infinity; fsum/favg of [inf, 1] has no upstream test"
+        }
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), duckdb 2.0.0, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST('NaN' AS DOUBLE), CAST(2.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(3.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_*, stddev_*, covar_*, corr: NaN"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST('-Infinity' AS DOUBLE), CAST(2.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(3.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_*, stddev_*, covar_*, corr: NaN"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST('Infinity' AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST('Infinity' AS DOUBLE), CAST(2.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_*, stddev_*, covar_*, corr: NaN (inf, inf too)"
+        }
+      ],
+      "notes": "x = 1, NaN, 2 (and 1, inf, 2; 1, -inf, 2; inf, inf) with y = 1, 2, 3."
     }
   ],
   "issues": [
