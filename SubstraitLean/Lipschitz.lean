@@ -48,8 +48,8 @@ pipeline rule:
 The tolerance is in codes (`Tol`): a finite double's code is twice its
 magnitude in units of `2⁻¹⁰⁷⁴`, plus one, with its sign (`FloatFormat`), so
 codes measure absolute distance and a Lipschitz constant on codes is one on
-values. The `M₁` fold and the arithmetic rows (`c · x`, `x ± y`, `x · y`,
-`x / y`, exact since D31) follow (#929) and extend `Measure.outTol` and
+values. The `M₁` fold is `LipschitzL1.lean`; the arithmetic rows (`c · x`,
+`x ± y`, `x · y`, `x / y`, exact since D31) follow (#929) and extend
 `Expr.tol?`.
 
 A tolerance leaves its other columns exact, and compares them exactly:
