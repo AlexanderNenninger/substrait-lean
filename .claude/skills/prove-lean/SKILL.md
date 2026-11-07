@@ -1,6 +1,6 @@
 ---
 name: prove-lean
-description: Work on sverify's Lean model and proofs (SubstraitLean/): state and prove a theorem, add a shim with its soundness lemma, change an evaluator or analysis, or extend a profile. Covers finding existing lemmas, the no-weakening rule, Allowed vs equality, the axioms audit, building cheaply and with --wfail, generated modules, and docs/proofs.md. Use whenever a task edits .lean files.
+description: Work on sverify's Lean model and proofs (SubstraitLean/): state and prove a theorem, add a shim with its soundness lemma, change an evaluator or analysis, or extend a profile. Covers the design check before new decisions or theorem hypotheses, finding existing lemmas, the no-weakening rule, Allowed vs equality, the axioms audit, building cheaply and with --wfail, generated modules, and docs/proofs.md. Use whenever a task edits .lean files.
 ---
 
 # Working on the Lean proofs
@@ -16,6 +16,15 @@ description: Work on sverify's Lean model and proofs (SubstraitLean/): state and
 3. Check `Rel.Allowed` (`Allowed.lean`, `AllowedP.lean`). Where the reference
    leaves a choice open (tie order, float summation, row order), the theorem
    is membership in `Allowed`, not equality of results.
+4. Some changes need a design check before you prove anything:
+   - a new D-number in `docs/core-semantics.md`;
+   - a change to `Rel.Allowed`;
+   - a new hypothesis on a `contract_sound*` theorem, or a new top-level
+     soundness theorem.
+
+   Send the coordinator a one-paragraph statement: the definition or theorem,
+   its hypotheses, and why. Wait for the answer before you open the PR.
+   Tactics, names and lemma structure are yours to decide.
 
 ## While proving
 
