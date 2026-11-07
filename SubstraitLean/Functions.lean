@@ -409,7 +409,7 @@ def groups : List (String × List String) := [
   ("agg.order", ["nan_order", "zero_sign", "list_null_order"]),
   ("agg.quant", ["quantile_interp", "nan_order"]), ("agg.pick", ["tie_pick"]),
   ("agg.seq", ["tie_order"]), ("agg.plain", []),
-  ("win.rank", ["tie_order"]), ("win.ntile", ["ntile_spread", "tie_order"]),
+  ("win.agg", ["window_sum_algo"]), ("win.rank", ["tie_order"]), ("win.ntile", ["ntile_spread", "tie_order"]),
   ("win.value", ["tie_order"])]
 
 /-! ## Lookups -/

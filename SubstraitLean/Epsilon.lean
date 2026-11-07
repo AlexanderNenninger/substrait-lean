@@ -584,6 +584,87 @@ def rowsExactByEngine (input : Json) (engines : List String) : Except String Jso
   let T := Rel.keyedWindows cat A F (fun _ => [])
   return Json.mkObj <| engines.map fun e => (e, toJson (rowsExact e cat A F T root))
 
+/-- Where an output column comes from, as far as window aggregates of doubles
+go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that
+reads another window aggregate of doubles or one (no bound), or neither. -/
+inductive WinSrc where
+  | other
+  | bounded (r : Rel) (m : Measure) (part : List Nat) (sort : List SortKey)
+  /-- No bound, with what lifts it. -/
+  | unbounded (why : String)
+
+/-- The window algorithms that sum the frame's own values, so that the
+aggregate's bound holds of the frame (`window_sum_algo`, #1032). -/
+def windowSumAlgos : List String := ["RECOMPUTE", "TREE", "RUNNING_ADD"]
+
+/-- Does every engine sum a window's frame by one of `windowSumAlgos`? -/
+def windowSumsBounded : Bool :=
+  epsEngines.all fun (_, t) =>
+    (t.allows "win.agg" "window_sum_algo" []).all (windowSumAlgos.contains ·)
+
+-- DuckDB, Polars and Spark each sum a window's own values (duckdb-window-sum-order,
+-- polars-window-agg, spark-window-agg).
+#guard windowSumsBounded
+
+/-- Why a window statistic of doubles, or a value computed from a window
+aggregate of doubles, has no bound, and what lifts it. -/
+def windowStatWhy : String := "a window statistic of doubles: no bound yet (#918)"
+def derivedWhy : String := "computed from a window aggregate of doubles: no bound carries over"
+def slidingWhy : String :=
+  "a window sum on an engine whose window algorithm no fact bounds (window_sum_algo, #1032)"
+
+def WinSrc.window : WinSrc → Bool
+  | .other => false
+  | _ => true
+
+/-- Does a window function's value differ between engines? A double `SUM` or
+`AVG` is within `measureEps` of the reference's, a statistical aggregate or
+`QUANTILE_CONT` of doubles has no bound here, and a function that copies or
+aggregates such a column has none either. -/
+def winFnSrc (r : Rel) (part : List Nat) (srcs : List WinSrc) : WinFn → WinSrc
+  | .agg m sort _ =>
+    if (ShardCheck.reads m.arg).any (fun i => (srcs.getD i .other).window) then .unbounded derivedWhy
+    else match m.fn with
+      | .fsum | .avg => if windowSumsBounded then .bounded r m part sort else .unbounded slidingWhy
+      | .var _ _ | .cov _ | .corr | .quantile true _ _ => .unbounded windowStatWhy
+      | _ => .other
+  | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+    if (srcs.getD c .other).window then .unbounded derivedWhy else .other
+  | _ => .other
+
+/-- Each output column's `WinSrc`. -/
+def winSrcs (cat : Catalog) : Rel → List WinSrc
+  | .read t => List.replicate (cat t).arity .other
+  | .values n _ => List.replicate n .other
+  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => winSrcs cat r
+  | .emit r m => let s := winSrcs cat r; m.map (s.getD · .other)
+  | .project r es => let s := winSrcs cat r; s ++ es.map (reading s)
+  | .window r part _ fns => let s := winSrcs cat r; s ++ fns.map (winFnSrc r part s)
+  | .cross a b | .join a b _ _ => winSrcs cat a ++ winSrcs cat b
+  | .semi a _ _ _ => winSrcs cat a
+  | .unionAll a b => (winSrcs cat a).zipWith (fun x y =>
+      if x.window || y.window then .unbounded derivedWhy else .other) (winSrcs cat b)
+  | .aggregate r gs ms => let s := winSrcs cat r
+    -- An aggregate of, or grouped by, such a column has no bound here.
+    let any (e : Expr) : WinSrc :=
+      if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then .unbounded derivedWhy
+      else .other
+    gs.map any ++ ms.map fun m => any m.arg
+where
+  /-- A copy of a column keeps its source; anything computed from a window
+  aggregate of doubles has no bound here. -/
+  reading (s : List WinSrc) : Expr → WinSrc
+    | .field i => s.getD i .other
+    | e => if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then
+        .unbounded derivedWhy else .other
+
+/-- A bound as `"epsilon"` gives it, proved or not. -/
+def boundJson (e : Float) (rel : Option (Float × Bool)) (p : Bool) : Json :=
+  Json.mkObj ([("abs", upJson e)] ++
+    (match rel with | some (r, _) => [("rel", upJson r)] | none => []) ++
+    [("proved", Json.mkObj ([("abs", toJson p)] ++
+      match rel with | some (_, pr) => [("rel", toJson (p && pr))] | none => []))])
+
 /-- Whether a measure is a statistical aggregate (D30): its engine's value is
 within the plan's bound of the reference's, not equal to it. -/
 def isStat (m : Measure) : Bool :=
@@ -605,39 +686,6 @@ def statCols : Rel → Option (List (Option (Option Measure)))
   | .emit r m => (statCols r).map fun cs => m.map (cs.getD · none)
   | _ => none
 
-/-- Why a window aggregate of doubles has no bound, and what lifts it. -/
-def windowUnbounded : String :=
-  "a window aggregate of doubles: no bound yet (#1032)"
-
-/-- Does a window function give a double that may differ between engines: a
-`SUM`, `AVG` or statistical aggregate of doubles over a frame (#1032)? -/
-def openDouble : WinFn → Bool
-  | .agg m _ _ => match m.fn with
-    | .fsum | .avg | .var _ _ | .cov _ | .corr | .quantile true _ _ => true
-    | _ => false
-  | _ => false
-
-/-- The output columns that read a window aggregate of doubles: a copy of
-one, or a value computed from one (#1032). They have no bound here. -/
-def windowCols (cat : Catalog) : Rel → List Bool
-  | .read t => List.replicate (cat t).arity false
-  | .values n _ => List.replicate n false
-  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => windowCols cat r
-  | .emit r m => let s := windowCols cat r; m.map (s.getD · false)
-  | .project r es => let s := windowCols cat r; s ++ es.map (reading s)
-  | .window r _ _ fns => let s := windowCols cat r
-    s ++ fns.map fun f => openDouble f || match f with
-      | .agg m _ _ => reading s m.arg
-      | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
-        s.getD c false
-      | _ => false
-  | .cross a b | .join a b _ _ => windowCols cat a ++ windowCols cat b
-  | .semi a _ _ _ => windowCols cat a
-  | .unionAll a b => (windowCols cat a).zipWith (· || ·) (windowCols cat b)
-  | .aggregate r gs ms => let s := windowCols cat r
-    gs.map (reading s) ++ ms.map fun m => reading s m.arg
-where
-  reading (s : List Bool) (e : Expr) : Bool := (ShardCheck.reads e).any (s.getD · false)
 
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
@@ -670,16 +718,26 @@ def epsilon (input : Json) : Except String Json := do
   let F := fun t => (preOf t).flatMap Expr.factsOf
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
-  -- A column that reads a window aggregate of doubles has no bound (#1032).
-  let wins := windowCols cat root
+  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let wins := winSrcs cat root
   let winNames := if plan.names.length == wins.length then plan.names
     else (List.range wins.length).map (s!"#{·}")
-  let winCols := (winNames.zip wins).filterMap fun (name, w) =>
-    if w then some (name, Json.mkObj [("abs", Json.null), ("why", toJson windowUnbounded)])
-    else none
+  -- A window's double `SUM` or `AVG`: each frame is some of the input's rows,
+  -- so the aggregate's bound for the input's row cap holds of every frame.
+  let winCols := (winNames.zip wins).filterMap fun (name, w) => match w with
+    | .bounded r m part sort =>
+      let reads := m.arg :: part.map .field ++ sort.map (.field ·.col) ++ m.filter.toList
+      let p := !hasFp32 tj && ordersProved && epsEngines.all fun (engine, _) =>
+        match colEps engine cat A F T r with
+        | some cs => reads.all fun e => exactP (exprEps engine (r.aeval cat A F T) cs e)
+        | none => false
+      some (name, match measureEps (r.aeval cat A F T) m r.maxRows with
+        | some (e, rel) => boundJson e rel p
+        | none => Json.mkObj [("abs", Json.null)])
+    | .unbounded why => some (name, Json.mkObj [("abs", Json.null), ("why", toJson why)])
+    | .other => none
   let some (r, gs, ms) := findAggregate root | return Json.mkObj winCols
   let some (srcs, _) := colSrcs plan.root | return Json.mkObj winCols
-  let T := Rel.keyedWindows cat A F (fun _ => [])
   let env := r.aeval cat A F T
   -- The measure's values, rows and groups are the same on every engine.
   let same (m : Measure) : Bool := !hasFp32 tj && ordersProved &&
@@ -692,10 +750,7 @@ def epsilon (input : Json) : Except String Json := do
   let cols := (names.zip srcs).filterMap fun (name, src) => match src with
     | .bounded j => some (name, match doubles[j]?.bind fun m =>
           (measureEps env m r.maxRows).map (·, same m) with
-        | some ((e, rel), p) => Json.mkObj ([("abs", upJson e)] ++
-            (match rel with | some (r, _) => [("rel", upJson r)] | none => []) ++
-            [("proved", Json.mkObj ([("abs", toJson p)] ++
-              match rel with | some (_, pr) => [("rel", toJson (p && pr))] | none => []))])
+        | some ((e, rel), p) => boundJson e rel p
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
@@ -733,11 +788,14 @@ knows more, the columns' types and what the preconditions rule out, and its
   An error-side option counts wherever it is met, since an engine may still
   compute such a column and raise. -/
 
-/-- Every aggregate of a plan: its input, keys and measures. -/
+/-- Every aggregate of a plan: its input, keys and measures. A window's
+aggregates count as ungrouped: a frame may be empty. -/
 def aggNodes : Rel → List (Rel × List Expr × List Measure)
   | .read _ | .values _ _ => []
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _
   | .distinct r | .unnest r _ => aggNodes r
+  | .window r _ _ fns =>
+    (r, [], fns.filterMap fun | .agg m _ _ => some m | _ => none) :: aggNodes r
   | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => aggNodes a ++ aggNodes b
   | .aggregate r gs ms => (r, gs, ms) :: aggNodes r
 
@@ -759,8 +817,9 @@ def cmpDouble (cols : List Kind) : Expr → Bool
 /-- Does a grouping, `DISTINCT` or join compare doubles as keys? -/
 def doubleKeys (schemas : Write.Schemas) (cat : Catalog) : Rel → Bool
   | .read _ | .values _ _ => false
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _
   | .unnest r _ => doubleKeys schemas cat r
+  | .window r part _ _ => part.any (fun i => (kinds r)[i]? == some .float) || doubleKeys schemas cat r
   | .distinct r => (kinds r).any (· == .float) || doubleKeys schemas cat r
   | .cross a b | .unionAll a b => doubleKeys schemas cat a || doubleKeys schemas cat b
   | .join a b _ on | .semi a b _ on =>
@@ -820,7 +879,7 @@ def liveReads (cat : Catalog) : Rel → List Nat → List Read
     on.reads ++ joinReads ++ liveReads cat a (refs.filter (· < na)) ++
       liveReads cat b ((refs.filter (na ≤ ·)).map (· - na))
   | .fetch r _ _, live => liveReads cat r live
-  | .window r _ _ fns, _ => fns.flatMap WinFn.reads ++ liveReads cat r (List.range (r.arity cat))
+  | .window r part sort fns, _ => windowReads part sort fns ++ liveReads cat r (List.range (r.arity cat))
   | .orderBy r keys, live => sortReads keys ++ liveReads cat r (live ++ keys.map (·.col))
   | .distinct r, _ => keyReads ++ liveReads cat r (List.range (r.arity cat))
   | .unnest r c, live => liveReads cat r (live ++ [c])

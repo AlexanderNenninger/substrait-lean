@@ -385,6 +385,28 @@ def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
     assert report.issues and not report.proved
 
 
+def test_window_sums_have_the_aggregate_bound() -> None:
+    """A window's double `SUM` or `AVG` sums some of the input's rows, so the
+    bound of the input's row cap covers each frame (#1032). A statistic over
+    a window, or a value computed from a window sum, has no bound here."""
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    req = {"t": [_.x.between(-1000, 1000), sv.max_rows(1000)]}
+    grouped = sv.verify(t.group_by("k").aggregate(s=t.x.sum(), a=t.x.mean()), requires=req)
+    w = ibis.window(group_by=t.k)
+    windowed = sv.verify(
+        t.mutate(s=t.x.sum().over(w), a=t.x.mean().over(w), v=t.x.var().over(w)), requires=req
+    )
+    assert grouped._epsilon is not None and windowed._epsilon is not None
+    for col in ("s", "a"):
+        assert windowed._epsilon[col] == grouped._epsilon[col]
+        assert windowed._epsilon[col]["proved"]["abs"]
+    assert windowed._epsilon["v"]["abs"] is None and "#918" in windowed._epsilon["v"]["why"]
+    derived = sv.verify(t.mutate(s=t.x.sum().over(w)).mutate(d=_.s * 2.0), requires=req)
+    assert derived._epsilon is not None and derived._epsilon["d"]["abs"] is None
+    uncapped = sv.verify(t.mutate(s=t.x.sum().over(w)), requires={"t": [_.x.between(-1, 1)]})
+    assert uncapped._epsilon == {"s": {"abs": None}}
+
+
 def test_statistics_are_tested_or_refused_never_proved() -> None:
     """D30: an engine's `VAR` is within `statEps` of the reference, a bound
     not mechanised, so its route is `tested`; a `COVAR` or `CORR` column has
