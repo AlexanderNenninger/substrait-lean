@@ -39,7 +39,8 @@ def prototypeSlice : List String :=
    "rounding", "nan_creation", "zero_sign", "nan_kind", "nan_order", "nan_equality",
    "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
-   "null_join_keys", "float_overflow", "stat_algo", "quantile_interp", "decimal_rescale"]
+   "null_join_keys", "float_overflow", "stat_algo", "quantile_interp", "decimal_rescale",
+   "window_sum_algo"]
 
 /-- The theorems of the package `float-bounds` (Mathlib, kept out of the core)
 that rows name as evidence. The core cannot see them: the `run_cmd` at the
@@ -114,6 +115,9 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
     (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
     (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    -- A segment tree of fanout 16 for framed windows, per-thread partials
+    -- for a whole-partition frame (duckdb-window-sum-order).
+    (none, "window_sum_algo", .oneOf ["TREE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     (none, "quantile_interp", .oneOf ["LINEAR"]),
     -- Not characterized on DuckDB yet: the core's behaviours.
@@ -178,6 +182,7 @@ def Profile.duckdb.obs : ObsTable := [
   -- by `core_stddev` of the variance), for IEEE rounding (`Mono`, `Grid`).
   -- D30: the reference's statistics are the exact moments rounded once, so
   -- DuckDB's are within the plan's bound of them (`Epsilon.statEps`).
+  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
@@ -217,6 +222,8 @@ def Profile.polars.table : ProfileTable where
     -- target): pairwise, Kahan over groups.
     -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
     (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
+    -- The translation sums each frame anew, in frame order (polars-window-agg).
+    (none, "window_sum_algo", .oneOf ["RECOMPUTE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).
@@ -270,6 +277,7 @@ def Profile.polars.obs : ObsTable := [
     rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
+  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["polars-window-agg"]),
   (none, "stat_algo", { ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),

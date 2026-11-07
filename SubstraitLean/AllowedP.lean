@@ -124,6 +124,13 @@ def aggAllowedP (t : ProfileTable) (I : Impl) (gs : List Expr) (ms : List Measur
 
 /-! ## Windows -/
 
+/-- Is `m` a double `SUM` or `AVG` over a frame that `t` lets the engine keep
+as a sliding sum, adding the rows entering the frame and subtracting those
+leaving it (`window_sum_algo = SLIDING`, #1032)? Such a sum is no sum of the
+frame's values, and may give any value. -/
+def SlidingSum (t : ProfileTable) (m : Measure) : Prop :=
+  (m.fn = .fsum ∨ m.fn = .avg) ∧ "SLIDING" ∈ t.allows "win.agg" "window_sum_algo" []
+
 /-- What a window function may give at `x`, from its partition's rows before
 (`pb`) and after (`pa`) it, under `t`. An order-free aggregate over the frame
 takes its measure's choice (`Measure.AllowedP`), as a grouped aggregate does:
@@ -135,7 +142,7 @@ def WinFn.AllowedP (t : ProfileTable) (pb : List Row) (x : Row) (pa : List Row) 
     (v : Value) : Prop :=
   match f with
   | .agg m sort fr =>
-    if m.orderFree then m.AllowedP t Impl.lean (fr.rows sort pb x pa) v
+    if m.orderFree then m.AllowedP t Impl.lean (fr.rows sort pb x pa) v ∨ SlidingSum t m
     else v = m.eval (fr.rows sort pb x pa)
   | _ => v = f.valueIn pb x pa
 
@@ -267,7 +274,7 @@ theorem WinFn.AllowedP.mono {pb : List Row} {x : Row} {pa : List Row} {f : WinFn
     f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
   cases f <;> simp only [WinFn.AllowedP] <;> try exact id
   split
-  · exact Measure.AllowedP.mono h
+  · exact Or.imp (Measure.AllowedP.mono h) fun ⟨hf, hb⟩ => ⟨hf, h _ _ _ _ hb⟩
   · exact id
 
 theorem windowRowsP.mono {part : List Nat} {fns : List WinFn} :
@@ -348,6 +355,9 @@ theorem reference_allows_stat :
     Profile.reference.table.allows "agg.stat" "stat_algo" [] = ["EXACT"] := by decide +kernel
 theorem reference_allows_quant :
     Profile.reference.table.allows "agg.quant" "quantile_interp" [] = ["BETWEEN"] := by decide +kernel
+theorem reference_allows_window_sum :
+    Profile.reference.table.allows "win.agg" "window_sum_algo" [] = ["RECOMPUTE"] := by
+  decide +kernel
 theorem reference_allows_clustered :
     Profile.reference.table.allows "rel.sort" "clustered" [] = ["ADJACENT"] := by decide +kernel
 
@@ -400,9 +410,11 @@ theorem Measure.allowed_iff {m : Measure} (hm : m.orderFree = true) (rows : Rela
 
 theorem WinFn.allowedP_reference (pb : List Row) (x : Row) (pa : List Row) (f : WinFn)
     (v : Value) : f.AllowedP Profile.reference.table pb x pa v ↔ v = f.valueIn pb x pa := by
+  have hs : ∀ m, ¬ SlidingSum Profile.reference.table m := fun _ ⟨_, h⟩ => by
+    rw [reference_allows_window_sum] at h; simp at h
   cases f <;> simp only [WinFn.AllowedP, WinFn.valueIn]
   split
-  · next hm => rw [Measure.allowedP_reference, Measure.allowed_iff hm]
+  · next hm => rw [or_iff_left (hs _), Measure.allowedP_reference, Measure.allowed_iff hm]
   · exact Iff.rfl
 
 theorem windowRowsP_reference (part : List Nat) (fns : List WinFn) :

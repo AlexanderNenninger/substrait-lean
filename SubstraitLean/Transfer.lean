@@ -72,7 +72,8 @@ def joinReads : List Read := keyReads ++ [("rel.join", "null_join_keys", [])]
 
 /-- A window function's options: its aggregate's, as a grouped aggregate meets them. -/
 def WinFn.reads : WinFn → List Read
-  | .agg m _ _ => m.reads
+  | .agg m _ _ => m.reads ++
+    if m.fn = .fsum ∨ m.fn = .avg then [("win.agg", "window_sum_algo", [])] else []
   | _ => []
 
 /-- A window's own options: its functions', its sort keys' and, where it
@@ -448,10 +449,18 @@ theorem aggAllowedP.monoOn {I : Impl} {gs : List Expr} {ms : List Measure}
 
 theorem WinFn.AllowedP.monoOn {f : WinFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {pb : List Row} {x : Row}
     {pa : List Row} {v : Value} : f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
-  cases f <;> simp only [WinFn.AllowedP] <;> try exact id
-  split
-  · exact Measure.AllowedP.monoOn h
-  · exact id
+  cases f with
+  | agg m sort fr =>
+    simp only [WinFn.AllowedP]
+    split
+    · refine Or.imp (Measure.AllowedP.monoOn fun p hp => h p ?_) fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
+      · exact List.mem_append_left _ hp
+      · have hp : ("win.agg", "window_sum_algo", ([] : List String)) ∈ (WinFn.agg m sort fr).reads := by
+          simp only [WinFn.reads, List.mem_append]
+          exact .inr (by simp only [hf, ↓reduceIte]; exact List.mem_singleton_self _)
+        exact ProfileTable.LeAt.mem (h _ hp) (by simp [aggInterpreted]) hb
+    · exact id
+  | _ => simp only [WinFn.AllowedP]; exact id
 
 theorem windowRowsP.monoOn {part : List Nat} {fns : List WinFn}
     (h : ∀ p ∈ fns.flatMap WinFn.reads, t.LeAt u p) :
