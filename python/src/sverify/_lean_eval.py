@@ -86,8 +86,15 @@ def typed_code(t: dict, v: int) -> dict:
     if "decimal" in t:
         d = t["decimal"]
         value = base64.b64encode(v.to_bytes(16, "little", signed=True)).decode()
-        return {"literal": {"decimal": {"value": value, "precision": d.get("precision", 38),
-                                        "scale": d.get("scale", 0)}}}
+        return {
+            "literal": {
+                "decimal": {
+                    "value": value,
+                    "precision": d.get("precision", 38),
+                    "scale": d.get("scale", 0),
+                }
+            }
+        }
     return literal(v)
 
 
