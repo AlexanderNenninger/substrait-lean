@@ -756,6 +756,13 @@ class Dialect:
                 "std_pop": "STDDEV_POP"}[fn]  # fmt: skip
         return f"{name}({v})"
 
+    def stat_input(self, x: str, partition: Sequence[str]) -> str | None:
+        """The values a `VAR_*` or `STDDEV_*` reads in place of `x`, the
+        measure's argument over the group `partition`, or None for `x`
+        itself. A shift by a constant per group keeps the reference's value
+        (`momentNum_shift`)."""
+        return None
+
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         """`AggFn.pick` (#55): the first or last value of the column `v`, NULLs
         skipped, in the order `order`; NULL without values."""
@@ -1368,7 +1375,8 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
 BIT_AGGS = ("bit_and", "bit_or", "bit_xor")
 #: `AggFn.var`'s functions: variance and standard deviation, of a sample or a
 #: population (#54).
-VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop", "covar_samp", "covar_pop", "corr")
+VAR_FNS = ("var_samp", "var_pop", "std_samp", "std_pop")
+VAR_AGGS = (*VAR_FNS, "covar_samp", "covar_pop", "corr")
 #: The exact quantiles, the mode and `arg_min`/`arg_max` by their plan names
 #: (#53): DuckDB runs them, other engines refuse them for now (#271).
 EXACT_HOLISTIC = ("median", "quantile_cont", "quantile_disc", "mode", "arg_min", "arg_max")
@@ -3833,18 +3841,24 @@ class _Writer:
         g_kinds = [expr_kind(g, ks) for g in groups]
         if unchecked:
             self.d = replace(d, guards=False)
+        # A `VAR_*`'s values shifted by their group's mean, where the dialect
+        # asks for it (`stat_input`): column `t{k}` beside the measure's own.
+        t_cols: dict[int, str] = {}
         try:
-            items = [
-                f"{self.expr(g, ref, ks, k)} AS {c}"
-                for g, k, c in zip(groups, g_kinds, g_cols, strict=True)
-            ]
-            for ms, c in zip(measures, m_cols, strict=True):
+            g_sql = [self.expr(g, ref, ks, k) for g, k in zip(groups, g_kinds, strict=True)]
+            items = [f"{x} AS {c}" for x, c in zip(g_sql, g_cols, strict=True)]
+            for j, (ms, c) in enumerate(zip(measures, m_cols, strict=True)):
                 k = expr_kind(ms.arg, ks)
                 x = self.expr(ms.arg, ref, ks, k)
                 if ms.filter is not None:
                     keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                     x = d.case_when(keep, x, d.null(k))
                 items.append(f"{x} AS {c}")
+                if ms.fn in VAR_FNS and not ms.distinct:
+                    shifted = d.stat_input(x, g_sql)
+                    if shifted is not None:
+                        t_cols[j] = d.quote(f"t{j}")
+                        items.append(f"{shifted} AS {t_cols[j]}")
         finally:
             self.d = d
         # `first`, `last` and `string_agg` (#55): each measure's sort keys, as
@@ -3906,15 +3920,21 @@ class _Writer:
                 else:
                     sql = d.pick(ms.fn, v, order)
             else:
-                sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
+                shifted = col(t_cols[k]) if k in t_cols else None
+                sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b), shifted)
             out.append(f"{sql} AS {self.c(len(groups) + k)}")
         if ordered:
             out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")
         rest = f"GROUP BY {', '.join(keys)}" if keys else ""
         return self.select(out, d.subquery(level, b), rest)
 
-    def measure(self, m: Measure, v: str, kind: Kind | None, o: str) -> str:
-        """`Measure.eval` of the column `v` (NULL where the measure skips a row)."""
+    def measure(
+        self, m: Measure, v: str, kind: Kind | None, o: str, shifted: str | None = None
+    ) -> str:
+        """`Measure.eval` of the column `v` (NULL where the measure skips a row).
+        `shifted`: a `VAR_*`'s values shifted by their group's mean
+        (`Dialect.stat_input`), which the engine's variance reads; the checks
+        read `v`."""
         d = self.d
         match m.fn:
             case "count":
@@ -3969,7 +3989,13 @@ class _Writer:
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
-                body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, v)))
+                if shifted is None and d.stat_input(v, []) is not None:
+                    # A dialect that needs the shift has none for DISTINCT values.
+                    raise Unsupported(
+                        f"a DISTINCT {m.fn.upper()} of doubles on {d.name}: no shift by the "
+                        "mean of distinct values yet (#1023)"
+                    )
+                body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, shifted or v)))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
                 # A NaN passes through; DuckDB's VAR_POP of one NaN is 0.0
                 # (upstream/bugs/DD-3.json).

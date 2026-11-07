@@ -118,39 +118,78 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
     else none
   return (unscale t, rel)
 
-/-- The bound of a `VAR_*` or `STDDEV_*` over at most `rows` doubles in
-`[-B, B]` (D30): an engine's algorithm is within `StatProps`' `varTol` of
-the exact `V = S / d` (`core_var_chan` in `float-bounds`), the reference's
-value within `u · V` of it, so the two are within the sum. With
-`Q' ≤ n (B + tiny)²`, `√(Q' S) ≤ n (B + tiny) B` and `V ≤ n B² / d`. A
-deviation adds `sdNear`'s terms. The composition is not mechanised, so the
-bound is not marked proved. `COVAR_*` and `CORR` take pairs, whose bounds
-the abstract interpreter does not give per side: none yet. -/
-def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float := do
-  let .var sample sqrt := m.fn | none
-  let a := m.arg.absD env []
+/-- The largest magnitude `B ≤ 2³⁹⁸` of the doubles `e` gives, from its range. -/
+def doubleMag (env : List AVal) (e : Expr) : Option Float := do
+  let a := e.absD env []
   guard a.intsOnly
   let b ← a.int
   let lo ← b.lo
   let hi ← b.hi
-  let n ← rows
-  guard (n ≤ 2 ^ 32)
   let x := max (FloatCode.toFloat lo).abs (FloatCode.toFloat hi).abs
   guard (!x.isNaN && !x.isInf && x ≤ Float.scaleB 1.0 398)
+  return x
+
+/-- The bound of a statistical aggregate over at most `rows` values (D30),
+`n` of them, `d` the divisor (`n − 1` of a sample, `n` of a population),
+`u = 2⁻⁵³`, `t = 2⁻¹⁰²²`:
+
+* `VAR_*` of doubles in `[-B, B]`: an engine's algorithm is within `varTol`
+  of the exact `V = S / d` (`core_var_chan`), the reference's value within
+  `u · V` of it (`epsilon_var_cr`). With `Q' ≤ n (B + t)²`,
+  `√(Q' S) ≤ n (B + t) B` and `V ≤ n B² / d`.
+* `STDDEV_*`: the variance's bound through the square root (`sdNear`'s
+  terms); not mechanised.
+* `COVAR_*` of pairs in `[-Bx, Bx] × [-By, By]` (the pair's two sides): an
+  engine is within `covTol` of `C / d` (`core_cov_chan`), the reference
+  within `u · |C / d|` (`epsilon_cov_cr`), with `r₁ = n (Bx + t) By`,
+  `r₂ = n (By + t) Bx`, `r_s = n Bx By ≥ |C|`, `r_q = n (Bx + t)(By + t)`.
+* `CORR`: none. Its error grows as a side's variance shrinks, and the
+  ranges give no lower bound on it (`core_corr_chan` bounds its magnitude).
+
+Each is padded by `2⁻⁴⁰` relatively and one subnormal, for the `Float`
+arithmetic here. -/
+def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float := do
+  let n ← rows
+  guard (n ≤ 2 ^ 32)
   let u := Float.scaleB 1.0 (-53)
   let tiny := Float.scaleB 1.0 (-1022)
+  let pad (e : Float) : Float := e * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074)
   let nf := Float.ofNat n
-  let d := Float.ofNat (if sample then max 1 (n - 1) else max 1 n)
-  let q := nf * (x + tiny) * (x + tiny)
-  let r := nf * (x + tiny) * x
-  let varTol := (160.0 * nf * u * r + 3970.0 * nf * nf * u * u * q + 800.0 * nf * nf * u * tiny) / d
-  let v := nf * x * x / d
-  let tv := (varTol + u * v) * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074)
-  if sqrt then
-    let st := tv.sqrt
-    return (st + u * (v.sqrt + st) + u * tiny + u * v.sqrt) * (1.0 + Float.scaleB 1.0 (-40)) +
-      Float.scaleB 1.0 (-1074)
-  else return tv
+  let dOf (sample : Bool) := Float.ofNat (if sample then max 1 (n - 1) else max 1 n)
+  match m.fn, m.arg with
+  | .var sample sqrt, arg =>
+    let x ← doubleMag env arg
+    let d := dOf sample
+    let q := nf * (x + tiny) * (x + tiny)
+    let r := nf * (x + tiny) * x
+    let varTol := (160.0 * nf * u * r + 3970.0 * nf * nf * u * u * q
+      + 800.0 * nf * nf * u * tiny) / d
+    let v := nf * x * x / d
+    let tv := pad (varTol + u * v)
+    if sqrt then
+      let st := tv.sqrt
+      return pad (st + u * (v.sqrt + st) + u * tiny + u * v.sqrt)
+    else return tv
+  | .cov sample, .bin .pair a b =>
+    let bx ← doubleMag env a
+    let byy ← doubleMag env b
+    let d := dOf sample
+    let r1 := nf * (bx + tiny) * byy
+    let r2 := nf * (byy + tiny) * bx
+    let rs := nf * bx * byy
+    let rq := nf * (bx + tiny) * (byy + tiny)
+    let covTol := (71.0 * nf * u * (r1 + r2) + 15.0 * nf * u * rs
+      + 3970.0 * nf * nf * u * u * rq + 800.0 * nf * nf * u * tiny) / d
+    return pad (covTol + u * rs / d)
+  | _, _ => none
+
+/-- Is `statEps` of `m` a theorem (`epsilon_var_cr`, `epsilon_cov_cr`)? For
+`VAR_*` and `COVAR_*`, not for a deviation or `CORR`. -/
+def statProvedFn (m : Measure) : Bool :=
+  match m.fn with
+  | .var _ sqrt => !sqrt
+  | .cov _ => true
+  | _ => false
 
 /-! ## Per engine: the error carried through arithmetic
 
@@ -217,6 +256,33 @@ def epsEngines : List (String × ProfileTable) :=
 /-- Does every engine's `sum_order` give one of the proved orders? -/
 def ordersProved : Bool :=
   epsEngines.all fun (_, t) => (t.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
+
+/-- The `stat_algo` behaviours `core_var_chan` and `core_cov_chan` cover:
+the reference's own, and Welford's update with Chan's merge. -/
+def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN"]
+
+/-- Each engine's observations table, beside its choices (`epsEngines`). -/
+def epsObs : List (String × ObsTable) :=
+  [("duckdb", Profile.duckdb.obs), ("polars", Profile.polars.obs), ("spark", Profile.spark.obs)]
+
+/-- The engines whose statistics a theorem bounds: the `stat_algo` choices
+are ones the theorems cover, and the engine's `stat_algo` row is proved
+(`core_var_chan`) on facts about its algorithm. An engine whose algorithm no
+fact settles, or whose row is only tested, is not among them: its
+statistics' columns are tested (`Report.epsilon[col].proved_on`). -/
+def statsProvedOn : List String :=
+  epsEngines.filterMap fun (e, t) =>
+    let algos := (t.allows "agg.var" "stat_algo" []) ++ (t.allows "agg.stat" "stat_algo" [])
+    let proved := ((epsObs.lookup e).getD []).any fun (g, o, r) =>
+      g.isNone && o == "stat_algo" && match r.evidence with | .proved _ _ => true | _ => false
+    if algos.all (provedStatAlgos.contains ·) && proved then some e else none
+
+-- DuckDB's and Spark's rows are proved; Polars's algorithm is not (float-bounds.md).
+#guard statsProvedOn == ["duckdb", "spark"]
+
+/-- Why a `CORR` column has no bound, and what lifts it. -/
+def corrWhy : String :=
+  "CORR: no bound without a lower bound on each side's variance (#918)"
 
 /-- A bound on `|e|` from the preconditions, for a double expression. -/
 def magOf (env : List AVal) (e : Expr) : Option Float := do
@@ -755,15 +821,23 @@ def epsilon (input : Json) : Except String Json := do
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
   -- D30: a statistic's column is within `statEps` of the reference's on an
-  -- engine, not proved; one computed from a statistic has no bound.
+  -- engine, proved for `VAR_*` and `COVAR_*` where every engine's algorithm
+  -- is one the theorems cover and the measure reads the same values; one
+  -- computed from a statistic has no bound.
   let stats : List (String × Option Measure) := match statCols plan.root with
     | some cs => (names.zip cs).filterMap fun (name, (c : Option (Option Measure))) =>
         c.map fun m => (name, m)
     | none => []
   let statJson := stats.map fun (name, (m? : Option Measure)) =>
     (name, match m?.bind (statEps env · r.maxRows) with
-    | some e => Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson false)])]
-    | none => Json.mkObj [("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])])
+    | some e =>
+      -- Proved on the engines of `statsProvedOn`, tested on the others.
+      let p := m?.any fun m => statProvedFn m && same m
+      let on := if p then statsProvedOn else []
+      Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson (p && on.length ==
+        epsEngines.length))]), ("proved_on", toJson on)]
+    | none => Json.mkObj ([("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])] ++
+        if m?.any (·.fn == .corr) then [("why", toJson corrWhy)] else []))
   let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)
   return Json.mkObj (known.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols)
 
