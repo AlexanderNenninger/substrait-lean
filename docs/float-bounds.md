@@ -278,7 +278,7 @@ to the difference `Δ` of the exact results. With `|a| ≤ ma`, `|b| ≤ mb`:
 |---|---|
 | `a ± b` (`rule_add`, `rule_sub`) | `(εa + εb)(1 + u) + 2u (ma + mb + tiny)` |
 | `a · b` (`rule_mul`) | `(ma εb + mb εa + εa εb)(1 + u) + 2u (ma mb + tiny)` |
-| `a / b`, `b` the same on both sides, `|b| ≥ lb > 0` (`rule_div`) | `(εa / lb)(1 + u) + 2u (ma / lb + tiny)` |
+| `a / b`, `b` the same on both sides, `\|b\| ≥ lb > 0` (`rule_div`) | `(εa / lb)(1 + u) + 2u (ma / lb + tiny)` |
 | Polars's `a / b` by a literal, `fl(a · fl(1/b))` (`rule_div_recip`) | `(εa / lb)(1 + u)² + (3u + u²) ma / lb + (u (1 + u)(ma + εa) + 2u) tiny` |
 | `abs a`, `-a` (`rule_abs`) | `εa` |
 | `FLOOR`, `CEIL`, `ROUND` (`rule_floor`, `rule_ceil`, `rule_round`) | `εa + 1` |

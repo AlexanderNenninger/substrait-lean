@@ -446,6 +446,160 @@ the writers in `python/src/sverify/black_box.py`.
 
 | Statistical aggregates | `product`, `kahan_sum` (also `fsum`, `sumkahan`), `favg`, `sem`, `mad`, `kurtosis`, `kurtosis_pop` and `skewness` of doubles, integers converted as DuckDB converts them (#326). NULL without values. `product`, `kahan_sum` and `favg` are not NULL over values; `sem` and `mad` are not NULL and at least `+0.0`. `kurtosis`, `kurtosis_pop` and `skewness` are NULL for few or equal values and raise on an infinity, NaN, or a value whose fourth (third) power overflows (`duckdb-moments`). `mad` of a DECIMAL or a temporal type is refused. `histogram` (a MAP) and `weighted_avg` (two arguments) are refused (`duckdb-statistical-aggregates`). Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
 
+## The Ibis frontend
+
+What an Ibis expression means to `verify`.
+
+`sverify.verify(expr)` compiles an Ibis expression with the vendored producer
+(`sverify.ibis_substrait`), not with Ibis's SQL for some backend. A proof is
+about the plan that producer writes, under `Rel.eval`. So the meaning of an
+Ibis expression is the producer's, and it is the same whichever Ibis backend
+the expression came from.
+
+Where Ibis backends disagree (see
+`catalogue/backend_semantics.py`), this table says which meaning
+`verify` takes. `python/tests/test_ibis_semantics.py` runs each row through the
+producer and checks Lean's evaluation against it.
+
+| operation | meaning in `verify` | DataFusion | DuckDB | Polars |
+|---|---|---|---|---|
+| `a % b` (integers) | truncating: `-7 % 2 = -1` | same | same | floor (`+1`) |
+| `a // b` (integers) | floor, exact in 64 bits: `-7 // 2 = -4` | same | same | same |
+| `a % 0`, `a // 0` | error (division by zero) | error | conversion error | NULL |
+| `s.length()` | code points: `'é'` is 1, `'🎉'` is 1 | same | same | bytes |
+| `s.find(t)` | 0-based, −1 if absent, NULL for a NULL string | same | same | −1 for NULL |
+| `s.substr(i, n)` | 0-based start | same | same | same |
+| `s.like(p)` | `\` escapes the next character | same | no escape | no LIKE |
+| `x.nunique()` | NULL is not a value | same | same | counts NULL |
+| `v.round()` | half away from zero: `2.5 → 3` | same | same | half to even |
+| `v.cast("int64")` (double) | truncates; NaN, ±inf and out-of-range values are an error | same (error) | rounds half to even | truncates |
+| `v == 0.0` with `v = -0.0` | true: one zero (#89) | false (total order) | true | true |
+| `x == ibis.null()` | `x IS NULL` (TRUE for NULL rows) | same | same | same |
+| `ibis.row_number()` | 0-based | same | same | same |
+| `order_by(...)` | NULLs last in both directions | same | same | same |
+| window with `order_by`, no frame | the whole partition | same | same | same |
+| 64-bit overflow of `+ - *` | an error at the declared width (#202); DataFusion wraps around, which an error allows | wraps | error | wraps |
+| `v.max()` of doubles | NaN, the greatest double (#371, #697) | NaN | NaN | skips NaN |
+| `ts.day_of_week.index()` | Monday = 0 | same | same | same |
+| `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text (#70) | same | utf8proc, RE2 | same |
+
+"Same" means the backend's Ibis result agrees with `verify`'s meaning on the
+notebook's edge rows. A **refused** operation is outside what `verify` can
+give a backend-independent meaning today.
+
+Which Ibis backends implement this semantics fully: none of them on every
+row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
+`max` of NaN). To run a verified expression with exactly this meaning, run
+the plan: `sverify.engines.run(con, plan, engine)` on DuckDB, Polars or
+Spark ([the engines](stability.md#engines)), whose translations raise where
+they would differ.
+
+### Any row's value
+
+`first()` and `last()` without `order_by`, and so `distinct(on=…)`, which
+Ibis writes as `FIRST` (or `LAST`) of each other column, take any row's
+value (#55). `verify` proves what holds for every row an engine may take,
+and reports the result as not `deterministic` unless the grouping (`on`)
+columns form a key
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). Each column is chosen on its own: `FIRST` skips NULLs column by column,
+so `distinct(on="name")` may keep `a` from one row and `b` from another, and
+a fact about every input row, such as `a <= b`, need not hold of the result.
+`keep=None` keeps the groups of one row, but the report still calls it
+not `deterministic`. The plan runs on DuckDB for now (#271).
+
+### Parameters
+
+An `ibis.param` has no value until the expression runs, so `verify` takes
+one, as Ibis's `execute(params=...)` does: `sv.verify(expr, params={p: 5})`
+replaces each parameter with a literal of its type before compiling (#58).
+The report is then about the expression with those values, and says so
+(`Report.notes`): a proof for `p = 5` says nothing about `p = 0`. A
+parameter left unbound is refused. Proving a contract for every value of a
+parameter, as an unknown value of its type, is planned (#354).
+
+## How the model holds a plan
+
+Choices of the Lean model that shape how a plan is represented and
+evaluated. Where an entry names DataFusion, it records how that experimental
+engine differs ([the engines](stability.md#engines)).
+
+* Positional schemas. Substrait field references are ordinals, so a
+  schema is an arity, with a kind per column that the kind checker keeps
+  (`Rel.kinds_sound` in `Kinds.lean`).
+* Project appends, Emit narrows. This matches Substrait's `ProjectRel` +
+  `RelCommon.emit`. Here `Emit` is its own node, and no rel carries an emit field.
+* Bags as lists. `Rel.eval` returns a `List`, and plan equivalence is `List.Perm`.
+  Several rewrites are stronger than that and hold as exact list equality.
+* Semi joins and `DISTINCT` are their own operators. `Rel.semi` keeps the left
+  rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
+  the first occurrence of every row (NULLs equal, doubles by their codes: one
+  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  `DISTINCT` as an aggregate with one empty grouping, which its own consumer
+  rejects; the parser reads it as "all columns".
+* Aggregates have one grouping set. `Rel.aggregate` outputs one row per
+  distinct grouping value (NULLs group together; doubles by their codes, so
+  -0.0 and 0.0 are one group), or exactly one row without
+  grouping expressions, even on an empty input. Measures skip NULLs; on no
+  values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
+  wraps around; the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` are the correctly
+  rounded exact sum and mean ([Of doubles](#of-doubles), D25), and `AVG` of integers is the `AVG` of their
+  conversion to double. `MIN`/`MAX` of doubles compare by the
+  codes, as DuckDB does; DataFusion's grouped version turns a group of +∞ into
+  the largest finite double and skips NaN next to other values, so it is refused
+  there. Contracts see `MIN`, `MAX`, an integer `AVG` and a decimal `AVG` within
+  the values' bounds, measures over a group of a column that is never NULL as
+  never NULL, and `MIN ≤ MAX` (#372). An `AVG` of doubles rounds, so it is some
+  double.
+  The grouping columns are a key of the result.
+* Ill-typed calls evaluate to `null`. This keeps `eval` total. `Rel.WF` rules out
+  out-of-range field references.
+* Some operations are rewrites in the parser. `IN` lists become `OR`s of
+  equalities; `COALESCE`, `NULLIF`, `GREATEST`, `LEAST` and `ABS` become
+  conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped;
+  `FULL OUTER JOIN` becomes the left join plus the anti join of the right side,
+  padded with NULLs; `x IN (subquery)` in a filter becomes a semi join on `=`;
+  `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
+  conditional. The rewrites are trusted code, checked against DuckDB by
+  `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
+  DataFusion; here it is reported as an overflow.)
+* Overflow is an error at the declared width. `Rel.eval` computes exact
+  integers, and [Safety.lean](../SubstraitLean/Safety.lean) reports every operation whose
+  result may not fit its declared width (64 bits, or narrower integers). Where DataFusion fails instead (division, `POWER`, casts), the
+  value in the model is `NULL`.
+* Strings are Unicode scalar values. `substring`, `strpos`, `LIKE`, `btrim`, `||`,
+  `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
+  computed exactly, checked against DuckDB (and Rust's string functions, as
+  DataFusion computes them) by `python/tests/test_text.py`; a
+  `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
+  `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
+  depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
+  regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
+  where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
+  `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
+  (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
+  `Text.simpleRegex` accepts it, a conservative subset of Rust's and RE2's syntax that is
+  tested to compile in both.
+* Elementary functions follow Substrait, with errors outside their domains.
+  `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
+  `atan2` are computed with C's libm ([Numeric.lean](../SubstraitLean/Numeric.lean)), and
+  contracts treat each result as "some double". Outside a function's domain (`sqrt` of a
+  negative, the logarithm of zero or a negative, `asin` and `acos` outside `[-1, 1]`,
+  `atan2(0, 0)`, `logb` to a base that is not positive or is 1) the result is an error,
+  Substrait's `on_domain_error` = ERROR when a plan omits the option; NaN is in every
+  domain. Bitwise operations are exact in 64-bit two's complement, and a shift count
+  outside 0–63, which Substrait leaves open, is an error too. Polars and the SQL of
+  DuckDB raise where Lean reports a domain error; DataFusion returns NaN, ±∞ or a
+  wrapped shift there, which an error allows. Spark runs `sqrt` and the bitwise
+  operations (its other functions are Java's `StrictMath`); Snowflake runs `&`, `|` and
+  `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
+  `python/tests/test_math.py`.
+* Timestamps are microseconds (UTC). `date_part` and `date_trunc` are computed
+  exactly, checked against DuckDB and DataFusion by `python/tests/test_time.py`, including at
+  the ends of the ranges where DataFusion stops being exact; dates are in [Temporal](#temporal).
+* Integer `//` from Ibis is exact. Ibis compiles it through doubles
+  (`CAST(FLOOR(CAST(a AS DOUBLE) / b) AS BIGINT)`), which is wrong beyond 2⁵³;
+  `sverify` compiles it to integer division instead.
+
 ## Trusted assumptions
 
 What a proof does not cover. A theorem about `Rel.eval` holds for the model;

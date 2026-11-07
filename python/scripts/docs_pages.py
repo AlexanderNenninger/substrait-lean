@@ -1,12 +1,16 @@
 """Write the docs site's generated pages before `great-docs build` (`poe docs`).
 
-Great Docs renders the directories `python/examples/` and `python/ledgers/` as
-sections of the site (`sections:` in `great-docs.yml`), and Quarto's search
-indexes them, entry by entry. Both directories are written here, at build
-time, and ignored by git (CLAUDE.md, "Generated files"):
+Great Docs renders the directories `python/examples/`, `python/semantics/`,
+`python/design/` and `python/ledgers/` as sections of the site (`sections:` in
+`great-docs.yml`), and Quarto's search indexes them, entry by entry. They are
+written here, at build time, and ignored by git (CLAUDE.md, "Generated
+files"):
 
-- `examples/`: `docs/examples.md`, with its links to other files of the
-  repository pointed at GitHub.
+- `examples/`: `docs/examples.md`;
+- `semantics/` and `design/`: the reference and design pages of `docs/`
+  (`DOC_SECTIONS`), with GitHub's heading anchors. Links between pages the
+  site has stay on the site; links to other files of the repository point at
+  GitHub.
 - `ledgers/`: the upstream ledger (`upstream/bugs/*.json`, bugs and spec
   gaps), each engine's characterization (`characterization/<engine>/facts/`),
   the checklist's coverage per engine (`characterization/areas.json`) and the
@@ -16,8 +20,8 @@ time, and ignored by git (CLAUDE.md, "Generated files"):
 
 Usage, from `python/`:
 
-    python scripts/docs_pages.py            # writes examples/ and ledgers/
-    python scripts/docs_pages.py --out DIR  # writes DIR/examples and DIR/ledgers
+    python scripts/docs_pages.py            # writes examples/, semantics/, design/, ledgers/
+    python scripts/docs_pages.py --out DIR  # writes them under DIR
 """
 
 from __future__ import annotations
@@ -173,8 +177,12 @@ main .ledger-meta p { margin-bottom: 0.75rem; }
 """
 
 
-def front(title: str, description: str) -> str:
-    return f'---\ntitle: "{title}"\ndescription: "{description}"\n---\n\n' + PAGE_STYLE
+def front(title: str, description: str, gfm_ids: bool = False) -> str:
+    """The page's front matter and style. `gfm_ids` makes Pandoc give
+    headings GitHub's anchors (`#d13-choosing-the-route`), so a page copied
+    from `docs/` keeps the anchors its links use."""
+    reader = "from: markdown+gfm_auto_identifiers\n" if gfm_ids else ""
+    return f'---\ntitle: "{title}"\ndescription: "{description}"\n{reader}---\n\n' + PAGE_STYLE
 
 
 def strip_title(text: str) -> str:
@@ -569,6 +577,66 @@ def _short(text: str, n: int = 200) -> str:
     return text if len(text) <= n else text[: n - 1].rsplit(" ", 1)[0] + " …"
 
 
+# -- the pages of docs/ ---------------------------------------------------------
+
+#: The pages of `docs/` the site renders, by section (a directory of the site,
+#: `sections:` in `great-docs.yml`), in order: the reference (what a plan
+#: means, what 1.x keeps, what 1.0 covers) and the design (how and why).
+#: `docs/README.md` maps every page to its kind.
+DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
+    "semantics": [
+        ("docs/reference-semantics.md", "Reference semantics", "What a plan means, row by row"),
+        ("docs/stability.md", "Stability in 1.x", "The formats, proofs, API and engines 1.x keeps"),
+        ("docs/coverage-targets.md", "Coverage targets", "The constructs 1.0 covers, by area"),
+    ],
+    "design": [
+        ("docs/how-it-works.md", "How it works", "The checker, incremental views and the engines"),
+        ("docs/core-semantics.md", "The loose core", "Profiles, translations and the decisions"),
+        (
+            "docs/engine-profiles.md",
+            "Engine profiles",
+            "Each engine's profile, shims and translation",
+        ),
+        ("docs/float-bounds.md", "Float error bounds", "Proved error bounds for doubles"),
+        (
+            "docs/optimizations.md",
+            "Proved optimizations",
+            "Guards, sharding, rewrites, pruning, IVM",
+        ),
+        ("docs/nested-values.md", "Nested values", "Lists, structs and lambdas in the model"),
+        (
+            "docs/proofs.md",
+            "A map of the proofs",
+            "Each guarantee, its theorem and what is trusted",
+        ),
+        ("docs/layers.md", "Layers", "The layers of the Python package"),
+        ("docs/prior-work.md", "Prior work", "The work sverify builds on, and related tools"),
+    ],
+}
+
+
+def site_names() -> dict[str, tuple[str, str]]:
+    """Each file of the repository the site renders: its section and page name."""
+    names = {
+        "docs/examples.md": ("examples", "examples"),
+        "docs/realizability.md": ("ledgers", "realizability"),
+    }
+    for section, pages in DOC_SECTIONS.items():
+        for path, _, _ in pages:
+            names[path] = (section, Path(path).stem)
+    return names
+
+
+def relative(names: Mapping[str, tuple[str, str]], section: str) -> dict[str, str]:
+    """The links from a page of `section` to the site's pages: `name.md` in the
+    same section, `../other/name.md` in another; Quarto turns them into the
+    pages' URLs."""
+    return {
+        path: f"{name}.md" if there == section else f"../{there}/{name}.md"
+        for path, (there, name) in names.items()
+    }
+
+
 # -- writing ----------------------------------------------------------------------
 
 
@@ -580,9 +648,10 @@ def write(out: Path, root: Path = ROOT) -> None:
 
     ledgers = out / "ledgers"
     examples = out / "examples"
-    for d in (ledgers, examples):
+    for d in (ledgers, examples, *(out / s for s in DOC_SECTIONS)):
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir(parents=True)
+    local = site_names()
 
     (ledgers / "index.qmd").write_text(index_page(bugs, facts))
     real = [b for b in bugs.values() if b.get("kind") != "spec-gap"]
@@ -611,16 +680,26 @@ def write(out: Path, root: Path = ROOT) -> None:
     )
     (ledgers / "06-coverage.md").write_text(coverage_page(areas, list(facts.values())))
     source = root / "docs/realizability.md"
-    text = rewrite_links(strip_title(source.read_text()), source, {})
+    text = rewrite_links(strip_title(source.read_text()), source, relative(local, "ledgers"))
     (ledgers / "07-realizability.md").write_text(
         front("Realizability", "How a plan verified under the reference runs on each engine") + text
     )
 
     source = root / "docs/examples.md"
-    text = rewrite_links(strip_title(source.read_text()), source, {})
+    text = rewrite_links(strip_title(source.read_text()), source, relative(local, "examples"))
     (examples / "examples.md").write_text(
-        front("Examples", "Sverify's features in eight short examples, each a step up") + text
+        front("Examples", "Sverify's features in ten short examples, each a step up", True) + text
     )
+
+    for section, pages in DOC_SECTIONS.items():
+        here = relative(local, section)
+        for n, (path, title, description) in enumerate(pages, start=1):
+            source = root / path
+            text = rewrite_links(strip_title(source.read_text()), source, here)
+            name = Path(path).stem
+            (out / section / f"{n:02d}-{name}.md").write_text(
+                front(title, description, True) + text
+            )
 
 
 def main() -> None:
@@ -628,7 +707,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "python")
     args = parser.parse_args()
     write(args.out)
-    print(f"wrote {args.out / 'examples'} and {args.out / 'ledgers'}")
+    print(f"wrote examples/, {'/, '.join(DOC_SECTIONS)}/ and ledgers/ under {args.out}")
 
 
 if __name__ == "__main__":
