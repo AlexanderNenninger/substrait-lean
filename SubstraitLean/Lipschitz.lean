@@ -19,8 +19,9 @@ pipeline rule:
   columns, a group key and an order-free measure of exact columns are exact.
   A `SUM` or `AVG` of a tolerated column has the table's `g·ε + r` and
   `ε + r` (`Measure.tolOut`), where the knowledge `K` of the reference's
-  sources bounds the column's codes and the group's rows (`Rel.rowsK`). It is
-  `none` where the plan compares a tolerated column (a filter, join or
+  sources bounds the column's codes and the group's rows (`Rel.rowsK`); a
+  `MIN` or `MAX` its argument's tolerance, `M∞ = 1` (`Measure.minMaxOut`). It
+  is `none` where the plan compares a tolerated column (a filter, join or
   semi-join condition, a group key, `DISTINCT`, any other measure of it):
   #929's discontinuity rows, the `rows_exact` rule of #568. `FETCH` and
   windows read an order the multiset observation does not fix, and `UNNEST`
@@ -47,9 +48,9 @@ pipeline rule:
 The tolerance is in codes (`Tol`): a finite double's code is twice its
 magnitude in units of `2⁻¹⁰⁷⁴`, plus one, with its sign (`FloatFormat`), so
 codes measure absolute distance and a Lipschitz constant on codes is one on
-values. `MIN` and `MAX`, the `M₁` fold and the arithmetic rows (`c · x`,
-`x ± y`, `x · y`, `x / y`, exact since D31) follow (#929) and extend
-`Measure.tolOut` and `Expr.tol?`.
+values. The `M₁` fold and the arithmetic rows (`c · x`, `x ± y`, `x · y`,
+`x / y`, exact since D31) follow (#929) and extend `Measure.outTol` and
+`Expr.tol?`.
 
 A tolerance leaves its other columns exact, and compares them exactly:
 `Tol.kind t` marks only the tolerated columns as doubles, so a filter on an
@@ -1165,11 +1166,233 @@ theorem Measure.tolOut_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVa
        repeat' (split at h)
        all_goals simp_all)
 
+/-! ### The `MIN` and `MAX` rows (#929 step 2)
+
+`MIN` and `MAX` pick one of their values by code (`Value.leScalar`): with
+the values paired within `e` codes, the picks are within `e` codes, the
+table's `M∞ = 1` with no rounding. Codes order doubles as their values only
+where they are the reference's (`IsRef`; `-0.0`'s code lies below `-∞`'s):
+the engine's column is one of `Rel.refCols`, and the analysis gives the
+reference's column doubles only, in a range of reference codes. -/
+
+/-- **A `MIN`'s or `MAX`'s output tolerance**, its input within `t`: the
+argument's, for a tolerated column of doubles in reference codes. -/
+def Measure.minMaxOut (t : Tol) (mask : Nat → Bool) (env : List AVal) (m : Measure) :
+    Option (Option Nat) :=
+  match m.fn, m.arg with
+  | .min, .field i | .max, .field i =>
+    match t i, colRange env i with
+    | some e, some (lo, hi) =>
+      if !m.distinct && (m.filter.all fun c => t.exactOn c.cols) && mask i &&
+          (env.getD i AVal.top).kindOnly .float && decide (negInf ≤ lo) && decide (hi ≤ nan) then
+        some (some e)
+      else none
+    | _, _ => none
+  | _, _ => none
+
+/-- A measure's output tolerance: `SUM`, `AVG`, or `MIN` and `MAX`. -/
+def Measure.outTol (t : Tol) (mask : Nat → Bool) (env : List AVal) (N : Option Nat)
+    (m : Measure) : Option (Option Nat) :=
+  (m.tolOut t mask env N).or (m.minMaxOut t mask env)
+
+theorem foldl_min_near {e : Nat} :
+    ∀ {a b : Int} {xs ys : List Int}, (a - b).natAbs ≤ e →
+      Forall2 (fun x y => (x - y).natAbs ≤ e) xs ys → (xs.foldl min a - ys.foldl min b).natAbs ≤ e
+  | _, _, [], [], h, .nil => h
+  | a, b, x :: _, y :: _, h, .cons hxy t => by
+    simp only [List.foldl_cons]
+    refine foldl_min_near ?_ t
+    rw [Int.min_def, Int.min_def]; split <;> split <;> omega
+
+theorem foldl_max_near {e : Nat} :
+    ∀ {a b : Int} {xs ys : List Int}, (a - b).natAbs ≤ e →
+      Forall2 (fun x y => (x - y).natAbs ≤ e) xs ys → (xs.foldl max a - ys.foldl max b).natAbs ≤ e
+  | _, _, [], [], h, .nil => h
+  | a, b, x :: _, y :: _, h, .cons hxy t => by
+    simp only [List.foldl_cons]
+    refine foldl_max_near ?_ t
+    rw [Int.max_def, Int.max_def]; split <;> split <;> omega
+
+theorem foldl_min_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a → a ≤ U →
+    (∀ x ∈ xs, L ≤ x ∧ x ≤ U) → L ≤ xs.foldl min a ∧ xs.foldl min a ≤ U
+  | _, [], h1, h2, _ => ⟨h1, h2⟩
+  | a, x :: xs, h1, h2, h => by
+    have hx := h x (List.mem_cons_self ..)
+    simp only [List.foldl_cons]
+    exact foldl_min_bounds (by rw [Int.min_def]; split <;> omega) (by rw [Int.min_def]; split <;> omega)
+      fun y hy => h y (List.mem_cons_of_mem _ hy)
+
+theorem foldl_max_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a → a ≤ U →
+    (∀ x ∈ xs, L ≤ x ∧ x ≤ U) → L ≤ xs.foldl max a ∧ xs.foldl max a ≤ U
+  | _, [], h1, h2, _ => ⟨h1, h2⟩
+  | a, x :: xs, h1, h2, h => by
+    have hx := h x (List.mem_cons_self ..)
+    simp only [List.foldl_cons]
+    exact foldl_max_bounds (by rw [Int.max_def]; split <;> omega) (by rw [Int.max_def]; split <;> omega)
+      fun y hy => h y (List.mem_cons_of_mem _ hy)
+
+theorem pickFold_min_float (x : Int) :
+    ∀ cs : List Int, pickFold (fun a b => !a.le b) (.float x) (cs.map .float) = .float (cs.foldl min x)
+  | [] => rfl
+  | c :: cs => by
+    have : pickFold (fun a b => !a.le b) (.float x) ((c :: cs).map .float) =
+        pickFold (fun a b => !a.le b) (.float (min x c)) (cs.map .float) := by
+      simp only [pickFold, List.map_cons, List.foldl_cons, Value.le_def, Value.leScalar]
+      congr 1
+      rw [Int.min_def]; by_cases h : x ≤ c <;> simp [h]
+    rw [this, pickFold_min_float (min x c) cs, List.foldl_cons]
+
+theorem pickFold_max_float (x : Int) :
+    ∀ cs : List Int, pickFold (fun a b => !b.le a) (.float x) (cs.map .float) = .float (cs.foldl max x)
+  | [] => rfl
+  | c :: cs => by
+    have : pickFold (fun a b => !b.le a) (.float x) ((c :: cs).map .float) =
+        pickFold (fun a b => !b.le a) (.float (max x c)) (cs.map .float) := by
+      simp only [pickFold, List.map_cons, List.foldl_cons, Value.le_def, Value.leScalar]
+      congr 1
+      rw [Int.max_def]; by_cases h : c ≤ x <;> by_cases h' : x ≤ c <;> simp [h, h'] <;> omega
+    rw [this, pickFold_max_float (max x c) cs, List.foldl_cons]
+
+/-- Values paired as doubles within `e` codes: two lists of codes. -/
+theorem Forall2.floats {e : Nat} {lo hi : Int} :
+    ∀ {vs ws : List Value}, Forall2 (fun v w => ∃ a b, v = .float a ∧ w = .float b ∧
+      (a - b).natAbs ≤ e ∧ IsRef a ∧ lo ≤ b ∧ b ≤ hi) vs ws →
+      ∃ as bs, vs = as.map .float ∧ ws = bs.map .float ∧
+        Forall2 (fun x y => (x - y).natAbs ≤ e) as bs ∧ (∀ a ∈ as, IsRef a) ∧ ∀ b ∈ bs, lo ≤ b ∧ b ≤ hi
+  | [], [], .nil => ⟨[], [], rfl, rfl, .nil, by simp, by simp⟩
+  | _, _, .cons ⟨a, b, rfl, rfl, h, ra, hb1, hb2⟩ t => by
+    obtain ⟨as, bs, rfl, rfl, f, has, hbs⟩ := Forall2.floats t
+    refine ⟨a :: as, b :: bs, rfl, rfl, .cons h f, fun x hx => ?_, fun x hx => ?_⟩
+    · rcases List.mem_cons.1 hx with rfl | hx
+      · exact ra
+      · exact has x hx
+    · rcases List.mem_cons.1 hx with rfl | hx
+      · exact ⟨hb1, hb2⟩
+      · exact hbs x hx
+
+theorem Measure.minMaxOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {m : Measure}
+    {o : Option Nat} (h : m.minMaxOut t mask env = some o) {g g' : Relation}
+    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row) (hR : Relation.RefOn mask g)
+    {tm : Tol} {j : Nat} (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
+  unfold Measure.minMaxOut at h
+  -- The shape: `MIN` or `MAX` of `field i`.
+  obtain ⟨i, hfn, harg⟩ : ∃ i, (m.fn = .min ∨ m.fn = .max) ∧ m.arg = .field i := by
+    split at h
+    · rename_i i hf ha; exact ⟨i, .inl hf, ha⟩
+    · rename_i i hf ha; exact ⟨i, .inr hf, ha⟩
+    · cases h
+  have hs : m.fn.sorts = false := by rcases hfn with hf | hf <;> rw [hf] <;> rfl
+  cases hti : t i with
+  | none => rcases hfn with hf | hf <;> simp [hf, harg, hti] at h
+  | some e =>
+  cases hcr : colRange env i with
+  | none => rcases hfn with hf | hf <;> simp [hf, harg, hti, hcr] at h
+  | some r =>
+  obtain ⟨lo, hi⟩ := r
+  have hc : (!m.distinct && (m.filter.all fun c => t.exactOn c.cols) && mask i &&
+      (env.getD i AVal.top).kindOnly .float && decide (negInf ≤ lo) && decide (hi ≤ nan)) = true ∧
+      o = some e := by
+    rcases hfn with hf | hf <;> simp only [hf, harg, hti, hcr] at h <;> split at h <;>
+      simp_all
+  obtain ⟨hc, rfl⟩ := hc
+  simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq] at hc
+  obtain ⟨⟨⟨⟨⟨hd, hf⟩, hmask⟩, hko⟩, hlo⟩, hhi⟩ := hc
+  have ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e) :=
+    ⟨some e, by simp [harg, Expr.tol?, hti], by simp [OLe]⟩
+  have hcells := Measure.inputs_cells hd hf ha f
+  have hP : ∀ v ∈ m.inputs g, ∀ c, v = .float c → IsRef c := by
+    intro v hv c hc
+    obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hv
+    rw [harg] at hc
+    exact hR row hr i c hmask hc
+  have hQ : ∀ w ∈ m.inputs g', ∃ b, w = .float b ∧ lo ≤ b ∧ b ≤ hi := by
+    intro w hw
+    obtain ⟨hn, row, hr, rfl⟩ := Measure.mem_inputs hw
+    have hm := henv row hr i
+    rw [harg]
+    obtain ⟨b, bd, hv, hb, hbm⟩ := AVal.kindOnly_mem hko hm (by rw [harg] at hn; exact hn)
+    refine ⟨b, hv, ?_⟩
+    unfold colRange at hcr
+    split at hcr
+    · rename_i lo' hi' hint
+      simp only [Option.some.injEq, Prod.mk.injEq] at hcr
+      obtain ⟨rfl, rfl⟩ := hcr
+      rw [hint] at hb; cases hb
+      exact ⟨hbm.1 _ rfl, hbm.2 _ rfl⟩
+    · cases hcr
+  have hpairs := (hcells.and_mem hP hQ).imp (S := fun v w => ∃ a b, v = .float a ∧ w = .float b ∧
+      (a - b).natAbs ≤ e ∧ IsRef a ∧ lo ≤ b ∧ b ≤ hi) fun v w hx => by
+    obtain ⟨hcell, pv, b, rfl, hb1, hb2⟩ := hx
+    cases v with
+    | float a =>
+      have ra := pv a rfl
+      have rb : IsRef b := ⟨(show negInf ≤ b by omega), (show b ≤ nan by omega)⟩
+      have hn := Tol.cell_float_iff.1 hcell
+      rw [show fp64.canon a = a from canon_of_isRef ra, show fp64.canon b = b from canon_of_isRef rb] at hn
+      exact ⟨a, b, rfl, rfl, hn, ra, hb1, hb2⟩
+    | _ => exact hcell.elim
+  obtain ⟨as, bs, has, hbs, fab, ras, rbs⟩ := Forall2.floats hpairs
+  rw [Measure.eval_eq hs, Measure.eval_eq hs, has, hbs]
+  have hL : ∀ a ∈ as, negInf ≤ a ∧ a ≤ nan := fun a h => ras a h
+  have hL' : ∀ b ∈ bs, negInf ≤ b ∧ b ≤ nan := fun b h => by have := rbs b h; omega
+  cases fab with
+  | nil => rcases hfn with hf | hf <;> rw [hf] <;> exact Tol.cell_null _ _
+  | cons hab fab' =>
+    rename_i a b as' bs'
+    have ba := hL a (List.mem_cons_self ..)
+    have bb := hL' b (List.mem_cons_self ..)
+    have hL1 : ∀ x ∈ as', negInf ≤ x ∧ x ≤ nan := fun x h => hL x (List.mem_cons_of_mem _ h)
+    have hL2 : ∀ x ∈ bs', negInf ≤ x ∧ x ≤ nan := fun x h => hL' x (List.mem_cons_of_mem _ h)
+    rcases hfn with hf | hf <;> rw [hf] <;>
+      simp only [List.map_cons, AggFn.apply]
+    · rw [pickFold_min_float, pickFold_min_float]
+      have r1 := foldl_min_bounds ba.1 ba.2 hL1
+      have r2 := foldl_min_bounds bb.1 bb.2 hL2
+      refine Tol.cell_float hj ?_
+      rw [show fp64.canon (as'.foldl min a) = _ from canon_of_isRef r1,
+        show fp64.canon (bs'.foldl min b) = _ from canon_of_isRef r2]
+      exact foldl_min_near hab fab'
+    · rw [pickFold_max_float, pickFold_max_float]
+      have r1 := foldl_max_bounds ba.1 ba.2 hL1
+      have r2 := foldl_max_bounds bb.1 bb.2 hL2
+      refine Tol.cell_float hj ?_
+      rw [show fp64.canon (as'.foldl max a) = _ from canon_of_isRef r1,
+        show fp64.canon (bs'.foldl max b) = _ from canon_of_isRef r2]
+      exact foldl_max_near hab fab'
+
+theorem Measure.outTol_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
+    {m : Measure} {o : Option Nat} (h : m.outTol t mask env N = some o) {g g' : Relation}
+    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
+    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) {tm : Tol} {j : Nat}
+    (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
+  unfold Measure.outTol at h
+  cases h1 : m.tolOut t mask env N with
+  | some o' =>
+    rw [h1] at h; simp only [Option.some_or, Option.some.injEq] at h; subst h
+    exact Measure.tolOut_cell h1 f henv hN hR hj
+  | none =>
+    rw [h1] at h; simp only [Option.none_or] at h
+    exact Measure.minMaxOut_cell h f henv hR hj
+
+theorem Measure.outTol_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
+    {m : Measure} {o : Option Nat} (h : m.outTol t mask env N = some o) : m.orderFree = true := by
+  unfold Measure.outTol at h
+  cases h1 : m.tolOut t mask env N with
+  | some o' => exact Measure.tolOut_orderFree h1
+  | none =>
+    rw [h1] at h; simp only [Option.none_or] at h
+    unfold Measure.minMaxOut at h
+    unfold Measure.orderFree
+    split at h
+    · rename_i hf _; rw [hf]; rfl
+    · rename_i hf _; rw [hf]; rfl
+    · cases h
+
 theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
-    {ms : List Measure} (hos : (ms.map (·.tolOut t mask env N)).all Option.isSome = true)
+    {ms : List Measure} (hos : (ms.map (·.outTol t mask env N)).all Option.isSome = true)
     {g g' : Relation} (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
     (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) :
-    (Tol.ofOuts (ms.map (·.tolOut t mask env N))).Rows (ms.map (·.eval g)) (ms.map (·.eval g')) := by
+    (Tol.ofOuts (ms.map (·.outTol t mask env N))).Rows (ms.map (·.eval g)) (ms.map (·.eval g')) := by
   refine ⟨by simp, fun j => ?_⟩
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
   cases hj : ms[j]? with
@@ -1178,18 +1401,18 @@ theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Opt
     simp only [Option.map_some, Option.getD_some]
     have hm : m ∈ ms := List.mem_of_getElem? hj
     obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1
-      (List.all_eq_true.1 hos _ (List.mem_map_of_mem (f := (·.tolOut t mask env N)) hm))
-    exact Measure.tolOut_cell ho f henv hN hR
+      (List.all_eq_true.1 hos _ (List.mem_map_of_mem (f := (·.outTol t mask env N)) hm))
+    exact Measure.outTol_cell ho f henv hN hR
       (by simp [Tol.ofOuts, List.getD_eq_getElem?_getD, List.getElem?_map, hj, ho])
 
 /-- **`GROUP BY` on exact keys with measures the fold bounds**: the groups
 pair up, and each output row is within the measures' tolerances. -/
 theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask : Nat → Bool}
     {env : List AVal} {N : Option Nat} (hg : gs.all (fun g => t.exactOn g.cols) = true)
-    (hos : (ms.map (·.tolOut t mask env N)).all Option.isSome = true) {a p : Relation}
+    (hos : (ms.map (·.outTol t mask env N)).all Option.isSome = true) {a p : Relation}
     (f : Forall2 t.Rows a p) (henv : ∀ row ∈ p, EnvMem env row)
     (hN : ∀ n, N = some n → p.length ≤ n) (hR : Relation.RefOn mask a) :
-    Forall2 (Tol.cat gs.length Tol.exact (Tol.ofOuts (ms.map (·.tolOut t mask env N)))).Rows
+    Forall2 (Tol.cat gs.length Tol.exact (Tol.ofOuts (ms.map (·.outTol t mask env N)))).Rows
       (aggregateEval gs ms a) (aggregateEval gs ms p) := by
   have hkey : ∀ x y, t.Rows x y → groupKey gs x = groupKey gs y := fun x y r =>
     List.map_congr_left fun g hg' => Expr.eval_rows (List.all_eq_true.1 hg g hg') r
@@ -1331,7 +1554,7 @@ def Rel.tol (cat : Catalog) (K : KnowledgeEnv) (T : String → Tol) : Rel → Op
   | .distinct r => (r.tol cat K T).bind fun t =>
       if t.exactBelow (r.arity cat) then some Tol.exact else none
   | .aggregate r gs ms => (r.tol cat K T).bind fun t =>
-      let os := ms.map (·.tolOut t (r.refCols cat) (r.analyse cat K).cols (r.rowsK K))
+      let os := ms.map (·.outTol t (r.refCols cat) (r.analyse cat K).cols (r.rowsK K))
       if gs.all (fun g => t.exactOn g.cols) && os.all Option.isSome then
         some (Tol.cat gs.length Tol.exact (Tol.ofOuts os))
       else none
@@ -1458,7 +1681,7 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
       obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hR hwf.1 hr
       have hof : ∀ m ∈ ms, m.orderFree = true := fun m hm => by
         obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 (List.all_eq_true.1 hok.2 _ (List.mem_map_of_mem hm))
-        exact Measure.tolOut_orderFree ho
+        exact Measure.outTol_orderFree ho
       have henv : ∀ row ∈ p, EnvMem (r.analyse cat K).cols row := fun row h' =>
         (Rel.analyse_sound hcat hK hwf.1 (sz := false) (by simp)).1 row (hp.mem_iff.1 h')
       have hN : ∀ n, r.rowsK K = some n → p.length ≤ n := fun n hn => by
@@ -1737,8 +1960,10 @@ private def exSum (r : Rel) : Option (List Bool) :=
 #guard exCols (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }]) == none
 #guard exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2, distinct := true }]) == none
 #guard exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .un .fneg (.field 2) }]) == none
--- `MIN` of the double waits for its own row (#929 step 2).
-#guard exSum (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }]) == none
+-- `MIN` and `MAX` of the double, of doubles only in a range of reference codes, carry its tolerance.
+#guard exSum (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }, { fn := .max, arg := .field 2 }]) ==
+  some [true, true, false, false]
+#guard exCols (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }]) == none
 
 private def tie : Tol := fun c => if c = 0 then some 2 else none
 
