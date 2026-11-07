@@ -94,10 +94,11 @@ difference from what the partial rows report ([#428](https://github.com/Alexande
 Each shard reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split double,
 after the columns `floatCombine` reads (`floatBoundParts`). The counts give
 `n`, `m` and `k`, the `SUM(|x|)`s give `A`, and the `MAX(|x|)`s show the
-values far from overflow. The core trusts `core_shard_sum` and
-`core_shard_avg` as two axioms (`floatSum_twoPhase`, `floatAvg_twoPhase` in
-`Partition.lean`, with the tolerances defined there as here), and
-`floatSplit_sum` and `floatSplit_avg` apply them to a group's shards:
+values far from overflow. These bound an engine's own two-phase sum. Since
+D25 the core proves Lean's own split on integers, without axioms
+(`twoPhaseSum_near`, `twoPhaseAvg_near` in `Partition.lean`, the mean with
+`FloatCode.div_scaled_err` for its native division), and `floatSplit_sum` and
+`floatSplit_avg` apply them to a group's shards:
 `floatPartial`'s `SUM` and `COUNT`, combined as `floatCombine` combines them,
 against the measure on the whole group. `absPart_eval` says what the
 `SUM(|x|)` column holds.
@@ -147,11 +148,12 @@ results from any co-moment within `E` of `C`:
 
 ## In contracts
 
-The contract checker trusts `core_sum`, `core_avg` and `core_sign` as three
-axioms in `SubstraitLean/Aggregate.lean` (`floatSum_mem`, `floatAvg_mem`,
-`floatSum_sign`), with the tolerances `FloatCode.sumTolScaled` and
-`avgTolScaled` defined there as here. They cost a few integer operations per
-measure. `#print axioms Substrait.contract_sound` lists them.
+The contract checker uses `floatSumCR_mem`, `floatAvgCR_mem` and
+`floatSumCR_sign` (`SubstraitLean/FloatExact.lean`), theorems about the
+reference's correctly rounded sum (D25), with the tolerances
+`FloatCode.sumTolScaled` and `avgTolScaled` defined there as here. Before D25
+they were axioms about the sequential sum, proved here as `core_sum`,
+`core_avg` and `core_sign`. They cost a few integer operations per measure.
 
 - Signs are exact: a `SUM` or `AVG` of doubles `≥ 0` is `≥ 0`, and of
   doubles `≤ 0` is `≤ 0`.
@@ -246,8 +248,8 @@ proves without axioms that the result is the nearest double
 (`FloatCode.ofExactDiv_within`), within `u` of the exact value relatively
 (`FloatCode.ofExact_rel`), monotone, and a function of the multiset
 (`floatSumCR_perm`). `floatSumCR_mem`, `floatAvgCR_mem` and `floatSumCR_sign`
-state the checker's bounds of the sequential sum (`floatSum_mem`,
-`floatAvg_mem`, `floatSum_sign`) as theorems of it.
+state the checker's bounds, which were axioms of the sequential sum before
+D25, as theorems of it.
 
 An engine's result is then within its order's bound of the exact sum plus
 `u` of it:

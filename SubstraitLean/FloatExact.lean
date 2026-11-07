@@ -15,9 +15,9 @@ infinity gives it.
 
 The value depends on the multiset of values only (`floatSumCR_perm`), and
 everything here is integer arithmetic, with no native `Float` and no axiom.
-The bounds the contract checker assumes of the sequential sum
-(`floatSum_mem`, `floatAvg_mem` and `floatSum_sign` in `Aggregate.lean`)
-are theorems of it (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`).
+The bounds the contract checker assumed of the sequential sum before D25
+(the axioms `floatSum_mem`, `floatAvg_mem` and `floatSum_sign`, retired by
+#916) are theorems of it (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`).
 How far an engine's own order of additions may be from it is
 `epsilon_sum_cr` in `float-bounds/`.
 
@@ -516,7 +516,7 @@ theorem isFin_of_scaled {c : Int} (h : (scaled c).natAbs ≤ 2 ^ 1474) : IsFin c
 
 set_option exponentiation.threshold 2100 in
 /-- The bounds of a `SUM` of doubles that the contract checker uses, as
-`floatSum_mem` (`Aggregate.lean`) states them of the sequential sum, with
+the retired axiom `floatSum_mem` stated them of the sequential sum, with
 half an ulp in place of the order's error. -/
 theorem floatSumCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
     (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
@@ -564,7 +564,7 @@ theorem floatSumCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
   constructor <;> omega
 
 set_option exponentiation.threshold 2100 in
-/-- The bounds of an `AVG` of doubles, as `floatAvg_mem` states them. -/
+/-- The bounds of an `AVG` of doubles, as the retired `floatAvg_mem` stated them. -/
 theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
     (_h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
     (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
@@ -623,7 +623,7 @@ theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
   constructor <;> omega
 
 /-- Doubles all at least `0` (at most `0`) have a `SUM` and an `AVG` at least
-`0` (at most `0`), as `floatSum_sign` states of the sequential sum. -/
+`0` (at most `0`), as the retired `floatSum_sign` stated of the sequential sum. -/
 theorem floatSumCR_sign {cs : List Int} (_hne : cs ≠ []) :
     ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSumCR (cs.map .int) ∧ 0 ≤ floatAvgCR (cs.map .int)) ∧
       ((∀ c ∈ cs, c ≤ 0) → floatSumCR (cs.map .int) ≤ 0 ∧ floatAvgCR (cs.map .int) ≤ 0) := by
