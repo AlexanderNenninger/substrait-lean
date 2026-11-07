@@ -109,6 +109,7 @@ generators, then the trusted reading and writing.
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
 | `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
+| `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |

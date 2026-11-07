@@ -30,6 +30,7 @@ import SubstraitLean.Obligations
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
 import SubstraitLean.FloatExact
+import SubstraitLean.FloatMoments
 
 /-!
 # Examples
@@ -182,6 +183,8 @@ end Substrait.Examples
 #print axioms Substrait.floatAvgCR_mem
 #print axioms Substrait.floatSumCR_sign
 #print axioms Substrait.floatSumCR_perm
+#print axioms Substrait.FloatCode.sqrtMag_near
+#print axioms Substrait.comomentNum_nonneg
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
