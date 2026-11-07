@@ -145,73 +145,78 @@ end Generic
 
 /-! ## Equi-join keys -/
 
-/-- The expression on the columns after the first `n`, if it reads only those. -/
-def Expr.dropCols (n : Nat) : Expr → Option Expr
+/-- The expression on the columns after the first `n` of the row, if it reads
+only those; the `k` fields in front are lambda parameters (D28), kept. -/
+def Expr.dropColsAt (k n : Nat) : Expr → Option Expr
   | .lit v => some (.lit v)
-  | .field i => if n ≤ i then some (.field (i - n)) else none
-  | .un f a => match a.dropCols n with
+  | .field i => if i < k then some (.field i) else if k + n ≤ i then some (.field (i - n)) else none
+  | .un f a => match a.dropColsAt k n with
     | some a' => some (.un f a')
     | none => none
-  | .bin f a b => match a.dropCols n, b.dropCols n with
+  | .bin f a b => match a.dropColsAt k n, b.dropColsAt k n with
     | some a', some b' => some (.bin f a' b')
     | _, _ => none
-  | .ifThen c t e => match c.dropCols n, t.dropCols n, e.dropCols n with
+  | .ifThen c t e => match c.dropColsAt k n, t.dropColsAt k n, e.dropColsAt k n with
     | some c', some t', some e' => some (.ifThen c' t' e')
     | _, _, _ => none
-  | .hof f l body => match l.dropCols n with
-    | some l' => some (.hof f l' body)
-    | none => none
+  | .hof f l body => match l.dropColsAt k n, body.dropColsAt (k + 1) n with
+    | some l', some body' => some (.hof f l' body')
+    | _, _ => none
 
-theorem Expr.eval_dropCols {x y : Row} : ∀ {e e' : Expr}, e.dropCols x.length = some e' →
-    e.eval (x ++ y) = e'.eval y
-  | .lit _, e', h => by simp only [dropCols, Option.some.injEq] at h; subst h; rfl
-  | .field i, e', h => by
-    simp only [dropCols] at h
+/-- The expression on the columns after the first `n`, if it reads only those. -/
+def Expr.dropCols (n : Nat) : Expr → Option Expr := Expr.dropColsAt 0 n
+
+theorem Expr.eval_dropColsAt {x y : Row} : ∀ {e e' : Expr} (ps : Row),
+    e.dropColsAt ps.length x.length = some e' → e.eval (ps ++ (x ++ y)) = e'.eval (ps ++ y)
+  | .lit _, e', _, h => by simp only [dropColsAt, Option.some.injEq] at h; subst h; rfl
+  | .field i, e', ps, h => by
+    simp only [dropColsAt] at h
     split at h
     · rename_i hi
       simp only [Option.some.injEq] at h; subst h
-      simp [eval, List.getD, List.getElem?_append_right hi]
-    · simp at h
-  | .un f a, e', h => by
-    simp only [dropCols] at h
+      simp [eval, List.getD, List.getElem?_append_left hi]
+    · split at h
+      · rename_i hi hk
+        simp only [Option.some.injEq] at h; subst h
+        simp only [eval, List.getD]
+        rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega),
+          List.getElem?_append_right (by omega)]
+        congr 2; omega
+      · simp at h
+  | .un f a, e', ps, h => by
+    simp only [dropColsAt] at h
     split at h
     · rename_i a' ha; simp only [Option.some.injEq] at h; subst h
-      simp [eval, eval_dropCols ha]
+      simp [eval, eval_dropColsAt ps ha]
     · simp at h
-  | .bin f a b, e', h => by
-    simp only [dropCols] at h
+  | .bin f a b, e', ps, h => by
+    simp only [dropColsAt] at h
     split at h
     · rename_i a' b' ha hb; simp only [Option.some.injEq] at h; subst h
-      simp [eval, eval_dropCols ha, eval_dropCols hb]
+      simp [eval, eval_dropColsAt ps ha, eval_dropColsAt ps hb]
     · simp at h
-  | .ifThen c t el, e', h => by
-    simp only [dropCols] at h
+  | .ifThen c t el, e', ps, h => by
+    simp only [dropColsAt] at h
     split at h
     · rename_i c' t' e'' hc ht he; simp only [Option.some.injEq] at h; subst h
-      simp [eval, eval_dropCols hc, eval_dropCols ht, eval_dropCols he]
+      simp [eval, eval_dropColsAt ps hc, eval_dropColsAt ps ht, eval_dropColsAt ps he]
     · simp at h
-  | .hof f l body, e', h => by
-    simp only [dropCols] at h
+  | .hof f l body, e', ps, h => by
+    simp only [dropColsAt] at h
     split at h
-    · rename_i l' hl; simp only [Option.some.injEq] at h; subst h
-      simp [eval, eval_dropCols hl]
+    · rename_i l' body' hl hb; simp only [Option.some.injEq] at h; subst h
+      simp only [eval, eval_dropColsAt ps hl]
+      congr 1; funext v
+      exact eval_dropColsAt (v :: ps) hb
     · simp at h
 
-theorem Expr.eval_append_of_refsLtB {x : Row} (y : Row) : ∀ {e : Expr}, e.refsLtB x.length = true →
-    e.eval (x ++ y) = e.eval x
-  | .lit _, _ => rfl
-  | .field i, h => by
-    simp only [refsLtB, decide_eq_true_eq] at h
-    simp [eval, List.getD, List.getElem?_append_left h]
-  | .un f a, h => by simp only [refsLtB] at h; simp [eval, eval_append_of_refsLtB y h]
-  | .bin f a b, h => by
-    simp only [refsLtB, Bool.and_eq_true] at h
-    simp [eval, eval_append_of_refsLtB y h.1, eval_append_of_refsLtB y h.2]
-  | .ifThen c t e, h => by
-    simp only [refsLtB, Bool.and_eq_true] at h
-    simp [eval, eval_append_of_refsLtB y h.1.1, eval_append_of_refsLtB y h.1.2,
-      eval_append_of_refsLtB y h.2]
-  | .hof f l body, h => by simp only [refsLtB] at h; simp [eval, eval_append_of_refsLtB y h]
+theorem Expr.eval_dropCols {x y : Row} {e e' : Expr} (h : e.dropCols x.length = some e') :
+    e.eval (x ++ y) = e'.eval y :=
+  Expr.eval_dropColsAt (x := x) (y := y) [] h
+
+theorem Expr.eval_append_of_refsLtB {x : Row} (y : Row) {e : Expr} (h : e.refsLtB x.length = true) :
+    e.eval (x ++ y) = e.eval x :=
+  Expr.eval_append y (Expr.refsLtB_iff.mp h) rfl
 
 /-- A join key: `left` on the left row equals `right` on the right row
 wherever the condition holds, and is not NULL there if `strict`. -/

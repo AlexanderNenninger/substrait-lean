@@ -43,7 +43,13 @@ theorem Expr.evalP_subst {p : Profile} {row : Row} {σ : List Expr} {vs : List V
   | .un f a => by simp only [subst, evalP, evalP_subst hσ a]
   | .bin f a b => by simp only [subst, evalP, evalP_subst hσ a, evalP_subst hσ b]
   | .ifThen c t e => by simp only [subst, evalP, evalP_subst hσ c, evalP_subst hσ t, evalP_subst hσ e]
-  | .hof f l b => by simp only [subst, evalP, evalP_subst hσ l]
+  | .hof f l b => by
+    simp only [subst, evalP, evalP_subst hσ l]
+    congr 1; funext v; congr 1; funext x
+    refine evalP_subst (row := x :: row) (vs := x :: vs) (fun i => ?_) b
+    cases i with
+    | zero => rfl
+    | succ i => simp only [List.getD_cons_succ, getD_map_shift, Expr.evalP_shift_cons, hσ]
 
 theorem Outcome.bind_error {o : Outcome} {g : Value → Outcome} (h : o.err?.isSome) :
     Outcome.err? (o >>= g) |>.isSome := by
@@ -423,7 +429,7 @@ theorem Lowering.lower_correct {p : Profile} (L : Lowering p) :
     obtain ⟨l', hl, b', hb, rfl⟩ := h
     simp only [Expr.evalP]
     exact Outcome.agree_bind (L.lower_correct l l' hl row) fun v =>
-      HoFn.applyP_agree f v fun x => L.lower_correct b b' hb [x]
+      HoFn.applyP_agree f v fun x => L.lower_correct b b' hb (x :: row)
 
 /-- **A lowered expression is exact** under the engine's profile. -/
 theorem Lowering.lower_exact {p : Profile} (L : Lowering p) {e t : Expr} (hs : L.lower e = some t) :

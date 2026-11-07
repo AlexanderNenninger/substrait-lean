@@ -148,14 +148,16 @@ ORed and ANDed in Kleene logic, `FALSE` and `TRUE` for `[]`), `transform`
 and `filter` (the elements the predicate is `TRUE` for). Each is `NULL` for a
 NULL list (`HoFn.apply`).
 
-**Lambdas are closed.** The body reads only its parameter, as field 0, and
-constants; it is evaluated on the one-field row `[x]`. So `Expr.eval` stays
-structurally recursive, the body is analysed like any expression (over
-`[AVal.top]`, without facts), and the functions that renumber a row's columns
-(`mapFields`, `shift`, `subst`) leave it alone. Reading the row's columns or
-an outer lambda's parameter (Substrait's `steps_out` > 0) is refused for now;
-both need parameter environments in `eval` and its proofs. Ibis's
-`contains(v)` therefore takes a constant `v`.
+Lambdas have lexical scope
+([D28](core-semantics.md#d28-lambdas-have-lexical-scope)). The body is
+evaluated on `x :: row`: it reads its parameter as field 0 and the row's
+column `i` as field `i + 1`, and a nested lambda reads its own parameter as
+0 and the outer one as 1. The functions that renumber a row's columns
+(`mapFields`, `shift`, `subst`, `dropCols`) renumber a body under one binder,
+and the analyses read a body over the element in front of the row (over
+`AVal.top` for the element, without facts). Ibis's `contains(v)` still takes
+a constant `v`; Polars runs lambdas that read only their parameter
+(`pl.element()` sees nothing else), and refuses the others.
 
 * **Errors:** the body runs on every element, so its issues on any element
   are the row's (`Expr.issues`, `Expr.mayIssues_sound`). `verify` reports
@@ -163,9 +165,11 @@ both need parameter environments in `eval` and its proofs. Ibis's
 * **Contracts:** `any_match` and `all_match` give a boolean or NULL;
   `transform` and `filter` a list or NULL (`HoFn.abs`).
 * **Plans:** Substrait's `Lambda` with one parameter. Its body's references
-  are `lambdaParameterReference`s; the parser reads them as references into
-  `[x]` (`Parse.closeBody`) and the writer writes them back
-  (`Write.paramRefs`).
+  are `lambdaParameterReference`s (with `steps_out` for an outer lambda's)
+  and `rootReference`s; the parser reads them into `x :: row`
+  (`Parse.openBody`) and the writer writes them back (`Write.closeRefs`).
+* **Kinds:** `Expr.kindT` types a body under the element's kind in front of
+  the row's (`Rel.kinds_sound`, `Kinds.lean`).
 
 ## Engines
 
@@ -189,7 +193,7 @@ dialects refuse lambdas too, DuckDB's included for now.
 
 ## Types in plans
 
-`Parse.Kind` gains `list (k : Kind)` (Substrait's `List` type), so the writer
+`Kind` (`Value.lean`) has `list (k : Kind)` (Substrait's `List` type), so the writer
 can type list literals, empty lists and NULLs. `struct (ks : List Kind)` is
 Substrait's `Struct` type, positional (its `DecidableEq` is written by hand,
 as `Value`'s is). List literals are `{"literal": {"list": {"values": […]}}}`,
@@ -202,12 +206,11 @@ the columns.
 
 ## Follow-ups (#94)
 
-Done: struct field access, list elements and `cardinality`; closed lambdas
-with `any_match`, `all_match`, `transform` and `filter` (see above), on
-Polars. Still to do:
+Done: struct field access, list elements and `cardinality`; lambdas with
+`any_match`, `all_match`, `transform` and `filter` (see above), on Polars,
+reading the row and outer parameters in the model (D28). Still to do:
 
-* lambdas that read the row's columns or an outer lambda's parameter (so
-  `contains` of a column);
+* lambdas that read the row on Polars, and Ibis's `contains` of a column;
 * struct construction;
 * structs and lambdas in the SQL dialects (lists run on DuckDB);
 * slicing, and `list.sum`/`min`/`max`/`sort`/`unique`.

@@ -24,16 +24,6 @@ def wrow (x : Row × Int) : Row := x.1 ++ [.int x.2]
 
 def ZSet.encode (z : ZSet) : Relation := List.map wrow z
 
-/-- Make room for one extra column at position `n`. -/
-def Expr.shift (n : Nat) : Expr → Expr
-  | .lit v => .lit v
-  | .field i => .field (if i < n then i else i + 1)
-  | .un f a => .un f (a.shift n)
-  | .bin f a b => .bin f (a.shift n) (b.shift n)
-  | .ifThen c t e => .ifThen (c.shift n) (t.shift n) (e.shift n)
-  -- A lambda's body reads its parameter, not the row.
-  | .hof f l b => .hof f (l.shift n) b
-
 /-- Columns `0..n-1`, then `n+1..n+k`, then `last`: drops the column at `n`
 and moves `last` (the weight) to the end. -/
 def spliceIdx (n k last : Nat) : List Nat :=
@@ -98,25 +88,8 @@ theorem splice_eval (xs ys : Row) (w : Value) (rest : Row) (last : Nat)
 theorem Expr.eval_shift {e : Expr} (xa xb rest : Row) (w : Value)
     (he : e.refsLt (xa.length + xb.length)) :
     (e.shift xa.length).eval ((xa ++ [w]) ++ (xb ++ rest)) = e.eval (xa ++ xb) := by
-  induction e with
-  | lit => rfl
-  | field i =>
-    simp only [refsLt] at he
-    simp only [shift, eval, List.getD]
-    split
-    · rename_i h
-      rw [List.append_assoc, List.getElem?_append_left h, List.getElem?_append_left h]
-    · rename_i h
-      have h2 : i - xa.length < xb.length := by omega
-      have hl : (xa ++ [w] ++ (xb ++ rest))[i + 1]? = xb[i - xa.length]? := by
-        rw [List.append_assoc, List.getElem?_append_right (by omega),
-          show i + 1 - xa.length = (i - xa.length) + 1 by omega, List.singleton_append,
-          List.getElem?_cons_succ, List.getElem?_append_left h2]
-      rw [hl, List.getElem?_append_right (by omega)]
-  | un f a ih => simp only [shift, eval, ih he]
-  | bin f a b iha ihb => simp only [shift, eval, iha he.1, ihb he.2]
-  | ifThen c t e ihc iht ihe => simp only [shift, eval, ihc he.1, iht he.2.1, ihe he.2.2]
-  | hof f l b ihl _ => simp only [shift, eval, ihl he]
+  rw [List.append_assoc, List.singleton_append, Expr.eval_shift_insert, ← List.append_assoc,
+    Expr.eval_append rest he (by simp)]
 
 /-! ## Arity of Z-set results -/
 
