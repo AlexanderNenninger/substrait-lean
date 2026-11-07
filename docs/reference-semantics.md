@@ -46,7 +46,9 @@ to the engine:
 * the row `FIRST`, `LAST`, `collect` and `STRING_AGG` take first where their
   order ties (any row without an order, as in Ibis's `distinct(on=)`);
 * a statistical aggregate's value (`VARIANCE`, `STDDEV`, `COVAR_*`, `CORR`),
-  within its generic properties (`StatProps`, with #85).
+  within its generic properties (`StatProps`, with #85) before D30; since
+  D30 the reference's is the exact moments rounded once, and the generic
+  properties are an engine's.
 
 A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
@@ -309,8 +311,8 @@ Design notes: [nested-values.md](nested-values.md).
 | Topic | Reference | Status |
 |---|---|---|
 | `SUM` / `AVG` | The exact sum of the values as dyadic rationals, rounded once to the nearest double, ties to even; `AVG` the exact sum divided by the count, rounded once (`floatSumCR`, `floatAvgCR`, [D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)). A NaN, or `+∞` with `-∞`, gives NaN; one kind of infinity gives it; a sum past the largest double is `±∞`. The value does not depend on the order of the rows (`floatSumCR_perm`), and the mean of three `0.1` is `0.1`. Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by half an ulp (`floatSumCR_mem`, `floatAvgCR_mem`, proved without axioms). An engine adds in its own order, within the plan's bound of this value (`epsilon_sum_cr` in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `reproducible=` accepts a tolerance on doubles, and `tolerance=True` reports a proved bound on the difference (`floatSplit_sum`); engines that don't fix the order are refused unless `deterministic=True` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
-| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates) (#54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); over a window, exact on DuckDB (see [Windows](#windows)); for two-pass and for DuckDB's Welford and Chan, the result is within a proved bound that scales with the spread of the values ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
-| `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there, and so does the SQL lift with `semantics="duckdb"`, `duckdb-corr`). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
+| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. The exact moments rounded once (D30); each engine's own algorithm is within the plan's bound of it ([Statistical aggregates](#statistical-aggregates), #54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); over a window on DuckDB, with no bound yet ([Windows](#windows)); for two-pass and for DuckDB's Welford and Chan, the result is within a proved bound that scales with the spread of the values ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
+| `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). The exact co-moments rounded once (D30); each engine's own algorithm is within the plan's bound of it ([Statistical aggregates](#statistical-aggregates)): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there, and so does the SQL lift with `semantics="duckdb"`, `duckdb-corr`). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)) and Polars, whose `max` skips NaN, by the shim `max_nan_greatest` ([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)); DataFusion (whose grouped min/max of doubles is not IEEE) refuses them until #271 |
 
 ### Statistical aggregates
@@ -321,9 +323,13 @@ with Chan's merge, Polars 2.1 a two-pass per block of 128 values when
 ungrouped and Welford when grouped (`characterization/*/facts/`, ids
 `duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
 `polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
-The reference picks none. It allows any result with the generic properties
-that every reasonable algorithm keeps (`StatProps` in
-`SubstraitLean/StatProps.lean`, the set `AggFn.Allowed` uses). For `n ≤ 2³²`
+The reference picks none. Since [D30](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)
+its value is the exact moments rounded once (`varOf`, `covOf`, `corrOf`): one
+value, whatever the order of the rows. Before D30 it allowed any result with
+the generic properties below; they are now what an engine's algorithm may
+give (`StatProps` in `SubstraitLean/StatProps.lean`, `StatAlgo` in
+`AllowedP.lean`), and each engine is within the plan's bound of the
+reference. For `n ≤ 2³²`
 finite values at most `2³⁹⁸`, with `u = 2⁻⁵³`, `tiny = 2⁻¹⁰²²`, the exact
 co-moments `C = Σxy − Σx · Σy / n`, `S_xx` and `S_yy`, and
 `Q' = Σ (|xᵢ| + tiny)²` of each side:
@@ -340,14 +346,14 @@ co-moments `C = Σxy − Σx · Σy / n`, `S_xx` and `S_yy`, and
 - `|CORR| ≤ 1 + 3E/L + 8u`, `E = 447 n u R + 11883 n² u² (Q'_x + Q'_y) + 2379 n² u · tiny`
   (`corrErr`), where `R` is at least `√(Q' S)` of each side, `√(Q'_x S_yy)`,
   `√(Q'_y S_xx)` and `√(S_xx S_yy)`, when the co-moments of both sides are at
-  least `L ≥ 8E`. Without such a lower bound `CORR` can be any double, and no
-  engine clamps it to `[−1, 1]`.
+  least `L ≥ 8E`. Without such a lower bound `CORR` can be any double; the
+  writers clamp each engine's to `[−1, 1]` (D30).
 
 The bounds scale with the spread of the values: for values near `10⁶` that
 vary by about `1`, the variance of `10⁶` of them is within about `2 · 10⁻²`.
 `StatProps` states each square root by a rational witness above it, so the
 core needs no square roots. The bounds are proved for the two-pass algorithm
-(the reference's own) and for DuckDB's Welford update with Chan's merge in any
+and for DuckDB's Welford update with Chan's merge in any
 tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
 DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
 formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
@@ -401,7 +407,7 @@ The rules for decimals are in [Decimals](#decimals).
 | `FIRST_VALUE(x IGNORE NULLS)`, `LAST_VALUE(…)` | The frame's first (last) non-NULL `x` in the window's order, NULL without one: the measure `FIRST` (`LAST`) over the frame, whose rows come in that order (`Parse.parseWindow`). Last observation carried forward is `LAST_VALUE(x IGNORE NULLS)` over `ROWS UNBOUNDED PRECEDING`. | ✓ on DuckDB; other engines refuse it until #271 (#811) |
 | `RANGE` frames with an `INTERVAL` | A constant interval of days or less, over one timestamp (in microseconds) or date (whole days) sort key; months and years have no fixed length and are refused. | ✓ (#811) |
 | `SUM`, `AVG`, `VARIANCE` and `STDDEV` of doubles over a frame | The measure over the frame's rows, as the aggregate. | Run, with no bound on the column yet ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)): `Report.epsilon` gives `"abs": null` with the issue, the route is observed on tested evidence, and a tolerance stated on the column is refused. #1032 lifts it with each engine's window algorithm. |
-| `VARIANCE` / `STDDEV` over a frame | The reference's own two passes over the frame's doubles (`varOf`): their mean as a sum from `0.0` in frame order over the count, then the squared deviations added in the same order, over `n - 1` or `n`, at least `0`, and the square root for `STDDEV`. NULL, NaN and an infinity as for the aggregate. | ✓ on DuckDB, which computes these passes over the frame's list ([`window_float_var`](../python/src/sverify/sql/duckdb.py)); other engines refuse it until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271); `COVAR_*` and `CORR` over a frame are refused |
+| `VARIANCE` / `STDDEV` over a frame | `varOf` of the frame's doubles: the exact moments rounded once (D30). NULL, NaN and an infinity as for the aggregate. | ✓ on DuckDB, its own `VAR_*` or `STDDEV_*` clamped at `0`, with no bound on the column yet ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)); other engines refuse it until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271); `COVAR_*` and `CORR` over a frame are refused |
 
 ## Relations
 
@@ -622,4 +628,5 @@ these links connect it to a real run.
 | Engine tiers | [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211) |
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
 | Float aggregates as correctly rounded exact sums, two NULL equalities, the size hypothesis, lexical lambdas | [core-semantics.md](core-semantics.md#decisions): D25 to D28, [#922](https://github.com/AlexanderNenninger/substrait-lean/issues/922) |
+| Statistical aggregates as correctly rounded exact moments | [core-semantics.md](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments): D30, [#918](https://github.com/AlexanderNenninger/substrait-lean/issues/918) |
 | The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |
