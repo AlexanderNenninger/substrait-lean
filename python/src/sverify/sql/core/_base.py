@@ -884,10 +884,12 @@ class Dialect:
         """`days` days, as a RANGE offset over a DATE."""
         return f"INTERVAL '{days}' DAY"
 
-    def window_float_sum(self, v: str, over: str) -> str:
+    def window_float_sum(self, v: str, over: str, moving: bool) -> str:
         """`floatSumCR` of the frame's doubles (D25): the engine's own `SUM`,
         within the plan's bound where its window algorithm sums the frame's
-        own values (`window_sum_algo`, #1032)."""
+        own values (`window_sum_algo`, #1032). `moving`: rows leave the
+        frame (`frame_moves`), where an engine that slides subtracts the
+        rows that leave it."""
         return f"SUM({v}) {over}"
 
     def window_int_sum(self, v: str, over: str) -> str:
@@ -1092,6 +1094,13 @@ class Frame:
 
 
 WHOLE = Frame(False, ("unbounded", 0), ("unbounded", 0))
+
+
+def frame_moves(fr: Frame) -> bool:
+    """Whether a row can leave `fr` as the window advances: every frame but
+    the whole partition and a running one (`UNBOUNDED PRECEDING` to `CURRENT
+    ROW`), which only grow."""
+    return fr.lo[0] != "unbounded" or fr.hi not in (("unbounded", 0), ("preceding", 0))
 
 
 @dataclass(frozen=True)
@@ -4156,7 +4165,7 @@ class _Writer:
                     w = self.framed(f.frame, partition, keys, peers, sort, ks)
                 if f.fn == "agg":
                     assert f.measure is not None
-                    sql = self.window_measure(f.measure, col, ks, w)
+                    sql = self.window_measure(f.measure, col, ks, w, frame_moves(f.frame))
                 elif f.fn == "nth_value":
                     sql = f"NTH_VALUE({col(f.col)}, {f.offset}) {w}"
                 else:
@@ -4208,10 +4217,11 @@ class _Writer:
         return d.over_frame(partition, order, spec)
 
     def window_measure(
-        self, m: Measure, col: Callable[[int], str], ks: list[Kind | None], w: str
+        self, m: Measure, col: Callable[[int], str], ks: list[Kind | None], w: str, moving: bool
     ) -> str:
         """`Measure.eval` over the frame `w` (the argument is a column or a
-        constant, `Parse.issueFree`)."""
+        constant, `Parse.issueFree`); `moving`: rows leave the frame
+        (`frame_moves`)."""
         d = self.d
         v = self.expr(m.arg, col, ks, None)
         match m.fn:
@@ -4234,7 +4244,7 @@ class _Writer:
                 # The engine's own `SUM` (D25): within the plan's bound of
                 # `floatSumCR` for the input's row cap, each frame being some
                 # of its rows (`Epsilon.winSrcs`, #1032).
-                total = d.window_float_sum(v, w)
+                total = d.window_float_sum(v, w, moving)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
