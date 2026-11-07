@@ -70,6 +70,11 @@ def keyReads : List Read := [("rel.keys", "nan_equality", []), ("rel.keys", "zer
 /-- A join's: its keys, and whether NULL keys match. -/
 def joinReads : List Read := keyReads ++ [("rel.join", "null_join_keys", [])]
 
+/-- A window function's options: its aggregate's, as a grouped aggregate meets them. -/
+def WinFn.reads : WinFn → List Read
+  | .agg m _ _ => m.reads
+  | _ => []
+
 /-- The calls of a plan's expressions. -/
 def Rel.ctors : Rel → List Ctor
   | .read _ | .values _ _ => []
@@ -85,7 +90,8 @@ def Rel.reads : Rel → List Read
   | .read _ | .values _ _ => []
   | .filter r c => r.reads ++ c.reads
   | .project r es => r.reads ++ es.flatMap Expr.reads
-  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .unnest r _ => r.reads
+  | .emit r _ | .fetch r _ _ | .unnest r _ => r.reads
+  | .window r _ _ fns => r.reads ++ fns.flatMap WinFn.reads
   | .distinct r => r.reads ++ keyReads
   | .orderBy r keys => r.reads ++ sortReads keys
   | .cross a b | .unionAll a b => a.reads ++ b.reads
@@ -110,9 +116,12 @@ theorem Rel.ctorReads_sub : ∀ {r : Rel} {c : Ctor}, c ∈ r.ctors → ∀ p �
     rcases h with h | ⟨e, he, h⟩
     · exact .inl (Rel.ctorReads_sub h p hp)
     · exact .inr ⟨e, he, Expr.ctorReads_sub h p hp⟩
-  | .emit r _, c, h, p, hp | .fetch r _ _, c, h, p, hp | .window r _ _ _, c, h, p, hp
+  | .emit r _, c, h, p, hp | .fetch r _ _, c, h, p, hp
   | .unnest r _, c, h, p, hp => by
     simp only [Rel.ctors] at h; simp only [Rel.reads]; exact Rel.ctorReads_sub h p hp
+  | .window r _ _ _, c, h, p, hp => by
+    simp only [Rel.ctors] at h; simp only [Rel.reads, List.mem_append]
+    exact .inl (Rel.ctorReads_sub h p hp)
   | .distinct r, c, h, p, hp => by
     simp only [Rel.ctors] at h; simp only [Rel.reads, List.mem_append]
     exact .inl (Rel.ctorReads_sub h p hp)
@@ -435,8 +444,10 @@ theorem Rel.AllowedI.monoOn {I : Impl} {cat : Catalog} :
   | .distinct r, h, _, ⟨i, hi, ho⟩ =>
     ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, ho⟩
   | .emit r _, h, _, ⟨i, hi, ho⟩ | .fetch r _ _, h, _, ⟨i, hi, ho⟩
-  | .unnest r _, h, _, ⟨i, hi, ho⟩ | .window r _ _ _, h, _, ⟨i, hi, ho⟩ =>
+  | .unnest r _, h, _, ⟨i, hi, ho⟩ =>
     ⟨i, Rel.AllowedI.monoOn (r := r) (fun p hp => h p (by simp only [Rel.reads]; exact hp)) hi, ho⟩
+  | .window r _ _ _, h, _, ⟨i, hi, ho⟩ =>
+    ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, ho⟩
   | .orderBy r _, h, _, ⟨i, hi, hp, hs⟩ =>
     ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, hp,
       SortedP.monoOn (fun p hp => h p (List.mem_append_right _ hp)) hs⟩
