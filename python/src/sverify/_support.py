@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from sverify import _plan_read, black_box
+from sverify._unsupported import DUCKDB_ONLY, ISSUE_271  # noqa: F401  (re-exported)
 
 ENGINES = frozenset({"duckdb", "spark", "snowflake", "datafusion", "polars"})
 _DUCKDB = frozenset({"duckdb"})
@@ -98,11 +99,6 @@ def _guard_engines(call: dict) -> frozenset[str] | None:
                     return engines
     return None
 
-
-#: Where #271 is, for refusals: an engine that does not run a function yet.
-ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
-#: The end of a refusal of what only DuckDB runs.
-DUCKDB_ONLY = f"DuckDB runs it ({ISSUE_271})"
 
 #: What a refusal calls a function: the Ibis and SQL names users write,
 #: where the plan's name differs (#655).

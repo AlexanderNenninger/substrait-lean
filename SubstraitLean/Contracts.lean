@@ -784,8 +784,8 @@ def BlackBox.Law.bound : BlackBox.Law → Bound
 (`set`) or some may be. -/
 def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bool) : AVal :=
   ⟨!(set && laws.contains .nonNull),
-   if result == .int || result == .double || result == .date || result == .atom ||
-       result == .any then
+   if result == .int || result == .double || result == .date || result == .timestamp ||
+       result == .atom || result == .any then
      some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
    else none,
    -- A list is a member where booleans and strings are (`AVal.Mem`).
@@ -5012,6 +5012,123 @@ def Rel.ratioPart (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | .aggregate r gs ms => ratioFacts gs.length (r.aeval cat A F T sz) (r.facts cat F T) ms
   | _ => []
 end
+
+/-! ### One pass (#903)
+
+`Rel.aeval` asks its input for its facts at every filter and projection, and
+`Rel.facts` and `Rel.arity` walk the input again each time: a plan of depth
+`d` is walked `O(d)` times per node. `Rel.lane` computes the arity, facts,
+description, `ratio` facts and row bound of every subplan once, bottom-up,
+from its inputs' lanes. `Rel.lane_eq` proves each field is the analysis it
+replaces, and the `@[csimp]` lemmas make compiled code run the lane wherever
+it calls `Rel.aeval` or `Rel.ratioPart`. Proofs keep reasoning about the
+definitions above. -/
+
+/-- The analyses of one subplan, computed together. -/
+structure Rel.Lane where
+  arity : Nat
+  facts : List Fact
+  env : List AVal
+  ratio : List Fact
+  rows : Option Nat
+
+/-- The analyses of every subplan in one bottom-up pass. -/
+def Rel.lane (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
+    (sz : Bool) : Rel → Rel.Lane
+  | .read t => ⟨(cat t).arity, F t, useFacts (F t) (fit (cat t).arity (A t)), [], none⟩
+  | .values n rows => ⟨n, [], List.replicate n AVal.top, [], some rows.length⟩
+  | .filter r c =>
+      let l := r.lane cat A F T sz
+      ⟨l.arity, l.facts ++ c.factsOf, useFacts (l.facts ++ c.factsOf) (c.refine l.env), [], l.rows⟩
+  | .project r es =>
+      let l := r.lane cat A F T sz
+      ⟨l.arity + es.length,
+        (l.facts.filter (·.inRange l.arity)).flatMap (Fact.rename (copyCols l.arity es)) ++
+          linFacts l.arity l.arity es,
+        l.env ++ es.map (·.absF l.env (l.facts ++ l.ratio)), [], l.rows⟩
+  | .emit r m =>
+      let l := r.lane cat A F T sz
+      ⟨m.length, l.facts.flatMap (Fact.rename (positions m)), m.map (l.env.getD · AVal.top), [],
+        l.rows⟩
+  | .cross a b =>
+      let la := a.lane cat A F T sz
+      let lb := b.lane cat A F T sz
+      ⟨la.arity + lb.arity, la.facts.filter (·.inRange la.arity) ++ lb.facts.map (·.shift la.arity),
+        la.env ++ lb.env, [], la.rows.bind fun n => lb.rows.map (n * ·)⟩
+  | .join a b .inner on =>
+      let la := a.lane cat A F T sz
+      let lb := b.lane cat A F T sz
+      ⟨la.arity + lb.arity,
+        la.facts.filter (·.inRange la.arity) ++ lb.facts.map (·.shift la.arity) ++ on.factsOf,
+        on.refine (la.env ++ lb.env), [], la.rows.bind fun n => lb.rows.map (n * ·)⟩
+  | .join a b .left on =>
+      let la := a.lane cat A F T sz
+      let lb := b.lane cat A F T sz
+      ⟨la.arity + lb.arity,
+        la.facts.filter (·.inRange la.arity) ++
+          (lb.facts.filter Fact.intsOnly).map (·.shift la.arity) ++
+          on.factsOf.filter (·.rightOf la.arity),
+        la.env ++ lb.env.map AVal.nullable, [], none⟩
+  | .fetch r _ cnt =>
+      let l := r.lane cat A F T sz
+      ⟨l.arity, l.facts, l.env, [], match cnt, l.rows with
+        | some k, some n => some (min k n)
+        | some k, none => some k
+        | none, n => n⟩
+  | .unionAll a b =>
+      let la := a.lane cat A F T sz
+      let lb := b.lane cat A F T sz
+      ⟨la.arity, la.facts.filter (lb.facts.contains ·), List.zipWith AVal.join la.env lb.env, [],
+        la.rows.bind fun n => lb.rows.map (n + ·)⟩
+  | .window r part sort fns =>
+      let l := r.lane cat A F T sz
+      ⟨l.arity + fns.length,
+        l.facts.filter (·.inRange l.arity) ++ winFacts part sort (T r part sort) l.arity fns,
+        l.env ++ fns.map (WinFn.abs sz l.env), [], l.rows⟩
+  | .semi a _ _ _ =>
+      let l := a.lane cat A F T sz
+      ⟨l.arity, l.facts, l.env, [], l.rows⟩
+  | .orderBy r _ | .distinct r =>
+      let l := r.lane cat A F T sz
+      ⟨l.arity, l.facts, l.env, [], l.rows⟩
+  | .aggregate r gs ms =>
+      let l := r.lane cat A F T sz
+      ⟨gs.length + ms.length, aggFacts gs.length ms,
+        gs.map (·.absD l.env l.facts) ++ ms.map fun m => Measure.abs l.env l.facts m (!gs.isEmpty) l.rows,
+        ratioFacts gs.length l.env l.facts ms, if gs.isEmpty then some 1 else l.rows⟩
+  | .unnest r c =>
+      let l := r.lane cat A F T sz
+      ⟨l.arity, [], l.env.set c AVal.top, [], none⟩
+
+/-- **The lane is the analyses**, field by field. -/
+theorem Rel.lane_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (sz : Bool) (r : Rel) :
+    r.lane cat A F T sz = ⟨r.arity cat, r.facts cat F T, r.aeval cat A F T sz,
+      r.ratioPart cat A F T sz, r.maxRows⟩ := by
+  induction r with
+  | join a b ty on iha ihb =>
+    cases ty <;> simp only [Rel.lane, iha, ihb, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
+      Rel.maxRows]
+  | fetch r _ cnt ih =>
+    cases cnt <;> simp only [Rel.lane, ih, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
+      Rel.maxRows]
+  | _ => simp_all only [Rel.lane, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart, Rel.maxRows]
+
+/-- `Rel.aeval` by the lane. -/
+def Rel.aevalLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (sz : Bool := false) (r : Rel) : List AVal :=
+  (r.lane cat A F T sz).env
+
+/-- `Rel.ratioPart` by the lane. -/
+def Rel.ratioPartLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (sz : Bool := false) (r : Rel) : List Fact :=
+  (r.lane cat A F T sz).ratio
+
+@[csimp] theorem Rel.aeval_csimp : @Rel.aeval = @Rel.aevalLane := by
+  funext cat A F T sz r; simp only [Rel.aevalLane, Rel.lane_eq]
+
+@[csimp] theorem Rel.ratioPart_csimp : @Rel.ratioPart = @Rel.ratioPartLane := by
+  funext cat A F T sz r; simp only [Rel.ratioPartLane, Rel.lane_eq]
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} {sz : Bool} :

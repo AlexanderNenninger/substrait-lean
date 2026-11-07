@@ -138,7 +138,7 @@ contract and no guard elimination needed. Trusted, as for `Rel.duckdb_sound`:
 that `Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
 theorem Rel.duckdb_shim_sound {cat : Catalog} {r : Rel}
     (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
-    (Lowering.duckdb.lowerRel r).evalI (Profile.duckdb {}).impl cat = r.eval cat :=
+    (Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
   Lowering.lowerRel_sound Lowering.duckdb_total h
 
 end Substrait

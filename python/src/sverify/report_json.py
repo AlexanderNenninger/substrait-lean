@@ -18,9 +18,12 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from sverify._meta import VERSION
+
 if TYPE_CHECKING:
-    from sverify.contracts import CheckedCondition, Issue, Needed, Report
+    from sverify.conditions import CheckedCondition
     from sverify.observation import Observation
+    from sverify.report import Issue, Needed, Report
     from sverify.routes import Route
 
 #: The version of the report's JSON format (`format` in the document).
@@ -34,9 +37,7 @@ Json = dict[str, Any]
 def _sverify_version() -> str:
     """The installed version, as `sverify` read it at import: reading the
     package metadata again took 88 % of `to_json`'s time."""
-    import sverify
-
-    return sverify.__version__
+    return VERSION
 
 
 def _value(v: Any) -> Any:
@@ -107,7 +108,7 @@ def needed_json(n: Needed) -> Json:
 def suggested_json(suggested: Mapping[str, Any]) -> list[Json]:
     """Suggested preconditions, labels per table, as `needed` objects that
     carry the table and the label."""
-    from sverify.contracts import label
+    from sverify.conditions import label
 
     return [
         {"table": t, "label": x if isinstance(x, str) else label(x)}
@@ -186,7 +187,7 @@ def _issue_needs(i: Issue) -> list[Json]:
     """The preconditions that rule an issue out: those suggested per table,
     then those the inference found whose table it does not name
     (`"table": null`)."""
-    from sverify.contracts import _labels_by_table
+    from sverify.report import _labels_by_table
 
     out = suggested_json(_labels_by_table(i.needs))
     seen = {n["label"] for n in out}
@@ -204,7 +205,7 @@ def assumed_json(i: Issue) -> Json:
 
 
 def issue(d: Mapping[str, Any]) -> Issue:
-    from sverify.contracts import Issue, _needed
+    from sverify.report import Issue, _needed
 
     p = d.get("properties") or {}
     rule = d["ruleId"]
@@ -258,7 +259,7 @@ def checked_json(c: CheckedCondition) -> Json:
 
 
 def checked(d: Mapping[str, Any]) -> CheckedCondition:
-    from sverify.contracts import CheckedCondition
+    from sverify.conditions import CheckedCondition
     from sverify.counterexample import Counterexample
 
     p = d.get("properties") or {}
@@ -340,7 +341,7 @@ def route(d: Mapping[str, Any]) -> Route:
 
 def to_json(report: Report) -> Json:
     """`Report.to_json`, as a dict."""
-    from sverify.contracts import label
+    from sverify.conditions import label
 
     return {
         "format": FORMAT,
@@ -382,7 +383,8 @@ def to_json(report: Report) -> Json:
 
 def from_json(data: str | Mapping[str, Any]) -> Report:
     """`Report.from_json`: see there."""
-    from sverify.contracts import Inferred, Report, TiePlace
+    from sverify.conditions import Inferred
+    from sverify.report import Report, TiePlace
 
     d = json.loads(data) if isinstance(data, str) else data
     fmt = d.get("format")

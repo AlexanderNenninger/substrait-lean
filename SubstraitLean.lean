@@ -43,6 +43,7 @@ import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
 import SubstraitLean.Allowed
 import SubstraitLean.Ties
+import SubstraitLean.Knowledge
 import SubstraitLean.Choices
 import SubstraitLean.DuckDBSQL
 import SubstraitLean.LiftHint
@@ -64,6 +65,7 @@ import SubstraitLean.Options
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
+import SubstraitLean.Robust
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile

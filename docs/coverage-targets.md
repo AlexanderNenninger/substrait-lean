@@ -85,7 +85,7 @@ most of the cheap work left, and it matters to dbt users, who write SQL.
 ## Targets by area
 
 The areas are those of the code
-([CLAUDE.md](../CLAUDE.md), "Adding functions and coverage cases"). "Today"
+(the `add-function` skill, `.claude/skills/add-function/SKILL.md`). "Today"
 is what the probe gives.
 
 ### Relations
@@ -133,7 +133,7 @@ is what the probe gives.
 
 ### Casts
 
-2 of 6 in for 1.0 covered.
+3 of 6 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -141,7 +141,7 @@ is what the probe gives.
 | CAST(DOUBLE AS INTEGER), which DuckDB rounds | in | — | CAST(amount * 100 AS BIGINT) for cents; catalogue cast_numeric 8; replay 76 | [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322) |
 | decimal to a smaller scale | in | — | CAST(x AS DECIMAL(10, 2)) after arithmetic; replay 25 | [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
 | casts to VARCHAR | in | — | dbt surrogate keys and hash diffs (md5 of casts), dbt_utils.unpivot, labels; replay 184 | [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346) |
-| casts from VARCHAR, and TRY_CAST | in | — | Eurostat values ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); CSV sources; Ibis try_cast string | [#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806) |
+| casts from VARCHAR, and TRY_CAST | in | covered | Eurostat values ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); CSV sources; Ibis try_cast string | [#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806) |
 | DATE as TIMESTAMP: the cast, date_trunc and DATE ± INTERVAL of a date column | in | covered | monthly rollups over DATE columns (catalogue date_trunc 11); dbt.dateadd | [#807](https://github.com/AlexanderNenninger/substrait-lean/issues/807) |
 | casts of a double to VARCHAR | after 1.0 | — | labels; replay (part of 184) | [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346) |
 

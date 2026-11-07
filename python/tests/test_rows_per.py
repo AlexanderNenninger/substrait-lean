@@ -4,6 +4,8 @@ plan (`Rel.perKey_sound`), so an aggregate grouping by `cols` has groups of
 at most `n` rows (`Rel.groupRows_sound`), and an integer or decimal SUM over
 such a group is proved to fit (`Rel.sumsPer_sound`, `Rel.issuesCapped_sound`)."""
 
+import gc
+
 import ibis
 import pyarrow as pa
 import pytest
@@ -186,3 +188,27 @@ def test_incremental_views_refuse_rows_per():
     )(lambda orders: orders.group_by("customer").aggregate(total=orders.amount.sum()))
     with pytest.raises(ValueError, match="rows_per"):
         src.pipe(contracted).refresh()
+
+
+def test_a_new_connection_does_not_inherit_a_dead_ones_facts():
+    # A backend that is gone may leave its `id` to a new one; the facts
+    # registered for the old one stay with it (the data check still runs).
+    from sverify import contracts
+
+    old = sv.connect()
+    contracts.register_facts(old, "orders", [contracts.Fact("TRUE", "rows @v1", rows=1)])
+    con = sv.connect()
+    con.put("orders", orders_table([(1, "ada", 5), (2, "ada", 7)]))
+    entry = contracts._facts.pop((id(old._ibis), "orders"))
+    contracts._facts[(id(con._ibis), "orders")] = entry
+    del old, entry
+    gc.collect()
+    try:
+        assert contracts.table_facts(con.table("orders")) is None
+        contracted = sv.transform(
+            requires={"orders": [sv.rows_per("customer", at_most=1)]}, ensures=[]
+        )(lambda orders: orders.group_by("customer").aggregate(total=orders.amount.sum()))
+        with pytest.raises(PreconditionError, match=r"1 row\(s\) of orders violate rows_per"):
+            contracted(con.table("orders"))
+    finally:
+        contracts._facts.pop((id(con._ibis), "orders"), None)

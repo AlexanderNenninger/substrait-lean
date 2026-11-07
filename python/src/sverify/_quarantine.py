@@ -35,6 +35,7 @@ from typing import Any, Literal
 
 import pyarrow as pa
 
+from sverify._cursor import _TAG, cursor_json, cursor_value
 from sverify._weighted import (
     WEIGHT,
     _call,
@@ -181,8 +182,8 @@ def row_failures(con: Any, rows: pa.Table, conds: Sequence[Any]) -> list[list[st
     """For each row of the plain table `rows`, the labels of the row
     conditions that are not TRUE on it (FALSE or NULL), in `conds`' order.
     Runs on `con` (a `sverify.connect()` connection), as the checks do."""
-    from sverify.contracts import label
-    from sverify.contracts import resolve as resolve_cond
+    from sverify.conditions import label
+    from sverify.conditions import resolve as resolve_cond
     from sverify.engine import put_table
 
     n = rows.num_rows
@@ -578,12 +579,7 @@ TABLE_SCHEMA = pa.schema(
 """The columns of the quarantine table, format 1 (`docs/stability.md`)."""
 
 
-_TAG = "$cursor"
-
-
 def _enc(v: Any) -> Any:
-    from sverify.io._common import cursor_json
-
     if isinstance(v, float) and v != v:
         return {_TAG: "double", "value": "NaN"}
     if isinstance(v, float) and v in (float("inf"), float("-inf")):
@@ -596,8 +592,6 @@ def _enc(v: Any) -> Any:
 
 
 def _dec(v: Any) -> Any:
-    from sverify.io._common import cursor_value
-
     if isinstance(v, dict) and v.get(_TAG) == "double":
         return float(v["value"])
     if isinstance(v, list):
