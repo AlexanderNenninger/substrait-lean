@@ -21,7 +21,7 @@ on those columns, in any keyed table, are on the same shard
 (`Sharding.keyDisj`); the caller checks it on the data. `unique` lists
 columns with no two equal rows in the whole table (checked by the caller,
 like a contract's `unique`); a window splits when they show it has no ties
-(`Rel.keyedWindows`, sound by `Rel.keyedWindows_sound` for rows of the
+(`Rel.keyedWindows`, sound by `Rel.keyedWindows_soundAll` for rows of the
 declared types). An integer `AVG` splits into a `SUM` and a `COUNT` when the
 declared types make its argument an integer (`IntArgs.ofTypes`, sound by
 `IntArgs.ofTypes_sound` for the same rows).
