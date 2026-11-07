@@ -1,0 +1,15 @@
+Error: Invariant ReadIsHead is violated.
+State 1 Initial predicate: source c0 | table none | s1: down | s2: down | zombies: none | deployed P1
+State 2 Start: s1: idle P1 v0 view=none written=none
+State 3 Refresh: s1: ready P1 v0 view=P1(c0) written=none
+State 4 Prepare: s1: writing P1 v0 view=P1(c0) written=none pending=P1 v0 sending[replace P1 v0 P1(c0) if epoch=-1]
+State 5 Land: table P1(c0) | commit #1: replace P1 v0 c0 (digest 0) by s1 | s1: idle P1 v0 view=P1(c0) written=P1(c0)
+State 6 Deploy: deployed P2
+State 7 Start: s2: idle P2 v0 view=none written=none
+State 8 Refresh: s2: ready P2 v0 view=P2(c0) written=none
+State 9 SourceChanges: source c1 v1
+State 10 Refresh: s1: ready P1 v1 view=P1(c1) written=P1(c0)
+State 11 Prepare: s1: writing P1 v1 view=P1(c1) written=P1(c0) pending=P1 v1 sending[merge P1 v1 P1(c1) on P1(c0) if epoch=0]
+State 12 Prepare: s2: writing P2 v0 view=P2(c0) written=none pending=P2 v0 sending[replace P2 v0 P2(c0) if epoch=0]
+State 13 Land: table P2(c0) | commit #2: replace P2 v0 c0 (digest 0) by s2 | s2: idle P2 v0 view=P2(c0) written=P2(c0)
+State 14 Land: table corrupt | commit #3: merge P1 v1 c1 (digest 0) by s1 | s1: idle P1 v1 view=P1(c1) written=P1(c1)

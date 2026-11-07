@@ -48,7 +48,10 @@ SUPPORT: dict[str, frozenset[str]] = {
     "list_contains": _DUCKDB,
     "list_position": _DUCKDB,
     "flatten": _DUCKDB,
-    # The lift's guards: `make_date` of columns raises outside the calendar (#809).
+    # The lift's guards (`UnFn.raise`): `make_date` of columns outside the
+    # calendar (#809), on DuckDB only (`_REASONS`); a RANGE frame's bound that
+    # leaves its integer key's type (#805) runs wherever the dialect raises
+    # (`GUARDS`). Polars and DataFusion run plans without a way to raise.
     "sverify_raise": _DUCKDB,
     # Windows: DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
     "ntile": ENGINES - {"datafusion"},
@@ -67,7 +70,35 @@ WINDOW_SUPPORT: dict[str, frozenset[str]] = {
 #: Why an engine refuses a function, where the reason is not #271.
 _REASONS = {
     ("ntile", "datafusion"): "DataFusion's NTILE does not deal out buckets as SQL does",
+    ("sverify_raise", "spark"): (
+        "Spark's SQL of the date guards exhausts its JVM's heap (a date from columns is "
+        "38 KB of nested CASEs)"
+    ),
+    ("sverify_raise", "snowflake"): (
+        "Snowflake's SQL of the date guards grows past what it runs: a date from columns "
+        "writes 208 MB of nested CASEs"
+    ),
 }
+
+#: Guards (`sverify_raise`) that run on more engines than the date guards,
+#: by the start of their message: the engines whose dialect writes them
+#: with `raise_` (#805).
+GUARDS: dict[str, frozenset[str]] = {
+    "Overflow in a RANGE frame bound": frozenset({"duckdb", "spark", "snowflake"}),
+}
+
+
+def _guard_engines(call: dict) -> frozenset[str] | None:
+    """The engines that run the guard `call` (`sverify_raise`), by its
+    message (`GUARDS`), or None for one `GUARDS` does not list."""
+    for arg in call.get("arguments", [])[1:]:
+        msg = (arg.get("value") or {}).get("literal", {}).get("string")
+        if isinstance(msg, str):
+            for start, engines in GUARDS.items():
+                if msg.startswith(start):
+                    return engines
+    return None
+
 
 #: What a refusal calls a function: the Ibis and SQL names users write,
 #: where the plan's name differs (#655).
@@ -75,7 +106,10 @@ _LABELS = {
     "sverify_pair": "covariance and correlation (Ibis cov, corr)",
     "quantile_cont": "median() or quantile() (SQL median, quantile_cont)",
     "quantile_disc": "quantile() (SQL quantile_disc)",
-    "sverify_raise": "a date from columns (Ibis ibis.date, SQL make_date)",
+    "sverify_raise": (
+        "a guard that raises (a date from columns, Ibis ibis.date, SQL make_date; "
+        "a RANGE frame with offsets over an integer)"
+    ),
     "regexp_extract": "re_extract() (SQL regexp_extract)",
     "regexp_replace": "re_replace() (SQL regexp_replace)",
     "first": "first() (SQL first)",
@@ -170,7 +204,16 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                     name = fns.get(call.get("functionReference", 0))
                     window = key == "windowFunction"
                     ok = window_supported if window else supported
-                    if name is not None and not ok(name, engine):
+                    base = _plan_read.base_name(name) if name is not None else None
+                    guard = _guard_engines(call) if base == "sverify_raise" else None
+                    if guard is not None:
+                        if engine.lower() not in guard:
+                            runs = " and ".join(sorted(guard))
+                            raise err(
+                                f"a RANGE frame with offsets over an integer runs on {runs} "
+                                f"only: {engine} has no way to raise its guard ({ISSUE_271})"
+                            )
+                    elif name is not None and not ok(name, engine):
                         raise err(refusal(_plan_read.base_name(name), engine, window))
                     if engine.lower() != "polars" and floors(call):
                         raise err(floor_refusal(engine))

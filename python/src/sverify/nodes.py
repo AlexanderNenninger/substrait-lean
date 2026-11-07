@@ -78,7 +78,7 @@ class Sink(Protocol):
     name: str
     location: str
 
-    def _attach(self, view: IncrementalView) -> None: ...
+    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None: ...
 
     def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
 
@@ -764,8 +764,10 @@ def _recreated(sink: Sink, leaves: Sequence[Node], stored: Stored) -> bool:
     state of the sources, and the node is computed again."""
     from sverify.io._common import _TableSource
 
-    committed = sink.contract()
-    ids = committed.table_ids if committed is not None else None
+    ids = stored.table_ids
+    if ids is None:
+        committed = sink.contract()
+        ids = committed.table_ids if committed is not None else None
     if not ids:
         return False
     for leaf in leaves:
@@ -813,7 +815,7 @@ class _Stage:
                 stored = None
             else:
                 if sink is not None:
-                    sink._attach(stage.view)
+                    sink._attach(stage.view, stored)
                 return stage
         stage = _Stage._load(node, leaves, versions, engine, None, target=target)
         if sink is not None:
