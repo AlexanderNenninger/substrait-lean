@@ -531,9 +531,10 @@ runs.
 ## The value domain
 
 The core needs every value any profile gives, so each must be at least as
-fine as Substrait's. Today `Value` is `null | bool | int | str | list`, and
-a double is an `int` code in SQL order with one zero and one NaN
-(`SubstraitLean/Float.lean`).
+fine as Substrait's. `Value` has a constructor per kind ([D29](#d29-a-value-has-its-kind)):
+`null | bool | int | float | date | ts | tod | dec | str | list | struct`.
+A double is a `float` code in SQL order with one zero and one NaN
+(`SubstraitLean/Float.lean`), a decimal its scale and unscaled integer.
 
 | Value | What the core needs | Blocks #444? |
 |---|---|---|
@@ -1786,3 +1787,30 @@ Why: a closed lambda cannot express `contains` of a column or a filter by an
 outer value, and the review of the core (#893) found the restriction in
 `Expr.eval`, `Expr.refsLt` and the parser, none of it needed by a proof.
 
+### D29. A value has its kind
+
+`Value` has a constructor per kind (#923): `int`, `float` (a double's code),
+`date` (days), `ts` (microseconds, with or without a time zone), `tod`
+(microseconds since midnight), `dec s m` (scale and unscaled integer) and
+`struct`, beside `null`, `bool`, `str` and `list`. Intervals stay `int`. A
+function of one kind gives NULL on another, so a double can no longer pass
+for an integer or a timestamp for a date. Comparisons (`Value.numPair`) take
+two numbers of one constructor, decimals of one scale: `=` is TRUE only of
+equal values, which equi-joins rest on (`isTrue_eq`). The parser tags both
+sides of a decimal comparison with their common scale (`UnFn.dkind`).
+
+`SUM` (`sumOf`) gives a decimal of scale `s` when all its values are
+decimals of scale `s`, and otherwise the integer sum of the integers and the
+decimals' unscaled values. A plan the kind checker accepts never mixes them;
+the mixed case keeps `SUM` independent of the order of its values
+(`sumOf_perm`) and of how a partition splits them (`sum_partials`), where a
+NULL for a mix would not be.
+
+The abstract domain records a column's number kind (`AVal.nk`), so that a
+contract on a double does not hold of an integer of the same code
+(`SubstraitLean/Contracts.lean`).
+
+Why: the kinds were in the parser and the kind checker (#924) only; with them
+in the values, a well-kinded plan's values have their kinds by evaluation, and
+the trusted float axioms (`floatSum_mem`, `floatSum_twoPhase`) state their
+premises about doubles.

@@ -17,15 +17,19 @@ build` does not elaborate it.
 namespace Substrait
 
 generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
-  unfolding [Profile.duckdb, duckBin, duckUn, duckZero, duckShl, nanCase, isInfCode,
+  unfolding [Profile.duckdb, BinFn.onFloats, duckBin, duckUn, duckZero, duckShl, nanCase, isInfCode,
     FMath.inDomain, FMath.lo?, FMath.hi?, FMath.apply, domainIssue, nanIssue, negInfPow,
     duckNegInfPow]
   using [Lowering.ref_fit, Lowering.apply_fit_int, Lowering.apply_fit_null, Lowering.apply_fit_bool,
-    Lowering.apply_fit_str, Lowering.apply_fit_list, IntWidth.fit, IntWidth.lo, IntWidth.hi,
+    Lowering.apply_fit_str, Lowering.apply_fit_list, Lowering.apply_fit_struct,
+    Lowering.apply_fit_float, Lowering.apply_fit_date, Lowering.apply_fit_ts, Lowering.apply_fit_tod,
+    Lowering.apply_fit_dec, IntWidth.fit, IntWidth.lo, IntWidth.hi,
     IntWidth.half, IntWidth.modulus, Lowering.tmod_add_tmod, Profile.duckdb_imod_pos,
     Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow,
     Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
-    Lowering.apply_ffloor_str, Lowering.apply_ffloor_list, Lowering.pow2Chain_eval, List.mem_range]
+    Lowering.apply_ffloor_str, Lowering.apply_ffloor_list, Lowering.apply_ffloor_float,
+    Lowering.apply_ffloor_date, Lowering.apply_ffloor_ts, Lowering.apply_ffloor_tod,
+    Lowering.apply_ffloor_dec, Lowering.apply_ffloor_struct, Lowering.pow2Chain_eval, List.mem_range]
   excluding [UnFn.fit]
   cache loweringCache
   writing "SubstraitLean/LoweringDuckDB/On"

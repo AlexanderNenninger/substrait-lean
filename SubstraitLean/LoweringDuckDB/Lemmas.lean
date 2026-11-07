@@ -29,5 +29,17 @@ theorem Lowering.apply_fit_str (m : OverflowMode) (w : IntWidth) (s : String) :
     UnFn.apply (.fit m w) (.str s) = .str s := rfl
 theorem Lowering.apply_fit_list (m : OverflowMode) (w : IntWidth) (vs : List Value) :
     UnFn.apply (.fit m w) (.list vs) = .list vs := rfl
+theorem Lowering.apply_fit_struct (m : OverflowMode) (w : IntWidth) (vs : List Value) :
+    UnFn.apply (.fit m w) (.struct vs) = .struct vs := rfl
+theorem Lowering.apply_fit_float (m : OverflowMode) (w : IntWidth) (c : Int) :
+    UnFn.apply (.fit m w) (.float c) = .float c := rfl
+theorem Lowering.apply_fit_date (m : OverflowMode) (w : IntWidth) (c : Int) :
+    UnFn.apply (.fit m w) (.date c) = .date c := rfl
+theorem Lowering.apply_fit_ts (m : OverflowMode) (w : IntWidth) (c : Int) :
+    UnFn.apply (.fit m w) (.ts c) = .ts c := rfl
+theorem Lowering.apply_fit_tod (m : OverflowMode) (w : IntWidth) (c : Int) :
+    UnFn.apply (.fit m w) (.tod c) = .tod c := rfl
+theorem Lowering.apply_fit_dec (m : OverflowMode) (w : IntWidth) (s : Nat) (c : Int) :
+    UnFn.apply (.fit m w) (.dec s c) = .dec s c := rfl
 
 end Substrait

@@ -124,17 +124,6 @@ theorem BinFn.anchor_declared (f : BinFn) :
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
-def writeValue : Value → Json
-  | .null => obj [("null", obj [("i64", obj [])])]
-  | .bool b => obj [("boolean", toJson b)]
-  | .int i => obj [("i64", toJson (toString i))]
-  | .str s => obj [("string", toJson s)]
-  | .list [] => obj [("emptyList", obj [("type", obj [("i64", obj [])])])]
-  | .list vs => obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeValue v).toArray)])]
-
-def fp64Type : Json := obj [("fp64", obj [("nullability", "NULLABILITY_NULLABLE")])]
-def i64Type : Json := obj [("i64", obj [("nullability", "NULLABILITY_NULLABLE")])]
-
 /-- A double literal: exact, since `m · 2⁻¹⁰⁷⁴ = m · 5¹⁰⁷⁴ · 10⁻¹⁰⁷⁴`. -/
 def writeDouble (c : Int) : Json :=
   if c == FloatCode.nan then "NaN"
@@ -145,6 +134,31 @@ def writeDouble (c : Int) : Json :=
     let mant : Int := m * 5 ^ 1074
     -- Lean renders a zero mantissa with a large exponent as `0.e-1064`.
     if m == 0 then Json.num 0 else Json.num ⟨if negative then -mant else mant, 1074⟩
+
+/-- A decimal literal of precision `p`: its unscaled integer (#27). -/
+def writeDecimal (p s : Nat) (m : Int) : Json :=
+  obj [("decimal", obj [("value", toJson (Base64.encode (Base64.leBytes16 m))),
+    ("precision", toJson p), ("scale", toJson s)])]
+
+/-- A literal by its constructor (#923). -/
+def writeValue : Value → Json
+  | .null => obj [("null", obj [("i64", obj [])])]
+  | .bool b => obj [("boolean", toJson b)]
+  | .int i => obj [("i64", toJson (toString i))]
+  | .float c => obj [("fp64", writeDouble c)]
+  | .date d => obj [("date", toJson d)]
+  | .ts us => obj [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .tod us => obj [("precisionTime", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .dec s m => writeDecimal 38 s m
+  | .str s => obj [("string", toJson s)]
+  | .list [] => obj [("emptyList", obj [("type", obj [("i64", obj [])])])]
+  | .list vs => obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeValue v).toArray)])]
+  | .struct vs =>
+    obj [("struct", obj [("fields", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeValue v).toArray)])]
+
+def fp64Type : Json := obj [("fp64", obj [("nullability", "NULLABILITY_NULLABLE")])]
+def i64Type : Json := obj [("i64", obj [("nullability", "NULLABILITY_NULLABLE")])]
+
 
 def call (anchor : Nat) (args : List Json) : Json :=
   obj [("scalarFunction", obj [
@@ -218,11 +232,8 @@ every double but zero and the subnormals below 2⁻¹⁰¹¹ has a code outside
 that range (`FloatCode`); `Pretty` prints them as doubles by the same rule. -/
 def isDoubleCode (i : Int) : Bool := i < -(2 ^ 63) || 2 ^ 63 ≤ i
 
-/-- A literal's kind: a double's code is a double (#96), though `litKind`
-calls every code an integer. -/
-def litWKind : Value → WKind
-  | .int i => if isDoubleCode i then .float else .int
-  | v => .ofKind (Parse.litKind v)
+/-- A literal's kind, by its constructor (#923). -/
+def litWKind (v : Value) : WKind := .ofKind (Parse.litKind v)
 
 /-- `Expr.kind`, telling intervals from times: `ts - ts` and an interval
 column `± x` are intervals, `ts ± x` is a time. -/
@@ -270,13 +281,7 @@ def writeInterval (us : Int) : Json :=
 written as the kind of value it stands for. -/
 def writeLitBody (k : WKind) (v : Value) : Json :=
   match k, v with
-  | .float, .int c => obj [("fp64", writeDouble c)]
-  | .time, .int us =>
-    obj [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .interval, .int us => (writeInterval us).getObjValD "literal"
-  | .date, .int d => obj [("date", toJson d)]
-  | .tod, .int us =>
-    obj [("precisionTime", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .tod, .null => obj [("null", obj [("precisionTime", obj [("precision", toJson 6)])])]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
   | .float, .null => obj [("null", fp64Type)]
@@ -290,14 +295,10 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | .list e, .list vs =>
     obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
   | .struct _, .null => obj [("null", kindType k.toKind)]
-  | .struct _, .list vs => obj [("struct", obj [("fields", Json.arr (vs.map writeValue).toArray)])]
-  -- A decimal is its unscaled integer (#27).
-  | .dec p s, .int m => obj [("decimal", obj [
-      ("value", toJson (Base64.encode (Base64.leBytes16 m))),
-      ("precision", toJson p), ("scale", toJson s)])]
+  | .struct _, .struct vs => obj [("struct", obj [("fields", Json.arr (vs.map writeValue).toArray)])]
+  -- A decimal is its unscaled integer (#27), at the context's precision.
+  | .dec p _, .dec s m => writeDecimal p s m
   | .dec _ _, .null => obj [("null", kindType k.toKind)]
-  -- A bare double, which no context types (#96).
-  | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
 
 /-- A literal of kind `k`. An integer `NULL` is `CAST(NULL AS BIGINT)`: a bare
@@ -467,9 +468,9 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- are written without their `upscale`.
   | .un (.decimal p s) (.lit (.int m)) => decimalLit p s m
   -- `abs(a)`: `Parse.decimalCall` makes it `CASE WHEN a < 0 THEN 0 - a ELSE a END`.
-  | .un (.decimal p s) (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .dsub (.lit (.int 0)) a') a'') =>
+  | .un (.decimal p s) (.ifThen (.bin .lt a (.lit z)) (.bin .dsub (.lit z') a') a'') =>
     let wa := writeExpr cols (wkind cols a) a
-    if a == a' && a == a'' then call (fn "abs") [wa]
+    if a == a' && a == a'' && z.unscaled? == some 0 && z == z' then call (fn "abs") [wa]
     else
       let zero := writeLit .int (.int 0)
       castTo (decType p s) (obj [("ifThen", obj [
@@ -500,7 +501,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un (.decimal p s) (.bin .dsub a b) =>
     let wb := writeExpr cols (wkind cols b) b
     -- `negate`: `0 - b` at `b`'s own type.
-    if a == .lit (.int 0) && wkind cols b == .dec p s then call (fn "negate") [wb]
+    if (a == .lit (.int 0) || a == .lit (.dec s 0)) && wkind cols b == .dec p s then call (fn "negate") [wb]
     else callTyped (fn "subtract") [writeExpr cols (wkind cols a) a, wb] (decType p s)
   -- `CAST(a AS DECIMAL(p, s))` to a larger scale is an `upscale`; otherwise
   -- this is a product.
@@ -519,14 +520,20 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     castTo (obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]) (writeExpr cols (wkind cols a) a)
   | .un (.dtrunc _) a => castTo i64Type (writeExpr cols (wkind cols a) a)
   | .un (.dtof _) a => castTo fp64Type (writeExpr cols (wkind cols a) a)
-  | .bin .lt (.bin .dmul a (.lit (.int n))) b =>
+  -- A decimal comparison: both sides tagged with the common scale
+  -- (`Parse.decimalCall`), one of them maybe upscaled.
+  | .bin .lt (.un (.dkind _ _) (.bin .dmul a (.lit (.int n)))) (.un (.dkind _ _) b) =>
     decimalCompare 8 n true (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
-  | .bin .eq (.bin .dmul a (.lit (.int n))) b =>
+  | .bin .eq (.un (.dkind _ _) (.bin .dmul a (.lit (.int n)))) (.un (.dkind _ _) b) =>
     decimalCompare 7 n true (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
-  | .bin .lt a (.bin .dmul b (.lit (.int n))) =>
+  | .bin .lt (.un (.dkind _ _) a) (.un (.dkind _ _) (.bin .dmul b (.lit (.int n)))) =>
     decimalCompare 8 n false (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
-  | .bin .eq a (.bin .dmul b (.lit (.int n))) =>
+  | .bin .eq (.un (.dkind _ _) a) (.un (.dkind _ _) (.bin .dmul b (.lit (.int n)))) =>
     decimalCompare 7 n false (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .lt (.un (.dkind _ _) a) (.un (.dkind _ _) b) =>
+    call (fn "lt") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b]
+  | .bin .eq (.un (.dkind _ _) a) (.un (.dkind _ _) b) =>
+    call (fn "equal") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b]
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .time a)])]
