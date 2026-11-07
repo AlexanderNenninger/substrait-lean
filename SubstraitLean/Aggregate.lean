@@ -144,13 +144,16 @@ def Value.isDecOf (s : Nat) : Value → Bool
   | .dec t _ => t == s
   | _ => false
 
+/-- Is `vs` a non-empty list of decimals of scale `s`? -/
+def allDecOf (s : Nat) (vs : List Value) : Bool := !vs.isEmpty && vs.all (Value.isDecOf s)
+
 /-- `SUM` of integers, or of decimals of one scale at that scale. A mix of
-decimals with other values or other scales has no type: NULL, whatever the
-order of the values (#923). -/
+decimals with other values or other scales has no type; it adds the
+unscaled integers, whatever the order of the values (#923). -/
 def sumOf (vs : List Value) : Value :=
   match vs with
-  | .dec s _ :: _ => if vs.all (Value.isDecOf s) then .dec s (intSum vs) else .null
-  | _ => if vs.any Value.isDec then .null else .int (intSum vs)
+  | .dec s _ :: _ => if vs.all (Value.isDecOf s) then .dec s (intSum vs) else .int (intSum vs)
+  | _ => .int (intSum vs)
 
 theorem intSum_perm {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' := by
   induction h with
@@ -159,58 +162,53 @@ theorem intSum_perm {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' :
   | swap x y l => cases x <;> cases y <;> simp [intSum] <;> omega
   | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
 
-/-- A `SUM`'s three outcomes: an integer without decimals, a decimal when
-all are of one scale, NULL otherwise. -/
+/-- A `SUM`'s two outcomes: a decimal when all values are decimals of one
+scale, an integer otherwise. -/
 theorem sumOf_cases (vs : List Value) :
-    (vs.any Value.isDec = false ∧ sumOf vs = .int (intSum vs)) ∨
-    (∃ s, vs ≠ [] ∧ vs.all (Value.isDecOf s) = true ∧ sumOf vs = .dec s (intSum vs)) ∨
-    (vs.any Value.isDec = true ∧ (∀ s, vs.all (Value.isDecOf s) = false) ∧ sumOf vs = .null) := by
+    (∃ s, allDecOf s vs = true ∧ sumOf vs = .dec s (intSum vs)) ∨
+    ((∀ s, allDecOf s vs = false) ∧ sumOf vs = .int (intSum vs)) := by
   match vs with
-  | [] => exact .inl ⟨rfl, rfl⟩
+  | [] => exact .inr ⟨fun _ => rfl, rfl⟩
   | .dec s x :: ws =>
     by_cases hall : (Value.dec s x :: ws).all (Value.isDecOf s) = true
-    · exact .inr (.inl ⟨s, by simp, hall, by simp only [sumOf, hall, ite_true]⟩)
-    · refine .inr (.inr ⟨by simp [Value.isDec], fun t => ?_, by simp [sumOf, hall]⟩)
+    · exact .inl ⟨s, by simp only [allDecOf, hall]; rfl, by simp only [sumOf, hall, ite_true]⟩
+    · refine .inr ⟨fun t => ?_, by simp [sumOf, hall]⟩
       by_cases hts : t = s
-      · subst hts; simpa using hall
-      · simp [Value.isDecOf, Ne.symm hts]
+      · subst hts; simpa [allDecOf] using hall
+      · simp [allDecOf, Value.isDecOf, Ne.symm hts]
   | .null :: ws | .bool _ :: ws | .int _ :: ws | .float _ :: ws | .date _ :: ws | .ts _ :: ws
   | .tod _ :: ws | .str _ :: ws | .list _ :: ws | .struct _ :: ws =>
-    cases hd : List.any _ Value.isDec
-    · exact .inl ⟨rfl, by simp only [sumOf, hd]; rfl⟩
-    · exact .inr (.inr ⟨rfl, fun t => by simp [Value.isDecOf], by simp only [sumOf, hd]; rfl⟩)
+    exact .inr ⟨fun t => by simp [allDecOf, Value.isDecOf], rfl⟩
 
-theorem anyDec_of_allDec {vs : List Value} {s : Nat} (hne : vs ≠ [])
-    (h : vs.all (Value.isDecOf s) = true) : vs.any Value.isDec = true := by
-  obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil vs hne
-  have := List.all_eq_true.mp h w hw
-  exact List.any_eq_true.mpr ⟨w, hw, by cases w <;> simp_all [Value.isDecOf, Value.isDec]⟩
-
-/-- `SUM` does not depend on the order of its values. -/
-theorem sumOf_perm {vs ws : List Value} (h : vs.Perm ws) : sumOf vs = sumOf ws := by
-  have hany : vs.any Value.isDec = ws.any Value.isDec := by
-    apply Bool.eq_iff_iff.mpr
-    simp only [List.any_eq_true]
-    exact ⟨fun ⟨x, hx, h'⟩ => ⟨x, h.mem_iff.mp hx, h'⟩, fun ⟨x, hx, h'⟩ => ⟨x, h.mem_iff.mpr hx, h'⟩⟩
-  have hall : ∀ s, vs.all (Value.isDecOf s) = ws.all (Value.isDecOf s) := fun s => by
+theorem allDecOf_perm {vs ws : List Value} (h : vs.Perm ws) (s : Nat) :
+    allDecOf s vs = allDecOf s ws := by
+  have hall : vs.all (Value.isDecOf s) = ws.all (Value.isDecOf s) := by
     apply Bool.eq_iff_iff.mpr
     simp only [List.all_eq_true]
     exact ⟨fun h' x hx => h' x (h.mem_iff.mpr hx), fun h' x hx => h' x (h.mem_iff.mp hx)⟩
+  have hl := h.length_eq
+  have he : vs.isEmpty = ws.isEmpty := by
+    cases vs <;> cases ws <;> simp_all
+  simp only [allDecOf, hall, he]
+
+/-- Two lists of decimals of scales `s` and `t` with a value in common: `s = t`. -/
+theorem allDecOf_scale {vs : List Value} {s t : Nat} (hs : allDecOf s vs = true)
+    (ht : allDecOf t vs = true) : s = t := by
+  simp only [allDecOf, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at hs ht
+  obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil vs hs.1
+  have a := List.all_eq_true.mp hs.2 w hw
+  have b := List.all_eq_true.mp ht.2 w hw
+  cases w <;> simp_all [Value.isDecOf]
+
+/-- `SUM` does not depend on the order of its values. -/
+theorem sumOf_perm {vs ws : List Value} (h : vs.Perm ws) : sumOf vs = sumOf ws := by
   have hsum := intSum_perm h
-  rcases sumOf_cases vs with ⟨h1, e1⟩ | ⟨s, h0, h1, e1⟩ | ⟨h1, h2, e1⟩ <;>
-    rcases sumOf_cases ws with ⟨g1, f1⟩ | ⟨t, g0, g1, f1⟩ | ⟨g1, g2, f1⟩ <;> rw [e1, f1]
-  · rw [hsum]
-  · have := anyDec_of_allDec g0 g1; rw [← hany, h1] at this; cases this
-  · rw [← hany, h1] at g1; cases g1
-  · have := anyDec_of_allDec h0 h1; rw [hany, g1] at this; cases this
-  · obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil ws g0
-    have a := List.all_eq_true.mp ((hall s) ▸ h1) w hw
-    have b := List.all_eq_true.mp g1 w hw
-    rw [hsum]
-    cases w <;> simp_all [Value.isDecOf]
-  · have := g2 s; rw [← hall s, h1] at this; cases this
-  · rw [hany, g1] at h1; cases h1
-  · have := h2 t; rw [hall t, g1] at this; cases this
+  rcases sumOf_cases vs with ⟨s, h1, e1⟩ | ⟨h1, e1⟩ <;>
+    rcases sumOf_cases ws with ⟨t, g1, f1⟩ | ⟨g1, f1⟩ <;> rw [e1, f1, hsum]
+  · have hs : allDecOf s ws = true := by rw [← allDecOf_perm h s]; exact h1
+    rw [allDecOf_scale hs g1]
+  · rw [allDecOf_perm h s, g1] at h1; cases h1
+  · rw [← allDecOf_perm h t, h1] at g1; cases g1
 
 def floatSum (vs : List Value) : Int :=
   vs.foldl (fun acc v => match v with
