@@ -1,0 +1,62 @@
+{
+  "id": "spark-window-agg",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Windowed `SUM`/`AVG` of doubles: each frame anew, a running sum, or a segment tree",
+  "verdict": "a sum of the frame's own values: the whole partition once, a running sum as a frame grows, any other frame anew (a segment tree only with spark.sql.window.segmentTree.enabled)",
+  "area": "windows",
+  "options": ["window_sum_algo"],
+  "rows": [
+    {"group": "win.agg", "option": "window_sum_algo", "types": ["any"]}
+  ],
+  "constructs": ["sum OVER", "avg OVER"],
+  "settings": {},
+  "description": [
+    "Spark picks a frame class by the frame's bounds, the same for ROWS and RANGE (`WindowEvaluatorFactoryBase`). UNBOUNDED PRECEDING to UNBOUNDED FOLLOWING: `UnboundedWindowFunctionFrame` aggregates the partition once. UNBOUNDED PRECEDING to a later bound: `UnboundedPrecedingWindowFunctionFrame` initializes once and updates with each row that enters, never removing one. A bound to UNBOUNDED FOLLOWING: `UnboundedFollowingWindowFunctionFrame` re-initializes and updates over the rows from the lower bound to the end. Any other frame: `SlidingWindowFunctionFrame` keeps the frame's rows in a deque and, whenever it changes, re-initializes and updates over the whole deque.",
+    "With `spark.sql.window.segmentTree.enabled` (default false, since 4.2.0), moving and shrinking frames of `Sum` and `Average` use a block segment tree built from the aggregates' update and merge expressions, falling back to the frames above for partitions under 64 rows.",
+    "`Sum` of doubles updates by `Add`, `Average` by adding to its sum and count; `AggregateProcessor` has initialize, update and evaluate, and no retraction. No frame subtracts a leaving row's value.",
+    "Order class: RECOMPUTE (whole partition, shrinking and sliding frames), RUNNING_ADD (growing frames), TREE (the segment tree): each a sum of the frame's own values in some order, within the plan's bound of `floatSumCR` for the input's row cap (`StdModel.epsilon_sum_cr`)."
+  ],
+  "reference": "`WinFn.valueIn` sums each frame's values anew (`window_sum_algo = RECOMPUTE`); the frame's `SUM` and `AVG` are `floatSumCR` and `floatAvgCR` (D25).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-07",
+      "method": "source-reading",
+      "checked_by": "session local_974f7865 side session (#1032 window-sum research subagent)",
+      "evidence": [
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowEvaluatorFactoryBase.scala#L243-L392", "note": "frame class by bounds"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowFunctionFrame.scala#L542-L574", "note": "UnboundedWindowFunctionFrame: the partition once"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowFunctionFrame.scala#L594-L655", "note": "UnboundedPrecedingWindowFunctionFrame: update per entering row"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowFunctionFrame.scala#L676-L731", "note": "UnboundedFollowingWindowFunctionFrame: recompute from the lower bound"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowFunctionFrame.scala#L444-L527", "note": "SlidingWindowFunctionFrame: recompute over the deque"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/AggregateProcessor.scala#L148-L183", "note": "initialize, update, evaluate; no retraction"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L4758-L4765", "note": "spark.sql.window.segmentTree.enabled, default false"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/execution/window/WindowSegmentTree.scala#L86-L95", "note": "tree from update and merge expressions"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/Sum.scala#L94-L141", "note": "Sum: Add"},
+        {"url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/Average.scala#L102-L135", "note": "Average: sum and count, merged by addition"}
+      ],
+      "notes": "Read at tag v4.3.0. The analyzer's default frames (ORDER BY without a frame: RANGE UNBOUNDED PRECEDING to CURRENT ROW) are the documented ones, not read in source."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "session local_974f7865 side session (#1032)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_window_sums.py",
+          "note": "python -m sverify_dev.probe_window_sums --spark"
+        },
+        {
+          "sql": "SELECT i, sum(v) OVER (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS s FROM (VALUES (0, 1e16), (1, 1.0), (2, 1.0), (3, 1.0), (4, 1.0)) AS t(i, v) ORDER BY i",
+          "observed": "1e16, 1e16, 2.0, 2.0, 2.0 (default and segment tree)"
+        }
+      ],
+      "notes": "pyspark 4.3.0 local[1], Java 21, with spark.sql.window.segmentTree.enabled false (the default) and true: the same values. A sliding accumulator (add the entering row, subtract the leaving one) would carry 1e16 and give 0.0 for the frames [1, 1]; summing the frame's own values gives 2.0."
+    }
+  ],
+  "issues": [
+    1032
+  ]
+}

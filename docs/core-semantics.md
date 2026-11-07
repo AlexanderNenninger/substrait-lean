@@ -463,9 +463,9 @@ is measured.
 The table is [realizability.md](realizability.md): `obligations reference E`
 for DuckDB and Polars (`SubstraitLean/Obligations.lean`), printed by
 `substrait-check --realizability` and rendered by
-`python -m sverify_dev.realizability --write`. The file is committed with
-the change that alters it, and `tests/test_realizability.py` fails until it
-is current. Lean checks that no row differs from the reference without a
+`python -m sverify_dev.realizability --write`. The `Generated files`
+workflow rewrites it on `main` after every merge, so feature branches leave
+it alone. Lean checks that no row differs from the reference without a
 shim, an observation or a precondition (`obligations_consistent`), that
 every shim has a cost class and evidence (`obligations_shims_evidenced`),
 and that every theorem a row names exists. Each row is computed from the
@@ -655,6 +655,7 @@ is a choice that accepts every value the plan states.
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
 | `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
 | `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
+| `window_sum_algo` | all others | `RECOMPUTE`, `TREE`, `RUNNING_ADD`, `SLIDING` | `RECOMPUTE` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
@@ -1746,6 +1747,12 @@ RDBMSs", ICDE 2018, [arXiv:1802.09883](https://arxiv.org/abs/1802.09883)) make `
 superaccumulator ([arXiv:1505.05571](https://arxiv.org/abs/1505.05571))
 computes the correctly rounded sum at less than twice the cost of a naive
 one.
+
+Note ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)):
+window aggregates of doubles take the same per-measure profile choice as
+grouped aggregates; the reference is unchanged. An engine's window sum is
+within the plan's bound where its window algorithm sums the frame's own
+values (`window_sum_algo`: each frame anew, a tree, or a running sum).
 
 ### D30. Statistical aggregates are correctly rounded exact moments
 
