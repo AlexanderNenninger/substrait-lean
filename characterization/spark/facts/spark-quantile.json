@@ -42,7 +42,8 @@
   },
   "description": [
     "`median`, `percentile(x, p)` and `percentile_cont(p) WITHIN GROUP (ORDER BY x)` interpolate linearly at position (n - 1)·p: over 1, 2, 3, 10 the median is 2.5 and `p = 0.25` 1.75. `percentile_disc(p)` takes the first value whose cumulative share reaches p (1 at 0.25, 2 at 0.26 over 1, 2, 3, 4). All three return `DOUBLE`, for integer and decimal inputs too (`median` of two `DECIMAL(10,2)` is 1.675 as a double). `percentile_approx` is approximate and returns the input type.",
-    "NULLs are skipped; NaN sorts last (spark-nan-order). The fraction must be a constant. Under `spark.sql.legacy.percentileDiscCalculation` (off by default) `percentile_disc` picks other values."
+    "NULLs are skipped; NaN sorts last (spark-nan-order). The fraction must be a constant. Under `spark.sql.legacy.percentileDiscCalculation` (off by default) `percentile_disc` picks other values.",
+    "The interpolation is `lo + (position − ⌊position⌋)·(hi − lo)` in doubles (`getPercentile`): of 0.4 and 1.697 at 0.3, `percentile_cont` is 0.7891000000000001, an ulp above the exact interpolation rounded once (0.7891). `hi − lo` can overflow for neighbours of opposite sign near the double's range."
   ],
   "reference": "`quantile_disc` takes a value of the input, of its type; `quantile_cont` any double between the neighbours (`contAllowed`). Spark's positions match; `percentile_disc` of integers and decimals needs a cast back to the input type, exact for integers below 2⁵³.",
   "status": "open",
@@ -131,6 +132,32 @@
         "quantile[0]: 300 rows, `percentile_cont(0.0) WITHIN GROUP (ORDER BY x)`, `percentile_disc(0.0) WITHIN GROUP (ORDER BY x)`, `percentile_cont(0.25) WITHIN GROUP (ORDER BY x)`, `percentile_disc(0.25) WITHIN GROUP (ORDER BY x)`, `percentile_cont(0.5) WITHIN GROUP (ORDER BY x)`, `percentile_disc(0.5) WITHIN GROUP (ORDER BY x)`,`, 2244 of 2244 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "source-reading",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/percentiles.scala#L196-L233",
+          "note": "position = (n − 1)·p; lower + (position − ⌊position⌋)·(higher − lower) in doubles"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), pyspark 4.3.0 local[2], Java 21, macOS arm64, `spark.sql.ansi.enabled` true and false (same results)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT percentile_cont(0.3) WITHIN GROUP (ORDER BY x) AS q FROM (VALUES (CAST(0.4 AS DOUBLE)), (CAST(1.697 AS DOUBLE))) AS t(x)",
+          "observed": "0.7891000000000001"
+        }
+      ],
+      "notes": "x = 0.4, 1.697."
     }
   ]
 }

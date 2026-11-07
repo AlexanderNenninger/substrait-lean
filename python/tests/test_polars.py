@@ -753,3 +753,24 @@ def test_greatest_and_least_of_many_columns_run_in_one_pick():
     want = [["nan" if isinstance(v, float) and math.isnan(v) else repr(v) for v in r.values()]
             for r in run_plan(con, plan, "duckdb").to_pylist()]  # fmt: skip
     assert key == want
+
+
+def test_aggregates_group_by_computed_keys():
+    """sverify's Polars aggregate groups by computed key columns (`__sv_g0`,
+    …), never by an input column as it is. PL-14: on Polars 2.1.0's streaming
+    engine, `group_by` on one plain input column over a one-row frame whose
+    value is NULL gives `var(ddof=0)` and `std(ddof=0)` 0.0 where the
+    reference is NULL; a computed key gives NULL. A translation that grouped
+    by the raw column would need a count check in `NativeAgg`."""
+    con = connect()
+    put_table(
+        con, "t", pa.table({"g": pa.array([0], pa.int64()), "x": pa.array([None], pa.float64())})
+    )
+    sql = "SELECT g, var_pop(x) AS v, stddev_pop(x) AS s FROM t GROUP BY g"
+    plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
+    lf = polars_engine.to_lazy(plan, {"t": con._arrow["t"]})
+    by = [line for line in lf.explain().splitlines() if "AGGREGATE" in line or " BY [" in line]
+    keys = [line.split(" BY [", 1)[1] for line in by if " BY [" in line]
+    assert keys, lf.explain()
+    assert all(k.startswith('col("__sv_g') for k in keys), keys
+    assert rows_of(run_plan(con, plan, "polars")) == [(0, None, None)]

@@ -53,6 +53,7 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | [stability.md](stability.md) | What 1.x keeps: the formats, the proofs, the API, the engines | Semantics |
 | [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area | Semantics |
 | [realizability.md](realizability.md) | Each engine's class on every option, generated | Ledgers |
+| [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit | |
 | The ledgers | Upstream bugs, spec gaps, engine facts, the checklist's coverage | Ledgers |
 
 ## Explanation
@@ -82,6 +83,7 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | Each engine's translation and shims | [engine-profiles.md](engine-profiles.md) |
 | Profiles, options, soundness, decisions | [core-semantics.md](core-semantics.md) |
 | What is proved and what is trusted | [proofs.md](proofs.md) |
+| How each feature is taught, and each refusal's exit | [teaching.md](teaching.md) |
 | Float error bounds | [float-bounds.md](float-bounds.md) |
 | The refresh protocol, model-checked | [models/refresh/README.md](../models/refresh/README.md) |
 | Credits | [prior-work.md](prior-work.md) |
