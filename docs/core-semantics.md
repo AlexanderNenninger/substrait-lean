@@ -53,7 +53,9 @@ The decisions below apply them; they add no semantics of their own.
   with each engine within the plan's bound (`Relation.Near`).
 - Engines meet the reference through the `AllowedP` profile tables. A new
   engine is a profile and a facts table, with no change to `Rel.eval` or
-  `Rel.Allowed` ([Translations between profiles](#translations-between-profiles)).
+  `Rel.Allowed` ([Translations between profiles](#translations-between-profiles)),
+  and a package can add one without changing sverify
+  ([engine profiles from outside](engine-profiles.md#engine-profiles-from-outside)).
 
 ## Terminology
 

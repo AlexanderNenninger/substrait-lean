@@ -120,7 +120,7 @@ other pages link here.
   `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
-- The CLI's glue, `Main.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
+- The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON. On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
 - Where an engine evaluates an expression. Lean proves which rows an
@@ -326,7 +326,9 @@ generators, then the trusted reading and writing.
 | `ContractCheck.lean` | `--contract`: proving postconditions and keys from preconditions |
 | `ShardCheck.lean` | `--shard`: per-shard and combining plans |
 | `Examples.lean` | Concrete plans checked with `#guard`, and `#print axioms` |
-| `Main.lean` | The `substrait-check` CLI |
+| `Main.lean` | The `substrait-check` CLI: `checkerMain` over `builtinEngines` |
+| `SubstraitCheck.lean` | `Checker.checkerMain`, the CLI over a list of engine profiles, which a package with a profile of its own builds on ([engine profiles from outside](engine-profiles.md#engine-profiles-from-outside)) |
+| `SubstraitCheckExamples/DummyEngine.lean` | A test profile, `dummy`, added from outside and checked with `#check_engine_profiles` |
 | `scripts/RegenLowering.lean`, `scripts/RegenLift.lean` | The drivers of `poe regen-lowering` and `poe regen-lift` |
 
 ### `float-bounds/`
