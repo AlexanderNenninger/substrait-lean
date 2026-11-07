@@ -297,10 +297,31 @@ def test_double_modulus_is_refused():
         SNOWFLAKE.float_mod("a", "b")
 
 
-def test_double_variance_is_refused():
-    # The textbook formula: 0 for 1e9 + {4, 7, 13, 16} (Snowflake behaviour recorded privately).
-    with pytest.raises(Unsupported, match="cancel catastrophically"):
-        SNOWFLAKE.float_var("var_samp", "x")
+def test_double_variance_reads_values_shifted_by_the_group_mean():
+    """The textbook formula cancels on values far from their mean (0 for
+    1e9 + {4, 7, 13, 16}; Snowflake behaviour recorded privately). The writer
+    shifts each value by its group's mean (#1023), which keeps the
+    reference's value (`momentNum_shift`); the checks read the values
+    themselves. A DISTINCT variance has no such shift yet."""
+    import ibis
+    from ibis import _
+
+    import sverify as sv
+    from sverify.sql import to_sql
+
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    req = {"t": [_.x.between(-1e10, 1e10)]}
+    plan = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req).internal_plan
+    assert plan is not None
+    sql = to_sql(plan, SNOWFLAKE)
+    assert re.search(r"- AVG\(.*?\) OVER \(PARTITION BY ", sql)
+    assert 'VAR_SAMP(s3."t0")' in sql and 'ABS(s3."m0")' in sql
+    sqlglot.parse_one(sql, read="snowflake")
+    query = "SELECT k, VAR_SAMP(DISTINCT x) AS v FROM t GROUP BY k"
+    distinct = sv.verify(query, tables={"t": t}, requires=req).internal_plan
+    assert distinct is not None
+    with pytest.raises(Unsupported, match="#1023"):
+        to_sql(distinct, SNOWFLAKE)
 
 
 def test_integer_literals_fold():

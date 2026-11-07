@@ -821,6 +821,17 @@ def _gives_as_stated(choice: Mapping[str, Any] | None, dep: Mapping[str, Any]) -
     )
 
 
+def _on_engine(eps: Mapping[str, Any], engine: str) -> Mapping[str, Any]:
+    """A column's `ε` as `engine` meets it: where the checker names the engines
+    on which its bound is proved (`"proved_on"`, a statistic's: the engines
+    whose algorithm a theorem covers, D30), proved there and tested on the
+    others."""
+    if "proved_on" not in eps:
+        return eps
+    proved = {**(eps.get("proved") or {}), "abs": engine in eps["proved_on"]}
+    return {**eps, "proved": proved}
+
+
 def realization(
     engine: str,
     depends: Sequence[Mapping[str, Any]],
@@ -852,6 +863,8 @@ def realization(
     """
     from sverify.observation import from_json
 
+    if epsilon:
+        epsilon = {c: _on_engine(e, engine) for c, e in epsilon.items()}
     classes: list[Class] = []
     evidence: list[str] = []
     shims: list[str] = []

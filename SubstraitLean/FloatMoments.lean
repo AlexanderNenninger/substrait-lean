@@ -314,4 +314,38 @@ theorem Stat.clamp_near {lo hi e x : Int} (hl : lo ≤ e) (hh : e ≤ hi) :
     (max lo (min hi x) - e).natAbs ≤ (x - e).natAbs := by
   omega
 
+/-- `n · Σv² − (Σv)²` of the values `vs` themselves: `comomentNum` of codes
+is this of their scaled values (`comomentNum_eq`). -/
+def momentNum (vs : List Int) : Int :=
+  vs.length * (vs.map fun v => v * v).foldr (· + ·) 0 - vs.foldr (· + ·) 0 * vs.foldr (· + ·) 0
+
+theorem comomentNum_eq (cs : List Int) : comomentNum cs = momentNum (cs.map scaled) := by
+  simp only [comomentNum, momentNum, sqSumOf, sumOf, List.length_map, List.map_map,
+    Function.comp_def]
+
+theorem shift_sum (c : Int) : ∀ vs : List Int,
+    (vs.map (· - c)).foldr (· + ·) 0 = vs.foldr (· + ·) 0 - vs.length * c
+  | [] => by simp
+  | v :: vs => by
+    simp only [List.map_cons, List.foldr_cons, List.length_cons, shift_sum c vs]
+    push_cast; grind
+
+theorem shift_sqSum (c : Int) : ∀ vs : List Int,
+    ((vs.map (· - c)).map fun v => v * v).foldr (· + ·) 0 =
+      (vs.map fun v => v * v).foldr (· + ·) 0 - 2 * c * vs.foldr (· + ·) 0 + vs.length * (c * c)
+  | [] => by simp
+  | v :: vs => by
+    simp only [List.map_cons, List.foldr_cons, List.length_cons, shift_sqSum c vs]
+    push_cast; grind
+
+/-- **The Snowflake mean-shift shim keeps the reference's value** (#1023):
+the exact co-moment `n · Σv² − (Σv)²`, which `varOf` rounds once (D30), is
+the same for the values shifted by any constant `c`, so the reference value
+of `VAR_*(x − c)` over a group is that of `VAR_*(x)`. The writer shifts each
+value by its group's `AVG`; the engine's error on the shifted doubles is
+Snowflake's profile bound (recorded privately). -/
+theorem momentNum_shift (vs : List Int) (c : Int) : momentNum (vs.map (· - c)) = momentNum vs := by
+  simp only [momentNum, shift_sqSum, shift_sum, List.length_map]
+  grind
+
 end Substrait
