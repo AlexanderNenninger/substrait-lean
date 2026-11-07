@@ -239,6 +239,28 @@ def test_float_literals():
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
 
 
+@pytest.mark.parametrize(
+    ("label", "native"), [("rolling mean (rows)", False), ("running mean", True)]
+)
+def test_moving_window_sums_of_doubles_add_the_frame_anew(label, native):
+    """Snowflake's own SUM over a moving frame can fall outside the plan's
+    bound (Snowflake behaviour recorded privately): a moving frame's values
+    are collected and added anew, a running frame keeps `SUM`."""
+    from sverify.engine import written_plan
+    from sverify_dev import coverage
+
+    case = next(c for c in coverage.CASES if c.label == label)
+    plan = json.loads(written_plan(to_substrait_json(case.build())))
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    reduce = re.compile(
+        r"REDUCE\(ARRAY_AGG\(s\d+\.\"c2\"\) OVER \([^)]*ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\),"
+        r" CAST\(0 AS FLOAT\), \(acc FLOAT, x VARIANT\) -> acc \+ CAST\(x AS FLOAT\)\)"
+    )
+    assert bool(reduce.search(sql)) is not native
+    assert ("SUM(" in sql) is native
+    sqlglot.parse_one(sql, read="snowflake")
+
+
 def test_temporal_literals():
     assert parses(SNOWFLAKE.timestamp_lit(1_500)) == (
         "CAST('1970-01-01 00:00:00.001500' AS TIMESTAMP_NTZ(6))"

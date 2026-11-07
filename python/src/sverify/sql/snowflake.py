@@ -289,6 +289,18 @@ class SnowflakeDialect(Dialect):
         total, n = f"SUM({v}) {over}", f"COUNT({v}) {over}"
         return f"CAST(({total} - MOD({total}, {n})) / {n} AS NUMBER(38,0))"
 
+    def window_float_sum(self, v: str, over: str, moving: bool) -> str:
+        # Snowflake's own SUM over a moving frame can fall outside the plan's
+        # bound (Snowflake behaviour recorded privately). A moving frame's
+        # values are collected and added anew: some order of the frame's own
+        # values, within the plan's bound. ARRAY_AGG skips NULLs, as SUM does.
+        if not moving:
+            return f"SUM({v}) {over}"
+        return (
+            f"REDUCE(ARRAY_AGG({v}) {over}, CAST(0 AS FLOAT),"
+            " (acc FLOAT, x VARIANT) -> acc + CAST(x AS FLOAT))"
+        )
+
     def window_int_sum(self, v: str, over: str) -> str:
         return f"CAST({self.checked(f'SUM({v}) {over}', row=False)} AS NUMBER(38,0))"
 
