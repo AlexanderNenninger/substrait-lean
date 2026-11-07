@@ -224,6 +224,10 @@ class Sink:
     """The view's serial (`IncrementalView.serial`) at the state written
     last; None: the sink's contents are replaced on the next write."""
     _last: Contract | None = None
+    _synced: tuple | None = None
+    """The record (`_state_key`) of the commit `_written` is: the one this
+    process wrote, skipped to or resumed from. A change is written only on
+    top of it; another commit there means another writer's state (#963)."""
     _kept: _Kept | None = None
     _pending: tuple[int, Contract] | None = None
     """The view's serial and the contract of a write that raised: its commit
@@ -318,13 +322,14 @@ class Sink:
 
     # -- what `Node.write` and `refresh` call --------------------------------
 
-    def _attach(self, view: IncrementalView) -> None:
-        """Write `view` from now on."""
+    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None:
+        """Write `view` from now on; `stored` is what the view resumed from."""
         self._view = view
         view._sinks.append(self)
-        self._written, self._pending = None, None
-        if view.stored is not None and view.stored[0] == self.location:
+        self._written, self._pending, self._synced = None, None, None
+        if view.stored is not None and view.stored[0] == self.location and stored is not None:
             self._written = view.serial
+            self._synced = _state_key(stored)
 
     def _stored(self) -> Stored | None:
         """The state a restarted job resumes from: none by default."""
@@ -374,6 +379,7 @@ class Sink:
             # The last write raised after its commit landed: the sink holds
             # that state, as a restarted job finds it. Write on from there.
             self._written, self._last = pending
+            self._synced = _state_key(pending[1])
         if done is not None and (done.plan != contract.plan or other_tables(done, contract)):
             # Another plan's rows, or rows computed from other tables (a
             # source dropped and created again, #516): neither skip this
@@ -386,8 +392,15 @@ class Sink:
             # the same source versions; else (another writer is ahead, #517)
             # the next write replaces it.
             self._written = view.serial if done.sources == contract.sources else None
+            self._synced = _state_key(done) if self._written is not None else None
             self._keep(view, contract, None)
             return SinkWrite("skipped", self._version(), contract)
+        elif self._written is not None and done is not None and _state_key(done) != self._synced:
+            # Another commit than the one this process wrote, skipped to or
+            # resumed from: a change since `_written` would land on a state
+            # it was not computed from (a second writer, or the late commit
+            # of a crashed one). Replace the rows (#963).
+            self._written = None
         since = None if self._written is None else view.changes_since(self._written)
         change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
         self._pending = (view.serial, contract)
@@ -405,6 +418,7 @@ class Sink:
             out = SinkWrite(mode, self._version(), contract, n_in, n_out)
         self._written = view.serial
         self._last = contract
+        self._synced = _state_key(contract)
         self._keep(view, contract, change)
         return out
 
@@ -609,6 +623,12 @@ class _TableSink[T](Sink, ABC):
                     stacklevel=2,
                 )
         return out
+
+
+def _state_key(record: Contract | Stored) -> tuple:
+    """What identifies the state a sink's record names: the plan, the source
+    versions and the static tables' digests."""
+    return record.plan, sorted(record.sources.items()), sorted(record.digests.items())
 
 
 @dataclass
