@@ -97,7 +97,9 @@
     "Integers and decimals become doubles first (`as f64`, `dec128_to_f64`); the result is `Float64` (`Float32` for `Float32` input). `ddof` is the divisor's offset: SAMPLE is `ddof=1`, POPULATION `ddof=0`; a weight at most `ddof` is NULL, and `VarState::finalize` clamps a negative variance to 0. The in-memory engine's algorithms are in polars-var-std.",
     "Algorithm and error (sum_order does not apply; `stat_algo`): ungrouped, each run of up to 128 values (`chunk_as_float`, values widened to `f64`) is a two-pass block: the mean by `alg_sum_f64`, then the sum of squared deviations by `alg_sum_f64`, and blocks merge by Schubert and Gertz's update (Chan's pairwise formula), chained per pipeline and then across pipelines. `alg_sum_f64` folds with `algebraic_add` in the `nightly` build the wheels use (`default = [\"full\", \"nightly\"]`), which lets the compiler reassociate, so the order inside a block is unspecified. Grouped, Welford's update per value and the same merge. Error: the two-pass formula has a relative error of order n·u + n²u²κ² for the condition number κ (Higham §1.9), with n ≤ 128 per block here; the chained merges add errors of order u·κ per merge (Higham §1.9 for the updating formulas), unbounded in the number of merges; no tighter bound is stated. For the Lean side this is a WELFORD_CHAN-like algorithm, which `StatAlgo` treats as GENERIC: the generic properties hold, and no error bound is used.",
     "The docs are silent on the algorithm, the variation between runs, the clamp to 0 and NULL for a weight at most `ddof`: a docs gap.",
-    "No upstream test pins the streaming order, the clamp or that NULL; they may change between versions."
+    "No upstream test pins the streaming order, the clamp or that NULL; they may change between versions.",
+    "Probed (`sverify_dev.probe_statistics`): of {4, 7, 13, 16} shifted by 0, 1e6, 1e8, 1e9 and 1e12, `var(ddof=1)` is 30 and `var(ddof=0)` 22.5 at every shift, ungrouped and grouped, where the textbook formula gives 29.33 at 1e8 and 0 at 1e9. Values whose textbook variance in doubles is negative give 0.0. A NaN or ±inf gives NaN.",
+    "One quirk (PL-14): a frame of one row whose value is NULL, grouped, gives `var(ddof=0)` and `std(ddof=0)` 0.0 on the streaming engine, where no values should be null; in memory, with two such rows, or beside another group it is null."
   ],
   "reference": "Substrait's `variance` and `std_dev` with `distribution`; the reference states the generic properties (non-negative, NULL for a weight at most `ddof`) and leaves the algorithm to the engine profile.",
   "status": "open",
@@ -237,6 +239,29 @@
         }
       ],
       "notes": "Corrected the description: it gave the 4-row grouped variance as matching in memory. On 10 threads it varies by run, as the grouped sum and mean do; the recorded differ 0 is one outcome."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), polars 2.1.0, streaming engine (`collect(engine=\"streaming\")`), ungrouped and grouped, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "note": "shift ladder, ungrouped and grouped: var 30.0 (ddof 1), 22.5 (ddof 0) at every shift"
+        },
+        {
+          "note": "repeats of 0.1, 0.3 and 1e8 + 0.1: var 0.0, ungrouped and grouped"
+        },
+        {
+          "note": "x = 1, NaN, 2; 1, ±inf, 2; inf, inf: var and std NaN, ungrouped and grouped"
+        },
+        {
+          "note": "n0, grouped: `pl.LazyFrame({'g': [0], 'x': [None]}).group_by('g').agg(pl.col('x').var(ddof=0))` gives 0.0 (std 0.0) on the streaming engine, null in memory; with two NULL rows, or another group beside it, null; ungrouped null"
+        }
+      ],
+      "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12. n0 is one row whose value is NULL, alone in the frame."
     }
   ],
   "supersedes": [

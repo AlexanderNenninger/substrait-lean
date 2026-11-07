@@ -10,8 +10,24 @@
     "stat_degenerate"
   ],
   "rows": [
-    {"group": "agg.stat", "option": "stat_algo", "types": ["i64", "fp64", "decimal"]},
-    {"group": "agg.stat", "option": "stat_degenerate", "types": ["i64", "fp64", "decimal"]}
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "i64",
+        "fp64",
+        "decimal"
+      ]
+    }
   ],
   "constructs": [
     "corr",
@@ -29,7 +45,8 @@
     "Integers become doubles (`as f64`) and decimals are cast to `Float64` in memory, so the degenerate cases are those of doubles: one pair or a constant side is NaN for `Int64` and `Decimal` too. Above 2⁵³ distinct integers can round to one double: `corr` of 2⁶², 2⁶² + 1, 2⁶² + 2 with 1, 2, 3 is NaN.",
     "The streaming reduction accepts primitive numerics only: `corr` of a `Decimal` column raises `InvalidOperationError` on the default lazy engine and succeeds in memory. No pairs is null when streaming and NaN in memory (above).",
     "The docs are silent on one pair, a constant side and no pairs, the types `corr` takes and the engines: a docs gap.",
-    "No upstream test pins no pairs or a `Decimal` input; they may change between versions."
+    "No upstream test pins no pairs or a `Decimal` input; they may change between versions.",
+    "Probed: `pl.corr(x, 2x)` is 1.0 for {4, 7, 13, 16} shifted by up to 1e12 on the streaming engine, ungrouped and grouped; a constant side is NaN."
   ],
   "reference": [
     "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
@@ -219,6 +236,23 @@
         }
       ],
       "notes": "From the reverse pass's check of PL-5, which this fact records."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), polars 2.1.0, streaming engine (`collect(engine=\"streaming\")`), ungrouped and grouped, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "note": "pl.corr(x, 2x) 1.0 at every shift, ungrouped and grouped"
+        },
+        {
+          "note": "one pair, a constant side, both sides constant: NaN; no pairs: null (streaming)"
+        }
+      ],
+      "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12, y = 2x; corr-const: y constant."
     }
   ],
   "issues": [

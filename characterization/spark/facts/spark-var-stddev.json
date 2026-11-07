@@ -97,7 +97,8 @@
   "description": [
     "All state is `DoubleType`, the count too. The update is Welford/West: `delta = x - avg`, `deltaN = delta / (n + 1)`, `avg += deltaN`, `m2 += delta * (delta - deltaN)`. Partial states merge as `m2.l + m2.r + delta * deltaN * n1 * n2`, with `delta` forced to 0 when a side is empty.",
     "No values is NULL; the sample variance of one value is NULL (NaN under `spark.sql.legacy.statisticalAggregate`). No clamp.",
-    "`var_samp`/`variance`/`stddev_samp`/`stddev`/`std` take the sample (`distribution: SAMPLE`), `var_pop`/`stddev_pop` the population. Every input type, `BIGINT` and decimals included, is cast to `DOUBLE`, and the result is `DOUBLE`. The probes: one value gives NULL for the sample forms and 0.0 for the population ones (NaN for the sample forms with `spark.sql.legacy.statisticalAggregate`); 1e9 + {4, 7, 13, 16} gives exactly 30 and 22.5, Welford's update cancelling no digits there."
+    "`var_samp`/`variance`/`stddev_samp`/`stddev`/`std` take the sample (`distribution: SAMPLE`), `var_pop`/`stddev_pop` the population. Every input type, `BIGINT` and decimals included, is cast to `DOUBLE`, and the result is `DOUBLE`. The probes: one value gives NULL for the sample forms and 0.0 for the population ones (NaN for the sample forms with `spark.sql.legacy.statisticalAggregate`); 1e9 + {4, 7, 13, 16} gives exactly 30 and 22.5, Welford's update cancelling no digits there.",
+    "Probed (`sverify_dev.probe_statistics`): `VAR_SAMP` 30 and `VAR_POP` 22.5 of {4, 7, 13, 16} shifted by 0, 1e6, 1e8, 1e9 and 1e12; values whose textbook variance in doubles is negative give 0.0."
   ],
   "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
@@ -196,6 +197,33 @@
         "aggregates[1]: 300 rows, `var_samp(x)`, `var_pop(x)`, `stddev_samp(x)`, 1440 of 1440 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), pyspark 4.3.0 local[2], Java 21, macOS arm64, `spark.sql.ansi.enabled` true and false (same results)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1000000000004.0 AS DOUBLE), CAST(2000000000008.0 AS DOUBLE)), (CAST(1000000000007.0 AS DOUBLE), CAST(2000000000014.0 AS DOUBLE)), (CAST(1000000000013.0 AS DOUBLE), CAST(2000000000026.0 AS DOUBLE)), (CAST(1000000000016.0 AS DOUBLE), CAST(2000000000032.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_samp 30.0, var_pop 22.5, stddev_samp 5.477225575051661"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(100000000.1 AS DOUBLE), CAST(100000000.1 AS DOUBLE)), (CAST(100000000.1 AS DOUBLE), CAST(100000000.1 AS DOUBLE)), (CAST(100000000.1 AS DOUBLE), CAST(100000000.1 AS DOUBLE)), (CAST(100000000.1 AS DOUBLE), CAST(100000000.1 AS DOUBLE)), (CAST(100000000.1 AS DOUBLE), CAST(100000000.1 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_samp 0.0, var_pop 0.0"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(3.0 AS DOUBLE), CAST(6.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_samp NULL, var_pop 0.0"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST('Infinity' AS DOUBLE), CAST(2.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(3.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "NaN"
+        }
+      ],
+      "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12."
     }
   ],
   "issues": [
