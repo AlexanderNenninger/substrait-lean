@@ -394,6 +394,48 @@ theorem StdModel.core_corr_chan (P : Plan) (Pv Pw : VPlan) (hne : P.pairs ≠ []
   have hby : Syy ≤ 2 ^ 1000 := le_trans (le_trans hSyQ hQyb) (by norm_num)
   exact M.corr_duck_le hn1 hnN (sq_comoment_le ps) hEc hEx hEy hL hSx hSy hLt hbx hby hEu
 
+/-- **`"abs"` of a `VAR_*` against the reference (D30)**: an engine's
+`fl(M₂ / d)` (`core_var_chan`) is within `varTol + u · |S / d|` of any `v`
+within `u` of `S / d`, relatively, which the reference's correctly rounded
+`varOf` is (`FloatCode.ofExactDiv_within`). -/
+theorem StdModel.epsilon_var_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p.vals ≠ [])
+    (hN : p.vals.length ≤ 2 ^ 32) (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 398)
+    (hx : ∀ x ∈ p.vals, OnGrid x ∧ M.fl x = x) {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ p.vals.length)
+    {r : ℝ} (hr : √((p.vals.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL p.vals)) ≤ r)
+    {v : ℝ} (hv : |v - comoment (dupL p.vals) / d| ≤ u * |comoment (dupL p.vals) / d|) :
+    |M.fl ((M.vEval p).2.2 / d) - v|
+      ≤ varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum
+        + u * |comoment (dupL p.vals) / d| := by
+  have h := (M.core_var_chan hg hmo p hne hN hB hx hd1 hdn hr).2
+  set e := comoment (dupL p.vals) / d
+  calc |M.fl ((M.vEval p).2.2 / d) - v| = |(M.fl ((M.vEval p).2.2 / d) - e) - (v - e)| := by
+        ring_nf
+    _ ≤ |M.fl ((M.vEval p).2.2 / d) - e| + |v - e| := abs_sub _ _
+    _ ≤ _ := by linarith
+
+/-- **`"abs"` of a `COVAR_*` against the reference (D30)**: an engine's
+`fl(C / d)` (`core_cov_chan`) is within `covTol + u · |C / d|` of any `v`
+within `u` of `C / d`, relatively, which the reference's `covOf` is. -/
+theorem StdModel.epsilon_cov_cr (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
+    (hB : Bounded (2 ^ 398) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2)
+    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ P.pairs.length) {r1 r2 rs rq : ℝ}
+    (h1 : √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum)
+      * √(comoment (P.pairs.map fun p => (p.2, p.2))) ≤ r1)
+    (h2 : √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
+      * √(comoment (P.pairs.map fun p => (p.1, p.1))) ≤ r2)
+    (hs : √(comoment (P.pairs.map fun p => (p.1, p.1)))
+      * √(comoment (P.pairs.map fun p => (p.2, p.2))) ≤ rs)
+    (hq : √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum)
+      * √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum) ≤ rq)
+    {v : ℝ} (hv : |v - comoment P.pairs / d| ≤ u * |comoment P.pairs / d|) :
+    |M.fl ((M.run P).c / d) - v|
+      ≤ covTol P.pairs.length d r1 r2 rs rq + u * |comoment P.pairs / d| := by
+  have h := M.core_cov_chan P hne hN hB hrep hd1 hdn h1 h2 hs hq
+  set e := comoment P.pairs / d
+  calc |M.fl ((M.run P).c / d) - v| = |(M.fl ((M.run P).c / d) - e) - (v - e)| := by ring_nf
+    _ ≤ |M.fl ((M.run P).c / d) - e| + |v - e| := abs_sub _ _
+    _ ≤ _ := by linarith
+
 end FloatBounds
 
 end
@@ -403,6 +445,7 @@ in `SubstraitLean/EngineTables.lean`) are these. -/
 open Lean in
 run_cmd do
   for thm in ["FloatBounds.StdModel.core_var_chan", "FloatBounds.StdModel.core_cov_chan",
-      "FloatBounds.StdModel.core_corr_chan"] do
+      "FloatBounds.StdModel.core_corr_chan", "FloatBounds.StdModel.epsilon_var_cr",
+      "FloatBounds.StdModel.epsilon_cov_cr"] do
     unless (← getEnv).contains thm.toName do
       throwError "no theorem {thm}"

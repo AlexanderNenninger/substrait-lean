@@ -115,13 +115,16 @@ def test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum(xs: list[float]
     s, mag = exact(xs)
     if abs(s) > 2**1000:
         return
+    # Rounding to the nearest double: within `u` relatively, and half the
+    # smallest subnormal below the normal range.
+    half_sub = Fraction(1, 2**1075)
     cr = Fraction(math.fsum(xs))
-    assert abs(cr - s) <= U * abs(s)
+    assert abs(cr - s) <= U * abs(s) + half_sub
     got_sum, got_avg, *_ = duckdb_aggregates(xs)
-    assert abs(Fraction(got_sum) - cr) <= gamma(2 * n) * (mag + n * TINY) + U * abs(s)
+    assert abs(Fraction(got_sum) - cr) <= gamma(2 * n) * (mag + n * TINY) + U * abs(s) + half_sub
     cr_avg = Fraction(float(s / n))
-    assert abs(cr_avg - s / n) <= U * abs(s / n)
-    tol_avg = gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n)
+    assert abs(cr_avg - s / n) <= U * abs(s / n) + half_sub
+    tol_avg = gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n) + half_sub
     assert abs(Fraction(got_avg) - cr_avg) <= tol_avg
 
 
@@ -385,32 +388,33 @@ def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
     assert report.issues and not report.proved
 
 
-def test_statistics_are_tested_or_refused_never_proved() -> None:
-    """D30: an engine's `VAR` is within `statEps` of the reference, a bound
-    not mechanised, so its route is `tested`; a `COVAR` or `CORR` column has
-    no bound yet, so a stated tolerance is refused and the route is never
-    `proved`."""
+def test_statistics_have_proved_bounds_but_corr() -> None:
+    """D30: an engine's `VAR` or `COVAR` is within `statEps` of the
+    reference's correctly rounded value (`epsilon_var_cr`, `epsilon_cov_cr`),
+    proved on the engines whose algorithm a theorem covers (DuckDB's and
+    Spark's `core_var_chan`; Polars's is tested). `CORR` has no bound: a
+    stated tolerance on it is refused, naming #918."""
     con = sv.connect()
     con.put(
         "t", pa.table({"k": [1, 1, 2, 2], "x": [1.0, 2.0, 3.0, 5.0], "y": [2.0, 1.0, 0.5, 4.0]})
     )
     t = con.table("t")
     req = {"t": [_.x.between(-1e3, 1e3), _.y.between(-1e3, 1e3), sv.max_rows(1000)]}
+    proved = sv.verify(t.group_by("k").aggregate(v=t.x.var(), c=t.x.cov(t.y)), requires=req)
+    assert proved._epsilon is not None
+    for col in ("v", "c"):
+        assert proved._epsilon[col]["abs"] > 0
+        assert proved._epsilon[col]["proved_on"] == ["duckdb", "spark"]
+    std = sv.verify(t.group_by("k").aggregate(s=t.x.std()), requires=req)
+    assert std._epsilon is not None and std._epsilon["s"]["proved_on"] == []
+    corr = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req)
+    assert corr._epsilon is not None and corr._epsilon["c"]["abs"] is None
+    assert "#918" in corr._epsilon["c"]["why"]
+    corr.run(con, "duckdb")
+    assert corr.routes["duckdb"].evidence == "tested"
     tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
-    var = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req, ensures=tol)
-    assert var._epsilon is not None
-    assert var._epsilon["v"]["proved"] == {"abs": False}
-    var.run(con, "duckdb")
-    assert var.routes["duckdb"].evidence == "tested"
-    for agg in (dict(c=t.x.cov(t.y)), dict(c=t.x.corr(t.y))):
-        plain = sv.verify(t.group_by("k").aggregate(**agg), requires=req)
-        assert plain._epsilon is not None
-        assert plain._epsilon["c"]["abs"] is None
-        plain.run(con, "duckdb")
-        assert plain.routes["duckdb"].evidence == "tested"
-        tight = sv.verify(t.group_by("k").aggregate(**agg), requires=req, ensures=tol)
-        assert not tight.proved
-        assert "c has no bound" in str(tight)
+    tight = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req, ensures=tol)
+    assert not tight.proved and "c has no bound" in str(tight) and "#918" in str(tight)
 
 
 def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
