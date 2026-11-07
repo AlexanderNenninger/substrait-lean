@@ -17,6 +17,7 @@ from pathlib import Path
 
 import duckdb
 import ibis
+import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -354,3 +355,26 @@ def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
     rolled = hosts.group_by("host").aggregate(ad=hosts.cpu.mean().cast("decimal(4, 2)"))
     report = sv.verify(rolled, requires={"hosts": HOSTS}, ensures=[])
     assert report.issues and not report.proved
+
+
+def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
+    """A double `SUM` without a row cap has no bound (`"abs": null`), nor has a
+    value computed from one: a stated tolerance on it is not met, and its
+    route is `tested`, never `proved`."""
+    con = sv.connect()
+    con.put("t", pa.table({"k": [1, 1, 2, 2], "x": [1.0, 2.0, 3.0, 5.0]}))
+    t = con.table("t")
+    tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
+    capped = {"t": [_.x.between(-1e3, 1e3), sv.max_rows(1000)]}
+    cases = [
+        (t.group_by("k").aggregate(s=t.x.sum()), {"t": [_.x.between(-1e3, 1e3)]}, "s"),
+        (t.group_by("k").aggregate(s=t.x.sum()).mutate(s2=_.s * 2.0), capped, "s2"),
+    ]
+    for expr, req, col in cases:
+        plain = sv.verify(expr, requires=req)
+        assert plain._epsilon[col]["abs"] is None
+        plain.run(con, "duckdb")
+        assert plain.routes["duckdb"].evidence == "tested"
+        tight = sv.verify(expr, requires=req, ensures=tol)
+        assert not tight.proved
+        assert f"{col} has no bound" in str(tight)
