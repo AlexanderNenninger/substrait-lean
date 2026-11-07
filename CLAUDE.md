@@ -141,8 +141,8 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
   them such a directory. The chaos run (the `chaos-run` skill) is the one
   exception.
 - **Don't start** above a 1-minute load of 8, or with less than 6 GB
-  available. Cap workers with `PYTEST_XDIST_AUTO_NUM_WORKERS=4` and run
-  under `nice -n 10`.
+  available. Cap workers with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the
+  script's default, and run under `nice -n 10`.
 - **Never use sudo there,** not even `sudo -n`. Nothing in QA needs root;
   if something seems to, stop and ask the coordinator.
 - **Clean up:** delete your directory when the run ends, also when it fails.
