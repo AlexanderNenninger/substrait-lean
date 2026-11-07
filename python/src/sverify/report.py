@@ -691,10 +691,12 @@ class Report:
         from sverify.sql import dialect_of
 
         d = dialect_of(dialect)
-        if d.name in ("duckdb", "spark"):
+        if d.name in routes.translations():
             chosen = routes.choose(self, d.name)
         else:
-            # Snowflake has no profile: it takes the reference's translation.
+            # An engine without a profile, built in or installed
+            # (`sverify.profiles`), takes the reference's translation, with no
+            # class claimed.
             reason = None
             if not routes.verified(self):
                 reason = routes.not_verified(self)

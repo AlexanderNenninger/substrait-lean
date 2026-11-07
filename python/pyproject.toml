@@ -92,6 +92,8 @@ exclude = ["build", "src/sverify/_bin"]
 "../lake-manifest.json" = "lean/lake-manifest.json"
 "../lean-toolchain" = "lean/lean-toolchain"
 "../Main.lean" = "lean/Main.lean"
+"../SubstraitCheck.lean" = "lean/SubstraitCheck.lean"
+"../SubstraitCheckExamples" = "lean/SubstraitCheckExamples"
 "../SubstraitLean.lean" = "lean/SubstraitLean.lean"
 "../SubstraitLean" = "lean/SubstraitLean"
 

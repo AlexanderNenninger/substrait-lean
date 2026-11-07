@@ -427,6 +427,34 @@ change. A run on another Spark version warns, and on another major version is
 refused (D14). Tested, and trusted: that Spark computes as the model says
 (`tests/test_spark_profile.py`, `tests/test_sql_spark.py`).
 
+## Engine profiles from outside
+
+A package can add an engine profile without changing sverify. The checker
+takes its engines as a list of `EngineProfile`s (`SubstraitLean/EngineTables.lean`):
+each one's choices, observation rows, the theorem its translation from the
+reference rests on, and its shims' costs. `builtinEngines` holds DuckDB's,
+Polars's and Spark's, and every engine-wide fact (`Epsilon.statsProvedOn`,
+`EngineRobust.signKeptOn`, the `--options` and `--realizability` tables) is
+computed over the list.
+
+The package's Lean side requires this repository, states its entry, and
+checks it with `#check_engine_profiles`, which fails the build unless every
+theorem its rows name exists and its rows are well-formed, within the core,
+consistent and evidenced. It then builds a checker of its own,
+`Substrait.Checker.checkerMain (builtinEngines ++ [its entry])`, a superset of
+`substrait-check`. [`SubstraitCheckExamples/DummyEngine.lean`](../SubstraitCheckExamples/DummyEngine.lean)
+does this for a test profile.
+
+Its Python side registers a `sverify.profiles.ProfilePlugin` under the entry-point
+group `sverify.profiles`: the engine's name and versions, its translation
+and the settings a run checks, and the path of its checker. Installed, the
+plugin's checker is the one sverify runs (`$SVERIFY_CHECKER` still comes
+first), `verify(semantics=<engine>)` checks under the profile, and
+`sverify.routes.choose` routes plans to the engine with their class
+(`tests/test_profile_plugins.py`). Without it, nothing changes: an engine with
+a SQL dialect and no profile gets the reference's translation, with no class
+claimed.
+
 ## The translations today
 
 Each engine reaches the reference through a **translation**, a function from

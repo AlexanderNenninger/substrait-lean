@@ -11,7 +11,7 @@ holds the order (`LAYERS`) and fails on an import against it.
 
 | Layer | Modules | Job |
 |---|---|---|
-| base | `_meta`, `_deprecated`, `_duration`, `_stages`, `_cursor`, `_unsupported`, `_plan_read`, `_user_text`, `_functions`, `black_box`, `_support`, `plan_json`, `_decimals`, `_polars_shims`, `_duckdb`, `_scan`, `_proof_cache`, `_checker`, `_lean_eval`, `_weighted`, `_hooks`, `_pipe` | The version and the checker protocol, deprecated names, durations, timings, cursors as JSON, errors, the function tables, the plan JSON both frontends write, the reference's decimal types, running `substrait-check`, its cache of proofs and Lean's evaluation of plans, weighted row counts, the hooks, `Pipeable` |
+| base | `_meta`, `_deprecated`, `_duration`, `_stages`, `_cursor`, `_unsupported`, `_plan_read`, `_user_text`, `_functions`, `black_box`, `_support`, `plan_json`, `_decimals`, `_polars_shims`, `_duckdb`, `_scan`, `_proof_cache`, `_checker`, `_lean_eval`, `_weighted`, `_hooks`, `_pipe`, `profiles` | The version and the checker protocol, deprecated names, durations, timings, cursors as JSON, errors, the function tables, the plan JSON both frontends write, the reference's decimal types, running `substrait-check`, its cache of proofs and Lean's evaluation of plans, weighted row counts, the hooks, `Pipeable`, engine profiles from outside |
 | frontends | `ibis_substrait`, `sql_lift` | Ibis expressions and DuckDB SQL to Substrait plans |
 | writers and engines | `sql`, `duckdb_engine`, `polars_engine`, `spark_engine` | The SQL dialects and the engines that run a written plan |
 | checker | `engine`, `_engine_settings` | Connections, `plan_json`, `run_plan`, delta plans, the engines' settings |
