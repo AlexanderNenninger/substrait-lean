@@ -136,9 +136,6 @@ CASES: list[Case] = [
     ),
 ]
 
-#: Snowflake has no window-sum algorithm fact yet (#1032), nor a row order.
-NO_WINDOW_SUM_FACT = {**NO_ROW_ORDER, "snowflake": "no row order|#1032"}
-
 REFUSED: dict[str, dict[str, str]] = {
     "row_number": NO_ROW_ORDER,
     "lag": NO_ROW_ORDER,
@@ -151,9 +148,9 @@ REFUSED: dict[str, dict[str, str]] = {
     "rolling sum (range)": NO_ROW_ORDER,
     "rolling sum (interval)": NO_ROW_ORDER,
     "sum over group": NO_ROW_ORDER,
-    "running mean": NO_WINDOW_SUM_FACT,
-    "rolling mean (rows)": NO_WINDOW_SUM_FACT,
-    "rolling mean (interval)": NO_WINDOW_SUM_FACT,
+    "running mean": NO_ROW_ORDER,
+    "rolling mean (rows)": NO_ROW_ORDER,
+    "rolling mean (interval)": NO_ROW_ORDER,
     "min over a sliding frame": NO_ROW_ORDER,
     "window sum of an expression": NO_ROW_ORDER,
     "last, nth": NO_ROW_ORDER,

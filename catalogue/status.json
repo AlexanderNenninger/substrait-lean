@@ -302,7 +302,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: a window SUM or AVG of doubles on Snowflake: no window-sum algorithm fact yet (Snowflake behaviour recorded privately; #1032)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "h2o-groupby-q1": {
@@ -1024,7 +1024,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: a window SUM or AVG of doubles on Snowflake: no window-sum algorithm fact yet (Snowflake behaviour recorded privately; #1032)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "ts-rolling-7day-calendar": {
@@ -1691,7 +1691,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: a window SUM or AVG of doubles on Snowflake: no window-sum algorithm fact yet (Snowflake behaviour recorded privately; #1032)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "win-moving-average": {
@@ -1701,7 +1701,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: a window SUM or AVG of doubles on Snowflake: no window-sum algorithm fact yet (Snowflake behaviour recorded privately; #1032)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "win-percent-of-total": {
@@ -1711,7 +1711,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: a window SUM or AVG of doubles on Snowflake: no window-sum algorithm fact yet (Snowflake behaviour recorded privately; #1032)"
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
   }
  },
  "win-above-group-average": {
