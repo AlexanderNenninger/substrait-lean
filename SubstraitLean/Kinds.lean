@@ -225,6 +225,22 @@ def Kind.modK : Kind → Kind → Option Kind
   | .tod, .int => some .tod
   | _, _ => none
 
+/-- Can values of kinds `a` and `b` be compared (`Value.numPair`)? One kind,
+decimals of one scale; an unknown kind may be anything (#923). The parser
+brings decimal comparisons to one scale (`UnFn.dkind`), so a plan that
+compares two scales without it is refused here, not NULL at run time. -/
+def Kind.comparable : Kind → Kind → Bool
+  | .other, _ | _, .other => true
+  | .dec _ s, .dec _ t => s == t
+  | .time, .timeTz | .timeTz, .time => true
+  | .list a, .list b => Kind.comparable a b
+  | .struct as, .struct bs => as.length == bs.length && compList as bs
+  | a, b => a == b
+where
+  compList : List Kind → List Kind → Bool
+    | a :: as, b :: bs => Kind.comparable a b && compList as bs
+    | _, _ => true
+
 /-- What `f` gives for arguments of kinds `a` and `b`, if it takes them. -/
 def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   let need (c : Bool) (out : KT) : Option KT := if c then some out else none
@@ -234,7 +250,7 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .sub => (Kind.subK a.toKind b.toKind).map .kind
   | .mul => (Kind.mulK a.toKind b.toKind).map .kind
   | .imod => (Kind.modK a.toKind b.toKind).map .kind
-  | .eq | .lt => some (.kind .bool)
+  | .eq | .lt => need (Kind.comparable a.toKind b.toKind) (.kind .bool)
   | .and | .or => need (a.okK .bool && b.okK .bool) (.kind .bool)
   | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
     need (num Kind.isFloat) (.kind .float)

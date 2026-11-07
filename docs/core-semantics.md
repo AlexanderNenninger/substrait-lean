@@ -1789,6 +1789,8 @@ outer value, and the review of the core (#893) found the restriction in
 
 ### D29. A value has its kind
 
+Decided 2026-11-07 (#923).
+
 `Value` has a constructor per kind (#923): `int`, `float` (a double's code),
 `date` (days), `ts` (microseconds, with or without a time zone), `tod`
 (microseconds since midnight), `dec s m` (scale and unscaled integer) and
@@ -1796,21 +1798,29 @@ outer value, and the review of the core (#893) found the restriction in
 function of one kind gives NULL on another, so a double can no longer pass
 for an integer or a timestamp for a date. Comparisons (`Value.numPair`) take
 two numbers of one constructor, decimals of one scale: `=` is TRUE only of
-equal values, which equi-joins rest on (`isTrue_eq`). The parser tags both
-sides of a decimal comparison with their common scale (`UnFn.dkind`).
+equal values, which equi-joins rest on (`isTrue_eq`). The parser brings both
+sides of a decimal comparison to their common scale (`UnFn.dkind`).
 
 `SUM` (`sumOf`) gives a decimal of scale `s` when all its values are
 decimals of scale `s`, and otherwise the integer sum of the integers and the
-decimals' unscaled values. A plan the kind checker accepts never mixes them;
-the mixed case keeps `SUM` independent of the order of its values
-(`sumOf_perm`) and of how a partition splits them (`sum_partials`), where a
-NULL for a mix would not be.
+decimals' unscaled values. The mixed case, decimals with other values or
+with other scales, is unreachable for a plan the kind checker accepts
+(`Rel.kinds_sound`, D28's checker). Its value is a don't-care, chosen to keep
+`SUM` independent of the order of its values (`sumOf_perm`) and of how a
+partition splits them (`sum_partials`) without a side condition. A NULL for
+a mix would break the second: a part that mixes kinds gives NULL, the
+combining `SUM` skips NULL parts, and the parts left would add up to a
+number where the whole gives NULL. The mixed case is outside every contract,
+no engine profile has to agree with it, and every top-level soundness
+theorem is stated for kind-checked plans.
 
-The abstract domain records a column's number kind (`AVal.nk`), so that a
-contract on a double does not hold of an integer of the same code
-(`SubstraitLean/Contracts.lean`).
+The abstract domain records the kind of a column's numbers (`AVal.nk`, with
+`none` as top). A value of kind `k` is in an abstract value only if its `nk`
+is `none` or `some k`, and the join of two different kinds is `none`. Static
+kinds from the kind checker may refine `nk` on checked plans later.
 
 Why: the kinds were in the parser and the kind checker (#924) only; with them
 in the values, a well-kinded plan's values have their kinds by evaluation, and
-the trusted float axioms (`floatSum_mem`, `floatSum_twoPhase`) state their
-premises about doubles.
+the trusted float axioms (`floatSum_mem`/`floatAvg_mem`/`floatSum_sign`,
+`floatSum_twoPhase` and `floatAvg_twoPhase`) state their premises about
+doubles.
