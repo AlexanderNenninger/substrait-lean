@@ -19,11 +19,12 @@
     "kind": {"description": "bug (the default): the project does something wrong; spec-gap: Substrait's spec leaves a behaviour unstated that it could express (an option, an option's value, a default), and engines differ there. Only Substrait's entries are spec gaps.", "enum": ["bug", "spec-gap"]},
     "version": {"description": "The version the bug was found on (a version or a range).", "type": "string"},
     "status": {
-      "description": "unverified: seen, not yet reduced to a minimal repro or checked against the latest upstream release; confirmed: minimal repro on the stated version; filed: reported upstream (the link in upstream); fixed upstream: in the release fixed_in; not a bug: with the reason in status_note.",
-      "enum": ["unverified", "confirmed", "filed", "fixed upstream", "not a bug"]
+      "description": "unverified: seen, not yet reduced to a minimal repro or checked against the latest upstream release; confirmed: reproduces on the latest release (or main), and no upstream issue reports it, so it is ready to report (a spec gap: checked against Substrait's main and open issues); filed: reported upstream (the link in upstream); fixed upstream: fixed on the project's main, in the release fixed_in (or the one it names as unreleased); duplicate: an open upstream issue already covers it (the link in upstream), so a comment there is all it needs; a duplicate of another entry is merged into that entry; not a bug: documented or intended behaviour, or a difference that matters only to sverify's model (an engine fact), with the reason in status_note.",
+      "enum": ["unverified", "confirmed", "filed", "fixed upstream", "duplicate", "not a bug"]
     },
     "status_note": {"description": "The status in words: where it reproduces, what is filed or fixed where, or why it is not a bug.", "$ref": "#/$defs/prose"},
-    "fixed_in": {"description": "The first upstream release with the fix.", "type": "string"},
+    "title": {"description": "One line on what goes wrong, short enough for an issue title: `upstream/REPORT.md` lists it.", "type": "string", "minLength": 1, "maxLength": 120},
+    "fixed_in": {"description": "The first upstream release with the fix, or the release it is due in, marked unreleased.", "type": "string"},
     "upstream": {
       "description": "Upstream issues, PRs and comments: the report, the fix, related discussion.",
       "type": "array",
@@ -55,6 +56,7 @@
   },
   "allOf": [
     {"if": {"properties": {"status": {"const": "filed"}}}, "then": {"required": ["upstream"], "properties": {"upstream": {"minItems": 1}}}},
+    {"if": {"properties": {"status": {"const": "duplicate"}}}, "then": {"required": ["upstream"], "properties": {"upstream": {"minItems": 1}}}},
     {"if": {"properties": {"status": {"const": "fixed upstream"}}}, "then": {"required": ["fixed_in"]}}
   ],
   "$defs": {

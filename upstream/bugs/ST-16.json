@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Open on main (a4d8e00342d0): `functions_logarithmic.yaml` gives `ln`, `log10`, `log2`, `logb` and `log1p` `on_log_zero: [NAN, ERROR, MINUS_INFINITY]`, while their `on_domain_error` lists `NULL`. No existing issue found (`gh issue list --repo substrait-io/substrait --search \"on_log_zero null\"`, \"log of zero null\": none); not yet checked against Substrait's issues in depth.",
+  "status": "confirmed",
+  "status_note": "Open on main (ecb826b53abd, 2026-11-05): `functions_logarithmic.yaml` gives `ln`, `log10`, `log2`, `logb` and `log1p` `on_log_zero: [NAN, ERROR, MINUS_INFINITY]`, while their `on_domain_error` lists `NULL`. No existing issue or PR (searched `on_log_zero`, \"log of zero null\").",
   "summary": "`on_log_zero` lists `NAN`, `ERROR` and `MINUS_INFINITY`. Spark (and Hive before it) returns NULL for the logarithm of zero, as it does for a negative argument, which `on_domain_error: NULL` covers. Substrait cannot express Spark's `ln(0)`.",
   "repro": [
     "`ln(0.0::fp64)` on Spark 4.3.0: NULL, under ANSI and without it (probe double-math-domain).",
@@ -35,6 +35,13 @@
         "substrait": "main@a4d8e00342d0"
       },
       "note": "extensions/functions_logarithmic.yaml on main: on_log_zero values [NAN, ERROR, MINUS_INFINITY] for every logarithm"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "substrait main": "ecb826b53abd"
+      },
+      "note": "triage: main compared; substrait-io/substrait searched"
     }
   ]
 }

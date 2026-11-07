@@ -135,17 +135,21 @@ other pages link here.
   constants with their proved properties, and `#guard`s compare them with the
   native ones; an integer or decimal that IEEE would round to `±∞` (from
   2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the
-  largest finite double (#257). The bounds of one `+`, `-`, `*`, `/` and
-  `exp` are axioms on scaled codes: `FloatCode.add_scaled` and its siblings
-  in `Float.lean` (`div_scaled_err` among them) and `FloatCode.exp_fin` in
-  `Safety.lean` ([#582](https://github.com/AlexanderNenninger/substrait-lean/issues/582)).
-  A `SUM` or `AVG` of doubles needs none since D25: `floatSumCR`'s bounds are
-  theorems (`FloatExact.lean`). `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
-  need none since D30: the reference's values are the exact moments rounded
-  once (`FloatMoments.lean`), and the properties an engine's algorithm keeps
-  (`StatProps.lean`) are definitions. `float-bounds/` proves the axioms over
-  the reals for the standard model of rounding (`StdModel.core_add` … in
-  `Arith.lean`), and there only `NativeLink` (`Link.lean`) stays trusted:
+  largest finite double (#257). The one axiom left is `FloatCode.exp_fin`
+  (`Safety.lean`, libm's `exp`). `+ − × ÷` need none since D31: they are the
+  exact result rounded once (`FloatArith.lean`), and the bounds the checker
+  trusted for them before (`FloatCode.add_scaled` …,
+  [#582](https://github.com/AlexanderNenninger/substrait-lean/issues/582))
+  are theorems; `FloatArithCheck.lean` checks those operations against native
+  doubles on every build, and each engine's fact states that its own are
+  IEEE 754's. A `SUM` or `AVG` of doubles needs none since D25: `floatSumCR`'s
+  bounds are theorems (`FloatExact.lean`). `VAR_*`, `STDDEV_*`, `COVAR_*` and
+  `CORR` need none since D30: the reference's values are the exact moments
+  rounded once (`FloatMoments.lean`), and the properties an engine's
+  algorithm keeps (`StatProps.lean`) are definitions; `varOf_props`,
+  `covOf_props` and `corrOf_props` are retired. `float-bounds/` proves the
+  bounds over the reals for the standard model of rounding (`Arith.lean`,
+  `CoreStats.lean`), and there only `NativeLink` (`Link.lean`) stays trusted:
   Lean's `Float` rounds as IEEE 754 binary64 does, and `exp` is the
   platform's `libm` within one ulp
   ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)).
@@ -180,10 +184,12 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
-| `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
+| `Float.lean` | Doubles and timestamps as integer codes |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
 | `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
+| `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
+| `FloatArithCheck.lean` | D31's operations against native doubles, bit for bit, on edge values, ties and every exponent |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |

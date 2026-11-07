@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "A bug in the documentation's text, minor. On main (35a2cb73, 2026-11-04) `nan_min` names numpy's `nanmin` (Expr and Series), so the wrong name is fixed there; the reason in both `nan_max` and `nan_min` is unchanged. No matching issue found on pola-rs/polars (2026-11-04); #17513 (open) is about `max`/`min` and NaN on length-1 groups.",
+  "status_note": "A minor bug in the documentation's text. On main (8dcc6b28, 2026-11-07) `nan_min` names numpy's `nanmin`, so the wrong name is fixed there; the reason in both `nan_max` and `nan_min` still says numpy's `nanmax`/`nanmin` propagate NaN. No upstream issue found.",
+  "title": "Docs: `nan_max` and `nan_min` describe numpy's `nanmax` and `nanmin` backwards",
   "upstream": [
     "https://github.com/pola-rs/polars/issues/17513"
   ],
@@ -28,6 +29,14 @@
         "polars": "2.1.0"
       },
       "note": "Docstrings at py-2.1.0 (expr.py `nan_max` and `nan_min` both say `nanmax`). Main at 35a2cb73: expr.py and series.py say `nanmax` in `nan_max` and `nanmin` in `nan_min`, with the same reason. Duplicate search for \"nan_min docstring nanmax\": only #17513 (related)."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0",
+        "polars main": "8dcc6b28"
+      },
+      "note": "triage: docstring read on main"
     }
   ]
 }

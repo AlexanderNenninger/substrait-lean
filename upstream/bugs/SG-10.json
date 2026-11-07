@@ -2,8 +2,8 @@
   "id": "SG-10",
   "project": "sqlglot",
   "version": "30.22.0",
-  "status": "confirmed",
-  "status_note": "reproduces on 30.22.0; not filed yet",
+  "status": "fixed upstream",
+  "status_note": "fixed upstream in 30.30.0 by PR [#8840](https://github.com/tobymao/sqlglot/pull/8840) (\"parse ~ as a partial regex match from DuckDB 2.0\"): `'abc' ~ 'b'` reads as `REGEXP_MATCHES` on 30.30.0.",
   "summary": "In the DuckDB dialect, the operator `~` reads as `RegexpFullMatch`, which writes `REGEXP_FULL_MATCH(s, p)`. DuckDB 2.0's `~` matches anywhere in the string, as `regexp_matches` does (its setting `regex_match_operator_semantics` chooses), so `'abc' ~ 'b'` is true in DuckDB and false as SQLGlot reads it. `!~` likewise.",
   "repro": [
     "```python\nimport sqlglot\nsqlglot.transpile(\"SELECT 'abc' ~ 'b'\", read=\"duckdb\", write=\"duckdb\")\n```",
@@ -25,6 +25,18 @@
         "sqlglot": "30.22.0",
         "duckdb": "2.0.0"
       }
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "sqlglot": "30.30.0",
+        "sqlglot main": "b99f5d58b1"
+      },
+      "note": "triage: repro run on 30.30.0; tobymao/sqlglot searched"
     }
-  ]
+  ],
+  "upstream": [
+    "https://github.com/tobymao/sqlglot/pull/8840"
+  ],
+  "fixed_in": "30.30.0"
 }

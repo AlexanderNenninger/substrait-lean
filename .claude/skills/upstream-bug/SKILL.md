@@ -12,7 +12,11 @@ reproduction, how sverify handles it, and what it was last checked against
 (`checked`). The id is the project's prefix and the next free number (`SG-8`,
 `DD-5`; `upstream/README.md` lists the prefixes); the file is named after it.
 Link the files of the workaround (`files`) and the engine facts that record
-it (`facts`). We file them upstream in batches, with the `upstream-report`
+it (`facts`). A bug that reproduces on the latest release with no upstream
+issue is `confirmed` and gets a one-line `title`: `upstream/REPORT.md`, which
+the `Generated files` workflow renders on `main`, lists it to report. One an
+open upstream issue already covers is a `duplicate`, with that issue in
+`upstream`. We file them upstream in batches, with the `upstream-report`
 skill. Documented engine behaviour that only differs from the reference model
 goes into the engine's characterization.
 

@@ -144,8 +144,8 @@ def Measure.Open (m : Measure) (a b : Int) : Prop :=
   match m.fn with
   | .fsum => ∃ vs, FloatSums vs a ∧ FloatSums vs b
   | .avg => ∃ vs c₁ c₂, FloatSums vs c₁ ∧ FloatSums vs c₂ ∧
-      a = FloatCode.lift₂ (· / ·) c₁ (FloatCode.ofInt vs.length) ∧
-      b = FloatCode.lift₂ (· / ·) c₂ (FloatCode.ofInt vs.length)
+      a = FloatCode.fdiv c₁ (FloatCode.ofInt vs.length) ∧
+      b = FloatCode.fdiv c₂ (FloatCode.ofInt vs.length)
   | _ => a = b
 
 /-- The context of an aggregate's output with `g` group columns and the

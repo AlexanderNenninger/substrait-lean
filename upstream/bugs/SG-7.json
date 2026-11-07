@@ -2,8 +2,8 @@
   "id": "SG-7",
   "project": "sqlglot",
   "version": "30.18.0–30.29.0",
-  "status": "filed",
-  "status_note": "filed [ibis#12124](https://github.com/ibis-project/ibis/issues/12124) (open); fixed on Ibis main by [#12104](https://github.com/ibis-project/ibis/pull/12104) (f73d329, 2026-11-02), not released. Reproduces with sqlglot 30.29.0 and Ibis 12.0.0.",
+  "status": "fixed upstream",
+  "status_note": "Fixed on Ibis main by [#12104](https://github.com/ibis-project/ibis/pull/12104) (f73d329, 2026-11-02), not released: Ibis 12.0.0 is the latest release. The report, [ibis#12124](https://github.com/ibis-project/ibis/issues/12124), is still open.",
   "upstream": [
     "https://github.com/ibis-project/ibis/issues/12124",
     "https://github.com/ibis-project/ibis/pull/12104",
@@ -38,6 +38,15 @@
         "duckdb": "1.5.6"
       },
       "note": "Ibis 12.0.0 with sqlglot 30.17.0/30.18.0/30.29.0/main; Ibis main with sqlglot 30.29.0"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "sqlglot": "30.30.0",
+        "ibis-framework": "12.0.0"
+      },
+      "note": "triage: release and issue state checked"
     }
-  ]
+  ],
+  "fixed_in": "the Ibis release after 12.0.0 (unreleased; on main since f73d329)"
 }

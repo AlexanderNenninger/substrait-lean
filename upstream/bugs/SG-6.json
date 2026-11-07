@@ -2,8 +2,8 @@
   "id": "SG-6",
   "project": "sqlglot",
   "version": "30.22.0",
-  "status": "filed",
-  "status_note": "filed [#8891](https://github.com/tobymao/sqlglot/issues/8891); fixed on main by [#8897](https://github.com/tobymao/sqlglot/pull/8897) (bdaf7d1, 2026-11-04), not released. Reproduces on 30.29.0 in the `duckdb`, `postgres` and `mysql` dialects.",
+  "status": "fixed upstream",
+  "status_note": "fixed upstream in 30.30.0 ([#8891](https://github.com/tobymao/sqlglot/issues/8891), PR [#8897](https://github.com/tobymao/sqlglot/pull/8897)); `TABLE t` parses as `SELECT * FROM t` on 30.30.0.",
   "summary": "DuckDB's `TABLE t` (`SELECT * FROM t`) does not parse: as a set operation's operand it fails, and on its own it parses as an alias.",
   "repro": "`SELECT 1 EXCEPT ALL TABLE t`: \"Required keyword: 'expression' missing for Except\"; `(TABLE a EXCEPT ALL TABLE b)`: \"Expecting )\"; `TABLE t` gives `Alias(Column)`.",
   "handling": "The lift and the replay write it out as `(SELECT * FROM t)` on SQLGlot's own tokens before parsing (`sql_lift.expand_table_shorthand`, #344).",
@@ -31,10 +31,19 @@
         "duckdb": "2.0.0"
       },
       "note": "repro on 30.22.0, 30.29.0 and main; postgres/mysql on 30.29.0 and main"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "sqlglot": "30.30.0",
+        "sqlglot main": "b99f5d58b1"
+      },
+      "note": "triage: repro run on 30.30.0"
     }
   ],
   "upstream": [
     "https://github.com/tobymao/sqlglot/issues/8891",
     "https://github.com/tobymao/sqlglot/pull/8897"
-  ]
+  ],
+  "fixed_in": "30.30.0"
 }
