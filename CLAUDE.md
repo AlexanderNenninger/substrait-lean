@@ -1,21 +1,43 @@
 # Notes for Claude
 
-## Every PR leaves its area faster
+## Every PR leaves its area faster or simpler
 
-Each pull request comes with at least one optimization in the area it
-touches, beside its main change. One of:
+Each pull request comes with at least one improvement in the area it
+touches, beside its main change. It can be any of these:
 
-- development iteration: a faster or leaner build, test, proof or check
-  (a slow test made cheap, a `decide` replaced by reflection, a smaller
-  generated module, a cached step);
-- runtime: sverify running faster or in less memory for its users (a
-  smaller written plan, a cheaper proof, less data read, a lower peak).
+- Faster development: a quicker or leaner build, test, proof or check. For
+  example, a slow test made cheap, a `decide` replaced by reflection, a
+  smaller generated module or a cached step.
+- Faster at runtime: sverify running faster or in less memory for its users.
+  For example, a smaller written plan, a cheaper proof, less data read or a
+  lower peak.
+- Simpler code:
+  - less code for the same behaviour, such as dead code, a duplicate helper
+    or a table kept in two places;
+  - fewer special cases, such as engine shims, refusals, per-engine
+    branches, strict xfails or flags;
+  - one source of truth, a fact written once and derived where it's needed.
+- Stronger proofs:
+  - fewer assumptions: a hypothesis dropped, a trusted axiom proved, or a
+    side condition made a decidable check;
+  - one general lemma in place of several;
+  - a type that rules out a wrong state.
+- Better structure:
+  - a public API with fewer names or parameters;
+  - less import fan-in, or a cycle broken;
+  - a large module split along its seams. A split counts only when the file
+    has more than 1,500 lines and each part keeps at least 300. Tiny
+    modules don't count.
 
 Measure it, before and after, and put the numbers in the PR body under
-"Optimization". Keep it in the code the PR already touches, so it doesn't
-collide with other sessions' work. A PR that touches nothing measurable
-(docs, facts, ledgers) says so instead. Behaviour stays the same: an
-optimization changes no result and weakens no proof.
+"Improvement". Count lines, shims, xfails, hypotheses, axioms, public names
+or seconds, whichever fits. Keep it in the code the PR already touches, so
+it doesn't collide with other sessions' work. A PR that touches nothing
+measurable (docs, facts, ledgers) says so instead.
+
+Behaviour stays the same: an improvement changes no result and weakens no
+proof. Shorter must also stay clear. Golfed code or a cryptic proof doesn't
+count.
 
 ## Running QA
 
