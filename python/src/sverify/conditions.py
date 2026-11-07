@@ -807,9 +807,10 @@ class CheckedCondition:
     known (every column)."""
     allowed: bool = field(default=False, repr=False, compare=False)
     """Proved on every result the reference allows, not only on the orders
-    `proved` covers (`contract_sound_allowed`, `SubstraitLean/AllowedNear.lean`):
-    the plan has no open measure the condition reads (since D25 a double
-    `SUM` or `AVG` is not one; a statistical aggregate still is)."""
+    `proved` covers (`contract_sound_allowed`, or `contract_sound_allowed_closed`
+    for a plan without open measures, `SubstraitLean/AllowedNear.lean`): the
+    plan has no open measure the condition reads (since D25 a double `SUM` or
+    `AVG` is not one; a statistical aggregate still is)."""
     depends: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """The components of an observation the condition's value depends on,
     as the checker computes them from the columns it reads (`Expr.depends`,

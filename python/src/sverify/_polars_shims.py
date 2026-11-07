@@ -315,8 +315,8 @@ def avg_int_declared(values: pl.Expr) -> pl.Expr:
 
 def float_sum(values: pl.Expr) -> pl.Expr:
     """`SUM` of doubles: Polars's own order (pairwise or Kahan,
-    polars-sum-float), which `sum_order = ANY` allows; NULL for no values and
-    one zero."""
+    polars-sum-float), within the plan's bound of the reference's correctly
+    rounded sum (D25); NULL for no values and one zero."""
     return one_zero(sum_empty_null(values.sum(), values))
 
 

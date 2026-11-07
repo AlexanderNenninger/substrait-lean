@@ -416,8 +416,9 @@ the engine:
   equal as `Value`s;
 * aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
   counts the first row of each value, integer `SUM` raises outside 64 bits,
-  and doubles are added in Lean's order (`list_reduce` over a list ordered
-  by the ordinal), so the result has Lean's bits;
+  and a `SUM` or `AVG` of doubles is the engine's own, within the plan's
+  bound of the reference's correctly rounded sum
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
 * strings: lengths and positions count characters, a negative `substring`
   start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
   (either way the start is normalized before it reaches the engine), and
@@ -574,10 +575,12 @@ one, which sverify infers (#244).
 * `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
   runs correctly without per-row checks.
 * `contract_sound_allowed`: a postcondition narrowed by its columns' tolerances and proved on
-  every order holds on every result the reference allows, every order and grouping of a double
-  `SUM` or `AVG` among them, for a plan that reads no open sum to choose its rows
-  (`Rel.FloatOpenSafe`; [AllowedNear.lean](../SubstraitLean/AllowedNear.lean)). The report marks
-  such a postcondition `allowed`.
+  every order holds on every result the reference allows, for a plan that reads no open
+  measure to choose its rows (`Rel.FloatOpenSafe`;
+  [AllowedNear.lean](../SubstraitLean/AllowedNear.lean)). `contract_sound_allowed_closed` takes
+  the decidable `Rel.closedB` in its place: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or
+  `QUANTILE_CONT`, whose values are still choices of the reference (a double `SUM` or `AVG` is
+  one value since D25). The report marks such a postcondition `allowed`.
 
 ### Contracts
 

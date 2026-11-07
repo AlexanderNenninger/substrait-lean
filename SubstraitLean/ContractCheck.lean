@@ -503,11 +503,13 @@ def postDepends (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) :
   | none => List.replicate n none
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
-`T.select(…)` from every order to every allowed result: `T` is
-`Rel.FloatOpenSafe` by one of its two lemmas (no open measure, or an
-aggregate whose open measures are double `SUM`s and `AVG`s over a plan with
-none), and the column is robust under that context without a tolerance
-(`Expr.robustB`), so it reads no open sum. A comparison of an open sum needs
+`T.select(…)` from every order to every allowed result: `T` is closed
+(`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
+`COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is order-free
+since D25), or an aggregate whose open measures are double `SUM`s and `AVG`s
+over a closed plan (`Rel.floatOpenSafe_aggregate`), and the column is robust
+under that context without a tolerance (`Expr.robustB`), so it reads no open
+measure. A comparison of an open sum needs
 the shift of its tolerance (#929). -/
 def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
   match r with
