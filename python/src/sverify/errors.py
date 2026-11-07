@@ -71,6 +71,8 @@ Warnings:
   although its contract is not proved; `.report` has the details.
 * `InferredWarning`: an inferred precondition is assumed
   (`on_inferred="warn"`); `.report` has the details.
+* `ProfilePluginWarning`: an entry point of `sverify.profiles` did not load
+  a `ProfilePlugin`, and is skipped.
 
 `Unsupported` and `NotIncremental` are deprecated names of
 `UnsupportedError` and `NotIncrementalError`.
@@ -93,6 +95,7 @@ from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncrementalError, SchemaError
 from sverify.io._common import ConcurrentWriteError
 from sverify.io._secrets import SecretError
+from sverify.profiles import ProfilePluginWarning
 from sverify.routes import (
     EngineSettingsError,
     EngineSettingsWarning,
@@ -144,6 +147,7 @@ __all__ = [
     "SecretError",
     "SqlError",
     "SverifyError",
+    "ProfilePluginWarning",
     "SverifyWarning",
     "UnprovedWarning",
     "UnsupportedError",

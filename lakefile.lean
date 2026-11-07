@@ -22,6 +22,17 @@ lean_lib SubstraitLeanGenerated where
     .submodules `SubstraitLean.LiftDuckDB.Duckdb, .submodules `SubstraitLean.LiftDuckDB.Reference]
   leanOptions := #[⟨`weak.substrait.checkGenerated, checkGenerated⟩]
 
+/-- The checker's modes as a library, `Substrait.Checker.checkerMain`, so a
+package with an engine profile of its own can build a checker over
+`builtinEngines ++ [its profile]`. -/
+lean_lib SubstraitCheck
+
+/-- An engine profile added from outside, as another package adds one: a
+test, built by `lake build`, not part of `substrait-check`. -/
+@[default_target]
+lean_lib SubstraitCheckExamples where
+  globs := #[.submodules `SubstraitCheckExamples]
+
 @[default_target]
 lean_exe «substrait-check» where
   root := `Main

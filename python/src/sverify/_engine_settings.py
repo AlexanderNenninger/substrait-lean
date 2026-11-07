@@ -255,6 +255,17 @@ SETTINGS: Mapping[str, tuple[Setting, ...]] = {
 }
 
 
+def settings_of(engine: str) -> tuple[Setting, ...]:
+    """The settings `engine`'s profile assumes: `SETTINGS`, or those of an
+    installed profile from outside sverify (`sverify.profiles`)."""
+    if engine in SETTINGS:
+        return SETTINGS[engine]
+    from sverify import profiles
+
+    p = profiles.plugins().get(engine)
+    return () if p is None else p.settings
+
+
 def _norm(v: Any) -> Any:
     if isinstance(v, str):
         low = v.strip().lower()
@@ -324,8 +335,9 @@ def current(engine: str) -> dict[str, Any]:
     """The settings of `engine` that its profile assumes, as the next run
     will see them; empty for an engine without a profile, and for Spark
     before sverify's session starts (it starts with `SPARK_CONF`)."""
-    settings = SETTINGS.get(engine, ())
-    if not settings:
+    settings = settings_of(engine)
+    if not settings or engine not in _READERS and engine != "spark":
+        # A profile from outside: its settings are read where it runs.
         return {}
     if engine == "spark":
         spark = _spark_session()
@@ -339,7 +351,7 @@ def differences(engine: str, values: Mapping[str, Any] | None = None) -> list[tu
     found = current(engine) if values is None else values
     return [
         (s, found[s.name])
-        for s in SETTINGS.get(engine, ())
+        for s in settings_of(engine)
         if s.name in found and _norm(found[s.name]) not in s.expected
     ]
 
@@ -365,6 +377,11 @@ def restore(engine: str, setting: Setting) -> str:
 
         v = SPARK_CONF.get(setting.name, _SPARK_DEFAULTS.get(setting.name, setting.expected[0]))
         return f'spark.conf.set("{setting.name}", "{v}")'
+    from sverify import profiles
+
+    p = profiles.plugins().get(engine)
+    if p is not None and p.restore is not None:
+        return p.restore(setting)
     return f"set {setting.name} back to {setting.expected[0]!r}"
 
 

@@ -139,6 +139,25 @@ TRANSLATIONS: Mapping[str, str] = {
     "proved against Spark's facts (Rel.spark_sound) and tested against the reference",
 }
 
+
+def translations() -> dict[str, str]:
+    """`TRANSLATIONS`, with those of the installed profiles from outside
+    sverify (`sverify.profiles`)."""
+    from sverify import profiles as plugged
+
+    return {**TRANSLATIONS, **{e: p.translation for e, p in plugged.plugins().items()}}
+
+
+def shim_text(name: str) -> str:
+    """What the shim `name` does, as a route line says it."""
+    from sverify import profiles as plugged
+
+    for p in plugged.plugins().values():
+        if name in p.shim_text:
+            return p.shim_text[name]
+    return SHIM_TEXT.get(name, name.replace("_", " "))
+
+
 #: How a route line names a route without a class (#687).
 _KIND_TEXT: Mapping[str, str] = {
     "translated": "verified under the reference",
@@ -319,10 +338,7 @@ class Route:
             return f"unverified: {self.reason}"
         out = self.cls or _KIND_TEXT.get(self.kind, self.kind)
         if self.cls == "shim" and self.shims:
-            what = dict.fromkeys(
-                SHIM_TEXT.get(n, n.replace("_", " "))
-                for n in (x.split(": ", 1)[-1] for x in self.shims)
-            )
+            what = dict.fromkeys(shim_text(n) for n in (x.split(": ", 1)[-1] for x in self.shims))
             out += f" ({'; '.join(what)})"
         if self.cls == "observed" and self.observation is not None:
             out += f": {observed_text(self.observation)}"
@@ -343,6 +359,10 @@ class Route:
 def installed_version(engine: str) -> str | None:
     """The version of `engine` this process runs, None if it has no profile
     or is not installed."""
+    from sverify import profiles as plugged
+
+    if (p := plugged.plugins().get(engine)) is not None:
+        return p.installed_version() if p.installed_version else None
     try:
         if engine == "duckdb":
             import duckdb
@@ -478,8 +498,12 @@ def _functions_json() -> list[dict]:
 
 def profiles() -> dict[str, EngineProfile]:
     """The engine profiles: the checker's (`--options`, "profiles") over
-    `PROFILES`."""
+    those of the installed profiles from outside sverify, over `PROFILES`."""
+    from sverify import profiles as plugged
+
     out = dict(PROFILES)
+    for e, p in plugged.plugins().items():
+        out[e] = EngineProfile(e, p.versions)
     for name, p in (_options_json().get("profiles") or {}).items():
         if isinstance(p, dict) and p.get("engine"):
             out[name] = EngineProfile(p["engine"], tuple(p.get("versions") or ()))
@@ -998,7 +1022,7 @@ def floats_on(report: Report) -> dict[str, list[str]]:
     depends = report._depends if report._depends is not None else plan_options(plan)
     looser = replace(observation, floats="plan")
     out: dict[str, list[str]] = {}
-    for e in TRANSLATIONS:
+    for e in translations():
         if not (_options_json().get("choices") or {}).get(e):
             continue
         rows_exact = (report._rows_exact or {}).get(e)
@@ -1485,6 +1509,7 @@ def choose(
             bound_proved=got.bound_proved,
         )
 
+    translated = translations()
     tried = ROUTES if route == "auto" else (route,)
     why_not: list[str] = []
     failures: list[dict] = []
@@ -1494,11 +1519,11 @@ def choose(
                 return taken("native", e, f'verified under semantics="{e}"')
             why_not.append(f'not verified under semantics="{e}"')
         elif kind == "translated":
-            if source == "reference" and e in TRANSLATIONS:
+            if source == "reference" and e in translated:
                 return taken(
                     "translated",
                     "reference",
-                    f"verified under the reference; the translation to {e} is {TRANSLATIONS[e]}",
+                    f"verified under the reference; the translation to {e} is {translated[e]}",
                 )
             why_not.append(
                 "not verified under the reference"
@@ -1537,7 +1562,7 @@ def choose(
             if ok:
                 return taken("recheck", e, why)
             why_not.append(f"no re-check: {why}" if ok is None else why)
-    if route == "auto" and source not in ("reference", e) and e in TRANSLATIONS:
+    if route == "auto" and source not in ("reference", e) and e in translated:
         # Lead with what the user can do: the reference reaches every engine.
         lead = (
             f"verify with semantics='reference' to run on {e} (the plan was verified with "
