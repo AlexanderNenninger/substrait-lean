@@ -113,8 +113,9 @@ spare capacity. This applies to the laptop as much as to `homelab`.
   through many plans (`snowflake_plan_fuzz compare`, replays, fuzzing) can
   grow past the laptop's memory in seconds, while the load average stays low.
   On 2026-11-07 one reached 23 GB and hung the laptop twice (#1074). Run
-  these on homelab under `homelab_qa.sh`'s memory cap, or locally only
-  under a hard cap (`ulimit -v`) on a small slice.
+  these on homelab under `homelab_qa.sh`'s memory cap. Locally, run only a
+  small slice, one plain checker call at a time, under a watchdog that kills
+  a checker above 4 GB of RSS: macOS refuses `ulimit -v`.
 - **homelab**: see below.
 
 Run one expensive task at a time per agent, never several in parallel.
