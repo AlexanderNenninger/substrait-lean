@@ -400,9 +400,9 @@ def test_window_sums_have_the_aggregate_bound() -> None:
     for col in ("s", "a"):
         assert windowed._epsilon[col] == grouped._epsilon[col]
         assert windowed._epsilon[col]["proved"]["abs"]
-    assert windowed._epsilon["v"] == {"abs": None}
+    assert windowed._epsilon["v"]["abs"] is None and "#918" in windowed._epsilon["v"]["why"]
     derived = sv.verify(t.mutate(s=t.x.sum().over(w)).mutate(d=_.s * 2.0), requires=req)
-    assert derived._epsilon is not None and derived._epsilon["d"] == {"abs": None}
+    assert derived._epsilon is not None and derived._epsilon["d"]["abs"] is None
     uncapped = sv.verify(t.mutate(s=t.x.sum().over(w)), requires={"t": [_.x.between(-1, 1)]})
     assert uncapped._epsilon == {"s": {"abs": None}}
 

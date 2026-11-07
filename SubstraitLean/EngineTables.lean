@@ -116,8 +116,9 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
     (none, "null_join_keys", .oneOf ["NO_MATCH"]),
     -- A segment tree of fanout 16 for framed windows, per-thread partials
-    -- for a whole-partition frame (duckdb-window-sum-order).
-    (none, "window_sum_algo", .oneOf ["TREE"]),
+    -- for a whole-partition frame, a running sum for a streaming running
+    -- total, each frame anew without the optimizer (duckdb-window-sum-order).
+    (none, "window_sum_algo", .oneOf ["TREE", "RUNNING_ADD", "RECOMPUTE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     (none, "quantile_interp", .oneOf ["LINEAR"]),
     -- Not characterized on DuckDB yet: the core's behaviours.
@@ -365,6 +366,9 @@ def Profile.spark.table : ProfileTable where
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
     -- Partials per task, merged in the order the tasks finish.
     (none, "sum_order", .oneOf ["ANY"]),
+    -- A whole partition at once, a growing frame by a running sum, any other
+    -- frame anew; a segment tree only with `segmentTree.enabled` (spark-window-agg).
+    (none, "window_sum_algo", .oneOf ["RECOMPUTE", "RUNNING_ADD", "TREE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     (none, "quantile_interp", .oneOf ["LINEAR"]),
     (none, "avg_int_result", .oneOf ["FP64"]),
@@ -437,6 +441,7 @@ def Profile.spark.obs : ObsTable := [
   (none, "case_sensitivity", .native ["spark-match-functions"]),
   (none, "string_positions", .native ["spark-strpos", "spark-substring"]),
   (none, "null_join_keys", .native ["spark-null-keys"]),
+  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["spark-window-agg"]),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["spark-quantile"]),

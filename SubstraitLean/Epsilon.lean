@@ -590,7 +590,28 @@ reads another window aggregate of doubles or one (no bound), or neither. -/
 inductive WinSrc where
   | other
   | bounded (r : Rel) (m : Measure) (part : List Nat) (sort : List SortKey)
-  | unbounded
+  /-- No bound, with what lifts it. -/
+  | unbounded (why : String)
+
+/-- The window algorithms that sum the frame's own values, so that the
+aggregate's bound holds of the frame (`window_sum_algo`, #1032). -/
+def windowSumAlgos : List String := ["RECOMPUTE", "TREE", "RUNNING_ADD"]
+
+/-- Does every engine sum a window's frame by one of `windowSumAlgos`? -/
+def windowSumsBounded : Bool :=
+  epsEngines.all fun (_, t) =>
+    (t.allows "win.agg" "window_sum_algo" []).all (windowSumAlgos.contains ·)
+
+-- DuckDB, Polars and Spark each sum a window's own values (duckdb-window-sum-order,
+-- polars-window-agg, spark-window-agg).
+#guard windowSumsBounded
+
+/-- Why a window statistic of doubles, or a value computed from a window
+aggregate of doubles, has no bound, and what lifts it. -/
+def windowStatWhy : String := "a window statistic of doubles: no bound yet (#918)"
+def derivedWhy : String := "computed from a window aggregate of doubles: no bound carries over"
+def slidingWhy : String :=
+  "a window sum on an engine whose window algorithm no fact bounds (window_sum_algo, #1032)"
 
 def WinSrc.window : WinSrc → Bool
   | .other => false
@@ -602,13 +623,13 @@ def WinSrc.window : WinSrc → Bool
 aggregates such a column has none either. -/
 def winFnSrc (r : Rel) (part : List Nat) (srcs : List WinSrc) : WinFn → WinSrc
   | .agg m sort _ =>
-    if (ShardCheck.reads m.arg).any (fun i => (srcs.getD i .other).window) then .unbounded
+    if (ShardCheck.reads m.arg).any (fun i => (srcs.getD i .other).window) then .unbounded derivedWhy
     else match m.fn with
-      | .fsum | .avg => .bounded r m part sort
-      | .var _ _ | .cov _ | .corr | .quantile true _ _ => .unbounded
+      | .fsum | .avg => if windowSumsBounded then .bounded r m part sort else .unbounded slidingWhy
+      | .var _ _ | .cov _ | .corr | .quantile true _ _ => .unbounded windowStatWhy
       | _ => .other
   | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
-    if (srcs.getD c .other).window then .unbounded else .other
+    if (srcs.getD c .other).window then .unbounded derivedWhy else .other
   | _ => .other
 
 /-- Each output column's `WinSrc`. -/
@@ -621,20 +642,21 @@ def winSrcs (cat : Catalog) : Rel → List WinSrc
   | .window r part _ fns => let s := winSrcs cat r; s ++ fns.map (winFnSrc r part s)
   | .cross a b | .join a b _ _ => winSrcs cat a ++ winSrcs cat b
   | .semi a _ _ _ => winSrcs cat a
-  | .unionAll a b => (winSrcs cat a).zipWith (fun x y => if x.window || y.window then .unbounded
-      else .other) (winSrcs cat b)
+  | .unionAll a b => (winSrcs cat a).zipWith (fun x y =>
+      if x.window || y.window then .unbounded derivedWhy else .other) (winSrcs cat b)
   | .aggregate r gs ms => let s := winSrcs cat r
     -- An aggregate of, or grouped by, such a column has no bound here.
     let any (e : Expr) : WinSrc :=
-      if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then .unbounded else .other
+      if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then .unbounded derivedWhy
+      else .other
     gs.map any ++ ms.map fun m => any m.arg
 where
   /-- A copy of a column keeps its source; anything computed from a window
   aggregate of doubles has no bound here. -/
   reading (s : List WinSrc) : Expr → WinSrc
     | .field i => s.getD i .other
-    | e => if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then .unbounded
-      else .other
+    | e => if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then
+        .unbounded derivedWhy else .other
 
 /-- A bound as `"epsilon"` gives it, proved or not. -/
 def boundJson (e : Float) (rel : Option (Float × Bool)) (p : Bool) : Json :=
@@ -663,6 +685,7 @@ def statCols : Rel → Option (List (Option (Option Measure)))
       | _ => if (reads e).any (fun i => (cs.getD i none).isSome) then some none else none
   | .emit r m => (statCols r).map fun cs => m.map (cs.getD · none)
   | _ => none
+
 
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
@@ -711,7 +734,7 @@ def epsilon (input : Json) : Except String Json := do
       some (name, match measureEps (r.aeval cat A F T) m r.maxRows with
         | some (e, rel) => boundJson e rel p
         | none => Json.mkObj [("abs", Json.null)])
-    | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
+    | .unbounded why => some (name, Json.mkObj [("abs", Json.null), ("why", toJson why)])
     | .other => none
   let some (r, gs, ms) := findAggregate root | return Json.mkObj winCols
   let some (srcs, _) := colSrcs plan.root | return Json.mkObj winCols
@@ -742,7 +765,7 @@ def epsilon (input : Json) : Except String Json := do
     | some e => Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson false)])]
     | none => Json.mkObj [("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])])
   let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)
-  return Json.mkObj (known ++ winCols.filter fun (n, _) => !known.any (·.1 == n))
+  return Json.mkObj (known.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols)
 
 /-! ## The dependency report of a contract
 

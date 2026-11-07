@@ -7,11 +7,13 @@
   "area": "windows",
   "options": [
     "sum_order",
-    "rounding"
+    "rounding",
+    "window_sum_algo"
   ],
   "rows": [
     {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
-    {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]}
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]},
+    {"group": "win.agg", "option": "window_sum_algo", "types": ["any"]}
   ],
   "constructs": [
     "sum OVER",
@@ -20,6 +22,7 @@
   "settings": {},
   "description": [
     "A windowed `sum` or `avg` of doubles picks its aggregator in order: DISTINCT a merge sort tree; a frame that is the whole partition (`OVER ()`, or unbounded on both sides, or `CURRENT ROW` in RANGE mode without ORDER BY) `WindowConstantAggregator`; otherwise `WindowSegmentTree` (`sum` has no custom window callback). The constant aggregator adds each thread's rows of a partition in turn to a local state and combines the local states into the partition's state. The segment tree sums each run of 16 rows in turn into a leaf state, and each level combines 16 states of the level below in turn; a frame's state takes the ragged leaf values on its left, then whole nodes level by level, then the ragged right parts, each added in turn. All of it is the aggregate's `+=` and combine (duckdb-sum-double), in `DOUBLE`.",
+    "Without PARTITION BY and ORDER BY, a `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` frame runs in `PhysicalStreamingWindow`: one running state, updated once per row and never reduced. With the optimizer off, `WindowNaiveAggregator` sums each frame anew. `sum` and `avg` of doubles have no custom window callback (`UnaryAggregate` sets none), so no aggregator subtracts a leaving row's value. `window_sum_algo`: TREE (segment tree, per-thread partials), RUNNING_ADD (streaming), RECOMPUTE (naive).",
     "Order class: (a) a tree whose nodes add their children in turn: fanout 16 for framed windows, with the frame's own node adding up to 15 leaf values and 30 nodes per level; per-thread sequential partials combined in finishing order for whole-partition frames. (b) Any tree: |ŝ − s| ≤ γ_h Σ|x_i| with h the most additions on one value's path (Higham §4.2); h ≤ n − 1 always, and for a framed window of n rows h grows with 45·⌈log₁₆ n⌉ (15 in each node on the way up, up to 30 in the frame's node per level), an estimate from the code's shape. `avg` divides once more. Within #85's bounds. (c) The source below; a probe at one thread gives 0.9999999999999999 for a running sum and an `OVER ()` sum of ten 0.1, the same as adding them in turn. (d) ANY (`FloatSums`): a framed window's sum is a tree sum of the frame's values, which SEQUENTIAL does not cover for frames over 16 rows. A whole-partition frame at one thread is SEQUENTIAL.",
     "The docs are silent on the summation order of windowed aggregates: a docs gap. No upstream test pins the double rounding; it may change between versions."
   ],
@@ -98,10 +101,24 @@
       "evidence": [
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/segment_tree_leaf_batches.test#L11-L28", "note": "segment-tree frames across fan-in boundaries, integer sums at threads 1 and 8; no upstream test pins the double rounding"}
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "source-reading",
+      "checked_by": "session local_974f7865 side session (#1032 window-sum research subagent)",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/operator/aggregate/physical_streaming_window.cpp#L179-L197", "note": "streaming eligibility: running totals"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/operator/aggregate/physical_streaming_window.cpp#L292-L305", "note": "one update per row"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/function/aggregate_function.hpp#L689-L703", "note": "UnaryAggregate: no window callback"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_custom_aggregator.cpp#L10-L30", "note": "the custom aggregator needs a window callback"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_naive_aggregator.cpp#L223-L238", "note": "naive: each frame anew"}
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    1032
   ]
 }
