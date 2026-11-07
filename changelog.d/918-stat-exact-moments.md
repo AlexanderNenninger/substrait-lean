@@ -8,5 +8,4 @@ result the reference allows, and three axioms (`varOf_props`, `covOf_props`,
 `corrOf_props`) are retired. Engines keep their own algorithms, within the
 plan's bound: their rows are `approx`, `Report.epsilon` reports a bound for
 variance and deviation columns, and the written SQL clamps a variance at `0`
-and a correlation to `[-1, 1]`. Over a window, DuckDB runs its own `VAR_*` and
-`STDDEV_*`. Results can differ by an ulp from 0.7's.
+and a correlation to `[-1, 1]`. Results can differ by an ulp from 0.7's.
