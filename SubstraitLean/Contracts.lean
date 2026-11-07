@@ -3923,7 +3923,8 @@ theorem AVal.not_isTrue {a : AVal} {v : Value} (hm : a.Mem v) (ht : a.tt = false
     v.isTrue = false := by
   match v, hm with
   | .bool true, hm => simp_all [AVal.Mem]
-  | .bool false, _ | .null, _ | .int _, _ | .str _, _ | .list _, _ => rfl
+  | .bool false, _ | .null, _ | .int _, _ | .float _, _ | .date _, _ | .ts _, _ | .tod _, _
+  | .dec _ _, _ | .str _, _ | .list _, _ | .struct _, _ => rfl
 
 /-- What a row on which `e` is TRUE satisfies, by cases: a disjunct that
 cannot be TRUE under `env` is dropped, so under `a > 0` the condition
@@ -5138,7 +5139,7 @@ def sharpen (fs : List Fact) (f : BinFn) (a b : Expr) (aa base : AVal) : AVal :=
   | _ => base
 
 /-- `FALSE OR v`: `v` if it is a boolean, else NULL. -/
-def AVal.orFalse (a : AVal) : AVal := ⟨a.null || a.int.isSome || a.str, none, a.tt, a.ff, false, none⟩
+def AVal.orFalse (a : AVal) : AVal := ⟨a.null || a.int.isSome || a.str, none, a.tt, a.ff, false, none, none⟩
 
 /-- `p OR q` for a boolean `p`: TRUE where `p` is, else `q` on rows where
 `NOT p` holds (`bq` is `q` under that refinement). This proves guarded
@@ -5155,17 +5156,22 @@ def Bound.nonEmpty (b : Bound) : Bool :=
 /-- `a` without an empty interval: such a value is no integer. -/
 def AVal.prune (a : AVal) : AVal := { a with int := a.int.filter Bound.nonEmpty }
 
-theorem AVal.prune_mem {a : AVal} : ∀ {v : Value}, a.Mem v → a.prune.Mem v
-  | .int i, ⟨b, hb, hm⟩ => by
-      refine ⟨b, ?_, hm⟩
-      have : b.nonEmpty = true := by
-        unfold Bound.nonEmpty
-        split
-        · rename_i l h hl hh
-          exact decide_eq_true (Int.le_trans (hm.1 l hl) (hm.2 h hh))
-        · rfl
-      simp [AVal.prune, hb, Option.filter, this]
-  | .null, h | .bool true, h | .bool false, h | .str _, h | .list _, h => h
+theorem AVal.prune_mem {a : AVal} {v : Value} (h : a.Mem v) : a.prune.Mem v := by
+  cases hv : v.numOf? with
+  | none => cases v <;> (try rename_i bb; cases bb) <;> simp_all [AVal.Mem, AVal.prune, Value.numOf?]
+  | some p =>
+    obtain ⟨k, i⟩ := p
+    rw [Value.numOf?_some hv] at h ⊢
+    obtain ⟨b, hb, hm, hk⟩ := AVal.mem_val.mp h
+    rw [AVal.mem_val]
+    refine ⟨b, ?_, hm, hk⟩
+    have : b.nonEmpty = true := by
+      unfold Bound.nonEmpty
+      split
+      · rename_i l h hl hh
+        exact decide_eq_true (Int.le_trans (hm.1 l hl) (hm.2 h hh))
+      · rfl
+    simp [AVal.prune, hb, Option.filter, this]
 
 theorem EnvMem.prune {env : List AVal} {row : Row} (h : EnvMem env row) :
     EnvMem (env.map AVal.prune) row := by
@@ -5177,7 +5183,7 @@ theorem EnvMem.prune {env : List AVal} {row : Row} (h : EnvMem env row) :
   cases hi : env[i]? <;> simp_all [List.getD_eq_getElem?_getD]
 
 /-- `NULL OR v`: TRUE where `v` is, else NULL. -/
-def AVal.orNull (a : AVal) : AVal := ⟨a.null || a.ff || a.int.isSome || a.str, none, a.tt, false, false, none⟩
+def AVal.orNull (a : AVal) : AVal := ⟨a.null || a.ff || a.int.isSome || a.str, none, a.tt, false, false, none, none⟩
 
 /-- `p OR q` for a `p` that is a boolean or NULL: as `orSplit`, and where `p`
 is NULL, TRUE only where `q` is (`bq` is `q` where `p` is not TRUE). This
@@ -5581,7 +5587,7 @@ def sumCap (b : Bound) (n : Nat) : Bound :=
 def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 
 /-- Some double, or NULL. -/
-def AVal.double : AVal := ⟨true, some Bound.top, false, false, false, none⟩
+def AVal.double : AVal := ⟨true, some Bound.top, false, false, false, none, none⟩
 
 /-! ### Row counts and float error bounds (#85) -/
 
@@ -5822,7 +5828,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- without a filter has a value: `COUNT(*)` per group is at least 1.
   let valued := grouped && m.filter.isNone && !a.null
   match m.fn with
-  | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false, none⟩
+  | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false, none, none⟩
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
   -- With at most `rows` rows, at most `rows` times the largest value (#470).
@@ -5831,31 +5837,31 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
           (match rows with
             | some n => sumCap b n
             | none => Bound.top)
-      | none => Bound.top), false, false, false, none⟩
+      | none => Bound.top), false, false, false, none, none⟩
   -- Doubles round: within the proved error bound of the exact sum or mean
   -- when the values are finite and there are at most `rows` of them (#85).
   | .fsum => ⟨!valued,
       some (if a.intsOnly then floatBound false (a.int.getD Bound.top) rows else Bound.top),
-      false, false, false, none⟩
+      false, false, false, none, none⟩
   | .avg => ⟨!valued,
       some (if a.intsOnly then floatBound true (a.int.getD Bound.top) rows else Bound.top),
-      false, false, false, none⟩
+      false, false, false, none, none⟩
   -- Between the smallest and the largest value (`AggFn.iavg`, #237).
   | .iavg =>
-    ⟨!valued, some (if a.intsOnly then a.int.getD Bound.top else Bound.top), false, false, false, none⟩
+    ⟨!valued, some (if a.intsOnly then a.int.getD Bound.top else Bound.top), false, false, false, none, none⟩
   | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
-  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false, none⟩
-  | .bit _ => ⟨true, some Bound.top, false, false, false, none⟩
+  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false, none, none⟩
+  | .bit _ => ⟨true, some Bound.top, false, false, false, none, none⟩
   | .min | .max => if valued then a else a.nullable
   -- One of the values, in the measure's order (#55).
   | .pick _ => a.nullable
   -- A string, or NULL without values.
-  | .concat _ => ⟨true, none, false, false, true, none⟩
+  | .concat _ => ⟨true, none, false, false, true, none, none⟩
   -- One of the values (#53).
   | .quantile false _ _ | .mode => a.nullable
   -- A double between two of the values: within the argument's interval.
-  | .quantile true _ _ => ⟨true, a.int, false, false, false, none⟩
+  | .quantile true _ _ => ⟨true, a.int, false, false, false, none, none⟩
   | .collect => AVal.top
   -- A black box's laws over values; its `empty` value without (#325).
   | .bbox n => BlackBox.aggAbs n valued
@@ -5869,8 +5875,8 @@ described like one over a group (`Measure.abs`); `FIRST_VALUE` and friends
 may be anything. -/
 def WinFn.abs (sz : Bool) (env : List AVal) : WinFn → AVal
   | .rowNumber | .rank _ | .denseRank _ | .ntile _ =>
-    ⟨false, some ⟨some 1, if sz then some Text.rowCap else none⟩, false, false, false, none⟩
-  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false, none⟩
+    ⟨false, some ⟨some 1, if sz then some Text.rowCap else none⟩, false, false, false, none, none⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false, none, none⟩
   -- An aggregate over a frame, rows of the input: a sum of non-negative
   -- integers is not negative, `MIN` and `MAX` are among the inputs (#229).
   | .agg m _ _ => m.abs env []
