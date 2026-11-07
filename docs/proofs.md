@@ -23,6 +23,7 @@ and that the input rows meet the contract's preconditions.
 | A plan with no reported issue raises no runtime error | `Rel.mayIssues_sound` | `Safety.lean` |
 | Row caps rule out `SUM` overflow | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | The checker decides well-formedness | `Rel.checkWF_iff` | `Check.lean` |
+| A well-kinded plan evaluates to its kinds | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
 | The fast evaluator computes the specification | `Rel.evalFast_eq` | `EvalFast.lean` |
 | `Rel.eval` gives a result the reference allows | `Rel.eval_allowed` | `Allowed.lean` |
 | DuckDB, under its default settings, computes the reference | `Rel.duckdb_sound` | `Profile.lean` |
@@ -34,6 +35,7 @@ and that the input rows meet the contract's preconditions.
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
+| A narrowed postcondition proved on every order holds on every allowed result of a plan whose open double sums nothing reads to choose rows (`Rel.FloatOpenSafe`): one without open measures, or an aggregate over one | `contract_sound_allowed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
@@ -65,7 +67,11 @@ engines is trusted, and kept small:
 
 - The parser and the writer, `Parse.lean` and `Write.lean`. The CLI checks
   that every plan it writes parses back to the same `Rel`, and the golden
-  tests (`tests/run.sh`) run that round trip on every fixture.
+  tests (`tests/run.sh`) run that round trip on every fixture. The parser's
+  choice of function by kind is checked: `checkPlan` refuses a plan
+  `Rel.inferKinds` does not type (`Rel.kinds_sound`). Integer-represented
+  kinds (doubles, dates, timestamps, decimals) share `Value.int` until #923,
+  so the theorem tells them apart by representation only.
 - The CLI's glue, `Main.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON.
 - The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
@@ -126,6 +132,7 @@ generators, then the trusted reading and writing.
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
+| `Kinds.lean` | `Rel.inferKinds`, the kind checker, and its soundness |
 
 ### Incremental maintenance
 
@@ -180,6 +187,7 @@ generators, then the trusted reading and writing.
 | `Observations.lean` | Observations and classes against the reference |
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
+| `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |

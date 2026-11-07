@@ -14,6 +14,7 @@ import SubstraitLean.Reflect
 import SubstraitLean.Window
 import SubstraitLean.Aggregate
 import SubstraitLean.Rel
+import SubstraitLean.Kinds
 import SubstraitLean.EvalFast
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
@@ -66,6 +67,7 @@ import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
 import SubstraitLean.Robust
+import SubstraitLean.AllowedNear
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile

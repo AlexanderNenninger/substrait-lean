@@ -286,7 +286,7 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
     a.issues row ++ b.issues row ++ ((f.issueAll (a.eval row) (b.eval row)).map (·, .bin f a b)).toList
   | .ifThen c t e => c.issues row ++ if (c.eval row).isTrue then t.issues row else e.issues row
   -- The lambda runs on every element.
-  | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues [x]
+  | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues (x :: row)
 
 -- `AND` and `OR` evaluate both operands (D19, #604): `x <> 0 AND 10 / x > 1`
 -- divides by zero on `x = 0`; guarding the division with a `CASE` does not.
@@ -803,8 +803,8 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
     c.mayIssues env fs ks ors ++
       (if ac.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
       (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else [])
-  -- The body on any element: it reads only its parameter.
-  | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues [AVal.top] [] []
+  -- The body on any element, with the row in scope (D28).
+  | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues (AVal.top :: env) [] []
 
 -- The DuckDB lift's `a * b` of doubles (#702): the NaN of `0 · ∞` and
 -- `∞ · 0` as a `CASE`, whose `ELSE` branch has no domain error; the bare product
@@ -1364,9 +1364,11 @@ theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptio
     simp only [Expr.mayIssues, List.mem_append]
     rcases hp with hp | ⟨x, _, hp⟩
     · exact .inl (Expr.mayIssuesC_sound h hfs hks hors l p hp)
-    · -- The body sees one element, which `AVal.top` describes.
-      have hx : EnvMem [AVal.top] [x] := fun i => by
-        cases i <;> simp [AVal.mem_top]
+    · -- The body sees an element, which `AVal.top` describes, and the row.
+      have hx : EnvMem (AVal.top :: env) (x :: row) := fun i => by
+        cases i with
+        | zero => simp [AVal.mem_top]
+        | succ i => simpa using h i
       exact .inr (Expr.mayIssuesC_sound hx (fun _ hf => by simp at hf)
         (fun _ hk => by simp at hk) (fun _ ha => by simp at ha) b p hp)
 

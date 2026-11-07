@@ -1,3 +1,4 @@
+import SubstraitLean.Kinds
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
 import SubstraitLean.Weighted
@@ -27,6 +28,7 @@ import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
 import SubstraitLean.Robust
+import SubstraitLean.AllowedNear
 import SubstraitLean.FloatExact
 
 /-!
@@ -165,6 +167,7 @@ end Substrait.Examples
 
 -- Proofs rely only on Lean's standard axioms (no `sorry`).
 #print axioms Substrait.Rel.eval_arity
+#print axioms Substrait.Rel.kinds_sound
 #print axioms Substrait.filter_project_pushdown
 #print axioms Substrait.filter_cross_pushdown_left
 #print axioms Substrait.emit_project_identity
@@ -314,3 +317,6 @@ end Substrait.Examples
 #print axioms Substrait.Expr.robust_of_robustB
 #print axioms Substrait.Expr.narrow_sound
 #print axioms Substrait.Expr.robust_of_depends
+#print axioms Substrait.contract_sound_allowed
+#print axioms Substrait.Rel.floatOpenSafe_aggregate
+#print axioms Substrait.Rel.floatOpenSafe_of_closed

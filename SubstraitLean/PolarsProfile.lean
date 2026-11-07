@@ -308,8 +308,8 @@ theorem elaborate_eq : ∀ (e : Expr) (row : Row),
   | .ifThen c t e, row => by simp only [elaborate, Expr.evalP, elaborate_eq c row, elaborate_eq t row, elaborate_eq e row]
   | .hof f l b, row => by
     simp only [elaborate, Expr.evalP, elaborate_eq l row]
-    have : (fun x => (elaborate b).evalP Profile.reference [x]) = fun x => b.evalP Profile.polars [x] :=
-      funext fun x => elaborate_eq b [x]
+    have : (fun x => (elaborate b).evalP Profile.reference (x :: row)) = fun x => b.evalP Profile.polars (x :: row) :=
+      funext fun x => elaborate_eq b (x :: row)
     rw [this]
 
 /-- The parser reads a call that states `division_type: FLOOR` as the
