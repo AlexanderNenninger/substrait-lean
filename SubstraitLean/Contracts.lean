@@ -5038,74 +5038,69 @@ structure Rel.Lane where
   env : List AVal
   ratio : List Fact
   rows : Option Nat
+  deriving Inhabited
 
-/-- The analyses of every subplan in one bottom-up pass. -/
-def Rel.lane (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
-    (sz : Bool) : Rel → Rel.Lane
-  | .read t => ⟨(cat t).arity, F t, useFacts (F t) (fit (cat t).arity (A t)), [], none⟩
-  | .values n rows => ⟨n, [], List.replicate n AVal.top, [], some rows.length⟩
-  | .filter r c =>
-      let l := r.lane cat A F T sz
+/-- One node's lane from its inputs' lanes (`l`, `l₂`; unused ones are ignored). -/
+def Rel.laneStep (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
+    (sz : Bool) : Rel → Rel.Lane → Rel.Lane → Rel.Lane
+  | .read t, _, _ => ⟨(cat t).arity, F t, useFacts (F t) (fit (cat t).arity (A t)), [], none⟩
+  | .values n rows, _, _ => ⟨n, [], List.replicate n AVal.top, [], some rows.length⟩
+  | .filter _ c, l, _ =>
       ⟨l.arity, l.facts ++ c.factsOf, useFacts (l.facts ++ c.factsOf) (c.refine l.env), [], l.rows⟩
-  | .project r es =>
-      let l := r.lane cat A F T sz
+  | .project _ es, l, _ =>
       ⟨l.arity + es.length,
         (l.facts.filter (·.inRange l.arity)).flatMap (Fact.rename (copyCols l.arity es)) ++
           linFacts l.arity l.arity es,
         l.env ++ es.map (·.absF l.env (l.facts ++ l.ratio)), [], l.rows⟩
-  | .emit r m =>
-      let l := r.lane cat A F T sz
+  | .emit _ m, l, _ =>
       ⟨m.length, l.facts.flatMap (Fact.rename (positions m)), m.map (l.env.getD · AVal.top), [],
         l.rows⟩
-  | .cross a b =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .cross _ _, la, lb =>
       ⟨la.arity + lb.arity, la.facts.filter (·.inRange la.arity) ++ lb.facts.map (·.shift la.arity),
         la.env ++ lb.env, [], la.rows.bind fun n => lb.rows.map (n * ·)⟩
-  | .join a b .inner on =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .join _ _ .inner on, la, lb =>
       ⟨la.arity + lb.arity,
         la.facts.filter (·.inRange la.arity) ++ lb.facts.map (·.shift la.arity) ++ on.factsOf,
         on.refine (la.env ++ lb.env), [], la.rows.bind fun n => lb.rows.map (n * ·)⟩
-  | .join a b .left on =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .join _ _ .left on, la, lb =>
       ⟨la.arity + lb.arity,
         la.facts.filter (·.inRange la.arity) ++
           (lb.facts.filter Fact.intsOnly).map (·.shift la.arity) ++
           on.factsOf.filter (·.rightOf la.arity),
         la.env ++ lb.env.map AVal.nullable, [], none⟩
-  | .fetch r _ cnt =>
-      let l := r.lane cat A F T sz
+  | .fetch _ _ cnt, l, _ =>
       ⟨l.arity, l.facts, l.env, [], match cnt, l.rows with
         | some k, some n => some (min k n)
         | some k, none => some k
         | none, n => n⟩
-  | .unionAll a b =>
-      let la := a.lane cat A F T sz
-      let lb := b.lane cat A F T sz
+  | .unionAll _ _, la, lb =>
       ⟨la.arity, la.facts.filter (lb.facts.contains ·), List.zipWith AVal.join la.env lb.env, [],
         la.rows.bind fun n => lb.rows.map (n + ·)⟩
-  | .window r part sort fns =>
-      let l := r.lane cat A F T sz
+  | .window r part sort fns, l, _ =>
       ⟨l.arity + fns.length,
         l.facts.filter (·.inRange l.arity) ++ winFacts part sort (T r part sort) l.arity fns,
         l.env ++ fns.map (WinFn.abs sz l.env), [], l.rows⟩
-  | .semi a _ _ _ =>
-      let l := a.lane cat A F T sz
+  | .semi _ _ _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
-  | .orderBy r _ | .distinct r =>
-      let l := r.lane cat A F T sz
+  | .orderBy _ _, l, _ | .distinct _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
-  | .aggregate r gs ms =>
-      let l := r.lane cat A F T sz
+  | .aggregate _ gs ms, l, _ =>
       ⟨gs.length + ms.length, aggFacts gs.length ms,
         gs.map (·.absD l.env l.facts) ++ ms.map fun m => Measure.abs l.env l.facts m (!gs.isEmpty) l.rows,
         ratioFacts gs.length l.env l.facts ms, if gs.isEmpty then some 1 else l.rows⟩
-  | .unnest r c =>
-      let l := r.lane cat A F T sz
+  | .unnest _ c, l, _ =>
       ⟨l.arity, [], l.env.set c AVal.top, [], none⟩
+
+
+/-- The analyses of every subplan in one bottom-up pass. -/
+def Rel.lane (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
+    (sz : Bool) : Rel → Rel.Lane
+  | r@(.filter a _) | r@(.project a _) | r@(.emit a _) | r@(.fetch a _ _) | r@(.window a _ _ _)
+  | r@(.semi a _ _ _) | r@(.orderBy a _) | r@(.distinct a) | r@(.aggregate a _ _) | r@(.unnest a _) =>
+      r.laneStep cat A F T sz (a.lane cat A F T sz) default
+  | r@(.cross a b) | r@(.join a b _ _) | r@(.unionAll a b) =>
+      r.laneStep cat A F T sz (a.lane cat A F T sz) (b.lane cat A F T sz)
+  | r@(.read _) | r@(.values _ _) => r.laneStep cat A F T sz default default
 
 /-- **The lane is the analyses**, field by field. -/
 theorem Rel.lane_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
@@ -5114,12 +5109,12 @@ theorem Rel.lane_eq (cat : Catalog) (A : String → List AVal) (F : String → L
       r.ratioPart cat A F T sz, r.maxRows⟩ := by
   induction r with
   | join a b ty on iha ihb =>
-    cases ty <;> simp only [Rel.lane, iha, ihb, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
+    cases ty <;> simp only [Rel.lane, Rel.laneStep, iha, ihb, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
       Rel.maxRows]
   | fetch r _ cnt ih =>
-    cases cnt <;> simp only [Rel.lane, ih, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
+    cases cnt <;> simp only [Rel.lane, Rel.laneStep, ih, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart,
       Rel.maxRows]
-  | _ => simp_all only [Rel.lane, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart, Rel.maxRows]
+  | _ => simp_all only [Rel.lane, Rel.laneStep, Rel.arity, Rel.facts, Rel.aeval, Rel.ratioPart, Rel.maxRows]
 
 /-- `Rel.aeval` by the lane. -/
 def Rel.aevalLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)

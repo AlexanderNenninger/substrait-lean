@@ -437,6 +437,67 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   -- An element can repeat.
   | .unnest _ _ => []
 
+/-! ### Keys in the same pass (#904)
+
+`Rel.keys` reads its inputs' arity and description (`Rel.aeval` without
+window keys) at every node, each a walk of the input. `Rel.laneK` carries
+the keys next to the lane (`Rel.lane`, `SubstraitLean/Contracts.lean`) in one
+bottom-up pass; `Rel.laneK_eq` proves it computes `Rel.keys`, and the
+`@[csimp]` lemma makes compiled code use it. -/
+
+/-- One node's keys from its inputs' lanes and keys. -/
+def Rel.keysStep (K : String → List (List Nat)) :
+    Rel → Rel.Lane → Rel.Lane → List (List Nat) → List (List Nat) → List (List Nat)
+  | .read t, _, _, _, _ => K t
+  | .values _ rows, _, _, _, _ => if rows.length ≤ 1 then [[]] else []
+  | .filter _ c, _, _, ka, _ =>
+      dedup ((ka.map (·.filter (!c.pinned.contains ·))).flatMap (eqVariants c))
+  | .project _ es, l, _, ka, _ =>
+      (ka.filter (·.all (· < l.arity))).flatMap
+        (variants fun i => copyCols l.arity es i ++ linCols l.arity es l.env i)
+  | .emit _ m, _, _, ka, _ => ka.filterMap (emitKey m)
+  | .cross _ _, la, _, ka, kb => crossKeys la.arity ka kb
+  | .join _ _ ty on, la, _, ka, kb => joinEqKeys ty on (joinKeys la.arity on ka kb)
+  | .fetch _ _ cnt, _, _, ka, _ => (if cnt.any (· ≤ 1) then [[]] else []) ++ ka
+  | .unionAll _ _, la, lb, ka, kb => unionKeys la.env lb.env ka kb
+  | .window _ part _ fns, l, _, ka, _ =>
+      ka.filter (·.all (· < l.arity)) ++ windowKeys part l.arity fns
+  | .semi _ _ _ _, _, _, ka, _ | .orderBy _ _, _, _, ka, _ => ka
+  | .distinct _, l, _, ka, _ => List.range l.arity :: ka
+  | .aggregate _ gs _, _, _, _, _ => [List.range gs.length]
+  | .unnest _ _, _, _, _, _ => []
+
+/-- The lane without window keys and the keys of every subplan, in one pass. -/
+def Rel.laneK (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) : Rel → Rel.Lane × List (List Nat)
+  | r@(.filter a _) | r@(.project a _) | r@(.emit a _) | r@(.fetch a _ _) | r@(.window a _ _ _)
+  | r@(.semi a _ _ _) | r@(.orderBy a _) | r@(.distinct a) | r@(.aggregate a _ _) | r@(.unnest a _) =>
+      let p := a.laneK cat A F K
+      (r.laneStep cat A F .none false p.1 default, r.keysStep K p.1 default p.2 [])
+  | r@(.cross a b) | r@(.join a b _ _) | r@(.unionAll a b) =>
+      let p := a.laneK cat A F K
+      let q := b.laneK cat A F K
+      (r.laneStep cat A F .none false p.1 q.1, r.keysStep K p.1 q.1 p.2 q.2)
+  | r@(.read _) | r@(.values _ _) =>
+      (r.laneStep cat A F .none false default default, r.keysStep K default default [] [])
+
+/-- **The pass computes the lane and `Rel.keys`.** -/
+theorem Rel.laneK_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) :
+    r.laneK cat A F K = (r.lane cat A F .none false, r.keys cat A F K) := by
+  induction r with
+  | join a b ty on iha ihb =>
+    cases ty <;> simp only [Rel.laneK, Rel.lane, iha, ihb, Rel.keysStep, Rel.keys, Rel.lane_eq]
+  | _ => simp_all only [Rel.laneK, Rel.lane, Rel.keysStep, Rel.keys, Rel.lane_eq]
+
+/-- `Rel.keys` by the pass. -/
+def Rel.keysLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) : List (List Nat) :=
+  (r.laneK cat A F K).2
+
+@[csimp] theorem Rel.keys_csimp : @Rel.keys = @Rel.keysLane := by
+  funext cat A F K r; simp only [Rel.keysLane, Rel.laneK_eq]
+
 theorem crossRows_key {A B : Relation} {n : Nat} {ka kb : List Nat}
     (hA : ∀ x ∈ A, x.length = n) (hka : ∀ c ∈ ka, c < n)
     (hkA : KeyOn ka A) (hkB : KeyOn kb B) :
