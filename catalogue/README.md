@@ -7,8 +7,8 @@ and how far this repository gets with it today: whether `substrait-check`
 verifies it, and which engines run it.
 
 * [`INDEX.md`](INDEX.md): every query with its status (generated).
-* [`FINDINGS.md`](FINDINGS.md): feature frequency, gaps ranked by the queries
-  they block, and recommendations for the specification.
+* [`FINDINGS.md`](FINDINGS.md): feature frequency and gaps ranked by the
+  queries they block (generated), with a dated note on the catalogue.
 
 ## Contents
 

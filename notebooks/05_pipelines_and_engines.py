@@ -215,13 +215,17 @@ def _(mo):
     ### What is maintained, and what is recomputed
 
     Filters, computed columns, inner joins (self-joins too), cross joins,
-    `UNION ALL` and `ORDER BY` are maintained from their changes. Left,
-    semi and anti joins (a left join's NULL-padded rows must be retracted
-    when a match turns up later), `DISTINCT`, `LIMIT` (it depends on row
-    order), windows and aggregates are recomputed and diffed on every
-    refresh. Contracts work on all of them, and the result is correct; the
-    cost is a full run per refresh. `node.status()` says which kind of node
-    you have:
+    semi and anti joins on equal keys, `UNION ALL`, `ORDER BY` and
+    `DISTINCT` are maintained from their changes, and so are `COUNT`, exact
+    `SUM` and `AVG`, `MIN` and `MAX` per group. Other aggregates recompute
+    only the groups a batch touches, windows that share one `PARTITION BY`
+    the partitions it touches (for inputs without ties), and bounded `RANGE`
+    frames the frames it touches. Left joins (a left join's NULL-padded rows
+    must be retracted when a match turns up later), `LIMIT` (it depends on
+    row order) and the rest are recomputed and diffed on every refresh
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
+    correct; a recomputed node costs a full run per refresh. `node.status()`
+    says which kind of node you have:
     """)
     return
 
@@ -275,8 +279,8 @@ def _(mo):
     result, still flows to the nodes that read it. The view is a table like
     any other: `view.table` is an Ibis table to query further, and
     `to_arrow()`, `to_polars()` and `to_pandas()` return its rows. Nodes
-    are built from Ibis transforms; a view written as a SQL string has no
-    public counterpart yet.
+    are built from Ibis transforms, or from a SQL string with `sv.sql(query)`
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
 
     ### Delta rules in brief
 
@@ -991,22 +995,12 @@ def _(mo):
     keys, NaN, integer overflow, the rounding of integer division and the
     order of ties. Plans come from one producer: the vendored Ibis
     producer, or sverify's lift of DuckDB's SQL (SQLGlot) for SQL strings.
-    They run on these engines:
-
-    | engine | how the plan runs | status |
-    |:---|:---|:---|
-    | `"duckdb"` (default) | the SQL generator (`sverify.engines.to_sql`) writes the plan as DuckDB SQL | Tier 1: characterized against the model, translation proved |
-    | `"polars"` | a translator turns the plan into a Polars `LazyFrame`, run on Polars's streaming engine | Tier 2: characterized, shims proved |
-    | `"spark"`, or a Spark session | the SQL generator writes Spark SQL (the `sverify[spark]` extra) | Tier 2 |
-    | `"datafusion"` | DataFusion's Substrait consumer (the `sverify[datafusion]` extra) | experimental, outside the 1.x promise |
-    | Snowflake | SQL only, checked on the [fakesnow](https://github.com/tekumara/fakesnow) emulator | Tier 3 |
-
-    The tiers are explained in the
-    [README](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md).
-    Work on DataFusion, Spark and Snowflake is paused until the generated
-    lowerings land ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241),
-    then [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
-    and the tests use DuckDB as their oracle. DuckDB and Polars are
+    DuckDB (the default), Polars on its streaming engine and Spark 4.x run
+    plans, each with a proved profile, and sverify writes DuckDB, Spark and
+    Snowflake SQL; Snowflake's profile and running plans on it come before
+    1.0. DataFusion is experimental and outside the 1.x promise.
+    [The engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) has the details. Lean's model is the reference,
+    and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
     written form of the plan (`sverify.engines.written_plan`), so what runs
@@ -1126,8 +1120,9 @@ def _(mo):
     * NaN is one value, equal to itself and above every number, so
       `NaN > 0` is TRUE. The next section covers doubles.
     * `qty + 1` on the largest integer is where engines differ most:
-      DataFusion wraps around to the smallest integer, while the Polars and
-      DuckDB translators raise, as the reference does. An integer that
+      DataFusion (experimental, outside the 1.x promise) wraps around to the
+      smallest integer, while the Polars and DuckDB translators raise, as
+      the reference does. An integer that
       leaves its declared width is an error, and `verify` reports it
       beforehand.
 
@@ -1305,7 +1300,8 @@ def _(mo):
     and every query of the Snowflake suite on a local Spark session
     (Java 17 or 21) and compare them with `Rel.eval`. The Lean evaluator is
     the specification: the suite runs every fixture and every update plan
-    on DataFusion, Polars and DuckDB with random tables, and compares them
+    on Polars and DuckDB, and on the experimental DataFusion, with random
+    tables, and compares them
     with each other and with `Rel.eval`, row for row in Lean's order where
     order matters. The Snowflake SQL is parsed and run on fakesnow. The
     [engine profiles](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md)
@@ -1413,10 +1409,12 @@ def _(mo):
     mo.md(r"""
     Comparisons with constants are exact, sentinels like `-9999.0` and the
     boundary between `v > 0.5` and `v >= 0.5` included. Arithmetic on
-    doubles (`v * 2.5`) is known only to give some double, because rounding
-    isn't modelled. The reference raises where an operation on finite
-    doubles overflows to ±∞, so the report assumes `v * 2.5` stays finite and
-    the run checks it on the data first: a ±∞ in a result came from the
+    doubles (`v * 2.5`) rounds, and the checker bounds `+`, `-`, `*` and `/`
+    from their inputs' bounds with a proved rounding error
+    ([float bounds](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md#one-operations-bounds-and-overflow-582)).
+    The reference raises where an operation on finite doubles overflows to
+    ±∞, so where no bound keeps `v * 2.5` finite, the report assumes it
+    stays finite and the run checks it on the data first: a ±∞ in a result came from the
     data ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)). For the same reason `power(-inf, 0.5)`
     and a `MEDIAN` between −∞ and +∞ raise, where engines disagree. `FLOOR`, `CEIL`, `ROUND` and the cast to an integer are
     exact and monotone, so a bounded double rounds to a bounded integer:

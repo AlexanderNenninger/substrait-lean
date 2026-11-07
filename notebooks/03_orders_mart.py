@@ -320,9 +320,9 @@ def _(mo):
     ## 3. Build it from the Delta tables
 
     Now we wire it up. The model reads both tables as sources, and piping
-    them into it builds a node. A left join and an aggregate have no proved
-    delta rules yet, so the node is recomputed on each refresh, and its
-    status says so:
+    them into it builds a node. A left join has no proved delta rules yet,
+    so the aggregate over it is recomputed on each refresh, and its status
+    says so:
     """)
     return
 
@@ -384,10 +384,8 @@ def _(mo):
     whoever reconciles the dashboard with finance notices first. Sverify's
     translations write out what the plan means (integer division truncates
     on every engine), so the checked plan gives the same rows on each,
-    whichever `engine=` the node is refreshed with. DuckDB is the reference
-    engine (Tier 1); see the
-    [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)
-    for the others:
+    whichever `engine=` the node is refreshed with. Lean's model is the
+    reference; [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists what each engine runs:
     """)
     return
 

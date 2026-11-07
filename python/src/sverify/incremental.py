@@ -1,4 +1,4 @@
-"""Incrementally maintained views on DataFusion or Polars, with delta plans from Lean.
+"""Incrementally maintained views on the refresh's engine, with delta plans from Lean.
 
 Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 `sverify.engines` and `sverify.errors`; it may change in any release.
@@ -10,7 +10,7 @@ proves the concatenated results are the change to the view
 (`Rel.incremental_sound`, `Rel.zeval_terms`, `Rel.weighted_eval`). This module
 is the trusted glue around it: it keeps the view as rows with multiplicities
 (a weighted Arrow table, `sverify._weighted`), builds the change tables, runs
-the delta plans on DataFusion or Polars and merges the result. A batch is
+the delta plans on the refresh's engine and merges the result. A batch is
 computed completely before anything is replaced, so a failing batch changes
 nothing.
 
