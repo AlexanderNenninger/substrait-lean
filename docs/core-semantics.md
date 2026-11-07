@@ -1929,6 +1929,10 @@ one fact per platform, binary64 with round to nearest even, no contraction,
 no flush to zero, checked by a differential probe; an engine without it gets
 a shim or a refusal.
 
+The reference observes these results through its own zero and NaN rules
+(ONE_ZERO, #89; `on_division_by_zero`), so its values are unchanged; a
+profile with IEEE `zero_sign` sees the signed result.
+
 In the model (`SubstraitLean/FloatArith.lean`): every finite double is an
 integer multiple of 2⁻¹⁰⁷⁴, so the exact sum, difference and product are
 integers in that unit, the product in 2⁻²¹⁴⁸, and the quotient a fraction of
