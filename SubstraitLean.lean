@@ -43,6 +43,7 @@ import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
 import SubstraitLean.Allowed
 import SubstraitLean.Ties
+import SubstraitLean.Seam
 import SubstraitLean.Knowledge
 import SubstraitLean.Choices
 import SubstraitLean.DuckDBSQL

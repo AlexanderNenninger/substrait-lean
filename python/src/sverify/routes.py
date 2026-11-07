@@ -1108,8 +1108,18 @@ def _cap_text(found: Mapping[str, list[str]]) -> str:
 
 
 def ties_fix(report: Report) -> str:
-    """How to make the report's result determined up to row order: the
-    `sv.unique(...)` it needs (`Report.ties`), or `TIES`."""
+    """How to make the report's result determined up to row order: an
+    `ORDER BY` for a `LIMIT` without one, the `sv.unique(...)` it needs
+    (`Report.ties`), or `TIES`."""
+    unordered = any(p.op == "fetch" and "no ORDER BY" in p.what for p in report._tie_places)
+    if unordered and not report.ties and all(p.op == "fetch" for p in report._tie_places):
+        return UNORDERED_FETCH
+    fix = _unique_fix(report)
+    return f"{UNORDERED_FETCH}; {fix}" if unordered else fix
+
+
+def _unique_fix(report: Report) -> str:
+    """The `sv.unique(...)` the report's ties need (`Report.ties`), or `TIES`."""
     if not report.ties:
         return TIES
 
@@ -1120,6 +1130,13 @@ def ties_fix(report: Report) -> str:
     parts = [f"{', '.join(map(code, labs))} on {t}" for t, labs in report.ties.items()]
     return "declare " + " and ".join(parts) + " in requires, so no rows tie in the ORDER BY"
 
+
+#: How to fix the rows a LIMIT without an ORDER BY takes (#928): the
+#: reference allows any of them, so a rerun may take others.
+UNORDERED_FETCH = (
+    "order the rows before the LIMIT, with order_by(...) on columns that sv.unique(...) "
+    "makes a key, so a rerun takes the same rows"
+)
 
 #: How to make a result determined up to row order.
 TIES = (

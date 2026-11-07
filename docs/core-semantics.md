@@ -1677,6 +1677,15 @@ uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
 refuses a plan without one. The refusal names each place where ties stay
 open (`str(report)`, with the keys that would close them in `Report.ties`).
 
+An order-sensitive operator reads one sorted enumeration of its input, and
+its meaning is the set over all of them (`Lin` and `Sem`,
+`SubstraitLean/Seam.lean`, #928). Below an unordered operator, as with a
+`FETCH` without a total `ORDER BY` under a join, the order is forgotten and
+the result is a set of multisets (`Rel.Bags`): this is where the tie order's
+nondeterminism lives. `verify` and `run` allow such a plan, and the proofs
+hold for every member; `refresh` commits one member and refuses it unless
+the plan has one (`Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two`).
+
 Why: `Rel.eval`'s one order leaked into four places
 ([#679](https://github.com/AlexanderNenninger/substrait-lean/issues/679)).
 Theorems about `FETCH`, ties and windows held for that order only. The
