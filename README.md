@@ -79,11 +79,11 @@ SQL string ─► SQLGlot lift ────────────────�
 * [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental
   maintenance, the producers and engines, what is proved and what is trusted.
 * [docs/reference-semantics.md](docs/reference-semantics.md): what `Rel.eval`
-  means, row by row; [docs/ibis-semantics.md](docs/ibis-semantics.md),
+  means, row by row, Ibis frontend included;
   [docs/engine-profiles.md](docs/engine-profiles.md),
   [docs/optimizations.md](docs/optimizations.md),
   [docs/nested-values.md](docs/nested-values.md) and
-  [docs/float-bounds.md](docs/float-bounds.md) cover the Ibis side, the engines,
+  [docs/float-bounds.md](docs/float-bounds.md) cover the engines,
   proved optimizations, nested values and doubles.
 * [python/README.md](python/README.md): install, quick example and API overview.
 * [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
