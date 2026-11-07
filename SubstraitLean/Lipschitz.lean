@@ -890,13 +890,13 @@ on one side only rounds to `±∞`. Both are named, not folded in. -/
 open FloatCode in
 /-- Every double among `vs` is finite (a canonical code: `-0.0`'s and the
 negative NaN's codes lie below `-∞`'s). -/
-def FinCodes (vs : List Value) : Prop := ∀ c, Value.int c ∈ vs → IsFin c
+def FinCodes (vs : List Value) : Prop := ∀ c, Value.float c ∈ vs → IsFin c
 
 /-- Two values within `e` codes: two doubles, or one value that is not a
 double. -/
 def CodeNear (e : Nat) : Value → Value → Prop
-  | .int a, .int b => (a - b).natAbs ≤ e
-  | v, w => (∀ c, v ≠ .int c) ∧ ∀ c, w ≠ .int c
+  | .float a, .float b => (a - b).natAbs ≤ e
+  | v, w => (∀ c, v ≠ .float c) ∧ ∀ c, w ≠ .float c
 
 namespace FloatCode
 
@@ -912,24 +912,19 @@ open FloatCode
 
 /-- A value's exact part of a sum. -/
 def exactOf : Value → Int
-  | .int c => scaled c
+  | .float c => scaled c
   | _ => 0
 
 theorem exactSum_cons (v : Value) (vs : List Value) : exactSum (v :: vs) = exactOf v + exactSum vs := by
   cases v <;> simp [exactSum, exactOf]
 
-theorem CodeNear.exactOf {e : Nat} : ∀ {v w : Value}, CodeNear e v w →
-    2 * (exactOf v - exactOf w).natAbs ≤ e + 1
-  | .int a, .int b, h => by
+theorem CodeNear.exactOf {e : Nat} {v w : Value} (h : CodeNear e v w) :
+    2 * (exactOf v - exactOf w).natAbs ≤ e + 1 := by
+  cases v <;> cases w
+  case float.float a b =>
     have := scaled_sub_le a b; simp only [CodeNear] at h; simp only [Substrait.exactOf]; omega
-  | .null, .int _, h | .bool _, .int _, h | .str _, .int _, h | .list _, .int _, h
-  | .int _, .null, h | .int _, .bool _, h | .int _, .str _, h | .int _, .list _, h => by
-    first | exact absurd rfl (h.2 _) | exact absurd rfl (h.1 _)
-  | .null, .null, _ | .null, .bool _, _ | .null, .str _, _ | .null, .list _, _
-  | .bool _, .null, _ | .bool _, .bool _, _ | .bool _, .str _, _ | .bool _, .list _, _
-  | .str _, .null, _ | .str _, .bool _, _ | .str _, .str _, _ | .str _, .list _, _
-  | .list _, .null, _ | .list _, .bool _, _ | .list _, .str _, _ | .list _, .list _, _ => by
-    simp [Substrait.exactOf]
+  all_goals first
+    | exact absurd rfl (h.1 _) | exact absurd rfl (h.2 _) | simp [Substrait.exactOf]
 
 theorem exactSum_near {e : Nat} : ∀ {vs ws : List Value}, Forall2 (CodeNear e) vs ws →
     2 * (exactSum vs - exactSum ws).natAbs ≤ vs.length * (e + 1)
@@ -946,7 +941,7 @@ theorem nonFinite_of_finCodes {vs : List Value} (h : FinCodes vs) : nonFinite vs
     simp only [anyCode, List.any_eq_false]
     intro v hv
     cases v with
-    | int c => simp [hp c (h c hv)]
+    | float c => simp [hp c (h c hv)]
     | _ => simp
   have := nan_eq; have := posInf_eq; have := negInf_eq
   unfold nonFinite
@@ -1067,22 +1062,16 @@ theorem Tol.cell_null_iff {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w) :
   cases v <;> cases w <;> first | rfl | exact h.elim
 
 /-- Two finite doubles in a cell within `e` codes are within `e` codes. -/
-theorem Tol.cell_codeNear {e : Nat} : ∀ {v w : Value}, (Tol.all e).Cell 0 v w →
-    (∀ c, v = .int c → IsFin c) → (∀ c, w = .int c → IsFin c) → CodeNear e v w
-  | .int a, .int b, h, hv, hw => by
+theorem Tol.cell_codeNear {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w)
+    (hv : ∀ c, v = .float c → IsFin c) (hw : ∀ c, w = .float c → IsFin c) : CodeNear e v w := by
+  cases v <;> cases w
+  case float.float a b =>
     change (Tol.all e).near 0 (fp64.canon a) (fp64.canon b) at h
     rw [show fp64.canon a = a from canon_of_bounds (hv a rfl),
       show fp64.canon b = b from canon_of_bounds (hw b rfl)] at h
     exact h
-  | .int _, .null, h, _, _ | .int _, .bool _, h, _, _ | .int _, .str _, h, _, _
-  | .int _, .list _, h, _, _ | .null, .int _, h, _, _ | .bool _, .int _, h, _, _
-  | .str _, .int _, h, _, _ | .list _, .int _, h, _, _ => h.elim
-  | .null, .null, _, _, _ | .null, .bool _, _, _, _ | .null, .str _, _, _, _
-  | .null, .list _, _, _, _ | .bool _, .null, _, _, _ | .bool _, .bool _, _, _, _
-  | .bool _, .str _, _, _, _ | .bool _, .list _, _, _, _ | .str _, .null, _, _, _
-  | .str _, .bool _, _, _, _ | .str _, .str _, _, _, _ | .str _, .list _, _, _, _
-  | .list _, .null, _, _, _ | .list _, .bool _, _, _, _ | .list _, .str _, _, _, _
-  | .list _, .list _, _, _, _ => ⟨fun _ h => (nomatch h), fun _ h => (nomatch h)⟩
+  all_goals first
+    | exact h.elim | exact ⟨fun _ h => (nomatch h), fun _ h => (nomatch h)⟩
 
 /-- **The values a `SUM` or `AVG` adds are paired within `e` codes**, on groups
 within `t`: the argument within `e`, the filter on exact columns, no
@@ -1107,7 +1096,7 @@ theorem Measure.inputs_near {t : Tol} {m : Measure} {e : Nat} (hd : m.distinct =
   have hn := hm.filter (p := (· != .null)) (p' := (· != .null)) fun v w h => Tol.cell_null_iff h
   unfold Measure.inputs at hv hw ⊢
   simp only [hd, Bool.false_eq_true, ite_false] at hv hw ⊢
-  exact (hn.and_mem (P := fun v => ∀ c, v = .int c → IsFin c) (Q := fun w => ∀ c, w = .int c → IsFin c)
+  exact (hn.and_mem (P := fun v => ∀ c, v = .float c → IsFin c) (Q := fun w => ∀ c, w = .float c → IsFin c)
     (fun v hv' c hc => hv c (hc ▸ hv')) (fun w hw' c hc => hw c (hc ▸ hw'))).imp
     fun v w ⟨h, pv, pw⟩ => Tol.cell_codeNear h pv pw
 
