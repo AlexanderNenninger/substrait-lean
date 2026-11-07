@@ -87,21 +87,25 @@ theorem Expr.raises_of_eager {p : Profile} {row : Row} :
     simp only [RaisesOn, evalP]; exact Outcome.bind_error hl
 
 theorem Expr.evalI_subst {I : Impl} (σ : List Expr) (row : Row) :
-    ∀ e : Expr, (e.subst σ).evalI I row = e.evalI I (σ.map (·.evalI I row))
+    ∀ e : Expr, (e.subst σ).eval row I = e.eval (σ.map (·.eval row I)) I
   | .lit _ => rfl
   | .field i => by
-    simp only [subst, evalI, List.getD_eq_getElem?_getD, List.getElem?_map]
+    simp only [subst, eval, List.getD_eq_getElem?_getD, List.getElem?_map]
     cases σ[i]? <;> rfl
-  | .un f a => by simp [subst, evalI, Expr.evalI_subst σ row a]
-  | .bin f a b => by simp [subst, evalI, Expr.evalI_subst σ row a, Expr.evalI_subst σ row b]
+  | .un f a => by simp [subst, eval, Expr.evalI_subst σ row a]
+  | .bin f a b => by simp [subst, eval, Expr.evalI_subst σ row a, Expr.evalI_subst σ row b]
   | .ifThen c t e => by
-    simp [subst, evalI, Expr.evalI_subst σ row c, Expr.evalI_subst σ row t,
+    simp [subst, eval, Expr.evalI_subst σ row c, Expr.evalI_subst σ row t,
       Expr.evalI_subst σ row e]
+<<<<<<< HEAD
   | .hof f l b => by
     simp only [subst, evalI, Expr.evalI_subst σ row l]
     congr 1; funext x
     rw [Expr.evalI_subst _ (x :: row) b]
     simp [evalI, List.map_map, Function.comp_def, Expr.evalI_shift_cons]
+=======
+  | .hof f l b => by simp [subst, eval, Expr.evalI_subst σ row l]
+>>>>>>> be50ebd01148f183cda3cd0c73e5823264526a45
 
 /-- A call of a function. -/
 def Expr.isCall : Expr → Bool
@@ -282,13 +286,13 @@ theorem fuseEmit_row {m₁ m : List Nat} (h : m.all (· < m₁.length) = true) (
   simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi']
 
 theorem Rel.evalI_fuseEmit {I : Impl} {cat : Catalog} (r : Rel) (m : List Nat) :
-    (Rel.fuseEmit r m).evalI I cat = (Rel.emit r m).evalI I cat := by
+    (Rel.fuseEmit r m).eval cat I = (Rel.emit r m).eval cat I := by
   unfold fuseEmit
   split
   · rename_i r' m₁
     split
     · rename_i h
-      simp only [evalI, List.map_map]
+      simp only [eval, List.map_map]
       exact List.map_congr_left fun row _ => by simpa [List.map_map] using (fuseEmit_row h row).symm
     · rfl
   · rfl
@@ -328,7 +332,7 @@ theorem range_map_getD {row : Row} {n : Nat} (h : row.length = n) :
   simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h2]
 
 theorem bindSubst_evalI {I : Impl} {row : Row} {n : Nat} (h : row.length = n) (ss : List Expr) :
-    (bindSubst n ss).map (·.evalI I row) = row ++ ss.map (·.evalI I row) := by
+    (bindSubst n ss).map (·.eval row I) = row ++ ss.map (·.eval row I) := by
   simp only [bindSubst, List.map_append, List.map_map]
   congr 1
   exact range_map_getD h
@@ -357,14 +361,14 @@ then the expressions reading them, give the original values. -/
 theorem bindStep_row {I : Impl} {n : Nat} {es ss es' : List Expr}
     (h : es'.map (·.subst (bindSubst n ss)) = es) {row : Row} (hl : row.length = n) :
     (bindEmit n ss.length es.length).map
-      ((row ++ ss.map (·.evalI I row) ++ es'.map (·.evalI I (row ++ ss.map (·.evalI I row)))).getD · .null) =
-      row ++ es.map (·.evalI I row) := by
-  have hes : es'.map (·.evalI I (row ++ ss.map (·.evalI I row))) = es.map (·.evalI I row) := by
+      ((row ++ ss.map (·.eval row I) ++ es'.map (·.eval (row ++ ss.map (·.eval row I)) I)).getD · .null) =
+      row ++ es.map (·.eval row I) := by
+  have hes : es'.map (·.eval (row ++ ss.map (·.eval row I)) I) = es.map (·.eval row I) := by
     rw [← h, List.map_map]
     exact List.map_congr_left fun e _ => by
       simp only [Function.comp_apply, Expr.evalI_subst, bindSubst_evalI hl]
   rw [hes]
-  have := bindEmit_getD (xs := ss.map (·.evalI I row)) (ys := es.map (·.evalI I row)) hl
+  have := bindEmit_getD (xs := ss.map (·.eval row I)) (ys := es.map (·.eval row I)) hl
   simpa using this
 
 /-- One step raises on a row exactly where the projection does. -/
@@ -372,7 +376,7 @@ theorem bindStep_raises {p : Profile} {n : Nat} {es ss es' : List Expr}
     (h : es'.map (·.subst (bindSubst n ss)) = es) (he : ∀ s ∈ ss, ∃ e ∈ es, s ∈ e.eager)
     {row : Row} (hl : row.length = n) :
     ((∃ s ∈ ss, s.RaisesOn p row) ∨
-      ∃ e ∈ es', e.RaisesOn p (row ++ ss.map (·.evalI p.impl row))) ↔
+      ∃ e ∈ es', e.RaisesOn p (row ++ ss.map (·.eval row p.impl))) ↔
       ∃ e ∈ es, e.RaisesOn p row := by
   by_cases hs : ∃ s ∈ ss, s.RaisesOn p row
   · obtain ⟨s, hs, hr⟩ := hs
@@ -380,7 +384,7 @@ theorem bindStep_raises {p : Profile} {n : Nat} {es ss es' : List Expr}
     exact ⟨fun _ => ⟨e, hee, Expr.raises_of_eager hse hr⟩, fun _ => .inl ⟨s, hs, hr⟩⟩
   · -- No bound argument raises: each evaluates to its column's value.
     have hσ : ∀ i, ((bindSubst n ss).getD i (.lit .null)).evalP p row =
-        .ok ((row ++ ss.map (·.evalI p.impl row)).getD i .null) := by
+        .ok ((row ++ ss.map (·.eval row p.impl)).getD i .null) := by
       intro i
       simp only [bindSubst, List.getD_eq_getElem?_getD]
       by_cases hi : i < n
@@ -396,7 +400,7 @@ theorem bindStep_raises {p : Profile} {n : Nat} {es ss es' : List Expr}
           obtain ⟨v, hv⟩ := Expr.ok_of_not_raises hnr
           simp only [Option.map_some, Option.getD_some, hv, Expr.evalI_of_evalP hv]
     have hraise : ∀ e' : Expr, (e'.subst (bindSubst n ss)).RaisesOn p row ↔
-        e'.RaisesOn p (row ++ ss.map (·.evalI p.impl row)) := fun e' => by
+        e'.RaisesOn p (row ++ ss.map (·.eval row p.impl)) := fun e' => by
       simp only [Expr.RaisesOn, Expr.evalP_subst hσ e']
     constructor
     · rintro (h' | ⟨e', he', hr⟩)
@@ -410,8 +414,8 @@ theorem bindStep_raises {p : Profile} {n : Nat} {es ss es' : List Expr}
 /-! ### Rows have the plan's arity, with any functions -/
 
 theorem aggregateEvalI_length {I : Impl} {gs : List Expr} {ms : List Measure} {rows : Relation}
-    {row : Row} (h : row ∈ aggregateEvalI I gs ms rows) : row.length = gs.length + ms.length := by
-  unfold aggregateEvalI at h
+    {row : Row} (h : row ∈ aggregateEval gs ms rows I) : row.length = gs.length + ms.length := by
+  unfold aggregateEval at h
   split at h
   · rename_i hg
     simp only [List.mem_singleton] at h; subst h
@@ -419,37 +423,37 @@ theorem aggregateEvalI_length {I : Impl} {gs : List Expr} {ms : List Measure} {r
   · simp only [List.mem_map, mem_dedup] at h
     obtain ⟨k, hk, rfl⟩ := h
     obtain ⟨x, _, rfl⟩ := hk
-    simp [groupKeyI]
+    simp [groupKey]
 
-/-- **`Rel.evalI` has the plan's arity**, as `Rel.eval_arity`, with any functions. -/
+/-- **`Rel.eval cat I` has the plan's arity**, as `Rel.eval_arity`, with any functions. -/
 theorem Rel.evalI_arity {I : Impl} {cat : Catalog} (hcat : cat.WF) :
-    ∀ {r : Rel}, r.WF cat → ∀ row ∈ r.evalI I cat, row.length = r.arity cat
+    ∀ {r : Rel}, r.WF cat → ∀ row ∈ r.eval cat I, row.length = r.arity cat
   | .read t, _, row, h => hcat t row h
   | .values _ _, hwf, row, h => hwf row h
   | .filter r _, hwf, row, h => by
-      simp only [evalI, List.mem_filter] at h
+      simp only [eval, List.mem_filter] at h
       exact evalI_arity hcat hwf.1 row h.1
   | .project r es, hwf, row, h => by
-      simp only [evalI, List.mem_map] at h
+      simp only [eval, List.mem_map] at h
       obtain ⟨x, hx, rfl⟩ := h
       simp [arity, evalI_arity hcat hwf.1 x hx]
   | .emit _ _, _, row, h => by
-      simp only [evalI, List.mem_map] at h
+      simp only [eval, List.mem_map] at h
       obtain ⟨x, _, rfl⟩ := h
       simp [arity]
   | .cross a b, hwf, row, h => by
-      simp only [evalI, mem_crossRows] at h
+      simp only [eval, mem_crossRows] at h
       obtain ⟨x, hx, y, hy, rfl⟩ := h
       simp [arity, evalI_arity hcat hwf.1 x hx, evalI_arity hcat hwf.2 y hy]
   | .join a b .inner _, hwf, row, h => by
-      simp only [evalI, List.mem_filter, mem_crossRows] at h
+      simp only [eval, List.mem_filter, mem_crossRows] at h
       obtain ⟨⟨x, hx, y, hy, rfl⟩, _⟩ := h
       simp [arity, evalI_arity hcat hwf.1 x hx, evalI_arity hcat hwf.2.1 y hy]
   | .join a b .left on, hwf, row, h => by
-      simp only [evalI, List.mem_flatMap] at h
+      simp only [eval, List.mem_flatMap] at h
       obtain ⟨x, hx, h⟩ := h
       have hxl := evalI_arity hcat hwf.1 x hx
-      unfold leftJoinRowI at h
+      unfold leftJoinRow at h
       simp only [] at h
       split at h
       · simp only [List.mem_singleton] at h
@@ -459,13 +463,13 @@ theorem Rel.evalI_arity {I : Impl} {cat : Catalog} (hcat : cat.WF) :
         obtain ⟨⟨y, hy, rfl⟩, _⟩ := h
         simp [arity, hxl, evalI_arity hcat hwf.2.1 y hy]
   | .fetch r off cnt, hwf, row, h => by
-      simp only [evalI] at h
+      simp only [eval] at h
       have := evalI_arity (I := I) hcat (r := r) hwf
       split at h
       · exact this row (List.mem_of_mem_drop h)
       · exact this row (List.mem_of_mem_drop (List.mem_of_mem_take h))
   | .unionAll a b, hwf, row, h => by
-      simp only [evalI, List.mem_append] at h
+      simp only [eval, List.mem_append] at h
       rcases h with h | h
       · exact evalI_arity hcat hwf.1 row h
       · simp only [arity, hwf.2.2]; exact evalI_arity hcat hwf.2.1 row h
@@ -473,17 +477,17 @@ theorem Rel.evalI_arity {I : Impl} {cat : Catalog} (hcat : cat.WF) :
       obtain ⟨_, x, _, _, hx, rfl⟩ := mem_windowEval h
       simp [arity, evalI_arity hcat hwf.1 x hx]
   | .semi a _ _ _, hwf, row, h => by
-      simp only [evalI, List.mem_filter] at h
+      simp only [eval, List.mem_filter] at h
       exact evalI_arity hcat hwf.1 row h.1
   | .orderBy r _, hwf, row, h => by
-      simp only [evalI, List.mem_mergeSort] at h
+      simp only [eval, List.mem_mergeSort] at h
       exact evalI_arity hcat hwf.1 row h
   | .distinct r, hwf, row, h => by
-      simp only [evalI, mem_dedup] at h
+      simp only [eval, mem_dedup] at h
       exact evalI_arity hcat (r := r) hwf row h
   | .aggregate _ _ _, _, _, h => aggregateEvalI_length h
   | .unnest r _, hwf, row, h => by
-      simp only [evalI, List.mem_flatMap] at h
+      simp only [eval, List.mem_flatMap] at h
       obtain ⟨x, hx, h⟩ := h
       obtain ⟨_, _, _, _, rfl⟩ := mem_unnestRow h
       simp [arity, evalI_arity hcat hwf.1 x hx]
@@ -501,8 +505,8 @@ theorem Rel.arity_bindProject {cat : Catalog} :
     · simp [arity_fuseEmit, bindEmit]
 
 theorem Rel.evalI_bindProject {I : Impl} {cat : Catalog} :
-    ∀ (fuel : Nat) {n : Nat} {r : Rel} {es : List Expr}, (∀ row ∈ r.evalI I cat, row.length = n) →
-      (Rel.bindProject n fuel r es).evalI I cat = (Rel.project r es).evalI I cat
+    ∀ (fuel : Nat) {n : Nat} {r : Rel} {es : List Expr}, (∀ row ∈ r.eval cat I, row.length = n) →
+      (Rel.bindProject n fuel r es).eval cat I = (Rel.project r es).eval cat I
   | 0, _, _, _, _ => rfl
   | fuel + 1, n, r, es, hl => by
     unfold bindProject
@@ -510,19 +514,19 @@ theorem Rel.evalI_bindProject {I : Impl} {cat : Catalog} :
     · rfl
     · rename_i ss es' hs
       have h := (bindStep_spec hs).1
-      have hl' : ∀ row ∈ (Rel.project r ss).evalI I cat, row.length = n + ss.length := by
+      have hl' : ∀ row ∈ (Rel.project r ss).eval cat I, row.length = n + ss.length := by
         intro row hr
-        simp only [evalI, List.mem_map] at hr
+        simp only [eval, List.mem_map] at hr
         obtain ⟨x, hx, rfl⟩ := hr
         simp [hl x hx]
       rw [evalI_fuseEmit]
-      simp only [evalI]
+      simp only [eval]
       rw [evalI_bindProject fuel hl']
-      simp only [evalI, List.map_map]
+      simp only [eval, List.map_map]
       exact List.map_congr_left fun row hr => bindStep_row h (hl row hr)
 
 theorem Rel.raises_bindProject {p : Profile} {cat : Catalog} :
-    ∀ (fuel : Nat) {n : Nat} {r : Rel} {es : List Expr}, (∀ row ∈ r.evalI p.impl cat, row.length = n) →
+    ∀ (fuel : Nat) {n : Nat} {r : Rel} {es : List Expr}, (∀ row ∈ r.eval cat p.impl, row.length = n) →
       ((Rel.bindProject n fuel r es).Raises p cat ↔ (Rel.project r es).Raises p cat)
   | 0, _, _, _, _ => Iff.rfl
   | fuel + 1, n, r, es, hl => by
@@ -531,15 +535,15 @@ theorem Rel.raises_bindProject {p : Profile} {cat : Catalog} :
     · exact Iff.rfl
     · rename_i ss es' hs
       obtain ⟨h, he⟩ := bindStep_spec hs
-      have hl' : ∀ row ∈ (Rel.project r ss).evalI p.impl cat, row.length = n + ss.length := by
+      have hl' : ∀ row ∈ (Rel.project r ss).eval cat p.impl, row.length = n + ss.length := by
         intro row hr
-        simp only [evalI, List.mem_map] at hr
+        simp only [eval, List.mem_map] at hr
         obtain ⟨x, hx, rfl⟩ := hr
         simp [hl x hx]
       rw [raises_fuseEmit]
       simp only [Raises]
       rw [raises_bindProject fuel hl']
-      simp only [Raises, evalI]
+      simp only [Raises, eval]
       constructor
       · rintro ((hr | ⟨row, hrow, s, hs, hsr⟩) | ⟨row', hrow', e', he', her⟩)
         · exact .inl hr
@@ -562,6 +566,7 @@ over `r` becomes `SUM(#n)` over `r` projected with `a + b * c`. -/
 
 theorem Expr.evalI_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
+<<<<<<< HEAD
     e.evalI I (row ++ extra) = e.evalI I row := by
   induction e generalizing n row with
   | lit => rfl
@@ -575,6 +580,18 @@ theorem Expr.evalI_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : R
     simp only [evalI, ihl he.1 hlen]
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
+=======
+    e.eval (row ++ extra) I = e.eval row I := by
+  induction e with
+  | lit => rfl
+  | field i =>
+    simp only [refsLt] at he
+    simp [eval, List.getD, List.getElem?_append_left (hlen ▸ he)]
+  | un f a ih => simp [eval, ih he]
+  | bin f a b iha ihb => simp [eval, iha he.1, ihb he.2]
+  | ifThen c t e ihc iht ihe => simp [eval, ihc he.1, iht he.2.1, ihe he.2.2]
+  | hof f l b ihl _ => simp [eval, ihl he]
+>>>>>>> be50ebd01148f183cda3cd0c73e5823264526a45
 
 theorem Expr.evalP_append {p : Profile} {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
@@ -606,17 +623,17 @@ def pullMeasures (base : Nat) : List Measure → List Measure
 /-- A measure `m'` that is `m` reading its argument from a column of the
 rows `g` extends. -/
 def PulledFrom (I : Impl) (g : Row → Row) (rows : Relation) (m' m : Measure) : Prop :=
-  m' = { m with arg := m'.arg } ∧ ∀ row ∈ rows, m'.arg.evalI I (g row) = m.arg.evalI I row
+  m' = { m with arg := m'.arg } ∧ ∀ row ∈ rows, m'.arg.eval (g row) I = m.arg.eval row I
 
 theorem pullMeasures_pulled {I : Impl} {n : Nat} {rows : Relation}
     (hl : ∀ row ∈ rows, row.length = n) :
     ∀ (pre : List Expr) (ms : List Measure),
-      AllPulled (PulledFrom I (fun row => row ++ (pre ++ ms.map (·.arg)).map (·.evalI I row)) rows)
+      AllPulled (PulledFrom I (fun row => row ++ (pre ++ ms.map (·.arg)).map (·.eval row I)) rows)
         (pullMeasures (n + pre.length) ms) ms
   | _, [] => trivial
   | pre, m :: ms => by
     refine ⟨⟨rfl, fun row hr => ?_⟩, ?_⟩
-    · simp [Expr.evalI, List.getD, hl row hr]
+    · simp [Expr.eval, List.getD, hl row hr]
     · have := pullMeasures_pulled (I := I) hl (pre ++ [m.arg]) ms
       simpa [Nat.add_assoc] using this
 
@@ -626,14 +643,14 @@ theorem PulledFrom.evalI {I : Impl} {g : Row → Row} {rows : Relation} {m' m : 
     (hg : ∀ row ∈ rows, ∃ extra, g row = row ++ extra)
     (hf : ∀ c ∈ m.filter, c.refsLt n) (hs : ∀ k ∈ m.sort, k.col < n)
     {sub : Relation} (hsub : ∀ row ∈ sub, row ∈ rows) :
-    m'.evalI I (sub.map g) = m.evalI I sub := by
+    m'.eval (sub.map g) I = m.eval sub I := by
   obtain ⟨hm', harg⟩ := h
   -- The filter keeps the rows it kept.
   have hkept : ∀ sub' : Relation, (∀ row ∈ sub', row ∈ rows) →
-      m'.keptI I (sub'.map g) = (m.keptI I sub').map g := by
+      m'.kept (sub'.map g) I = (m.kept sub' I).map g := by
     intro sub' hs'
     rw [hm']
-    unfold Measure.keptI
+    unfold Measure.kept
     cases hc : m.filter with
     | none => rfl
     | some c =>
@@ -644,17 +661,17 @@ theorem PulledFrom.evalI {I : Impl} {g : Row → Row} {rows : Relation} {m' m : 
       simp only [Function.comp_apply, he]
       rw [Expr.evalI_append extra (hf c (by simp [hc])) (hl row (hs' row hr))]
   have hin : ∀ sub' : Relation, (∀ row ∈ sub', row ∈ rows) →
-      m'.inputsI I (sub'.map g) = m.inputsI I sub' := by
+      m'.inputs (sub'.map g) I = m.inputs sub' I := by
     intro sub' hs'
     have hd : m'.distinct = m.distinct := by rw [hm']
-    have hk' : ∀ row ∈ m.keptI I sub', row ∈ rows := fun row hr => by
-      unfold Measure.keptI at hr; split at hr
+    have hk' : ∀ row ∈ m.kept sub' I, row ∈ rows := fun row hr => by
+      unfold Measure.kept at hr; split at hr
       · exact hs' row hr
       · exact hs' row (List.mem_filter.mp hr).1
-    unfold Measure.inputsI
+    unfold Measure.inputs
     rw [hkept sub' hs', hd, List.map_map,
-      List.map_congr_left (f := (fun row => m'.arg.evalI I row) ∘ g)
-        (g := fun row => m.arg.evalI I row) fun row hr => harg row (hk' row hr)]
+      List.map_congr_left (f := (fun row => m'.arg.eval row I) ∘ g)
+        (g := fun row => m.arg.eval row I) fun row hr => harg row (hk' row hr)]
   -- Sorting commutes with extending the rows.
   have hsort : (sub.map g).mergeSort (sortLe m'.sort) = (sub.mergeSort (sortLe m.sort)).map g := by
     have : m'.sort = m.sort := by rw [hm']
@@ -667,7 +684,7 @@ theorem PulledFrom.evalI {I : Impl} {g : Row → Row} {rows : Relation} {m' m : 
   have hsorted : ∀ row ∈ sub.mergeSort (sortLe m.sort), row ∈ rows :=
     fun row hr => hsub row (List.mem_mergeSort.mp hr)
   have hfn : m'.fn = m.fn := by rw [hm']
-  unfold Measure.evalI
+  unfold Measure.eval
   rw [hfn]
   split
   all_goals first
@@ -718,26 +735,26 @@ theorem aggregateEvalI_pull {I : Impl} {g : Row → Row} {rows : Relation} {n : 
     (hl : ∀ row ∈ rows, row.length = n) (hg : ∀ row ∈ rows, ∃ extra, g row = row ++ extra)
     (hgs : ∀ e ∈ gs, e.refsLt n) (hms : ∀ m ∈ ms, (∀ c ∈ m.filter, c.refsLt n) ∧ ∀ k ∈ m.sort, k.col < n)
     (hp : AllPulled (PulledFrom I g rows) ms' ms) :
-    aggregateEvalI I gs ms' (rows.map g) = aggregateEvalI I gs ms rows := by
-  have hk : ∀ row ∈ rows, groupKeyI I gs (g row) = groupKeyI I gs row := fun row hr => by
+    aggregateEval gs ms' (rows.map g) I = aggregateEval gs ms rows I := by
+  have hk : ∀ row ∈ rows, groupKey gs (g row) I = groupKey gs row I := fun row hr => by
     obtain ⟨extra, he⟩ := hg row hr
-    simp only [groupKeyI, he]
+    simp only [groupKey, he]
     exact List.map_congr_left fun e he' => Expr.evalI_append extra (hgs e he') (hl row hr)
   have hm : ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) →
-      ms'.map (·.evalI I (sub.map g)) = ms.map (·.evalI I sub) := fun sub hsub =>
+      ms'.map (·.eval (sub.map g) I) = ms.map (·.eval sub I) := fun sub hsub =>
     hp.map_eq_mem fun m' m h hm => h.evalI hl hg (hms m hm).1 (hms m hm).2 hsub
-  unfold aggregateEvalI
+  unfold aggregateEval
   split
   · rw [hm rows fun _ h => h]
-  · rw [List.map_map, List.map_congr_left (f := groupKeyI I gs ∘ g) (g := groupKeyI I gs)
+  · rw [List.map_map, List.map_congr_left (f := (fun row => groupKey gs row I) ∘ g)
+      (g := fun row => groupKey gs row I)
       fun row hr => hk row hr]
     refine List.map_congr_left fun k _ => ?_
-    have hf : (rows.map g).filter (fun row => groupKeyI I gs row == k) =
-        (rows.filter fun row => groupKeyI I gs row == k).map g := by
-      rw [List.filter_map]
+    have hf : groupRows gs (rows.map g) k I = (groupRows gs rows k I).map g := by
+      rw [groupRows, groupRows, List.filter_map]
       congr 1
       exact List.filter_congr fun row hr => by simp only [Function.comp_apply, hk row hr]
-    rw [hf, hm _ fun _ hr => (List.mem_filter.mp hr).1]
+    rw [hf, hm (groupRows gs rows k I) fun _ hr => (List.mem_filter.mp hr).1]
 
 /-- An aggregate whose measures read their arguments from columns of a
 projection below it (`pullMeasures`), when the step binds something and the
@@ -753,16 +770,16 @@ theorem pullArgs_sorts {n : Nat} {ms : List Measure} (h : ms.all (·.sort.all (�
   simpa using this
 
 theorem Rel.evalI_pullArgs {I : Impl} {cat : Catalog} {n fuel : Nat} {r : Rel} {gs : List Expr}
-    {ms : List Measure} (hl : ∀ row ∈ r.evalI I cat, row.length = n)
+    {ms : List Measure} (hl : ∀ row ∈ r.eval cat I, row.length = n)
     (hgs : ∀ e ∈ gs, e.refsLt n) (hms : ∀ m ∈ ms, m.refsLt n) :
-    (Rel.pullArgs n fuel r gs ms).evalI I cat = (Rel.aggregate r gs ms).evalI I cat := by
+    (Rel.pullArgs n fuel r gs ms).eval cat I = (Rel.aggregate r gs ms).eval cat I := by
   unfold pullArgs
   split
   · rename_i h
     simp only [Bool.and_eq_true] at h
-    simp only [evalI]
+    simp only [eval]
     rw [evalI_bindProject fuel hl]
-    simp only [evalI]
+    simp only [eval]
     have hp := pullMeasures_pulled (I := I) hl [] ms
     simp only [List.nil_append, List.length_nil, Nat.add_zero] at hp
     exact aggregateEvalI_pull hl (fun row _ => ⟨_, rfl⟩) hgs
@@ -794,7 +811,7 @@ theorem pullMeasures_arg : ∀ {base : Nat} {ms : List Measure}, ∀ m ∈ pullM
     · exact pullMeasures_arg m' h
 
 theorem Rel.raises_pullArgs {p : Profile} {cat : Catalog} {n fuel : Nat} {r : Rel} {gs : List Expr}
-    {ms : List Measure} (hl : ∀ row ∈ r.evalI p.impl cat, row.length = n)
+    {ms : List Measure} (hl : ∀ row ∈ r.eval cat p.impl, row.length = n)
     (hgs : ∀ e ∈ gs, e.refsLt n) (hms : ∀ m ∈ ms, m.refsLt n) :
     (Rel.pullArgs n fuel r gs ms).Raises p cat ↔ (Rel.aggregate r gs ms).Raises p cat := by
   unfold pullArgs
@@ -805,23 +822,23 @@ theorem Rel.raises_pullArgs {p : Profile} {cat : Catalog} {n fuel : Nat} {r : Re
     simp only [List.nil_append, List.length_nil, Nat.add_zero] at hp
     simp only [Raises]
     rw [raises_bindProject fuel hl, evalI_bindProject fuel hl]
-    simp only [Raises, evalI, List.mem_map, List.mem_append, List.mem_flatMap]
+    simp only [Raises, eval, List.mem_map, List.mem_append, List.mem_flatMap]
     -- Row by row: what the pulled aggregate raises on an extended row.
-    have hstep : ∀ row ∈ r.evalI p.impl cat,
+    have hstep : ∀ row ∈ r.eval cat p.impl,
         ((∃ a, (∃ m ∈ ms, m.arg = a) ∧ a.RaisesOn p row) ∨
           ∃ e, (e ∈ gs ∨ ∃ m ∈ pullMeasures n ms, e ∈ m.exprs) ∧
-            e.RaisesOn p (row ++ (ms.map (·.arg)).map (·.evalI p.impl row))) ↔
+            e.RaisesOn p (row ++ (ms.map (·.arg)).map (·.eval row p.impl))) ↔
         ∃ e, (e ∈ gs ∨ ∃ m ∈ ms, e ∈ m.exprs) ∧ e.RaisesOn p row := by
       intro row hr
       have happ : ∀ e : Expr, e.refsLt n →
-          (e.RaisesOn p (row ++ (ms.map (·.arg)).map (·.evalI p.impl row)) ↔ e.RaisesOn p row) :=
+          (e.RaisesOn p (row ++ (ms.map (·.arg)).map (·.eval row p.impl)) ↔ e.RaisesOn p row) :=
         fun e he => by simp only [Expr.RaisesOn, Expr.evalP_append _ he (hl row hr)]
       constructor
       · rintro (⟨a, ⟨m, hm, rfl⟩, ha⟩ | ⟨e, he | ⟨m', hm', he⟩, hr'⟩)
         · exact ⟨m.arg, .inr ⟨m, hm, by simp [Measure.exprs]⟩, ha⟩
         · exact ⟨e, .inl he, (happ e (hgs e he)).mp hr'⟩
         · obtain ⟨m, hm, ⟨heq, _⟩⟩ := hp.mem_left m' hm'
-          have hr2 : ∃ e ∈ m'.exprs, e.RaisesOn p (row ++ (ms.map (·.arg)).map (·.evalI p.impl row)) :=
+          have hr2 : ∃ e ∈ m'.exprs, e.RaisesOn p (row ++ (ms.map (·.arg)).map (·.eval row p.impl)) :=
             ⟨e, he, hr'⟩
           rw [Measure.raises_exprs] at hr2
           rcases hr2 with ha | ⟨c, hc, hcr⟩
@@ -903,51 +920,35 @@ theorem Rel.arity_bindArgs {cat : Catalog} : ∀ r : Rel, (r.bindArgs cat).arity
 
 /-- **The pass computes the same rows**, with any functions: on every engine. -/
 theorem Rel.evalI_bindArgs {I : Impl} {cat : Catalog} (hcat : cat.WF) :
-    ∀ {r : Rel}, r.WF cat → (r.bindArgs cat).evalI I cat = r.evalI I cat
+    ∀ {r : Rel}, r.WF cat → (r.bindArgs cat).eval cat I = r.eval cat I
   | .read _, _ | .values _ _, _ => rfl
   | .project r es, hwf => by
     have ih := evalI_bindArgs hcat (I := I) hwf.1
     simp only [bindArgs]
     rw [evalI_bindProject bindFuel (by rw [ih]; exact evalI_arity hcat hwf.1)]
-    simp only [evalI, ih]
+    simp only [eval, ih]
   | .filter r _, hwf | .orderBy r _, hwf | .unnest r _, hwf => by
-    simp only [bindArgs, evalI, evalI_bindArgs hcat hwf.1]
+    simp only [bindArgs, eval, evalI_bindArgs hcat hwf.1]
   | .distinct r, hwf | .fetch r _ _, hwf => by
-    simp only [bindArgs, evalI, evalI_bindArgs hcat (r := r) hwf]
+    simp only [bindArgs, eval, evalI_bindArgs hcat (r := r) hwf]
   | .emit r m, hwf => by
-    simp only [bindArgs, evalI_fuseEmit, evalI, evalI_bindArgs hcat (r := r) hwf.1]
-  | .window r _ _ _, hwf => by simp only [bindArgs, evalI, evalI_bindArgs hcat hwf.1]
+    simp only [bindArgs, evalI_fuseEmit, eval, evalI_bindArgs hcat (r := r) hwf.1]
+  | .window r _ _ _, hwf => by simp only [bindArgs, eval, evalI_bindArgs hcat hwf.1]
   | .aggregate r gs ms, hwf => by
     have ih := evalI_bindArgs hcat (I := I) hwf.1
     simp only [bindArgs]
     rw [evalI_pullArgs (by rw [ih]; exact evalI_arity hcat hwf.1) hwf.2.1 hwf.2.2]
-    simp only [evalI, ih]
-  | .cross a b, hwf => by simp only [bindArgs, evalI, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2]
+    simp only [eval, ih]
+  | .cross a b, hwf => by simp only [bindArgs, eval, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2]
   | .unionAll a b, hwf => by
-    simp only [bindArgs, evalI, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2.1]
+    simp only [bindArgs, eval, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2.1]
   | .join a b ty _, hwf | .semi a b ty _, hwf => by
-    cases ty <;> simp only [bindArgs, evalI, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2.1,
+    cases ty <;> simp only [bindArgs, eval, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2.1,
       arity_bindArgs]
 
-/-- `Rel.eval` is `Rel.evalI` with the reference's functions. -/
-theorem Rel.evalI_lean (cat : Catalog) : ∀ r : Rel, r.evalI Impl.lean cat = r.eval cat
-  | .read _ | .values _ _ => rfl
-  | .filter r c => by simp only [evalI, eval, evalI_lean cat r, Expr.evalI_lean]
-  | .project r es => by simp only [evalI, eval, evalI_lean cat r, Expr.evalI_lean]
-  | .emit r _ | .orderBy r _ | .distinct r | .unnest r _ | .window r _ _ _ => by
-    simp only [evalI, eval, evalI_lean cat r]
-  | .fetch r _ cnt => by cases cnt <;> simp only [evalI, eval, evalI_lean cat r]
-  | .cross a b | .unionAll a b => by simp only [evalI, eval, evalI_lean cat a, evalI_lean cat b]
-  | .join a b ty on => by
-    cases ty <;> simp only [evalI, eval, evalI_lean cat a, evalI_lean cat b, Expr.evalI_lean,
-      leftJoinRowI_lean]
-  | .semi a b _ on => by simp only [evalI, eval, evalI_lean cat a, evalI_lean cat b, hasMatchI_lean]
-  | .aggregate r gs ms => by
-    simp only [evalI, eval, evalI_lean cat r, aggregateEvalI, aggregateEval, groupKeyI_lean]
-    have hm : ∀ rows : Relation, ∀ m : Measure, m.evalI Impl.lean rows = m.eval rows := by
-      intro rows m
-      cases hf : m.fn <;> simp only [Measure.evalI, Measure.eval, hf, Measure.inputsI_lean]
-    simp only [hm, groupRows]
+/-- `Rel.eval cat Impl.lean` is `Rel.eval cat`, the reference's functions: one definition
+(kept for one release). -/
+theorem Rel.evalI_lean (cat : Catalog) (r : Rel) : r.eval cat Impl.lean = r.eval cat := rfl
 
 /-- **The pass computes the same rows** in the reference. -/
 theorem Rel.eval_bindArgs {cat : Catalog} (hcat : cat.WF) {r : Rel} (hwf : r.WF cat) :

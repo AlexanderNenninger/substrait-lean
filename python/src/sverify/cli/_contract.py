@@ -32,8 +32,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 
 def cmd_export(args: argparse.Namespace) -> int:
     from sverify import odcs
+    from sverify.cli._common import OK, UsageError, split_target
     from sverify.cli._discover import Discovery, load
-    from sverify.cli._main import OK, UsageError, split_target
 
     path, target = split_target(args.target)
     if target is None:

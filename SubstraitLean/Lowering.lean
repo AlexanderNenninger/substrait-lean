@@ -487,7 +487,7 @@ functions give `Rel.eval`'s rows, on every catalog. Trusted: that `p` is the
 engine's profile, and that the SQL printer is faithful. -/
 theorem Lowering.lowerRel_sound {p : Profile} {L : Lowering p} (hL : L.Total) {cat : Catalog}
     {r : Rel} (h : ¬(L.lowerRel r).Raises p cat) :
-    (L.lowerRel r).evalI p.impl cat = r.eval cat :=
+    (L.lowerRel r).eval cat p.impl = r.eval cat :=
   Rel.evalI_mapExprs (lowerE_exact hL) (fun _ => rfl) h
 
 end Substrait
