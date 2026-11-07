@@ -489,7 +489,7 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM S
     ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
     ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul,
     ``Lowering.ref_imod_int] ++ natives ++ extra
-  let valNames := #[``Value.isNum, ``Value.numOf?, ``Value.numPair, ``and3, ``or3, ``BinFn.apply,
+  let valNames := #[``Value.isNum, ``Value.numPair, ``and3, ``or3, ``BinFn.apply,
     ``Value.isTrue,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.not_true, ``Bool.not_false,
     ``Option.getD_some, ``Option.all_some, ``Option.all_none]

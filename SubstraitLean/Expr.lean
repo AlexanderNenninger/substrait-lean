@@ -364,10 +364,10 @@ def Value.flatten : Value → Value
   | _ => .null
 
 /-- Is `v` a number of kind `k`? What `UnFn.isNum` tests. -/
-def Value.isNum (k : NumKind) (v : Value) : Bool :=
-  match v.numOf? with
-  | some (k', _) => k' == k
-  | none => false
+def Value.isNum : NumKind → Value → Bool
+  | .int, .int _ | .float, .float _ | .date, .date _ | .ts, .ts _ | .tod, .tod _ => true
+  | .dec s, .dec t _ => s == t
+  | _, _ => false
 
 /-- The integer a decimal operation reads: an integer, or a decimal's
 unscaled value (`Parse.decimalCall` brings both to one scale first). -/

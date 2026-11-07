@@ -354,13 +354,13 @@ theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
     cases y
     case int b =>
       by_cases h0 : b < 0
-      · simp [h0, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Value.numOf?, Lowering.shl_apply,
+      · simp [h0, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
           domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
       · by_cases h1 : b < 64
         · have hb : 0 ≤ b := by omega
-          simp [h0, h1, hb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Value.numOf?, Lowering.shl_apply,
+          simp [h0, h1, hb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
           domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError, Lowering.tmod_add_tmod]
-        · simp [h0, h1, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Value.numOf?, Lowering.shl_apply,
+        · simp [h0, h1, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
           domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
     all_goals rfl
   all_goals (cases y <;> rfl)
