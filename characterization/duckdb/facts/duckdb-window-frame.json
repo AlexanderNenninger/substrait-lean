@@ -10,7 +10,12 @@
     "null_order"
   ],
   "rows": [
-    {"option": "null_order", "types": ["any"]}
+    {
+      "option": "null_order",
+      "types": [
+        "any"
+      ]
+    }
   ],
   "constructs": [
     "OVER",
@@ -29,7 +34,8 @@
   "settings": {},
   "description": [
     "With an `ORDER BY` and no frame, the frame is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`: a running aggregate includes the current row's peers (`sum` is 60 on both rows with `i = 2`), and `last_value` is the last peer's value. `ROWS` counts rows instead. Without an `ORDER BY` the frame is the whole partition.",
-    "`rank`, `dense_rank`, `percent_rank` and `cume_dist` give peers the same value; NULL order keys rank after the others, ascending and descending (`default_null_order` is `NULLS LAST`, F2). Without an order every row is a peer: `rank` 1, `percent_rank` 0, `cume_dist` 1. `lag`, `lead` and `nth_value` give NULL (or the default) outside the partition, `nth_value` within the default frame."
+    "`rank`, `dense_rank`, `percent_rank` and `cume_dist` give peers the same value; NULL order keys rank after the others, ascending and descending (`default_null_order` is `NULLS LAST`, F2). Without an order every row is a peer: `rank` 1, `percent_rank` 0, `cume_dist` 1. `lag`, `lead` and `nth_value` give NULL (or the default) outside the partition, `nth_value` within the default frame.",
+    "`LAG` and `ROW_NUMBER` over `ORDER BY k` and `ORDER BY k DESC` put the NULL key last in both directions too (`sverify_dev.probe_statistics`, window-null-order)."
   ],
   "reference": "The reference's windows follow SQL's default frame, with NULLs placed by the key's direction and `NULLS_LAST` for `UNSPECIFIED` (D8); ties in a window's order are open (`tie_order`).",
   "status": "no-finding",
@@ -61,6 +67,21 @@
         }
       ],
       "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), duckdb 2.0.0, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT i, k, lag(k) OVER (ORDER BY k, i) AS lag_asc, row_number() OVER (ORDER BY k, i) AS rn_asc, lag(k) OVER (ORDER BY k DESC, i) AS lag_desc, row_number() OVER (ORDER BY k DESC, i) AS rn_desc FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(0.0 AS DOUBLE)), (CAST(NULL AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(2.0 AS DOUBLE))) AS t(k, i) ORDER BY i",
+          "observed": "ascending: row_number of k = NULL 3, lag over it 2.0; descending: row_number of k = NULL 3, lag over it 1.0"
+        }
+      ],
+      "notes": "k = 1, NULL, 2 in rows i = 0, 1, 2."
     }
   ]
 }

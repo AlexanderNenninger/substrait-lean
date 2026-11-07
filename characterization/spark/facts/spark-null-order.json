@@ -28,7 +28,10 @@
       false
     ]
   },
-  "description": "Without `NULLS FIRST` or `NULLS LAST`, an ascending key puts NULLs first and a descending one last. Both clauses are honoured.",
+  "description": [
+    "Without `NULLS FIRST` or `NULLS LAST`, an ascending key puts NULLs first and a descending one last. Both clauses are honoured.",
+    "A window's `ORDER BY` follows the same default: `ROW_NUMBER` and `LAG` over `ORDER BY k` put the NULL key first, over `ORDER BY k DESC` last (`sverify_dev.probe_statistics`, window-null-order, #1032)."
+  ],
   "reference": "The key's direction states the NULL placement; `SORT_DIRECTION_UNSPECIFIED` is `NULLS_LAST` (D8). Spark is native for every stated direction; its default ascending placement differs from DuckDB's.",
   "status": "no-finding",
   "evidence": "probe",
@@ -96,6 +99,21 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), pyspark 4.3.0 local[2], Java 21, macOS arm64, `spark.sql.ansi.enabled` true and false (same results)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT i, k, lag(k) OVER (ORDER BY k, i) AS lag_asc, row_number() OVER (ORDER BY k, i) AS rn_asc, lag(k) OVER (ORDER BY k DESC, i) AS lag_desc, row_number() OVER (ORDER BY k DESC, i) AS rn_desc FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(0.0 AS DOUBLE)), (CAST(NULL AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(2.0 AS DOUBLE))) AS t(k, i) ORDER BY i",
+          "observed": "ascending: row_number of k = NULL 1, lag over it NULL, lag over k = 1 NULL; descending: row_number of k = NULL 3, lag over it 1.0"
+        }
+      ],
+      "notes": "k = 1, NULL, 2 in rows i = 0, 1, 2; ORDER BY k, i and ORDER BY k DESC, i."
     }
   ]
 }

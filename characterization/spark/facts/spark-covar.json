@@ -42,7 +42,8 @@
   },
   "description": [
     "`ck += dx * (y - newYAvg)`; partial states merge as `ck.l + ck.r + dx * dyN * n1 * n2`. No pairs is NULL; the sample covariance of one pair is NULL (NaN under `spark.sql.legacy.statisticalAggregate`).",
-    "The probes: one pair gives NULL for `covar_samp` and 0.0 for `covar_pop` (NaN for `covar_samp` with `spark.sql.legacy.statisticalAggregate`); a constant side 0.0; `BIGINT` and decimal inputs are cast to `DOUBLE`."
+    "The probes: one pair gives NULL for `covar_samp` and 0.0 for `covar_pop` (NaN for `covar_samp` with `spark.sql.legacy.statisticalAggregate`); a constant side 0.0; `BIGINT` and decimal inputs are cast to `DOUBLE`.",
+    "Probed: `COVAR_SAMP(x, 2x)` 60 and `COVAR_POP` 45 for {4, 7, 13, 16} shifted by up to 1e12."
   ],
   "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
@@ -118,6 +119,25 @@
         "covar_corr[0]: 300 rows, `covar_samp(x, y)`, `covar_pop(x, y)`, 408 of 408 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), pyspark 4.3.0 local[2], Java 21, macOS arm64, `spark.sql.ansi.enabled` true and false (same results)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1000000000004.0 AS DOUBLE), CAST(2000000000008.0 AS DOUBLE)), (CAST(1000000000007.0 AS DOUBLE), CAST(2000000000014.0 AS DOUBLE)), (CAST(1000000000013.0 AS DOUBLE), CAST(2000000000026.0 AS DOUBLE)), (CAST(1000000000016.0 AS DOUBLE), CAST(2000000000032.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "covar_samp 60.0, covar_pop 45.0"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(3.0 AS DOUBLE), CAST(6.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "covar_samp NULL, covar_pop 0.0"
+        }
+      ],
+      "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12, y = 2x."
     }
   ],
   "issues": [

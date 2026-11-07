@@ -1,0 +1,31 @@
+{
+  "id": "PL-14",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Polars 2.1.0 (Python, macOS arm64), streaming engine only, when the group key is one input column taken as it is. Not checked against main, and no duplicate search yet.",
+  "summary": "On the streaming engine, `group_by` on one plain input column over a frame of one row whose value is NULL gives `var(ddof=0)` and `std(ddof=0)` 0.0 for that group, where a group with no non-null values should be null, as the in-memory engine and the ungrouped streaming query give. A computed key (`with_columns(k=pl.col(\"g\")).group_by(\"k\")`), two keys, a second NULL row or another group beside it give null.",
+  "repro": "import polars as pl\nlf = pl.LazyFrame({\"g\": [0], \"x\": [None]}, schema={\"g\": pl.Int64, \"x\": pl.Float64})\nq = lf.group_by(\"g\").agg(pl.col(\"x\").var(ddof=0), pl.col(\"x\").std(ddof=0).alias(\"s\"))\nprint(q.collect(engine=\"streaming\").rows())  # [(0, 0.0, 0.0)]\nprint(q.collect(engine=\"in-memory\").rows())  # [(0, None, None)]",
+  "handling": "Not reached by sverify: its translation groups by computed key columns (`__sv_g0`, …, `polars_engine`'s aggregate), which give null. Checked through `sverify.verify(...).run(con, \"polars\")` with a one-row NULL `DOUBLE`, `BIGINT` and `INT` column: NULL, as DuckDB. A translation that grouped by the input column itself would need a count check.",
+  "found_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B, 2026-11-07): the n0 case, grouped, on the streaming engine",
+  "issues": [
+    918
+  ],
+  "files": [
+    "python/tools/sverify_dev/probe_statistics.py",
+    "characterization/polars/facts/polars-var-std-streaming.json"
+  ],
+  "facts": [
+    "polars-var-std-streaming"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "Streaming 0.0 with one plain key column; in memory null; computed key, two keys, two NULL rows, or one NULL row beside a group with a value: null; ungrouped null; through sverify null. `var(ddof=1)` is null in every case."
+    }
+  ]
+}

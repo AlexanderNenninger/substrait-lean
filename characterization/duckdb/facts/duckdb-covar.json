@@ -9,7 +9,13 @@
     "stat_algo"
   ],
   "rows": [
-    {"group": "agg.stat", "option": "stat_algo", "types": ["fp64"]}
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "fp64"
+      ]
+    }
   ],
   "constructs": [
     "covar_samp",
@@ -19,11 +25,12 @@
   "description": [
     "The co-moment is updated online (Schubert and Gertz 2018, eq. 4.3): `C += dx * (y - meany_new)`, where `dx` uses the old mean of x. Partial states merge with means `(n_s * mean_s + n_t * mean_t) / n` and `C = C_s + C_t + dx * dy * n_s * n_t / n`.",
     "No pairs is NULL; the sample covariance of fewer than two pairs is NULL.",
-    "The docs are silent on the algorithm and on NULL below two pairs: a docs gap."
+    "The docs are silent on the algorithm and on NULL below two pairs: a docs gap.",
+    "Probed: `COVAR_SAMP(x, 2x)` is 60 and `COVAR_POP` 45 for {4, 7, 13, 16} shifted by up to 1e12, where the textbook formula cancels to 0."
   ],
-  "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
+  "reference": "D30 (#1022): `AggFn.cov` is the exact co-moment rounded once; DuckDB's online co-moment with Chan's merge is within the plan's bound of it (`stat_algo` `WELFORD_CHAN`). No pairs is NULL, and so is a sample of one pair.",
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-03",
@@ -44,7 +51,10 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "covar_pop, covar_samp: definitions only; silent on the algorithm and on NULL below two pairs"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "covar_pop, covar_samp: definitions only; silent on the algorithm and on NULL below two pairs"
+        }
       ]
     },
     {
@@ -52,9 +62,38 @@
       "method": "engine-test",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/test_covar_export_state.test#L12-L34", "note": "state {count, meanx, meany, co_moment} = {3, 22.67, 20.00, 240.0}; covar_samp → 120.0"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_covar.test#L31-L47", "note": "COVAR_POP(3, 3) → 0, COVAR_SAMP(3, 3) → NULL"}
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregate_state_export/test_covar_export_state.test#L12-L34",
+          "note": "state {count, meanx, meany, co_moment} = {3, 22.67, 20.00, 240.0}; covar_samp → 120.0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_covar.test#L31-L47",
+          "note": "COVAR_POP(3, 3) → 0, COVAR_SAMP(3, 3) → NULL"
+        }
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), duckdb 2.0.0, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1000000004.0 AS DOUBLE), CAST(2000000008.0 AS DOUBLE)), (CAST(1000000007.0 AS DOUBLE), CAST(2000000014.0 AS DOUBLE)), (CAST(1000000013.0 AS DOUBLE), CAST(2000000026.0 AS DOUBLE)), (CAST(1000000016.0 AS DOUBLE), CAST(2000000032.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "covar_samp 60.0, covar_pop 45.0"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1000000000004.0 AS DOUBLE), CAST(2000000000008.0 AS DOUBLE)), (CAST(1000000000007.0 AS DOUBLE), CAST(2000000000014.0 AS DOUBLE)), (CAST(1000000000013.0 AS DOUBLE), CAST(2000000000026.0 AS DOUBLE)), (CAST(1000000000016.0 AS DOUBLE), CAST(2000000000032.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "covar_samp 60.0, covar_pop 45.0"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(3.0 AS DOUBLE), CAST(6.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "covar_samp NULL, covar_pop 0.0"
+        }
+      ],
+      "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12, with y = 2x: exact at every shift."
     }
   ],
   "issues": [

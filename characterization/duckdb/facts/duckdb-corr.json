@@ -10,8 +10,20 @@
     "stat_degenerate"
   ],
   "rows": [
-    {"group": "agg.stat", "option": "stat_algo", "types": ["fp64"]},
-    {"group": "agg.stat", "option": "stat_degenerate", "types": ["fp64"]}
+    {
+      "group": "agg.stat",
+      "option": "stat_algo",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    }
   ],
   "constructs": [
     "corr"
@@ -20,7 +32,8 @@
   "description": [
     "`CORR` keeps three independent states, a covariance and two Welford variances, and returns `cov / (std_x * std_y)`, NaN when `std_x * std_y == 0`. One pair or a zero variance gives NaN; no pairs gives NULL. Not clamped to [-1, 1]: with the separate states, |corr| can exceed 1 by a few ulps, more so than with a shared state. The square roots are taken separately, so the product of the variances does not overflow or underflow.",
     "Probed: of no pairs (rows with a NULL on either side skipped) it is NULL; of one pair, of a side whose values are all equal, or where a variance underflows to 0 or overflows to inf, it is NaN, as is any NaN or ±inf input. Where the reference is NULL with at least one pair, DuckDB's is NaN; elsewhere they differ only in rounding (#85).",
-    "The docs are silent on NaN against NULL and on the missing clamp to [-1, 1]: a docs gap. No upstream test pins |corr| above 1; it may change between versions."
+    "The docs are silent on NaN against NULL and on the missing clamp to [-1, 1]: a docs gap. No upstream test pins |corr| above 1; it may change between versions.",
+    "Probed: `CORR(x, 2x)` is 1.0 for {4, 7, 13, 16} shifted by up to 1e12, where a textbook covariance would make it NULL or NaN."
   ],
   "reference": [
     "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
@@ -88,7 +101,10 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "corr: covar_pop(y, x) / (stddev_pop(x) * stddev_pop(y)); silent on NaN and clamping"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "corr: covar_pop(y, x) / (stddev_pop(x) * stddev_pop(y)); silent on NaN and clamping"
+        }
       ]
     },
     {
@@ -96,9 +112,42 @@
       "method": "engine-test",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L10-L18", "note": "corr(NULL, NULL) → NULL; corr(1, 1) → NAN"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L52-L60", "note": "corr of (1e301, 0), (-1e301, 0) → nan; no test of |corr| > 1"}
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L10-L18",
+          "note": "corr(NULL, NULL) → NULL; corr(1, 1) → NAN"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_corr.test#L52-L60",
+          "note": "corr of (1e301, 0), (-1e301, 0) → nan; no test of |corr| > 1"
+        }
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), duckdb 2.0.0, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1000000000004.0 AS DOUBLE), CAST(2000000000008.0 AS DOUBLE)), (CAST(1000000000007.0 AS DOUBLE), CAST(2000000000014.0 AS DOUBLE)), (CAST(1000000000013.0 AS DOUBLE), CAST(2000000000026.0 AS DOUBLE)), (CAST(1000000000016.0 AS DOUBLE), CAST(2000000000032.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "corr 1.0"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(5.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(5.0 AS DOUBLE)), (CAST(3.0 AS DOUBLE), CAST(5.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "corr NaN"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(5.0 AS DOUBLE), CAST(5.0 AS DOUBLE)), (CAST(5.0 AS DOUBLE), CAST(5.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "corr NaN"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(3.0 AS DOUBLE), CAST(6.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "corr NaN"
+        }
+      ],
+      "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12, with y = 2x: 1.0 at every shift. corr-const: y constant 5; corr-const-both: both sides constant."
     }
   ],
   "issues": [
