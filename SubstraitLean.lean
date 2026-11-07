@@ -69,6 +69,7 @@ import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
+import SubstraitLean.Lipschitz
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
