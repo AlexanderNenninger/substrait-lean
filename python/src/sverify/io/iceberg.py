@@ -1325,14 +1325,24 @@ class IcebergSink(_TableSink[Table]):
         text = table.properties.get(KEY)
         return None if text is None else Contract.from_json(text)
 
+    def _app_snapshot(self, table: Table) -> int | None:
+        """The id of the last snapshot this sink's `app_id` wrote."""
+        for s in _ancestry(table):
+            if s.summary is not None and s.summary.get(APP) == self.app_id:
+                return s.snapshot_id
+        return None
+
     def _transaction(self, t: Table) -> Transaction:
-        """A transaction on `t` that commits only while the table has the
-        epoch `committed` read (`_Guarded`)."""
+        """A transaction on `t`, the table `contract()` read: its commit
+        asserts `t`'s snapshot, and a retry on a newer one (`_Guarded`) is
+        made only while the app's last snapshot is still `t`'s, the same
+        snapshot and not only the same epoch (#964)."""
         then = self._read
+        mine = self._app_snapshot(t)
 
         def check(now: Table) -> None:
-            if then is not _UNREAD and (epoch := self._epoch_of(now)) != then:
-                raise _Conflict(f"the table now has epoch {epoch}")
+            if then is not _UNREAD and self._app_snapshot(now) != mine:
+                raise _Conflict(f"the table now has epoch {self._epoch_of(now)}")
 
         return _Guarded(t, check)
 

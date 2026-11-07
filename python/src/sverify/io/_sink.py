@@ -469,6 +469,11 @@ class _TableSink[T](Sink, ABC):
         self._read: int | None | object = _UNREAD
         """The epoch of this sink's `app_id` that `committed` read last: a
         write commits only on top of it (#517, #534)."""
+        self._read_table: T | None = None
+        """The table `contract()` read, which the next write goes through: the
+        table format's own conflict check then covers every commit since the
+        read. An epoch's value can come back (another plan's commit at the
+        same epoch, #964), so comparing it alone lets a stale write through."""
 
     # -- what a table format implements --------------------------------------
 
@@ -525,7 +530,7 @@ class _TableSink[T](Sink, ABC):
             return self.source().contract(version)  # type: ignore[union-attr]
         table = self._open()
         done = None if table is None else self._epoch_of(table)
-        self._read = done
+        self._read, self._read_table = done, table
         if table is None or done is None:
             return None
         contract = self._contract_of(table)
@@ -572,7 +577,9 @@ class _TableSink[T](Sink, ABC):
 
     def _write(self, change: SinkChange) -> SinkWrite:
         contract, read = change.contract, self._read
-        table = self._open()
+        table, self._read_table = self._read_table, None
+        if table is None:
+            table = self._open()
         created = table is None
         if table is None:
             if read not in (None, _UNREAD):

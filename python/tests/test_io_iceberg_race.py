@@ -151,3 +151,27 @@ def test_two_writers_creating_the_table(catalog, jobs, monkeypatch, engine):
         a.refresh(engine=engine)
     assert ids(catalog) == [1, 2]
     assert a.refresh(engine=engine).writes[0].mode == "skipped"
+
+
+@sv.transform(requires={"other": [_.amount >= 0]})
+def paid_other(other):
+    """Another plan for the same sink, as a deploy brings it."""
+    return other.filter(other.amount > 1)
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_another_plans_commit_at_the_same_epoch_fails_the_write(catalog, jobs, monkeypatch, engine):
+    """#964 (the TLA+ model's `today-aba` trace): A read epoch 1; another
+    plan replaces the rows at epoch 1 too. The epoch's value is the same, but
+    A's change must not land on the other plan's rows."""
+    a, _b = jobs
+    a.refresh(engine=engine)
+    catalog.create_table("db.other", schema=SCHEMA)
+    catalog.load_table("db.other").append(pa.table({"id": [7, 8], "amount": [5, 5]}, schema=SCHEMA))
+    other = IcebergSource(catalog, "db.other", name="other")
+    b = paid_other(other).write(IcebergSink(catalog, SINK))
+    append(catalog, [3])
+    hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
+    with pytest.raises(ConcurrentWriteError):
+        a.refresh(engine=engine)
+    assert ids(catalog) == [7, 8]
