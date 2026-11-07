@@ -22,7 +22,7 @@
     "Order class: (a) the sum of duckdb-sum-double (sequential per state, partials merged in finishing order, a constant run as one product), then one division by the count (`state.value / state.count`, the count exact as a double). (b) γ_{h+1} Σ|x_i| / n on the mean, h as for the sum (at most n − 1), so at most γ_n Σ|x_i| / n (Higham §4.2 for the sum, one more rounding for the quotient); within #85's `avgTolScaled`, which allows γ_{n+2}. (c) The source below; `avg(0.1)` over 10 constant rows is 0.1, where the sequential sum gives 0.09999999999999999. (d) `AggFn.avg` is the `sum_order` choice divided by n, so this refines SEQUENTIAL at one thread without constant vectors and ANY otherwise, with the same open point for a constant run's product.",
     "The docs are silent on the algorithm and on the constant run's product: a docs gap. No upstream test pins the constant run's product or the dependence on thread order; it may change between versions."
   ],
-  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "reference": "`AggFn.avg` is `floatAvgCR` (D25): the exact sum of the doubles divided by the count, rounded once; non-finite values as for `SUM`. NULL without values. An engine's sum divided by n is within the plan's bound (`sum_order`, `StdModel.epsilon_avg_cr`).",
   "status": "open",
   "evidence": "probe",
   "provenance": [

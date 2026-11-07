@@ -229,12 +229,13 @@ guarantees. The question is when
   into `--shard`, to say "cannot fail spuriously", is a follow-up (#83).
   The reverse case is caught: a total that leaves 64 bits fails in the
   combining `SUM`.
-* **Float sums are not associative.** `SUM` and `AVG` of doubles add in list
-  order in Lean (`floatSum`), and engines already return results that depend
-  on their thread partitioning. A different split rounds differently, so
-  `--shard` refuses these aggregates by default. With `float_order="any"` it
-  splits them anyway (`floatCombine`: `SUM` of partial sums, `AVG` as summed
-  sums over summed counts), within a proved bound
+* **Float sums are not associative.** `SUM` and `AVG` of doubles round the
+  exact sum once in Lean (`floatSumCR`, D25), and engines already return
+  results that depend on their thread partitioning. A split rounds each
+  shard's partial sum before the combine, so `--shard` refuses these
+  aggregates by default. With `float_order="any"` it splits them anyway
+  (`floatCombine`: `SUM` of partial sums, `AVG` as summed sums over summed
+  counts), within a proved bound
   ([#428](https://github.com/AlexanderNenninger/substrait-lean/issues/428)).
   Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split
   double (`floatBoundParts`), and from them the combined `SUM` of a group of
