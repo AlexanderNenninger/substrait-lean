@@ -89,13 +89,10 @@ V, R, X = "verified", "rejected", "upstream"
 #:   it, so it is NULL, where SQL compares), so no engine may run it.
 #: * Snowflake and Spark tables have no row order, which FETCH and a stable
 #:   sort's or a window's ties follow. Sorts and windows run with
-#:   `deterministic=True`. A `SUM` or `AVG` of doubles adds in that order too
-#:   (rounding depends on it). So does a window frame's `SUM` or `AVG`.
+#:   `deterministic=True`. A `SUM` or `AVG` of doubles needs no order (D25):
+#:   every engine runs it natively, within the plan's bound.
 #: * Spark has no TIME type before 4.1.
 NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
-#: A frame's doubles are added in frame order (`floatSum`), which only DuckDB's
-#: and Polars' translations keep.
-FRAME_DOUBLES = {"snowflake": "doubles in order", "spark": "doubles in order"}
 #: New functions run on DuckDB only until the generated lowerings (#271).
 DUCKDB_ONLY = {
     "polars": "see #271",

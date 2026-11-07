@@ -225,7 +225,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -282,7 +282,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "fin-realized-volatility": {
@@ -302,7 +302,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "snowflake": "sql (tie_free)"
   }
  },
  "h2o-groupby-q1": {
@@ -329,7 +329,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -408,7 +408,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -476,7 +476,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "iot-silent-devices": {
@@ -526,7 +526,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "iot-downsample": {
@@ -647,7 +647,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   }
  },
  "dbt-pivot-wider": {
@@ -896,7 +896,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "pa-cumulative-signups": {
@@ -1004,7 +1004,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   }
  },
  "ts-hourly-rollup": {
@@ -1014,7 +1014,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   }
  },
  "ts-rolling-time-window": {
@@ -1024,7 +1024,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "snowflake": "sql (tie_free)"
   }
  },
  "ts-rolling-7day-calendar": {
@@ -1034,7 +1034,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   }
  },
  "ts-date-spine": {
@@ -1074,7 +1074,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "ts-sessionize": {
@@ -1671,7 +1671,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "win-top-n-with-ties": {
@@ -1691,7 +1691,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "snowflake": "sql (tie_free)"
   }
  },
  "win-moving-average": {
@@ -1701,7 +1701,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "snowflake": "sql (tie_free)"
   }
  },
  "win-percent-of-total": {
@@ -1711,7 +1711,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
   }
  },
  "win-above-group-average": {
@@ -1721,7 +1721,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql"
   }
  },
  "win-ntile-quartiles": {
@@ -1731,7 +1731,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "sql (tie_free)"
   }
  },
  "win-gaps-and-islands": {

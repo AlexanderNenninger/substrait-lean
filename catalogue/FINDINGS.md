@@ -267,18 +267,18 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DuckDB runs the SQL | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 7 | 0 | 0 | 0 | 7 | 6 | 7 | 6 |
-| finance | 18 | 18 | 0 | 0 | 0 | 16 | 16 | 18 | 3 |
-| h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 10 | 6 |
-| iot | 12 | 12 | 0 | 0 | 0 | 12 | 11 | 12 | 8 |
+| finance | 18 | 18 | 0 | 0 | 0 | 16 | 16 | 18 | 6 |
+| h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 10 | 8 |
+| iot | 12 | 12 | 0 | 0 | 0 | 12 | 11 | 12 | 10 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 12 | 0 | 2 | 0 | 14 | 11 | 12 | 10 |
-| product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 13 | 9 |
+| modelling | 14 | 12 | 0 | 2 | 0 | 14 | 11 | 12 | 11 |
+| product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 13 | 10 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 14 | 0 | 1 | 0 | 15 | 14 | 14 | 9 |
+| timeseries | 15 | 14 | 0 | 1 | 0 | 15 | 14 | 14 | 14 |
 | tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 8 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 22 | 22 | 6 |
-| windows | 13 | 13 | 0 | 0 | 0 | 13 | 12 | 13 | 5 |
-| **all** | 139 | 136 | 0 | 3 | 0 | 137 | 125 | 136 | 69 |
+| windows | 13 | 13 | 0 | 0 | 0 | 13 | 12 | 13 | 10 |
+| **all** | 139 | 136 | 0 | 3 | 0 | 137 | 125 | 136 | 88 |
 
 ### Feature frequency
 
@@ -389,8 +389,7 @@ Over the 136 queries that verify (some only as DOUBLE):
 | engine: reason | queries |
 |---|---|
 | snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 22 |
-| snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 5 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 8 |
 | polars: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see | 3 |
 | snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
 | polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |

@@ -311,12 +311,6 @@ class SnowflakeDialect(Dialect):
             "bounds (Snowflake behaviour recorded privately)"
         )
 
-    def float_sum(self, v: str, o: str) -> str:
-        raise Unsupported(
-            "Snowflake does not add doubles in a given order, and the rounding of a SUM or "
-            "AVG of doubles depends on it"
-        )
-
     # Strings
 
     def is_ascii(self, s: str) -> str:
