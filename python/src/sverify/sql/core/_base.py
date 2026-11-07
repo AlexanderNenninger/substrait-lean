@@ -821,6 +821,11 @@ class Dialect:
     def eq(self, a: str, b: str) -> str:
         return f"({a} = {b})"
 
+    def not_distinct(self, a: str, b: str) -> str | None:
+        """`a = b` with NULL equal to NULL, where the dialect has a form of
+        its own; None writes it out as a `CASE`."""
+        return None
+
     def lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
 
@@ -875,6 +880,12 @@ class Dialect:
 
     def row_number(self, over: str) -> str:
         return f"ROW_NUMBER() {over}"
+
+    def range_time_key(self, x: str) -> str | None:
+        """The ORDER BY key of a RANGE frame with offsets over the timestamp
+        `x`, as microseconds, for a dialect that takes such an offset as a
+        number; None orders by `x` with `interval_lit` offsets."""
+        return None
 
     def over_frame(self, partition: Sequence[str], order: Sequence[str], frame: str) -> str:
         """`OVER (PARTITION BY … ORDER BY … frame)`."""
@@ -1056,6 +1067,24 @@ class If:
     cond: Expr
     then: Expr
     orelse: Expr
+
+
+def _null_safe_eq(e: If) -> tuple[Expr, Expr] | None:
+    """`(a, b)` where `e` is `a = b` with NULL equal to NULL, as the plans
+    Lean writes compare set operations' rows: `if a IS NULL then b IS NULL
+    else if b IS NULL then FALSE else a = b`."""
+    match e:
+        case If(
+            cond=Un(op="is_null", arg=a),
+            then=Un(op="is_null", arg=b),
+            orelse=If(
+                cond=Un(op="is_null", arg=b2),
+                then=Lit(value=False),
+                orelse=Bin(op="eq", left=a2, right=b3),
+            ),
+        ) if a == a2 and b == b2 == b3:
+            return a, b
+    return None
 
 
 @dataclass(frozen=True)
@@ -4162,7 +4191,7 @@ class _Writer:
                     # The whole partition, in any order.
                     w = whole()
                 else:
-                    w = self.framed(f.frame, partition, keys, peers, sort, ks)
+                    w = self.framed(f.frame, partition, keys, peers, sort, ks, col)
                 if f.fn == "agg":
                     assert f.measure is not None
                     sql = self.window_measure(f.measure, col, ks, w, frame_moves(f.frame))
@@ -4184,18 +4213,18 @@ class _Writer:
         peers: list[str],
         sort: tuple,
         ks: list[Kind | None],
+        col: Callable[[int], str],
     ) -> str:
         """`OVER (…)` with the frame `fr`: ROWS frames order ties by the
         ordinal, as Lean's stable sort; RANGE frames by the keys alone."""
         d = self.d
-        if not fr.range:
-            order = keys
-        elif any(b[0] != "unbounded" and b[1] != 0 for b in (fr.lo, fr.hi)):
+        order = peers if fr.range else keys
+        if fr.range and any(b[0] != "unbounded" and b[1] != 0 for b in (fr.lo, fr.hi)):
             if self.tie_free is False and len(peers) != 1:
                 raise Unsupported("RANGE frames with offsets need one sort key")
-            order = peers
-        else:
-            order = peers
+            k = sort[0]
+            if ks[k.col] == "time" and (us := d.range_time_key(col(k.col))) is not None:
+                order = [d.sort_key(us, k.desc, k.nulls_first, "int")]
 
         def bound(b: tuple[str, int], lower: bool) -> str:
             side, k = b
@@ -4525,6 +4554,10 @@ class _Writer:
                     return d.float_eq(sa, sb) if op == "eq" else d.float_lt(sa, sb)
                 return d.eq(sa, sb) if op == "eq" else d.lt(sa, sb)
             case If(cond=c, then=t, orelse=o):
+                if (ab := _null_safe_eq(e)) is not None and kind(ab[0]) == kind(ab[1]):
+                    k = kind(ab[0])
+                    if (sql := d.not_distinct(go(ab[0], k), go(ab[1], k))) is not None:
+                        return sql
                 k = kind(e) or ctx
                 return d.case_when(go(c, "bool"), go(t, k), go(o, k))
         for case in EXPRS:

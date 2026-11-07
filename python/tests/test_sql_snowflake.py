@@ -281,6 +281,38 @@ def test_temporal_literals():
         SNOWFLAKE.result_kind("interval")
 
 
+def test_time_range_frames_order_by_microseconds():
+    """A RANGE frame with offsets over a timestamp orders by the key in
+    microseconds and takes the offset as a number (Snowflake behaviour
+    recorded privately)."""
+    from sverify.engine import written_plan
+    from sverify_dev import coverage
+
+    case = next(c for c in coverage.CASES if c.label == "rolling sum by time")
+    plan = json.loads(written_plan(to_substrait_json(case.build())))
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    assert re.search(
+        r"ORDER BY DATE_PART\(EPOCH_MICROSECOND, [^)]+\) ASC NULLS LAST"
+        r" RANGE BETWEEN 604799999999 PRECEDING AND CURRENT ROW",
+        sql,
+    )
+    sqlglot.parse_one(sql, read="snowflake")
+
+
+@pytest.mark.parametrize("label", ["intersect", "difference all"])
+def test_set_operations_compare_with_equal_null(label):
+    """Set operations compare rows with NULL equal to NULL, written as
+    `EQUAL_NULL` (Snowflake behaviour recorded privately)."""
+    from sverify.engine import written_plan
+    from sverify_dev import coverage
+
+    case = next(c for c in coverage.CASES if c.label == label)
+    sql = to_sql(json.loads(written_plan(to_substrait_json(case.build()))), SNOWFLAKE)
+    assert re.search(r'EQUAL_NULL\(s\d+\."c0", s\d+\."c0"\)', sql)
+    assert "THEN FALSE" not in sql
+    sqlglot.parse_one(sql, read="snowflake")
+
+
 def test_strings_escape_backslashes():
     assert SNOWFLAKE.str_lit("it's a\\b") == "'it''s a\\\\b'"
 

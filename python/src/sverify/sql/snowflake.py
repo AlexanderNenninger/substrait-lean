@@ -156,6 +156,12 @@ class SnowflakeDialect(Dialect):
     def interval_lit(self, micros: int) -> str:
         return str(micros)
 
+    def range_time_key(self, x: str) -> str:
+        # A RANGE offset over a timestamp: the key as microseconds since the
+        # epoch takes any offset exactly (Snowflake behaviour recorded
+        # privately).
+        return f"DATE_PART(EPOCH_MICROSECOND, {x})"
+
     # Integers: exact NUMBER(38,0) arithmetic, then the i64 range check.
 
     def checked(self, r: str, *, row: bool = True) -> str:
@@ -219,6 +225,11 @@ class SnowflakeDialect(Dialect):
 
     def float_eq(self, a: str, b: str) -> str:
         return f"({a} = {b})"
+
+    def not_distinct(self, a: str, b: str) -> str:
+        # Equality with NULL equal to NULL, as the CASE gives it (Snowflake
+        # behaviour recorded privately).
+        return f"EQUAL_NULL({a}, {b})"
 
     def float_lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
