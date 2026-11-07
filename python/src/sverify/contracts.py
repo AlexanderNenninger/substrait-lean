@@ -1534,6 +1534,8 @@ def _verify_once(
 
     assumable: Container[str] = schemas if inputs is None else inputs
     rows = iter(out["ensures"])
+    # Per postcondition, whether it holds on every engine's doubles (#1045).
+    robust = iter(out.get("robust") or [])
     key_results = iter(out["keys"])
     req_named = [(t, p) for (t, _), p in zip(req_conds, req_plans, strict=True)]
     ens_iter = iter(ens_plans)
@@ -1565,6 +1567,7 @@ def _verify_once(
         else:
             e = next(rows)
             p = next(ens_iter)
+            holds_on_engines = bool(next(robust, False))
             ties = bool(e.get("ties"))
             # It depends on how ties are ordered, which the search, on
             # `Rel.eval`'s one order, rarely shows; breaking the ties with
@@ -1582,6 +1585,7 @@ def _verify_once(
                     ties=ties,
                     depends=None if depends is None else tuple(depends),
                     allowed=bool(e.get("allowed")),
+                    robust=holds_on_engines,
                 )
             )
         checked[-1].condition = c

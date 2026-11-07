@@ -715,6 +715,10 @@ def _plan_bound(
             # No bound on the column (a double `SUM` without a row cap, a value
             # computed from one, a window aggregate of doubles): nothing proves
             # it, and a stated tolerance is not met. `why` names what lifts it.
+            # A postcondition on it runs: the checker knows only its sign
+            # there (`floatBound`'s signed part), which a sum of values of one
+            # sign keeps in every order but Kahan's
+            # (`FloatBounds.StdModel.TreeSum.sign`), a variance by its clamp.
             unproved = True
             if isinstance(stated, Within):
                 why = f" ({eps['why']})" if eps.get("why") else ""
@@ -1018,13 +1022,14 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
     plan's bound (`floats="plan"`, stated or not), the double columns a
     postcondition reads are held to their exact value
     (by column, the postcondition's label): a condition proved of the
-    reference's value need not hold of a value near it."""
+    reference's value need not hold of a value near it. One that holds of
+    every value near it is not held (`CheckedCondition.robust`, #1045)."""
     if report.observation.floats != "plan":
         return report.observation, {}
     held: dict[str, str] = {}
     doubles = [c for c, t in report.output.items() if getattr(t, "is_floating", bool)()]
     for c in report.ensures:
-        if c.approx or not c.proved:
+        if c.approx or not c.proved or getattr(c, "robust", False):
             continue
         for col in doubles if c.reads is None else c.reads:
             if col in doubles:

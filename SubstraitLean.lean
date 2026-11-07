@@ -80,6 +80,7 @@ import SubstraitLean.SubstraitProfile
 import SubstraitLean.Transfer
 import SubstraitLean.Obligations
 import SubstraitLean.Epsilon
+import SubstraitLean.EngineRobust
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples

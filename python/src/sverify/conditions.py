@@ -805,6 +805,11 @@ class CheckedCondition:
     reads: tuple[str, ...] | None = None
     """The output columns the condition reads; None where that is not
     known (every column)."""
+    robust: bool = field(default=False, repr=False, compare=False)
+    """Proved on every value an engine's doubles may take: each double column
+    the condition reads widened by its bound (`Report.epsilon`) and, for a
+    sum, an average or a variance, kept to its sign
+    (`EngineRobust.robust`, #1045). Such a condition needs no `sv.approx`."""
     allowed: bool = field(default=False, repr=False, compare=False)
     """Proved on every result the reference allows, not only on the orders
     `proved` covers (`contract_sound_allowed`, or `contract_sound_allowed_closed`
