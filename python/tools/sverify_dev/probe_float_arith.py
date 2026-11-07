@@ -205,11 +205,12 @@ def run_duckdb(rows: list) -> list[tuple]:
 def run_polars(rows: list, streaming: bool) -> list[tuple]:
     import polars as pl
 
-    df = pl.DataFrame({k: [r[i] for r in rows] for i, k in enumerate("abc")}, schema=dict.fromkeys("abc", pl.Float64))
-    a, b, c = pl.col("a"), pl.col("b"), pl.col("c")
-    q = df.lazy().select(
-        s=a + b, d=a - b, p=a * b, q=pl.when(b != 0).then(a / b), f=a * b - c
+    df = pl.DataFrame(
+        {k: [r[i] for r in rows] for i, k in enumerate("abc")},
+        schema=dict.fromkeys("abc", pl.Float64),
     )
+    a, b, c = pl.col("a"), pl.col("b"), pl.col("c")
+    q = df.lazy().select(s=a + b, d=a - b, p=a * b, q=pl.when(b != 0).then(a / b), f=a * b - c)
     out = q.collect(engine="streaming" if streaming else "in-memory")
     return out.rows()
 
