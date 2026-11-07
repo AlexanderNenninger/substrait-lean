@@ -400,6 +400,7 @@ def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
     ]
     for expr, req, col in cases:
         plain = sv.verify(expr, requires=req)
+        assert plain._epsilon is not None
         assert plain._epsilon[col]["abs"] is None
         plain.run(con, "duckdb")
         assert plain.routes["duckdb"].evidence == "tested"
