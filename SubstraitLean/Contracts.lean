@@ -6608,22 +6608,6 @@ theorem sumOf_mem {a : AVal} {vs : List Value} {n : Bool} {B : Bound} (hne : vs 
       · exact hnone (by simp [sumKind, hnk, hio])
     | _ => exact hnone (by simp [sumKind, hnk])
 
-/-- The doubles among `vs`. -/
-def floatsOf (vs : List Value) : List Int := vs.filterMap fun | .float c => some c | _ => none
-
-theorem mem_floatsOf {vs : List Value} {c : Int} : c ∈ floatsOf vs ↔ .float c ∈ vs := by
-  simp only [floatsOf, List.mem_filterMap]
-  constructor
-  · rintro ⟨v, hv, h⟩; cases v <;> simp_all
-  · intro h; exact ⟨_, h, rfl⟩
-
-theorem floats_map_floatsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .float i) →
-    vs = (floatsOf vs).map .float
-  | [], _ => rfl
-  | v :: vs, h => by
-    obtain ⟨i, rfl⟩ := h v (by simp)
-    simp only [floatsOf, List.filterMap_cons, List.map_cons]
-    exact congrArg _ (floats_map_floatsOf fun w hw => h w (by simp [hw]))
 
 theorem Bound.mem_between {b : Bound} {l h r : Int} (hl : b.Mem l) (hh : b.Mem h) (hlr : l ≤ r)
     (hrh : r ≤ h) : b.Mem r :=

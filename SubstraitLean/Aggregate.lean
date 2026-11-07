@@ -250,6 +250,23 @@ def floatSum (vs : List Value) : Int :=
 /-- The integers among `vs`. -/
 def intsOf (vs : List Value) : List Int := vs.filterMap fun | .int c => some c | _ => none
 
+/-- The doubles among `vs`. -/
+def floatsOf (vs : List Value) : List Int := vs.filterMap fun | .float c => some c | _ => none
+
+theorem mem_floatsOf {vs : List Value} {c : Int} : c ∈ floatsOf vs ↔ .float c ∈ vs := by
+  simp only [floatsOf, List.mem_filterMap]
+  constructor
+  · rintro ⟨v, hv, h⟩; cases v <;> simp_all
+  · intro h; exact ⟨_, h, rfl⟩
+
+theorem floats_map_floatsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .float i) →
+    vs = (floatsOf vs).map .float
+  | [], _ => rfl
+  | v :: vs, h => by
+    obtain ⟨i, rfl⟩ := h v (by simp)
+    simp only [floatsOf, List.filterMap_cons, List.map_cons]
+    exact congrArg _ (floats_map_floatsOf fun w hw => h w (by simp [hw]))
+
 /-- `c` kept between the smallest and largest integer among `vs`, or `c`
 without integers. -/
 def clampInts (vs : List Value) (c : Int) : Int :=
