@@ -298,6 +298,12 @@ class SnowflakeDialect(Dialect):
             "recorded privately)"
         )
 
+    def window_float_sum(self, v: str, over: str) -> str:
+        raise Unsupported(
+            "a window SUM or AVG of doubles on Snowflake: no window-sum algorithm fact "
+            "yet (Snowflake behaviour recorded privately; #1032)"
+        )
+
     def float_var(self, fn: str, v: str) -> str:
         raise Unsupported(
             "Snowflake's VAR_SAMP, VAR_POP and STDDEV of doubles cancel catastrophically "

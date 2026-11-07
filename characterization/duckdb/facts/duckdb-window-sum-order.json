@@ -114,6 +114,22 @@
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_naive_aggregator.cpp#L223-L238", "note": "naive: each frame anew"}
       ],
       "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "session local_974f7865 side session (#1032)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_window_sums.py",
+          "note": "python -m sverify_dev.probe_window_sums --spark"
+        },
+        {
+          "sql": "SELECT i, sum(v) OVER (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS s FROM (VALUES (0, 1e16), (1, 1.0), (2, 1.0), (3, 1.0), (4, 1.0)) AS t(i, v) ORDER BY i",
+          "observed": "1e16, 1e16, 2.0, 2.0, 2.0"
+        }
+      ],
+      "notes": "DuckDB 2.0.0 (Python, macOS arm64), default settings. A sliding accumulator (add the entering row, subtract the leaving one) would carry 1e16 and give 0.0 for the frames [1, 1]; summing the frame's own values gives 2.0."
     }
   ],
   "issues": [
