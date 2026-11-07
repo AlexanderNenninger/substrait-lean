@@ -250,7 +250,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs",
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
    "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issu",
    "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/i"
   }
@@ -300,9 +300,9 @@
   "incremental": false,
   "native": "error: Invalid Input Error: Window ROWS FOLLOWING expression cannot be negative",
   "engines": {
-   "duckdb": "runs",
-   "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "polars": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "snowflake": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)"
   }
  },
  "h2o-groupby-q1": {
@@ -860,7 +860,7 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs",
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
    "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issu",
    "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/i"
   }
@@ -1018,9 +1018,9 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs",
-   "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "polars": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "snowflake": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)"
   }
  },
  "ts-rolling-7day-calendar": {
@@ -1685,9 +1685,9 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs",
-   "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "polars": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "snowflake": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)"
   }
  },
  "win-moving-average": {
@@ -1695,9 +1695,9 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs",
-   "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "polars": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "snowflake": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)"
   }
  },
  "win-percent-of-total": {
@@ -1705,9 +1705,9 @@
   "incremental": false,
   "native": "runs",
   "engines": {
-   "duckdb": "runs",
-   "polars": "runs",
-   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   "duckdb": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "polars": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)",
+   "snowflake": "refused: a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet (see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)"
   }
  },
  "win-above-group-average": {

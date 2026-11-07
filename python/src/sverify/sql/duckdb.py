@@ -134,24 +134,6 @@ class DuckDBDialect(Dialect):
             f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
         )
 
-    def window_float_sum(self, v: str, over: str) -> str:
-        # The frame's values in frame order (its ORDER BY), folded from 0.0.
-        values = f"list({v}) FILTER (WHERE {v} IS NOT NULL) {over}"
-        start = self.cast("0", "float")
-        return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
-
-    def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
-        values = f"list({v}) FILTER (WHERE {v} IS NOT NULL) {over}"
-        start = self.cast("0", "float")
-        n = f"COUNT({v}) {over}"
-        total = f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
-        mean = f"({total} / {self.cast(n, 'float')})"
-        devs = f"list_transform({values}, lambda x: (x - {mean}) * (x - {mean}))"
-        sq = f"list_reduce(list_prepend({start}, {devs}), lambda x, y: x + y)"
-        div = self.cast(f"({n} - 1)" if sample else n, "float")
-        var = f"GREATEST({sq} / {div}, {start})"
-        return f"sqrt({var})" if sqrt else var
-
     def float_sum(self, v: str, o: str) -> str:
         values = f"list({v} ORDER BY {o}) FILTER (WHERE {v} IS NOT NULL)"
         start = self.cast("0", "float")

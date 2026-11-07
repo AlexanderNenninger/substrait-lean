@@ -93,9 +93,6 @@ V, R, X = "verified", "rejected", "upstream"
 #:   (rounding depends on it). So does a window frame's `SUM` or `AVG`.
 #: * Spark has no TIME type before 4.1.
 NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
-#: A frame's doubles are added in frame order (`floatSum`), which only DuckDB's
-#: and Polars' translations keep.
-FRAME_DOUBLES = {"snowflake": "doubles in order", "spark": "doubles in order"}
 #: New functions run on DuckDB only until the generated lowerings (#271).
 DUCKDB_ONLY = {
     "polars": "see #271",

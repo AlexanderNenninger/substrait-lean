@@ -23,7 +23,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.errors import NotIncremental
+from sverify.errors import NotIncremental, Unsupported
 from sverify.ibis_substrait import to_substrait
 from sverify.incremental import IncrementalView
 from sverify.testing import (
@@ -425,6 +425,10 @@ SLIDING_EXPRS = [
     W.select("k", "s", v=W.v.var(how="pop").over(group_by="s"), d=W.q.std().over(group_by="s")),
 ]
 
+#: The expressions with a window AVG, VARIANCE or STDDEV of doubles, which the
+#: engines refuse until the plan's bound covers windows (#1032).
+DOUBLE_WINDOWS = {0, 1, 4, 5}
+
 #: Distinct timestamps, `k` minutes in (the ROWS frames follow their order), doubles that
 #: are halves (their sums are exact), and NULLs.
 sliding_tables = st.lists(
@@ -462,6 +466,10 @@ def test_sliding_frames_and_expressions_match_duckdb(i, rows):
     lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"w": rows})))
     assert canonical(lean) == canonical(expected)
     written = written_plan(json.dumps(plan))
+    if i in DOUBLE_WINDOWS:
+        with pytest.raises(Unsupported, match="#1032"):
+            run_plan(con, written, "duckdb")
+        return
     got = _rounded(run_plan(con, written, "duckdb").to_pylist())
     assert canonical(got) == canonical(expected)
 
