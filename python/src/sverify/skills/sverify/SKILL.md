@@ -21,9 +21,15 @@ that happened to be there.
 
 ```bash
 pip install sverify                       # core: DuckDB, contracts, views
-pip install 'sverify[datafusion]'         # DataFusion as an engine (SQL needs no extra)
-pip install 'sverify[all]'                # every engine and table format
+pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
+pip install 'sverify[datafusion]'         # DataFusion, experimental and outside `all`
 ```
+
+DuckDB (the default), Polars (streaming) and Spark 4.x run plans, each with a
+proved profile (`semantics="duckdb"`, `"polars"`, `"spark"`). The SQL
+dialects (DuckDB, Spark, Snowflake) need no extra. DataFusion is outside the
+1.x promise
+([docs/stability.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)).
 
 Wheels bundle the checker, so no Lean toolchain is needed.
 
@@ -203,11 +209,13 @@ test_doubles_are_big()
   `@sv.transform`), which models DuckDB's NaN and `±inf`.
 * **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
-* **Incremental maintenance** covers filters, projections, inner and cross
-  joins and `UNION ALL`; aggregates and windows recompute only the groups and
-  partitions a batch touches; other nodes (left joins, `DISTINCT`, `LIMIT`)
-  are recomputed and diffed on each refresh (see the `sverify-pipelines`
-  skill).
+* **Incremental maintenance** covers filters, projections, inner, cross,
+  semi and anti joins, `UNION ALL`, `DISTINCT`, `COUNT`, exact `SUM`/`AVG`
+  and `MIN`/`MAX` per group; other aggregates recompute the groups a batch
+  touches, windows on one `PARTITION BY` the touched partitions, and bounded
+  `RANGE` frames the touched frames; other nodes (left joins, `LIMIT`) are
+  recomputed and diffed on each refresh, and `node.status()` says which (see
+  the `sverify-pipelines` skill).
 * **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
   the rounding would depend on the split; `reproducible=sv.equivalent(floats="plan")`
   splits them anyway, within a proved tolerance that `tolerance=True` reports per row.
@@ -217,5 +225,5 @@ test_doubles_are_big()
 * [references/contracts.md](references/contracts.md): what Lean tracks,
   SQL transformations, composing contracts.
 * The `sverify-pipelines` skill: Delta and Iceberg sources, sinks, refresh.
-* The `sverify-engines` skill: running a plan on DuckDB, Polars, DataFusion,
-  Snowflake or Spark, and ASOF joins.
+* The `sverify-engines` skill: running a plan on DuckDB, Polars or Spark,
+  writing it as DuckDB, Spark or Snowflake SQL, and ASOF joins.

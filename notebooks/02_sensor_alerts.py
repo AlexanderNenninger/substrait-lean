@@ -350,8 +350,8 @@ def _(mo):
     ## 5. Every engine, and the warehouses
 
     The alerts may run on a laptop today and in a warehouse tomorrow.
-    DuckDB (Tier 1) and Polars run the checked plan with the
-    same rows, whichever `engine=` the node is refreshed with. Snowflake
+    DuckDB and Polars run the checked plan with the same rows, whichever
+    `engine=` the node is refreshed with ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)). Snowflake
     and Spark tables have no row order, so sverify refuses to write a window
     for them unless you promise that the order keys have no ties. The
     report's `deterministic` is that promise, proved from the key, so it can
@@ -388,9 +388,11 @@ def _(mo):
 
     ## 6. New readings, and a sensor that sends twice
 
-    Windows aren't incrementally maintained yet, and the node says so. A
-    node like this is recomputed and diffed on each refresh, and its change
-    still flows to the sink and to nodes downstream:
+    Windows that share one `PARTITION BY` recompute only the partitions a
+    batch touches, for inputs without ties on the partition and sort columns
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). The
+    node's status says how it is refreshed, and its change flows to the
+    sink and to nodes downstream:
     """)
     return
 
@@ -483,8 +485,8 @@ def _(mo):
     checked on every batch, so a sensor that sends twice stops the job and
     leaves the alerts as they were. The same plan runs on DuckDB and Polars,
     and Snowflake or Spark SQL is written once the tie-freedom
-    it needs is proved. The window node says it isn't incremental and stays
-    up to date by recomputation, with its change written to the sink.
+    it needs is proved. The window node says how it stays up to date, and
+    its change is written to the sink.
 
     Next up: [An orders mart in SQL and Ibis](?file=03_orders_mart.py),
     where a dashboard's dbt tests become a contract.

@@ -1,261 +1,34 @@
 # Query catalogue: findings
 
-What 139 real analytical queries need, how far `substrait-check` and `sverify`
-get with them today, and what that suggests for a practitioner-facing plan
-specification. The numbers come from the probes (`status.json`), taken on
-`main` at 2695da7, after #44 (aggregates on the engines) and #45 (the
-vendored Ibis producer) landed (DataFusion 51, Ibis 12); the tables at the end are
-regenerated on `main` after every merge, the prose is not.
+The catalogue holds 139 real analytical queries: all 22 TPC-H queries,
+8 TPC-DS, 4 SSB, 7 ClickBench, 3 JOB and 10 H2O db-benchmark queries
+(54 benchmark queries), and 85 practitioner idioms from general analytics,
+IoT telemetry and finance ([README.md](README.md)). Sverify's catalogue tool
+(`python -m sverify_dev.catalogue`) verifies each with `substrait-check`,
+runs Lean's written plan on Polars and DuckDB against DuckDB's own rows, and
+writes Snowflake SQL for it (`status.json`).
 
-The catalogue covers all 22 TPC-H queries, 8 TPC-DS, 4 SSB, 7 ClickBench,
-3 JOB and 10 H2O db-benchmark queries (54 benchmark queries), and 85
-practitioner idioms:
-* general analytics, from dbt packages and docs, PostgreSQL, pandas, Polars,
-  DuckDB and Ibis docs and analytics tutorials (55): dedup, top-N, running
-  totals, moving averages, gaps and islands, sessionization, funnels, cohorts,
-  retention, as-of joins, date spines, pivots, SCD2, MRR, data tests;
-* IoT telemetry, from the QuestDB, TimescaleDB, Azure Stream Analytics and
-  Flink docs (12): time-weighted averages, silent devices, condition
-  durations, time in state, counter resets, gap filling, downsampling,
-  change detection, consecutive-threshold alerts, meter consumption, event
-  correlation;
-* financial transactions and market data, from the QuestDB finance cookbook,
-  Azure fraud detection, AML and reconciliation write-ups (18): running
-  balances, card velocity, impossible travel, duplicate payments,
-  structuring, reconciliation, double-entry checks, receivables aging, RFM,
-  dormancy, VWAP, OHLC, Bollinger bands, drawdown, log returns, realised
-  volatility, volume spikes, FIFO P&L.
+The tables below are generated from the TOML and `status.json` by
+`uv run python -m sverify_dev.catalogue --write-tables`, on `main` after every
+merge; [INDEX.md](INDEX.md) lists every query with its status. As of
+2026-11-07 the earlier prose of this file, written when DataFusion was the
+reference, is retired: what the reference computes is in
+[docs/reference-semantics.md](../docs/reference-semantics.md) and
+[docs/core-semantics.md](../docs/core-semantics.md), what each engine does
+is in its facts under [characterization/](../characterization/README.md),
+and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
+[docs/guide.md](../docs/guide.md).
 
-## Top findings
-
-1. **What verifies now runs almost everywhere.** 72 of the 139 queries verify
-   (57 on their own types, 15 more once DECIMAL is read as DOUBLE). With
-   aggregates translated (#44), Polars and DuckDB run 69 of the 72 and agree
-   with DataFusion on the synthetic data, and Snowflake SQL is written for 52.
-   51 queries run on all four. The remaining engine refusals are Snowflake's
-   missing row order (16 queries with a FETCH or window over a named table,
-   even with `tie_free`) and the engine translations' kind inference for
-   timestamp and interval arithmetic (3 queries; #65). Real queries
-   aggregate: 88 of 139 group, 8 more aggregate globally.
-2. **The new Ibis producer (#45) is stricter than the SQL round trip, and
-   that is now the main gap.** Compared with compiling Ibis to SQL and through
-   DataFusion's producer, it refuses:
-   * any table with a DECIMAL column, even when the query does not touch it
-     (TPC-H Q13 and Q21, fraud rules on transactions): DECIMAL now blocks 37
-     queries, and for 15 it is the only gap. The SQL path passed DECIMAL
-     columns through and compared them, refusing only SUM/AVG/MIN/MAX and
-     literals.
-   * DATE ± interval and DATE − DATE (`DateAdd`, `DateSub`, `DateDiff`), also
-     for day intervals: 14 queries, among them TPC-H Q1, rolling windows over
-     a calendar and day-N retention, which verified through SQL;
-   * arithmetic over aggregate results in one aggregation (`SUM(a) /
-     SUM(b)`, `MAX − MIN`, `100 * SUM(x)`): 8 queries, among them VWAP, daily
-     meter consumption and TPC-H Q14/Q17;
-   * sorting by an expression (TPC-DS Q89; the Ibis producer now projects the
-     key, so Q89 stops at its DECIMAL columns and window averages).
-   Reading money as DOUBLE is no workaround for a correctness tool: TPC-H Q6's
-   `discount BETWEEN 0.05 AND 0.07` and a ledger's debits = credits are exact
-   only in DECIMAL. With DECIMAL and DATE arithmetic, 30 more queries verify;
-   with arithmetic over aggregates as well, 35.
-3. **Window aggregates are the most common unsupported window shape, and
-   telemetry and market data lean on them hardest.** `SUM/AVG/COUNT/MAX …
-   OVER` with a partition-wide, running, or bounded ROWS or RANGE frame
-   blocks 19 queries, 11 of them alone: running totals and balances, moving
-   averages, Bollinger bands, drawdowns, percent of total, sessionization,
-   condition durations, forward fill, interval packing, FIFO matching,
-   TPC-DS Q51/Q89/Q98. RANK/DENSE_RANK, NTILE/PERCENT_RANK and
-   FIRST/LAST_VALUE block 7 more. ROW_NUMBER and LAG/LEAD, which Lean has,
-   carry 23 queries: dedup, top-N, latest reading, as-of joins, SCD2
-   histories, session starts, change detection, consecutive-threshold alerts,
-   counter resets. Adding the window-aggregate family and ranks on top of the
-   fixes in 2 makes 20 more queries verify (55 in all).
-4. **Calendar and duration arithmetic is the next cluster.** Besides the
-   producer's DATE arithmetic, month and year intervals (`date + INTERVAL '3'
-   MONTH`, 8 TPC-H queries) are refused by the checker, as are `EXTRACT(YEAR
-   FROM date)` on DATE columns (3), intervals built from a column (gaps and
-   islands), durations as numbers of seconds (time-weighted averages, time in
-   state), fixed-width time buckets and time zones: 22 queries in all. In
-   TPC-H every month interval is added to a literal, so folding `DATE literal
-   ± months` would already unblock most of them.
-5. **Subqueries are sugar in practice.** 11 queries need a scalar,
-   correlated, EXISTS or NOT IN subquery as originally written. An Ibis user
-   writes 8 of them as semi, anti or cross joins with an aggregate, and none of
-   those 8 is blocked by the rewritten part. TPC-H Q15 and Q22 keep a scalar
-   subquery, which DataFusion's Substrait producer cannot convert ("Cannot
-   convert <subquery>"); through the Ibis producer the checker lifts it into a
-   join once it proves the subquery has at most one row, and Q22 verifies (as
-   DOUBLE). NOT IN (TPC-H Q16) verifies with SQL's NULL rule, where DataFusion
-   running the query is wrong: DuckDB and Polars agree with DuckDB's own
-   answer, not DataFusion's (`runs (DataFusion's SQL differs)`).
-6. **Statistical functions are a long tail, except in finance.** Median and
-   quantiles, CORR, STRING_AGG, ROLLUP, regex replace, hashing, UNNEST and
-   recursion each appear in one or two queries and belong in extensions. But
-   STDDEV (4 queries: Bollinger bands, volatility, z-scores, H2O), ARG_MAX
-   (OHLC open/close, last value per bucket: 3) and LN (log returns,
-   volatility: 2) recur in market-data work, and time-series engines
-   (QuestDB's `first`/`last`, TimescaleDB's `time_weight`) make them
-   first-class.
-7. **Range self-joins are the portable streaming idiom, and Lean has them.**
-   Fraud and telemetry rules are written in stream processors as interval
-   joins or RANGE windows over time (card velocity, impossible travel,
-   duplicate payments, door-then-motion correlation, silent devices). As
-   self-joins with time bounds they verify (on DOUBLE money, see 2), and the
-   ones without aggregates are incrementally maintainable, which is what a
-   streaming rule needs.
-8. **Front ends silently change meaning, and the catalogue found several.**
-   * Ibis rewrote TPC-H Q11's threshold `de.value.sum() * 0.0001` (a total over
-     all parts) into `part_value * 0.0001` (each part's own sum), because the
-     per-part aggregate is the same expression: the filter compared each part
-     with itself. Nothing failed; the result was just wrong. A plan
-     specification that names its inputs explicitly makes this impossible.
-   * Through Ibis's DataFusion SQL, `ibis.date("1994-01-01")` compiled to
-     `DATE_TRUNC('DAY', '1994-01-01')`, which the checker refuses. The new
-     producer (#45) compiles it correctly.
-   * Ibis refuses to compare a timestamp difference with
-     `ibis.interval(minutes=30)` or `ibis.interval(days=90)` (units "not
-     comparable"; 3 queries had to write seconds). It writes a frame ending
-     before the current row as `-1 FOLLOWING`, which DataFusion rejects. It
-     compiles `pivot_longer` to UNNEST and `pivot_wider`'s default to
-     `first_value`, has no ROLLUP and no recursion, and refuses three tables
-     that each have an `id` column.
-   * DataFusion's Python bindings failed to collect a UNION whose branches
-     differ only in nullability ("Schema at index 1 was different"): dbt-style
-     unions of sources and the recursive hierarchy query. DataFusion computes
-     the rows; `engine.collect` now gives the batches one schema (#64,
-     quirk R8 of chapter 14). DataFusion also rejects the RANGE frame
-     Ibis writes for an interval, and recursive CTEs with a column list.
-   * The engine translations refused `ts - lag(ts) > INTERVAL …` and `ts <
-     now - INTERVAL …`, which Lean verifies (session starts, dormant accounts,
-     silent devices): Lean's writer wrote the interval constants as
-     timestamps or integers, the kinds the model gives them. It now tells
-     intervals from timestamps (#65).
-9. **Ties are the most common cross-engine pitfall.** 44 queries (32%) have a
-   result that depends on how ties are broken: top-N, dedup, LIMIT after a
-   non-unique sort, LAG over equal timestamps, OHLC open and close, FIFO
-   matching. Next come NULL semantics (empty and NULL aggregates, NULL join
-   keys: 46 mentions), time zones and DST (14), division by zero (14),
-   DECIMAL scale (12) and floating-point summation order (12).
-
-## What the specification should be
-
-The catalogue suggests a specification whose **core** covers 125 of the 139
-queries (90%): everything Lean has today, plus DECIMAL, calendar intervals
-and durations as numbers, the window-aggregate family with frames, ranks,
-LN/EXP/SQRT, and subqueries as derived forms. The remaining 14 need only
-**extensions**.
-
-### Core
-
-* **Relations.** Read, values, filter, project, join (inner, left, full, semi,
-  anti, cross) with an arbitrary predicate, union all and distinct union,
-  intersect, except, distinct, aggregate, sort, fetch, window. This is what the
-  queries use; nothing else reaches 3% of them except subqueries.
-* **Aggregate** with group keys and measures `fn(DISTINCT? expr) FILTER (WHERE
-  cond)`, for COUNT, SUM, AVG, MIN, MAX over every core type, including MIN
-  and MAX of doubles (refused today; TPC-H Q2). Conditional aggregation covers
-  pivots (dbt's pivot macro and Ibis `pivot_wider(values_agg=…)` both compile
-  to it), funnels and retention rates, so a separate PIVOT is unnecessary.
-  A global aggregate returns exactly one row, also on empty input.
-* **Window** as its own operator: partition keys, sort keys, an explicit
-  frame (ROWS or RANGE, bounds as offsets or intervals), and functions
-  ROW_NUMBER, RANK, DENSE_RANK, NTILE, PERCENT_RANK, LAG, LEAD, FIRST_VALUE,
-  LAST_VALUE and the core aggregates. The frame must be part of the plan, never
-  defaulted: the default RANGE frame (peers included) is the source of the
-  `window_default_frame` pitfall, and Ibis's cumulative windows are ROWS.
-* **Sort keys always carry their NULL placement.** Defaults differ between
-  every pair of engines (DataFusion and Snowflake NULLS FIRST for DESC, DuckDB
-  NULLS LAST, Polars nulls first ascending).
-* **Types:** BOOLEAN, BIGINT (and narrower integers with their own overflow),
-  DOUBLE with NaN and ±0 ordered as DataFusion orders them, DECIMAL(p, s) with
-  result scales defined per operator, STRING with byte-order comparison, DATE,
-  TIMESTAMP without time zone, and two interval types: day-time (exact
-  microseconds) and year-month (calendar months, clamping to the month's end).
-* **Expressions:** three-valued logic, durations convertible to numbers of
-  seconds (time weighting, rates), LN/EXP/SQRT on doubles, CASE with guaranteed lazy branches (or,
-  if an engine cannot promise it, a proof that no branch errs: DataFusion
-  evaluates boolean CASE and COALESCE eagerly), COALESCE/NULLIF, IN lists,
-  BETWEEN, LIKE, regex match, basic string functions, casts, EXTRACT and
-  DATE_TRUNC on both DATE and TIMESTAMP, date ± interval, date differences,
-  and arithmetic over aggregate results.
-* **Subqueries as derived forms, not operators.** IN and EXISTS are semi joins,
-  NOT EXISTS an anti join, a scalar subquery a cross join with a one-row
-  aggregate (with a cardinality obligation), a correlated scalar subquery a
-  join with a grouped aggregate, NOT IN an anti join plus an explicit NULL
-  check. Front ends desugar; the core semantics, the proofs and the engine
-  translations stay small. This also sidesteps DataFusion's Substrait
-  producer, which cannot emit subqueries.
-* **Determinism as a checked property.** A plan whose result depends on how
-  ties are broken (ROW_NUMBER, FETCH or FIRST_VALUE over non-unique sort keys)
-  should say so, and either carry a proof that the sort keys are unique (from
-  keys the checker already infers, or `requires`) or be marked
-  nondeterministic. Snowflake needs this to run any sort or window at all,
-  and 32% of the catalogue is tie-sensitive.
-* **Runtime errors in the semantics.** Division by zero, casts out of range
-  and overflow are errors, as Lean models them today; the engines disagree
-  (DuckDB returns NULL for x / 0) and the translation must make them agree.
-
-### Extensions
-
-Each needs its own semantics and per-engine support, and is rare in the
-catalogue: grouping sets (ROLLUP, CUBE; TPC-DS), percentiles (with the
-interpolation method a required parameter, since engines default differently),
-STDDEV/VARIANCE/CORR (a strong candidate for core if finance matters),
-STRING_AGG/ARRAY_AGG with an order, ARG_MAX/ARG_MIN (likewise: OHLC),
-arrays and UNNEST, recursive CTEs (with a termination argument), regex
-replace and extract, hashing, approximate aggregates (never compared exactly),
-time zones (TIMESTAMP WITH TIME ZONE, AT TIME ZONE, local calendar days) and
-semi-structured data.
-
-### What each engine needs for correct compilation
-
-* **DataFusion (reference).** For SQL input, produce Substrait from the
-  *analysed* plan, so implicit coercions are explicit casts (quirks F6, I10,
-  I11), and decorrelate subqueries before Substrait; collect union results
-  with one schema (done, #64); guard against the eager CASE/COALESCE rewrite where a branch can
-  fail (E4, E5). It has no ASOF join, so `sverify.asof_join`'s
-  range join + ROW_NUMBER is the portable form.
-* **Polars.** Read DECIMAL columns; always pass `nulls_last` explicitly; never
-  match NULL join keys (`nulls_equal=False`); integer `/` is float division, so
-  emit truncating division; timestamp differences are Durations that must be
-  compared with Durations, so plans must type interval constants as
-  intervals (#65).
-* **DuckDB.** `/` on integers is float division (use
-  `//` or a truncating form); x / 0 is NULL, so division must raise explicitly
-  to keep Lean's error semantics; NULLS LAST is the default for DESC too;
-  timestamp differences are month-day-nano intervals.
-* **Snowflake.** Tables have no row order, so sorts,
-  fetches and windows need the tie-free obligation above; there is no
-  interval type, so intervals are microsecond counts (`DATEDIFF` and
-  `DATEADD` in microseconds); integer division yields NUMBER with extra scale; week starts and
-  collation are session parameters, which the generated SQL should pin.
-
-### Suggested order of work, by queries unblocked
-
-1. In the Ibis producer (#45 follow-ups): read tables with DECIMAL columns,
-   DATE ± interval and DATE − DATE, arithmetic over aggregates, sort by an
-   expression. Most of this verified through the SQL path already.
-2. DECIMAL values and aggregates in Lean (#27): 15 queries verify
-   immediately, 30 together with DATE arithmetic (#51).
-3. Month and year intervals (at least folding `literal ± months`) and
-   `date_part`/`date_trunc` on DATE (#51).
-4. Window aggregates with frames, then RANK/DENSE_RANK/NTILE/FIRST_VALUE
-   (#28): 20 more on top of the above.
-5. Front-end and engine fixes: the timestamp and interval kinds in the
-   engine translations (#65), SQL from the analysed plan for SQL queries
-   (#16).
-
-## Caveats
+How to read the tables:
 
 * The engine columns compare results on small seeded synthetic tables (30
-  rows per table, NULL one time in ten), not on benchmark data. Where a plan
-  has a FETCH or a window, Polars and DuckDB are compared with each other
-  only, because ties make DataFusion's rows legitimately differ.
-* Snowflake SQL is generated and parsed, not run.
+  rows per table unless `schemas.toml` fixes a size, NULL one time in ten),
+  generated from `schemas.toml`'s value pools.
+* Snowflake SQL is written and parsed with SQLGlot; the catalogue does not
+  run it.
 * Feature annotations are by hand; the test checks them against the probes
   (a verified query may not need an unsupported feature, a failure must point
   at a listed one), but a feature the probe never exercises can be mislabelled.
-* The checker stops at the first error, so a query's *missing* list is its
-  unsupported features plus the partial one its failure names.
 * Benchmark queries are paraphrased and re-expressed in Ibis with simplified
   column lists; they keep the operators and predicates of the originals.
 

@@ -57,26 +57,27 @@ checked on the data ([What strictness buys](core-semantics.md#what-strictness-bu
 DuckDB is the first engine characterized this way:
 [`characterization/duckdb/facts/`](../characterization/duckdb/facts/)
 judges DuckDB's own sqllogictests and the fuzzer's findings against
-Substrait's definitions and options, not against ISO SQL or DuckDB. The plan
-is to state each profile in Lean and prove the shims (`shim_correct` in
-#185); engine fidelity itself stays tested, not proved.
+Substrait's definitions and options, not against ISO SQL or DuckDB
+([how facts are judged](../characterization/README.md)). Polars and Spark
+followed, each with its profile and shims in Lean
+([Polars as a profile](core-semantics.md#polars-as-a-profile),
+[Spark as a profile](core-semantics.md#spark-as-a-profile)). That a profile
+matches its engine is tested against the engine and trusted.
 
-## Engine tiers
+## Engines
 
-From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
-
-| Tier | Engines | Meaning |
-|---|---|---|
-| **1** | DuckDB | Characterized as a diff against the reference. Every reference behaviour is native, shimmed or refused (the error side needs no shim for a verified plan), the shims are proved, and CI replays the engine's own tests plus fuzzing. In progress: until #185's profile work lands, DuckDB is Tier 1 in intent. |
-| **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved. Polars and Spark aim for Tier 1. |
-| **3** | Snowflake | Aspirational: sverify writes the SQL and checks it on an emulator (fakesnow), never on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
-
-Work on the Tier 2 and 3 backends is paused until the generated lowerings
-land (#241, then #271).
+[Engines](stability.md#engines) says which engines sverify supports and
+which are in the 1.x promise; the [realizability table](realizability.md)
+gives each engine's class on every option, its shims and its translation
+theorem. The tiers of [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)
+predate the profiles: DuckDB, Polars and Spark now each have one, with the
+translation from the reference proved (`Rel.duckdb_refines`,
+`Rel.polars_sound`, `Rel.spark_sound`).
 
 SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`,
-#239), whose two profiles are Python data for now. DataFusion's SQL planner
+#239), whose two profiles are generated Lean modules
+(`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). DataFusion's SQL planner
 is no longer a frontend (#211); DataFusion stays an execution backend.
 
 ## Profiles and shims in Lean (#185, first slice)
@@ -209,15 +210,15 @@ this theorem; `guard_free` is the stronger fact that nothing raises.
 Trusted: that `Profile.duckdb` matches DuckDB (probed on edge cases,
 `tests/test_probe.py`),
 and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
-NOT NULL` included). Next: relations, the
-fuzzer check, writing shimmed plans for the SQL printer, and the other rows of
-the DuckDB diff.
+NOT NULL` included).
 
 ## The translations today
 
 Each engine reaches the reference through a **translation**, a function from
-a plan to something the engine runs. Until the shims of #185 replace them,
-these are hand-written and tested, not proved:
+a plan to something the engine runs. Lean proves the shims a translation
+applies and that the shimmed plan refines the reference under the engine's
+profile (the theorems in [Engines](#engines)); the code below that writes the
+shimmed plan for the engine is trusted, and tested against `Rel.eval`:
 
 | engine | translation | where |
 |---|---|---|

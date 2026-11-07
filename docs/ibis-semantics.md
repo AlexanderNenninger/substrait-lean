@@ -40,8 +40,9 @@ give a backend-independent meaning today.
 Which Ibis backends implement this semantics fully: none of them on every
 row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
 `max` of NaN). To run a verified expression with exactly this meaning, run
-the plan, not the Ibis expression: `sverify.run_plan(con, plan, engine)` on
-DataFusion, DuckDB or Polars, whose translations raise rather than differ.
+the plan: `sverify.engines.run(con, plan, engine)` on DuckDB, Polars or
+Spark ([the engines](stability.md#engines)), whose translations raise where
+they would differ.
 
 ## Any row's value
 
