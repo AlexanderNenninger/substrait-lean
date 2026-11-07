@@ -103,39 +103,45 @@ theorem Tol.exactCol {j : Nat} (h : t j = none) : t.ctx.exactCol nearObs j = tru
 theorem Tol.cell_none {j : Nat} (h : t j = none) {v w : Value} : t.Cell j v w ↔ v = w :=
   ⟨Value.Equiv.eq_of_exactCol (Tol.exactCol h) v w, fun e => e ▸ Tol.cell_refl t j v⟩
 
+theorem IntEquiv.transfer {q : Obs} {c c' : ObsCtx} {i j : Nat} (hk : c.kind i = c'.kind j)
+    (hn : ∀ n a b, c.near n i a b → c'.near n j a b) {a b : Int} (e : IntEquiv q c i a b) :
+    IntEquiv q c' j a b := by
+  unfold IntEquiv at *; rw [← hk]
+  cases hc : c.kind i <;> simp only [hc] at e ⊢
+  · cases hf : q.floats <;> simp only [hf] at e ⊢
+    · exact e
+    · exact hn _ _ _ e
+  all_goals exact e
+
+theorem StrEquiv.transfer {q : Obs} {c c' : ObsCtx} {i j : Nat} (hk : c.kind i = c'.kind j)
+    (hs : ∀ s a b, c.strEq s a b → c'.strEq s a b) {a b : String} (e : StrEquiv q c i a b) :
+    StrEquiv q c' j a b := by
+  unfold StrEquiv Obs.stringsAt at *; rw [← hk]
+  split <;> (rename_i h; simp only [h, ite_true, ite_false] at e) <;>
+    cases hs' : q.strings <;> simp only [hs', StrEquivAt] at e ⊢ <;>
+    first | exact e | exact hs _ _ _ e
+
 mutual
 /-- Equality up to `q` carries from column `i` of `c` to column `j` of `c'`
 when `j` is the same kind with a looser tolerance. -/
 theorem Value.Equiv.transfer {q : Obs} {c c' : ObsCtx} {i j : Nat} (hk : c.kind i = c'.kind j)
     (hn : ∀ n a b, c.near n i a b → c'.near n j a b) (hs : ∀ s a b, c.strEq s a b → c'.strEq s a b) :
     ∀ v w, Value.Equiv q c i v w → Value.Equiv q c' j v w
-  | .null, .null, _ => trivial
-  | .bool _, .bool _, e => e
-  | .int a, .int b, e => by
-    change IntEquiv q c i a b at e; change IntEquiv q c' j a b
-    unfold IntEquiv at *; rw [← hk]
-    cases hc : c.kind i <;> simp only [hc] at e ⊢
-    · cases hf : q.floats <;> simp only [hf] at e ⊢
-      · exact e
-      · exact hn _ _ _ e
-    all_goals exact e
-  | .str a, .str b, e => by
-    change StrEquiv q c i a b at e; change StrEquiv q c' j a b
-    unfold StrEquiv Obs.stringsAt at *; rw [← hk]
-    split <;> (rename_i h; simp only [h, ite_true, ite_false] at e) <;>
-      cases hs' : q.strings <;> simp only [hs', StrEquivAt] at e ⊢ <;>
-      first | exact e | exact hs _ _ _ e
-  | .list as, .list bs, e => by
-    unfold Value.Equiv at e ⊢
-    cases hl : q.elements <;> simp only [hl] at e ⊢
-    · exact Value.EquivList.transfer hk hn hs as bs e
-    · obtain ⟨cs, hc, hp⟩ := e
-      exact ⟨cs, Value.EquivList.transfer hk hn hs as cs hc, hp⟩
-  | .null, .bool _, e | .null, .int _, e | .null, .str _, e | .null, .list _, e
-  | .bool _, .null, e | .bool _, .int _, e | .bool _, .str _, e | .bool _, .list _, e
-  | .int _, .null, e | .int _, .bool _, e | .int _, .str _, e | .int _, .list _, e
-  | .str _, .null, e | .str _, .bool _, e | .str _, .int _, e | .str _, .list _, e
-  | .list _, .null, e | .list _, .bool _, e | .list _, .int _, e | .list _, .str _, e => e.elim
+  | .null, w, e => by cases w <;> first | trivial | exact e.elim
+  | .bool _, w, e => by cases w <;> first | exact e.elim | exact e
+  | .int _, w, e | .float _, w, e | .date _, w, e | .ts _, w, e | .tod _, w, e => by
+    cases w <;> first | exact e.elim | exact IntEquiv.transfer hk hn e
+  | .dec _ _, w, e => by cases w <;> first | exact e.elim | exact ⟨e.1, IntEquiv.transfer hk hn e.2⟩
+  | .str _, w, e => by cases w <;> first | exact e.elim | exact StrEquiv.transfer hk hs e
+  | .list as, w, e | .struct as, w, e => by
+    cases w <;> try exact e.elim
+    all_goals
+      rename_i bs
+      unfold Value.Equiv at e ⊢
+      cases hl : q.elements <;> simp only [hl] at e ⊢
+      · exact Value.EquivList.transfer hk hn hs as bs e
+      · obtain ⟨cs, hc, hp⟩ := e
+        exact ⟨cs, Value.EquivList.transfer hk hn hs as cs hc, hp⟩
 
 theorem Value.EquivList.transfer {q : Obs} {c c' : ObsCtx} {i j : Nat} (hk : c.kind i = c'.kind j)
     (hn : ∀ n a b, c.near n i a b → c'.near n j a b) (hs : ∀ s a b, c.strEq s a b → c'.strEq s a b) :
