@@ -553,6 +553,25 @@ def table_digest(table: pa.Table) -> str:
     return hashlib.sha256(repr((str(table.schema), rows)).encode()).hexdigest()
 
 
+def content_digest(table: pa.Table) -> str:
+    """A digest of a table's schema and bag of rows, in no particular order,
+    for tables of any size: the sum of DuckDB's hashes of the rows, and
+    their count. The same rows give the same digest under one DuckDB
+    version; another version may give another, which a sink reads as other
+    contents (#965)."""
+    import duckdb
+
+    con = duckdb.connect()
+    try:
+        con.register("t", table)
+        total, count = con.execute("SELECT sum(hash(t)::HUGEINT), count(*) FROM t").fetchone()  # type: ignore[misc]
+    except duckdb.Error:
+        return table_digest(table)
+    finally:
+        con.close()
+    return hashlib.sha256(repr((str(table.schema), total, count)).encode()).hexdigest()
+
+
 @dataclass
 class Stored:
     """A view's state as a sink stored it, to resume a restarted pipeline
@@ -1048,7 +1067,10 @@ class IncrementalView:
             have = ", ".join(f"{t}@v{n}" for t, n in lineage.items())
             want = ", ".join(f"{t}@v{n}" for t, n in stored.sources.items())
             return f"stored from {want}, the pipeline holds {have}"
-        digests = self.pipeline.digests(self.name)
+        # Over the tables: the pipeline does not hold this view yet.
+        digests: dict[str, str] = {}
+        for t in self.tables:
+            digests.update(self.pipeline.digests(t))
         if stored.digests != digests:
             return f"static tables changed ({', '.join(sorted(digests))})"
         return None
