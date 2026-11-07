@@ -168,15 +168,40 @@ def lean_choices(plan_json: str) -> list[list[tuple]] | None:
     return [[cell(c) for c in row] for row in rows]
 
 
+def _equal(a: object, b: object) -> bool:
+    return a == b
+
+
+def _candidates(
+    rows: Sequence[Sequence[object]], choices: Sequence[Sequence[tuple]]
+) -> list[Sequence[int]] | None:
+    """For each row, the choice rows that agree with it on the columns every
+    choice row fixes to one value: the only ones `row_ok` can accept when
+    values compare by `==`. None where a value is not hashable."""
+    width = len(choices[0]) if choices else 0
+    keyed = [k for k in range(width) if all(len(c) == width and c[k][0] == "v" for c in choices)]
+    index: dict[tuple, list[int]] = {}
+    try:
+        for j, c in enumerate(choices):
+            index.setdefault(tuple(c[k][1] for k in keyed), []).append(j)
+        return [
+            index.get(tuple(got[k] for k in keyed), []) if len(got) == width else [] for got in rows
+        ]
+    except TypeError:  # a list or another unhashable value
+        return None
+
+
 def allows_rows(
     rows: Sequence[Sequence[object]],
     choices: Sequence[Sequence[tuple]],
-    same: Callable[[object, object], bool] = lambda a, b: a == b,
+    same: Callable[[object, object], bool] = _equal,
 ) -> bool:
     """Whether `rows`, as a multiset, are one result `choices` allows
     (`lean_choices`): a one-to-one matching of rows to choice rows, each
     cell one of its values. `same` compares two values (doubles to some
-    precision, for one)."""
+    precision, for one). The matching is `Relation.Near`'s (`Lipschitz.lean`):
+    rows that tie on the exact columns pair up whatever order their doubles
+    sort in."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:
         pos = 0
@@ -229,8 +254,14 @@ def allows_rows(
 
     if len(rows) != len(choices):
         return False
-    # A bipartite matching of rows to choice rows (Kuhn's augmenting paths).
-    edges = [[j for j, want in enumerate(choices) if row_ok(got, want)] for got in rows]
+    # A bipartite matching of rows to choice rows (Kuhn's augmenting paths),
+    # over the choice rows that agree on the fixed columns where `==` decides.
+    cands = _candidates(rows, choices) if same is _equal else None
+    every = range(len(choices))
+    edges = [
+        [j for j in (cands[i] if cands is not None else every) if row_ok(got, choices[j])]
+        for i, got in enumerate(rows)
+    ]
     owner: list[int | None] = [None] * len(choices)
 
     def augment(i: int, seen: set[int]) -> bool:

@@ -1,7 +1,8 @@
 """Reports and exceptions in the user's terms (#687), and hints that carry
 code a proof has checked (#688): one test per message the API critique
-quotes (`api-critique/REPORT.md` §1, #686), and a test that pastes each
-hint's code back and verifies again."""
+quotes (`api-critique/REPORT.md` §1, #686,
+https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/REPORT.md),
+and a test that pastes each hint's code back and verifies again."""
 
 import datetime as dt
 import os

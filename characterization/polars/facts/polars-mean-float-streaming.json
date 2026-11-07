@@ -31,7 +31,7 @@
     "The docs are silent on the summation order, its variation between runs and the `f64` sum of a `Float32` mean: a docs gap.",
     "No upstream test pins the streaming summation order; it may change between versions."
   ],
-  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "reference": "`AggFn.avg` is `floatAvgCR` (D25): the exact sum of the doubles divided by the count, rounded once; non-finite values as for `SUM`. NULL without values. An engine's sum divided by n is within the plan's bound (`sum_order`, `StdModel.epsilon_avg_cr`).",
   "status": "open",
   "evidence": "probe",
   "provenance": [

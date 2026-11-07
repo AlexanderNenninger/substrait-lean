@@ -17,7 +17,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import routes
-from sverify.errors import ExportError, RouteError
+from sverify.errors import ExportError, RouteError, UnsupportedError
 from sverify.observation import Observation, Within
 
 pytest.importorskip("polars")
@@ -148,8 +148,10 @@ def test_an_observation_reprs_as_its_call() -> None:
 
 
 def test_a_window_over_a_key_has_a_class() -> None:
-    """`api-critique/tasks/t7_engines.py`: a LAG over a unique key runs on
-    both engines with route `translated`; its class is one of the four."""
+    """`api-critique/tasks/t7_engines.py`
+    (https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/tasks/t7_engines.py):
+    a LAG over a unique key runs on both engines with route `translated`; its
+    class is one of the four."""
     c = sv.connect()
     c.put(
         "events",
@@ -173,3 +175,16 @@ def test_a_window_over_a_key_has_a_class() -> None:
         assert route.kind == "translated"
         assert route.cls in routes.CLASSES
         assert route.cls == "exact" and route.evidence == "tested"
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_window_sum_of_doubles_is_refused(con, engine) -> None:
+    """The plan's bound leaves out window functions (#1032), so a window
+    `SUM` of doubles was classed `exact` where the engine's sum may differ
+    from the correctly rounded one. Each engine refuses it until the bound
+    covers windows."""
+    r = con.table("readings")
+    report = sv.verify(r.mutate(s=r.x.sum().over(group_by=r.k)), requires=REQ)
+    assert report.proved and report.route(engine).cls == "exact"
+    with pytest.raises(UnsupportedError, match="#1032"):
+        report.run(con, engine)

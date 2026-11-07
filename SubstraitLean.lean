@@ -70,6 +70,7 @@ import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
+import SubstraitLean.Lipschitz
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
@@ -82,3 +83,4 @@ import SubstraitLean.Epsilon
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples
+import SubstraitLean.Refresh

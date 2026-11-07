@@ -4,9 +4,11 @@ What Polars does at each of the core's options
 ([core-semantics.md](../../docs/core-semantics.md)), recorded as facts, one
 JSON document each in [facts/](facts/), in the format of
 [fact.schema.json](../fact.schema.json) (`python -m sverify_dev.facts` checks
-them). They are the evidence a future `Profile.polars` and its row of the
-realizability table are built from. Polars has no profile yet: its backend is
-paused for new features until #271.
+them). They are the evidence `Profile.polars`
+(`SubstraitLean/PolarsProfile.lean`, the profile
+`verify(semantics="polars")` checks under; [Polars as a
+profile](../../docs/core-semantics.md#polars-as-a-profile)) and its row of the
+realizability table are built from.
 
 Polars here is version 2.1.0, the version `python/uv.lock` pins: the Python
 package `polars` 2.1.0 and its Rust crates at tag
@@ -22,15 +24,10 @@ Each fact names the items of the characterization checklist
 
 ## How the facts are judged
 
-As DuckDB's ([../duckdb/README.md](../duckdb/README.md#how-the-facts-are-judged)):
-`Rel.eval` means Substrait's semantics, each function's extension YAML with
-its options; where Substrait leaves a choice open, the reference raises if
-engines disagree on an edge case, and otherwise takes the least surprising
-value every backend can emulate; an engine's profile refines the loose core,
-and its diff against the reference is its row of the realizability table
-([Terminology](../../docs/core-semantics.md#terminology)). A fact's `status` is `open` where Polars differs from
-the reference and the profile has not decided how to bridge it, and
-`no-finding` where Polars gives the reference natively.
+The facts are judged as every engine's are
+([../README.md](../README.md#how-the-facts-are-judged)). A fact's `status` is `open` where Polars differs from the reference
+and the profile has not decided how to bridge it, and `no-finding` where
+Polars gives the reference natively.
 
 ## The probes
 

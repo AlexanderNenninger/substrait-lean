@@ -31,7 +31,7 @@
     "Order class: `FLOAT` values convert exactly to `DOUBLE`, so a `FLOAT` `sum` or `avg` has the class of the double one (duckdb-sum-double, duckdb-avg-double): sequential per state, partials merged in finishing order, a constant run as one product; bound γ_{n−1} Σ|x_i| with u = 2⁻⁵³ on the widened values (Higham §4.2), and the result is a `DOUBLE`, rounded once per step. `fsum`/`favg` are Kahan (duckdb-kahan-sum). For the Lean side: SEQUENTIAL at one thread without constant vectors, ANY otherwise, read on the `fp64` codes of the `fp32` inputs; the round-4 thread runs (one result at 1 thread, several at 8) are the evidence of the tree shape."
   ],
   "reference": [
-    "`sum_order`: any order and grouping, within #85's bound (`FloatSums`); DuckDB's order-dependent sum is one of them.",
+    "`sum_order`: the reference's `SUM` is `floatSumCR`, the exact sum rounded once (D25); DuckDB's order-dependent sum is within the plan's bound (`StdModel.epsilon_sum_cr`).",
     "`nan_creation`: the reference raises on a `SUM` of `+inf` and `-inf` (#257); an error-side option, so DuckDB's NaN is never reached on a plan verified not to raise."
   ],
   "status": "open",

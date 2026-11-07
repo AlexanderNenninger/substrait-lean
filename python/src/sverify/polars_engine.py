@@ -34,7 +34,9 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   reference's (#444): truncating division, `ROUND`'s halves, an empty `SUM`,
   the integer `AVG`, one zero, each sort key's NULL placement and stable
   ties. `SUM` and `AVG` of a group run as Polars's own aggregations, with
-  those shims; `sum_order = ANY` lets Polars add doubles in its own order.
+  those shims; Polars adds doubles in its own order (`sum_order`:
+  `SEQUENTIAL`, `ANY` or `COMPENSATED`), within the plan's bound of the
+  reference's correctly rounded sum (D25).
 * Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
@@ -71,6 +73,7 @@ from sverify import _decimals, _plan_read, _support
 from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import WINDOW_FLOAT_AGG
 from sverify._unsupported import Unsupported as _Unsupported
 
 try:
@@ -1871,10 +1874,10 @@ def _int_output(f: dict) -> bool:
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
 
 
-def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
-    """`Measure.eval` on the values a measure aggregates (NULLs dropped). A
-    double sum of `+∞` and `-∞` raises (#257), except in a window, where the
-    reference still gives NaN."""
+def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
+    """`Measure.eval` on the values a measure aggregates (NULLs dropped), with
+    Polars's profile's choices: doubles added in turn (`SEQUENTIAL`), the
+    variance by Polars. A double sum of `+∞` and `-∞` raises (#257)."""
     if distinct:
         seen: set = set()
         vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
@@ -1917,10 +1920,12 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
             raise InfiniteResult(f"{fn} overflows to infinity")
         return r + 0.0
     if fn in ("fsum", "avg"):
-        if not window and math.inf in vs and -math.inf in vs:
+        if math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
-        for v in vs:  # in list order, with native doubles (`floatSum`)
+        # In list order (`sum_order = SEQUENTIAL`), within the plan's bound of
+        # the reference's `floatSumCR` and `floatAvgCR` (D25).
+        for v in vs:
             acc = acc + v
         if math.isinf(acc) and all(math.isfinite(v) for v in vs):
             # Finite values whose sum overflows (`Measure.makesInf`, #575).
@@ -2077,9 +2082,10 @@ class Measure:
                 shims.max_nan_greatest(r, pl.col(nan)),
             )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
-            # `AggFn.var` (#54) with Polars's algorithm, within the plan's
-            # bound of the exact moments rounded once (D30); a sample of one is
-            # NULL in both. An infinity makes
+            # `AggFn.var` (#54) with Polars's algorithm (`stat_algo =
+            # WELFORD_CHAN`, polars-var-std-streaming), within the plan's bound
+            # of the exact moments rounded once (D30); a sample of one is NULL
+            # in both. An infinity makes
             # a deviation NaN (#257); finite values may overflow (#575).
             ddof = 1 if self.fn.endswith("_samp") else 0
             agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
@@ -2254,7 +2260,7 @@ def python_windows(
                             if v is not None and abs(v) >= 10**f.dtype.precision:  # pyrefly: ignore
                                 raise SumOverflow(f"SUM leaves {f.dtype}")
                         elif f.fn == "agg":
-                            v = _aggregate(f.agg, False, [x for x in vals if x is not None], True)
+                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
                         elif f.fn == "first_value":
                             v = vals[0] if vals else None
                         elif f.fn == "last_value":
@@ -2563,6 +2569,8 @@ class Translator:
             if name in ("min", "max") and t == pl.Float64 and not itof:
                 # By the codes' order: NaN the greatest double, one zero.
                 fn = "f" + name
+            if fn in ("fsum", "avg"):
+                raise Unsupported(WINDOW_FLOAT_AGG)
             out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
                    "fmin": pl.Float64, "fmax": pl.Float64, "iavg": pl.Int64,
                    "bit_and": pl.Int64, "bit_or": pl.Int64, "bit_xor": pl.Int64}  # fmt: skip

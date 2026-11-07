@@ -463,19 +463,22 @@ def _(mo):
     crashes on a row nobody expected, and it pages you. A pipeline that
     quietly writes a wrong number is worse, because nobody gets paged.
 
-    Some operations can fail, and the reference fails on a few more than
-    DataFusion does.
+    Some operations can fail. The reference raises on each of these, and
+    the report lists every one a plan may hit
+    ([Runtime errors](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#runtime-errors)).
 
     * Integer `/` or `%` by zero, and `-9223372036854775808 / -1`, which
       does not fit in 64 bits.
     * `CAST(x AS BIGINT)` of NaN, ±∞ or a huge double, also after `ROUND`.
     * Integer `POWER` with a negative exponent or a huge result.
     * A regular expression that does not compile.
-    * Truncating a timestamp near the ends of its range to a month or year:
-      DataFusion panics or returns garbage.
+    * Truncating a timestamp near the ends of its range to a month or year.
+      DataFusion, which is experimental and outside the
+      [1.x promise](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines), panics or returns garbage there.
     * `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`). The
-      reference raises and DataFusion wraps around (`2⁶² + 2⁶²` gives
-      `-2⁶³`), which an error allows.
+      reference raises, and so do the DuckDB and Polars translations.
+      DataFusion wraps around (`2⁶² + 2⁶²` gives `-2⁶³`), which an error
+      allows.
     * An integer `SUM` leaving 64 bits. Sverify rules it out where the plan
       bounds a group's rows (a `FETCH` count) and `requires` bounds the
       column. Elsewhere it assumes each sum fits, and the job checks it on
@@ -559,8 +562,8 @@ def _(mo):
       so `qty % n` runs on the `n = 0` row (D19 in
       [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md)). The report flags the error inside the
       `AND` and suggests guarding the operation itself with the `CASE` above.
-    * An earlier filter is no guard either. DataFusion's optimizer merges the
-      two filters into one `AND`. Lean models that (`Rel.loose`) and reports
+    * An earlier filter is no guard either. An optimizer may merge the two
+      filters into one `AND`, as DataFusion's does. Lean models that (`Rel.loose`) and reports
       the error.
     * `round(amount)` becomes a cast to `BIGINT`, which fails on `1e30` and
       NaN. Bounding `amount` first makes it safe, because `ROUND` is exact
@@ -741,8 +744,8 @@ def _(mo):
     An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their
     timestamps rarely line up. To train a model on both, each accelerometer
     sample needs the latest gyroscope sample at or before it, and only if
-    that one is recent enough. This is an ASOF join. DataFusion has none, and
-    Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
+    that one is recent enough. This is an ASOF join. Not every engine has one
+    (DataFusion has none), and Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
     from parts Lean understands: a range join, then `ROW_NUMBER` to keep the
     latest match.
 
@@ -814,8 +817,8 @@ def _(mo):
     One row per sample comes from the key analysis: `ROW_NUMBER()` over a
     partition is a key together with the partition columns, and the filter
     `rank = 0` drops the rank from that key. Framed window aggregates
-    (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums are not
-    supported yet.
+    (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums verify too
+    ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/main/README.md#ibis-coverage)).
 
     ## Composing contracts
 
