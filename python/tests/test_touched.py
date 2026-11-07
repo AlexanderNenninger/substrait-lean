@@ -9,7 +9,7 @@ import ibis
 import pyarrow as pa
 import pytest
 
-from _engines import PROFILED_ORDERED
+from _engines import PROFILED, PROFILED_ORDERED
 from _pipelines import recomputed, rows
 from sverify import incremental
 from sverify.io import Changes, StaticSource
@@ -60,8 +60,20 @@ def random_batches(seed, steps=40):
     return first, out
 
 
-@pytest.mark.parametrize("engine", PROFILED_ORDERED)
-@pytest.mark.parametrize("seed", range(3))
+#: Spark loses a NULL-key group in seeds 1 and 2 (#1006).
+NULL_KEY_GROUPS = pytest.mark.xfail(
+    strict=True, reason="Spark's touched-groups refresh loses a NULL-key group (#1006)"
+)
+
+
+@pytest.mark.parametrize(
+    ("seed", "engine"),
+    [
+        (s, e) if not (e == "spark" and s in (1, 2)) else pytest.param(s, e, marks=NULL_KEY_GROUPS)
+        for s in range(3)
+        for e in PROFILED
+    ],
+)
 def test_touched_groups_match_a_full_recompute(seed, engine):
     first, batches = random_batches(seed)
     src = StaticSource(samples(first), name="samples")
@@ -188,7 +200,7 @@ def per_bucket(samples):
     )
 
 
-@pytest.mark.parametrize("engine", PROFILED_ORDERED)
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_time_bucket_key_reads_only_the_touched_range(engine, monkeypatch):
     rng = random.Random(7)
     live: list[tuple[str, int | None, int]] = [
