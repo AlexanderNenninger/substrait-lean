@@ -3,8 +3,8 @@
   "project": "polars",
   "kind": "bug",
   "version": "2.1.0",
-  "status": "confirmed",
-  "status_note": "Reproduces on Polars 2.1.0, the latest release (in-memory and streaming); `prim_wrapping_mod` is unchanged on main (35a2cb73, 2026-11-04), read in the source. No issue on `x % inf`; [pola-rs/polars#30398](https://github.com/pola-rs/polars/issues/30398) (open) reports the same kernel's lost remainder for `1e20 % 3.0`, and the exact-`fmod` fix proposed there would cover this case too.",
+  "status": "duplicate",
+  "status_note": "Covered by [pola-rs/polars#30398](https://github.com/pola-rs/polars/issues/30398) (open): the same kernel, `l - r * floor(l / r)`, loses `1e20 % 3.0`, and the exact-`fmod` fix proposed there also gives Python's result for `x % inf`. Worth a comment there with this case. Reproduces on Polars 2.1.0.",
   "summary": "`%` on floats computes `x - y * floor(x / y)`, so a finite `x % inf` is NaN (`inf * 0`), where Python's `%`, which Polars's `%` follows on integers, gives `x` for positive `x` and `inf` for negative `x`. `x % -inf` and `0.0 % inf` are NaN as well.",
   "repro": "import polars as pl\npl.DataFrame({\"a\": [5.0, -5.0, 0.0], \"b\": [float(\"inf\")] * 3}).select(pl.col(\"a\") % pl.col(\"b\")).to_series().to_list()\n# [nan, nan, nan]; Python: [5.0 % inf, -5.0 % inf, 0.0 % inf] == [5.0, inf, 0.0]",
   "handling": "No Polars profile yet; the characterization records it (polars-double-modulus). A writer for the reference's `fmod` would not use `%` for doubles.",
@@ -30,6 +30,13 @@
         "polars main": "35a2cb73fdf81d89b2117bec152c3530eb3e4146"
       },
       "note": "repros/PL-1.py on 2.1.0 (macOS arm64), in-memory and streaming; main source only: crates/polars-compute/src/arithmetic/float.rs. Duplicate search via gh issue list --state all."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: pola-rs/polars searched; #30398 open"
     }
   ],
   "upstream": [

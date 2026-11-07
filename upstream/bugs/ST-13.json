@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "0.106.0 to main@a4d8e00342d0",
   "status": "confirmed",
-  "status_note": "Still on main (a4d8e00342d0): [variance.test](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/tests/cases/arithmetic/variance.test#L19-L53), [std_dev.test](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/tests/cases/arithmetic/std_dev.test#L19-L53), [multiply.test L16](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/tests/cases/arithmetic/multiply.test#L16), [shift_left.test L8](https://github.com/substrait-io/substrait/blob/a4d8e00342d027560e3534a564a7b55ddba4b8e4/tests/cases/arithmetic/shift_left.test#L8). No existing issue found.",
+  "status_note": "Still on main (ecb826b53abd, 2026-11-05): the two commits since a4d8e00342d0 touch the parsers and CI only. No upstream issue found.",
+  "title": "Thirteen test cases expect values their inputs do not give (`variance`, `std_dev`, `multiply`, `shift_left`)",
   "summary": "Thirteen function test cases expect values their own inputs do not give. `variance` and `std_dev` (eleven cases): the sample variance of -5, -3, -1, 1, 3, 5 is 70 / 5 = 14, the cases say 15.166666666666666; the sample variance of 0, 25, 50, 75, 100 is 1562.5 and the population variance 1250, the cases say 1681.25 and 1345.0; the sample variance of 1.1 … 5.5 is 3.025, the cases say 3.03; the `std_dev` cases are the square roots of the same wrong values. `multiply(-13::i8, -10::i8) [overflow:SATURATE]` is 130, which saturates to 127, and the case says -128. `shift_left(301989888::i64, 8::i32)` is 0x12000000 << 8 = 77309411328, and the case says 19791209299968, a shift by 16.",
   "repro": "[variance.test L19-L20, L44, L52-L53](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/arithmetic/variance.test#L19-L53), [std_dev.test L19-L20, L44-L45, L52-L53](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/arithmetic/std_dev.test#L19-L53), [multiply.test L16](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/arithmetic/multiply.test#L16), [shift_left.test L8](https://github.com/substrait-io/substrait/blob/b5aeda418813f657011bb82dd1300f996525c3ae/tests/cases/arithmetic/shift_left.test#L8). DuckDB 2.0.0: `SELECT var_samp(x), var_pop(x) FROM (VALUES (0.0), (100.0), (50.0), (25.0), (75.0)) t(x)` gives `(1562.5, 1250.0)`; `SELECT var_samp(x) FROM (VALUES (-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) t(x)` gives `14.0`. sverify's model gives the same.",
   "handling": "The cases are triaged `case` in `upstream/substrait-cases.json`: they count as disagreements, and the replay fails only on a disagreement the ledger does not list.",
@@ -24,6 +25,13 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "the cases are the same on main"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "substrait main": "ecb826b53abd"
+      },
+      "note": "triage: main compared; substrait-io/substrait searched"
     }
   ]
 }

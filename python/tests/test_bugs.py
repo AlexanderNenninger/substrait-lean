@@ -71,6 +71,29 @@ def test_validate_finds_problems(tmp_path):
     assert "'fixed_in' is a required property" in problems
     assert "'wontfix' is not one of" in problems
     assert "only Substrait's entries are spec gaps" in problems
+    assert "a bug to report has a title" in problems
+
+
+def test_classify():
+    assert bugs.classify(_bug()) == "report"
+    assert bugs.classify(_bug(status="fixed upstream")) == "fixed"
+    assert bugs.classify(_bug(status="not a bug")) == "not-a-bug"
+    assert bugs.classify(_bug(id="ST-1", project="substrait", kind="spec-gap")) == "spec-gap"
+
+
+def test_report_renders():
+    """`upstream/REPORT.md` renders on this branch: every bug to report has a
+    row, and the classes add up to the ledger. Whether the committed file is
+    current is not checked here: the `Generated files` workflow rewrites it on
+    `main`, so feature branches leave it alone."""
+    docs = bugs.load()
+    text = bugs.render(docs)
+    assert text.startswith("# Upstream report")
+    for b in docs.values():
+        if bugs.classify(b) == "report":
+            assert f"| [{b['id']}](bugs/{b['id']}.json) |" in text
+    (total,) = [line for line in text.splitlines() if line.startswith("| total |")]
+    assert total.endswith(f"| {len(docs)} |")
 
 
 def test_validate_backlog_finds_problems(tmp_path):

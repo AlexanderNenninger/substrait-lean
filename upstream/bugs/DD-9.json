@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.0.0",
   "status": "confirmed",
-  "status_note": "A minor bug in the documentation, confirmed on 2.0.0 (Python, macOS arm64) against https://duckdb.org/docs/2.0/sql/functions/numeric.html; not filed.",
+  "status_note": "A minor bug in the documentation. Reproduces on 2.0.0; the examples are unchanged in duckdb-web's `docs/2.0/sql/functions/numeric.md` on main (cab31bd0, 2026-11-07). No issue in duckdb/duckdb-web.",
+  "title": "Docs: the `pow` and `**` examples show integers, and the result is always `DOUBLE`",
   "summary": [
     "The documentation, not the engine: the numeric functions page (https://duckdb.org/docs/2.0/sql/functions/numeric.html, the operator table and the `pow`/`power` entries) shows `3 ** 4` → `81`, `3 ^ 4` → `81`, `pow(2, 3)` → `8` and `power(2, 3)` → `8`, and never states the result type. The result is always DOUBLE: the function has one signature, `(DOUBLE, DOUBLE) -> DOUBLE` (https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1402-L1408). The same page prints DOUBLE results as `1.0` (`fmod(5, 2)`), so the integer-looking examples suggest an integer power.",
     "Suggested fix: show `81.0` and `8.0`, and say the result is DOUBLE: integer arguments convert, so a BIGINT above 2^53 loses digits and nothing checks integer overflow."
@@ -28,6 +29,14 @@
         "duckdb": "2.0.0"
       },
       "note": "probe on the pinned release and the 2.0 docs; main and the nightly docs not checked"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "duckdb": "2.0.0",
+        "duckdb-web main": "cab31bd0"
+      },
+      "note": "triage: repro run on 2.0.0; docs source read on main"
     }
   ]
 }

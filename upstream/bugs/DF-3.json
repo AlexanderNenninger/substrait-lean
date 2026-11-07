@@ -2,8 +2,8 @@
   "id": "DF-3",
   "project": "datafusion",
   "version": "51",
-  "status": "filed",
-  "status_note": "filed [#22661](https://github.com/apache/datafusion/issues/22661); fixed on main by [#22664](https://github.com/apache/datafusion/pull/22664), on branch-56 for 56.0.0 (unreleased, [#24461](https://github.com/apache/datafusion/issues/24461)); reproduces on 55.0.0",
+  "status": "fixed upstream",
+  "status_note": "filed [#22661](https://github.com/apache/datafusion/issues/22661), closed; fixed on main by [#22664](https://github.com/apache/datafusion/pull/22664), on branch-56 for 56.0.0 (unreleased, [#24461](https://github.com/apache/datafusion/issues/24461)); reproduces on 55.0.0, the latest release (crates.io 55.2.0).",
   "upstream": [
     "https://github.com/apache/datafusion/issues/22661",
     "https://github.com/apache/datafusion/pull/22664",
@@ -35,6 +35,14 @@
         "datafusion core": "55.1.0"
       },
       "note": "reproduces on 51.0.0 and 55.0.0; fix on main and branch-56, no release yet"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "triage: release and issue state checked"
     }
-  ]
+  ],
+  "fixed_in": "56.0.0 (unreleased)"
 }

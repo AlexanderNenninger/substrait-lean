@@ -3,8 +3,8 @@
   "project": "polars",
   "kind": "bug",
   "version": "2.1.0",
-  "status": "confirmed",
-  "status_note": "A bug in the documentation, low priority: the docs are stricter than the code, so a reader who follows them is safe. Reproduces on Polars 2.1.0 (Python, macOS arm64), both engines; the warning is unchanged on main (35a2cb73, 2026-11-04). Related: #25457 (open) asks to clarify that `when-then-otherwise` filters at the end.",
+  "status": "not a bug",
+  "status_note": "not a bug: the docs are stricter than the code, so a reader who follows them is safe, and the masking is pinned by Polars's own tests. The facts below record what the code does. Related: [#25457](https://github.com/pola-rs/polars/issues/25457) (open) asks to clarify the same paragraph.",
   "upstream": [
     "https://github.com/pola-rs/polars/issues/25457"
   ],
@@ -33,6 +33,13 @@
         "polars": "2.1.0"
       },
       "note": "Repro on both engines (POLARS_IDEAL_MORSEL_SIZE=64). Main at 35a2cb73: whenthen.py#L49 and #L80 keep the warning. Duplicate search for \"when then docs computes all expressions\": #25457 (open, related: an aggregation in a branch computed over all rows)."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: classified"
     }
   ]
 }

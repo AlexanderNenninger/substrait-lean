@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "4.3.0",
   "status": "confirmed",
-  "status_note": "Reproduces on Spark 4.3.0 in both ANSI modes, interpreted and codegen. SPARK-54836 (open, 4.1.0) asks for the timestamp's value in the same `ArithmeticException`; it does not ask for an error class. No issue found for the missing class.",
+  "status_note": "Reproduces on Spark 4.3.0, the latest release, in both ANSI modes; main not read. No issue for the missing error class: SPARK-54836 (open) asks for the timestamp's value in the same `ArithmeticException`.",
+  "title": "Timestamp plus interval past the range raises a bare `ArithmeticException`, no error class",
   "summary": "Adding an interval to a timestamp near the end of the microsecond range raises a bare `java.lang.ArithmeticException: long overflow` with no error class or SQLSTATE, where `timestampadd` and date arithmetic raise `DATETIME_OVERFLOW`. Clients that sort errors by class (sverify's runner maps classes to issues) cannot tell it from an internal failure.",
   "repro": "SELECT TIMESTAMP_NTZ'+294247-01-10 04:00:54.775807' + INTERVAL 1 DAY;\n-- java.lang.ArithmeticException: long overflow (no error class), ANSI on or off\nSELECT timestampadd(YEAR, 300000, TIMESTAMP'9999-12-31 23:59:59');\n-- [DATETIME_OVERFLOW] Datetime operation overflow",
   "handling": "No workaround needed for results: the reference raises far earlier (`date_range`, 9999-12-31), so a guarded plan never reaches it. The fix upstream is to wrap the overflow in `DATETIME_OVERFLOW` in `DateTimeUtils.timestampAddInterval`.",
@@ -26,6 +27,13 @@
         "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
       },
       "note": "probe timestamp-overflow, both ANSI modes, folded and codegen. JIRA search for \"timestamp interval long overflow ArithmeticException\": SPARK-54836 only."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "pyspark": "4.3.0"
+      },
+      "note": "triage: repro run on 4.3.0; ASF JIRA searched"
     }
   ]
 }

@@ -4,11 +4,13 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "A bug in the documentation. The engine's behaviour is PL-3. Reproduces on Polars 2.1.0 (Python, macOS arm64); the `truediv` Notes and the user guide's paragraph are unchanged on main (35a2cb73, 2026-11-04). No matching docs issue found on pola-rs/polars (2026-11-04); #23741 and #14596 (closed) discuss the reciprocal's ulp errors, not the docs.",
+  "status_note": "A bug in the documentation. The engine's behaviour (PL-3) was closed as intended on 2026-11-05 ([#30594](https://github.com/pola-rs/polars/issues/30594)), so the `truediv` Notes and the user guide's IEEE 754 claim are what is wrong. Unchanged on main (35a2cb73, 2026-11-04). No docs issue found.",
+  "title": "Docs: float division by a literal or one-row divisor does not follow IEEE 754 as documented",
   "upstream": [
     "https://github.com/pola-rs/polars/issues/23741",
     "https://github.com/pola-rs/polars/issues/14596",
-    "https://github.com/pola-rs/polars/issues/30398"
+    "https://github.com/pola-rs/polars/issues/30398",
+    "https://github.com/pola-rs/polars/issues/30594"
   ],
   "summary": [
     "The documentation says float division follows IEEE 754, and division by a literal or one-row divisor does not. Pages: `Expr.truediv` (https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.truediv.html, py-polars/src/polars/expr/expr.py#L6928-L6933 at py-2.1.0), Notes: \"Zero-division behaviour follows IEEE-754\", with 0/0 NaN and n/0 ±infinity; and the user guide (https://docs.pola.rs/user-guide/concepts/data-types-and-structures/#floating-point-numbers, docs/source/user-guide/concepts/data-types-and-structures.md#L176-L190): Polars \"generally follows the IEEE 754 floating point standard\", with NaN ordering and the sign of zero or NaN as the listed exceptions.",
@@ -41,6 +43,13 @@
         "polars": "2.1.0"
       },
       "note": "Repro on Polars 2.1.0 (macOS arm64). Main at 35a2cb73: expr.py#L6931 still reads \"Zero-division behaviour follows IEEE-754\", the user guide's IEEE paragraph is at data-types-and-structures.md#L178, and `floordiv` still says Polars \"first does the floating-point division\" (expr.py#L6715). Duplicate search for \"truediv reciprocal\", \"division scalar reciprocal precision\", \"division by literal not IEEE\" and \"x / 49.0 0.9999999999999999\": no docs issue."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: pola-rs/polars searched; #30594's state read"
     }
   ]
 }
