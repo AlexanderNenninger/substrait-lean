@@ -18,6 +18,7 @@ import SubstraitLean.Rel
 import SubstraitLean.Kinds
 import SubstraitLean.EvalFast
 import SubstraitLean.Rewrites
+import SubstraitLean.WSet
 import SubstraitLean.Incremental
 import SubstraitLean.Weighted
 import SubstraitLean.Terms
