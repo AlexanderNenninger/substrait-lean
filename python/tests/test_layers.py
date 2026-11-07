@@ -41,6 +41,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_weighted",
             "_hooks",
             "_pipe",
+            "profiles",
         ],
     ),
     ("frontends", ["ibis_substrait", "sql_lift"]),
