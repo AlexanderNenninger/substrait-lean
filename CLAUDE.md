@@ -33,9 +33,9 @@ touches, beside its main change. It can be any of these:
     modules don't count.
 
 Measure it, before and after, and put the numbers in the PR body under
-"Improvement". Count lines, shims, xfails, hypotheses, axioms, public names
-names for one concept or seconds, whichever fits. Keep it in the code the PR already touches, so
-it doesn't collide with other sessions' work. A PR that touches nothing
+"Improvement". Count lines, shims, xfails, hypotheses, axioms, public names,
+names for one concept or seconds, whichever fits. Keep it in the code the
+PR already touches, so it doesn't collide with other sessions' work. A PR that touches nothing
 measurable (docs, facts, ledgers) says so instead.
 
 Behaviour stays the same: an improvement changes no result and weakens no
