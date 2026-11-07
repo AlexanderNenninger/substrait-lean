@@ -75,8 +75,8 @@ which the translation refuses. The shims are proved against the reference in
 Lean, and that each engine matches its profile is tested; both are in
 [engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice).
 
-For now the reference is demonstrated on DuckDB only. New functions run on
-DuckDB, and the other engines refuse them until their lowerings land
+New functions run on DuckDB first, and the other engines refuse them until
+their lowerings land
 ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 
 ## Principles
@@ -217,10 +217,7 @@ zero. Casts are in [Casts](#casts).
 
 DuckDB computes some of these differently (result types, `×` past 18 digits,
 `AVG` as a `DOUBLE`); its translation compensates, see
-[engine-profiles.md](engine-profiles.md#decimals-27). One reporting problem is
-open: `verify` prints a decimal's bound in unscaled units and calls it "an
-integer" ([#250](https://github.com/AlexanderNenninger/substrait-lean/issues/250)).
-The values are right; the rendering is not.
+[engine-profiles.md](engine-profiles.md#decimals-27).
 
 ### NULL
 
@@ -286,7 +283,6 @@ Design notes: [nested-values.md](nested-values.md).
 | Cast | Reference | Status |
 |---|---|---|
 | Out of range (`BIGINT` from a wider value, `i8`…`i32` from a larger integer, a double that is NaN, infinite or out of range) | An error: `FAILURE_BEHAVIOR_THROW_EXCEPTION`. | ✓ (`badCast`) |
-| `RETURN_NULL` (`TRY_CAST`) | NULL instead of an error. | **Not honoured**: `Parse.lean` ignores `failureBehavior` and treats every cast as raising. That is conservative: `verify` reports an error that can't happen, never misses one. [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | Double or decimal to integer | Truncates toward zero. Monotone, so a double's bounds bound the integer: a computed double within its error bound `[x − ε, x + ε]` ([float-bounds.md](float-bounds.md#in-contracts)) casts to `[trunc(x − ε), trunc(x + ε)]`. DuckDB's own cast rounds a double half to even and a decimal half away from zero (`CAST(2.5::DOUBLE AS INTEGER)` is 2, `CAST(2.5 AS INTEGER)` is 3, [duckdb-R9](../characterization/duckdb/facts/duckdb-R9.json)); sverify's SQL truncates a double first, `CAST(trunc(x) AS BIGINT)`. | ✓ (decided on #209) |
 | `TRY_CAST` (`failureBehavior: RETURN_NULL`) | NULL where the cast would raise, and then no error: a double to an integer (NaN, `±∞`, outside 64 bits), an integer to a narrower one, and a string (below). `TRY_CAST` to a DECIMAL and of a DECIMAL to an integer are refused. | ✓ on DuckDB (#58); other engines refuse it until #271 |
 | A string to a BIGINT, DOUBLE, BOOLEAN, DATE or TIMESTAMP | DuckDB's rules ([`duckdb-cast-varchar`](../characterization/duckdb/facts/duckdb-cast-varchar.json)): spaces around dropped; numbers with a sign, fraction and exponent, a BIGINT rounding the exact decimal half away from zero, a DOUBLE correctly rounded; `true`/`t`/`yes`/`y`/`1` and `false`/`f`/`no`/`n`/`0` in any case; dates and timestamps in ISO form. `CAST` raises on a string DuckDB rejects, and is not NULL for a string; `TRY_CAST` is NULL there. A narrower integer is the BIGINT cast down. Black boxes ([Black boxes](#black-boxes)); a string to a DECIMAL is refused (#27). | ✓ on DuckDB ([#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806)); other engines refuse it until #271 |
@@ -306,7 +302,7 @@ Design notes: [nested-values.md](nested-values.md).
 | Topic | Reference | Status |
 |---|---|---|
 | `avg` of integers | Follows the plan's declared output type: `fp64` is the mean as a double, `i64` is Substrait's integer `avg`, truncated toward zero (`AggFn.iavg`). The integer one lies between the smallest and largest value ([#237](https://github.com/AlexanderNenninger/substrait-lean/issues/237)). Any other output type is refused. | ✓ (#209) |
-| `sum` of integers | Returns `i64`; exact, checked at the end ([Errors](#errors)). | ✓ unbounded in `Rel.eval`; check: #255 |
+| `sum` of integers | Returns `i64`; exact, checked at the end ([Errors](#errors)). | ✓ unbounded in `Rel.eval`, checked at `i64` ([#255](https://github.com/AlexanderNenninger/substrait-lean/pull/255)) |
 
 ### Of doubles
 
@@ -395,7 +391,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Aggregates | NULLs are skipped. `COUNT` of no rows is 0, a [black box](#black-boxes) its row's `empty`; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
 | `FIRST` / `LAST` (#55) | The first or last non-NULL value in the aggregate's own `ORDER BY`, NULL without one. Rows tied in the order go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. Without an `ORDER BY` every row ties (any row's value, as in Ibis's `distinct(on=)`), and an engine may take each measure's value from a different row. | ✓ on DuckDB; other engines refuse it until #271 |
 | `FIRST` / `LAST` / `list` in SQL (#810) | DuckDB's `first(x ORDER BY …)`, `last(x …)` and `list(x …)` (`array_agg`) keep NULLs: the lift aggregates `[x]`, never NULL, and takes `first([x])[1]` or `flatten(array_agg([x]))`. `bool_and` and `bool_or` are `MIN` and `MAX` of booleans. | ✓ on DuckDB; other engines refuse it until #271 |
-| `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Without an `ORDER BY` every row ties, and the strings may come in any order. It is determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. A contract sees some string or NULL, and until conditions are proved over every order (D1 in [core-semantics.md](core-semantics.md)) a postcondition over a plan with ties stays unproved. | ✓ on DuckDB; other engines refuse it until #271 |
+| `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Without an `ORDER BY` every row ties, and the strings may come in any order. It is determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. A contract sees some string or NULL, and a postcondition is proved for every order the ties allow ([Ties](#relations)). | ✓ on DuckDB; other engines refuse it until #271 |
 
 ## Windows
 
@@ -414,7 +410,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Operators | `read`, `values`, `filter`, `project`, `emit`, `cross`, inner and left `join`, `semi` and `anti`, `fetch`, `orderBy`, `distinct`, `aggregate` (one grouping set), `window`, `unnest`, `UNION ALL`. | ✓ |
 | Set operations | `UNION ALL` is bag union and `UNION DISTINCT` is `distinct` of it. The SQL lift writes `INTERSECT` and `EXCEPT` as the left rows with (without) an equal right row, NULLs equal, by a semi (anti) join, and `DISTINCT`; with `ALL` it numbers each side's equal rows (`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and joins on the number too, so `m` and `n` copies leave `min(m, n)` and `max(m − n, 0)`. The window has no order, but the rows it ties are equal, so `INTERSECT ALL` and `EXCEPT ALL` are deterministic without keys (`Rel.window_allColumns`). Substrait's `SET_OP_INTERSECTION_*`/`SET_OP_MINUS_*` are not read yet. | ✓ (#344) |
 | Ties | Any order: rows that tie in a sort or a window's order, the rows a `fetch` takes and the rows `FIRST`, `STRING_AGG` and `MODE` take where their order ties (`Rel.OrderAllowed`). Postconditions and keys are proved for every order (`contract_sound_all`, `Rel.keys_sound_all`). `Rel.eval` sorts stably and takes `fetch` rows in list order, the deterministic profile's order ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys, and `str(report)` names each place where they are not; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `deterministic=True` is justified by it. | ✓ |
-| Sort keys | Every key states where NULLs go. The parser reads only `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}` and **refuses** any other direction (unspecified, clustered), so there is no default to choose. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`; the model's `SortKey` has a default of NULLs last only for hand-built values) |
+| Sort keys | A key states where NULLs go with `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}`. A sort relation's key may also leave it open: an `UNSPECIFIED` or missing direction puts NULLs last ([D8](core-semantics.md#d8-the-references-null-order)), and `CLUSTERED` keeps equal keys adjacent with the groups in any order ([D6](core-semantics.md#d6-sort-keys-without-a-null-order)). A window's or a measure's key must state its direction. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`) |
 
 ## Black boxes
 

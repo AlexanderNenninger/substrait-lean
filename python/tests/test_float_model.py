@@ -148,8 +148,10 @@ def test_an_observation_reprs_as_its_call() -> None:
 
 
 def test_a_window_over_a_key_has_a_class() -> None:
-    """`api-critique/tasks/t7_engines.py`: a LAG over a unique key runs on
-    both engines with route `translated`; its class is one of the four."""
+    """`api-critique/tasks/t7_engines.py`
+    (https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/tasks/t7_engines.py):
+    a LAG over a unique key runs on both engines with route `translated`; its
+    class is one of the four."""
     c = sv.connect()
     c.put(
         "events",

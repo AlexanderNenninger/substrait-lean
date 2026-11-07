@@ -147,8 +147,9 @@ reference:
 
   - title: Command line
     desc: >
-      The `sverify` command (`sverify.cli`): `check`, `suggest`, `refresh`
-      and `explain` a pipeline's file from a shell, a CI job or an agent.
+      The `sverify` command (`sverify.cli`): `check` (with `--diff` and
+      `--fix`) and `refresh` a pipeline's file, `explain` a finding's code,
+      and `contract export`, from a shell, a CI job or an agent.
     contents:
       - cli.main
       - cli.discover

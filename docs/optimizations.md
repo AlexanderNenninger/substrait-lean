@@ -11,7 +11,7 @@ by what engines cannot already do. Two of them are implemented and public:
   `substrait-check --shard` and `sverify.engines.run_sharded`
   (`sverify.partition`).
 
-The rest are filed as issues under the roadmap epic #29 (#74–#83).
+The rest were filed as #74–#83, under the closed roadmap epic #29.
 
 ## What engines already do
 
@@ -44,7 +44,7 @@ the checker know that the engine does not?** The checker knows three things:
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Public**, proved: `to_sql(…, guards=False)`, for a plan whose report's internal `_guard_free` holds |
 | 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79), eager aggregation (#80) |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Public**, proved, including split keys (#74): `sverify.engines.run_sharded` |
-| 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
+| 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | Proved, [section 4](#4-partition-and-file-pruning-81) (#81) |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
 
 ## 1. Guard elimination

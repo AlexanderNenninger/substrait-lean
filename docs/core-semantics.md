@@ -1439,6 +1439,11 @@ names the route taken. `semantics=` and an explicit route override the
 choice. The default keeps a plan that verifies somewhere running without the
 user knowing the profiles; the override keeps the choice inspectable.
 
+Amended (2026-11-07): a fourth route, `recheck`, added in
+[#586](https://github.com/AlexanderNenninger/substrait-lean/pull/586), comes
+after the transfer check: the checker proves the contract again under the
+engine's profile (`python/src/sverify/routes.py`).
+
 ### D14. Engine versions
 
 An engine profile is tied to the engine's versions: it records the version,

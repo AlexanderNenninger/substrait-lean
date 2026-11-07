@@ -4,8 +4,11 @@ What open-source Spark does at each of the core's options
 ([core-semantics.md](../../docs/core-semantics.md)), recorded as facts, one
 JSON document each in [facts/](facts/), in the format of
 [fact.schema.json](../fact.schema.json) (`python -m sverify_dev.facts` checks
-them). They are the evidence the Spark profile (#739) and its row of the
-realizability table are built from. Databricks and Photon are out of scope.
+them). They are the evidence `Profile.spark`
+(`SubstraitLean/SparkProfile.lean`, the profile `verify(semantics="spark")`
+checks under; [Spark as a
+profile](../../docs/core-semantics.md#spark-as-a-profile), #739) and its row
+of the realizability table are built from. Databricks and Photon are out of scope.
 
 Spark here is 4.3.0: the Python package `pyspark` 4.3.0, the version
 `python/uv.lock` pins, and its sources at tag
@@ -21,16 +24,10 @@ fact settles. Every row and item is settled.
 
 ## How the facts are judged
 
-As DuckDB's ([../duckdb/README.md](../duckdb/README.md#how-the-facts-are-judged)):
-`Rel.eval` means Substrait's semantics, each function's extension YAML with
-its options; where Substrait leaves a choice open, the reference raises if
-engines disagree on an edge case, and otherwise takes the least surprising
-value every backend can emulate; an engine's profile refines the loose core,
-and its diff against the reference is its row of the realizability table
-([Terminology](../../docs/core-semantics.md#terminology)). A fact's `status`
-is `open` where Spark differs from the reference and the profile has not
-decided how to bridge it, and `no-finding` where Spark gives the reference
-natively under the settings it records.
+The facts are judged as every engine's are
+([../README.md](../README.md#how-the-facts-are-judged)). A fact's `status` is `open` where Spark differs from the reference and
+the profile has not decided how to bridge it, and `no-finding` where Spark
+gives the reference natively under the settings it records.
 
 Spark's behaviour turns on one setting above all: `spark.sql.ansi.enabled`,
 on by default since 4.0 and in sverify's session (`SPARK_CONF` in
@@ -38,7 +35,7 @@ on by default since 4.0 and in sverify's session (`SPARK_CONF` in
 casts and indexes out of range raise, as the reference's defaults do. With
 it off they wrap or give NULL. Every probe runs under both, and each fact
 says what each gives; its `status` judges the ANSI behaviour, the one the
-profile will target. The other settings that change results are in
+profile targets. The other settings that change results are in
 [exec-settings](facts/spark-exec-settings.json).
 
 ## The probes
