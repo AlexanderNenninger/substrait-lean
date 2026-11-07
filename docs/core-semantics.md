@@ -1912,3 +1912,57 @@ in the values, a well-kinded plan's values have their kinds by evaluation, and
 the trusted float axioms (`floatSum_mem`/`floatAvg_mem`/`floatSum_sign`,
 `floatSum_twoPhase` and `floatAvg_twoPhase`) state their premises about
 doubles.
+
+### D31. Double arithmetic is exact, rounded once
+
+Decided 2026-11-07 (#929).
+
+The reference defines +, −, × and ÷ of doubles as the exact result rounded
+once to binary64, to nearest, ties to even, with IEEE 754's rules for
+infinities, NaN and the sign of zero: an exact zero from non-zero operands
+is +0, products and quotients take the XOR of the signs, a non-zero result
+that rounds to zero keeps its sign. The sign of a NaN an operation produces
+is open; an engine fact may pin it per platform. `pow`, the libm functions
+and casts to double are separate decisions. On an IEEE engine no finite
+value changes; the eight float axioms become theorems. Each engine carries
+one fact per platform, binary64 with round to nearest even, no contraction,
+no flush to zero, checked by a differential probe; an engine without it gets
+a shim or a refusal.
+
+The reference observes these results through its own zero and NaN rules
+(ONE_ZERO, #89; `on_division_by_zero`), so its values are unchanged; a
+profile with IEEE `zero_sign` sees the signed result.
+
+In the model (`SubstraitLean/FloatArith.lean`): every finite double is an
+integer multiple of 2⁻¹⁰⁷⁴, so the exact sum, difference and product are
+integers in that unit, the product in 2⁻²¹⁴⁸, and the quotient a fraction of
+two. `ofExactDiv` rounds each, as it rounds D25's sums, to the nearest
+multiple of `ulp = 2^max(e−52, −1074)` with ties by that multiple's parity,
+and to `±∞` at `|q| ≥ 2¹⁰²⁴ · (1 − 2⁻⁵⁴)`. `addI`, `subI`, `mulI` and `divI` are
+IEEE 754's operations on every code, `-0.0` and the negative NaN included.
+The reference has one zero and one NaN (`zero_sign` `ONE_ZERO`, #89), so its
+`fadd`, `fsub`, `fmul` and `fdiv` are these followed by `canon`, and on
+finite operands they are the rounded exact result (`fadd_fin` …).
+
+Consequences:
+
+- `FloatCode.add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled`,
+  `div_scaled_err`, `add_nonneg`, `mul_nonneg` and `div_nonneg` are theorems
+  (#582's axioms). `FloatCode.exp_fin` (libm's `exp`) stays an axiom.
+- `Expr.eval`'s `+ − × ÷`, the double sums and ratios of `Aggregate`,
+  `Window`, `Profile`, `DuckDBSQL`, `AllowedP` and `AllowedNear`, and the
+  interpolation of `QUANTILE_CONT`'s value use them; `contAllowed`'s interval
+  stays, so the quantile's formula stays open. `pow` and `log` keep native
+  doubles (`lift₂`).
+- `FloatArithCheck.lean` checks the operations against native doubles bit
+  for bit, signed zeros included, on edge values, ties and pseudo-random
+  operands at every exponent; and the reference's against `lift₂`, which they
+  replace.
+- The checker computes with integers where it called the FPU, and no
+  `@[implemented_by]` hides the IEEE assumption in its runtime.
+
+Why: native `Float` is opaque to the kernel, so no rounding bound on `x + y`
+or `x · y` was provable, and the checker trusted eight axioms for them. The
+exact definitions make `Rel.eval` on doubles unfold in proofs, which the
+tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
+`x · y`, `x / y`). The trust moves to each engine's fact.
