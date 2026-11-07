@@ -1827,8 +1827,12 @@ observation ignores holds on every result equal to a proved one up to the
 observation (`Expr.robust_of_depends`,
 [Robust.lean](../SubstraitLean/Robust.lean)). A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
-every such result (`Expr.narrow_sound`). Under the plan's bound, a run holds a column a postcondition
-reads to its exact value, and `sv.approx` again allows for the bound.
+every such result (`Expr.narrow_sound`). A postcondition that reads no
+open double sum, on a plan with none or an aggregate over one, is proved on
+every result the reference allows, every order of the sum's additions among
+them (`contract_sound_allowed`), and `CheckedCondition.allowed` says so. One
+that reads the sum is proved of the plan's own order, and `sv.approx` allows
+for the bound.
 
 The bound grows with the row cap and the values: for a `SUM` of `n` values
 of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
