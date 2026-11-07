@@ -203,9 +203,7 @@ TLC_OUT=/tmp/tlc bash models/refresh/check.sh today-zombie-resume && python3 mod
 
 `check.sh` runs every config in `configs/` except the `deep-*` ones (add
 `DEEP=1`, or name them) and fails unless each finds what its first line
-expects. `TLC_WORKERS` (2) and `TLC_HEAP` (2g) set TLC's threads and heap
-per config, and `TLC_JOBS` (1) how many configs run side by side: on a
-4-core runner, 3 take the set from 133 s to 119 s.
+expects. `TLC_WORKERS` (2) and `TLC_HEAP` (2g) set TLC's threads and heap.
 CI runs it in the `refresh-model` job when `models/` changes.
 
 The safety configs fingerprint states by `LogView`: the log only grows, and
