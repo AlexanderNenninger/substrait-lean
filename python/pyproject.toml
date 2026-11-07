@@ -1,7 +1,7 @@
 [project]
 name = "sverify"
 version = "0.7.1"
-description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, DataFusion, Snowflake and Spark"
+description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, Spark and Snowflake"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
 # `LICENSE` is a copy of the repository's, since license files must sit under
@@ -215,11 +215,11 @@ exit $status
 env = { SVERIFY_PROFILE.default = "ci", SVERIFY_CHAOS_EXAMPLES.default = "2000" }
 
 [tool.poe.tasks.test-core]
-help = "Python tests of Lean and DataFusion as the reference (see tests/conftest.py)"
+help = "Python tests of Lean, the producers, and DuckDB as the oracle (see tests/conftest.py)"
 cmd = "pytest -n auto --dist worksteal -m core"
 
 [tool.poe.tasks.test-datafusion]
-help = "Python tests of DataFusion as an engine"
+help = "Python tests of DataFusion, an optional engine outside the 1.x promise"
 cmd = "pytest -n auto --dist worksteal -m datafusion"
 
 [tool.poe.tasks.test-duckdb]

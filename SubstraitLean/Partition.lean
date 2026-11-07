@@ -7,53 +7,28 @@ import SubstraitLean.Keys
 
 A table can be stored in pieces (shards): Delta or Iceberg partitions, files,
 or rows spread over workers. This module proves when a plan can run on each
-shard on its own, with the results combined afterwards.
+shard on its own, with the results combined afterwards. The design, what is
+refused and why, and the 64-bit partial sums are in `docs/optimizations.md`,
+"2. Sharded evaluation"; the bounds on split doubles in
+`docs/float-bounds.md`, "Sharded `SUM` and `AVG`".
 
-* `Rel.eval_sharded`: a plan that is **linear** in the sharded tables
-  (`Rel.linear`) gives the union of its results on the shards:
-  `Q(D₁ ⊎ … ⊎ Dₙ) ~ Q(D₁) ⊎ … ⊎ Q(Dₙ)`. Filters, projections, sorts and
-  unions are linear; a join, semi or anti join is linear when one side reads
-  only broadcast tables (a copy on every shard).
-* **Split keys.** When rows with equal values on some columns of each sharded
-  table are always on the same shard (`Sharding.keyDisj`: a Delta or
-  Iceberg partition column, or a hash of it), more is linear: an aggregate
-  whose `GROUP BY` contains the key, with any measure but the
-  order-dependent `SUM`/`AVG` of doubles, and a `DISTINCT` whose columns
-  contain it (`Rel.keyCols` follows the key through the plan).
-* `twoPhase_correct`: `COUNT`, `SUM` of integers, `MIN` and `MAX` aggregate
-  in two phases. Every shard aggregates its rows by the grouping keys; the
-  partial rows are then grouped again by the keys and combined (`COUNT` by
-  `SUM`, the others by themselves). Both phases skip NULLs, so a group a
-  shard lacks, or whose values are all NULL, changes nothing. `MIN` and
-  `MAX` may be `DISTINCT` (it changes nothing); `COUNT` and `SUM` may be
-  when their argument is the whole split key, so that no value is on two
-  shards (`Measure.SplitOk`).
-* `Rel.eval_algebraic`: algebraic aggregates, a final expression over
-  distributive partials (#245), split the same way, and the final
-  expressions run after combining. The integer `AVG` is a `SUM` and a
-  `COUNT` per shard, then `SUM / COUNT`, when its argument is an integer
-  (`IntArgs`).
-* `Rel.shardSplit_sound`: `Rel.shardSplit` turns a plan into the plan each
-  shard runs and the plan that combines their outputs, with filters,
-  projections and sorts above the aggregate moved to the combining plan.
-
-Refused, because the result depends on how the rows are split:
-
-* `SUM` and `AVG` of doubles: each shard's sum is rounded, so a split rounds
-  differently from the whole's one rounding (D25, `floatSumCR`).
-  `Rel.splitAgg` with `floats` splits them anyway (`floatCombine`), with no
-  theorem: `--shard` reports the result as not proved.
-* `COUNT(DISTINCT x)` and `SUM(DISTINCT x)` unless `x` is the split key: a
-  value in two shards counts once in the whole and twice in the parts.
-* `DISTINCT` without the split key, windows and `FETCH`: they look at rows
-  of other shards.
-
-In this model integer sums are exact. Engines compute them in 64 bits, so
-a partial sum may leave 64 bits when the total does not (a shard of large
-positive values next to one of large negative values). The SQL each dialect
-writes raises instead of wrapping (`Dialect.int_sum`), so two-phase
-evaluation either gives the right answer or fails; `inI64_partial` shows
-that it cannot fail spuriously when all values have the same sign.
+* `Rel.eval_sharded`: a plan linear in the sharded tables (`Rel.linear`)
+  gives the union of its results on the shards,
+  `Q(D₁ ⊎ … ⊎ Dₙ) ~ Q(D₁) ⊎ … ⊎ Q(Dₙ)`. Split keys (`Sharding.keyDisj`,
+  followed through the plan by `Rel.keyCols`) make more plans linear,
+  co-partitioned joins and keyed windows (`windowEval_sharded`) among them.
+* `twoPhase_correct`: `COUNT`, integer `SUM`, `MIN` and `MAX` aggregate in two
+  phases (`Measure.SplitOk` for their `DISTINCT` forms).
+* `Rel.eval_algebraic`: algebraic aggregates (#245), the integer `AVG` among
+  them (`IntArgs`).
+* `Rel.eval_twoPhase`, `Rel.shardSplit_sound`: `Rel.shardSplit` turns a plan
+  into the plan each shard runs and the plan that combines their outputs.
+* `floatSplit_sum`, `floatSplit_avg`: `Rel.splitAgg` with `floats` splits
+  `SUM` and `AVG` of doubles (`floatPartial`, `floatCombine`), within a bound
+  of the whole's one rounding (D25, `floatSumCR`); `--shard` reports the
+  result as not proved.
+* `inI64_partial`: when all values have the same sign, a 64-bit partial sum
+  fits whenever the total does.
 -/
 
 namespace Substrait

@@ -7,7 +7,7 @@ JSON document each in [facts/](facts/), in the format of
 them). They are the evidence `Profile.spark`
 (`SubstraitLean/SparkProfile.lean`, the profile `verify(semantics="spark")`
 checks under; [Spark as a
-profile](../../docs/core-semantics.md#spark-as-a-profile), #739) and its row
+profile](../../docs/engine-profiles.md#spark-as-a-profile), #739) and its row
 of the realizability table are built from. Databricks and Photon are out of scope.
 
 Spark here is 4.3.0: the Python package `pyspark` 4.3.0, the version
