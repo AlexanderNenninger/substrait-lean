@@ -120,6 +120,32 @@ def aggAllowedP (t : ProfileTable) (I : Impl) (gs : List Expr) (ms : List Measur
       Forall2 (fun m v => m.AllowedP t I (groupRows gs rows k I) v) ms vs)
     (dedup (rows.map fun row => groupKey gs row I)) out
 
+/-! ## Windows -/
+
+/-- What a window function may give at `x`, from its partition's rows before
+(`pb`) and after (`pa`) it, under `t`. An order-free aggregate over the frame
+takes its measure's choice (`Measure.AllowedP`), as a grouped aggregate does:
+a double `SUM` or `AVG` any sum `sum_order` allows. Every other window
+function gives its value. The frame's rows come from the window's own
+columns, so the measure reads them with Lean's functions, as
+`WinFn.valueIn` does. -/
+def WinFn.AllowedP (t : ProfileTable) (pb : List Row) (x : Row) (pa : List Row) (f : WinFn)
+    (v : Value) : Prop :=
+  match f with
+  | .agg m sort fr =>
+    if m.orderFree then m.AllowedP t Impl.lean (fr.rows sort pb x pa) v
+    else v = m.eval (fr.rows sort pb x pa)
+  | _ => v = f.valueIn pb x pa
+
+/-- `windowRows` with each function's value one `WinFn.AllowedP` allows. -/
+def windowRowsP (t : ProfileTable) (part : List Nat) (fns : List WinFn) :
+    List Row → List Row → Relation → Prop
+  | _, [], out => out = []
+  | before, x :: after, out => ∃ vs rest, out = (x ++ vs) :: rest ∧
+      Forall2 (fun f v => f.AllowedP t (before.filter (samePart part x)) x
+        (after.filter (samePart part x)) v) fns vs ∧
+      windowRowsP t part fns (before ++ [x]) after rest
+
 /-! ## Sorts -/
 
 /-- The NULL placement a key asks for: none where it leaves it open. -/
@@ -174,7 +200,7 @@ def Rel.AllowedI (t : ProfileTable) (I : Impl) (cat : Catalog) : Rel → Relatio
       | some n => (i.drop off).take n
   | .unionAll a b, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧ out.Perm (x ++ y)
   | .window r part sort fns, out => ∃ i, r.AllowedI t I cat i ∧ ∃ s, s.Perm i ∧
-      s.Pairwise (sortLe sort · · = true) ∧ out.Perm (windowRows part fns [] s)
+      s.Pairwise (sortLe sort · · = true) ∧ ∃ o, out.Perm o ∧ windowRowsP t part fns [] s o
   | .semi a b anti on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row I != anti)
   | .orderBy r keys, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm i ∧ SortedP t keys out
@@ -235,6 +261,20 @@ theorem aggAllowedP.mono {I : Impl} {gs : List Expr} {ms : List Measure} {rows o
   · exact Forall2.imp fun _ _ ⟨vs, hrow, hv⟩ =>
       ⟨vs, hrow, Forall2.imp (fun _ _ => Measure.AllowedP.mono h) hv⟩
 
+theorem WinFn.AllowedP.mono {pb : List Row} {x : Row} {pa : List Row} {f : WinFn} {v : Value} :
+    f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
+  cases f <;> simp only [WinFn.AllowedP] <;> try exact id
+  split
+  · exact Measure.AllowedP.mono h
+  · exact id
+
+theorem windowRowsP.mono {part : List Nat} {fns : List WinFn} :
+    ∀ {before s : List Row} {out : Relation},
+      windowRowsP t part fns before s out → windowRowsP u part fns before s out
+  | _, [], _, ho => ho
+  | _, _ :: _, _, ⟨vs, rest, he, hv, hr⟩ =>
+    ⟨vs, rest, he, Forall2.imp (fun _ _ => WinFn.AllowedP.mono h) hv, windowRowsP.mono hr⟩
+
 theorem SortedP.mono {keys : List SortKey} {out : Relation} :
     SortedP t keys out → SortedP u keys out := fun ⟨cmp, hc, nfs, hn, hcl, hs⟩ =>
   ⟨cmp, hc, nfs, Forall2.imp (fun _ _ hk => h _ _ _ _ hk) hn,
@@ -256,7 +296,8 @@ theorem Rel.AllowedI.mono {I : Impl} {cat : Catalog} :
   | .semi _ _ _ _, _, ⟨x, y, hx, hy, ho⟩ | .join _ _ .inner _, _, ⟨x, y, hx, hy, ho⟩
   | .join _ _ .left _, _, ⟨x, y, hx, hy, ho⟩ =>
     ⟨x, y, Rel.AllowedI.mono hx, Rel.AllowedI.mono hy, ho⟩
-  | .window _ _ _ _, _, ⟨i, hi, ho⟩ => ⟨i, Rel.AllowedI.mono hi, ho⟩
+  | .window _ _ _ _, _, ⟨i, hi, s, hs, hsort, o, hp, ho⟩ =>
+    ⟨i, Rel.AllowedI.mono hi, s, hs, hsort, o, hp, windowRowsP.mono h ho⟩
   | .orderBy _ _, _, ⟨i, hi, hp, hs⟩ => ⟨i, Rel.AllowedI.mono hi, hp, SortedP.mono h hs⟩
   | .aggregate _ _ _, _, ⟨i, hi, o, hp, ha⟩ =>
     ⟨i, Rel.AllowedI.mono hi, o, hp, aggAllowedP.mono h ha⟩
@@ -343,6 +384,43 @@ theorem aggAllowedP_reference (gs : List Expr) (ms : List Measure) (rows out : R
   · exact forall₂_iff fun k row => exists_congr fun vs => and_congr_right fun _ =>
       forall₂_iff fun m v => Measure.allowedP_reference m _ v
 
+/-- An order-free measure allows only its value. -/
+theorem Measure.allowed_iff {m : Measure} (hm : m.orderFree = true) (rows : Relation) (v : Value) :
+    m.Allowed rows v ↔ v = m.eval rows := by
+  refine ⟨Measure.allowed_eq hm, fun h => h ▸ ?_⟩
+  -- As `Measure.eval_allowed`, through `AggFn.allowed_iff`: no measure's axioms.
+  by_cases hs : m.fn.sorts = true
+  · refine ⟨rows.mergeSort (sortLe m.sort), List.mergeSort_perm _ _, fun _ =>
+      List.pairwise_mergeSort (sortLe_totalPre _).trans (sortLe_totalPre _).total rows, ?_⟩
+    rw [Measure.eval_sorts hs]; exact (AggFn.allowed_iff hm _ _).mpr rfl
+  · refine ⟨rows, .refl _, fun h => absurd h hs, ?_⟩
+    rw [Measure.eval_eq (by simpa using hs)]; exact (AggFn.allowed_iff hm _ _).mpr rfl
+
+theorem WinFn.allowedP_reference (pb : List Row) (x : Row) (pa : List Row) (f : WinFn)
+    (v : Value) : f.AllowedP Profile.reference.table pb x pa v ↔ v = f.valueIn pb x pa := by
+  cases f <;> simp only [WinFn.AllowedP, WinFn.valueIn]
+  split
+  · next hm => rw [Measure.allowedP_reference, Measure.allowed_iff hm]
+  · exact Iff.rfl
+
+theorem windowRowsP_reference (part : List Nat) (fns : List WinFn) :
+    ∀ (before s : List Row) (out : Relation),
+      windowRowsP Profile.reference.table part fns before s out ↔
+        out = windowRows part fns before s
+  | _, [], _ => Iff.rfl
+  | before, x :: after, out => by
+    simp only [windowRowsP, windowRows]
+    have hv : ∀ vs, Forall2 (fun f v => f.AllowedP Profile.reference.table
+        (before.filter (samePart part x)) x (after.filter (samePart part x)) v) fns vs ↔
+        vs = fns.map (·.value part before after x) := fun vs =>
+      (forall₂_iff fun f v => WinFn.allowedP_reference _ _ _ f v).trans
+        ⟨eq_map_of_forall₂, fun h => h ▸ forall₂_map_self fns fun _ _ => rfl⟩
+    constructor
+    · rintro ⟨vs, rest, rfl, h1, h2⟩
+      rw [(hv vs).mp h1, (windowRowsP_reference part fns _ after rest).mp h2]
+    · rintro rfl
+      exact ⟨_, _, rfl, (hv _).mpr rfl, (windowRowsP_reference part fns _ after _).mpr rfl⟩
+
 theorem NullOk.reference (k : SortKey) (nf : Bool) :
     NullOk Profile.reference.table k nf ↔ nf = k.firstNulls := by
   unfold NullOk SortKey.nullPrefs SortKey.firstNulls
@@ -387,7 +465,9 @@ theorem Rel.allowedI_reference (cat : Catalog) :
   | .fetch r _ _, _ => exists_congr fun i => and_congr_left' (Rel.allowedI_reference cat r i)
   | .unionAll a b, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
-  | .window r _ _ _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
+  | .window r part _ fns, out => by
+    simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r,
+      windowRowsP_reference part fns, exists_eq_right]
   | .semi a b _ _, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]

@@ -172,4 +172,7 @@ def test_a_window_over_a_key_has_a_class() -> None:
         route = report.routes[engine]
         assert route.kind == "translated"
         assert route.cls in routes.CLASSES
-        assert route.cls == "exact" and route.evidence == "tested"
+        # The window's sort keys are options the plan meets (#1032): the
+        # evidence is that of the engine's row for their NULL placement.
+        assert route.cls == "exact"
+        assert route.evidence == ("tested" if engine == "duckdb" else "proved")
