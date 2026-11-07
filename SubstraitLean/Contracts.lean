@@ -1980,7 +1980,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
       simp_all [Bound.ge, Bound.Mem, AVal.Mem, AVal.MemNum] <;> omega
   all_goals
     mem_cases h with i b hb hi <;> (try cases k) <;>
-      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt, NumKind.val]
+      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, NumKind.val]
 
 theorem arith_sound {tbl : NumKind → NumKind → Option NumKind} {op : Bound → Bound → Bound}
     {f : Int → Int → Int}
@@ -2259,7 +2259,7 @@ theorem pickAbs_other_right {both : Bound → Bound → Bound} {a b : AVal} {w :
 theorem AVal.nonInt_of_other {a : AVal} {w : Value} (h : a.Mem w) (hw : w.numOf? = none) :
     a.nonInt = true := by
   cases w <;> simp_all [AVal.Mem, AVal.nonInt, Value.numOf?]
-  all_goals (rename_i b; cases b <;> simp_all [AVal.Mem])
+  all_goals (rename_i b; cases b <;> simp_all)
 
 theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Value → Bool}
     (hboth : ∀ {x y : Bound} {i j : Int} (k : NumKind), x.Mem i → y.Mem j →
@@ -2765,12 +2765,12 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     (try simp_all [BinFn.abs, BinFn.apply, AVal.Mem, AVal.nonStr, AVal.nonInt, Bound.Mem,
       Text.strpos_nonneg, Text.strpos_le, Text.capped_le, Text.capped_nat_nonneg, NumKind.val,
       AVal.MemNum, AVal.nonNum])
-    all_goals sorry
+    all_goals first | (split <;> simp_all) | (cases hbn : b.nk <;> simp_all)
   case eq => exact eqAbs_sound ha hb
   case lt => exact ltAbs_sound ha hb
   all_goals
     mem_cases₂ ha hb <;> (try cases k) <;> (try cases k') <;>
-    try simp_all [BinFn.abs, BinFn.apply, and3, or3, AVal.Mem, AVal.nonBool, AVal.nonInt,
+    try simp_all [BinFn.abs, BinFn.apply, and3, or3, AVal.Mem, AVal.nonBool,
       NumKind.val, AVal.MemNum]
 
 theorem Value.eq_true_of_isTrue {v : Value} (h : v.isTrue = true) : v = .bool true := by
@@ -3180,13 +3180,13 @@ theorem eq_true_same {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) :
 theorem lt_fields_ord {v w : Value} (h : (BinFn.apply .lt v w).isTrue = true) :
     v.isOrd = true ∧ w.isOrd = true := by
   cases v <;> cases w <;> first | exact ⟨rfl, rfl⟩ |
-    (simp_all [BinFn.apply, Value.isTrue, Value.isOrd, Value.numPair]; done)
+    (simp_all [BinFn.apply, Value.isTrue, Value.numPair]; done)
 
 theorem not_lt_fields_ord {v w : Value}
     (h : (UnFn.apply .not (BinFn.apply .lt v w)).isTrue = true) :
     v.isOrd = true ∧ w.isOrd = true := by
   cases v <;> cases w <;> first | exact ⟨rfl, rfl⟩ |
-    (simp_all [BinFn.apply, UnFn.apply, Value.isTrue, Value.isOrd, Value.numPair]; done)
+    (simp_all [BinFn.apply, UnFn.apply, Value.isTrue, Value.numPair]; done)
 
 theorem nonNullOrd_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : v.isOrd = true) :
     a.nonNullOrd.Mem v := by
@@ -3224,7 +3224,7 @@ theorem not_isNull_arith {f : BinFn} (hf : f = .add ∨ f = .sub ∨ f = .mul) {
 
 theorem not_isTrue_eq {r : Value} (h : (UnFn.apply .not r).isTrue = true) : r = .bool false := by
   cases r <;> simp_all [UnFn.apply, Value.isTrue]
-  rename_i b; cases b <;> simp_all [UnFn.apply, Value.isTrue]
+  rename_i b; cases b <;> simp_all
 
 theorem or3_eq_false {v w : Value} (h : or3 v w = .bool false) :
     v = .bool false ∧ w = .bool false := by
@@ -5418,14 +5418,14 @@ theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
         rw [hu, hw, BinFn.lt_vals] at hbase ⊢
         split
         · rename_i hkk; subst hkk
-          rw [ite_cond_eq_true _ _ (eq_self k)] at hbase
+          rw [ite_eq_left_of_eq_true _ _ (eq_self k)] at hbase
           have hm := termDiff_sound hd hfs hu hw
           by_cases hlt : u < w
           · simp only [hlt, decide_true, AVal.Mem] at hbase ⊢
             simp [hbase, canLt_of_lt hm (Bound.mem_exact 0) (by omega)]
           · simp only [hlt, decide_false, AVal.Mem] at hbase ⊢
             simp [hbase, canGe_of_le hm (Bound.mem_exact 0) (by omega)]
-        · rename_i hkk; rw [ite_cond_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
+        · rename_i hkk; rw [ite_eq_right_of_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
       | none =>
         rw [Value.numOf?_some hva, BinFn.cmp_num_other (.inr rfl) k u hvb] at hbase ⊢; exact hbase
     | none =>
@@ -5459,7 +5459,7 @@ theorem eqSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
       rw [hu, hw, BinFn.eq_vals] at hbase ⊢
       split
       · rename_i hkk; subst hkk
-        rw [ite_cond_eq_true _ _ (eq_self k)] at hbase
+        rw [ite_eq_left_of_eq_true _ _ (eq_self k)] at hbase
         have hm := termDiff_sound hd hfs hu hw
         by_cases huw : u = w
         · subst huw
@@ -5469,7 +5469,7 @@ theorem eqSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
         · have hne : (u == w) = false := by simpa using huw
           simp only [hne, AVal.Mem] at hbase ⊢
           simp [hbase, canNe_of_ne hm (Bound.mem_exact 0) (by omega)]
-      · rename_i hkk; rw [ite_cond_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
+      · rename_i hkk; rw [ite_eq_right_of_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
     | none =>
       rw [Value.numOf?_some hva, BinFn.cmp_num_other (.inl rfl) k u hvb] at hbase ⊢; exact hbase
   | none =>
