@@ -427,6 +427,7 @@ open Lean in
 run_cmd do
   for thm in ["FloatBounds.StdModel.epsilon_sum", "FloatBounds.StdModel.epsilon_avg",
       "FloatBounds.StdModel.epsilon_sum_rel", "FloatBounds.StdModel.epsilon_avg_rel",
-      "FloatBounds.StdModel.epsilon_sum_cr", "FloatBounds.StdModel.epsilon_avg_cr"] do
+      "FloatBounds.StdModel.epsilon_sum_cr", "FloatBounds.StdModel.epsilon_avg_cr",
+      "FloatBounds.StdModel.TreeSum.sign", "FloatBounds.StdModel.TreeSum.avg_sign"] do
     unless (← getEnv).contains thm.toName do
       throwError "no theorem {thm}"
