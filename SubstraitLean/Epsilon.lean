@@ -546,6 +546,40 @@ def rowsExactByEngine (input : Json) (engines : List String) : Except String Jso
   let T := Rel.keyedWindows cat A F (fun _ => [])
   return Json.mkObj <| engines.map fun e => (e, toJson (rowsExact e cat A F T root))
 
+/-- Why a window aggregate of doubles has no bound, and what lifts it. -/
+def windowUnbounded : String :=
+  "a window aggregate of doubles: no bound yet (#1032)"
+
+/-- Does a window function give a double that may differ between engines: a
+`SUM`, `AVG` or statistical aggregate of doubles over a frame (#1032)? -/
+def openDouble : WinFn → Bool
+  | .agg m _ _ => match m.fn with
+    | .fsum | .avg | .var _ _ | .cov _ | .corr | .quantile true _ _ => true
+    | _ => false
+  | _ => false
+
+/-- The output columns that read a window aggregate of doubles: a copy of
+one, or a value computed from one (#1032). They have no bound here. -/
+def windowCols (cat : Catalog) : Rel → List Bool
+  | .read t => List.replicate (cat t).arity false
+  | .values n _ => List.replicate n false
+  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => windowCols cat r
+  | .emit r m => let s := windowCols cat r; m.map (s.getD · false)
+  | .project r es => let s := windowCols cat r; s ++ es.map (reading s)
+  | .window r _ _ fns => let s := windowCols cat r
+    s ++ fns.map fun f => openDouble f || match f with
+      | .agg m _ _ => reading s m.arg
+      | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+        s.getD c false
+      | _ => false
+  | .cross a b | .join a b _ _ => windowCols cat a ++ windowCols cat b
+  | .semi a _ _ _ => windowCols cat a
+  | .unionAll a b => (windowCols cat a).zipWith (· || ·) (windowCols cat b)
+  | .aggregate r gs ms => let s := windowCols cat r
+    gs.map (reading s) ++ ms.map fun m => reading s m.arg
+where
+  reading (s : List Bool) (e : Expr) : Bool := (ShardCheck.reads e).any (s.getD · false)
+
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
 `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}`.
@@ -577,8 +611,15 @@ def epsilon (input : Json) : Except String Json := do
   let F := fun t => (preOf t).flatMap Expr.factsOf
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
-  let some (r, gs, ms) := findAggregate root | return Json.mkObj []
-  let some (srcs, _) := colSrcs plan.root | return Json.mkObj []
+  -- A column that reads a window aggregate of doubles has no bound (#1032).
+  let wins := windowCols cat root
+  let winNames := if plan.names.length == wins.length then plan.names
+    else (List.range wins.length).map (s!"#{·}")
+  let winCols := (winNames.zip wins).filterMap fun (name, w) =>
+    if w then some (name, Json.mkObj [("abs", Json.null), ("why", toJson windowUnbounded)])
+    else none
+  let some (r, gs, ms) := findAggregate root | return Json.mkObj winCols
+  let some (srcs, _) := colSrcs plan.root | return Json.mkObj winCols
   let T := Rel.keyedWindows cat A F (fun _ => [])
   let env := r.aeval cat A F T
   -- The measure's values, rows and groups are the same on every engine.
@@ -599,7 +640,7 @@ def epsilon (input : Json) : Except String Json := do
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
-  return Json.mkObj cols
+  return Json.mkObj (cols.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols)
 
 /-! ## The dependency report of a contract
 
@@ -709,7 +750,7 @@ def liveReads (cat : Catalog) : Rel → List Nat → List Read
     on.reads ++ joinReads ++ liveReads cat a (refs.filter (· < na)) ++
       liveReads cat b ((refs.filter (na ≤ ·)).map (· - na))
   | .fetch r _ _, live => liveReads cat r live
-  | .window r _ _ _, _ => liveReads cat r (List.range (r.arity cat))
+  | .window r _ _ fns, _ => fns.flatMap WinFn.reads ++ liveReads cat r (List.range (r.arity cat))
   | .orderBy r keys, live => sortReads keys ++ liveReads cat r (live ++ keys.map (·.col))
   | .distinct r, _ => keyReads ++ liveReads cat r (List.range (r.arity cat))
   | .unnest r c, live => liveReads cat r (live ++ [c])
