@@ -534,6 +534,19 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     call (fn "lt") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b]
   | .bin .eq (.un (.dkind _ _) a) (.un (.dkind _ _) b) =>
     call (fn "equal") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b]
+  -- One side tagged: the other is a decimal at the common scale already.
+  | .bin .lt (.un (.dkind _ _) (.bin .dmul a (.lit (.int n)))) b =>
+    decimalCompare 8 n true (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .eq (.un (.dkind _ _) (.bin .dmul a (.lit (.int n)))) b =>
+    decimalCompare 7 n true (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .lt a (.un (.dkind _ _) (.bin .dmul b (.lit (.int n)))) =>
+    decimalCompare 8 n false (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .eq a (.un (.dkind _ _) (.bin .dmul b (.lit (.int n)))) =>
+    decimalCompare 7 n false (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .lt (.un (.dkind _ _) a) b | .bin .lt a (.un (.dkind _ _) b) =>
+    call (fn "lt") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b]
+  | .bin .eq (.un (.dkind _ _) a) b | .bin .eq a (.un (.dkind _ _) b) =>
+    call (fn "equal") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b]
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .time a)])]
