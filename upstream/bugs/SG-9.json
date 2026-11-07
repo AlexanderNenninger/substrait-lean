@@ -3,7 +3,8 @@
   "project": "sqlglot",
   "version": "30.22.0",
   "status": "confirmed",
-  "status_note": "confirmed on the pinned release; not filed yet",
+  "status_note": "Reproduces on 30.30.0, the latest release; main (b99f5d58b1, 2026-11-07) has no `EXPORT_STATE` in the DuckDB dialect or the parser, read in the source. No upstream issue found.",
+  "title": "DuckDB: `agg(x) EXPORT_STATE` parses as the column alias `EXPORT_STATE`",
   "summary": "DuckDB's `agg(x) EXPORT_STATE` modifier parses as the column alias `EXPORT_STATE` of the aggregate's value.",
   "repro": "`sqlglot.parse_one(\"SELECT sum(i) EXPORT_STATE FROM t\", read=\"duckdb\")` gives `Alias(this=Sum(i), alias=EXPORT_STATE)`; DuckDB returns the aggregate's state (a struct), not its value.",
   "handling": "The lift refuses an unquoted alias named EXPORT_STATE (`sql_lift._base._check_export_state`).",
@@ -23,6 +24,14 @@
         "duckdb": "2.0.0"
       },
       "note": "repro on the pinned release"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "sqlglot": "30.30.0",
+        "sqlglot main": "b99f5d58b1"
+      },
+      "note": "triage: repro run on 30.30.0; main read; tobymao/sqlglot searched"
     }
   ],
   "upstream": []

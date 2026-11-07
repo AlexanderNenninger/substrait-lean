@@ -3,7 +3,8 @@
   "project": "ibis",
   "version": "12.0.0",
   "status": "confirmed",
-  "status_note": "Reproduces on 12.0.0 with DuckDB 2.0.0. Not yet checked against Ibis main.",
+  "status_note": "Reproduces on 12.0.0 with DuckDB 2.0.0 (DuckDB raises once the table has rows); `visit_WindowFunction` on Ibis main (6d40f963) still writes the signed offset. No upstream issue: [#8694](https://github.com/ibis-project/ibis/issues/8694) (closed 2024) made Ibis keep the sign of a range bound, which is what writes `-1 following`.",
+  "title": "A negative `following` or `preceding` writes `-1 following`, which DuckDB refuses",
   "summary": "`ibis.window(preceding=10, following=-1)` compiles to `ROWS BETWEEN 10 preceding AND -1 following`. The SQL standard and DuckDB take only non-negative offsets, so DuckDB refuses the query; the signed offset means `1 PRECEDING`.",
   "repro": "For `t = ibis.table({'s': 'string', 'm': 'timestamp', 'v': 'int64'}, name='t')`, `ibis.to_sql(t.mutate(a=t.v.mean().over(ibis.window(group_by='s', order_by='m', preceding=10, following=-1))), dialect='duckdb')` writes `ROWS BETWEEN 10 preceding AND -1 following`, and DuckDB raises `Invalid Input Error: Window ROWS FOLLOWING expression cannot be negative`. `preceding=-2` writes `-2 preceding` likewise.",
   "handling": "sverify's Ibis producer reads a negative constant offset as the same number of rows on the other side (`following=-1` is `1 PRECEDING`, `windows._bound`), so the catalogue's `fin-volume-spike` verifies and runs; its `native` status (Ibis's own DuckDB SQL) stays an error.",
@@ -22,6 +23,18 @@
         "duckdb": "2.0.0"
       },
       "note": "ibis.to_sql and DuckDB's error, from the catalogue probe"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "ibis main": "6d40f963",
+        "duckdb": "2.0.0"
+      },
+      "note": "triage: repro run on 12.0.0; main read; ibis-project/ibis searched"
     }
+  ],
+  "upstream": [
+    "https://github.com/ibis-project/ibis/issues/8694"
   ]
 }
