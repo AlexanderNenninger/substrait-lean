@@ -1280,7 +1280,8 @@ def _root_.Substrait.Expr.floorModOf (a b : Expr) : Expr :=
 
 A NaN dividend stays NaN (`on_domain_error` = `NAN`). `NULL` stays `NULL`. -/
 def divByZero (mode : String) (float : Bool) (div : Expr → Expr → Expr) (a b : Expr) : Expr :=
-  let lit (i : Int) : Expr := .lit (.int i)
+  -- Constants of the operands' kind: a double's code, or an integer (#923).
+  let lit (i : Int) : Expr := .lit (if float then .float i else .int i)
   let nan := lit FloatCode.nan
   let byZero : Expr := match mode with
     | "IEEE" => .ifThen (.bin .eq a nan) nan

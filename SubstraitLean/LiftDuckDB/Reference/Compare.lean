@@ -119,13 +119,13 @@ theorem Substrait.liftReference.signDouble_agree : ∀ (x : Substrait.Value),
           (Substrait.Expr.bin Substrait.BinFn.and
             (Substrait.Expr.un Substrait.UnFn.not
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
-            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
+            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
               (Substrait.Expr.field 0)))
           (Substrait.Expr.lit (Substrait.Value.int 1))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int 0)))
+              (Substrait.Expr.lit (Substrait.Value.float 0)))
             (Substrait.Expr.lit (Substrait.Value.int (-1)))
             (Substrait.Expr.ifThen
               (Substrait.Expr.un Substrait.UnFn.not
@@ -140,13 +140,13 @@ abbrev Substrait.liftReference.signDouble : Substrait.LiftEntry Substrait.Semant
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.un Substrait.UnFn.not
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
-    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
+    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
       (Substrait.Expr.field 0)))
   (Substrait.Expr.lit (Substrait.Value.int 1))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int 0)))
+      (Substrait.Expr.lit (Substrait.Value.float 0)))
     (Substrait.Expr.lit (Substrait.Value.int (-1)))
     (Substrait.Expr.ifThen
       (Substrait.Expr.un Substrait.UnFn.not

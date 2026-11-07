@@ -220,6 +220,18 @@ theorem DuckDBSQL.ref_ffloor_float (c : Int) :
     Profile.reference.un .ffloor (.float c) = .ok (.float (FloatCode.floor c)) := rfl
 theorem DuckDBSQL.ref_ffloor_null : Profile.reference.un .ffloor .null = .ok .null := rfl
 
+/-- A `SUM` of integers is an integer (`sumOf`). -/
+theorem DuckDBSQL.sumOf_int_vals {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v = .int i) :
+    sumOf vs = .int (intSum vs) := by
+  rcases sumOf_cases vs with ⟨s, h1, _⟩ | ⟨_, e⟩
+  · exfalso
+    simp only [allDecOf, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at h1
+    obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil vs h1.1
+    have hd := List.all_eq_true.mp h1.2 w hw
+    obtain ⟨i, rfl⟩ := h w hw
+    simp [Value.isDecOf] at hd
+  · exact e
+
 theorem DuckDBSQL.apply_eq_int (a b : Int) : BinFn.apply .eq (.int a) (.int b) = .bool (decide (a = b)) := rfl
 theorem DuckDBSQL.apply_lt_int (a b : Int) : BinFn.apply .lt (.int a) (.int b) = .bool (decide (a < b)) := rfl
 theorem DuckDBSQL.apply_eq_float (a b : Int) :

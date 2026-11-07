@@ -666,19 +666,25 @@ def aggTac (_defs : Array Name) : TermElabM Syntax := do
     ``Lowering.ref_lt, ``Lowering.ref_not, ``Lowering.ref_isNull, ``DuckDBSQL.apply_eq_int,
     ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``Value.isTrue, ``decide_false, ``Bool.not_false]
   `(tactic| (
-    intro vs _
+    intro vs hvs
     simp only [List.map_cons, List.map_nil, Measure.eval, Measure.inputs, Measure.kept,
       List.map_map, Function.comp_def, Substrait.Expr.eval, List.getD_cons_zero, List.map_id',
       DuckAgg.eval, Bool.false_eq_true, ite_false]
+    -- The values of a `BIGINT` column are integers (or NULL, left out).
+    have hint : ∀ v ∈ List.filter (fun x => x != Value.null) vs, ∃ i, v = .int i := fun v hv => by
+      obtain ⟨h1, h2⟩ := List.mem_filter.mp hv
+      have := hvs v h1
+      cases v <;> simp_all [DuckType.Has, DuckAgg.arg]
     first
       | (simp only [Substrait.Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
          exact Outcome.agree_refl _)
-      | (generalize List.filter (fun x => x != Value.null) vs = xs
+      | (generalize List.filter (fun x => x != Value.null) vs = xs at hint
          cases xs with
          | nil => simp [$ev,*]
          | cons x xs =>
            have hne := FloatCode.ofInt_ne_zero (i := ((xs.length + 1 : Nat) : Int)) (by omega)
-           simp only [$ev,*, hne, decide_false])))
+           have hsum := DuckDBSQL.sumOf_int_vals hint
+           simp only [$ev,*, hne, hsum, decide_false])))
 
 open Tactic in
 @[tactic liftAggTac] def evalLiftAgg : Tactic := fun _ => do
