@@ -35,6 +35,7 @@ and that the input rows meet the contract's preconditions.
 | Each engine profile refines the core | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
+| A narrowed postcondition proved on every order holds on every allowed result of a plan whose open double sums nothing reads to choose rows (`Rel.FloatOpenSafe`): one without open measures, or an aggregate over one | `contract_sound_allowed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
@@ -53,7 +54,7 @@ and that the input rows meet the contract's preconditions.
 | Contracts compose across a pipeline | `Rel.stack_sound`, `Rel.chain_sound` | `Compose.lean` |
 | The rows quarantine keeps meet every precondition and key | `Catalog.kept_sound`, `kept_pre`, `kept_keys` | `Quarantine.lean` |
 | Rewrites from contract facts and keys keep the result | `Rel.optimize_sound` | `Semantic.lean` |
-| A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum`, `StdModel.epsilon_avg`, `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
+| A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum_cr`, `StdModel.epsilon_avg_cr` (against the reference's correctly rounded value, D25), `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
 | Sharded double sums are near the sequential sum | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
 
 `Examples.lean` prints the axioms of the main theorems with
@@ -75,8 +76,8 @@ engines is trusted, and kept small:
   they call the checkers and print JSON.
 - The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
   and its siblings (`Float.lean`), `FloatCode.exp_fin` (`Safety.lean`),
-  `floatSum_mem`, `floatAvg_mem`, `floatSum_sign` (`Aggregate.lean`),
-  `floatSum_twoPhase`, `floatAvg_twoPhase` (`Partition.lean`) and
+  `floatSum_mem`, `floatAvg_mem`, `floatSum_sign` (`Aggregate.lean`, no
+  longer used since D25, retired by #916) and
   `varOf_props`, `covOf_props`, `corrOf_props` (`StatProps.lean`).
   `float-bounds/` proves them over the reals for the standard model of
   rounding (`StdModel.core_sum`, `StdModel.core_avg` in `Core.lean`), and
@@ -188,6 +189,7 @@ generators, then the trusted reading and writing.
 | `Observations.lean` | Observations and classes against the reference |
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
+| `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |

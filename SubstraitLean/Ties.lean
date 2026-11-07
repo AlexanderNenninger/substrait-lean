@@ -14,8 +14,9 @@ deterministic profile, which fixes them.
 
 `Rel.OrderAllowed` (`OrderAllowed.lean`) holds the results of every such
 order. It is `Rel.Allowed` with every other choice taken as `Rel.eval` takes
-it: a double `SUM` or a statistical aggregate keeps `Rel.eval`'s value, so
-`sum_order` and `stat_algo` stay with `Rel.Allowed` and #85's bounds.
+it: a statistical aggregate keeps `Rel.eval`'s value, so `stat_algo` stays
+with `Rel.Allowed` and #85's bounds. A double `SUM` or `AVG` is no choice
+(D25): the exact sum rounded once, whatever the order of the rows.
 
 * `Rel.orderAllowed_allowed`: each order's result is one `Rel.Allowed`
   allows; `Rel.eval_orderAllowed` (`OrderAllowed.lean`): `Rel.eval`'s is one

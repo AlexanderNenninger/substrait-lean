@@ -1827,8 +1827,13 @@ observation ignores holds on every result equal to a proved one up to the
 observation (`Expr.robust_of_depends`,
 [Robust.lean](../SubstraitLean/Robust.lean)). A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
-every such result (`Expr.narrow_sound`). Under the plan's bound, a run holds a column a postcondition
-reads to its exact value, and `sv.approx` again allows for the bound.
+every such result (`Expr.narrow_sound`). A postcondition is proved on every
+result the reference allows (`contract_sound_allowed`), and
+`CheckedCondition.allowed` says so. Since D25 a double `SUM` or `AVG` is one
+value, the exact sum rounded once, so this covers postconditions that read
+it; one that reads a statistical aggregate, whose value is still a choice of
+the reference, is proved of the plan's own value, and `sv.approx` allows for
+the bound.
 
 The bound grows with the row cap and the values: for a `SUM` of `n` values
 of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an

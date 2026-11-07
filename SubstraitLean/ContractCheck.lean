@@ -12,6 +12,7 @@ import SubstraitLean.Rows
 import SubstraitLean.Knowledge
 import SubstraitLean.Implied
 import SubstraitLean.Robust
+import SubstraitLean.AllowedNear
 
 /-!
 # Checking a contract
@@ -198,6 +199,10 @@ structure Report where
   keeps it TRUE (`Expr.robust_of_depends`). `none` where the plan is not a
   selection of conditions from the transformation. -/
   depends : List (Option (List String)) := []
+  /-- For each postcondition: proved on every result the reference allows,
+  every order and grouping of a double `SUM` or `AVG` among them
+  (`contract_sound_allowed`, `postAllowed`), beside `proved`'s every order. -/
+  allowed : List Bool := []
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -311,15 +316,17 @@ partial def _root_.Substrait.Rel.allExprs : Rel → List Expr
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
-    ("ensures", Json.arr ((((r.ensures.zip (r.suggestions ++
+    ("ensures", Json.arr (((((r.ensures.zip (r.suggestions ++
         List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).zip
         (r.tiesOnly ++ List.replicate r.ensures.length false)).zip
-        (r.depends ++ List.replicate r.ensures.length none)).map fun ((((n, ok, v), b), t), d) =>
+        (r.depends ++ List.replicate r.ensures.length none)).zip
+        (r.allowed ++ List.replicate r.ensures.length false)).map
+          fun (((((n, ok, v), b), t), d), al) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
         ("value", Lean.toJson v), ("suggest", if ok then .null else b.json),
         ("ties", Lean.toJson t), ("depends", match d with
           | some l => Lean.toJson l
-          | none => .null)]).toArray),
+          | none => .null), ("allowed", Lean.toJson (ok && al))]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
@@ -495,6 +502,29 @@ def postDepends (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) :
       es.map fun e => some (e.depends ctx).eraseDups
   | none => List.replicate n none
 
+/-- Where `contract_sound_allowed` carries a postcondition column of a plan
+`T.select(…)` from every order to every allowed result: `T` is
+`Rel.FloatOpenSafe` by one of its two lemmas (no open measure, or an
+aggregate whose open measures are double `SUM`s and `AVG`s over a plan with
+none), and the column is robust under that context without a tolerance
+(`Expr.robustB`), so it reads no open sum. A comparison of an open sum needs
+the shift of its tolerance (#929). -/
+def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
+  match r with
+  | .emit (.project t es) m =>
+    let ctx? : Option ObsCtx :=
+      if t.closedB then some {} else match t with
+        | .aggregate r gs ms =>
+          if r.closedB && ms.all (fun m => m.closedB || m.openB) then some (aggCtx gs.length ms)
+          else none
+        | _ => none
+    match ctx? with
+    | some ctx =>
+      if m.length != n then List.replicate n false
+      else m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan ctx (fun _ => none)
+    | none => List.replicate n false
+  | _ => List.replicate n false
+
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
 def issuesUnderAndOr (transform : Option Plan) (issues : List (Issue × Expr)) : List Expr :=
   match transform with
@@ -554,6 +584,7 @@ def check (input : Json) : Except String Report := do
   let mut suggestions : List Infer.Bounds := []
   let mut tiesOnly : List Bool := []
   let mut depends : List (Option (List String)) := []
+  let mut allowed : List Bool := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
     if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
@@ -564,6 +595,7 @@ def check (input : Json) : Except String Report := do
     -- `Rel.orderAllowed_capReads` and `Rel.keyedWindows_soundAll`, D24).
     results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
     depends := depends ++ postDepends cat tables q.root env.length
+    allowed := allowed ++ postAllowed cat q.root env.length
     -- Suggestions only for what is unproved: the report drops the others.
     suggestions := suggestions ++ (List.range env.length).map fun i =>
       if (env.getD i AVal.top).certainlyTrue then ({ why := none } : Infer.Bounds) else
@@ -653,6 +685,7 @@ def check (input : Json) : Except String Report := do
     suggestions
     tiesOnly
     depends
+    allowed
     facts
     keys
     deterministic

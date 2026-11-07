@@ -272,7 +272,8 @@ def Profile.reference.tools : List ToolRow := [
   { option := "time_interval_months", tool := .raise,
     precondition := "no interval with months is added to a TIME (the parser refuses it)" },
   { option := "list_null_order", tool := .choose },
-  { option := "sum_order", tool := .leaveOpen, q := some { floats := .within "plan" } },
+  -- D25: one value, the exact sum rounded once.
+  { option := "sum_order", tool := .choose },
   { option := "stat_algo", tool := .leaveOpen, q := some { floats := .within "plan" } },
   { option := "stat_degenerate", tool := .choose },
   { option := "avg_int_result", tool := .choose },

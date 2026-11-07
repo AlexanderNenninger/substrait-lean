@@ -1478,7 +1478,10 @@ def _continue_versions(node: _Stored) -> None:
     process (`sverify.io.Source`) start at the versions and cursors its
     sink recorded, if they can restore their table there; else they number
     their versions above, so that its epochs keep growing and it writes
-    exactly once."""
+    exactly once. A source that cannot restore restores by the content
+    digest the sink recorded (#889)."""
+    from sverify.io._common import UNRECORDED
+
     resumes = {}
     for leaf in node._leaves():
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
@@ -1489,11 +1492,11 @@ def _continue_versions(node: _Stored) -> None:
     if contract is None:
         return
     cursors = getattr(contract, "cursors", {})
+    digests = getattr(contract, "digests", {})
     for name, resume in resumes.items():
-        if name in cursors:
-            resume(contract.sources[name], cursors[name])
-        elif name in contract.sources:
-            resume(contract.sources[name])
+        if name not in contract.sources:
+            continue
+        resume(contract.sources[name], cursors.get(name, UNRECORDED), digest=digests.get(name))
 
 
 def _proof(node: Node) -> Report | None:

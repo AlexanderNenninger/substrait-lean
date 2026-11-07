@@ -39,8 +39,8 @@ shard on its own, with the results combined afterwards.
 
 Refused, because the result depends on how the rows are split:
 
-* `SUM` and `AVG` of doubles: floating-point addition is not associative,
-  so a different split rounds differently (`floatSum` adds in list order).
+* `SUM` and `AVG` of doubles: each shard's sum is rounded, so a split rounds
+  differently from the whole's one rounding (D25, `floatSumCR`).
   `Rel.splitAgg` with `floats` splits them anyway (`floatCombine`), with no
   theorem: `--shard` reports the result as not proved.
 * `COUNT(DISTINCT x)` and `SUM(DISTINCT x)` unless `x` is the split key: a
@@ -279,6 +279,19 @@ def AggFn.decomposable : AggFn → Bool
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]
 
+/-- The value depends on the multiset of values only: the decomposable
+aggregates, and a `SUM` or `AVG` of doubles, which is the exact sum rounded
+once (D25, `floatSumCR_perm`). The doubles' sums do not combine in two phases:
+their partial results are rounded. -/
+def AggFn.orderFree (f : AggFn) : Bool := f.decomposable || f == .fsum || f == .avg
+
+theorem AggFn.orderFree_of_decomposable {f : AggFn} (h : f.decomposable = true) :
+    f.orderFree = true := by
+  simp [orderFree, h]
+
+theorem AggFn.ne_collect_of_orderFree {f : AggFn} (h : f.orderFree = true) : f.sorts = false := by
+  cases f <;> simp_all [orderFree, decomposable, sorts]
+
 theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) (hb : ∀ n, f ≠ .bbox n) :
     f.apply [] = .null := by
   cases f <;> first | rfl | exact (hf rfl).elim | exact (hb _ rfl).elim
@@ -317,6 +330,22 @@ theorem AggFn.apply_perm {f : AggFn} (hf : f.decomposable = true) {vs ws : List 
   · exact apply_minMax_perm (max := true) rfl h
   -- The rest are not decomposable.
   all_goals simp [decomposable] at hf
+
+/-- Order-free aggregates do not depend on the order of their values. -/
+theorem AggFn.apply_perm_of_orderFree {f : AggFn} (hf : f.orderFree = true) {vs ws : List Value}
+    (h : vs.Perm ws) : f.apply vs = f.apply ws := by
+  by_cases hd : f.decomposable = true
+  · exact apply_perm hd h
+  · have hf' : f = .fsum ∨ f = .avg := by cases f <;> simp_all [orderFree, decomposable]
+    cases vs with
+    | nil => rw [← h.nil_eq]
+    | cons v vs =>
+      cases ws with
+      | nil => exact absurd h.eq_nil (by simp)
+      | cons w ws =>
+        rcases hf' with rfl | rfl
+        · simp only [apply, floatSumCR_perm h]
+        · simp only [apply, floatAvgCR_perm h]
 
 theorem AggFn.apply_sum_cons (v : Value) (vs : List Value) :
     AggFn.sum.apply (v :: vs) = .int (intSum (v :: vs)) := rfl
@@ -420,9 +449,8 @@ theorem AggFn.combine_apply {f : AggFn} (hf : f.decomposable = true) {L : List (
 
 /-! ## Measures that combine -/
 
-/-- The value depends only on the bag of rows: not `SUM` or `AVG` of
-doubles, which add in row order. -/
-def Measure.orderFree (m : Measure) : Bool := m.fn.decomposable
+/-- The value depends only on the bag of rows (`AggFn.orderFree`). -/
+def Measure.orderFree (m : Measure) : Bool := m.fn.orderFree
 
 /-- Combines in two phases whatever the split: `DISTINCT` only for `MIN` and
 `MAX`, where it changes nothing. -/
@@ -472,9 +500,9 @@ theorem Measure.mem_vals {m : Measure} {rows : Relation} {v : Value} (h : v ∈ 
 
 theorem Measure.eval_perm {m : Measure} (hm : m.orderFree = true) {xs ys : Relation}
     (h : xs.Perm ys) : m.eval xs = m.eval ys := by
-  rw [eval_eq (AggFn.ne_collect hm), eval_eq (AggFn.ne_collect hm)]
+  rw [eval_eq (AggFn.ne_collect_of_orderFree hm), eval_eq (AggFn.ne_collect_of_orderFree hm)]
   simp only [inputs_eq]
-  refine AggFn.apply_perm hm ?_
+  refine AggFn.apply_perm_of_orderFree hm ?_
   split
   · exact dedup_perm_of_mem fun _ => (m.vals_perm h).mem_iff
   · exact m.vals_perm h
@@ -499,7 +527,7 @@ theorem Measure.SplitOk.filter_map {m : Measure} {ss : List Relation} (h : m.Spl
 
 /-- The combining aggregate of a measure's results on the parts is its result
 on the whole. -/
-theorem Measure.combine_eval {m : Measure} (hm : m.orderFree = true) {ss : List Relation}
+theorem Measure.combine_eval {m : Measure} (hm : m.fn.decomposable = true) {ss : List Relation}
     (hne : ss ≠ []) (hs : m.SplitOk ss) :
     m.fn.combine.apply ((ss.map m.eval).filter (· != .null)) = m.eval ss.flatten := by
   have hL : ss.map m.inputs ≠ [] := by simpa using hne
@@ -704,7 +732,7 @@ theorem aggregateEval_keys {gs : List Expr} {ms : List Measure} (hg : gs ≠ [])
 /-- **Two-phase aggregation**: aggregating each part, then combining the
 partial rows grouped by their keys, gives the aggregate of the whole. -/
 theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
-    (hms : ∀ m ∈ ms, m.orderFree = true) {ss : List Relation} (hne : ss ≠ [])
+    (hms : ∀ m ∈ ms, m.fn.decomposable = true) {ss : List Relation} (hne : ss ≠ [])
     (hs : ∀ m ∈ ms, m.SplitOk ss) :
     (aggregateEval (keyFields gs.length) (combineMeasures gs.length ms)
       (ss.flatMap (aggregateEval gs ms))).Perm (aggregateEval gs ms ss.flatten) := by
@@ -1506,12 +1534,12 @@ theorem Rel.eval_sharded {S : String → Bool} {K : String → Option (List Nat)
 /-- `m` combines in two phases over the shards of a plan whose split key is
 at `kc`: `COUNT`/`SUM(DISTINCT x)` too when `x` is the whole split key. -/
 def Measure.twoPhase (kc : Option (List Nat)) (m : Measure) : Bool :=
-  m.decomposable || (m.orderFree && match kc with
+  m.decomposable || (m.fn.decomposable && match kc with
     | some [c] => m.arg == .field c
     | _ => false)
 
-theorem Measure.orderFree_of_twoPhase {kc : Option (List Nat)} {m : Measure}
-    (h : m.twoPhase kc = true) : m.orderFree = true := by
+theorem Measure.fnDecomposable_of_twoPhase {kc : Option (List Nat)} {m : Measure}
+    (h : m.twoPhase kc = true) : m.fn.decomposable = true := by
   simp only [twoPhase, Bool.or_eq_true, Bool.and_eq_true] at h
   rcases h with h | ⟨h, _⟩
   · simp only [decomposable, Bool.and_eq_true] at h; exact h.1
@@ -1542,9 +1570,10 @@ theorem Rel.eval_twoPhase {S : String → Bool} {K : String → Option (List Nat
     (aggregateEval gs ms (r.eval cat)).Perm
       (aggregateEval (keyFields gs.length) (combineMeasures gs.length ms)
         (cs.flatMap fun c => aggregateEval gs ms (r.eval c))) := by
-  have hof := fun m hm => Measure.orderFree_of_twoPhase (hms m hm)
+  have hdec := fun m hm => Measure.fnDecomposable_of_twoPhase (hms m hm)
+  have hof : ∀ m ∈ ms, m.orderFree = true := fun m hm => AggFn.orderFree_of_decomposable (hdec m hm)
   refine (aggregateEval_perm hof (eval_sharded hs hT hw hr)).trans ?_
-  have := twoPhase_correct (gs := gs) hof (ss := cs.map r.eval) (by simpa using hne)
+  have := twoPhase_correct (gs := gs) hdec (ss := cs.map r.eval) (by simpa using hne)
     fun m hm => Measure.splitOk_of_twoPhase hs hw hr (hms m hm)
   rw [List.flatMap_map] at this
   rw [flatMap_eq_flatten_map]
@@ -1856,15 +1885,16 @@ theorem Rel.eval_algebraic {S : String → Bool} {K : String → Option (List Na
 
 /-! ### Doubles, within a proved bound (#428)
 
-A double `SUM` or `AVG` split over shards adds each shard's values, then the
-partial sums (`floatCombine`), so it rounds differently from the reference's
-one pass over all values (`floatSum`). It is one of the sums the reference
-allows (`FloatSums`, `SubstraitLean/Allowed.lean`), and its distance from
-`Rel.eval`'s value is bounded by what the partial rows report: each shard's
-`COUNT(x)` and rounded `SUM(|x|)` (`floatBoundParts`), and a bound on the
-values from its `MAX(|x|)` (`floatSplit_sum`, `floatSplit_avg`). The bound is
-proved over the reals in `float-bounds/FloatBounds/Shard.lean`, for Lean's
-doubles under its `NativeLink` (`floatSum_twoPhase`, `floatAvg_twoPhase`). -/
+A double `SUM` or `AVG` split over shards rounds each shard's exact sum,
+then the exact sum of the partials (`floatCombine`), so it can differ from
+the reference's one rounding of the whole (D25, `floatSumCR`). Its distance
+from `Rel.eval`'s value is bounded by what the partial rows report: each
+shard's `COUNT(x)` and rounded `SUM(|x|)` (`floatBoundParts`), and a bound on
+the values from its `MAX(|x|)` (`floatSplit_sum`, `floatSplit_avg`). The
+bound is proved here on integers (`twoPhaseSum_near`), with the native
+division of a split `AVG` by `FloatCode.div_scaled_err`.
+`float-bounds/FloatBounds/Shard.lean` bounds an engine's own two-phase sum,
+in any order, over the reals (`shardTolScaled`). -/
 
 /-- The partial measures for splitting `SUM`/`AVG` of doubles: `AVG` as a
 `SUM` and a `COUNT`. -/
@@ -1929,43 +1959,345 @@ def shardAvgTolScaled (n m k As : Nat) : Nat :=
 
 end FloatCode
 
-/-- The sum of the codes `L`'s shards, each added in one pass, then added up
-in one pass: what `floatCombine` computes from the partial sums. -/
+/-- The sum of the codes `L`'s shards, each rounded once, then rounded once
+more: what `floatCombine` computes from the partial sums (D25). -/
 def twoPhaseSum (L : List (List Int)) : Int :=
-  floatSum (L.map fun l => Value.int (floatSum (l.map .int)))
+  floatSumCR (L.map fun l => Value.int (floatSumCR (l.map .int)))
 
-/-- A shard's rounded `SUM(|x|)`. -/
-def absSum (l : List Int) : Int := floatSum (l.map fun c => .int (fabsCode c))
+/-- A shard's `SUM(|x|)`, rounded once. -/
+def absSum (l : List Int) : Int := floatSumCR (l.map fun c => .int (fabsCode c))
 
 /-- The shards' `SUM(|x|)`s, scaled, added up exactly. -/
 def absTotal (L : List (List Int)) : Nat :=
   (L.map fun l => (FloatCode.scaled (absSum l)).toNat).sum
 
-/-! Trusted, like `floatSum_mem` (`SubstraitLean/Aggregate.lean`): proved as
-`core_shard_sum` and `core_shard_avg` in `float-bounds/FloatBounds/Shard.lean`
-for IEEE rounding to nearest, given its `NativeLink` and the code conversions
-of `Float.lean`. `k` shards of at most `m` of the `n ≤ 2³²` codes `ws`, each
-at most `Bs` scaled, with `n (Bs + 2·2⁵²) ≤ 2²⁰⁹⁶` (`|x| ≤ 2¹⁰²¹ / n`, far from
-overflow), added in two phases, are within `shardTolScaled n m k As` of their
-sum in one pass, and their means within `shardAvgTolScaled`. -/
+namespace FloatCode
 
-axiom floatSum_twoPhase {L : List (List Int)} {ws : List Int} {m Bs : Nat}
-    (hp : ws.Perm L.flatten) (hm : ∀ l ∈ L, l.length ≤ m) (hmn : m ≤ ws.length)
-    (hk : L.length ≤ ws.length) (h32 : ws.length ≤ 2 ^ 32)
-    (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
-    (hov : ws.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096) :
-    (FloatCode.scaled (twoPhaseSum L) - FloatCode.scaled (floatSum (ws.map .int))).natAbs
-      ≤ FloatCode.shardTolScaled ws.length m L.length (absTotal L)
+/-- How far a split double `SUM` may be from the whole one (D25), scaled:
+`As / 2⁵⁰`, with `As` the shards' `SUM(|x|)`s added up, scaled. Each of
+the three roundings (per shard, of the partials, of the whole) is within
+`2⁻⁵³` of what it rounds, relatively (`twoPhaseSum_near`). -/
+def shardTolCR (As : Nat) : Nat := As / 2 ^ 50
 
-axiom floatAvg_twoPhase {L : List (List Int)} {ws : List Int} {m Bs : Nat} (hne : ws ≠ [])
-    (hp : ws.Perm L.flatten) (hm : ∀ l ∈ L, l.length ≤ m) (hmn : m ≤ ws.length)
-    (hk : L.length ≤ ws.length) (h32 : ws.length ≤ 2 ^ 32)
-    (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
-    (hov : ws.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096) :
+/-- The same for an `AVG` of `n` values, whose partial sum is divided natively:
+`As / (n · 2⁴⁷) + 1` (`twoPhaseAvg_near`). -/
+def shardAvgTolCR (n As : Nat) : Nat := As / (n * 2 ^ 47) + 1
+
+end FloatCode
+
+/-! #### The proofs, on integers
+
+`T` is the exact `Σ |x|` (`absExact`), scaled. Every rounding is within
+`2⁻⁵³` of its argument relatively (`FloatCode.ofExact_rel`), so the
+partials' exact sum is within `T / 2⁵³` of the whole's, and the two final
+roundings add `|S| / 2⁵³` each. `As` is within `T / 2⁵³` of `T`. -/
+
+/-- `Σ |x|` of the codes, scaled. -/
+def absExact (cs : List Int) : Nat := (cs.map fun c => (FloatCode.scaled c).natAbs).sum
+
+theorem absExact_append (a b : List Int) : absExact (a ++ b) = absExact a + absExact b := by
+  simp [absExact, List.sum_append]
+
+theorem absExact_flatten : ∀ L : List (List Int), absExact L.flatten = (L.map absExact).sum
+  | [] => rfl
+  | l :: L => by simp [absExact_append, absExact_flatten L]
+
+theorem absExact_perm {a b : List Int} (h : a.Perm b) : absExact a = absExact b := by
+  induction h with
+  | nil => rfl
+  | cons x _ ih => simp only [absExact, List.map_cons, List.sum_cons] at ih ⊢; omega
+  | swap x y l => simp only [absExact, List.map_cons, List.sum_cons]; omega
+  | trans _ _ ih1 ih2 => exact ih1.trans ih2
+
+theorem absExact_le {cs : List Int} {Bs : Nat} (h : ∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ Bs) :
+    absExact cs ≤ cs.length * Bs := by
+  induction cs with
+  | nil => simp [absExact]
+  | cons c cs ih =>
+    have := h c (List.mem_cons_self ..)
+    have := ih fun x hx => h x (List.mem_cons_of_mem _ hx)
+    simp only [absExact, List.map_cons, List.sum_cons, List.length_cons] at this ⊢
+    rw [Nat.succ_mul]; omega
+
+theorem exactSum_append (a b : List Value) : exactSum (a ++ b) = exactSum a + exactSum b := by
+  induction a with
+  | nil => simp [exactSum]
+  | cons v a ih => cases v <;> simp [exactSum, ih] <;> omega
+
+theorem exactSum_natAbs_le (cs : List Int) : (exactSum (cs.map .int)).natAbs ≤ absExact cs := by
+  induction cs with
+  | nil => simp [exactSum, absExact]
+  | cons c cs ih =>
+    simp only [absExact, List.map_cons, List.sum_cons, exactSum, FloatCode.exact] at ih ⊢
+    omega
+
+theorem isFin_of_scaled_le {c : Int} (h : (FloatCode.scaled c).natAbs ≤ FloatCode.maxMag) :
+    FloatCode.IsFin c := by
+  have := FloatCode.posInf_eq; have := FloatCode.negInf_eq
+  unfold FloatCode.scaled at h; unfold FloatCode.IsFin
+  split at h <;> omega
+
+set_option exponentiation.threshold 2100 in
+/-- Codes of scaled magnitude at most `2²⁰⁹⁶` add up to their exact sum,
+rounded once. -/
+theorem floatSumCR_of_le {cs : List Int} (h : ∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096) :
+    floatSumCR (cs.map .int) = FloatCode.ofExact (exactSum (cs.map .int)) := by
+  have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
+  simp only [floatSumCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
+    have := h c hc; omega), Option.getD_none]
+
+theorem scaled_fabsCode (c : Int) : FloatCode.scaled (fabsCode c) = (FloatCode.scaled c).natAbs := by
+  by_cases hc : c < 0 <;> simp only [fabsCode, FloatCode.neg, hc, ↓reduceIte] <;>
+    unfold FloatCode.scaled <;> split <;> omega
+
+set_option exponentiation.threshold 2100 in
+/-- The shards' exact sums against their rounded ones: within `T / 2⁵³`. -/
+theorem partials_near {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096)
+    (hT : absExact L.flatten ≤ 2 ^ 2096) :
+    2 ^ 53 * (exactSum (L.map fun l => Value.int (floatSumCR (l.map .int)))
+      - exactSum (L.flatten.map .int)).natAbs ≤ absExact L.flatten ∧
+    ∀ l ∈ L, FloatCode.IsFin (floatSumCR (l.map .int)) := by
+  induction L with
+  | nil => simp [exactSum]
+  | cons l L ih =>
+    simp only [List.flatten_cons, List.mem_append] at h hT
+    rw [absExact_append] at hT
+    have hl : ∀ c ∈ l, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 := fun c hc => h c (.inl hc)
+    obtain ⟨ih1, ih2⟩ := ih (fun c hc => h c (.inr hc)) (by omega)
+    have hS := exactSum_natAbs_le l
+    obtain ⟨hfin, hrel⟩ := FloatCode.ofExact_rel (S := exactSum (l.map .int)) (by omega)
+    rw [← floatSumCR_of_le hl] at hfin hrel
+    refine ⟨?_, ?_⟩
+    · simp only [List.map_cons, exactSum, List.flatten_cons, List.map_append, exactSum_append,
+        absExact_append, FloatCode.exact]
+      omega
+    · intro l' hl'
+      rcases List.mem_cons.mp hl' with rfl | hl'
+      · exact hfin
+      · exact ih2 l' hl'
+
+set_option exponentiation.threshold 2100 in
+/-- `As` against `T`: `(2⁵³ − 1) T ≤ 2⁵³ As`. -/
+theorem absTotal_ge {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096)
+    (hT : absExact L.flatten ≤ 2 ^ 2096) :
+    (2 ^ 53 - 1) * absExact L.flatten ≤ 2 ^ 53 * absTotal L := by
+  induction L with
+  | nil => simp [absExact, absTotal]
+  | cons l L ih =>
+    simp only [List.flatten_cons, List.mem_append] at h hT
+    rw [absExact_append] at hT
+    have ih' := ih (fun c hc => h c (.inr hc)) (by omega)
+    have hl : ∀ c ∈ l, (FloatCode.scaled (fabsCode c)).natAbs ≤ 2 ^ 2096 := fun c hc => by
+      rw [scaled_fabsCode]; have := h c (.inl hc); omega
+    have hmap : (l.map fun c => Value.int (fabsCode c)) = (l.map fabsCode).map .int := by simp
+    have he : exactSum ((l.map fabsCode).map .int) = absExact l := by
+      clear hl hmap ih' ih h hT
+      induction l with
+      | nil => simp [exactSum, absExact]
+      | cons c l ihl =>
+        simp only [List.map_cons, exactSum, FloatCode.exact, scaled_fabsCode, absExact,
+          List.sum_cons] at ihl ⊢
+        omega
+    have hle : absExact l ≤ 2 ^ 2097 := by omega
+    obtain ⟨-, hrel⟩ := FloatCode.ofExact_rel (S := (absExact l : Int))
+      (by rw [Int.natAbs_natCast]; exact hle)
+    have hA : absSum l = FloatCode.ofExact (absExact l) := by
+      unfold absSum; rw [hmap, floatSumCR_of_le (by simpa using hl), he]
+    simp only [absTotal, List.map_cons, List.sum_cons] at ih' ⊢
+    rw [List.flatten_cons, absExact_append]
+    rw [hA]
+    omega
+
+set_option exponentiation.threshold 2100 in
+/-- **A split double `SUM` (D25)**: `k` shards of the codes `ws`, each rounded
+once, then rounded once more, are within `shardTolCR As` of `ws` rounded
+once. -/
+theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
+    (hp : ws.Perm L.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
+    (hov : ws.length * Bs ≤ 2 ^ 2096) :
+    (FloatCode.scaled (twoPhaseSum L) - FloatCode.scaled (floatSumCR (ws.map .int))).natAbs
+      ≤ FloatCode.shardTolCR (absTotal L) := by
+  have hT : absExact ws ≤ 2 ^ 2096 := Nat.le_trans (absExact_le hB) hov
+  have hBs : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 := fun c hc => by
+    have := hB c hc
+    have : Bs ≤ 2 ^ 2096 := by
+      cases ws with
+      | nil => simp at hc
+      | cons => simp only [List.length_cons] at hov; rw [Nat.succ_mul] at hov; omega
+    omega
+  have hBL : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 :=
+    fun c hc => hBs c (hp.mem_iff.mpr hc)
+  have hTL : absExact L.flatten = absExact ws := (absExact_perm hp).symm
+  obtain ⟨hnear, hfin⟩ := partials_near hBL (by omega)
+  have hAs := absTotal_ge hBL (by omega)
+  have hSeq : exactSum (L.flatten.map .int) = exactSum (ws.map .int) :=
+    (exactSum_perm (hp.map _)).symm
+  have hS := exactSum_natAbs_le ws
+  -- The partials are finite: their list rounds its exact sum `P` once.
+  have hR : twoPhaseSum L =
+      FloatCode.ofExact (exactSum (L.map fun l => Value.int (floatSumCR (l.map .int)))) := by
+    have : L.map (fun l => Value.int (floatSumCR (l.map .int))) =
+        (L.map fun l => floatSumCR (l.map .int)).map .int := by simp
+    rw [twoPhaseSum, this]
+    show (nonFinite _).getD _ = _
+    rw [nonFinite_of_fin (by
+      intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc; exact hfin l hl)]
+    rfl
+  rw [hR, floatSumCR_of_le hBs]
+  rw [hSeq, hTL] at hnear
+  rw [hTL] at hAs
+  generalize exactSum (L.map fun l => Value.int (floatSumCR (l.map .int))) = P at hnear ⊢
+  generalize exactSum (ws.map .int) = S at hnear hS ⊢
+  obtain ⟨-, h1⟩ := FloatCode.ofExact_rel (S := P) (by omega)
+  obtain ⟨-, h2⟩ := FloatCode.ofExact_rel (S := S) (by omega)
+  unfold FloatCode.shardTolCR
+  omega
+
+set_option exponentiation.threshold 2100 in
+/-- The scaled value of an integer's exact code. -/
+theorem scaled_exactCode (n : Nat) : FloatCode.scaled (FloatCode.exactCode n) = n * 2 ^ 1074 := by
+  simp only [FloatCode.exactCode, FloatFormat.exactCode, fp64_scale, Int.natAbs_natCast]
+  unfold FloatCode.scaled
+  by_cases h0 : n = 0
+  · subst h0; simp
+  · simp only [show (n : Int) ≠ 0 by omega, show ¬ (n : Int) < 0 by omega, ↓reduceIte]
+    split <;> omega
+
+/-- `2⁵¹ |Q n K − R K| ≤ 2 |R| K + 2⁵⁰ n K` without the scale `K`. -/
+theorem cancel_scale {Q Rs K : Int} {n : Nat} (hK : 0 < K)
+    (h : 2 ^ 51 * (Q * (n * K) - Rs * K).natAbs ≤
+      2 * Rs.natAbs * K.natAbs + 2 ^ 50 * ((n : Int) * K).natAbs) :
+    2 ^ 51 * (Q * n - Rs).natAbs ≤ 2 * Rs.natAbs + 2 ^ 50 * n := by
+  have e1 : Q * (n * K) - Rs * K = (Q * n - Rs) * K := by
+    rw [Int.sub_mul, Int.mul_assoc]
+  rw [e1, Int.natAbs_mul, Int.natAbs_mul, Int.natAbs_natCast] at h
+  have e2 : 2 * Rs.natAbs * K.natAbs + 2 ^ 50 * (n * K.natAbs) =
+      (2 * Rs.natAbs + 2 ^ 50 * n) * K.natAbs := by
+    rw [Nat.add_mul, Nat.mul_assoc (2 ^ 50)]
+  rw [e2, ← Nat.mul_assoc] at h
+  exact Nat.le_of_mul_le_mul_right h (by omega)
+
+/-- The arithmetic of `twoPhaseAvg_near`: the native quotient `Q`, the
+reference's mean `C`, the rounded partials' sum `Rs`, their exact sum `P`, the
+exact sum `S` and `Σ |x| = T`, all scaled, against `As`. -/
+theorem avg_arith {P S Rs Q C : Int} {n X T As : Nat}
+    (hnear : 2 ^ 53 * (P - S).natAbs ≤ T) (hS : S.natAbs ≤ T)
+    (h1 : 2 ^ 53 * (Rs - P).natAbs ≤ P.natAbs)
+    (hdiv : 2 ^ 51 * (Q * n - Rs).natAbs ≤ 2 * Rs.natAbs + 2 ^ 50 * n)
+    (hC : 2 ^ 53 * ((n : Int) * C - S).natAbs ≤ S.natAbs + 2 ^ 52 * n)
+    (hX : n * X = (Q * n - n * C).natAbs)
+    (hAs : (2 ^ 53 - 1) * T ≤ 2 ^ 53 * As) (hn0 : 0 < n) :
+    X ≤ As / (n * 2 ^ 47) + 1 := by
+  have hP : P.natAbs ≤ 2 * T := by omega
+  have hRs : Rs.natAbs ≤ 4 * T := by omega
+  have hT2 : T ≤ 2 * As := by omega
+  have hmain : 2 ^ 53 * (n * X) ≤ 40 * T + 2 ^ 53 * n := by omega
+  have hZ : n * (X - 1) = n * X - n := Nat.mul_sub_one n X
+  have hZ2 : (X - 1) * (n * 2 ^ 47) = n * (X - 1) * 2 ^ 47 := by
+    rw [Nat.mul_comm n (X - 1), Nat.mul_assoc]
+  have hlt : (X - 1) * (n * 2 ^ 47) ≤ As := by
+    rw [hZ2, hZ]; omega
+  have hD : 0 < n * 2 ^ 47 := Nat.mul_pos hn0 (Nat.two_pow_pos 47)
+  have := (Nat.le_div_iff_mul_le hD).2 hlt
+  omega
+
+set_option exponentiation.threshold 2100 in
+/-- **A split double `AVG` (D25)**: the split sum divided natively by the
+count is within `shardAvgTolCR n As` of the mean of `ws` rounded once. -/
+theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne : ws ≠ [])
+    (hp : ws.Perm L.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
+    (h32 : ws.length ≤ 2 ^ 32) (hov : ws.length * Bs ≤ 2 ^ 2096) :
     (FloatCode.scaled (FloatCode.lift₂ (· / ·) (twoPhaseSum L) (FloatCode.ofInt ws.length))
-        - FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (ws.map .int))
-          (FloatCode.ofInt ws.length))).natAbs
-      ≤ FloatCode.shardAvgTolScaled ws.length m L.length (absTotal L)
+        - FloatCode.scaled (floatAvgCR (ws.map .int))).natAbs
+      ≤ FloatCode.shardAvgTolCR ws.length (absTotal L) := by
+  have hn0 : 0 < ws.length := List.length_pos_iff.mpr hne
+  have hT : absExact ws ≤ 2 ^ 2096 := Nat.le_trans (absExact_le hB) hov
+  have hBs : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 := fun c hc => by
+    have := hB c hc
+    have : Bs ≤ 2 ^ 2096 := Nat.le_trans (Nat.le_mul_of_pos_left _ hn0) hov
+    omega
+  have hBL : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 :=
+    fun c hc => hBs c (hp.mem_iff.mpr hc)
+  have hTL : absExact L.flatten = absExact ws := (absExact_perm hp).symm
+  obtain ⟨hnear, hfin⟩ := partials_near hBL (by omega)
+  have hAs := absTotal_ge hBL (by omega)
+  have hSeq : exactSum (L.flatten.map .int) = exactSum (ws.map .int) :=
+    (exactSum_perm (hp.map _)).symm
+  have hS := exactSum_natAbs_le ws
+  have hR : twoPhaseSum L =
+      FloatCode.ofExact (exactSum (L.map fun l => Value.int (floatSumCR (l.map .int)))) := by
+    have : L.map (fun l => Value.int (floatSumCR (l.map .int))) =
+        (L.map fun l => floatSumCR (l.map .int)).map .int := by simp
+    rw [twoPhaseSum, this]
+    show (nonFinite _).getD _ = _
+    rw [nonFinite_of_fin (by
+      intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc; exact hfin l hl)]
+    rfl
+  have hC : floatAvgCR (ws.map .int) = FloatCode.ofExactDiv (exactSum (ws.map .int)) ws.length := by
+    have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
+    simp only [floatAvgCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
+      have := hBs c hc; omega), Option.getD_none, List.length_map]
+  -- The count as a double is exact.
+  have hcount : FloatCode.ofInt ws.length = FloatCode.exactCode ws.length :=
+    FloatCode.ofInt_exact (by
+      rw [Int.natAbs_natCast]; exact Nat.le_trans h32 (Nat.pow_le_pow_right (by omega) (by omega)))
+  have hsc : FloatCode.scaled (FloatCode.exactCode ws.length) = ws.length * 2 ^ 1074 :=
+    scaled_exactCode ws.length
+  have hfinN : FloatCode.IsFin (FloatCode.exactCode ws.length) := isFin_of_scaled_le (by
+    rw [hsc]
+    have : ws.length * 2 ^ 1074 ≤ 2 ^ 32 * 2 ^ 1074 := Nat.mul_le_mul_right _ h32
+    rw [← Nat.pow_add] at this
+    have := FloatCode.pow_le_maxMag (k := 32 + 1074) (by omega)
+    omega)
+  rw [hR, hC, hcount]
+  rw [hSeq, hTL] at hnear
+  rw [hTL] at hAs
+  generalize exactSum (L.map fun l => Value.int (floatSumCR (l.map .int))) = P at hnear ⊢
+  generalize exactSum (ws.map .int) = S at hnear hS ⊢
+  obtain ⟨hRfin, h1⟩ := FloatCode.ofExact_rel (S := P) (by omega)
+  generalize hRd : FloatCode.ofExact P = R at hRfin h1
+  -- The native division, within `core_div`'s error.
+  have hKabs : ((2 : Int) ^ 1074).natAbs = 2 ^ 1074 := by rw [Int.natAbs_pow]; rfl
+  have hKpos : (0 : Int) < 2 ^ 1074 := Int.pow_pos (by decide)
+  have hRle : (FloatCode.scaled R).natAbs ≤ 2 ^ 2097 := by omega
+  obtain ⟨-, hdiv⟩ := FloatCode.div_scaled_err hRfin hfinN
+    (by rw [hsc]; exact Int.mul_ne_zero (by omega) (Int.ne_of_gt hKpos)) (by
+      rw [hsc, Int.natAbs_mul, Int.natAbs_natCast, hKabs]
+      calc (FloatCode.scaled R).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * 2 ^ 1074 :=
+            Nat.mul_le_mul_right _ hRle
+        _ ≤ 2 ^ 2097 * (ws.length * 2 ^ 1074) :=
+            Nat.mul_le_mul_left _ (Nat.le_mul_of_pos_left _ hn0))
+  rw [hsc, ← hKabs] at hdiv
+  generalize FloatCode.scaled (FloatCode.lift₂ (· / ·) R (FloatCode.exactCode ws.length)) = Q at hdiv ⊢
+  generalize FloatCode.scaled R = Rs at h1 hdiv hRle
+  have hdiv' := cancel_scale hKpos hdiv
+  -- The reference's mean, within half an ulp.
+  have hfinC := FloatCode.ofExactDiv_fin (v := S) hn0 (by
+    have := Nat.le_mul_of_pos_left (2 ^ 2097) hn0; omega)
+  have hw := FloatCode.ofExactDiv_within hn0 hfinC
+  have hu := FloatCode.ulpDiv_le S hn0
+  generalize FloatCode.scaled (FloatCode.ofExactDiv S ws.length) = C at hw ⊢
+  generalize FloatCode.ulpDiv S ws.length = U at hw hu
+  generalize hn : ws.length = n at *
+  have hCrel : 2 ^ 53 * ((n : Int) * C - S).natAbs ≤ S.natAbs + 2 ^ 52 * n := by
+    by_cases hsmall : S.natAbs ≤ n * 2 ^ 52
+    · have : n * 2 ^ 52 * U ≤ n * 2 ^ 52 * 1 := by rw [Nat.mul_one]; omega
+      have := Nat.le_of_mul_le_mul_left this (by omega)
+      have hnU : n * U ≤ n := by
+        calc n * U ≤ n * 1 := Nat.mul_le_mul_left _ this
+          _ = n := Nat.mul_one _
+      omega
+    · have e : n * 2 ^ 52 * U = 2 ^ 52 * (n * U) := by
+        rw [Nat.mul_comm n, Nat.mul_assoc]
+      omega
+  -- Multiply out `n · |Q − C|`.
+  have hY : (n : Int) * (Q - C) = Q * n - n * C := by
+    rw [Int.mul_sub, Int.mul_comm]
+  have hX : n * (Q - C).natAbs = (Q * n - n * C).natAbs := by
+    rw [← hY, Int.natAbs_mul, Int.natAbs_natCast]
+  generalize hXd : (Q - C).natAbs = X
+  rw [hXd] at hX
+  exact avg_arith hnear hS h1 hdiv' hCrel hX hAs hn0
 
 /-- Two results agree up to `τ` (scaled): two doubles within `τ`, anything
 else equal. -/
@@ -1988,13 +2320,13 @@ theorem flatten_filter_ne_nil {α : Type} : ∀ L : List (List α),
   | (a :: l) :: L => by simp [flatten_filter_ne_nil L]
 
 theorem fsum_apply_ints : ∀ l : List Int,
-    AggFn.fsum.apply (l.map .int) = if l.isEmpty then .null else .int (floatSum (l.map .int))
+    AggFn.fsum.apply (l.map .int) = if l.isEmpty then .null else .int (floatSumCR (l.map .int))
   | [] => rfl
   | _ :: _ => rfl
 
 theorem partialSums_eq : ∀ Ls : List (List Int),
     (Ls.map fun l => AggFn.fsum.apply (l.map .int)).filter (· != .null) =
-      (Ls.filter fun l => !l.isEmpty).map fun l => .int (floatSum (l.map .int))
+      (Ls.filter fun l => !l.isEmpty).map fun l => .int (floatSumCR (l.map .int))
   | [] => rfl
   | l :: Ls => by
     rw [List.map_cons, List.filter_cons, fsum_apply_ints, partialSums_eq Ls]
@@ -2002,14 +2334,12 @@ theorem partialSums_eq : ∀ Ls : List (List Int),
 
 /-- **A split double `SUM`**: shards with the codes `Ls`, against the same
 codes `ws` in one pass. `fsum` of the shards' non-NULL partial sums is
-`floatCombine`'s; it is within `shardTolScaled` of the sequential sum, with
-`k` the shards that have values. -/
-theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {m Bs : Nat}
-    (hp : ws.Perm Ls.flatten) (hm : ∀ l ∈ Ls, l.length ≤ m) (hmn : m ≤ ws.length)
-    (h32 : ws.length ≤ 2 ^ 32) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
-    (hov : ws.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096) :
+`floatCombine`'s; it is within `shardTolCR` of the whole's (D25). -/
+theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {Bs : Nat}
+    (hp : ws.Perm Ls.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
+    (hov : ws.length * Bs ≤ 2 ^ 2096) :
     let L := Ls.filter fun l => !l.isEmpty
-    Value.Near (FloatCode.shardTolScaled ws.length m L.length (absTotal L))
+    Value.Near (FloatCode.shardTolCR (absTotal L))
       (AggFn.fsum.apply ((Ls.map fun l => AggFn.fsum.apply (l.map .int)).filter (· != .null)))
       (AggFn.fsum.apply (ws.map .int)) := by
   intro L
@@ -2028,11 +2358,10 @@ theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {m Bs : Nat}
     have hws : ws ≠ [] := by
       have := List.length_pos_iff.mpr hL0
       exact List.length_pos_iff.mp (by omega)
-    have h := floatSum_twoPhase (L := L) hpL (fun l hl => hm l (List.mem_filter.mp hl).1) hmn hkn
-      h32 hB hov
+    have h := twoPhaseSum_near hpL hB hov
     obtain ⟨l, L', hLc⟩ := List.exists_cons_of_ne_nil hL0
     obtain ⟨c, ws', hwc⟩ := List.exists_cons_of_ne_nil hws
-    show Value.Near _ (AggFn.fsum.apply (L.map fun l => .int (floatSum (l.map .int)))) _
+    show Value.Near _ (AggFn.fsum.apply (L.map fun l => .int (floatSumCR (l.map .int)))) _
     rw [hLc] at h ⊢
     rw [hwc] at h ⊢
     simpa [AggFn.apply, Value.Near, twoPhaseSum] using h
@@ -2103,13 +2432,12 @@ theorem SplitCodes.apply {m : Measure} {ss : List Relation} {ws : Relation} {mx 
 
 /-- **A split double `SUM`, measured** (#428): the measure's `SUM` on each
 shard (`floatPartial`), their non-NULL ones added up (`floatCombine`), is within
-`shardTolScaled n mx k As` of its value on the whole group, where `n` adds up
-the shards' `COUNT(x)`, `mx` is their largest, `k` counts the non-zero ones and
-`As` adds up their `SUM(|x|)`, scaled (`floatBoundParts`, `absPart_eval`). -/
+`shardTolCR As` of its value on the whole group, where `As` adds up the
+shards' `SUM(|x|)`, scaled (`floatBoundParts`, `absPart_eval`). -/
 theorem floatSplit_sum {m : Measure} (hf : m.fn = .fsum) (hd : m.distinct = false)
     {ss : List Relation} {ws : Relation} {mx Bs : Nat} (h : SplitCodes m ss ws mx Bs) :
     let L := SplitCodes.parts m ss
-    Value.Near (FloatCode.shardTolScaled (m.inputs ws).length mx L.length (absTotal L))
+    Value.Near (FloatCode.shardTolCR (absTotal L))
       (AggFn.fsum.apply ((ss.map m.eval).filter (· != .null))) (m.eval ws) := by
   intro L
   have hsort : m.fn.sorts = false := by rw [hf]; rfl
@@ -2120,16 +2448,17 @@ theorem floatSplit_sum {m : Measure} (hf : m.fn = .fsum) (hd : m.distinct = fals
       fun l => AggFn.fsum.apply (l.map .int) := by
     simp only [List.map_map]
     exact List.map_congr_left fun s hs => by simp [hev, ← hss s hs]
-  rw [hmap, hev ws, hws, List.length_map]
-  exact fsum_twoPhase_near hp hm hmn h32 hB hov
+  rw [hmap, hev ws, hws]
+  exact fsum_twoPhase_near hp hB (by unfold FloatCode.tolK at hov; rw [Nat.mul_add] at hov; omega)
 
 /-- **A split double `AVG`, measured**: the measure's `SUM`s and `COUNT`s on
 each shard (`floatPartial`), divided as `floatCombine` divides them, are within
-`shardAvgTolScaled n mx k As` of its value on the whole group. -/
+`shardAvgTolCR n As` of its value on the whole group, `n` the shards'
+`COUNT(x)`s added up. -/
 theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false)
     {ss : List Relation} {ws : Relation} {mx Bs : Nat} (h : SplitCodes m ss ws mx Bs) :
     let L := SplitCodes.parts m ss
-    Value.Near (FloatCode.shardAvgTolScaled (m.inputs ws).length mx L.length (absTotal L))
+    Value.Near (FloatCode.shardAvgTolCR (m.inputs ws).length (absTotal L))
       (BinFn.apply .fdiv
         (AggFn.fsum.apply ((ss.map ({ m with fn := .fsum } : Measure).eval).filter (· != .null)))
         (UnFn.apply .itof
@@ -2170,7 +2499,7 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
     have := flatten_filter_ne_nil (ss.map fun s => intsOf (m.inputs s))
     show (intsOf (m.inputs ws)).Perm (SplitCodes.parts m ss).flatten
     unfold SplitCodes.parts; rw [this]; exact hp
-  show Value.Near _ (BinFn.apply .fdiv (AggFn.fsum.apply (L.map fun l => .int (floatSum (l.map .int))))
+  show Value.Near _ (BinFn.apply .fdiv (AggFn.fsum.apply (L.map fun l => .int (floatSumCR (l.map .int))))
     (UnFn.apply .itof (AggFn.sum.apply ((ss.map fun s => intsOf (m.inputs s)).map
       fun l => .int l.length)))) _
   have hNs := hn (ss.map fun s => intsOf (m.inputs s))
@@ -2193,8 +2522,8 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
       Nat.le_trans (length_le_flatten hne) (Nat.le_of_eq hpL.length_eq.symm)
     have hL0 : L ≠ [] := by
       intro hL; rw [hL] at hpL; exact hw0 (List.Perm.eq_nil hpL)
-    have h := floatAvg_twoPhase (L := L) hw0 hpL (fun l hl => hm l (List.mem_filter.mp hl).1)
-      hmn hkn h32 hB hov
+    have h := twoPhaseAvg_near (L := L) hw0 hpL hB h32
+      (by unfold FloatCode.tolK at hov; rw [Nat.mul_add] at hov; omega)
     have hLs : (ss.map fun s => intsOf (m.inputs s)).map (fun l => Value.int l.length) ≠ [] := by
       intro h
       rw [List.map_eq_nil_iff] at h

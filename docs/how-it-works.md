@@ -332,7 +332,9 @@ translator pins the semantics and takes no Polars defaults:
   compares. Each measure skips NULLs and the rows its `FILTER` drops;
   `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
   and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
-  and `AVG` of doubles add one by one in Lean's list order.
+  and `AVG` of doubles are the exact sum and mean rounded once
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+  whatever the order of the rows.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, and `substring` with
   a start below 1 keeps only the positions that exist. `LIKE` escapes with a
@@ -571,6 +573,11 @@ one, which sverify infers (#244).
   ([docs/optimizations.md](optimizations.md)).
 * `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
   runs correctly without per-row checks.
+* `contract_sound_allowed`: a postcondition narrowed by its columns' tolerances and proved on
+  every order holds on every result the reference allows, every order and grouping of a double
+  `SUM` or `AVG` among them, for a plan that reads no open sum to choose its rows
+  (`Rel.FloatOpenSafe`; [AllowedNear.lean](../SubstraitLean/AllowedNear.lean)). The report marks
+  such a postcondition `allowed`.
 
 ### Contracts
 

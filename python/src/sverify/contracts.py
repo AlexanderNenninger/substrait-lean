@@ -1580,6 +1580,7 @@ def _verify_once(
                     suggested=suggested,
                     ties=ties,
                     depends=None if depends is None else tuple(depends),
+                    allowed=bool(e.get("allowed")),
                 )
             )
         checked[-1].condition = c
