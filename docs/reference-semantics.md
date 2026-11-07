@@ -45,9 +45,6 @@ to the engine:
   `ORDER BY` or a window's order are broken;
 * the row `FIRST`, `LAST`, `collect` and `STRING_AGG` take first where their
   order ties (any row without an order, as in Ibis's `distinct(on=)`);
-* the order and grouping in which a double `SUM` or `AVG` adds its values
-  (`FloatSums`), each result within the error bound of
-  [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85);
 * a statistical aggregate's value (`VARIANCE`, `STDDEV`, `COVAR_*`, `CORR`),
   within its generic properties (`StatProps`, with #85).
 
