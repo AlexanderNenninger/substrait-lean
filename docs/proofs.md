@@ -42,7 +42,7 @@ and that the input rows meet the contract's preconditions.
 | A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `Lipschitz.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
-| The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `Rel.incrementalK_sound`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
+| The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `Rel.weighted_eval` | `Weighted.lean` |
 | Union-free terms add up to the plan | `Rel.zeval_terms` | `Terms.lean` |
 | `COUNT`, `SUM` and `DISTINCT` are maintained from their state | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
@@ -148,7 +148,7 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
-| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int` |
+| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output |
 | `Weighted.lean` | Z-set plans as bag plans with a weight column |
 | `Terms.lean` | Splitting a plan into union-free terms |
 | `IncrementalAgg.lean` | Delta rules for `COUNT`, `SUM` and `DISTINCT` |

@@ -38,23 +38,23 @@ theorem perm_flatMap_congr {α β : Type} {L : List α} {f g : α → List β}
     exact (h x (by simp)).append (ih fun y hy => h y (by simp [hy]))
 
 theorem ZSet.cross_flatMap_left {α : Type} (L : List α) (f : α → ZSet) (B : ZSet) :
-    ZSet.cross (L.flatMap f) B = L.flatMap fun x => ZSet.cross (f x) B := by
+    WSet.cross (L.flatMap f) B = L.flatMap fun x => WSet.cross (f x) B := by
   induction L with
   | nil => rfl
-  | cons x L ih => simp only [List.flatMap_cons, ZSet.cross_append_left, ih]
+  | cons x L ih => simp only [List.flatMap_cons, WSet.cross_append_left, ih]
 
 theorem ZSet.cross_flatMap_right {α : Type} (A : ZSet) (L : List α) (g : α → ZSet) :
-    (ZSet.cross A (L.flatMap g)).Perm (L.flatMap fun y => ZSet.cross A (g y)) := by
+    (WSet.cross A (L.flatMap g)).Perm (L.flatMap fun y => WSet.cross A (g y)) := by
   induction L with
-  | nil => simp [ZSet.cross]
+  | nil => simp [WSet.cross]
   | cons y L ih =>
     simp only [List.flatMap_cons]
-    exact (ZSet.cross_append_right _ _ _).trans (List.Perm.append_left _ ih)
+    exact (WSet.cross_append_right _ _ _).trans (List.Perm.append_left _ ih)
 
 /-- Cross product of two concatenations, term by term. -/
 theorem ZSet.cross_flatMap {α : Type} (L M : List α) (f : α → ZSet) :
-    (ZSet.cross (L.flatMap f) (M.flatMap f)).Perm
-      (L.flatMap fun x => M.flatMap fun y => ZSet.cross (f x) (f y)) := by
+    (WSet.cross (L.flatMap f) (M.flatMap f)).Perm
+      (L.flatMap fun x => M.flatMap fun y => WSet.cross (f x) (f y)) := by
   rw [ZSet.cross_flatMap_left]
   exact perm_flatMap_congr fun x _ => ZSet.cross_flatMap_right _ _ _
 
@@ -63,33 +63,36 @@ theorem Rel.zeval_terms {Z : ZCatalog} :
     ∀ {r : Rel}, r.Incremental → (r.zeval Z).Perm (r.terms.flatMap (·.zeval Z))
   | .read _, _ | .values _ _, _ => by simp [terms]
   | .unionAll a b, h => by
-      simp only [zeval, terms, List.flatMap_append]
+      simp only [zeval, evalK, terms, List.flatMap_append]
       exact (zeval_terms (r := a) h.1).append (zeval_terms (r := b) h.2)
   | .filter r c, h => by
-      simp only [zeval, terms, ZSet.filter, List.flatMap_map]
+      simp only [zeval, evalK, terms, WSet.filter, List.flatMap_map]
       refine ((zeval_terms (r := r) h).filter _).trans ?_
       rw [List.filter_flatMap]
+      exact .refl _
   | .project r es, h => by
-      simp only [zeval, terms, ZSet.map, List.flatMap_map]
+      simp only [zeval, evalK, terms, WSet.map, List.flatMap_map]
       refine ((zeval_terms (r := r) h).map _).trans ?_
       rw [List.map_flatMap]
+      exact .refl _
   | .emit r m, h => by
-      simp only [zeval, terms, ZSet.map, List.flatMap_map]
+      simp only [zeval, evalK, terms, WSet.map, List.flatMap_map]
       refine ((zeval_terms (r := r) h).map _).trans ?_
       rw [List.map_flatMap]
+      exact .refl _
   | .cross a b, h => by
-      simp only [zeval, terms, List.flatMap_assoc, List.flatMap_map]
-      exact (ZSet.cross_perm (zeval_terms (r := a) h.1) (zeval_terms (r := b) h.2)).trans
+      simp only [zeval, evalK, terms, List.flatMap_assoc, List.flatMap_map]
+      exact (WSet.cross_perm (zeval_terms (r := a) h.1) (zeval_terms (r := b) h.2)).trans
         (ZSet.cross_flatMap _ _ _)
   | .join a b .inner on, h => by
-      simp only [zeval, terms, List.flatMap_assoc, List.flatMap_map]
-      refine (((ZSet.cross_perm (zeval_terms (r := a) h.1) (zeval_terms (r := b) h.2)).trans
+      simp only [zeval, evalK, terms, List.flatMap_assoc, List.flatMap_map]
+      refine (((WSet.cross_perm (zeval_terms (r := a) h.1) (zeval_terms (r := b) h.2)).trans
         (ZSet.cross_flatMap _ _ _)).filter _).trans ?_
-      simp only [ZSet.filter, List.filter_flatMap]
+      simp only [WSet.filter, List.filter_flatMap]
       exact List.Perm.refl _
   -- Each term is sorted on its own: the sum is the same bag.
   | .orderBy r _, h => by
-      simp only [zeval, terms, List.flatMap_map]
+      simp only [zeval, evalK, terms, List.flatMap_map]
       exact (List.mergeSort_perm _ _).trans ((zeval_terms (r := r) h).trans
         (perm_flatMap_congr fun _ _ => (List.mergeSort_perm _ _).symm))
   | .join _ _ .left _, h => h.elim
