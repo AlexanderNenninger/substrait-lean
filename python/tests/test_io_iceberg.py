@@ -461,6 +461,27 @@ def test_rows_another_writer_changed_are_not_resumed_from(catalog, monkeypatch):
     assert IcebergSource(catalog, "db.big").stored() is None
 
 
+@pytest.mark.parametrize("restart", [False, True])
+def test_rows_another_writer_changed_are_replaced(catalog, restart):
+    """#966: another application appends a row to the sink. The next
+    refresh, of this process or a new one, writes the node's rows again."""
+    src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
+    node = doubled(src).write(IcebergSink(catalog, "db.big"))
+    node.refresh()
+    want = big_rows(catalog)
+    catalog.load_table("db.big").append(
+        pa.Table.from_pylist(
+            [{"id": 9, "customer": "x", "doubled": 2}], schema=sink_schema_of(catalog)
+        )
+    )
+    if restart:
+        node = doubled(src).write(IcebergSink(catalog, "db.big"))
+    w = node.refresh()["big"].write
+    assert w is not None and w.mode == "overwrite"
+    assert big_rows(catalog) == want
+    assert node.refresh()["big"].write.mode == "skipped"
+
+
 @sv.transform(
     requires={"orders": [_.id.notnull(), sv.unique("id")]},
     ensures=[sv.unique("id")],
