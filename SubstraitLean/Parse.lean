@@ -1683,11 +1683,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
       return .lit (.list vs)
     if (field? l "emptyList").isSome then return .lit (.list [])
-    -- A struct is the list of its fields.
+    -- A struct is its fields, in order (#923).
     if let some sj := field? l "struct" then
       let vs ← (← arrD sj "fields").mapM fun e => do
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
-      return .lit (.list vs)
+      return .lit (.struct vs)
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"

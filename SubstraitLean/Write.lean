@@ -421,7 +421,7 @@ def castTo (ty input : Json) : Json :=
     ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
 
 /-- A `DECIMAL(p, s)` literal of unscaled value `m`. -/
-def decimalLit (p s : Nat) (m : Int) : Json := writeLit (.dec p s) (.int m)
+def decimalLit (p s : Nat) (m : Int) : Json := writeLit (.dec p s) (.dec s m)
 
 /-- An operand `x · n` of decimal `+` or `-`, written as `x` where `n` is the
 power of ten `Parse.upscale` brought it to the common scale with (it always
@@ -585,8 +585,8 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- which wraps around midnight.
   -- A constant's time of day is the same, so it is written as a TIME.
   | .un .timeOfDay (.bin .add a (.lit (.int c))) =>
-    if let .lit (.int x) := a then
-      call (BinFn.anchor .add) [writeLit .tod (.int (x % Time.usPerDay)), writeInterval c]
+    if let .lit (.tod x) := a then
+      call (BinFn.anchor .add) [writeLit .tod (.tod (x % Time.usPerDay)), writeInterval c]
     else if wkind cols a == .tod then call (BinFn.anchor .add) [writeExpr cols .tod a, writeInterval c]
     else obj [("cast", obj [("type", obj [("precisionTime", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]),
@@ -691,16 +691,16 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- A double's negation and `ABS`, as the parser reads `negate` and `abs` of a
   -- double (`Parse.mkFloatCall`): written as those calls, so that they read
   -- back as they were.
-  | .ifThen (.bin .eq a (.lit (.int k))) t (.un .fneg e) =>
+  | .ifThen (.bin .eq a (.lit (.float k))) t (.un .fneg e) =>
     if k == FloatCode.nan && t == a && e == a then canonical (call (fn "negate") [writeExpr cols .float a])
     else obj [("ifThen", obj [
-      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .eq a (.lit (.int k)))),
+      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .eq a (.lit (.float k)))),
         ("then", writeExpr cols ctx t)]]),
       ("else", writeExpr cols ctx (.un .fneg e))])]
-  | .ifThen (.bin .lt a (.lit (.int 0))) (.un .fneg t) e =>
+  | .ifThen (.bin .lt a (.lit (.float 0))) (.un .fneg t) e =>
     if t == a && e == a && wkind cols a == .float then call (fn "abs") [writeExpr cols .float a]
     else obj [("ifThen", obj [
-      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .lt a (.lit (.int 0)))),
+      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .lt a (.lit (.float 0)))),
         ("then", writeExpr cols ctx (.un .fneg t))]]),
       ("else", writeExpr cols ctx e)])]
   -- Integer `//` and `%` with `division_type` = `FLOOR`, as the parser reads
@@ -970,7 +970,7 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
         | .concat sep => Json.arr #[obj [("value", arg)], obj [("value", writeLit .str (.str sep))]]
         -- A quantile's fraction is its second argument, an exact decimal (#53).
         | .quantile _ num scale => Json.arr #[obj [("value", arg)],
-            obj [("value", writeLit (.dec (scale + 1) scale) (.int num))]]
+            obj [("value", writeLit (.dec (scale + 1) scale) (.dec scale num))]]
         | _ => Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   -- An integer `AVG` says so by its output type (`AggFn.iavg`).
