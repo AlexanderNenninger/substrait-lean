@@ -75,12 +75,13 @@ engines is trusted, and kept small:
 - The CLI's glue, `Main.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON.
 - The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
-  and its siblings (`Float.lean`), `FloatCode.exp_fin` (`Safety.lean`),
-  `floatSum_mem`, `floatAvg_mem`, `floatSum_sign` (`Aggregate.lean`, no
-  longer used since D25, retired by #916) and
-  `varOf_props`, `covOf_props`, `corrOf_props` (`StatProps.lean`).
-  `float-bounds/` proves them over the reals for the standard model of
-  rounding (`StdModel.core_sum`, `StdModel.core_avg` in `Core.lean`), and
+  and its siblings (`Float.lean`, `div_scaled_err` among them),
+  `FloatCode.exp_fin` (`Safety.lean`) and `varOf_props`, `covOf_props`,
+  `corrOf_props` (`StatProps.lean`). A `SUM` or `AVG` of doubles needs none
+  since D25: `floatSumCR`'s bounds are theorems (`FloatExact.lean`).
+  `float-bounds/` proves the axioms over the reals for the standard model of
+  rounding (`StdModel.core_add` … in `Arith.lean`, `core_var` … in
+  `CoreStats.lean`), and
   there only `NativeLink` (`Link.lean`) stays trusted: Lean's `Float` rounds
   as IEEE 754 binary64 does.
 - The models of the engines' own functions: `Impl.Faithful` (`Guards.lean`)
