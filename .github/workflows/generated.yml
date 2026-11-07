@@ -1,8 +1,8 @@
 name: Generated files
 
 # The tables generated from the sources: README.md's coverage table,
-# catalogue/INDEX.md and catalogue/FINDINGS.md's stats tables, and
-# docs/realizability.md. Feature branches
+# catalogue/INDEX.md and catalogue/FINDINGS.md's stats tables,
+# docs/realizability.md and upstream/REPORT.md. Feature branches
 # leave them alone, so two PRs never conflict over them; after every push to
 # main this job regenerates them and pushes the result straight to main.
 #
@@ -40,8 +40,11 @@ jobs:
           uv run --locked python -m sverify_dev.catalogue --write-tables
           uv run --locked python -m sverify_dev.coverage --write-readme
           uv run --locked python -m sverify_dev.realizability --write
+          uv run --locked python -m sverify_dev.bugs --write
       - name: Push to main if anything changed
         run: |
+          # A new generated file is untracked until it is added.
+          git add upstream/REPORT.md
           git status --short
           if git diff --cached --quiet && git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"

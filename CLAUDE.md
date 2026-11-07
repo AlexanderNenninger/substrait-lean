@@ -240,7 +240,9 @@ conflicts with other PRs:
   from `sverify_dev.coverage --write-readme`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`;
-- `docs/realizability.md`, from `sverify_dev.realizability --write`.
+- `docs/realizability.md`, from `sverify_dev.realizability --write`;
+- `upstream/REPORT.md`, the upstream bugs to report and the count of each
+  class, from `sverify_dev.bugs --write`.
 
 Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
 DuckDB lowering, for DuckDB's default settings only) and

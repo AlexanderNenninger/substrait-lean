@@ -3,7 +3,8 @@
   "project": "duckdb",
   "version": "2.0.0",
   "status": "confirmed",
-  "status_note": "confirmed on 2.0.0 (Python, macOS arm64) by the probe observations least-greatest-zero, least-greatest-zero-columns and least-greatest-nan-sign. Reproduces on 2.0.0 and on both nightly builds (checked 2026-11-04 by the upstream-verify session).",
+  "status_note": "Reproduces on 2.0.0, the latest release; on main (d4eea3f208, 2026-11-06) `least.cpp` still sends `FLOAT` through the sort-key path, read in the source. No upstream issue: duckdb#14239 (closed) is about NULL and NaN order, not the sign.",
+  "title": "`least` and `greatest` on `FLOAT` turn `-0.0` into `+0.0` and drop a NaN's sign",
   "summary": [
     "`least` and `greatest` on `FLOAT` return a value that is none of their arguments when the winner is `-0.0` or a negative NaN: they compare sort keys and decode the winner from its key, which encodes both zeros alike and every NaN as the positive quiet NaN. So `least(-0.0::FLOAT, -0.0::FLOAT)` is `+0.0`. On `DOUBLE` they keep the argument (`least(-0.0, -0.0)` is `-0.0`, `least(-0.0, 0.0)` is `-0.0`), so the two widths disagree."
   ],
@@ -45,6 +46,14 @@
         "duckdb": "2.0.0"
       },
       "note": "reverse pass: FLOAT least/greatest go through SortKeyLeastGreatest (extension/core_functions/scalar/generic/least.cpp#L81-L110, #L267-L296); the numeric docs are silent on signed zero and NaN; test_least_greatest.test has no -0.0 or NaN case"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "duckdb": "2.0.0",
+        "duckdb main": "d4eea3f208"
+      },
+      "note": "triage: repro run on 2.0.0; main read; duckdb/duckdb searched"
     }
   ]
 }

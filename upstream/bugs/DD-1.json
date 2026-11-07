@@ -2,8 +2,8 @@
   "id": "DD-1",
   "project": "duckdb",
   "version": "2.0",
-  "status": "filed",
-  "status_note": "`levenshtein`: filed [#25113](https://github.com/duckdb/duckdb/issues/25113), closed 2026-10-28 as fixed on main by [#27619](https://github.com/duckdb/duckdb/pull/27619) (backported to v2.0-cyanoptera); 2.0.0 gives 2, nightlies 2.0.1.dev2610291258 and 2.1.0.dev2610310630 give 1; not in a release yet. `reverse`: not a bug, it reverses grapheme clusters on purpose.",
+  "status": "fixed upstream",
+  "status_note": "`levenshtein`: filed [#25113](https://github.com/duckdb/duckdb/issues/25113), closed 2026-10-28 as fixed on main by [#27619](https://github.com/duckdb/duckdb/pull/27619) and backported to v2.0-cyanoptera; 2.0.0, the latest release, still counts bytes. `reverse`: not a bug, it reverses grapheme clusters on purpose.",
   "upstream": [
     "https://github.com/duckdb/duckdb/issues/25113",
     "https://github.com/duckdb/duckdb/pull/27619"
@@ -36,6 +36,14 @@
         "duckdb": "2.0.0"
       },
       "note": "reverse pass: levenshtein's DP runs over bytes (extension/core_functions/scalar/string/levenshtein.cpp#L15-L60), reverse over grapheme clusters (extension/core_functions/scalar/string/reverse.cpp#L24-L29); the text docs say 'single-character edits'; no upstream test covers either on non-ASCII text"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "triage: release and issue state checked"
     }
-  ]
+  ],
+  "fixed_in": "2.0.1 (unreleased; in the 2.0.1 and 2.1.0 nightlies)"
 }

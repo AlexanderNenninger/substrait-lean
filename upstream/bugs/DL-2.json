@@ -3,7 +3,8 @@
   "project": "deltalake",
   "version": "1.6.6",
   "status": "confirmed",
-  "status_note": "Not yet reported upstream.",
+  "status_note": "Reproduces on 1.6.6, the latest release. On main (ca279b73, 2026-11-07) `history()` still numbers the commits down from the loaded snapshot's version while the log listing includes newer commits, read in the source (python/src/lib.rs, python/deltalake/table.py). No upstream issue found.",
+  "title": "`history()` after `load_as_version` lists the latest commits, numbered from the loaded version",
   "upstream": [],
   "summary": "`DeltaTable.history()` on a table loaded at an older version (`load_as_version`) lists the latest commits, numbered as if the loaded version were the latest: after two commits, a table loaded at version 0 gives `[(0, 'WRITE'), (-1, 'WRITE')]`, where the commits are versions 1 and 0.",
   "repro": "`write_deltalake(d, pa.table({'a': [1]}))`, `write_deltalake(d, pa.table({'a': [2]}), mode='append')`, `dt = DeltaTable(d); dt.load_as_version(0)`, then `[(c['version'], c['operation']) for c in dt.history(8)]` gives `[(0, 'WRITE'), (-1, 'WRITE')]`.",
@@ -21,6 +22,14 @@
         "deltalake": "1.6.6"
       },
       "note": "latest release"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "deltalake": "1.6.6",
+        "delta-rs main": "ca279b73"
+      },
+      "note": "triage: repro run on 1.6.6; main read; delta-io/delta-rs searched"
     }
   ]
 }

@@ -2,8 +2,8 @@
   "id": "DD-7",
   "project": "duckdb",
   "version": "2.0.0",
-  "status": "confirmed",
-  "status_note": "confirmed on 2.0.0 (Python, macOS arm64) by the probe observations exec-case-when-folded, exec-case-when-folded-empty and exec-case-when-folded-cast. Fixed in DuckDB's nightly builds (checked 2026-11-04 by the upstream-verify session), not yet in a release: it becomes \"fixed upstream\" once a release has the fix.",
+  "status": "fixed upstream",
+  "status_note": "Fixed on main by [#27300](https://github.com/duckdb/duckdb/pull/27300) and [#27619](https://github.com/duckdb/duckdb/pull/27619) (the `CASE` simplification uses `TryEvaluateScalar`), backported to v2.0-cyanoptera; 2.0.0, the latest release, still raises.",
   "summary": [
     "A `CASE` whose later `WHEN` is a constant expression that raises fails while planning, even when no row reaches that `WHEN`: on a table where every row takes the first branch, and on an empty table. The optimizer's `CASE` simplification evaluates every foldable `WHEN` with `ExpressionExecutor::EvaluateScalar`, which throws, where constant folding uses `TryEvaluateScalar` and leaves a failing expression to run time.",
     "At run time `CASE` is lazy (a raising `ELSE` on rows that never reach it does not raise), so the plan-time fold is the one place where a `CASE` branch is evaluated eagerly."
@@ -49,6 +49,18 @@
         "duckdb": "2.0.0"
       },
       "note": "reverse pass: case_simplification.cpp#L15-L46 evaluates a foldable WHEN with EvaluateScalar; the CASE docs (https://duckdb.org/docs/2.0/sql/expressions/case) are silent; no upstream test has a raising constant WHEN (test/optimizer/case_simplification.test#L1-L34)"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "triage: repro run on 2.0.0"
     }
-  ]
+  ],
+  "upstream": [
+    "https://github.com/duckdb/duckdb/pull/27300",
+    "https://github.com/duckdb/duckdb/pull/27619"
+  ],
+  "fixed_in": "2.0.1 (unreleased; in the 2.0.1 and 2.1.0 nightlies)"
 }

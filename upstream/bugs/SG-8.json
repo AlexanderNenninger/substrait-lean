@@ -3,7 +3,8 @@
   "project": "sqlglot",
   "version": "30.17.0–30.29.0",
   "status": "confirmed",
-  "status_note": "reproduces on 30.17.0, 30.22.0 and 30.29.0; not filed yet",
+  "status_note": "Reproduces on 30.30.0, the latest release; main (b99f5d58b1, 2026-11-07) has no handling of `ago` in the DuckDB dialect, read in the source. No upstream issue found.",
+  "title": "DuckDB: `INTERVAL '1 day ago'` loses `ago` and reads as a positive interval",
   "summary": "In the DuckDB dialect, an interval string of one unit followed by `ago` loses the `ago`: `INTERVAL '1 day ago'` reads as `INTERVAL '1' DAY`, a positive interval, where DuckDB negates it. A string of several units keeps its text (`INTERVAL '2 days 3 hours ago'`).",
   "repro": [
     "```python\nimport sqlglot\nsqlglot.parse_one(\"SELECT INTERVAL '1 day ago'\", read=\"duckdb\").sql(\"duckdb\")\n```",
@@ -26,6 +27,14 @@
         "duckdb": "2.0.0"
       },
       "note": "also 30.17.0 and 30.22.0"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "sqlglot": "30.30.0",
+        "sqlglot main": "b99f5d58b1"
+      },
+      "note": "triage: repro run on 30.30.0; main read; tobymao/sqlglot searched"
     }
   ]
 }
