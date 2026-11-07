@@ -712,9 +712,9 @@ def _plan_bound(
     for col, eps in epsilon.items():
         bounds = _bounds(eps)
         if _unbounded(eps):
-            # No bound on the column (a `COVAR` or `CORR`, D30, or a value
-            # computed from a split double): nothing proves it, and a stated
-            # tolerance is not met.
+            # No bound on the column (a double `SUM` without a row cap, a value
+            # computed from one): nothing proves it, and a stated tolerance is
+            # not met.
             unproved = True
             if isinstance(stated, Within):
                 problems.append(
