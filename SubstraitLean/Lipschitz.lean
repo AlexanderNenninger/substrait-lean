@@ -1319,6 +1319,156 @@ theorem round_pair {N₁ N₂ : Int} {n : Nat} (hn : 0 < n) (f₁ : IsFin (ofExa
   rw [this] at t2
   omega
 
+theorem scaled_neg' (c : Int) : scaled (-c) = -scaled c := by
+  unfold scaled; split <;> split <;> omega
+
+theorem IsFin.neg {c : Int} (h : IsFin c) : IsFin (-c) := by
+  have := posInf_eq; have := negInf_eq; obtain ⟨h1, h2⟩ := h; exact ⟨by omega, by omega⟩
+
+/-- An engine operand's magnitude: the reference's range's, plus its
+tolerance. -/
+theorem atom_mag {e : Nat} {lo hi a b : Int} (hab : (a - b).natAbs ≤ e) (hb1 : lo ≤ b) (hb2 : b ≤ hi) :
+    (scaled a).natAbs ≤ magOf lo hi + e ∧ (scaled b).natAbs ≤ magOf lo hi := by
+  have hs := scaled_sub_le a b
+  have hm := scaled_natAbs_le hb1 hb2
+  refine ⟨?_, hm⟩
+  have := Int.natAbs_add_le (scaled a - scaled b) (scaled b)
+  rw [Int.sub_add_cancel] at this
+  omega
+
+theorem fadd_eq_sumCR {a b : Int} (ha : IsFin a) (hb : IsFin b) :
+    fadd a b = floatSumCR [.float a, .float b] := by
+  have hf : FinCodes [.float a, .float b] := fun c hc => by
+    simp only [List.mem_cons, Value.float.injEq, List.not_mem_nil, or_false] at hc
+    rcases hc with rfl | rfl <;> assumption
+  rw [fadd_fin ha hb]
+  simp [floatSumCR, nonFinite_of_finCodes hf, exactSum]
+
+/-- **`x + y`**: two finite operands within `e` codes each, of magnitudes at
+most `M` together: within `2 (e + 1)` codes and both roundings. -/
+theorem fadd_near {e M : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f₂ : IsFin a₂) (g₁ : IsFin b₁)
+    (g₂ : IsFin b₂) (h₁ : (a₁ - b₁).natAbs ≤ e) (h₂ : (a₂ - b₂).natAbs ≤ e)
+    (hM : (scaled a₁).natAbs + (scaled a₂).natAbs ≤ M) (hM' : (scaled b₁).natAbs + (scaled b₂).natAbs ≤ M)
+    (hbig : M ≤ 2 ^ 2097) :
+    (fadd a₁ a₂ - fadd b₁ b₂).natAbs ≤ 2 * (e + 1) + 2 * ulpDiv (M : Int) 1 + 4 := by
+  rw [fadd_eq_sumCR f₁ f₂, fadd_eq_sumCR g₁ g₂]
+  have hfin : ∀ {x y : Int}, IsFin x → IsFin y → FinCodes [.float x, .float y] := fun hx hy c hc => by
+    simp only [List.mem_cons, Value.float.injEq, List.not_mem_nil, or_false] at hc
+    rcases hc with rfl | rfl <;> assumption
+  have hS : ∀ {x y : Int}, (exactSum [.float x, .float y]).natAbs ≤ (scaled x).natAbs + (scaled y).natAbs :=
+    fun {x y} => by simpa [exactSum] using Int.natAbs_add_le (scaled x) (scaled y)
+  have hfS : ∀ {x y : Int}, (scaled x).natAbs + (scaled y).natAbs ≤ M →
+      IsFin (ofExact (exactSum [.float x, .float y])) := fun {x y} h =>
+    ofExactDiv_fin (n := 1) (by omega) (by have := hS (x := x) (y := y); omega)
+  have hc := floatSumCR_near (e := e) (.cons (show CodeNear e (.float a₁) (.float b₁) from h₁)
+    (.cons (show CodeNear e (.float a₂) (.float b₂) from h₂) .nil)) (hfin f₁ f₂) (hfin g₁ g₂)
+    (hfS hM) (hfS hM')
+  have u₁ := ulpDiv_mono (v := exactSum [.float a₁, .float a₂]) (w := (M : Int)) 1
+    (by rw [Int.natAbs_natCast]; exact Nat.le_trans hS hM)
+  have u₂ := ulpDiv_mono (v := exactSum [.float b₁, .float b₂]) (w := (M : Int)) 1
+    (by rw [Int.natAbs_natCast]; exact Nat.le_trans hS hM')
+  simp only [List.length_cons, List.length_nil] at hc
+  omega
+
+theorem fsub_eq_fadd {a b : Int} (ha : IsFin a) (hb : IsFin b) : fsub a b = fadd a (-b) := by
+  rw [fsub_fin ha hb, fadd_fin ha (IsFin.neg hb), scaled_neg', Int.sub_eq_add_neg]
+
+set_option exponentiation.threshold 3200 in
+/-- **`x · y`**: the exact products within `(Mx (ey + 1) + My (ex + 1)) / 2`,
+then both roundings. -/
+theorem fmul_near {ex ey Mx My : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f₂ : IsFin a₂)
+    (g₁ : IsFin b₁) (g₂ : IsFin b₂) (h₁ : (a₁ - b₁).natAbs ≤ ex) (h₂ : (a₂ - b₂).natAbs ≤ ey)
+    (ma₁ : (scaled a₁).natAbs ≤ Mx) (ma₂ : (scaled a₂).natAbs ≤ My)
+    (mb₁ : (scaled b₁).natAbs ≤ Mx) (mb₂ : (scaled b₂).natAbs ≤ My) (hbig : Mx * My ≤ 2 ^ 3171) :
+    (fmul a₁ a₂ - fmul b₁ b₂).natAbs ≤
+      4 + 2 * ulpDiv ((Mx * My : Nat) : Int) unitK + (Mx * (ey + 1) + My * (ex + 1) + unitK - 1) / unitK := by
+  rw [fmul_fin f₁ f₂, fmul_fin g₁ g₂]
+  have hK : 0 < unitK := Nat.two_pow_pos _
+  have hP : ∀ {x y : Int}, (scaled x).natAbs ≤ Mx → (scaled y).natAbs ≤ My →
+      (scaled x * scaled y).natAbs ≤ Mx * My := fun hx hy => by
+    rw [Int.natAbs_mul]; exact Nat.mul_le_mul hx hy
+  have hcap : Mx * My ≤ unitK * 2 ^ 2097 := by
+    refine Nat.le_trans hbig (Nat.le_of_eq ?_); unfold unitK; rw [← Nat.pow_add]
+  have r := round_pair hK (ofExactDiv_fin hK (Nat.le_trans (hP ma₁ ma₂) hcap))
+    (ofExactDiv_fin hK (Nat.le_trans (hP mb₁ mb₂) hcap))
+  have u₁ := ulpDiv_mono (v := scaled a₁ * scaled a₂) (w := ((Mx * My : Nat) : Int)) unitK
+    (by rw [Int.natAbs_natCast]; exact hP ma₁ ma₂)
+  have u₂ := ulpDiv_mono (v := scaled b₁ * scaled b₂) (w := ((Mx * My : Nat) : Int)) unitK
+    (by rw [Int.natAbs_natCast]; exact hP mb₁ mb₂)
+  -- `2 |P - P'| ≤ Mx (ey + 1) + My (ex + 1)`.
+  have hD : 2 * (scaled a₁ * scaled a₂ - scaled b₁ * scaled b₂).natAbs ≤ Mx * (ey + 1) + My * (ex + 1) := by
+    have e : scaled a₁ * scaled a₂ - scaled b₁ * scaled b₂ =
+        scaled a₁ * (scaled a₂ - scaled b₂) + scaled b₂ * (scaled a₁ - scaled b₁) := by
+      rw [Int.mul_sub, Int.mul_sub]; rw [Int.mul_comm (scaled b₂) (scaled a₁), Int.mul_comm (scaled b₂)]
+      omega
+    rw [e]
+    have t := Int.natAbs_add_le (scaled a₁ * (scaled a₂ - scaled b₂)) (scaled b₂ * (scaled a₁ - scaled b₁))
+    rw [Int.natAbs_mul, Int.natAbs_mul] at t
+    have s₁ := scaled_sub_le a₁ b₁
+    have s₂ := scaled_sub_le a₂ b₂
+    have k₁ : (scaled a₁).natAbs * (2 * (scaled a₂ - scaled b₂).natAbs) ≤ Mx * (ey + 1) :=
+      Nat.mul_le_mul ma₁ (by omega)
+    have k₂ : (scaled b₂).natAbs * (2 * (scaled a₁ - scaled b₁).natAbs) ≤ My * (ex + 1) :=
+      Nat.mul_le_mul mb₂ (by omega)
+    rw [Nat.mul_left_comm] at k₁ k₂
+    omega
+  have hq := Nat.div_le_div_right (c := unitK) (Nat.add_le_add_right (Nat.add_le_add_right hD unitK) 0)
+  simp only [Nat.add_zero] at hq
+  have hq' : (2 * (scaled a₁ * scaled a₂ - scaled b₁ * scaled b₂).natAbs + unitK - 1) / unitK ≤
+      (Mx * (ey + 1) + My * (ex + 1) + unitK - 1) / unitK :=
+    Nat.div_le_div_right (by omega)
+  omega
+
+/-- `a ≤ n · ⌈a / n⌉`. -/
+theorem le_mul_ceilDiv {a n : Nat} (hn : 0 < n) : a ≤ n * ((a + n - 1) / n) := by
+  have := Nat.div_add_mod (a + n - 1) n
+  have := Nat.mod_lt (a + n - 1) hn
+  rw [Nat.mul_comm] at *
+  omega
+
+set_option exponentiation.threshold 3200 in
+/-- **`x / c`** for a finite non-zero literal `c`: one division by `|c|` on
+both sides. -/
+theorem fdiv_lit_near {e Mx : Nat} {a b c : Int} (fa : IsFin a) (fb : IsFin b) (fc : IsFin c)
+    (hc0 : scaled c ≠ 0) (h : (a - b).natAbs ≤ e) (ma : (scaled a).natAbs ≤ Mx)
+    (mb : (scaled b).natAbs ≤ Mx)
+    (hbig : (Mx * unitK + (scaled c).natAbs - 1) / (scaled c).natAbs ≤ 2 ^ 2097) :
+    (fdiv a c - fdiv b c).natAbs ≤
+      4 + 2 * ulpDiv (((Mx * unitK + (scaled c).natAbs - 1) / (scaled c).natAbs : Nat) : Int) 1 +
+        (unitK * (e + 1) + (scaled c).natAbs - 1) / (scaled c).natAbs := by
+  rw [fdiv_fin fa fc hc0, fdiv_fin fb fc hc0]
+  generalize hn : (scaled c).natAbs = n at *
+  have hn0 : 0 < n := by rw [← hn]; exact Int.natAbs_pos.2 hc0
+  generalize hB : (Mx * unitK + n - 1) / n = B at *
+  have hNB : ∀ {x : Int}, (scaled x).natAbs ≤ Mx →
+      ((if scaled c < 0 then -scaled x else scaled x) * (unitK : Int)).natAbs ≤ n * B := by
+    intro x hx
+    rw [Int.natAbs_mul, Int.natAbs_natCast]
+    have : (if scaled c < 0 then -scaled x else scaled x).natAbs = (scaled x).natAbs := by
+      split <;> simp [Int.natAbs_neg]
+    rw [this, ← hB]
+    exact Nat.le_trans (Nat.mul_le_mul_right _ hx) (le_mul_ceilDiv hn0)
+  have hfin : ∀ {x : Int}, (scaled x).natAbs ≤ Mx →
+      IsFin (ofExactDiv ((if scaled c < 0 then -scaled x else scaled x) * (unitK : Int)) n) :=
+    fun hx => ofExactDiv_fin hn0 (Nat.le_trans (hNB hx) (Nat.mul_le_mul_left _ hbig))
+  have r := round_pair hn0 (hfin ma) (hfin mb)
+  have u₁ := ulpDiv_le_of_mean (hNB ma)
+  have u₂ := ulpDiv_le_of_mean (hNB mb)
+  have hD : 2 * ((if scaled c < 0 then -scaled a else scaled a) * (unitK : Int) -
+      (if scaled c < 0 then -scaled b else scaled b) * (unitK : Int)).natAbs ≤ unitK * (e + 1) := by
+    rw [← Int.sub_mul, Int.natAbs_mul, Int.natAbs_natCast]
+    have : ((if scaled c < 0 then -scaled a else scaled a) - (if scaled c < 0 then -scaled b else scaled b)).natAbs =
+        (scaled a - scaled b).natAbs := by
+      split
+      · rw [show -scaled a - -scaled b = -(scaled a - scaled b) by omega, Int.natAbs_neg]
+      · rfl
+    rw [this, Nat.mul_comm unitK (e + 1), ← Nat.mul_assoc]
+    exact Nat.mul_le_mul_right unitK (by have := scaled_sub_le a b; omega)
+  have hq : (2 * ((if scaled c < 0 then -scaled a else scaled a) * (unitK : Int) -
+      (if scaled c < 0 then -scaled b else scaled b) * (unitK : Int)).natAbs + n - 1) / n ≤
+      (unitK * (e + 1) + n - 1) / n := Nat.div_le_div_right (by omega)
+  omega
+
 /-! ### The `MIN` and `MAX` rows (#929 step 2)
 
 `MIN` and `MAX` pick one of their values by code (`Value.leScalar`): with
