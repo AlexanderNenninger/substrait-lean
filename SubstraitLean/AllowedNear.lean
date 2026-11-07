@@ -344,4 +344,27 @@ theorem contract_sound_allowed {cat : Catalog} (hcat : cat.WF) {S : String → L
   rw [postExpr_eval hlen, ← Value.isTrue_iff]
   exact Expr.narrow_sound hsh _ (hrob j hj) hxx (Value.isTrue_iff.mpr h')
 
+/-- **Contracts hold on every allowed result of a closed plan** (D25): the
+side condition of `contract_sound_allowed` replaced by the decidable
+`Rel.closedB`, which holds of every plan whose measures are not
+`VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT` (a double `SUM` or
+`AVG` is order-free since D25), for a context reflexive at `q`. -/
+theorem contract_sound_allowed_closed {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
+    {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
+    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
+    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
+    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset) (hc : ctx.ReflAt q)
+    (hclosed : T.closedB = true) {sh : Nat → Option Shift}
+    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
+    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
+    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
+    (hW : W.SoundAll cat)
+    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
+      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
+        AVal.certainlyTrue = true) :
+    ∀ {out : Relation}, (Rel.emit (.project T es) mp).Allowed cat out →
+      ∀ row ∈ out, ∀ v ∈ row, v = .bool true :=
+  contract_sound_allowed hcat hS hpre hT hq (Rel.floatOpenSafe_of_closed hc hclosed) hsh hrob hQ hW
+    hproved
+
 end Substrait
