@@ -1,0 +1,11 @@
+Error: Invariant NoCorruption is violated.
+State 1 Initial predicate: source c0 | table none | s1: down | zombies: none | deployed P1
+State 2 Start: s1: idle P1 v0 view=none written=none
+State 3 Refresh: s1: ready P1 v0 view=P1(c0) written=none
+State 4 Prepare: s1: writing P1 v0 view=P1(c0) written=none pending=P1 v0 sending[replace P1 v0 P1(c0) if epoch=-1]
+State 5 Land: table P1(c0) | commit #1: replace P1 v0 c0 (digest 0) by s1 | s1: idle P1 v0 view=P1(c0) written=P1(c0)
+State 6 ForeignWrite: table foreign | commit #2: foreign rows
+State 7 SourceChanges: source c1 v1
+State 8 Refresh: s1: ready P1 v1 view=P1(c1) written=P1(c0)
+State 9 Prepare: s1: writing P1 v1 view=P1(c1) written=P1(c0) pending=P1 v1 sending[merge P1 v1 P1(c1) on P1(c0) if epoch=0]
+State 10 Land: table corrupt | commit #3: merge P1 v1 c1 (digest 0) by s1 | s1: idle P1 v1 view=P1(c1) written=P1(c1)

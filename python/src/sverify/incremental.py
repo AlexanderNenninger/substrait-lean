@@ -589,6 +589,9 @@ class Stored:
     digests: dict[str, str]
     """`table_digest` of each static table the view read."""
     table: pa.Table
+    table_ids: dict[str, str] | None = None
+    """The source tables' ids the record names (`Contract.table_ids`), or
+    None if the sink did not say: then they are read from its contract."""
 
 
 class StaticSource(Pipeable):
