@@ -185,12 +185,19 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTI
     repo = root.parent
     problems: list[str] = []
     items = [i for area in checklist(root).values() for i in area]
+    item_set = set(items)
     table_rows = set(rows(root, functions))
     table = {(g, o) for g, o, _ in table_rows}
     problems += [
         f"{AREAS.name}: item {i} repeats" for i in sorted(set(items)) if items.count(i) > 1
     ]
     ids = {str(f.get("id")) for f in docs.values()}
+    # A fact named in prose (`duckdb-R2`) or a group of them (`duckdb-R15`
+    # for `duckdb-R15-…`): every id and each of its dash-separated prefixes.
+    named_ids = {i[:k] for i in ids for k in range(len(i) + 1) if k == len(i) or i[k] == "-"}
+    fact_name = re.compile(rf"\b(?:{'|'.join(engines(root))})-[A-Z][A-Za-z0-9-]*[A-Za-z0-9]")
+    # Each probe file's constructs, read once: many facts cite the same file.
+    probes: dict[Path, set[str]] = {}
     seen: set[str] = set()
     for path, f in docs.items():
         where = path.relative_to(repo).as_posix()
@@ -204,7 +211,7 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTI
         if path.name != f"{f['id']}.json":
             problems.append(f"{where}: the file is not named after its id {f['id']}")
         for item in f.get("options", []):
-            if item not in items:
+            if item not in item_set:
                 problems.append(f"{where}: {item!r} is not an item of {AREAS.name}")
         if f["evidence"] != evidence_of(f):
             problems.append(
@@ -236,7 +243,7 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTI
             level = row.get("evidence", f["evidence"])
             if EVIDENCE.index(level) > EVIDENCE.index(f["evidence"]):
                 problems.append(f"{where}: {name}'s evidence {level!r} is stronger than the fact's")
-            if row["option"] in items and row["option"] not in f.get("options", []):
+            if row["option"] in item_set and row["option"] not in f.get("options", []):
                 problems.append(f"{where}: rows name {row['option']!r}, which options lack")
         engine = path.parent.parent.name
         if f["engine"] != engine or not f["id"].startswith(f"{engine}-"):
@@ -255,15 +262,17 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT, functions: Path = FUNCTI
                 if not target.is_file():
                     problems.append(f"{where}: no file {e['file']}")
                 elif "probe" in e:
-                    constructs = {p["construct"] for p in json.loads(target.read_text())["probes"]}
-                    if e["probe"] not in constructs:
+                    if target not in probes:
+                        probes[target] = {
+                            p["construct"] for p in json.loads(target.read_text())["probes"]
+                        }
+                    if e["probe"] not in probes[target]:
                         problems.append(f"{where}: {e['file']} has no probe {e['probe']!r}")
         # Prose that names another fact (`duckdb-R2`) names one that exists,
         # or a group of them (`duckdb-R15` for `duckdb-R15-…`).
-        prefixes = "|".join(engines(root))
         text = json.dumps([f.get("description"), f.get("reference"), f["provenance"]])
-        for name in re.findall(rf"\b(?:{prefixes})-[A-Z][A-Za-z0-9-]*[A-Za-z0-9]", text):
-            if not any(i == name or i.startswith(f"{name}-") for i in ids):
+        for name in fact_name.findall(text):
+            if name not in named_ids:
                 problems.append(f"{where}: names {name}, which is not a fact")
     return problems
 

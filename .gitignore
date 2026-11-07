@@ -14,4 +14,6 @@ __marimo__/
 /python/.great-docs*/
 # The site's generated pages (`poe docs_pages`, python/scripts/docs_pages.py)
 /python/examples/
+/python/semantics/
+/python/design/
 /python/ledgers/

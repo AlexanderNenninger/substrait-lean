@@ -9,7 +9,7 @@ works inside is in [how-it-works.md](how-it-works.md).
 
 ```bash
 pip install sverify                 # or: uv add sverify
-pip install 'sverify[delta,iceberg,polars,datafusion,spark]'   # or 'sverify[all]'
+pip install 'sverify[delta,iceberg,polars,spark]'   # or 'sverify[all]'
 ```
 
 The core runs on DuckDB: contracts, incremental maintenance, and SQL for
@@ -225,30 +225,9 @@ against the model, and its section 8 checks DataFusion as a backend.
 
 ## Using sverify
 
-[Install](#install-and-a-first-contract) covers the release. Each night, when `main` has changed, the
-[`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
-`<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
-
-```bash
-uv add "sverify>=0.4.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
-pip install --pre sverify --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
-```
-
-uv keeps the version and drops the page, so add it to your `pyproject.toml`;
-`uv lock --upgrade-package sverify` then moves to the latest nightly:
-
-```toml
-[tool.uv]
-find-links = ["https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly"]
-```
-
-Each build's wheels stay on the release for 30 days, so a wheel's own URL pins
-one build for that long. `--find-links` sees every build on the page and picks
-the newest. Copy a URL from the release page:
-
-```bash
-pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-<version>-py3-none-<platform>.whl"
-```
+[Install](#install-and-a-first-contract) covers the release; the nightly
+builds of `main` and how to pin one are in
+[python/README.md](../python/README.md).
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents every public function and class, for the released version (built
@@ -879,6 +858,9 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
 | `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |
 | `SVERIFY_TEMP_DIRECTORY` | | | a directory under the system's temporary one | DuckDB's `temp_directory`, where it spills past the memory limit |
+| `SVERIFY_CACHE` | | | on | `off`, `0`, `false` or `no` turns the proof cache off ([Checking without running](#checking-without-running)) |
+| `SVERIFY_CACHE_DIR` | | | `$XDG_CACHE_HOME/sverify`, else `~/.cache/sverify` | where the proof cache lives |
+| `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](#credentials)) |
 | `SVERIFY_PREBUILT_CHECKER` | | | | for contributors: an editable install links this checker and skips `lake build` |
 
 `SVERIFY_CHECK`, `SVERIFY_PREBUILT_CHECK` and `SVERIFY_SPILL_DIRECTORY`,
@@ -1659,7 +1641,7 @@ and interval joins are follow-ups in #294.
 ```python
 from sverify.engines import run
 
-c.refresh(engine="polars")                     # or "duckdb" (the default), "datafusion", "spark"
+c.refresh(engine="polars")                     # or "duckdb" (the default), "spark"
 snowflake_sql = c.to_sql("snowflake")          # or "duckdb", "spark"; UnsupportedError says why
 con = sv.connect()                             # or run a plan on tables of your own
 con.create("orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
@@ -1714,7 +1696,7 @@ and `t.ms % 1000` gets the identity only for non-negative `ms`. State
 `_.ms >= 0` in `requires`, or write the plan in SQL, where both operators
 truncate. When one plan uses Ibis `//` and `%` on the same operands under the
 reference or DuckDB's semantics, its report carries a hint that names the pair.
-[`t7b_div_mod.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/claude/api-critique/api-critique/tasks/t7b_div_mod.py)
+[`t7b_div_mod.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/tasks/t7b_div_mod.py)
 reproduces the table.
 
 ### Routes, classes and profiles

@@ -233,3 +233,28 @@ def test_another_plans_commit_at_the_same_epoch_fails_the_write(
     with pytest.raises(ConcurrentWriteError):
         a.refresh(engine=engine)
     assert ids(sink) == [7, 8]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_writer_behind_the_record_does_not_write_over_it(jobs, monkeypatch, engine):
+    """#1025: A pins orders@v2; before A reads the sink's record, B commits
+    orders@v3. A is behind the record of the same table: it skips, and the
+    sink keeps B's later state."""
+    src, sink, a, b = jobs
+    a.refresh(engine=engine)
+    b.refresh(engine=engine)
+    append(src, [3])
+    original = DeltaSink.contract
+
+    def b_first(self, *args):
+        if self is a.sink:
+            monkeypatch.setattr(DeltaSink, "contract", original)
+            append(src, [4])
+            b.refresh(engine=engine)
+        return original(self, *args)
+
+    monkeypatch.setattr(DeltaSink, "contract", b_first)
+    w = a.refresh(engine=engine).writes[0]
+    assert w.mode == "skipped"
+    assert ids(sink) == [1, 2, 3, 4]
+    assert DeltaTable(sink).transaction_version("sverify:paid") == 3

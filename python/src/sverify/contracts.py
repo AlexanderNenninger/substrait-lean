@@ -647,7 +647,8 @@ def verify(
 
     A proof is about the plan `transform` compiles to, under `Rel.eval`. An
     Ibis expression compiles with sverify's own producer, so it means what
-    `docs/ibis-semantics.md` says, whichever Ibis backend it came from; where
+    `docs/reference-semantics.md` ("The Ibis frontend") says, whichever Ibis
+    backend it came from; where
     Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DataFusion, DuckDB and

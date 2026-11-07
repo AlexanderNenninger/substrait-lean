@@ -1,9 +1,9 @@
 # sverify
 
 Sverify proves a data pipeline's contracts before it runs, takes the proof to
-[DuckDB](https://duckdb.org) and [Polars](https://pola.rs) by a route that
-says what carries over, also runs it on
-[Spark](https://spark.apache.org), and keeps the result up to date from Delta
+[DuckDB](https://duckdb.org), [Polars](https://pola.rs) and
+[Spark](https://spark.apache.org) by a route that says what carries over,
+and keeps the result up to date from Delta
 Lake and Iceberg change feeds.
 
 In sverify you write a data transformation as usual, in
@@ -20,14 +20,14 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   and Iceberg metadata, and a batch that breaks one is refused before
   anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#runtime-errors) list what is ruled out.
 * A route takes the proof to the engine. `route="auto"` runs the plan on
-  DuckDB or Polars natively, through the reference's proved translation, or
+  DuckDB, Polars or Spark natively, through the reference's proved translation, or
   by a check that the engine's choices are within the proof's, and names
   the plan's class there: exact, equal under an observation the
   postcondition states (a float tolerance is one), or exact or observed
   after a proved shim. Where no route
   applies, the plan is refused with the reason
-  ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB and
-  Polars are characterized fact by fact, with the evidence for each
+  ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB,
+  Polars and Spark are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 * Postconditions say what the result's consumer observes. By default,
   doubles within the plan's proved bound (`floats="plan"`, which the report
@@ -40,7 +40,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-Eight [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md), from a first contract to
+Ten [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md), from a first contract to
 Substrait's own semantics, show each of these in a few lines.
 
 We aim to make sverify an assistant that makes data engineering more joyful: fewer
@@ -49,39 +49,24 @@ hand on.
 
 Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
-Sverify checks every plan against a reference semantics, and four principles
-decide what it does ([reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md#principles)):
-
-1. The reference follows Substrait, options included, and says where it
-   departs from it.
-2. Where Substrait is silent, it takes the least surprising choice and writes
-   down why. An option a plan omits means an error.
-3. Every engine can follow it with reasonable effort.
-4. Optimizations stay provable: an error means "may raise".
-
+Sverify checks every plan against a reference semantics, written in Lean,
+whose four principles and choices are in
+[reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md#principles).
 The reference raises where engines disagree on an answer, so a verified plan
 runs alike on each: an operation on finite doubles that overflows to `±∞`,
 `power(-inf, 0.5)`, a `MEDIAN` between `-inf` and `+inf`, a constant
 subexpression that raises. `AND` and `OR` evaluate both operands, as DuckDB
 and Polars do. A plan verified under the reference creates no NaN and no
-`±∞` its inputs did not hold. `semantics="duckdb"` checks a plan under what
-DuckDB does, and `semantics="substrait"` under Substrait's extension
-YAMLs, open wherever they say nothing
+`±∞` its inputs did not hold. `semantics="duckdb"`, `"polars"` and
+`"spark"` check a plan under what that engine does, and
+`semantics="substrait"` under Substrait's extension YAMLs, open wherever
+they say nothing
 ([the Substrait profile](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#the-substrait-profile)).
 
-Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
-
-| Tier | Engines | What it means today |
-|---|---|---|
-| 1 | DuckDB | Characterized as a diff against the reference model, with proved shims. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
-| 2 | Polars | Characterized as a diff against the reference model on its streaming engine, with shims proved in Lean. Aims for Tier 1. |
-| 2 | Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. |
-| 3 | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), with no real account yet ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
-
-Work on DataFusion, Spark and Snowflake is paused until the generated lowerings land
-([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
-[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
-DataFusion is experimental, outside the 1.x promise ([stability](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md)): the `datafusion` extra adds it, and `all` leaves it out.
+Sverify runs plans on DuckDB, Polars and Spark, and writes DuckDB, Spark
+and Snowflake SQL. [Engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)
+says which are in the 1.x promise, with their profiles and translations;
+DataFusion is experimental, outside it, and the `all` extra leaves it out.
 
 Polars refuses what only DuckDB runs so far, with "see #271": the functions
 that [`SUPPORT` and `WINDOW_SUPPORT`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/_support.py)
@@ -92,12 +77,12 @@ list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `fir
 
 ```bash
 pip install sverify                # or: uv add sverify
-pip install 'sverify[all]'         # with every engine and table format
+pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
 ```
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
-`flight`, `testing`, or `all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
+`polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
+`flight`, `testing`, `odcs`, `openlineage`, or `all`, and the experimental `datafusion`. Wheels bundle the checker as a small native binary for Linux (x86_64,
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
 builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
 starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
@@ -296,7 +281,7 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
 # r.refresh(engine="polars"); sv.group(r, other).refresh(); r.to_pandas()
 ```
 
-* `@sv.transform(requires=..., ensures=..., on_unproved="error" | "runtime" | "warn")`
+* `@sv.transform(requires=..., ensures=..., on_unproved="error" | "check" | "warn")`
   proves a contract on each call; `.report` says what was proved and
   what is known about every output column. `sv.unique(...)` states keys.
 * `source.pipe(paid).pipe(revenue, regions=regions)` builds nodes left to
@@ -310,10 +295,12 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
   stores a node, exactly once per state, and nodes downstream read it as a
   versioned source. `refresh(engine=...)` updates the whole lineage, and
   `sv.group(a, b)` several outputs against the same source versions.
-* Filters, projections, inner and cross joins and `UNION ALL` are
-  maintained from the changes. An aggregate recomputes only the groups a
-  batch touches, and a window only the partitions it touches; anything else
-  is recomputed and diffed.
+* Filters, projections, inner, cross, semi and anti joins, `UNION ALL`,
+  `DISTINCT`, and `COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group
+  are maintained from the changes. Another aggregate recomputes only the
+  groups a batch touches, and a window only the partitions it touches;
+  anything else is recomputed and diffed
+  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
 * `sverify.io` has Delta, Iceberg and in-memory sources and sinks, and
   base classes for your own: a `Source` implements `read(since)`
   (`from_query`, `from_frame` and `from_files` build one), a `Sink`

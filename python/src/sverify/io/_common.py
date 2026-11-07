@@ -572,14 +572,20 @@ def last_record[C, R](
 
 def other_tables(committed: Contract, contract: Contract) -> list[str]:
     """The sources of `contract` that are not the tables `committed` was
-    computed from: their table id changed, or their version went down (a
-    table's versions only grow, so a lower one is another table, dropped
-    and created again). Then the sink's rows are not a state of these
-    inputs, whatever the epochs say (#516)."""
+    computed from: their table id changed, or, where the ids do not tell
+    (one side records none), their version went down (a table's versions
+    only grow, so a lower one is another table, dropped and created again).
+    Then the sink's rows are not a state of these inputs, whatever the
+    epochs say (#516). With the same id on both sides, a lower version is
+    the same table: this refresh is behind the record, and the sink holds a
+    later state, which is not written over (#1025)."""
     out = []
     for t, n in contract.sources.items():
         was, now = committed.table_ids.get(t), contract.table_ids.get(t)
-        if (was is not None and now is not None and was != now) or n < committed.sources.get(t, n):
+        if was is not None and now is not None:
+            if was != now:
+                out.append(t)
+        elif n < committed.sources.get(t, n):
             out.append(t)
     return sorted(out)
 

@@ -105,10 +105,12 @@ What such sources can and cannot promise:
   and the first refresh reads `read(cursor)`. `from_query` and `from_files`
   implement it. The cursor is recorded if it has a JSON form (datetimes,
   dates, decimals, bytes and tuples are tagged).
-* A source without `restore`, or whose `restore` returns None (the cursor's
-  rows are gone), is read in full again. Its versions continue above the
-  ones the job's sinks recorded, so the stored nodes reading it are
-  recomputed and written once, never skipped by mistake.
+* A source without `restore` has its sinks record a digest of its contents.
+  After a restart, a first read with the recorded digest resumes there and
+  writes nothing (#889). Otherwise, as for a `restore` that returns None
+  (the cursor's rows are gone), it is read in full again: its versions
+  continue above the ones the job's sinks recorded, so the stored nodes
+  reading it are recomputed and written once, never skipped by mistake.
 * Give `schema=` too: building a node needs the schema, and without it a
   restarted source reads the whole table once before it restores.
 * A table format with statistics and a change feed implements the full
@@ -121,7 +123,7 @@ What such sources can and cannot promise:
   numbers them in order of arrival. `schema=` proves contracts without asking
   the server, and `token=` sends a bearer token.
 
-## A sink: `write(change)`, and `committed()` for exactly once
+## A sink: `write(change)`, and `contract()` for exactly once
 
 `Sink.write` gets a `SinkChange`: `inserts` and `deletes` since the last
 write (Arrow tables), or with `replace` the whole `table`, and the
@@ -129,12 +131,12 @@ write (Arrow tables), or with `replace` the whole `table`, and the
 has already committed, unless another plan committed it (`contract.plan`
 differs) or it was computed from other tables (a source dropped and created
 again: a lower version, or another id in `contract.table_ids`): then it
-hands `write` the whole table with `replace`. `committed()` reads the last contract back from the
+hands `write` the whole table with `replace`. `contract()` reads the last contract back from the
 sink, so that holds across restarts too; without it, sverify remembers for
 the life of the process. If two processes may refresh the same sink, make
 `write` fail for the second one to commit: raise
 `sverify.errors.ConcurrentWriteError` when the sink no longer holds what
-`committed()` returned. Its next refresh writes the whole table, or skips
+`contract()` returned. Its next refresh writes the whole table, or skips
 the state the other process committed.
 
 ```python
@@ -152,7 +154,7 @@ class JsonLines(Sink):
         self.path = Path(path)
         self.record = self.path.with_suffix(".contract.json")
 
-    def committed(self):
+    def contract(self, version=None):
         if not self.record.exists():
             return None
         return Contract.from_json(self.record.read_text())
@@ -183,23 +185,34 @@ print(big(orders).write(JsonLines("big.jsonl")).refresh().writes[0])  # a restar
 
 ## Credentials and storage
 
-sverify stores no credentials: it passes options to the library doing the
-I/O, and the contract a sink records holds none.
+sverify stores no credentials: a pipeline names them, and sverify reads the
+values when a table is opened. Reports, contract records, exports, logs and
+errors show names only. Never write a secret's value into a pipeline.
 
-* **Delta** (S3, GCS, Azure): delta-rs's default chain applies when no
-  options are given: environment variables (`AWS_REGION`,
-  `AWS_ACCESS_KEY_ID`, ...), `~/.aws` profiles, instance or pod roles.
-  Prefer it. Otherwise give `storage_options`: a `sverify.io.Storage`
-  shared by every table, holding a mapping or a function that returns fresh
-  options, called whenever a table is opened (so expiring tokens renew).
-  `repr` shows option names only.
-* **Iceberg** (REST, Glue, ...): the pyiceberg catalog holds them, from
-  `load_catalog` properties, `~/.pyiceberg.yaml` or `PYICEBERG_*` variables.
+* **The default chain first** (S3, GCS, Azure): with no options, delta-rs
+  reads environment variables (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, ...),
+  `~/.aws` profiles, instance or pod roles, or a CI job's OIDC login.
+* **A secret by name**: `sverify.io.Secret("env:NAME")`, `"file:/path"`,
+  `"bao:kv/path#field"` (OpenBao; `vault:` for Vault), `"aws-sm:id"`,
+  `"gcp-sm:projects/p/secrets/s"`, `"azure-kv:vault/name"`,
+  `"keychain:service/account"`, or a bare name that
+  `[tool.sverify.secrets.names]` in `pyproject.toml` maps (else the
+  environment variable: `flight-token` reads `FLIGHT_TOKEN`).
+* **Delta**: `storage_options=Storage(credentials="lake")` (the secret's
+  fields are the options), a mapping whose values are `Secret`s, or a
+  `Storage` holding a function that returns fresh options. `writes=` and
+  `reads=` declare the prefixes the credential may touch; `sverify check`
+  warns about a sink outside them.
+* **Flight**: `FlightSource(..., secret="flight-token")`.
+* **Iceberg** (REST, Glue, ...): the pyiceberg catalog holds them:
+  `load_catalog("lake", **Storage({"token": Secret("bao:kv/rest#token")}).options())`,
+  `~/.pyiceberg.yaml` or `PYICEBERG_*` variables.
 * **Files** (`from_files`): the filesystem `path`'s URI names, with its
   default chain, or `filesystem=` a `pyarrow.fs.FileSystem`.
-* **Your own source or sink**: take a `Storage` and call `options()` when
-  you connect, rather than literal keys, which travel with any pickled
-  object.
+* **Your own source or sink**: pass `credentials="name"` to `from_query`,
+  `from_frame`, `from_files` or `sink_from`, and read the value inside the
+  function with `Secret("name").value()`. `node.credentials()` lists each
+  table's credential by name, for reading or writing.
 
 ```python
 from sverify.io import DeltaSink, DeltaSource, Storage
