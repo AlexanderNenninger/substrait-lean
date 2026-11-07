@@ -22,7 +22,7 @@
     "`AVG(DOUBLE)` keeps a sum and a count and returns `Divide(sum, count, LEGACY)`, NULL for a count of 0. The sum is spark-sum-double's.",
     "`avg` of 1e16, 1, -1e16, 1 is 0.25 after a shuffle into one partition and 0.5 into three; of `FLOAT` it returns `DOUBLE`."
   ],
-  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "reference": "`AggFn.avg` is `floatAvgCR` (D25): the exact sum of the doubles divided by the count, rounded once; non-finite values as for `SUM`. NULL without values. An engine's sum divided by n is within the plan's bound (`sum_order`, `StdModel.epsilon_avg_cr`).",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [
