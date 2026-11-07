@@ -584,6 +584,27 @@ def rowsExactByEngine (input : Json) (engines : List String) : Except String Jso
   let T := Rel.keyedWindows cat A F (fun _ => [])
   return Json.mkObj <| engines.map fun e => (e, toJson (rowsExact e cat A F T root))
 
+/-- Whether a measure is a statistical aggregate (D30): its engine's value is
+within the plan's bound of the reference's, not equal to it. -/
+def isStat (m : Measure) : Bool :=
+  match m.fn with
+  | .var _ _ | .cov _ | .corr => true
+  | _ => false
+
+/-- The output columns that read a statistical aggregate, above the
+aggregate: `some (some m)` for the measure `m`'s own column, `some none` for
+a column computed from one (no bound carries over), `none` for the rest. -/
+def statCols : Rel → Option (List (Option (Option Measure)))
+  | .aggregate _ gs ms =>
+    some (gs.map (fun _ => none) ++ ms.map fun m => if isStat m then some (some m) else none)
+  | .filter r _ | .orderBy r _ => statCols r
+  | .project r es => (statCols r).map fun cs => cs ++ es.map fun e =>
+      match e with
+      | .field i => cs.getD i none
+      | _ => if (reads e).any (fun i => (cs.getD i none).isSome) then some none else none
+  | .emit r m => (statCols r).map fun cs => m.map (cs.getD · none)
+  | _ => none
+
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
 `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}`.
@@ -637,7 +658,17 @@ def epsilon (input : Json) : Except String Json := do
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
-  return Json.mkObj cols
+  -- D30: a statistic's column is within `statEps` of the reference's on an
+  -- engine, not proved; one computed from a statistic has no bound.
+  let stats : List (String × Option Measure) := match statCols plan.root with
+    | some cs => (names.zip cs).filterMap fun (name, (c : Option (Option Measure))) =>
+        c.map fun m => (name, m)
+    | none => []
+  let statJson := stats.map fun (name, (m? : Option Measure)) =>
+    (name, match m?.bind (statEps env · r.maxRows) with
+    | some e => Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson false)])]
+    | none => Json.mkObj [("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])])
+  return Json.mkObj (cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n))
 
 /-! ## The dependency report of a contract
 

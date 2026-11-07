@@ -17,6 +17,7 @@ from pathlib import Path
 
 import duckdb
 import ibis
+import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -382,3 +383,29 @@ def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
     rolled = hosts.group_by("host").aggregate(ad=hosts.cpu.mean().cast("decimal(4, 2)"))
     report = sv.verify(rolled, requires={"hosts": HOSTS}, ensures=[])
     assert report.issues and not report.proved
+
+
+def test_statistics_are_tested_or_refused_never_proved() -> None:
+    """D30: an engine's `VAR` is within `statEps` of the reference, a bound
+    not mechanised, so its route is `tested`; a `COVAR` or `CORR` column has
+    no bound yet, so a stated tolerance is refused and the route is never
+    `proved`."""
+    con = sv.connect()
+    con.put(
+        "t", pa.table({"k": [1, 1, 2, 2], "x": [1.0, 2.0, 3.0, 5.0], "y": [2.0, 1.0, 0.5, 4.0]})
+    )
+    t = con.table("t")
+    req = {"t": [_.x.between(-1e3, 1e3), _.y.between(-1e3, 1e3), sv.max_rows(1000)]}
+    tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
+    var = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req, ensures=tol)
+    assert var._epsilon["v"]["proved"] == {"abs": False}
+    var.run(con, "duckdb")
+    assert var.routes["duckdb"].evidence == "tested"
+    for agg in (dict(c=t.x.cov(t.y)), dict(c=t.x.corr(t.y))):
+        plain = sv.verify(t.group_by("k").aggregate(**agg), requires=req)
+        assert plain._epsilon["c"]["abs"] is None
+        plain.run(con, "duckdb")
+        assert plain.routes["duckdb"].evidence == "tested"
+        tight = sv.verify(t.group_by("k").aggregate(**agg), requires=req, ensures=tol)
+        assert not tight.proved
+        assert "c has no bound" in str(tight)
