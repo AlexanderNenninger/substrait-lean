@@ -29,7 +29,9 @@
 # than 6 GB is available, since the build is as heavy as a QA run.
 #
 # The Lean build and the tests each run in their own systemd user scope with
-# no swap (`ulimit -v`, per process, where user scopes are not available), so
+# no swap (`ulimit -v`, per process, where user scopes are not available; a
+# cap under 8G runs uncapped there, as Lean's runtime needs 8G of address
+# space), so
 # a runaway `lean` process is killed inside its scope before it starves the
 # box. The first OOM kill stops the whole scope (`OOMPolicy=stop`): with only
 # the one process killed, Lake kept the other `lean` processes thrashing at
@@ -95,6 +97,13 @@ capped() {
         peak=/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.peak
         [ -r "$peak" ] && echo "homelab_qa: peak memory, page cache included, $(numfmt --to=iec < "$peak")"
         exit $status' bash "$niceness" "$@" &
+  elif [ "$(numfmt --from=iec "$max")" -lt $((8 << 30)) ]; then
+    # `ulimit -v` caps address space, not memory, and Lean reserves far
+    # more than it touches: under 2G `substrait-check` and under 4G `lean`
+    # fail at start ("failed to create thread"), 8G runs both (#1074).
+    echo "homelab_qa: WARNING: $step runs UNCAPPED: no systemd user scope, and" \
+      "ulimit -v $max is too small for Lean's runtime (#1074)" >&2
+    nice -n "$niceness" "$@" &
   else
     echo "homelab_qa: $step capped with ulimit -v $max (no systemd user scope)"
     (ulimit -v $(($(numfmt --from=iec "$max") / 1024)) && exec nice -n "$niceness" "$@") &

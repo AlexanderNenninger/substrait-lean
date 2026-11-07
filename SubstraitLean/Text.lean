@@ -163,7 +163,27 @@ def repeatMax : Nat := 2 ^ 31 - 1
 /-- Does `repeat(s, n)` fit in `repeatMax` bytes? (`n ≤ 0` gives `''`.) -/
 def repeatFits (s : String) (n : Int) : Bool := decide (s.utf8ByteSize * n.toNat ≤ repeatMax)
 
-def repeatStr (s : String) (n : Int) : String := String.join (List.replicate n.toNat s)
+/-- `s` appended to `acc` `k` times, in place: a loop, with no list of `k`
+pieces in between. -/
+def repeatOnto (s : String) : Nat → String → String
+  | 0, acc => acc
+  | k + 1, acc => repeatOnto s k (acc ++ s)
+
+/-- `repeat(s, n)`: `s` `n` times. It writes the result into one string
+(`repeatStr_eq` gives the plain form): the plain form's list of `n` pieces
+took about 32 bytes a piece, so `repeat(' ', 10⁹)`, a 1 GB result within
+`repeatFits`, took over 30 GB of the checker's memory (#1074). -/
+def repeatStr (s : String) (n : Int) : String := repeatOnto s n.toNat ""
+
+theorem repeatOnto_eq (s : String) :
+    ∀ k acc, repeatOnto s k acc = acc ++ String.join (List.replicate k s)
+  | 0, acc => by simp [repeatOnto]
+  | k + 1, acc => by
+    rw [repeatOnto, repeatOnto_eq s k, List.replicate_succ, String.join_cons, String.append_assoc]
+
+theorem repeatStr_eq (s : String) (n : Int) :
+    repeatStr s n = String.join (List.replicate n.toNat s) := by
+  simp [repeatStr, repeatOnto_eq]
 
 def reverse (s : String) : String := String.ofList s.toList.reverse
 
