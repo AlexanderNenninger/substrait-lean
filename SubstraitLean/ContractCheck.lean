@@ -64,23 +64,33 @@ open Parse
 
 /-- What a column's declared type allows. -/
 def typeEnv (ty : Json) : AVal :=
-  -- Doubles, timestamps and dates are integer codes (`SubstraitLean/Float.lean`).
+  -- Numbers: integers, doubles (by their codes, `SubstraitLean/Float.lean`), timestamps and dates.
   let ints := ["i8", "i16", "i32", "i64", "fp32", "fp64", "precisionTimestamp", "timestamp", "date"]
   let kinds := ints ++ ["string", "varchar", "fixedChar", "bool", "decimal"]
   let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""
   let body := ty.getObjValD kind
   let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
+  -- The column's number kind (#923).
+  let nk : Option NumKind :=
+    if ["i8", "i16", "i32", "i64"].contains kind then some .int
+    else if ["fp32", "fp64"].contains kind then some .float
+    else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
+    else if kind == "date" then some .date
+    else none
   -- `BIGINT` and timestamps (microseconds) are 64-bit: what makes `a / 2` safe.
   let i64 := ["i64", "precisionTimestamp", "timestamp"]
-  if i64.contains kind then ⟨nullable, some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, false, false, false, none⟩
-  else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false, none⟩
-  else if ["string", "varchar", "fixedChar"].contains kind then ⟨nullable, none, false, false, true, none⟩
-  else if kind == "bool" then ⟨nullable, none, true, true, false, none⟩
+  if i64.contains kind then
+    ⟨nullable, some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, false, false, false, none, nk⟩
+  else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false, none, nk⟩
+  else if ["string", "varchar", "fixedChar"].contains kind then
+    ⟨nullable, none, false, false, true, none, none⟩
+  else if kind == "bool" then ⟨nullable, none, true, true, false, none, none⟩
   -- A decimal is its unscaled integer, of at most `p` digits (#27): what makes
   -- `a + b` of two columns fit its precision.
   else if kind == "decimal" then
     let p := (body.getObjValAs? Nat "precision").toOption.getD 38
-    ⟨nullable, some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, false, false, false, none⟩
+    let sc := (body.getObjValAs? Nat "scale").toOption.getD 0
+    ⟨nullable, some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, false, false, false, none, some (.dec sc)⟩
   else AVal.top
 
 def schemaEnv (schema : Json) : List AVal :=
@@ -362,7 +372,7 @@ def impliedOf (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   r.tables.eraseDups.filterMap fun t =>
     match Rel.need cat A F t (.lit (.bool true)) r with
     | some Es =>
-      let bs := Es.map envBounds
+      let bs := Es.map fun E => (envBounds E).map fun (j, _, b) => (j, b)
       if bs.isEmpty || bs.any (·.isEmpty) then none else some (t, bs)
     | none => none
 
