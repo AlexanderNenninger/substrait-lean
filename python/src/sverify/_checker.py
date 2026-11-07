@@ -9,12 +9,16 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 from __future__ import annotations
 
 import atexit
+import ctypes
 import functools
 import math
 import os
 import subprocess
+import sys
 import threading
+import time
 import warnings
+from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
 
@@ -100,6 +104,53 @@ def _checker_file() -> Path:
     return path
 
 
+class CheckerMemoryError(SverifyError, MemoryError):
+    """A checker request went over the checker's memory cap
+    (`SVERIFY_CHECKER_MEMORY_MB`) and the checker was stopped (#1074)."""
+
+    code = "checker_memory"
+
+
+def memory_cap_mb() -> int:
+    """The checker's memory cap in MB: `$SVERIFY_CHECKER_MEMORY_MB`, else
+    4096. 0 turns the cap off."""
+    return int(os.environ.get("SVERIFY_CHECKER_MEMORY_MB", "4096"))
+
+
+def _rss_linux(pid: int) -> int | None:
+    try:
+        with open(f"/proc/{pid}/statm", "rb") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _rss_macos() -> Callable[[int], int | None] | None:
+    """The physical footprint (what jetsam counts) of a process, through
+    libproc's `proc_pid_rusage` (`rusage_info_v0`)."""
+    try:
+        lib = ctypes.CDLL("/usr/lib/libproc.dylib")
+    except OSError:
+        return None
+    usage = (ctypes.c_uint64 * 12)()  # 16 bytes of UUID, then 10 counters
+
+    def rss(pid: int) -> int | None:
+        if lib.proc_pid_rusage(pid, 0, ctypes.byref(usage)) != 0:
+            return None
+        return int(usage[2 + 7])  # ri_phys_footprint
+
+    return rss
+
+
+#: The memory a process uses, in bytes, where this platform tells (Linux,
+#: macOS); None elsewhere, and the cap is off.
+_RSS: Callable[[int], int | None] | None = (
+    _rss_linux if sys.platform.startswith("linux")
+    else _rss_macos() if sys.platform == "darwin"
+    else None
+)  # fmt: skip
+
+
 class _Checker:
     """One `substrait-check --serve` process, started on first use and
     reused by every request of the Python process (#182).
@@ -107,12 +158,21 @@ class _Checker:
     A request interrupted before its answer is read (the CLI's time budget
     raises `BudgetExceeded`, a notebook's interrupt raises
     `KeyboardInterrupt`) kills the process: its answer would otherwise be
-    read as the next request's. The next request starts a new one."""
+    read as the next request's. The next request starts a new one.
+
+    A watchdog thread samples the process's memory while a request runs
+    longer than a tenth of a second, and kills it past `memory_cap_mb`: the
+    request raises `CheckerMemoryError`, and the next one starts a new
+    process (#1074). A runaway evaluation fails its one request and leaves
+    the machine alone."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.proc: subprocess.Popen[bytes] | None = None
         self.path: str | None = None
+        self.busy = threading.Event()
+        self.over: int | None = None
+        self.watchdog: threading.Thread | None = None
 
     def ask(self, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
         path = str(checker_path())
@@ -126,7 +186,13 @@ class _Checker:
                 )
                 self.path = path
             assert self.proc.stdin is not None and self.proc.stdout is not None
+            cap = memory_cap_mb()
+            if cap > 0 and _RSS is not None and self.watchdog is None:
+                self.watchdog = threading.Thread(target=self._watch, daemon=True)
+                self.watchdog.start()
+            self.over = None
             try:
+                self.busy.set()
                 self.proc.stdin.write(f"{flag} {len(data)}\n".encode() + data)
                 self.proc.stdin.flush()
                 header = self.proc.stdout.readline()
@@ -136,10 +202,32 @@ class _Checker:
                 out, err = self.proc.stdout.read(m), self.proc.stdout.read(k)
                 if len(out) != m or len(err) != k:
                     raise RuntimeError("substrait-check --serve exited mid-answer")
-            except BaseException:
+            except BaseException as e:
+                self.busy.clear()
                 self.close()
+                if self.over is not None and not isinstance(e, CheckerMemoryError):
+                    raise CheckerMemoryError(
+                        f"substrait-check used {self.over >> 20} MB on one request, over its "
+                        f"cap of {cap} MB, and was stopped (#1074). Set SVERIFY_CHECKER_MEMORY_MB "
+                        "to raise the cap (0 turns it off)"
+                    ) from e
                 raise
+            self.busy.clear()
         return code, out.decode(), err.decode()
+
+    def _watch(self) -> None:
+        """Kill the process when a running request takes it past the cap."""
+        assert _RSS is not None
+        while True:
+            self.busy.wait()
+            time.sleep(0.1)
+            proc, cap = self.proc, memory_cap_mb() << 20
+            if not self.busy.is_set() or proc is None or cap <= 0:
+                continue
+            rss = _RSS(proc.pid)
+            if rss is not None and rss > cap and self.busy.is_set():
+                self.over = rss
+                proc.kill()
 
     def close(self) -> None:
         if self.proc is not None:

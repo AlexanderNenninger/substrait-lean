@@ -854,6 +854,7 @@ given wins over the variable, and the variable over the default.
 | Variable | Flag | Python | Default | Sets |
 |---|---|---|---|---|
 | `SVERIFY_CHECKER` | | | the bundled checker | the path to a `substrait-check` binary, such as your own `lake build` |
+| `SVERIFY_CHECKER_MEMORY_MB` | | | 4096 | the memory, in MB, one checker request may take before the checker is stopped and the request raises `CheckerMemoryError` (Linux and macOS); 0 turns the cap off |
 | `SVERIFY_COUNTEREXAMPLES` | | `verify(counterexamples=)` | 200 | how many inputs are tried per unproved postcondition; 0 skips the search |
 | `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
 | `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |

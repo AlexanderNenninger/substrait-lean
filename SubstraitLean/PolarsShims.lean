@@ -675,8 +675,9 @@ theorem fractional_power_of_negative {a : Int} (ha : FloatCode.negInf ≤ a) (b 
 `is_infinite` on codes). -/
 def makesInfinite (y : Int) (xs : List Int) : Bool := xs.all isFiniteCode && isInfCode y
 
-/-- **`Polars.makes_infinite`** (A4): Polars's IEEE operations are Lean's
-native ones (`lift₂`), so the guard flags a row exactly where the reference's
+/-- **`Polars.makes_infinite`** (A4): Polars's IEEE operations are the
+reference's (D31, `polars-ieee-arith-*`; `pow` native), so the guard flags a
+row exactly where the reference's
 overflow to `±∞` does (`BinFn.infIssue`). -/
 theorem makes_infinite (f : BinFn) (hf : f.makesInf = true) (a b : Int) :
     makesInfinite (match (f.apply (.float a) (.float b)) with | .float r => r | _ => 0) [a, b] =
