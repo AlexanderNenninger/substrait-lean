@@ -1242,8 +1242,8 @@
    "proved": false,
    "guard_free": false,
    "may_fail": [
-    "overflow: DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)) < 0) THEN (0 - DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales))) ELSE DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)))",
-    "division by zero: DECIMAL_TO_DOUBLE_6(DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)) < 0) THEN (0 - DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales))) ELSE DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)))) / DECIMAL_TO_DOUBLE_6(avg_monthly_sales)"
+    "overflow: DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)) < 0.000000) THEN (0.000000 - DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales))) ELSE DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)))",
+    "division by zero: DECIMAL_TO_DOUBLE_6(DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)) < 0.000000) THEN (0.000000 - DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales))) ELSE DECIMAL_22_6(((sum_sales * 10000) - avg_monthly_sales)))) / DECIMAL_TO_DOUBLE_6(avg_monthly_sales)"
    ]
   },
   "verified_sql": {

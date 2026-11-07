@@ -282,12 +282,12 @@ def guards (f : DuckFn) : List Json :=
 def sampleValues : DuckType → List Value
   | .bigint => [.null, .int 0, .int 1, .int (-1), .int 7, .int (-7), .int (2 ^ 63 - 1), .int (-(2 ^ 63))]
   | .tinyint => [.null, .int 0, .int 1, .int (-1), .int 127, .int (-128)]
-  | .double => [.null, .int 0, .int (FloatCode.ofFloat 1.5), .int (FloatCode.ofFloat (-2.5)),
-      .int (FloatCode.ofFloat 100), .int (FloatCode.ofFloat 0.5), .int (FloatCode.ofFloat (-2)),
-      .int (FloatCode.ofFloat 2), .int (FloatCode.ofFloat (-0.5)), .int (FloatCode.ofFloat 1),
-      .int (FloatCode.ofFloat (-1)), .int (FloatCode.ofFloat (-1.5)), .int (FloatCode.ofFloat 3.5),
-      .int FloatCode.nan,
-      .int FloatCode.posInf, .int FloatCode.negInf]
+  | .double => [.null, .float 0, .float (FloatCode.ofFloat 1.5), .float (FloatCode.ofFloat (-2.5)),
+      .float (FloatCode.ofFloat 100), .float (FloatCode.ofFloat 0.5), .float (FloatCode.ofFloat (-2)),
+      .float (FloatCode.ofFloat 2), .float (FloatCode.ofFloat (-0.5)), .float (FloatCode.ofFloat 1),
+      .float (FloatCode.ofFloat (-1)), .float (FloatCode.ofFloat (-1.5)), .float (FloatCode.ofFloat 3.5),
+      .float FloatCode.nan,
+      .float FloatCode.posInf, .float FloatCode.negInf]
 
 def sampleRows : List DuckType → List Row
   | [] => [[]]
@@ -302,15 +302,20 @@ def valueTerm : Value → MetaM Lean.Expr
   | .null => pure (Lean.mkConst ``Value.null)
   | .bool b => pure (mkApp (Lean.mkConst ``Value.bool) (toExpr b))
   | .str s => pure (mkApp (Lean.mkConst ``Value.str) (toExpr s))
-  | .int i =>
+  | .int i => pure (mkApp (Lean.mkConst ``Value.int) (toExpr i))
+  | .float i =>
     let c := if i == FloatCode.nan then Lean.mkConst ``FloatCode.nan
       else if i == FloatCode.posInf then Lean.mkConst ``FloatCode.posInf
       else if i == FloatCode.negInf then Lean.mkConst ``FloatCode.negInf
       else if i == FloatCode.one then Lean.mkConst ``FloatCode.one
       else if i == FloatCode.negOne then Lean.mkConst ``FloatCode.negOne
       else toExpr i
-    pure (mkApp (Lean.mkConst ``Value.int) c)
-  | .list _ => throwError "list literals in a lift template are not supported"
+    pure (mkApp (Lean.mkConst ``Value.float) c)
+  | .date i => pure (mkApp (Lean.mkConst ``Value.date) (toExpr i))
+  | .ts i => pure (mkApp (Lean.mkConst ``Value.ts) (toExpr i))
+  | .tod i => pure (mkApp (Lean.mkConst ``Value.tod) (toExpr i))
+  | .dec s i => pure (mkApp2 (Lean.mkConst ``Value.dec) (toExpr s) (toExpr i))
+  | .list _ | .struct _ => throwError "list literals in a lift template are not supported"
 
 -- One type a line: a list derives only its first.
 deriving instance Lean.ToExpr for FMath
@@ -319,6 +324,7 @@ deriving instance Lean.ToExpr for ListOp
 deriving instance Lean.ToExpr for Time.DatePart
 deriving instance Lean.ToExpr for Time.TimeUnit
 deriving instance Lean.ToExpr for OverflowMode
+deriving instance Lean.ToExpr for NumKind
 deriving instance Lean.ToExpr for IntWidth
 deriving instance Lean.ToExpr for UnFn
 deriving instance Lean.ToExpr for BinFn
@@ -459,20 +465,20 @@ their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckArith, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
-    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
-    ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
+    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
+    ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
-    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
+    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
     ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_greatest, ``Lowering.ref_least,
-    ``BinFn.apply, ``Value.pick, ``Value.ltB,
-    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_int,
-    ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_int,
-    ``DuckDBSQL.ref_ffloor_null, ``DuckDBSQL.ref_fadd_int, ``DuckDBSQL.ref_fsub_int,
-    ``DuckDBSQL.ref_fmul_int, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
+    ``BinFn.apply, ``Value.numPair, ``Value.pick, ``Value.ltB,
+    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_float,
+    ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_float,
+    ``DuckDBSQL.ref_ffloor_null, ``DuckDBSQL.ref_fadd_float, ``DuckDBSQL.ref_fsub_float,
+    ``DuckDBSQL.ref_fmul_float, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
     ``DuckDBSQL.ref_fsub_null_l, ``DuckDBSQL.ref_fsub_null_r, ``DuckDBSQL.ref_fmul_null_l,
     ``DuckDBSQL.ref_fmul_null_r,
     ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
-    ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_int,
+    ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_float,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Bool.or_true, ``Bool.true_and] ++ extra)
@@ -563,6 +569,8 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
       type := entryTy, value := entry }
     if let some out := sink then
       out.modify (·.push (areaOf k.ctor,
+        -- The check elaborates the statement too: twice the search's budget.
+        "set_option maxHeartbeats 400000 in\n" ++
         s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
         s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
         s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
@@ -625,9 +633,11 @@ def aggCandidates (g : DuckAgg) : List (List Json × Json × List Kind) :=
 
 def aggSampleGroups (t : DuckType) : List (List Value) :=
   let vs := sampleValues t
+  -- A number of the type: a double's code for `DOUBLE` (#923).
+  let n (i : Int) : Value := if t == .double then .float (FloatCode.ofInt i) else .int i
   -- Large integers whose sum rounds as doubles: `2⁵³ + 1 + 1`.
-  [[], [.null], [.int 1], [.int 1, .int 2], [.int (-5), .int 3, .null], [.int (2 ^ 53), .int 1, .int 1],
-   [.int (2 ^ 62), .int (-(2 ^ 62)), .int 3]] ++ vs.map ([·])
+  [[], [.null], [n 1], [n 1, n 2], [n (-5), n 3, .null], [n (2 ^ 53), n 1, n 1],
+   [n (2 ^ 62), n (-(2 ^ 62)), n 3]] ++ vs.map ([·])
 
 /-- Read an aggregate candidate as the parser does. -/
 def parseAgg (g : DuckAgg) (ms : List Json) (fin : Json) (kinds : List Kind) :
@@ -649,28 +659,34 @@ def measureTerm (m : Measure) : MetaM Lean.Expr := do
 rows, then split on whether any value is not `NULL`. -/
 def aggTac (_defs : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
+    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r, ``AggFn.apply, ``nanCase, ``isInfCode,
     ``Substrait.Expr.evalP,
     ``Lowering.beq_int, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Outcome.Agree, ``List.length_cons, ``Lowering.ref_eq,
     ``Lowering.ref_lt, ``Lowering.ref_not, ``Lowering.ref_isNull, ``DuckDBSQL.apply_eq_int,
-    ``DuckDBSQL.apply_lt_int, ``Value.isTrue, ``decide_false, ``Bool.not_false]
+    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``Value.isTrue, ``decide_false, ``Bool.not_false]
   `(tactic| (
-    intro vs _
+    intro vs hvs
     simp only [List.map_cons, List.map_nil, Measure.eval, Measure.inputs, Measure.kept,
       List.map_map, Function.comp_def, Substrait.Expr.eval, List.getD_cons_zero, List.map_id',
       DuckAgg.eval, Bool.false_eq_true, ite_false]
+    -- The values of a `BIGINT` column are integers (or NULL, left out).
+    have hint : ∀ v ∈ List.filter (fun x => x != Value.null) vs, ∃ i, v = .int i := fun v hv => by
+      obtain ⟨h1, h2⟩ := List.mem_filter.mp hv
+      have := hvs v h1
+      cases v <;> simp_all [DuckType.Has, DuckAgg.arg]
     first
       | (simp only [Substrait.Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
          exact Outcome.agree_refl _)
-      | (generalize List.filter (fun x => x != Value.null) vs = xs
+      | (generalize List.filter (fun x => x != Value.null) vs = xs at hint
          cases xs with
          | nil => simp [$ev,*]
          | cons x xs =>
            have hne := FloatCode.ofInt_ne_zero (i := ((xs.length + 1 : Nat) : Int)) (by omega)
-           simp only [$ev,*, hne, decide_false])))
+           have hsum := DuckDBSQL.sumOf_int_vals hint
+           simp only [$ev,*, hne, hsum, decide_false])))
 
 open Tactic in
 @[tactic liftAggTac] def evalLiftAgg : Tactic := fun _ => do

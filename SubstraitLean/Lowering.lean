@@ -98,7 +98,8 @@ A template's guard is built from comparisons and NULL tests, which never
 raise in the reference; `UnFn.raise` always does. The generator rewrites a
 template with these before it splits cases. -/
 
-theorem Lowering.ref_isNum (x : Value) : Profile.reference.un .isNum x = .ok (.bool x.isNum) := by
+theorem Lowering.ref_isNum (k : NumKind) (x : Value) :
+    Profile.reference.un (.isNum k) x = .ok (.bool (x.isNum k)) := by
   cases x <;> rfl
 
 theorem Lowering.ref_isNull (x : Value) :
@@ -172,13 +173,82 @@ theorem Lowering.bin_agree_of_eq {p : Profile} {f : BinFn}
     (p.bin f x y).Agree (Profile.reference.bin f x y) := by
   rw [h]; exact Outcome.agree_refl _
 
+/-! ## The guards' functions in DuckDB: the reference's -/
+
+theorem Lowering.duck_bin_ref {s : DuckDBSettings} {f : BinFn} (h : ∀ x y, duckBin s f x y = none)
+    (v w : Value) : (Profile.duckdb s).bin f v w = Profile.reference.bin f v w := by
+  unfold Profile.duckdb; dsimp only; split <;> (try split) <;> simp [h]
+
+theorem Lowering.duck_un_ref {s : DuckDBSettings} {f : UnFn} (h : ∀ x, duckUn s f x = none)
+    (v : Value) : (Profile.duckdb s).un f v = Profile.reference.un f v := by
+  unfold Profile.duckdb; dsimp only; split <;> simp [h]
+
+theorem Lowering.duck_lt (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .lt x y = .ok (BinFn.apply .lt x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_lt x y)
+theorem Lowering.duck_eq (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .eq x y = .ok (BinFn.apply .eq x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_eq x y)
+theorem Lowering.duck_and (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .and x y = .ok (and3 x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_and x y)
+theorem Lowering.duck_or (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .or x y = .ok (or3 x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_or x y)
+theorem Lowering.duck_dadd (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .dadd x y = .ok (BinFn.apply .dadd x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_dadd x y)
+theorem Lowering.duck_dsub (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .dsub x y = .ok (BinFn.apply .dsub x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_dsub x y)
+theorem Lowering.duck_dmul (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .dmul x y = .ok (BinFn.apply .dmul x y) :=
+  (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_dmul x y)
+theorem Lowering.duck_not (s : DuckDBSettings) (x : Value) :
+    (Profile.duckdb s).un .not x = .ok (match x with | .bool b => .bool !b | _ => .null) :=
+  (Lowering.duck_un_ref (fun _ => rfl) x).trans (Lowering.ref_not x)
+theorem Lowering.duck_isNum (s : DuckDBSettings) (k : NumKind) (x : Value) :
+    (Profile.duckdb s).un (.isNum k) x = .ok (.bool (x.isNum k)) :=
+  (Lowering.duck_un_ref (fun _ => rfl) x).trans (Lowering.ref_isNum k x)
+theorem Lowering.duck_raise (s : DuckDBSettings) (m : String) (x : Value) :
+    (Profile.duckdb s).un (.raise m) x = .error .raised :=
+  (Lowering.duck_un_ref (fun _ => rfl) x).trans (Lowering.ref_raise m x)
+
+/-- `%` by a positive constant, which the wrap-arounds compute with: the
+reference's, for every argument. -/
+theorem Lowering.duck_imod_pos (s : DuckDBSettings) (x : Value) (m : Int) (hm : 0 < m) :
+    (Profile.duckdb s).bin .imod x (.int m) = .ok (BinFn.apply .imod x (.int m)) := by
+  have h0 : m ≠ 0 := by omega
+  have h1 : m ≠ -1 := by omega
+  cases x <;> simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, h0, h1]
+
+/-- `%` by `2⁶⁴`, which the wrap-around computes with. -/
+theorem Lowering.duck_imod_pow64 (s : DuckDBSettings) (x : Value) :
+    (Profile.duckdb s).bin .imod x (.int (2 ^ 64)) = .ok (BinFn.apply .imod x (.int (2 ^ 64))) := by
+  have h0 : ¬((2 : Int) ^ 64 = 0) := by decide
+  have h1 : ¬((2 : Int) ^ 64 = -1) := by decide
+  cases x
+  case int a =>
+    simp only [Profile.duckdb, BinFn.onFloats, duckBin, h0, h1, false_and, ite_false, Bool.false_eq_true,
+      Option.getD_none, Profile.reference, raiseIf, BinFn.issue]
+  case tod a =>
+    simp only [Profile.duckdb, Profile.reference, raiseIf, BinFn.issue, h0, ite_false]
+  all_goals rfl
+
 /-! `floor`, which the guard of `power` compares with its argument. -/
 
-theorem Lowering.apply_ffloor_int (c : Int) : UnFn.apply .ffloor (.int c) = .int (FloatCode.floor c) := rfl
+theorem Lowering.apply_ffloor_float (c : Int) :
+    UnFn.apply .ffloor (.float c) = .float (FloatCode.floor c) := rfl
 theorem Lowering.apply_ffloor_null : UnFn.apply .ffloor .null = .null := rfl
 theorem Lowering.apply_ffloor_bool (b : Bool) : UnFn.apply .ffloor (.bool b) = .null := rfl
+theorem Lowering.apply_ffloor_int (c : Int) : UnFn.apply .ffloor (.int c) = .null := rfl
+theorem Lowering.apply_ffloor_date (c : Int) : UnFn.apply .ffloor (.date c) = .null := rfl
+theorem Lowering.apply_ffloor_ts (c : Int) : UnFn.apply .ffloor (.ts c) = .null := rfl
+theorem Lowering.apply_ffloor_tod (c : Int) : UnFn.apply .ffloor (.tod c) = .null := rfl
+theorem Lowering.apply_ffloor_dec (s : Nat) (c : Int) : UnFn.apply .ffloor (.dec s c) = .null := rfl
 theorem Lowering.apply_ffloor_str (t : String) : UnFn.apply .ffloor (.str t) = .null := rfl
 theorem Lowering.apply_ffloor_list (vs : List Value) : UnFn.apply .ffloor (.list vs) = .null := rfl
+theorem Lowering.apply_ffloor_struct (vs : List Value) : UnFn.apply .ffloor (.struct vs) = .null := rfl
 
 /-! `<<` and `>>` as the templates compute them (`LoweringSearch.schemaBin?`). -/
 
@@ -252,7 +322,7 @@ theorem Lowering.pow2Chain_eval (s : DuckDBSettings) (x y : Value) (ks : List Na
     rw [ih]
     cases y with
     | int b =>
-      simp only [Profile.duckdb, duckBin, Option.getD, Profile.reference, raiseIf, BinFn.issue,
+      simp only [Profile.duckdb, duckBin, BinFn.onFloats, Option.getD, Profile.reference, raiseIf, BinFn.issue,
         BinFn.apply]
       by_cases h : b = (k : Int)
       · subst h
@@ -261,8 +331,8 @@ theorem Lowering.pow2Chain_eval (s : DuckDBSettings) (x y : Value) (ks : List Na
         · have hk : b.toNat ≠ k := by omega
           simp [h, h0, hk, Value.isTrue, bind, Except.bind]
         · simp [h, h0, Value.isTrue, bind, Except.bind]
-    | _ => simp [Profile.duckdb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isTrue,
-        bind, Except.bind]
+    | _ => simp only [Profile.duckdb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.numPair,
+        Value.isTrue, Outcome.ok_bind, Bool.false_eq_true, ite_false]
 
 /-- `<<` for DuckDB: a shift outside `0`–`63` raises; otherwise `x · 2ʸ`
 (`Lowering.pow2Chain`) wrapped around at 64 bits in 128-bit arithmetic, as
@@ -273,32 +343,35 @@ def Lowering.shlTemplate : Expr :=
   let wrap (x : Expr) : Expr :=
     .bin .dsub (.bin .imod (.bin .dadd (.bin .imod (.bin .dadd x (.lit (.int h))) (.lit (.int m)))
       (.lit (.int m))) (.lit (.int m))) (.lit (.int h))
-  .ifThen (.bin .and (.un .isNum (.field 0))
+  .ifThen (.bin .and (.un (.isNum .int) (.field 0))
       (.bin .or (.bin .lt (.field 1) (.lit (.int 0))) (.un .not (.bin .lt (.field 1) (.lit (.int 64))))))
     (.un (.raise "domain error") (.field 1))
-    (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64))))
+    -- `dmul` reads decimals too: an integer only (#923).
+    (.ifThen (.un (.isNum .int) (.field 0))
+      (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64)))) (.lit .null))
 
 theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
     (Lowering.shlTemplate.evalP (Profile.duckdb s) [x, y]).Agree
       (Profile.reference.bin (.bit .shl) x y) := by
   simp only [Lowering.shlTemplate, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
-    Lowering.pow2Chain_eval, Outcome.ok_bind]
-  cases x <;> cases y
-  case int.int a b =>
-    by_cases h0 : b < 0
-    · simp [h0, Profile.duckdb, duckBin, duckUn, Profile.reference, raiseIf, BinFn.issue, UnFn.issue,
-        BinFn.apply, UnFn.apply, Lowering.shl_apply, domainIssue, Value.isTrue, and3, or3,
-        Outcome.Agree, Issue.isError, bind, Except.bind]
-    · by_cases h1 : b < 64
-      · have hb : 0 ≤ b := by omega
-        simp [h0, h1, hb, Profile.duckdb, duckBin, duckUn, Profile.reference, raiseIf, BinFn.issue,
-          UnFn.issue, BinFn.apply, UnFn.apply, Lowering.shl_apply, domainIssue, Value.isTrue, and3, or3,
-          Outcome.Agree, Issue.isError, bind, Except.bind, Lowering.tmod_add_tmod]
-      · simp [h0, h1, Profile.duckdb, duckBin, duckUn, Profile.reference, raiseIf, BinFn.issue,
-          UnFn.issue, BinFn.apply, UnFn.apply, Lowering.shl_apply, domainIssue, Value.isTrue, and3, or3,
-          Outcome.Agree, Issue.isError, bind, Except.bind]
-  -- The other kinds: NULL (or ill-typed) in, NULL out, by evaluation.
-  all_goals rfl
+    Lowering.pow2Chain_eval, Outcome.ok_bind, Lowering.duck_lt, Lowering.duck_and, Lowering.duck_or,
+    Lowering.duck_not, Lowering.duck_isNum, Lowering.duck_raise, Lowering.duck_dmul,
+    Lowering.duck_dadd, Lowering.duck_dsub, Lowering.duck_imod_pow64]
+  cases x
+  case int a =>
+    cases y
+    case int b =>
+      by_cases h0 : b < 0
+      · simp [h0, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
+          domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
+      · by_cases h1 : b < 64
+        · have hb : 0 ≤ b := by omega
+          simp [h0, h1, hb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
+          domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError, Lowering.tmod_add_tmod]
+        · simp [h0, h1, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
+          domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
+    all_goals rfl
+  all_goals (cases y <;> rfl)
 
 /-- A template for the unary function `f` under `p`. -/
 structure UnEntry (p : Profile) (f : UnFn) where

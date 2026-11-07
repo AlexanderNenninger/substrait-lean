@@ -80,8 +80,8 @@ theorem UnFn.issue_ne_sumWraps (f : UnFn) (v : Value) : f.issue v ≠ some .sumW
   split <;> (try split) <;> (try split) <;> simp
 
 theorem BinFn.issue_ne_sumWraps (f : BinFn) (v w : Value) : f.issue v w ≠ some .sumWraps := by
-  unfold BinFn.issue wrapIf rangeIssue domainIssue nanIssue
-  split <;> (try split) <;> (try split) <;> (try split) <;> simp
+  unfold BinFn.issue wrapNum wrapIf rangeIssue domainIssue nanIssue
+  split <;> (repeat' split) <;> simp
 
 theorem UnFn.issueAll_ne_sumWraps (f : UnFn) (v : Value) : f.issueAll v ≠ some .sumWraps := by
   intro h
@@ -130,8 +130,8 @@ theorem UnFn.issue_ne_infinite (f : UnFn) (v : Value) : f.issue v ≠ some .infi
   split <;> (try split) <;> (try split) <;> simp
 
 theorem BinFn.issue_ne_infinite (f : BinFn) (v w : Value) : f.issue v w ≠ some .infinite := by
-  unfold BinFn.issue wrapIf rangeIssue domainIssue nanIssue
-  split <;> (try split) <;> (try split) <;> (try split) <;> simp
+  unfold BinFn.issue wrapNum wrapIf rangeIssue domainIssue nanIssue
+  split <;> (repeat' split) <;> simp
 
 /-- A call whose only issue is assumed (`Issue.assumed`: an overflow to `±∞`)
 has no error issue: the engine's function agrees with Lean's there. -/

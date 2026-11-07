@@ -67,8 +67,9 @@ extreme is the extreme of the two extremes, NULLs skipped. -/
 def merge (m : Measure) (a b : St) : St :=
   ⟨a.n + b.n, a.s + b.s, m.fn.apply ([a.e, b.e].filter (· != .null))⟩
 
-/-- The measure's value from its state. -/
-def done (m : Measure) (x : St) : Value := if extreme m then x.e else finish m x.n x.s
+/-- The measure's value from its state; `sc` is a `SUM`'s scale (`finish`). -/
+def done (m : Measure) (sc : Option Nat) (x : St) : Value :=
+  if extreme m then x.e else finish m sc x.n x.s
 
 theorem lift_append (a b : Relation) : ZSet.lift (a ++ b) = ZSet.lift a ++ ZSet.lift b :=
   List.map_append
@@ -96,18 +97,19 @@ theorem eval_append_minMax {m : Measure} (hm : m.fn = .min ∨ m.fn = .max) (hd 
 
 /-- **The merged state finishes to the aggregate's row** of the two bags
 together, for `COUNT`, `SUM`, `MIN` and `MAX`. -/
-theorem done_merge {gs : List Expr} {m : Measure} (hm : Kept m) (a b : Relation) (k : Row) :
-    done m (merge m (st gs m a k) (st gs m b k)) = m.eval (groupRows gs (a ++ b) k) := by
+theorem done_merge {gs : List Expr} {m : Measure} (hm : Kept m) {sc : Option Nat} {a b : Relation}
+    (hsc : ArgScale sc m (a ++ b)) (k : Row) :
+    done m sc (merge m (st gs m a k) (st gs m b k)) = m.eval (groupRows gs (a ++ b) k) := by
   rcases hm with ⟨hf, hd⟩
   rcases hf with h | h | h | h
   · have he : extreme m = false := by simp [extreme, h]
     simp only [done, he, merge, st, Bool.false_eq_true, ↓reduceIte]
     rw [← valuesIn_append, ← sumIn_append, ← lift_append]
-    exact finish_eval ⟨Or.inl h, hd⟩ _ k
+    exact finish_eval ⟨Or.inl h, hd⟩ hsc k
   · have he : extreme m = false := by simp [extreme, h]
     simp only [done, he, merge, st, Bool.false_eq_true, ↓reduceIte]
     rw [← valuesIn_append, ← sumIn_append, ← lift_append]
-    exact finish_eval ⟨Or.inr h, hd⟩ _ k
+    exact finish_eval ⟨Or.inr h, hd⟩ hsc k
   · have he : extreme m = true := by simp [extreme, h]
     simp only [done, he, merge, st, ↓reduceIte]
     rw [groupRows_append]
@@ -148,7 +150,8 @@ only from groups in `D`. Then the aggregate after the batch is
   (recomputed), and
 * for the groups in `K` but not `D` that have rows (`ks`), the merged state
   of the old rows and the inserted ones. -/
-theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {rows dels ins : Relation}
+theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {sc : Measure → Option Nat}
+    {rows dels ins : Relation} (hsc : ∀ m ∈ ms, ArgScale (sc m) m (rows ++ ins))
     {K D : Row → Bool} (hT : TouchedGroups.Touches gs K dels ins)
     (hD : ∀ r ∈ dels, D (groupKey gs r) = true) {ks : List Row} (hnd : ks.Nodup)
     (hks : ∀ k, k ∈ ks ↔ K k = true ∧ D k = false ∧
@@ -157,7 +160,8 @@ theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {rows d
       ((aggregateEval gs ms rows).filter (fun o => !K (o.take gs.length)) ++
         (aggregateEval gs ms ((applyBatch rows dels ins).filter
           fun r => K (groupKey gs r) && D (groupKey gs r)) ++
-        ks.map fun k => k ++ ms.map fun m => done m (merge m (st gs m rows k) (st gs m ins k)))) := by
+        ks.map fun k => k ++ ms.map fun m =>
+          done m (sc m) (merge m (st gs m rows k) (st gs m ins k)))) := by
   refine (TouchedGroups.touched_sound hg hT).trans (List.Perm.append_left _ ?_)
   let new := applyBatch rows dels ins
   refine (aggregate_split hg D (new.filter fun r => K (groupKey gs r))).trans ?_
@@ -190,7 +194,7 @@ theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {rows d
       · simp [he, q, hK, hD']
       · simp [he]
   rw [hg']
-  exact congrArg (k ++ ·) (List.map_congr_left fun m hm => (done_merge (hms m hm) rows ins k).symm)
+  exact congrArg (k ++ ·) (List.map_congr_left fun m hm => (done_merge (hms m hm) (hsc m hm) k).symm)
 
 /-! ## Exact `AVG` -/
 
@@ -220,8 +224,14 @@ theorem finish_iavg {gs : List Expr} {m : Measure} (hm : m.fn = .iavg) (hd : m.d
   have hint' : ∀ row ∈ groupRows gs rows k, (m.arg.eval row).intOrNull = true :=
     fun row hr => hint row (List.mem_filter.mp hr).1
   rw [← Measure.final_eval hm hint']
-  have hsum := finish_eval (gs := gs) (m := { m with fn := .sum }) ⟨Or.inr rfl, hd⟩ rows k
-  have hcnt := finish_eval (gs := gs) (m := { m with fn := .count }) ⟨Or.inl rfl, hd⟩ rows k
+  -- Integer values: a `SUM` of them is an integer (`ArgScale none`).
+  have hsc : ArgScale none { m with fn := .sum } rows := fun _ row hr => by
+    have := hint row hr
+    simp only [scaleKind]
+    cases h : m.arg.eval row <;> simp_all [Value.intOrNull, Value.hasKind]
+  have hsum := finish_eval (gs := gs) (m := { m with fn := .sum }) ⟨Or.inr rfl, hd⟩ hsc k
+  have hcnt := finish_eval (gs := gs) (m := { m with fn := .count }) ⟨Or.inl rfl, hd⟩
+    (sc := none) (rows := rows) (fun h => by simp at h) k
   -- The state does not depend on the function.
   have hv : ∀ f : AggFn, valuesIn gs { m with fn := f } k (ZSet.lift rows) =
       valuesIn gs m k (ZSet.lift rows) := fun _ => rfl
