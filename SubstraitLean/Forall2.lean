@@ -76,12 +76,6 @@ theorem perm {R : α → β → Prop} {l₁ l₁' : List α} (p : l₁.Perm l₁
     obtain ⟨m₂, h₂, f₂⟩ := ih₂ f₁
     exact ⟨m₂, h₁.trans h₂, f₂⟩
 
-/-- The same, from the right: `l₁ R l₂ ~ l₂'` is `l₁ ~ l₁' R l₂'`. -/
-theorem perm_right {R : α → β → Prop} {l₁ : List α} {l₂ l₂' : List β}
-    (h : Forall2 R l₁ l₂) (p : l₂.Perm l₂') : ∃ l₁', l₁.Perm l₁' ∧ Forall2 R l₁' l₂' := by
-  obtain ⟨m, hm, hf⟩ := perm p h.flip
-  exact ⟨m, hm, hf.flip⟩
-
 end Forall2
 
 

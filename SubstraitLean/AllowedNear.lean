@@ -160,16 +160,6 @@ def aggCtx (g : Nat) (ms : List Measure) : ObsCtx where
 theorem aggCtx_reflAt (g : Nat) (ms : List Measure) : (aggCtx g ms).ReflAt Obs.plan :=
   ⟨fun _ _ _ _ => .inl rfl, fun _ h hne => absurd (h.symm.trans rfl) hne⟩
 
-theorem Measure.inputs_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
-    (m.inputs xs).Perm (m.inputs ys) := by
-  have hv : (((m.kept xs).map fun row => m.arg.eval row).filter (· != .null)).Perm
-      (((m.kept ys).map fun row => m.arg.eval row).filter (· != .null)) :=
-    ((m.kept_perm h).map _).filter _
-  unfold Measure.inputs
-  split
-  · exact dedup_perm_of_mem fun y => hv.mem_iff
-  · exact hv
-
 /-- An open measure's allowed value is equal, up to the order of its
 additions, to `Measure.eval`'s, in its column `g + j`. -/
 theorem Measure.Allowed.near_eval {m : Measure} (ho : m.openB = true) {g j : Nat}
