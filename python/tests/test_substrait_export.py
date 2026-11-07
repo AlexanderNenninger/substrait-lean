@@ -349,7 +349,9 @@ def test_runs_on_a_substrait_consumer(case: str) -> None:
     expr, requires = CONSUMER[case]
     report = _verify(expr, requires)
     m = read(report.to_substrait()).manifest
-    assert m["class"] == "exact"
+    # D25: a consumer adds a double `SUM` in its own order, within the plan's
+    # bound of the reference's correctly rounded sum.
+    assert m["class"] == ("observed" if case == "aggregate" else "exact")
     ctx = datafusion.SessionContext()
     for name, table in DATA.items():
         ctx.register_record_batches(name, [table.to_batches()])

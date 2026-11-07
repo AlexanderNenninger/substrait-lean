@@ -652,8 +652,8 @@ is a choice that accepts every value the plan states.
 | `time_interval_months` | all others | `DROP_MONTHS`, `ERROR` | refused | raise |
 | `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
-| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT` | `ANY` | leave open |
-| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN` | `GENERIC` | leave open |
+| `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
+| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `GENERIC` | leave open |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |

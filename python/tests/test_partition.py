@@ -50,11 +50,13 @@ KEYED = [
     ("SELECT x, COUNT(*) AS k FROM (SELECT DISTINCT b AS x, c FROM r) t GROUP BY x", "linear"),
     ("SELECT COUNT(DISTINCT b) AS n, SUM(DISTINCT b) AS s FROM r", "two_phase"),
     ("SELECT c, COUNT(DISTINCT b) AS n FROM r GROUP BY c", "two_phase"),
+    # D25: a double `SUM` is a function of its group's values, and each group
+    # lives in one shard.
+    ("SELECT b, SUM(CAST(a AS DOUBLE)) AS s FROM r GROUP BY b", "linear"),
 ]
 KEYED_REFUSED = [
     ("SELECT COUNT(DISTINCT a) AS n FROM r", "unless its argument is the split key"),
     ("SELECT DISTINCT a FROM r", "include the split key"),
-    ("SELECT b, SUM(CAST(a AS DOUBLE)) AS s FROM r GROUP BY b", "not associative"),
 ]
 #: Sums of doubles, split only with `float_order="any"`.
 FLOATS = [

@@ -13,9 +13,10 @@ order the plan allows, and `FIRST`, `LAST`, `ARG_MIN`/`ARG_MAX`,
 deterministic profile, which fixes them.
 
 `Rel.OrderAllowed` holds the results of every such order. It is
-`Rel.Allowed` with every other choice taken as `Rel.eval` takes it: a double
-`SUM` or a statistical aggregate keeps `Rel.eval`'s value, so `sum_order` and
-`stat_algo` stay with `Rel.Allowed` and #85's bounds.
+`Rel.Allowed` with every other choice taken as `Rel.eval` takes it: a
+statistical aggregate keeps `Rel.eval`'s value, so `stat_algo` stays with
+`Rel.Allowed` and #85's bounds. A double `SUM` or `AVG` is no choice (D25):
+the exact sum rounded once, whatever the order of the rows.
 
 * `Rel.eval_orderAllowed`: `Rel.eval`'s result is one of them;
   `Rel.orderAllowed_allowed`: each is one `Rel.Allowed` allows.
