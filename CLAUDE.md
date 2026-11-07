@@ -23,6 +23,9 @@ touches, beside its main change. It can be any of these:
   - one general lemma in place of several;
   - a type that rules out a wrong state.
 - Better structure:
+  - uniform terminology and API: one name for one concept across Lean,
+    Python, docs and messages, and one shape for calls that do alike
+    things (parameter names, order, return types);
   - a public API with fewer names or parameters;
   - less import fan-in, or a cycle broken;
   - a large module split along its seams. A split counts only when the file
@@ -31,7 +34,7 @@ touches, beside its main change. It can be any of these:
 
 Measure it, before and after, and put the numbers in the PR body under
 "Improvement". Count lines, shims, xfails, hypotheses, axioms, public names
-or seconds, whichever fits. Keep it in the code the PR already touches, so
+names for one concept or seconds, whichever fits. Keep it in the code the PR already touches, so
 it doesn't collide with other sessions' work. A PR that touches nothing
 measurable (docs, facts, ledgers) says so instead.
 
