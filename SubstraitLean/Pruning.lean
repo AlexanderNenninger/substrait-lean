@@ -109,7 +109,7 @@ theorem stats_prune {cols : List (Option ColStats)} {rows : Relation} (e : Expr)
     have hm := Expr.abs_sound (fileEnv_mem fun i s h => hc i s h row hr) e
     cases hv : e.eval row with
     | bool b => cases b <;> simp_all [AVal.Mem, Value.isTrue]
-    | null | int _ | str _ | list _ => simp [Value.isTrue]
+    | _ => simp [Value.isTrue]
 
 /-! ## Doubles: NaN is left out of the bounds -/
 
@@ -127,11 +127,11 @@ file's rows. Every value is NULL, NaN, or a code within the bounds, and a NaN
 count of 0 means no NaN. A minimum is the code of a double, so at most NaN's
 code. -/
 structure DoubleStats.Correct (s : DoubleStats) (c : Nat) (rows : Relation) : Prop where
-  vals : ∀ row ∈ rows, row.getD c .null = .null ∨ row.getD c .null = .int FloatCode.nan ∨
-    ∃ x, row.getD c .null = .int x ∧ (∀ l, s.lo = some l → l ≤ x) ∧
+  vals : ∀ row ∈ rows, row.getD c .null = .null ∨ row.getD c .null = .float FloatCode.nan ∨
+    ∃ x, row.getD c .null = .float x ∧ (∀ l, s.lo = some l → l ≤ x) ∧
       (∀ h, s.hi = some h → x ≤ h)
   nulls : s.nulls = some 0 → ∀ row ∈ rows, row.getD c .null ≠ .null
-  nans : s.nans = some 0 → ∀ row ∈ rows, row.getD c .null ≠ .int FloatCode.nan
+  nans : s.nans = some 0 → ∀ row ∈ rows, row.getD c .null ≠ .float FloatCode.nan
   lo_le : ∀ l, s.lo = some l → l ≤ FloatCode.nan
 
 /-- The bounds `sverify.io` takes from a double column: the minimum, and the
@@ -158,14 +158,14 @@ theorem DoubleStats.colStats_correct {s : DoubleStats} {c : Nat} {rows : Relatio
         | zero => exact absurd hv (hnn hn row hr)
         | succ n => simp
   · rw [hv]
-    refine ⟨_, rfl, ?_, ?_⟩
+    refine ⟨_, rfl, ⟨?_, ?_⟩, rfl⟩
     · intro l hl; exact h.lo_le l hl
     · intro m hm
       split at hm
       · rename_i h0; exact absurd hv (h.nans h0 row hr)
       · cases hm
   · rw [hv]
-    refine ⟨_, rfl, hlo, ?_⟩
+    refine ⟨_, rfl, ⟨hlo, ?_⟩, rfl⟩
     intro m hm
     split at hm
     · exact hhi m hm
