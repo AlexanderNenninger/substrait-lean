@@ -278,6 +278,21 @@ def test_time_range_frames_order_by_microseconds():
     sqlglot.parse_one(sql, read="snowflake")
 
 
+@pytest.mark.parametrize("label", ["intersect", "difference all"])
+def test_set_operations_compare_with_equal_null(label):
+    """Set operations compare rows with NULL equal to NULL. Snowflake failed
+    to compile the correlated `EXISTS` on the `CASE` form on some tables
+    (`002031`, recorded privately), so it is `EQUAL_NULL`."""
+    from sverify.engine import written_plan
+    from sverify_dev import coverage
+
+    case = next(c for c in coverage.CASES if c.label == label)
+    sql = to_sql(json.loads(written_plan(to_substrait_json(case.build()))), SNOWFLAKE)
+    assert re.search(r'EQUAL_NULL\(s\d+\."c0", s\d+\."c0"\)', sql)
+    assert "THEN FALSE" not in sql
+    sqlglot.parse_one(sql, read="snowflake")
+
+
 def test_strings_escape_backslashes():
     assert SNOWFLAKE.str_lit("it's a\\b") == "'it''s a\\\\b'"
 
