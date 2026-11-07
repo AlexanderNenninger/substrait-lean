@@ -24,6 +24,17 @@ What it models of `python/src/sverify`:
   commit on the version `contract()` read (#964).
 * Crashes leave the write in flight (`zombies`), which may land later; a write
   that raises keeps `_pending`.
+
+What it assumes, and so what the theorems do not cover:
+
+* A durable source. Its version names its contents and only grows, and its
+  table is not dropped and created again: `World.src` is one counter, and
+  `Tbl.rows p v` is the state of plan `p` at version `v`. A source that cannot
+  restore (`from_frame`), whose versions count one process's reads (#965),
+  and a source recreated with lower versions (`table_ids`, #516, #1025) are
+  outside the model; the TLA+ model checks the first at small scopes.
+* `Sink._commit` decides as `next` does. `python/tests/test_refresh_next.py`
+  checks it case by case.
 -/
 
 namespace Substrait
@@ -115,7 +126,8 @@ inductive Decision where
   deriving DecidableEq, Repr
 
 /-- `Sink._commit`'s decision, from the sink's record and the writer's own
-state alone. -/
+state alone. `python/tests/test_refresh_next.py` runs each of its cases
+against `Sink._commit`: change both together. -/
 def next (rec : Option Key) (kept : Bool) (w : Writer) : Decision :=
   -- The last write raised after its commit landed: write on from it.
   let w0 : Option Key := if w.pend.isSome && w.pend == rec then w.pend else w.written
