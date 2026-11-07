@@ -14,6 +14,7 @@ import SubstraitLean.Reflect
 import SubstraitLean.Window
 import SubstraitLean.Aggregate
 import SubstraitLean.Rel
+import SubstraitLean.Kinds
 import SubstraitLean.EvalFast
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental

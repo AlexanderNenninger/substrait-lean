@@ -265,15 +265,6 @@ def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fa
         (fdEmit qs drops gs.length ms.length))
   else none
 
-/-- Do all of `e`'s column references satisfy `p`? -/
-def Expr.refsAll (p : Nat → Bool) : Expr → Bool
-  | .lit _ => true
-  | .field i => p i
-  | .un _ a => a.refsAll p
-  | .bin _ a b => a.refsAll p && b.refsAll p
-  | .ifThen c t e => c.refsAll p && t.refsAll p && e.refsAll p
-  | .hof _ l _ => l.refsAll p
-
 /-- The position of the grouping column `$c`. -/
 def gpos (gs : List Expr) (c : Nat) : Option Nat :=
   (List.range gs.length).find? fun q => gs[q]? == some (.field c)
@@ -293,10 +284,10 @@ def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List
     Option (String × Rel) :=
   match r with
   | .join a b .inner on =>
-    if !gs.isEmpty && gs.all (·.refsLtb (a.arity cat)) &&
-        ms.all (·.exprs.all (·.refsLtb (a.arity cat))) &&
+    if !gs.isEmpty && gs.all (·.refsLtB (a.arity cat)) &&
+        ms.all (·.exprs.all (·.refsLtB (a.arity cat))) &&
         (b.keys cat A F K).any (determines on (a.arity cat)) &&
-        on.refsAll (fun i => decide (a.arity cat ≤ i) || (gpos gs i).isSome) then
+        on.allFields (fun i => decide (a.arity cat ≤ i) || (gpos gs i).isSome) then
       some ("aggregate below a join on a key",
         .emit (.join (.aggregate a gs ms) b .inner
             (on.subst (eagerCols (a.arity cat) gs (gs.length + ms.length) (b.arity cat))))
@@ -330,7 +321,7 @@ def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fac
       some ("DISTINCT aggregate of a key", .aggregate r gs (ms.map (Measure.dropDistinct ks)))
     else match r.joinElim cat A F K R with
       | some (name, a, _) =>
-        if gs.all (·.refsLtb (a.arity cat)) && ms.all (·.exprs.all (·.refsLtb (a.arity cat))) then
+        if gs.all (·.refsLtB (a.arity cat)) && ms.all (·.exprs.all (·.refsLtB (a.arity cat))) then
           some (name, .aggregate a gs ms)
         else none
       | none => match Rel.fdAgg cat A F K r gs ms with
@@ -342,7 +333,7 @@ def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fac
     | none => match r with
       | .project j es => match j.joinElim cat A F K R with
         | some (name, a, k) =>
-          if es.all (·.refsLtb (a.arity cat)) && m.all (fun i => i < a.arity cat || a.arity cat + k ≤ i)
+          if es.all (·.refsLtB (a.arity cat)) && m.all (fun i => i < a.arity cat || a.arity cat + k ≤ i)
           then some (name, .emit (.project a es) (m.map fun i => if i < a.arity cat then i else i - k))
           else none
         | none => none
@@ -895,20 +886,10 @@ theorem getD_emit {m : List Nat} {y : Row} {p x : Nat} (h : m[p]? = some x) :
 
 /-! ### Eager aggregation -/
 
-theorem Expr.eval_congr_refsAll {p : Nat → Bool} {r r' : Row}
-    (h : ∀ i, p i = true → r.getD i .null = r'.getD i .null) :
-    ∀ {e : Expr}, e.refsAll p = true → e.eval r = e.eval r'
-  | .lit _, _ => rfl
-  | .field i, he => h i he
-  | .un _ a, he => by simp only [eval, Expr.eval_congr_refsAll h (e := a) he]
-  | .bin _ a b, he => by
-    simp only [refsAll, Bool.and_eq_true] at he
-    simp only [eval, Expr.eval_congr_refsAll h he.1, Expr.eval_congr_refsAll h he.2]
-  | .ifThen c t e, he => by
-    simp only [refsAll, Bool.and_eq_true] at he
-    simp only [eval, Expr.eval_congr_refsAll h he.1.1, Expr.eval_congr_refsAll h he.1.2,
-      Expr.eval_congr_refsAll h he.2]
-  | .hof _ l _, he => by simp only [eval, Expr.eval_congr_refsAll h (e := l) he]
+theorem Expr.eval_congr_allFields {p : Nat → Bool} {r r' : Row}
+    (h : ∀ i, p i = true → r.getD i .null = r'.getD i .null) {e : Expr}
+    (he : e.allFields p = true) : e.eval r = e.eval r' :=
+  Expr.eval_congr (row := r') (row' := r) h he
 
 theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.refsLt m) :
     ∀ e : Expr, (e.subst cols).refsLt m
@@ -921,7 +902,11 @@ theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.r
   | .un _ a => Expr.refsLt_subst hc a
   | .bin _ a b => ⟨Expr.refsLt_subst hc a, Expr.refsLt_subst hc b⟩
   | .ifThen c t e => ⟨Expr.refsLt_subst hc c, Expr.refsLt_subst hc t, Expr.refsLt_subst hc e⟩
-  | .hof _ l _ => Expr.refsLt_subst hc l
+  | .hof _ l b => ⟨Expr.refsLt_subst hc l, Expr.refsLt_subst (m := m + 1) (fun c hc' => by
+      simp only [List.mem_cons, List.mem_map] at hc'
+      rcases hc' with rfl | ⟨c', hc'', rfl⟩
+      · show 0 < m + 1; omega
+      · exact Expr.refsLt_shift 0 (hc c' hc'')) b⟩
 
 theorem gpos_spec {gs : List Expr} {c q : Nat} (h : gpos gs c = some q) : gs[q]? = some (.field c) := by
   simpa using List.find?_some h
@@ -1284,7 +1269,7 @@ theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {nam
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨-, rfl⟩ := h
       simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true,
-        Expr.refsLtb_iff] at hc
+        Expr.refsLtB_iff] at hc
       obtain ⟨⟨⟨⟨hgs, hgl⟩, hml⟩, hkey⟩, hrefs⟩ := hc
       have hjw : (Rel.join a b .inner on).WF cat := hwf.1
       have ha := hjw.1
@@ -1300,7 +1285,7 @@ theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {nam
       -- Rows that agree on the grouping columns match the same right rows.
       have hon : ∀ x ∈ a.eval cat, ∀ y ∈ a.eval cat, groupKey gs x = groupKey gs y →
           ∀ z, on.eval (x ++ z) = on.eval (y ++ z) := fun x hx y hy he z => by
-        refine Expr.eval_congr_refsAll (fun i hi => ?_) hrefs
+        refine Expr.eval_congr_allFields (fun i hi => ?_) hrefs
         by_cases hni : n ≤ i
         · obtain ⟨d, rfl⟩ : ∃ d, i = n + d := ⟨i - n, by omega⟩
           have e1 := getD_append_right' (x := x) (y := z) d
@@ -1320,7 +1305,7 @@ theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {nam
       have hsub : ∀ x ∈ a.eval cat, ∀ v : Row, v.length = ms.length → ∀ z ∈ b.eval cat,
           on'.eval (groupKey gs x ++ v ++ z) = on.eval (x ++ z) := fun x hx v hv z hz => by
         simp only [on', Expr.eval_subst]
-        refine Expr.eval_congr_refsAll (fun i hi => ?_) hrefs
+        refine Expr.eval_congr_allFields (fun i hi => ?_) hrefs
         rw [getD_map_eval]
         have hgl' : (groupKey gs x).length = gs.length := by simp [groupKey]
         have hrow : (groupKey gs x ++ v).length = out := by simp [hgl', hv, ← hout]
@@ -1646,7 +1631,7 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
           · rename_i hc
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨-, rfl⟩ := h
-            simp only [Bool.and_eq_true, List.all_eq_true, Expr.refsLtb_iff] at hc
+            simp only [Bool.and_eq_true, List.all_eq_true, Expr.refsLtB_iff] at hc
             obtain ⟨hgs, hms⟩ := hc
             obtain ⟨ha, -, g, he, hg⟩ := joinElim_sound hcat hA hF hK hR hwf.1 hj
             refine ⟨⟨ha, hgs, fun m hm => ⟨hms m hm m.arg (by simp [Measure.exprs]),
@@ -1692,7 +1677,7 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
           · rename_i hc
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨-, rfl⟩ := h
-            simp only [Bool.and_eq_true, List.all_eq_true, Expr.refsLtb_iff, Bool.or_eq_true,
+            simp only [Bool.and_eq_true, List.all_eq_true, Expr.refsLtB_iff, Bool.or_eq_true,
               decide_eq_true_eq] at hc
             obtain ⟨hes, hmi⟩ := hc
             obtain ⟨ha, hn, g, he, hg⟩ := joinElim_sound hcat hA hF hK hR hwf.1.1 hj
