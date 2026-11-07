@@ -5,7 +5,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "sqlglot==30.17.0",
-#     "sverify[datafusion,delta,polars]==0.7.0",
+#     "sverify[datafusion,delta,polars]==0.7.1",
 # ]
 # ///
 

@@ -7,7 +7,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyarrow==26.0.1",
-#     "sverify[datafusion,polars,delta]==0.7.0",
+#     "sverify[datafusion,polars,delta]==0.7.1",
 # ]
 # ///
 
@@ -47,7 +47,7 @@ def _(mo):
     Customers move, so the city comes from a type-2 slowly changing
     dimension (dbt snapshots build these), and the join is a point-in-time
     join (`dbt-scd2-point-in-time` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md)).
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md)).
 
     In dbt this model would come with tests: `not_null(city)`,
     `unique(city, day)`, `revenue >= 0`. They run after the model is built,

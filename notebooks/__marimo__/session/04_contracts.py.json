@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "18dd25a9681466cddf507c6eb404d414"
+    "script_metadata_hash": "a78cf47e9fb4363a4dce04428db161eb"
   },
   "cells": [
     {
@@ -181,7 +181,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='nWHF-0' random-id='806116e3-d4ae-28f3-a9b0-059b7c0cc3c6'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires customers: unique(name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='nWHF-0' random-id='ceacd7ad-b21a-5e86-4613-ba981351cec4'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires customers: unique(name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],
@@ -285,7 +285,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='ulZA-0' random-id='acfeeef2-823f-5635-3b85-91fa377e1699'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires minute IS NOT NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='ulZA-1' random-id='b8e03f31-bbe9-0a35-1c65-283d0baf6092'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, minute)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='ulZA-2' random-id='2411933c-b13e-ca50-0ca3-aceedd2d5cb0'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline keeps only sensor &#x27;a&#x27;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='ulZA-0' random-id='2d8bef9f-2f4e-9b1f-ad5a-e3e8d35a93e9'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires minute IS NOT NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='ulZA-1' random-id='c664264a-d0ca-4b30-f1ea-376a1de10091'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, minute)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='ulZA-2' random-id='ad1c510c-a797-8182-2a5c-8610f2babb53'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline keeps only sensor &#x27;a&#x27;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
           }
         }
       ],
@@ -337,7 +337,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='aLJB-0' random-id='bd9baa6b-e8c0-ee78-0995-461ef1e1846e'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='aLJB-0' random-id='7a83a148-706b-b2d8-e8ed-1472cbdc2090'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
           }
         }
       ],
@@ -428,7 +428,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='TRpd-0' random-id='21bfd06d-dca6-7103-32fe-b52730630603'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='TRpd-0' random-id='dbba2a07-25e4-45c5-0dc8-4e7dba8df32a'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],
@@ -467,7 +467,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='yCnT-0' random-id='fc2582a2-0054-2a2e-8e63-7f3ab61cfb4c'><marimo-slider data-initial-value='10' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003etolerance (ms)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='20' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='yCnT-1' random-id='8c156d84-5d3a-06d7-5cf1-97d3dcfd3bbb'><marimo-radio data-initial-value='&quot;left&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ehow&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;left&quot;,&quot;inner&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element><marimo-ui-element object-id='yCnT-2' random-id='a8f91637-7fb5-529b-f334-1bc067df9d9c'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires gyr: unique(device, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='yCnT-0' random-id='ee26f1a4-df22-7833-4638-db600e6d631d'><marimo-slider data-initial-value='10' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003etolerance (ms)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='20' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='yCnT-1' random-id='b2b5842f-e984-f911-4af6-e1c840cb0669'><marimo-radio data-initial-value='&quot;left&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ehow&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;left&quot;,&quot;inner&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element><marimo-ui-element object-id='yCnT-2' random-id='e41ce007-155d-a4b0-0d31-f2973f6d2180'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires gyr: unique(device, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
           }
         }
       ],
@@ -488,7 +488,7 @@
         {
           "type": "stream",
           "name": "stderr",
-          "text": "/tmp/marimo_3021/__marimo__cell_wlCL_.py:29: UserWarning: 1 precondition needed (e.report has the details)\n  needs: (_.ts >= datetime(1, 1, 1)) on acc, inferred from `ts - ibis.interval(milliseconds=10)` (overflow otherwise): declare it in requires (each run then checks it on the data), or rewrite so no row needs it (`acc.filter((_.ts >= datetime(1, 1, 1)))` first, or a CASE); on_inferred='warn' assumes it instead\n  aligned(con_w.table(\"acc\"), con_w.table(\"gyr\")).order_by(\"ts\").to_pyarrow()\n",
+          "text": "/tmp/marimo_3246/__marimo__cell_wlCL_.py:29: UserWarning: 1 precondition needed (e.report has the details)\n  needs: (_.ts >= datetime(1, 1, 1)) on acc, inferred from `ts - ibis.interval(milliseconds=10)` (overflow otherwise): declare it in requires (each run then checks it on the data), or rewrite so no row needs it (`acc.filter((_.ts >= datetime(1, 1, 1)))` first, or a CASE); on_inferred='warn' assumes it instead\n  aligned(con_w.table(\"acc\"), con_w.table(\"gyr\")).order_by(\"ts\").to_pyarrow()\n",
           "mimetype": "text/plain"
         }
       ]
@@ -539,7 +539,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='dGlV-0' random-id='de4dd281-ff74-62bf-3799-5a5a986c5316'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='dGlV-0' random-id='b4f8f35d-0f27-bfac-6cfb-6c49d20690f0'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],

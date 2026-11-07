@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "9287b24a8d632ac3d24149614efe2177"
+    "script_metadata_hash": "e2d5bdbbf77cae300a61d8c75bd9333a"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "1aed02bdf96971278ec57a983de9acfc",
+      "code_hash": "214624fd525e4dd255fd0e074285da08",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an alert at every reading that is the third\nor more in a row above 30 \u00b0C.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines disagree, and we'll run into three\ncauses:</span>\n<ul>\n<li>ties: two readings of a device at the same instant make \"previous\n  reading\" ambiguous, and each engine picks one;</li>\n<li>NaN: a glitching sensor sends NaN. In SQL <code>NaN &gt; 30</code> is TRUE, because\n  NaN sorts above every number, and in Python and pandas it is False, so\n  a prototype and the production job disagree;</li>\n<li>warehouses without row order: Snowflake and Spark tables have no order\n  to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in the <a href=\"?file=01_duplicate_payments.py\">first notebook</a>, the job\nreads the source, states and proves a contract, runs on several engines,\nkeeps up with new data and writes a sink.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an alert at every reading that is the third\nor more in a row above 30 \u00b0C.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines disagree, and we'll run into three\ncauses:</span>\n<ul>\n<li>ties: two readings of a device at the same instant make \"previous\n  reading\" ambiguous, and each engine picks one;</li>\n<li>NaN: a glitching sensor sends NaN. In SQL <code>NaN &gt; 30</code> is TRUE, because\n  NaN sorts above every number, and in Python and pandas it is False, so\n  a prototype and the production job disagree;</li>\n<li>warehouses without row order: Snowflake and Spark tables have no order\n  to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in the <a href=\"?file=01_duplicate_payments.py\">first notebook</a>, the job\nreads the source, states and proves a contract, runs on several engines,\nkeeps up with new data and writes a sink.</span></span>"
           }
         }
       ],
@@ -150,12 +150,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "872f4bbc5a22b99dea91ef7c67e6f298",
+      "code_hash": "551a031d97bff77525c0612d86eff9d5",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>temperature &gt; 30</code> is proved: it holds whichever reading the engine takes\nas the previous one. One alert per device and minute is not, and the\nreport warns that the result is not deterministic. If a device can send\ntwo readings with the same <code>ts</code>, which one is \"previous\" depends on how\nthe engine breaks the tie, and a rerun may page you twice. The catalogue\nfound this in 44 of its 139 queries (dedup, top-N, <code>LAG</code> over equal\ntimestamps; see its <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/FINDINGS.md\" rel=\"noopener noreferrer\" target=\"_blank\">findings</a>), and it is the\nmost common way for engines to disagree.</span>\n<span class=\"paragraph\">The fix is to state what the source promises: at most one reading per\ndevice and minute. The sensor team can make that promise, and the job\nchecks it on every batch.</span>\n<h2 id=\"3-the-nan-glitch\">3. The NaN glitch</h2>\n<span class=\"paragraph\">With that key we try again, and also ask that no alert is a NaN, since\nthe person paged needs a temperature:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>temperature &gt; 30</code> is proved: it holds whichever reading the engine takes\nas the previous one. One alert per device and minute is not, and the\nreport warns that the result is not deterministic. If a device can send\ntwo readings with the same <code>ts</code>, which one is \"previous\" depends on how\nthe engine breaks the tie, and a rerun may page you twice. The catalogue\nfound this in 44 of its 139 queries (dedup, top-N, <code>LAG</code> over equal\ntimestamps; see its <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/FINDINGS.md\" rel=\"noopener noreferrer\" target=\"_blank\">findings</a>), and it is the\nmost common way for engines to disagree.</span>\n<span class=\"paragraph\">The fix is to state what the source promises: at most one reading per\ndevice and minute. The sensor team can make that promise, and the job\nchecks it on every batch.</span>\n<h2 id=\"3-the-nan-glitch\">3. The NaN glitch</h2>\n<span class=\"paragraph\">With that key we try again, and also ask that no alert is a NaN, since\nthe person paged needs a temperature:</span></span>"
           }
         }
       ],

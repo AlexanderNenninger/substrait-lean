@@ -6,7 +6,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "sqlglot",
-#     "sverify[datafusion,polars,delta]==0.7.0",
+#     "sverify[datafusion,polars,delta]==0.7.1",
 # ]
 # ///
 
@@ -43,7 +43,7 @@ def _(mo):
     the same amount at the same merchant twice within five minutes, and
     refund them first.
 
-    The rule comes from the [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md)
+    The rule comes from the [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md)
     (`fin-duplicate-payments`). Stream processors write it as an interval
     join; here it is a self-join on a Delta Lake table of card transactions.
     The refund queue relies on what you hand it: no pair twice, no charge

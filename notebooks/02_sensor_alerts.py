@@ -6,7 +6,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "pyiceberg[sql-sqlite]",
-#     "sverify[datafusion,polars,iceberg]==0.7.0",
+#     "sverify[datafusion,polars,iceberg]==0.7.1",
 # ]
 # ///
 
@@ -45,7 +45,7 @@ def _(mo):
 
     The sensors write a reading per device per minute to an Iceberg table,
     and the rule is `iot-consecutive-threshold` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/INDEX.md) (Azure Stream Analytics'
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md) (Azure Stream Analytics'
     `MATCH_RECOGNIZE` example). In SQL that is two `LAG`s over a window.
     Window queries are where engines disagree, and we'll run into three
     causes:
@@ -215,7 +215,7 @@ def _(mo):
     two readings with the same `ts`, which one is "previous" depends on how
     the engine breaks the tie, and a rerun may page you twice. The catalogue
     found this in 44 of its 139 queries (dedup, top-N, `LAG` over equal
-    timestamps; see its [findings](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.0/catalogue/FINDINGS.md)), and it is the
+    timestamps; see its [findings](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/FINDINGS.md)), and it is the
     most common way for engines to disagree.
 
     The fix is to state what the source promises: at most one reading per
