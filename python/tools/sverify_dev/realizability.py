@@ -11,11 +11,11 @@ option (`SubstraitLean/Obligations.lean`). This module renders it as
 
     uv run python -m sverify_dev.realizability --write
 
-`--check` exits 1 when the file is stale. `tests/test_realizability.py` fails
-until the file is current, so a change to the reference or to an engine's
-tables that costs a shim, a precondition or a refusal shows in review. The
-file is committed with the change that alters it: it is the table's expected
-output, and the `Generated files` workflow leaves it alone.
+`--check` exits 1 when the file is stale: run it
+on a branch to see whether the change costs a shim, a precondition or a
+refusal. The `Generated files` workflow rewrites the file on `main` after
+every merge, so feature branches leave it alone. Two PRs that each kept it
+current used to make it stale once both merged, and the batch failed.
 """
 
 from __future__ import annotations

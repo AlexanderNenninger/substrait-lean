@@ -22,11 +22,12 @@ def table() -> dict:
 
 
 @needs_repo
-def test_doc_is_current(table):
-    """A change to the reference or an engine's tables that alters a row (a new
-    shim, a precondition, a refusal) fails here until the doc is regenerated:
-    `python -m sverify_dev.realizability --write`."""
-    assert realizability.DOC.read_text() == realizability.render(table)
+def test_doc_renders(table):
+    """The table renders on this branch. Whether `docs/realizability.md` is
+    current is not checked here: the `Generated files` workflow rewrites it on
+    `main`, so feature branches leave it alone and two PRs never conflict
+    over it."""
+    assert realizability.render(table).startswith("# Realizability")
 
 
 def test_engines_and_their_translations(table):
