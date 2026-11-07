@@ -168,6 +168,31 @@ def test_report_names_what_a_condition_depends_on() -> None:
     assert "observes: equivalent(" in str(report)
 
 
+def test_the_checker_names_what_a_condition_depends_on() -> None:
+    """The checker reports the components each condition's value depends on
+    (`Expr.depends`), and `ignores` reads them (#898): a mean of doubles under
+    a tolerance depends on the floats, and `sv.approx` allows for them."""
+    expr = T.group_by("k").aggregate(mean_x=T.x.mean(), n=T.k.count())
+    report = sv.verify(
+        expr,
+        requires={"t": [_.x.between(0, 100), _.x.notnull(), sv.max_rows(1000)]},
+        ensures=[
+            sv.equivalent(floats=sv.within(abs=1e-3)),
+            _.mean_x <= 100,
+            sv.approx(_.mean_x <= 100),
+            _.n >= 0,
+        ],
+        counterexamples=0,
+    )
+    plain, approx, count = report.ensures
+    assert plain.depends is not None and "floats" in plain.depends
+    assert plain.ignores == ("floats",)
+    assert approx.ignores == ()
+    assert approx.portable
+    assert count.depends is not None and "floats" not in count.depends
+    assert count.portable
+
+
 def test_without_an_observation_nothing_changes() -> None:
     """Without doubles, the default (`floats="plan"`) and `sv.equivalent()`
     prove the same, and the report prints no `observes:` line."""

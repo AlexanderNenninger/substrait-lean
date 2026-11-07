@@ -12,7 +12,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import _functions
-from sverify.plan_json import Json, Unsupported, if_then, int_range, literal
+from sverify.plan_json import Json, Unsupported, between, if_then, in_values, literal
 from sverify.sql_lift._base import (
     DUCKDB,
     Column,
@@ -276,8 +276,7 @@ def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
     x, lo, hi = _operands(
         lf, [sub(node.this), sub(node.args["low"]), sub(node.args["high"])], "BETWEEN"
     )
-    both = [_fn("gte", [x, lo], dt.boolean), _fn("lte", [x, hi], dt.boolean)]
-    return E(_fn("and", both, dt.boolean), dt.boolean)
+    return E(between(x, lo, hi, typed=True), dt.boolean)
 
 
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
@@ -307,14 +306,8 @@ def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
     if t.is_null():
         t = dt.int32
     value, *options = [lf.to(e, t).json for e in es]
-    ints = [_int_of(o) for o in node.expressions]
-    if t.is_integer() and (span := int_range(ints)) is not None:
-        # `x IN (0, 1)` over integers is `x BETWEEN 0 AND 1`, NULLs included,
-        # and the checker reads a range as one (#691).
-        lo, hi = (options[ints.index(v)] for v in span)
-        both = [_fn("gte", [value, lo], dt.boolean), _fn("lte", [value, hi], dt.boolean)]
-        return E(_fn("and", both, dt.boolean), dt.boolean)
-    return E({"singularOrList": {"value": value, "options": options}}, dt.boolean)
+    ints = [_int_of(o) for o in node.expressions] if t.is_integer() else None
+    return E(in_values(value, options, ints, typed=True), dt.boolean)
 
 
 def _int_of(node: sge.Expression) -> int | None:

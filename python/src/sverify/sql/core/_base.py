@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
 
-from sverify import _functions, _plan_read, _support, black_box
+from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY
 from sverify._unsupported import Unsupported as _Unsupported
@@ -840,6 +840,12 @@ class Dialect:
         """TRUE when `a` is TRUE, FALSE when it is FALSE or NULL."""
         return f"({a} IS TRUE)"
 
+    def where(self, a: str) -> str:
+        """The condition `a` in a `WHERE`, which keeps a row only when it is
+        TRUE: `is_true(a)`, or `a` itself where `is_true` would hide a
+        correlation from the engine (Snowflake's `EXISTS`)."""
+        return self.is_true(a)
+
     def case_when(self, c: str, t: str, e: str) -> str:
         """`t` when `c` is TRUE, else `e` (also when `c` is NULL)."""
         return f"(CASE WHEN {c} THEN {t} ELSE {e} END)"
@@ -1383,7 +1389,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
 
 #: The kind of each `black_box.Ty` (#325; `Parse.bbKind`).
 _BB_KINDS: dict[str, Any] = {"int": "int", "double": "float", "str": "str", "bool": "bool",
-                             "date": "date", "atom": "other", "any": "other",
+                             "date": "date", "timestamp": "time", "atom": "other", "any": "other",
                              "doubles": Lst("float"), "ints": Lst("int"),
                              "strs": Lst("str")}  # fmt: skip
 
@@ -1396,12 +1402,12 @@ def _bb_kind(name: str) -> Any:
 
 def dsum_kind(a: Dec) -> Dec:
     """A decimal `SUM` has ten more digits (`Measure.kind`)."""
-    return Dec(min(38, a.p + 10), a.s)
+    return Dec(*_decimals.sum_of((a.p, a.s)))
 
 
 def davg_kind(a: Dec) -> Dec:
     """A decimal `AVG` has four more digits and decimal places (`decimalAvgs`)."""
-    return Dec(min(38, a.p + 4), a.s + 4)
+    return Dec(*_decimals.avg_of((a.p, a.s)))
 
 
 def _issue_free(e: Expr) -> bool:
@@ -2912,7 +2918,7 @@ class _Parser:
             case (("add" | "subtract"), [a, b], [(p1, s1), (p2, s2)]):
                 sc = max(s1, s2)
                 check_scale(sc)
-                p = dp if dp is not None else min(38, max(p1 - s1, p2 - s2) + sc + 1)
+                p = dp if dp is not None else _decimals.add((p1, s1), (p2, s2))[0]
                 return DecOp("add" if name == "add" else "sub", (a, b), p, sc)
             case "multiply", [a, b], [(p1, s1), (p2, s2)]:
                 sc = s1 + s2
@@ -2921,7 +2927,7 @@ class _Parser:
                         "a DECIMAL product with more than 38 decimal places is not supported"
                     )
                 check_scale(sc)
-                p = dp if dp is not None else min(38, p1 + p2 + 1)
+                p = dp if dp is not None else _decimals.mul((p1, s1), (p2, s2))[0]
                 return DecOp("mul", (a, b), p, sc)
             case (("negate" | "subtract"), [a], [(p, sc)]):
                 return DecOp("neg", (a,), p, sc)
@@ -3646,7 +3652,7 @@ class _Writer:
                 ks = kinds(i)
                 self.check_refs(cond, len(ks))
                 with self.slot(r, 0):
-                    where = d.is_true(self.expr(cond, lambda j: self.ref(a, self.c(j)), ks, "bool"))
+                    where = d.where(self.expr(cond, lambda j: self.ref(a, self.c(j)), ks, "bool"))
                 return self.select(
                     self.passthrough(a, n, ordered),
                     d.subquery(self.rel(i, ordered), a),
@@ -3759,7 +3765,7 @@ class _Writer:
                     return self.ref(la, self.c(j)) if j < nl else self.ref(ra, self.c(j - nl))
 
                 with self.slot(r, 0):
-                    cond = d.is_true(self.expr(on, side, kinds(left) + kinds(right), "bool"))
+                    cond = d.where(self.expr(on, side, kinds(left) + kinds(right), "bool"))
                 rsub = d.subquery(self.rel(right, False), ra)
                 exists = f"{'NOT ' if anti else ''}EXISTS (SELECT 1 FROM {rsub} WHERE {cond})"
                 return self.select(

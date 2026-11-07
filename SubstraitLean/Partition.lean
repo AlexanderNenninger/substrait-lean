@@ -744,8 +744,9 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
       induction ss with
       | nil => rfl
       | cons s ss ih => cases ss <;> simp_all [aggregateEval]
+    rw [hP]
     simp only [aggregateEval, keyFields, List.length_nil, List.range_zero, List.map_nil,
-      List.isEmpty_nil, ↓reduceIte, hP]
+      List.isEmpty_nil, ↓reduceIte]
     refine .of_eq (congrArg (fun x => [x]) (List.ext_getElem (by simp [hlen]) fun i h₁ h₂ => ?_))
     simp only [List.length_map] at h₂
     simp only [List.getElem_map]
@@ -757,7 +758,8 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
       | nil => exact (hg rfl).elim
       | cons _ _ => simp [keyFields, List.range_succ_eq_map]
     have hge : gs.isEmpty = false := by simpa using hg
-    simp only [aggregateEval, hk, hge, Bool.false_eq_true, ↓reduceIte]
+    rw [aggregateEval.eq_1 (keyFields gs.length), aggregateEval.eq_1 gs ms ss.flatten]
+    simp only [hk, hge, Bool.false_eq_true, ↓reduceIte]
     rw [show (ss.flatMap (aggregateEval gs ms)).map (groupKey (keyFields gs.length)) =
         ss.flatMap fun s => dedup (s.map (groupKey gs)) by
       rw [List.map_flatMap]; exact flatMap_congr fun s _ => aggregateEval_keys hg s]

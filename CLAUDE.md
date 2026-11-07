@@ -36,7 +36,7 @@ Lean input changes. Engine jobs, oracle A and the notebooks skip changes in
 areas they cannot read (the table in the `changes` job), `dbt/` among them. A pull request that
 changes only facts, probes, `upstream/` or `python/tests/lift_backlog.json`
 (and docs) runs `static` and a `ledger` job: the checkers and the tests that
-read those files. A pull request into a branch other than main (a stack)
+read those files. A pull request into a branch other than main or a release branch (a stack)
 runs `static` only and its `qa` fails; retargeting it to main starts the full
 run (`.github/workflows/retarget.yml`). The header of
 `.github/workflows/ci.yml` has the details.
@@ -91,108 +91,85 @@ Run one expensive task at a time per agent, never several in parallel.
 use `pytest -n auto`, which takes every core. On the laptop, run pytest
 directly with `-n 2` instead.
 
-For long QA runs, use the `homelab` server for more compute: `ssh homelab`
-(reached over Tailscale, user `nennia`, key auth, so `ssh -o BatchMode=yes`
-works). It is Pop!_OS 24.04 (Ubuntu-based, so `apt`), x86_64, 12 cores,
-15 GB RAM. elan and uv are installed in `~/.elan/bin` and `~/.local/bin`,
-which a non-interactive `ssh` does not put on `PATH`. The box has no GitHub
-push credentials, so to test local changes push a branch first.
-
-Several agents share the box, and it also runs the user's own services (an
-`ollama` model server among them, using several GB). Two parallel QA runs
-once drove it to a load of over 100 and hung it. So check before starting
-a run:
-
-```bash
-ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
-```
-
-- **One QA run at a time.** If a `/tmp/substrait-lean-*` directory exists,
-  another run is going: wait, or run only the tests your change touches
-  locally. The background chaos run (below) is the one exception: it runs
-  under `/tmp/substrait-chaos-*`, which this check leaves out, and one QA run
-  may go alongside it.
-- **Don't start** if the 1-minute load average is above 8, or if less than
-  6 GB is available (the `available` column of `free -g`).
-- **Cap the workers:** the poe test tasks use `pytest -n auto`, which takes
-  every core. Set `PYTEST_XDIST_AUTO_NUM_WORKERS=4` so a run fits the 8 GB cap (6 workers peaked over it after #729; 4 peak at 7.8 GB) and leaves the
-  box free.
-- **Run under `nice -n 10`** so interactive use of the box stays responsive.
-- **Long-running jobs that aren't QA** (a full sqllogictest replay, fuzzing)
-  count as a run too. Give them a `/tmp/substrait-lean-*` directory, so the
-  check above sees them.
-- **Never use sudo there,** not even `sudo -n` to test for it. Everything
-  runs as `nennia`: user-level `systemd-run --user` scopes for memory caps,
-  and tools installed under `~/` (elan, uv, the JDK already there). Nothing
-  in QA needs root or the maintainer's password. If something seems to,
-  stop and ask the coordinator.
-- **Clean up after yourself.** Delete your directory when the run ends,
-  also when it fails. To stop a run, kill its processes by PID, not with
-  `pkill -f` over `ssh`: the pattern also matches the `ssh` command itself.
-
-Each run gets its own directory,
-`/tmp/substrait-lean-<uuid>`. Never run tests in a shared checkout such as
-`~/Projects/substrait-lean`. `python/scripts/homelab_qa.sh` clones the pushed
-branch fresh, runs `poe qa` (or the poe tasks you name after the branch) with
-the worker cap and `nice -n 10`, deletes the directory, also on failure, and
-passes the exit status through. Run it from the repository root:
+For long QA runs, use `homelab` (`ssh -o BatchMode=yes homelab`, over
+Tailscale; Pop!_OS, 12 cores, 15 GB; elan and uv in `~/.elan/bin` and
+`~/.local/bin`, which a non-interactive `ssh` does not put on `PATH`). It
+has no GitHub push credentials, so push your branch first, then run, in the
+background, from the repository root:
 
 ```bash
 ssh homelab 'bash -s -- <branch>' < python/scripts/homelab_qa.sh
 ```
 
-The script copies a warm Lean build from
-`~/.cache/substrait-lean/lake/<toolchain>` into the clone before building, and
-replaces it with the clone's `.lake` after a successful run. Lake's trace
-hashes rebuild whatever changed, so a cache from another commit is safe. It
-keeps the caches of the two most recent toolchains, about 300 MB each.
-
-The script refuses to start when less than 6 GB is available. It runs the
-Lean build and the tests in two systemd user scopes, one after the other,
-each with no swap. The tests' scope is capped at `HOMELAB_QA_MEMORY_MAX`
-(8 GB), the build's at `HOMELAB_QA_BUILD_MEMORY_MAX` (the same by default).
-`PYTEST_XDIST_AUTO_NUM_WORKERS`, `HOMELAB_QA_NICE`, `HOMELAB_QA_PREFIX` and
-`HOMELAB_QA_CHECK_GENERATED` change the workers, the niceness of both
-steps, the directory's prefix and whether the generated proofs are checked.
-The first OOM kill stops its scope, which fails the run, and its directory
-is deleted. A Lean change that sends `LiftDuckDB.lean`
-into the full lift search once took 12.4 GB in one `lean` process and nearly
-hung the box. Where user scopes are not available it
-falls back to `ulimit -v`, which caps each process on its own. To stop a
-run, send SIGTERM to the script's bash by its PID: it stops the running
-scope and deletes the directory.
-
-Run long QA commands there in the background, not in the foreground shell.
-
-### Chaos suite
-
-`python/tests/chaos/` injects crashes into pipeline execution: exceptions
-and SIGKILLs at each step of a refresh, an S3 outage (moto behind a proxy),
-sources that change or vanish, and racing writers. Its tests carry the
-`chaos` marker, which only `-m chaos` selects, so `qa` and CI leave it out.
-It spawns many processes, so run it on homelab, in the background and
-capped, so that a QA run can go alongside it:
+The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
+warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
+under memory caps, and deletes the directory at exit. Its header documents
+its options. Several agents and the user's own services share the box, and
+two parallel runs once hung it, so check first:
 
 ```bash
-ssh homelab 'PYTEST_XDIST_AUTO_NUM_WORKERS=2 HOMELAB_QA_MEMORY_MAX=2G HOMELAB_QA_BUILD_MEMORY_MAX=8G HOMELAB_QA_NICE=19 HOMELAB_QA_CHECK_GENERATED=false HOMELAB_QA_PREFIX=substrait-chaos bash -s -- <branch> test-chaos' < python/scripts/homelab_qa.sh
+ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
 ```
 
-Its Lean build skips the generated proofs (CI checks them on every PR) and
-runs at the 8 GB cap: for those minutes it is as heavy as a QA run, so start
-it under the same rules, with 6 GB available and a load under 8. Its tests
-then run in their own scope at 2 GB, with 2 workers. One chaos run at a
-time: check for a `/tmp/substrait-chaos-*` directory first. QA runs still
-need 6 GB available.
+- **One run at a time.** A `/tmp/substrait-lean-*` directory means a run is
+  going. Long jobs that aren't QA (a replay, fuzzing, TLC) count too: give
+  them such a directory. The chaos run (the `chaos-run` skill) is the one
+  exception.
+- **Don't start** above a 1-minute load of 8, or with less than 6 GB
+  available. Cap workers with `PYTEST_XDIST_AUTO_NUM_WORKERS=4` and run
+  under `nice -n 10`.
+- **Never use sudo there,** not even `sudo -n`. Nothing in QA needs root;
+  if something seems to, stop and ask the coordinator.
+- **Clean up:** delete your directory when the run ends, also when it fails.
+  Stop a run by PID (SIGTERM to the script's bash), never `pkill -f` over
+  `ssh`: the pattern matches the `ssh` command itself. A crashed session can
+  leave a directory behind; if no process uses it, remove it.
 
-Each scenario that fails appends a line to a JSONL ledger as it finishes
-(`SVERIFY_CHAOS_LEDGER`, default `~/.cache/substrait-lean/chaos/<run>.jsonl`,
-which outlives the run's directory; `tail -f` it). The task prints how
-many scenarios ran and recovered, then the summary: failures grouped by signature, with counts and a
-repro. `python -m sverify_dev.chaos summarize <ledger>...` summarises
-partial or several ledgers (`--follow 60` repeats). Signatures with an
-issue go in `tests/chaos/known.json`; their tests report as expected
-failures, and a new signature fails the run. File issues per signature,
-not per test.
+## Working beside other sessions
+
+Several Claude sessions work in this repository at once, steered by a
+coordinator session that assigns work and merges PRs through batches.
+
+- **Stay in your task's files.** If something outside them needs changing,
+  tell the coordinator instead of changing it; another session may own it.
+- **At most three sessions build or test at once.** The coordinator holds
+  the rest; seven parallel Lean builds once took the Claude app down.
+- **Report, don't wait silently:** message the coordinator when a PR is
+  ready, when you're blocked, or when a planned step turns out wrong.
+- **Shell loops that wait on another process** match by PID. A `pgrep -f`
+  pattern also matches the shell running it, and waits forever.
+
+## Lean proofs
+
+The `prove-lean` skill has the workflow. The rules:
+
+- No `native_decide`, no `sorry`, and `decide` only on small terms.
+  `#print axioms` of the changed theorems stays as it was, or the PR says
+  why it changed.
+- Never weaken a theorem to make it pass. If a statement turns out false,
+  say so, and propose the corrected statement with a side condition named as
+  a predicate, as #899 did.
+- The reference semantics (`Rel.eval`, `Rel.Allowed`, `docs/core-semantics.md`)
+  changes only through a recorded decision (D-numbers in that doc).
+- Where the reference leaves a choice open (tie order, float sums), prove
+  membership in `Allowed`, not equality.
+- CI builds the proofs with `--wfail`: a warning fails the build. A new
+  module gets its line in `docs/proofs.md` (`tests/test_proof_map.py`).
+
+## Engines
+
+DuckDB, Polars, Spark and Snowflake are the 1.0 engines. DataFusion is an
+optional engine and never a reference: Lean's model is the reference, and
+DuckDB is the default oracle where tests compare against an engine.
+Snowflake's facts are private (the `engine-fact` skill says where).
+
+## Skills
+
+Task recipes live in `.claude/skills/` and load when needed: `add-function`
+(functions and coverage cases; older comments call it CLAUDE.md's "Adding
+functions"), `engine-fact` (formerly "Engine facts"), `upstream-bug`,
+`upstream-report`, `prove-lean`, `chaos-run`, `query-semantics` and
+`release-sverify`.
 
 ## sverify-dbt
 
@@ -253,83 +230,6 @@ before you commit. Edit the sources instead: the `CASES` of
 `tests/test_catalogue.py` expects. So a PR that adds a catalogue query or
 changes coverage commits it, after `sverify_dev.catalogue --write`.
 
-## Adding functions and coverage cases
-
-Parallel PRs used to conflict in shared lists and dispatch tables; these are
-now split by area. The areas are the same everywhere: `core` (logic,
-comparisons, NULLs, arithmetic, math, bitwise), `strings` (with LIKE, regex,
-digests), `temporal`, `nested` (lists, structs, lambdas, UNNEST),
-`aggregates`, `windows`, `relations` and `casts`. A feature edits its area's
-file; touch the shared `_base.py` only for what the area files say lives there.
-
-- **Substrait function** (`SubstraitLean/Functions.lean`): add a row at the
-  end of its area's table (`core`, `strings`, `temporal`, `nested`,
-  `aggregates`, `windows`), one per constructor it is modelled by, with the
-  next free anchor in that area's range (100s core, 200s strings, 300s
-  temporal, 400s nested, 500s aggregates, 600s windows), its group from
-  `docs/core-semantics.md`, its constructor and how the parser reads it.
-  `Write.lean`'s anchors (`UnFn`/`BinFn`/`AggFn.anchor`, `fn "name"`) and
-  `Pretty.lean` read the row. `lake build` rejects duplicate anchors or
-  names, out-of-range anchors, a constructor with two rows and a group the
-  design does not list. `substrait-check --functions` prints the tables as
-  JSON for the Python mirror.
-- **Coverage case** (`python/tools/sverify_dev/coverage_cases/<area>.py`): append to
-  that module's `CASES`, and put its refusals in the same module's `REFUSED`,
-  `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
-  listed in `coverage_cases.AREAS`.
-- **Parse** (`SubstraitLean/Parse.lean`): a row marked `reads := .plain`
-  (`.float` for doubles) is read as its constructor with nothing more.
-  Otherwise the function's arm in its area's `mkCoreCall?`, `mkStringCall?`,
-  `mkTemporalCall?` or `mkNestedCall?`, before its last arm, which reads the
-  table. Doubles go in `mkFloatCall`, decimals in `decimalCall`, constant folding in
-  `foldCoreCall`/`foldTemporalCall`, aggregates in `parseMeasure`'s
-  `match name, k`, windows in `parseWindow`'s `match baseName name, args`. A
-  string function's integer arguments go in `stringFns`; an option's functions
-  in that option's arm of `optionAccepts`.
-- **Function table** (`python/src/sverify/_functions.py`, #544): a scalar
-  function of strings, math or bitwise operations is a row: its anchor, area
-  and group (`docs/core-semantics.md`), its kinds, the writer's operation, the
-  SQL of each dialect, and the SQLGlot nodes and Ibis operations that read as
-  it. A row whose `call`, `expr`, `lift` or `ibis` covers the function needs
-  no case in the places below; `tests/test_functions.py` checks the rows
-  against `Functions.lean` (`substrait-check --functions`).
-- **SQL writer** (`python/src/sverify/sql/core/<area>.py`, `strings`,
-  `temporal`, `nested`): the function's case in the area's `call` (`mkCall`),
-  its SQL in the area's `expr`, and its result kind in the area's `UN_KINDS` or
-  `BIN_KINDS`. In `_base.py`, add the op to the area's `<Area>UnOp`/`<Area>BinOp`
-  Literal and the `Dialect` hook under the area's comment. Core functions,
-  aggregates, windows, casts and relations are still in `_base.py`.
-- **SQL lift** (`python/src/sverify/sql_lift/<area>.py`): the rule function and
-  its entry in the area's `register({...})`, keyed by SQLGlot node type.
-  Aggregates (`_AGGREGATES`), windows (`_RANKING`), joins, set operations and
-  UNNEST are still in `_base.py`'s `_Lift`.
-- **Ibis producer** (`python/src/sverify/ibis_substrait/<area>.py`): the rule
-  and its entry in the area's `register({...})` (expressions),
-  `register_rels({...})` (relations) or `register_refusals({...})`. Aggregates
-  are a branch of `aggregates.measure`, window functions of `windows.window`;
-  decimal typing (`_exact`) is in `_base.py`.
-- **Tests of the lift**: `python/tests/test_sql_lift_<area>.py`, with the
-  shared tables in `python/tests/_sql_lift.py`.
-- **Black box** (#325), a DuckDB function the checker treats as opaque: add a
-  row to `BlackBox.scalars` or `BlackBox.aggregates`
-  (`SubstraitLean/BlackBox.lean`) with its types, NULL handling, whether it
-  raises, its laws and a `sample` the laws allow (`scalars_wf` checks it by
-  `decide`), and the same row, at the same index, to `TABLE` in
-  `python/src/sverify/black_box.py` with DuckDB's SQL. Its anchor is 700 plus
-  its index, under the black boxes' URN; the parser, the lift
-  (`sql_lift/blackbox.py`), the writers and the refusals of other engines
-  read the table, and `tests/test_black_box.py` checks the two tables agree.
-  Add a lift rule only where SQLGlot reads the call as a node of its own
-  (`to_base64`), and a Lean evaluator in `BlackBox.evalScalar` where Lean can
-  compute it exactly. Test it in `tests/test_black_box.py`: oracle C, the
-  laws on random data, a contract they prove. A new law kind needs its case
-  in `BlackBox.Law.holds` and `Law.bound` (`Contracts.lean`).
-- **Engine support** (`python/src/sverify/_support.py`): a function that not
-  every engine runs (a new one runs on DuckDB only, #271) gets a row in
-  `SUPPORT` with the engines that run it. `to_sql` and `run_plan` refuse it
-  on the others before they dispatch, with "see #271". Refusals that depend
-  on types or arguments stay in the engine.
-- **Reference semantics** (`docs/reference-semantics.md`): the area's section.
 
 ## Voice
 
@@ -370,63 +270,4 @@ Don't edit `CHANGELOG.md` in a feature PR: parallel PRs all conflict at its top.
 Add one file to `changelog.d/` instead (see its README). The release folds the
 fragments into `CHANGELOG.md`.
 
-## Engine facts
 
-What an engine does (overflow, NaN, casts, the algorithm behind `VARIANCE`, …)
-is recorded as facts, one JSON document per finding:
-`characterization/<engine>/facts/<id>.json` (`duckdb/`, `polars/`, `spark/`,
-…), in the format of `characterization/fact.schema.json`. Every engine's
-research goes there, whoever does it.
-
-- The id is the engine and a number or slug (`duckdb-R5`,
-  `polars-var-algorithm`); the file is named after it.
-- Say what the engine does (`description`), at which exact `engine_version`,
-  under which `settings`, and what the reference semantics does
-  (`reference`), with a `status`.
-- `provenance` lists each check: `checked_at` (the date), `method` (probe,
-  source-reading, docs, replay, fuzz, manual-repro), `checked_by` (the tool,
-  session or commit) and `evidence`: source links at a tag or commit, a SQL
-  repro with its `observed` output, a test id, or a file of the repository
-  (a ledger, or a construct of `probes.json`). Write "unknown" for what you
-  can't recover; never guess a date or version.
-- `evidence` is the strongest check in `provenance`: `docs` < `source` <
-  `engine_test` (the engine's own tests with an expected result, at the
-  release tag: DuckDB's sqllogictests, Polars's unit tests, Spark's golden
-  files; method `engine-test`, or `replay` through `sverify_dev.slt`) <
-  `probe` (probes, repros) < `fuzz` < `proof`. Research goes in that
-  order, the cheaper kinds first. For Spark, `sverify_dev.spark_tests`
-  searches the golden files and checks the links, and `sverify_dev.spark_fuzz`
-  fuzzes the open deviations against a model of each fact.
-- `rows` names the rows of the engine choice tables the fact settles: a
-  function group of `Functions.lean`, one of its options, and only the types
-  its checks covered. `python -m sverify_dev.facts --coverage <engine>` lists
-  each row's facts, or `missing`, then the checklist's areas as a rollup.
-- A new check of an old fact adds to its `provenance`. A fact that no longer
-  holds (a new engine version) gets a new document with `supersedes`, and the
-  old one `superseded_by`.
-
-`python -m sverify_dev.facts` checks the documents (`tests/test_facts.py`
-does too). The JSON documents are the record: there is no generated overview. The judging principles and the
-DuckDB diff table are in `characterization/duckdb/README.md`.
-
-## Upstream bugs
-
-When you find a bug in SQLGlot, an engine, Ibis or Substrait's tooling, add
-a document `upstream/bugs/<id>.json` in the same PR as the workaround, in the
-format of `upstream/bug.schema.json`: the version, a status, a minimal
-reproduction, how sverify handles it, and what it was last checked against
-(`checked`). The id is the project's prefix and the next free number (`SG-8`,
-`DD-5`; `upstream/README.md` lists the prefixes); the file is named after it.
-Link the files of the workaround (`files`) and the engine facts that record
-it (`facts`). We file them upstream in batches, with the `upstream-report`
-skill. Documented engine behaviour that only differs from the reference model
-goes into the engine's characterization.
-
-Behaviour the Substrait YAMLs leave unspecified, but that Substrait could
-express (a missing option, option value or default), is a spec gap: add an
-`ST-<n>` document with `kind: spec-gap` in the same PR that meets it, saying
-how Substrait could express it and what each engine does (its facts).
-`docs/core-semantics.md` lists the ones found so far.
-
-`python -m sverify_dev.bugs` checks the documents and the lift's backlog
-`python/tests/lift_backlog.json` (`tests/test_bugs.py` does too).

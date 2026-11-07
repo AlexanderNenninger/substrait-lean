@@ -15,6 +15,17 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from sverify.cli import _contract, _explain, _findings, _formats, _text
+from sverify.cli._common import (  # noqa: F401  (re-exported)
+    BUDGET,
+    ERROR,
+    NOT_PROVED,
+    OK,
+    QUARANTINED,
+    UNSUPPORTED,
+    USAGE,
+    UsageError,
+    split_target,
+)
 from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
@@ -25,8 +36,6 @@ from sverify.cli._limits import (
 )
 from sverify.cli._suggest import place
 
-#: The exit codes (API review I1).
-OK, NOT_PROVED, USAGE, UNSUPPORTED, BUDGET, QUARANTINED, ERROR = 0, 1, 2, 3, 4, 5, 6
 EXIT_CODES = """\
 exit codes:
   0  proved; a refresh committed every row
@@ -50,23 +59,10 @@ FORMAT = 1
 FORMATS = ("text", "json", "github", "sarif")
 
 
-class UsageError(Exception):
-    """The command line asks for something that is not there."""
-
-
 def _version() -> str:
     import sverify
 
     return sverify.__version__
-
-
-def split_target(target: str) -> tuple[Path, str | None]:
-    """`file.py:node` as the file and the node; `file.py` as the file and
-    None. A Windows drive's colon is part of the path."""
-    head, sep, tail = target.rpartition(":")
-    if sep and tail and "/" not in tail and "\\" not in tail and head:
-        return Path(head), tail
-    return Path(target), None
 
 
 # What the commands report.

@@ -1821,7 +1821,13 @@ would do ([example 5](examples.md#5-doubles-within-the-plans-bound)).
 component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
 `CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
-tolerance. Under the plan's bound, a run holds a column a postcondition
+tolerance. The checker names the components each condition's value depends
+on, from the columns it reads, and a condition that depends on none the
+observation ignores holds on every result equal to a proved one up to the
+observation (`Expr.robust_of_depends`,
+[Robust.lean](../SubstraitLean/Robust.lean)). A comparison with a constant
+narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
+every such result (`Expr.narrow_sound`). Under the plan's bound, a run holds a column a postcondition
 reads to its exact value, and `sv.approx` again allows for the bound.
 
 The bound grows with the row cap and the values: for a `SUM` of `n` values

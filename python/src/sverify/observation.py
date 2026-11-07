@@ -32,6 +32,7 @@ from __future__ import annotations
 import math
 import struct
 import unicodedata
+import warnings
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -468,6 +469,11 @@ def _component(dtype: Any) -> str | None:
     return None
 
 
+class Tolerant:
+    """A condition that allows for a tolerance on doubles: `sverify.approx`'s
+    (`sverify.conditions.Approx`)."""
+
+
 def dependencies(
     observation: Observation,
     cond: Any,
@@ -475,6 +481,7 @@ def dependencies(
     read: Sequence[str] | None,
     open_columns: Mapping[str, str] | None = None,
     order_free: Collection[str] = (),
+    depends: Sequence[str] | None = None,
 ) -> list[str]:
     """The components `observation` ignores that `cond`, a condition of
     `ensures`, depends on (D12). Empty when the condition cannot tell
@@ -502,9 +509,12 @@ def dependencies(
             ignore its order (`order_free`).
         order_free: The columns `cond` reads only through such functions
             (`length`, `contains`, `min`, `max`, `sum`, `sort`, …).
+        depends: The components the condition's value depends on, from the
+            checker (`CheckedCondition.depends`, `Expr.depends`), which
+            proves that an observation coarsening none of them keeps the
+            condition (`Expr.robust_of_depends`). None: derived here from
+            the types of the columns it reads.
     """
-    from sverify.contracts import Approx
-
     names = list(columns) if read is None else [n for n in read if n in columns]
     out: list[str] = []
     for n in names:
@@ -514,11 +524,13 @@ def dependencies(
         if why_open is not None and why_open not in out:
             out.append(why_open)
     ignored = set(observation.ignored()) - {"rows", "zeros", "errors", "elements"}
-    for n in names:
-        comp = _component(columns[n])
+    comps = (
+        [_component(columns[n]) for n in names] if depends is None else list(dict.fromkeys(depends))
+    )
+    for comp in comps:
         if comp is None or comp not in ignored or comp in out:
             continue
-        if comp == "floats" and (isinstance(cond, Approx) or observation.floats == "plan"):
+        if comp == "floats" and (isinstance(cond, Tolerant) or observation.floats == "plan"):
             # Under the plan's bound, a run holds the columns a condition
             # reads to their exact value (`sverify.routes.observed`).
             continue
@@ -542,3 +554,21 @@ def why(components: Sequence[str]) -> str:
     if ignored:
         parts.append(f"depends on {', '.join(ignored)}, which the observation ignores")
     return "; ".join(parts)
+
+
+def _deterministic_arg(
+    where: str, deterministic: bool | None, reproducible: Observation | None
+) -> Observation | None:
+    """`reproducible`, with the deprecated `deterministic=True` (B5 of the
+    1.0 API review) read as `sv.equivalent()`."""
+    if deterministic is None:
+        return reproducible
+    warnings.warn(
+        f"{where}(deterministic=...) is deprecated; write reproducible=sv.equivalent() "
+        "(Report.deterministic stays as the fact)",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    if deterministic and reproducible is None:
+        return Observation()
+    return reproducible

@@ -19,7 +19,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
-from sverify import _functions
+from sverify import _decimals, _functions
 from sverify.plan_json import (
     Json,
     Unsupported,
@@ -184,9 +184,7 @@ def _common_exact(args: Iterable[Any], t: Any) -> Any:
     args = [a for a in args if not a.dtype.is_null()]
     if not _decimal_args(*args):
         return dt.float64 if any(exact(a).is_floating() for a in args) else t
-    ds = [_digits(exact(a), a) for a in args]
-    s = max(s for _, s in ds)
-    return _decimal(max(p - s0 for p, s0 in ds) + s, s)
+    return _decimal(*_decimals.common(_digits(exact(a), a) for a in args))
 
 
 def _field_exact(rel: Any, name: str) -> Any:
@@ -229,20 +227,17 @@ def _exact(op: Any) -> Any:
         case ops.Add() | ops.Subtract() | ops.Multiply():
             if not _decimal_args(op.left, op.right):
                 return dt.float64
-            p1, s1 = _digits(exact(op.left), op.left)
-            p2, s2 = _digits(exact(op.right), op.right)
-            if isinstance(op, ops.Multiply):
-                return _decimal(p1 + p2 + 1, s1 + s2)
-            s = max(s1, s2)
-            return _decimal(max(p1 - s1, p2 - s2) + s + 1, s)
+            a, b = _digits(exact(op.left), op.left), _digits(exact(op.right), op.right)
+            rule = _decimals.mul if isinstance(op, ops.Multiply) else _decimals.add
+            return _decimal(*rule(a, b))
         case ops.Negate() | ops.Abs() | ops.Min() | ops.Max():
             return exact(op.arg)
         case ops.Sum():
             a = exact(op.arg)
-            return _decimal(a.precision + 10, a.scale) if a.is_decimal() else t
+            return _decimal(*_decimals.sum_of((a.precision, a.scale))) if a.is_decimal() else t
         case ops.Mean():
             a = exact(op.arg)
-            return _decimal(a.precision + 4, a.scale + 4) if a.is_decimal() else t
+            return _decimal(*_decimals.avg_of((a.precision, a.scale))) if a.is_decimal() else t
         case ops.IfElse():
             return _common_exact([op.true_expr, op.false_null_expr], t)
         case ops.SearchedCase() | ops.SimpleCase():

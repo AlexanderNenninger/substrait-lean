@@ -27,6 +27,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from sverify._meta import PROTOCOL, VERSION
+
 #: The checker's modes whose answers are kept: those that prove or write a
 #: plan. The modes that evaluate a plan on data (`--eval-spec`,
 #: `--eval-choices`, `--outcomes`) are many small requests, each asked once.
@@ -62,24 +64,17 @@ def binary_hash(path: str) -> str:
     return _binary_hash(real, st.st_size, st.st_mtime_ns, st.st_ino)
 
 
-@functools.cache
 def _version() -> str:
-    from sverify import __version__
-
-    return __version__
+    return VERSION
 
 
 def _build_dir(root: Path, path: str) -> Path:
-    from sverify.engine import PROTOCOL
-
     return root / "checker" / f"{binary_hash(path)[:32]}-p{PROTOCOL}-{_version()}"
 
 
 def key(path: str, flags: tuple[str, ...], stdin: str) -> str:
     """The entry's key: a SHA-256 of the request and everything its answer
     depends on."""
-    from sverify.engine import PROTOCOL
-
     h = hashlib.sha256()
     for part in (str(PROTOCOL), _version(), binary_hash(path), " ".join(flags) or "-"):
         h.update(part.encode())

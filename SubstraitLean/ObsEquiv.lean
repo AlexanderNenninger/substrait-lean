@@ -104,9 +104,10 @@ end Forall2
 /-! ## The context -/
 
 /-- What a column holds, as far as an observation tells values apart: a
-double's code (`Float.lean`), a timestamp's microseconds, or anything else
-(observed exactly). -/
-inductive ColKind | double | timestamp | other
+double's code (`Float.lean`), a timestamp's microseconds, a string, a
+decimal (an integer at the column's scale), or anything else (observed
+exactly). -/
+inductive ColKind | double | timestamp | string | decimal | other
   deriving Repr, DecidableEq
 
 /-- What the plan and the engine fix for an observation: the root `ORDER BY`
@@ -194,14 +195,36 @@ def IntEquiv (q : Obs) (ctx : ObsCtx) (col : Nat) (a b : Int) : Prop :=
   | .timestamp => match q.times with
     | .exact => a = b
     | .truncated u => u.trunc a = u.trunc b
-  | .other => a = b
+  | .string | .decimal | .other => a = b
 
-/-- Two strings equal up to `q`. -/
-def StrEquiv (q : Obs) (ctx : ObsCtx) (a b : String) : Prop :=
-  match q.strings with
+/-- Two strings equal at the level `s`. -/
+def StrEquivAt (s : StringObs) (ctx : ObsCtx) (a b : String) : Prop :=
+  match s with
   | .exact => a = b
   | .nfc => ctx.strEq .nfc a b
   | .casefold => ctx.strEq .casefold a b
+
+/-- How `q` observes the strings of column `col`: as it says in a string
+column, exactly elsewhere. -/
+def Obs.stringsAt (q : Obs) (ctx : ObsCtx) (col : Nat) : StringObs :=
+  if ctx.kind col = .string then q.strings else .exact
+
+/-- Two strings of column `col` equal up to `q`. -/
+def StrEquiv (q : Obs) (ctx : ObsCtx) (col : Nat) (a b : String) : Prop :=
+  StrEquivAt (q.stringsAt ctx col) ctx a b
+
+theorem Obs.stringsAt_of_ne {q : Obs} {ctx : ObsCtx} {col : Nat}
+    (h : q.stringsAt ctx col ≠ .exact) : q.stringsAt ctx col = q.strings := by
+  unfold Obs.stringsAt at *; split at h
+  · next hk => simp only [hk, ite_true]
+  · exact absurd rfl h
+
+theorem Obs.stringsAt_rank {q' q : Obs} {ctx : ObsCtx} {col : Nat}
+    (h : q'.strings.rank ≤ q.strings.rank) :
+    (q'.stringsAt ctx col).rank ≤ (q.stringsAt ctx col).rank := by
+  unfold Obs.stringsAt; split
+  · exact h
+  · exact Nat.le_refl _
 
 mutual
 /-- **Two values of column `col` equal up to `q`**: the same constructor,
@@ -211,7 +234,7 @@ def Value.Equiv (q : Obs) (ctx : ObsCtx) (col : Nat) : Value → Value → Prop
   | .null, .null => True
   | .bool a, .bool b => a = b
   | .int a, .int b => IntEquiv q ctx col a b
-  | .str a, .str b => StrEquiv q ctx a b
+  | .str a, .str b => StrEquiv q ctx col a b
   | .list as, .list bs => match q.elements with
     | .sequence => Value.EquivList q ctx col as bs
     | .multiset => ∃ cs, Value.EquivList q ctx col as cs ∧ cs.Perm bs
@@ -256,9 +279,10 @@ theorem IntEquiv.refl (h : ctx.ReflAt q) (a : Int) : IntEquiv q ctx col a a := b
     · exact h.1 _ hf _ _
   · cases q.times <;> simp only
 
-theorem StrEquiv.refl (h : ctx.ReflAt q) (a : String) : StrEquiv q ctx a a := by
-  cases hs : q.strings <;> simp only [StrEquiv, hs]
-  all_goals exact h.2 _ hs (by decide) a
+theorem StrEquiv.refl (h : ctx.ReflAt q) (a : String) : StrEquiv q ctx col a a := by
+  unfold StrEquiv
+  cases hs : q.stringsAt ctx col <;> simp only [StrEquivAt]
+  all_goals exact h.2 _ ((Obs.stringsAt_of_ne (by simp [hs])).symm.trans hs) (by decide) a
 
 mutual
 theorem Value.Equiv.refl (h : ctx.ReflAt q) : ∀ v, Value.Equiv q ctx col v v
@@ -285,11 +309,12 @@ theorem IntEquiv.symm (h : ctx.WF) {a b : Int} (e : IntEquiv q ctx col a b) :
     · exact e.symm
     · exact h.near_symm _ _ _ _ e
   · cases hc5 : q.times <;> simp only [hc5] at e ⊢ <;> exact e.symm
-  · exact e.symm
+  all_goals exact e.symm
 
-theorem StrEquiv.symm (h : ctx.WF) {a b : String} (e : StrEquiv q ctx a b) : StrEquiv q ctx b a := by
-  unfold StrEquiv at *
-  cases hc6 : q.strings <;> simp only [hc6] at e ⊢
+theorem StrEquiv.symm (h : ctx.WF) {a b : String} (e : StrEquiv q ctx col a b) :
+    StrEquiv q ctx col b a := by
+  unfold StrEquiv StrEquivAt at *
+  cases hc6 : q.stringsAt ctx col <;> simp only [hc6] at e ⊢
   · exact e.symm
   all_goals exact h.str_symm _ _ _ e
 
@@ -334,12 +359,15 @@ theorem IntEquiv.trans (h : ObsCtx.Comp c₁ c₂ c₃) {a b d : Int} (e₁ : In
     · exact e₁.trans e₂
     · exact h.near _ _ _ _ _ e₁ e₂
   · cases hc9 : q.times <;> simp only [hc9] at e₁ e₂ ⊢ <;> exact e₁.trans e₂
-  · exact e₁.trans e₂
+  all_goals exact e₁.trans e₂
 
-theorem StrEquiv.trans (h : ObsCtx.Comp c₁ c₂ c₃) {a b d : String} (e₁ : StrEquiv q c₁ a b)
-    (e₂ : StrEquiv q c₂ b d) : StrEquiv q c₃ a d := by
-  unfold StrEquiv at *
-  cases hc10 : q.strings <;> simp only [hc10] at e₁ e₂ ⊢
+theorem StrEquiv.trans (h : ObsCtx.Comp c₁ c₂ c₃) {a b d : String} (e₁ : StrEquiv q c₁ col a b)
+    (e₂ : StrEquiv q c₂ col b d) : StrEquiv q c₃ col a d := by
+  unfold StrEquiv Obs.stringsAt at *
+  rw [h.kind₁] at e₁; rw [h.kind₂] at e₂
+  generalize (if c₃.kind col = .string then q.strings else .exact) = s at *
+  unfold StrEquivAt at *
+  cases hc10 : s <;> simp only [hc10] at e₁ e₂ ⊢
   · exact e₁.trans e₂
   all_goals exact h.str _ _ _ _ e₁ e₂
 
@@ -425,13 +453,14 @@ theorem IntEquiv.mono (hc : ctx.WF) (h : q'.le q = true) {a b : Int} (e : IntEqu
       simp only [hq', hq, TimeObs.le, decide_eq_true_eq, reduceCtorEq] at ht e ⊢
     all_goals first | exact e | exact congrArg _ e |
       rw [← TimeUnit.trunc_trunc ht a, ← TimeUnit.trunc_trunc ht b, e]
-  · exact e
+  all_goals exact e
 
-theorem StrEquiv.mono (hc : ctx.WF) (h : q'.le q = true) {a b : String} (e : StrEquiv q' ctx a b) :
-    StrEquiv q ctx a b := by
+theorem StrEquiv.mono (hc : ctx.WF) (h : q'.le q = true) {a b : String}
+    (e : StrEquiv q' ctx col a b) : StrEquiv q ctx col a b := by
   obtain ⟨-, -, -, -, -, hs⟩ := Obs.le_parts h
-  unfold StrEquiv at *
-  cases hq' : q'.strings <;> cases hq : q.strings <;>
+  have hs := Obs.stringsAt_rank (ctx := ctx) (col := col) hs
+  unfold StrEquiv StrEquivAt at *
+  cases hq' : q'.stringsAt ctx col <;> cases hq : q.stringsAt ctx col <;>
     simp only [hq', hq, StringObs.rank] at hs e ⊢ <;> try omega
   all_goals first | exact e | (subst e; exact hc.str_refl _ _) | exact hc.str_mono _ _ e
 
@@ -498,8 +527,8 @@ theorem Value.Equiv.eq_of_valExact (hq : q.valExact = true) :
     cases hk : ctx.kind col <;> simp only [hk, hf, Obs.zeroNorm, hz, ht] at e <;> exact congrArg _ e
   | .str _, .str _, e => by
     obtain ⟨-, -, -, -, hs⟩ := Obs.valExact_iff.1 hq
-    change StrEquiv q ctx _ _ at e
-    unfold StrEquiv at e; simp only [hs] at e; exact congrArg _ e
+    change StrEquiv q ctx col _ _ at e
+    unfold StrEquiv StrEquivAt Obs.stringsAt at e; simp only [hs, ite_self] at e; exact congrArg _ e
   | .list as, .list bs, e => by
     obtain ⟨hl, -⟩ := Obs.valExact_iff.1 hq
     unfold Value.Equiv at e; simp only [hl] at e
