@@ -225,9 +225,10 @@ def test_two_observations_are_refused() -> None:
 
 
 def test_proved_on_every_allowed_result() -> None:
-    """A postcondition that reads no open double sum is proved on every
-    result the reference allows, every order of the sum's additions among
-    them (`contract_sound_allowed`, #899); one that reads the sum is not yet."""
+    """A postcondition is proved on every result the reference allows
+    (`contract_sound_allowed`, #899). Since D25 a double sum is the exact sum
+    rounded once, one value whatever the order, so a postcondition that reads
+    it is too."""
     expr = T.group_by("k").aggregate(total=T.x.sum(), n=T.k.count())
     report = sv.verify(
         expr,
@@ -237,7 +238,7 @@ def test_proved_on_every_allowed_result() -> None:
     )
     count, total = report.ensures
     assert count.proved and count.allowed
-    assert not total.allowed
+    assert total.proved and total.allowed
     plain = sv.verify(
         T.select("k", y=T.k + 1),
         requires={"t": [_.k.between(0, 9)]},

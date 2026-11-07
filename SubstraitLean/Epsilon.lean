@@ -4,24 +4,27 @@ import SubstraitLean.Transfer
 /-!
 # The float tolerance of a plan's outputs (#444, #85)
 
-A double `SUM` or `AVG` whose order an engine picks (`sum_order`, a choice
-the reference leaves open, with the observation `{"floats": {"bound":
-"plan"}}`) is within a per-plan bound of a result the reference allows. This
-computes that bound per output column, from what the contract's
-preconditions and row caps give (`Measure.abs`, `floatBound`):
+A double `SUM` or `AVG` is, in the reference, the exact sum or mean rounded
+once (D25, `floatSumCR`). An engine adds in an order of its own
+(`sum_order`, with the observation `{"floats": {"bound": "plan"}}`), so its
+result is within a per-plan bound of the reference's. This computes that
+bound per output column, from what the contract's preconditions and row caps
+give (`Measure.abs`, `floatBound`):
 
-* every order the reference allows (`FloatSums`: trees of additions in any
-  order) and every order the engine profiles allow (`SEQUENTIAL`, `ANY`,
-  `PAIRWISE`, DuckDB's constant run `fl(k · x)` as `SCALED_CONSTANT`, Kahan's
+* every order the engine profiles allow (`SEQUENTIAL`, `ANY`, `PAIRWISE`,
+  DuckDB's constant run `fl(k · x)` as `SCALED_CONSTANT`, Kahan's
   compensated sum as `COMPENSATED`) gives a result within
   `sumTolScaled n B` (`avgTolScaled` for an `AVG`) of the exact one, for at
   most `n` values in `[-B, B]`;
-* so the engine's result is within twice the bound of one the reference
-  allows: `"abs"`, as a double, rounded up. `StdModel.epsilon_sum` and
-  `StdModel.epsilon_avg` in `float-bounds/FloatBounds/Epsilon.lean` prove it;
+* the reference's value is within `u = 2⁻⁵³` of the exact one, relatively
+  (`FloatCode.ofExact_rel`), so at most `u · n · B` (`u · B` for a mean);
+* so the engine's result is within the sum of the two: `"abs"`, as a
+  double, rounded up. `StdModel.epsilon_sum_cr` and `StdModel.epsilon_avg_cr`
+  in `float-bounds/FloatBounds/Epsilon.lean` prove it;
 * where the argument's values have one sign nothing cancels, and the bound
   is also relative (`relEps`): `"rel"`, `StdModel.epsilon_sum_rel` and, for a
-  mean of values at least `2⁻¹⁰²²` in magnitude, `StdModel.epsilon_avg_rel`.
+  mean of values at least `2⁻¹⁰²²` in magnitude, `StdModel.epsilon_avg_rel`,
+  between two orders, which covers the reference's value too (`u ≤ γ n`).
 
 `"proved"` marks a bound those theorems cover (`provedEps`): the engines'
 `sum_order` behaviours are among the proved ones, the plan has no
@@ -105,13 +108,15 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
   let n ← rows
   let bs := max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs
   guard (n ≤ 2 ^ 32 ∧ bs ≤ 2 ^ 1474)
-  let t := if m.fn = .avg then FloatCode.avgTolScaled n bs else FloatCode.sumTolScaled n bs
+  -- The engine's order from the exact value, then the reference's rounding.
+  let t := if m.fn = .avg then FloatCode.avgTolScaled n bs + FloatCode.ceilDiv bs (2 ^ 53)
+    else FloatCode.sumTolScaled n bs + FloatCode.ceilDiv (n * bs) (2 ^ 53)
   let oneSign := 0 ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ 0
   let normal := (2 ^ 53 : Int) ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ -(2 ^ 53 : Int)
   let rel := if oneSign && n < 2 ^ 40 then
       some (relEps (if m.fn = .avg then n + 2 else n), m.fn ≠ .avg || normal)
     else none
-  return (unscale (2 * t), rel)
+  return (unscale t, rel)
 
 /-! ## Per engine: the error carried through arithmetic
 
