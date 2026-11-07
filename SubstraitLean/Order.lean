@@ -354,6 +354,22 @@ theorem SortAllowed.of_sorted {keys : List SortKey} {out : Relation}
     (h : out.Pairwise (sortLe keys · · = true)) : SortAllowed keys out :=
   ⟨Value.le, Value.le_validCmp, by rw [sortLeWith_le]; exact h⟩
 
+/-- Two numbers of one kind order by their integers (a decimal's scale is
+part of its kind). -/
+theorem Value.le_val (k : NumKind) {x y : Int} : (k.val x).le (k.val y) = true ↔ x ≤ y := by
+  cases k <;> simp [NumKind.val, Value.le_def, Value.leScalar]
+
+theorem SortKey.le_val {k : SortKey} {x y : Row} {nk : NumKind} {u v : Int} (h : k.le y x = true)
+    (hy : y.getD k.col .null = nk.val u) (hx : x.getD k.col .null = nk.val v) :
+    if k.desc then v ≤ u else u ≤ v := by
+  simp only [SortKey.le, lexLe, hy, hx, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+  have hr : k.nullRank (nk.val u) = k.nullRank (nk.val v) := by
+    cases nk <;> simp [SortKey.nullRank, NumKind.val]
+  rcases h with ⟨_, h | h⟩
+  · simp [hr, natLe] at h
+  · unfold SortKey.valLe at h
+    cases hd : k.desc <;> simp_all [Value.le_val]
+
 /-- Rows in sort order, by the first key: for non-NULL integers (and
 timestamps, and float codes), ascending keys give `y ≤ x`. -/
 theorem SortKey.le_int {k : SortKey} {x y : Row} {u v : Int} (h : k.le y x = true)

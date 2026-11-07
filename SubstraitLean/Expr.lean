@@ -621,6 +621,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .add, .tod a, .int b => .tod (a + b)
   | .add, .int a, .tod b => .tod (a + b)
   | .add, .date a, .int b => .date (a + b)
+  | .add, .int a, .date b => .date (a + b)
   | .sub, .int a, .int b => .int (a - b)
   | .sub, .ts a, .int b => .ts (a - b)
   | .sub, .tod a, .int b => .tod (a - b)

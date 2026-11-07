@@ -197,7 +197,7 @@ def Kind.addK : Kind → Kind → Option Kind
   | .time, .int | .int, .time => some .time
   | .timeTz, .int | .int, .timeTz => some .timeTz
   | .tod, .int | .int, .tod => some .tod
-  | .date, .int => some .date
+  | .date, .int | .int, .date => some .date
   | _, _ => none
 
 /-- `-`'s result kind: as `+`, and two timestamps, dates or times of day

@@ -93,6 +93,46 @@ end
 
 instance : DecidableEq Value := Value.decEq
 
+/-- The numeric kinds (#923): each has its `Value` constructor, of an
+integer (a double's code, days, microseconds, a decimal's unscaled value). -/
+inductive NumKind where
+  | int | float | date | ts | tod
+  | dec (scale : Nat)
+  deriving Repr, DecidableEq
+
+/-- The value of kind `k` with integer `i`. -/
+def NumKind.val : NumKind → Int → Value
+  | .int, i => .int i
+  | .float, i => .float i
+  | .date, i => .date i
+  | .ts, i => .ts i
+  | .tod, i => .tod i
+  | .dec s, i => .dec s i
+
+/-- A number's kind and integer. -/
+def Value.numOf? : Value → Option (NumKind × Int)
+  | .int i => some (.int, i)
+  | .float i => some (.float, i)
+  | .date i => some (.date, i)
+  | .ts i => some (.ts, i)
+  | .tod i => some (.tod, i)
+  | .dec s i => some (.dec s, i)
+  | _ => none
+
+@[simp] theorem NumKind.numOf?_val (k : NumKind) (i : Int) : (k.val i).numOf? = some (k, i) := by
+  cases k <;> rfl
+
+theorem NumKind.val_inj {k k' : NumKind} {x y : Int} (h : k.val x = k'.val y) : k = k' ∧ x = y := by
+  cases k <;> cases k' <;> simp_all [NumKind.val]
+
+theorem NumKind.val_ne_null (k : NumKind) (i : Int) : k.val i ≠ .null := by
+  cases k <;> simp [NumKind.val]
+
+theorem Value.numOf?_some {v : Value} {k : NumKind} {i : Int} (h : v.numOf? = some (k, i)) :
+    v = k.val i := by
+  cases v <;> simp_all [Value.numOf?, NumKind.val]
+  all_goals (obtain ⟨rfl, rfl⟩ := h; rfl)
+
 /-- A row is a positional tuple; Substrait addresses fields by ordinal. -/
 abbrev Row := List Value
 
