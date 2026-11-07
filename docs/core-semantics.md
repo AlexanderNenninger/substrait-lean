@@ -207,7 +207,7 @@ the first column are the names the tables below use.
 | Option | Core | Substrait | Reference | DuckDB |
 |---|---|---|---|---|
 | `sum_order` (sverify's: `SUM`, `AVG` of doubles) | any order and grouping (`FloatSums`) | not specified | any order and grouping, within #85's bound | sequential, partial states merged by addition ([sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [avg-double](../characterization/duckdb/facts/duckdb-avg-double.json)) |
-| `stat_algo` (sverify's: `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`) | the generic properties (`StatProps`) | not specified | the generic properties (decided, #85) | Welford with Chan's merge ([var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [covar](../characterization/duckdb/facts/duckdb-covar.json), [corr](../characterization/duckdb/facts/duckdb-corr.json)) |
+| `stat_algo` (sverify's: `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`) | `EXACT`: the exact moments rounded once (D30) | not specified | the generic properties before D30 (#85); `EXACT` since D30 | Welford with Chan's merge ([var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [covar](../characterization/duckdb/facts/duckdb-covar.json), [corr](../characterization/duckdb/facts/duckdb-corr.json)) |
 | `stat_degenerate` (sverify's: `CORR` of one pair or a constant side; a statistical aggregate of `±∞`) | `NULL`, `NAN`, raise | not specified | `NULL` for `CORR`; raise for `±∞` | `NAN` for both (duckdb-corr, nonfinite-aggregates) |
 | `avg_int_result` (sverify's: `avg` of integers) | the declared output type: `fp64` or `i64` truncated | `avg` of `i64` returns `i64` | follows the declared type (#209) | `DOUBLE` natively, the exact sum divided in `double` or `long double` ([avg-int](../characterization/duckdb/facts/duckdb-avg-int.json)); sverify's SQL writes the `HUGEINT` sum `//` the count for `i64` ([R6](../characterization/duckdb/facts/duckdb-R6.json)) |
 | `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d`, may round past; clamped ([quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
@@ -654,7 +654,7 @@ is a choice that accepts every value the plan states.
 | `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
 | `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
-| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `GENERIC` | leave open |
+| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
@@ -1746,6 +1746,75 @@ RDBMSs", ICDE 2018, [arXiv:1802.09883](https://arxiv.org/abs/1802.09883)) make `
 superaccumulator ([arXiv:1505.05571](https://arxiv.org/abs/1505.05571))
 computes the correctly rounded sum at less than twice the cost of a naive
 one.
+
+### D30. Statistical aggregates are correctly rounded exact moments
+
+Decided 2026-11-07 (#918).
+
+In the reference, `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP`, `STDDEV_POP`,
+`COVAR_SAMP`, `COVAR_POP` and `CORR` of doubles are rounded once from the
+exact moments of the values: the count `n`, and `Σx`, `Σx²` and `Σxy` as
+exact dyadic rationals, since every finite double is a multiple of
+2⁻¹⁰⁷⁴ (`FloatMoments.lean`). The co-moments `S = Σx² − (Σx)²/n` and
+`C = Σxy − Σx·Σy/n` are exact. The variance is `S/d` rounded to the nearest
+double, ties to even, with `d = n − 1` for a sample and `n` for the
+population; the covariance is `C/d` rounded once. `STDDEV` and `CORR` are
+rounded by comparing squares against the midpoint, with no square root
+computed: `√(S/d)` and `|C|/√(Sxx·Syy)` against each candidate's midpoint
+`m` by `m² · d < S` and `m² · Sxx · Syy < C²`, with `C`'s sign
+(`sqrtMag`). Each is one value, a function of the multiset of values
+(`varOf_perm`, `covOf_perm`, `corrOf_perm`), whatever the engine's
+algorithm.
+
+NULL as before D30: no values, a sample of one, and for `CORR` fewer than two
+pairs or a side whose values are all equal, which is `Sxx = 0` or `Syy = 0`
+(`stat_degenerate` `NULL`; `corrOf` gave NULL there before D30 too). NaN and
+infinities as `varOf` had them: a NaN among the values gives NaN, and an
+infinity gives NaN in `Rel.eval` and raises in a plan the checker accepts,
+since its deviation `∞ − ∞` would create a NaN (#257). A finite result past
+the largest double raises (#575).
+
+Engines keep their own algorithms: Welford's update with Chan's merge in
+DuckDB, Spark and grouped Polars, a blockwise two-pass in ungrouped Polars.
+Each is within the plan's bound of the reference's value: the algorithm's
+distance from the exact moments (`StatProps`, proved for Welford and Chan as
+`StdModel.core_var_chan`, `core_cov_chan`, `core_corr_chan` in
+`float-bounds/`), plus half an ulp of the reference's rounding. Their
+`stat_algo` rows are `approxWithin "plan"`, as `sum_order`'s are, and
+`StatAlgo` keeps `StatProps` as what `GENERIC` and `WELFORD_CHAN` allow. The
+writers clamp an engine's variance and deviation at `0` and its correlation
+to `[-1, 1]`, NaN kept (`Dialect.clamp_stat`, Polars likewise): the exact
+value lies in the interval, so clamping never moves the engine's value
+further from it (`Stat.clamp_near`), and `var ≥ 0` and `|corr| ≤ 1`
+hold of every engine's result. The bounds differ in kind: `VAR_*` and
+`STDDEV_*` are relative to the spread, the deviation's half the variance's;
+`CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
+`√(Sxx · Syy)`, or relative only under a sign-definite precondition.
+`Report.epsilon` reports `VAR_*` and `STDDEV_*` columns (`Epsilon.statEps`);
+`COVAR_*` and `CORR` columns have no bound there yet. Snowflake keeps
+refusing these aggregates (Snowflake behaviour recorded privately).
+
+Consequences:
+
+- `stat_algo` is no longer a choice of the reference; it stays a choice of
+  the engines, and the reference's row is `EXACT`.
+- The statistical aggregates are order-free (`AggFn.orderFree`), so
+  `Measure.closedB`, `Rel.closedB` and `Rel.detPlan` hold of plans with them,
+  and `contract_sound_all` and `contract_sound_allowed_closed` cover them.
+  `QUANTILE_CONT` stays the only open measure.
+- `varOf_props`, `covOf_props` and `corrOf_props` are retired, and
+  `Rel.eval_allowed` rests on Lean's standard axioms alone.
+- A postcondition at a rounding boundary can move by an ulp, which
+  `sv.approx` absorbs.
+
+Why: before D30 the reference stated generic properties for these
+aggregates and let engine profiles refine them, so a plan reading one left
+the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
+side condition, failed for any such plan: `SELECT VAR_POP(x)` allowed many
+values while an order fixed one. Exact moments give one value with no
+algorithm imposed on engines, as D25 did for sums, retire three axioms, and
+are the state an exact incremental `VAR` needs (#918 Part B). The cost:
+engines go from refining exactly to within a plan's bound.
 
 ### D26. Two equalities for NULL
 

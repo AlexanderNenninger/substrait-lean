@@ -36,7 +36,7 @@
     "`FLOAT` arithmetic overflows the same way, in single precision: `3e38::FLOAT + 3e38::FLOAT`, `* 10` and `/ 1e-3` are `inf`, `-3e38 - 3e38` is `-inf`, and the result stays `FLOAT`. `sum` and `avg` of `FLOAT` accumulate and return a `DOUBLE` (duckdb-float-sum-order), so `sum` of `3e38` and `3e38` is the finite 6.0000000109955115e+38; grouped, `sum` and `avg` of `1e308` and `1e308` are `inf`.",
     "The docs are silent on the DOUBLE-to-FLOAT conversion error: a docs gap. No upstream test pins it; it may change between versions."
   ],
-  "reference": "An operation on finite doubles whose result is `±inf` raises (`Issue.infinite`, #575): an inferred precondition the written plan checks on the data (`CASE WHEN … THEN error('overflow to infinity')`), as for a `SUM` that leaves 64 bits. Under D25 (#915) the reference's `AVG` is the exact mean rounded once, so `AVG` of `1e308` and `1e308` is `1e308` there, where DuckDB's running sum overflows to `inf`: its guarded plan raises (`overflow to infinity`), which the reference allows, and the unguarded replay disagrees (`overflow/test_numeric_overflow.test:39`, `characterization/duckdb/overflow.json`).",
+  "reference": "An operation on finite doubles whose result is `±inf` raises (`Issue.infinite`, #575): an inferred precondition the written plan checks on the data (`CASE WHEN … THEN error('overflow to infinity')`), as for a `SUM` that leaves 64 bits. Under D25 (#915) the reference's `AVG` is the exact mean rounded once, so `AVG` of `1e308` and `1e308` is `1e308` there, where DuckDB's running sum overflows to `inf`: its guarded plan raises (`overflow to infinity`), which the reference allows, and the unguarded replay disagrees (`overflow/test_numeric_overflow.test:39`, `characterization/duckdb/overflow.json`). Likewise under D30 (#918) for a deviation: `STDDEV` of `1e301` and `-1e301` is `1.414213562373095e+301` in the reference, from the exact moments, where DuckDB's variance overflows to `inf` first (`aggregate/aggregates/test_stddev.test:148`, `characterization/duckdb/aggregate.json`).",
   "status": "shimmed",
   "evidence": "probe",
   "provenance": [
@@ -131,6 +131,18 @@
           "test": "overflow/test_numeric_overflow.test:39",
           "sql": "SELECT AVG(i) FROM (VALUES (1e308), (1e308)) tbl(i)",
           "observed": "DuckDB inf; Lean (D25) 1e+308"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt aggregate, session api-additions-c36d61 (#918, D30)",
+      "evidence": [
+        {
+          "test": "aggregate/aggregates/test_stddev.test:148",
+          "sql": "select stddev(a) from (values (1e301), (-1e301)) tbl(a)",
+          "observed": "DuckDB inf; Lean (D30) 1.414213562373095e+301"
         }
       ]
     }

@@ -6,9 +6,10 @@ import SubstraitLean.Aggregate
 `VARIANCE`, `STDDEV`, `COVAR_SAMP`/`COVAR_POP` and `CORR` are computed by each
 engine's own algorithm, and none documents which (DuckDB, Spark and grouped
 Polars use Welford's update with Chan's merge, ungrouped Polars a blockwise
-two-pass). The reference does not pick one: it allows any value with the
-generic properties every reasonable algorithm keeps (`StatProps`, the set
-`AggFn.Allowed` uses in `SubstraitLean/Allowed.lean`). An engine profile may
+two-pass). Before D30 the reference allowed any value with the generic
+properties every reasonable algorithm keeps; since D30 it is the exact moments
+rounded once, and these properties (`StatProps`) are what an engine's
+algorithm may give (`SubstraitLean/AllowedP.lean`). An engine profile may
 name a stricter algorithm (`Profile.statAlgo`); without one, these hold.
 
 For `n ≤ 2³²` finite values at most `2³⁹⁸` in magnitude, with `u = 2⁻⁵³`,
@@ -42,11 +43,12 @@ properties themselves, DuckDB's `CORR` formula included), all in
 cancels catastrophically and is not covered. Outside the finite range above,
 the reference's own value is the one allowed.
 
-Lean's own results have these properties by three trusted facts,
-`varOf_props`, `covOf_props` and `corrOf_props`, proved for IEEE rounding in
-`float-bounds/` (`core_var_k`, `core_stddev`, `core_cov_k`, `core_corr_k` in
-`FloatBounds/CoreKappa.lean`), so the core needs no Mathlib. They make
-`StatProps.apply`, the witness, hold.
+Since D30 the reference's own value is one value, the exact moments rounded
+once (`varOf`, `covOf`, `corrOf` in `Aggregate.lean`), and `StatProps` is what
+an engine's algorithm may give (`StatAlgo "GENERIC"` and `"WELFORD_CHAN"`,
+`SubstraitLean/AllowedP.lean`). The three axioms that made Lean's native
+two-pass results meet these properties (`varOf_props`, `covOf_props`,
+`corrOf_props`) are retired with it.
 -/
 
 namespace Substrait.Stat
@@ -149,29 +151,6 @@ end Stat
 
 open Stat
 
-/-! ## Trusted: Lean's results have the properties
-
-`varOf`, `covOf` and `corrOf` compute with native doubles. Proved for IEEE
-rounding to nearest in `float-bounds/FloatBounds/CoreStats.lean` (`core_var`,
-`core_stddev`, `core_cov`, `core_corr`), given `NativeLink` and the code
-conversions of `Float.lean`, as `add_scaled` is. -/
-
-axiom varOf_props {sample sqrt : Bool} {vs : List Value} (hne : vs ≠ [])
-    (hs : ¬(sample = true ∧ vs.length = 1)) (hi : allInts vs) (hf : fits (floatsOf vs) = true) :
-    ∃ c, varOf sample sqrt vs = .float c ∧ varProps sample sqrt (floatsOf vs) c
-
-axiom covOf_props {sample : Bool} {vs : List Value}
-    (hne : (pairsOf vs).isEmpty = false) (hs : ¬(sample = true ∧ (pairsOf vs).length = 1))
-    (hf : fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true) :
-    ∃ c, covOf sample vs = .float c ∧ covProps sample (pairsOf vs) c
-
-axiom corrOf_props {vs : List Value}
-    (hn : ¬((pairsOf vs).length < 2 ∨ ((pairsOf vs).map (·.1)).all
-        (· == ((pairsOf vs).map (·.1)).headD 0) = true ∨
-      ((pairsOf vs).map (·.2)).all (· == ((pairsOf vs).map (·.2)).headD 0) = true))
-    (hf : fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true) :
-    ∃ c, corrOf vs = .float c ∧ corrProps (pairsOf vs) c
-
 /-- `VAR_*` / `STDDEV_*` of `vs` may give `v`. -/
 def varStat (sample sqrt : Bool) (vs : List Value) (v : Value) : Prop :=
   if vs = [] ∨ (sample = true ∧ vs.length = 1) then v = .null
@@ -205,87 +184,5 @@ def StatProps (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   | .cov sample => covStat sample vs v
   | .corr => corrStat vs v
   | _ => v = f.apply vs
-
-theorem varStat_apply (sample sqrt : Bool) (vs : List Value) :
-    varStat sample sqrt vs ((AggFn.var sample sqrt).apply vs) := by
-  unfold varStat
-  split
-  · rename_i h
-    rcases h with h | ⟨hs, h1⟩
-    · subst h; rfl
-    · cases vs with
-      | nil => rfl
-      | cons w ws => simp [AggFn.apply, varOf, hs, h1]
-  · rename_i h
-    split
-    · rename_i hif
-      have hne : vs ≠ [] := fun h' => h (.inl h')
-      have hs : ¬(sample = true ∧ vs.length = 1) := fun h' => h (.inr h')
-      obtain ⟨c, hc, hp⟩ := varOf_props hne hs hif.1 hif.2
-      refine ⟨c, ?_, hp⟩
-      cases vs with
-      | nil => exact absurd rfl hne
-      | cons w ws => simpa [AggFn.apply] using hc
-    · rfl
-
-theorem covStat_apply (sample : Bool) (vs : List Value) :
-    covStat sample vs ((AggFn.cov sample).apply vs) := by
-  unfold covStat
-  split
-  · rename_i h
-    cases vs with
-    | nil => rfl
-    | cons w ws =>
-      simp only [AggFn.apply, covOf]
-      have : ((pairsOf (w :: ws)).isEmpty || (sample && (pairsOf (w :: ws)).length == 1)) = true := by
-        rcases h with h | ⟨h1, h2⟩ <;> simp_all
-      simp [this]
-  · rename_i h
-    split
-    · rename_i hf
-      have hne : (pairsOf vs).isEmpty = false := by
-        cases hh : (pairsOf vs).isEmpty
-        · rfl
-        · exact absurd (.inl hh) h
-      obtain ⟨c, hc, hp⟩ := covOf_props hne (fun h' => h (.inr h')) hf
-      refine ⟨c, ?_, hp⟩
-      cases vs with
-      | nil => simp [pairsOf] at hne
-      | cons w ws => simpa [AggFn.apply] using hc
-    · rfl
-
-theorem corrStat_apply (vs : List Value) : corrStat vs (AggFn.corr.apply vs) := by
-  unfold corrStat
-  split
-  · rename_i h
-    cases vs with
-    | nil => rfl
-    | cons w ws =>
-      simp only [AggFn.apply]
-      unfold corrOf
-      have : ((decide ((pairsOf (w :: ws)).length < 2) ||
-          ((pairsOf (w :: ws)).map (·.1)).all (· == ((pairsOf (w :: ws)).map (·.1)).headD 0)) ||
-          ((pairsOf (w :: ws)).map (·.2)).all (· == ((pairsOf (w :: ws)).map (·.2)).headD 0))
-          = true := by
-        rcases h with h | h | h <;> simp only [Bool.or_eq_true, decide_eq_true_eq, h, true_or,
-          or_true]
-      simp only [this, ↓reduceIte]
-  · rename_i h
-    split
-    · rename_i hf
-      obtain ⟨c, hc, hp⟩ := corrOf_props h hf
-      refine ⟨c, ?_, hp⟩
-      cases vs with
-      | nil => simp [pairsOf] at h
-      | cons w ws => simpa [AggFn.apply] using hc
-    · rfl
-
-/-- The reference's own value is allowed. -/
-theorem StatProps.apply (f : AggFn) (vs : List Value) : StatProps f vs (f.apply vs) := by
-  cases f
-  case var sample sqrt => exact varStat_apply sample sqrt vs
-  case cov sample => exact covStat_apply sample vs
-  case corr => exact corrStat_apply vs
-  all_goals rfl
 
 end Substrait

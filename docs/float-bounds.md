@@ -334,11 +334,15 @@ is proved at least `0`.
 
 ## The generic properties of statistical aggregates
 
-The reference allows any result of `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
-with the generic properties (`StatProps`, [reference
-semantics](reference-semantics.md#statistical-aggregates)). Lean's own results
-have them by three trusted facts in `SubstraitLean/StatProps.lean`
-(`varOf_props`, `covOf_props`, `corrOf_props`), stated over Lean's `Rat`.
+An engine's `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` have the generic
+properties (`StatProps`, [reference
+semantics](reference-semantics.md#statistical-aggregates)); since
+[D30](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)
+the reference's own value is the exact moments rounded once, within half an
+ulp of the exact value, so an engine is within these bounds plus that of it
+(`Epsilon.statEps`). Before D30 the reference allowed any such result, and
+three trusted facts (`varOf_props`, `covOf_props`, `corrOf_props`, retired by
+D30) gave Lean's native two-pass results the properties.
 [`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves them:
 `core_var_k`, `core_cov_k` and `core_corr_k` for two-pass on the decoded
 doubles, and `core_stddev` with `sd_mono` for the deviation. Decoding moves a
