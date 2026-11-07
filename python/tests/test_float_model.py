@@ -78,6 +78,33 @@ def test_a_postcondition_on_a_double_is_held_under_a_stated_plan_bound(con) -> N
         assert [c.ignores for c in report.ensures if c.label.startswith("(")] == [()]
 
 
+def test_a_postcondition_that_holds_on_every_engine_is_not_held(con) -> None:
+    """#1045: a postcondition proved of the reference's mean, which also holds
+    of every value within the column's bound and of its sign
+    (`EngineRobust.robust`), needs no `sv.approx`: the plan runs, where it was
+    refused before."""
+    report = verify(con, [_.mean_x >= -2000])
+    [c] = report.ensures
+    assert c.proved and c.robust and c.robust_on == ("duckdb", "spark")
+    route = report.route("duckdb")
+    assert not route.refused, route.reason
+    # On Polars, whose sums are Kahan's, the sign rests on a fact: tested.
+    polars = report.route("polars")
+    assert not polars.refused and polars.evidence == "tested"
+
+
+def test_a_sign_postcondition_runs_with_or_without_a_bound(con) -> None:
+    """#1045: a sum of values of one sign keeps the sign on every engine
+    (`FloatBounds.StdModel.TreeSum.sign`), so a postcondition on the sign of
+    a mean runs whether the column has a bound (a row cap) or not."""
+    r = con.table("readings")
+    expr = r.group_by("k").aggregate(m=r.x.mean())
+    for req in ([_.x.between(0, 10)], [_.x.between(0, 10), sv.max_rows(1000)]):
+        report = sv.verify(expr, requires={"readings": req}, ensures=[_.m >= 0])
+        assert report.proved
+        assert not report.route("duckdb").refused
+
+
 def test_plan_bound_equality_uses_the_bound() -> None:
     a = pa.table({"m": [1.0]})
     b = pa.table({"m": [1.0 + 1e-9]})

@@ -303,9 +303,11 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
         -- Per engine, whether filters, keys and sorts keep the same rows under ε.
         let rowsExact := (Epsilon.rowsExactByEngine j ["duckdb", "polars", "spark"]).toOption.getD
           (Lean.Json.mkObj [])
+        -- Per postcondition, whether it holds on every engine's doubles (#1045).
+        let robust := (EngineRobust.robust j).toOption.getD (Lean.Json.arr #[])
         match underProfile j (report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
-            |>.setObjVal! "rows_exact" rowsExact)
+            |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust)
             report.allProved with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
