@@ -3,6 +3,7 @@ import SubstraitLean.Conversions
 import SubstraitLean.Text
 import SubstraitLean.Time
 import SubstraitLean.Numeric
+import SubstraitLean.FloatArith
 import SubstraitLean.BlackBox
 
 /-!
@@ -665,10 +666,10 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .lt, a, b => match a.numPair b with
     | some (x, y) => .bool (decide (x < y))
     | none => .null
-  | .fadd, .float a, .float b => .float (FloatCode.lift₂ (· + ·) a b)
-  | .fsub, .float a, .float b => .float (FloatCode.lift₂ (· - ·) a b)
-  | .fmul, .float a, .float b => .float (FloatCode.lift₂ (· * ·) a b)
-  | .fdiv, .float a, .float b => .float (FloatCode.lift₂ (· / ·) a b)
+  | .fadd, .float a, .float b => .float (FloatCode.fadd a b)
+  | .fsub, .float a, .float b => .float (FloatCode.fsub a b)
+  | .fmul, .float a, .float b => .float (FloatCode.fmul a b)
+  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a b)
   | .fmod, .float a, .float b => .float (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)

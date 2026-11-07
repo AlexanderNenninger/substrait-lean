@@ -29,7 +29,7 @@
     "`/` of two integers is float division (`5 / 2 = 2.5`) while `integer_division` is false (the default); `//` divides integers. `ieee_floating_point_ops` (default true) selects IEEE results (NaN, `±inf`) over errors or NULL for supported floating-point operations; it does not touch rounding.",
     "The source confirms it (round 2): `+ - * /` on FLOAT and DOUBLE are the C++ operators on `float` and `double`, so a FLOAT operation rounds to binary32 once and is not computed in double. The result is the platform's IEEE arithmetic in its default rounding mode; DuckDB sets no other."
   ],
-  "reference": "`rounding: TIE_TO_EVEN` for `+ - × /` of doubles (Lean's native `Float`; docs/core-semantics.md D5). Lean refuses arithmetic on `FLOAT` values (duckdb-R12), so the fp32 rows matter only once binary32 is modelled.",
+  "reference": "`rounding: TIE_TO_EVEN` for `+ - × /` of doubles (exact, rounded once: docs/core-semantics.md D5, D31; the platform facts `duckdb-ieee-arith-*`). Lean refuses arithmetic on `FLOAT` values (duckdb-R12), so the fp32 rows matter only once binary32 is modelled.",
   "status": "no-finding",
   "evidence": "engine_test",
   "provenance": [

@@ -1,0 +1,62 @@
+{
+  "id": "duckdb-ieee-arith-linux-x86-64",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Double `+ - * /` are binary64, round to nearest even, on Linux x86_64 (D31)",
+  "verdict": "binary64, round to nearest even, no contraction, no flush to zero: native for D31",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {
+      "group": "fp.arith",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.div",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/"
+  ],
+  "settings": {
+    "ieee_floating_point_ops": true,
+    "platform": [
+      "Linux x86_64"
+    ]
+  },
+  "description": [
+    "On Linux x86_64, C++ `double` operators, one vectorized kernel per operator: every result of `+ - * /` on doubles is the exact result rounded once to binary64, to nearest with ties to even, bit for bit, on 22432 operations (22432 per path).",
+    "The operands: every pair of a table of edge values (zeros, subnormals, the smallest normal, one and its neighbour, `2⁻⁵³`, `2⁵³`, the largest double, the infinities, NaN, and their negatives), pseudo-random operands at every exponent from 0 to 2046 paired with operands at random exponents, both ways round, and ties (`1 + 2⁻⁵³`, `1 + 3 · 2⁻⁵³`, subnormals times `0.5`).",
+    "No contraction: `a * b - c`, with `c` the rounded product of 2,000 random pairs whose product is inexact, is `0.0` for every pair; a fused multiply-add would give the residual. No flush to zero: every subnormal result is the subnormal.",
+    "Signed zeros and NaN agree with IEEE 754 on two columns; a NaN's sign is not compared (D31 leaves it open; polars-exec-platform records it per platform). Division by zero is left out: it is `on_division_by_zero` (the engine's `fp.div` facts).",
+    "No upstream test pins the platform's rounding; the probe is rerun per platform and engine version."
+  ],
+  "reference": "D31: `add`, `subtract`, `multiply` and `divide` of doubles are the exact result rounded once to binary64, to nearest, ties to even (`FloatCode.fadd` … in `SubstraitLean/FloatArith.lean`). The engine is native for D31 on this platform.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_float_arith --seed 929 (commit eb24c710), Python 3.12.3",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_float_arith.py"
+        }
+      ],
+      "notes": "Mismatches by class: [{}]."
+    }
+  ]
+}

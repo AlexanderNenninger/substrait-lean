@@ -2223,7 +2223,7 @@ count is within `shardAvgTolCR n As` of the mean of `ws` rounded once. -/
 theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne : ws ≠ [])
     (hp : ws.Perm L.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
     (h32 : ws.length ≤ 2 ^ 32) (hov : ws.length * Bs ≤ 2 ^ 2096) :
-    (FloatCode.scaled (FloatCode.lift₂ (· / ·) (twoPhaseSum L) (FloatCode.ofInt ws.length))
+    (FloatCode.scaled (FloatCode.fdiv (twoPhaseSum L) (FloatCode.ofInt ws.length))
         - FloatCode.scaled (floatAvgCR (ws.map .float))).natAbs
       ≤ FloatCode.shardAvgTolCR ws.length (absTotal L) := by
   have hn0 : 0 < ws.length := List.length_pos_iff.mpr hne
@@ -2284,7 +2284,7 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
         _ ≤ 2 ^ 2097 * (ws.length * 2 ^ 1074) :=
             Nat.mul_le_mul_left _ (Nat.le_mul_of_pos_left _ hn0))
   rw [hsc, ← hKabs] at hdiv
-  generalize FloatCode.scaled (FloatCode.lift₂ (· / ·) R (FloatCode.exactCode ws.length)) = Q at hdiv ⊢
+  generalize FloatCode.scaled (FloatCode.fdiv R (FloatCode.exactCode ws.length)) = Q at hdiv ⊢
   generalize FloatCode.scaled R = Rs at h1 hdiv hRle
   have hdiv' := cancel_scale hKpos hdiv
   -- The reference's mean, within half an ulp.
