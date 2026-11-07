@@ -1687,8 +1687,9 @@ the following about the warehouse:
   `UTF8_BINARY` collation.
 * Both have no row order, so sorts, `LIMIT` and windows are refused unless
   the report is `deterministic` (a key on the order columns in the
-  contract, which `to_sql` reads from the report), and so is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
-  the additions. Snowflake has no interval type, so interval-valued
+  contract, which `to_sql` reads from the report). A `SUM` or `AVG` of
+  doubles runs natively, within the plan's bound of the reference's correctly
+  rounded sum (D25). Snowflake has no interval type, so interval-valued
   expressions are refused there.
 
 How the engine translations relate to the reference semantics, and where
