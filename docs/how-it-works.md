@@ -571,6 +571,11 @@ one, which sverify infers (#244).
   ([docs/optimizations.md](optimizations.md)).
 * `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
   runs correctly without per-row checks.
+* `contract_sound_allowed`: a postcondition narrowed by its columns' tolerances and proved on
+  every order holds on every result the reference allows, every order and grouping of a double
+  `SUM` or `AVG` among them, for a plan that reads no open sum to choose its rows
+  (`Rel.FloatOpenSafe`; [AllowedNear.lean](../SubstraitLean/AllowedNear.lean)). The report marks
+  such a postcondition `allowed`.
 
 ### Contracts
 
