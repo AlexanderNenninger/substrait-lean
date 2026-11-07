@@ -184,7 +184,7 @@ def core : List FnRow := [
   -- sverify's own: a shim's guards (#185), which the SQL printers write as
   -- `error(…)` and `x IS NOT NULL`.
   { name := "sverify_raise", anchor := 118, group := "sverify", ctor := some (.un (.raise "")) },
-  { name := "sverify_is_number", anchor := 119, group := "sverify", ctor := some (.un .isNum),
+  { name := "sverify_is_number", anchor := 119, group := "sverify", ctor := some (.un (.isNum .int)),
     reads := .plain, pretty := "IS_NUMBER" },
   -- sverify's own: a decimal divided by an integer, rounded half away from
   -- zero (a decimal `AVG` over a window, #27).

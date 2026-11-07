@@ -90,13 +90,13 @@ def engineVal (t : Nat) (sign : Bool) (a : AVal) : AVal :=
 
 /-- **The engine's value is in `AVal.engine`**: NULL where the reference's
 is, else within `t` of it and, where `sign`, of the sign Lean gave it. -/
-theorem engineVal_mem {a : AVal} {t : Nat} {sign : Bool} {r v : Int} (hr : a.Mem (.int r))
+theorem engineVal_mem {a : AVal} {t : Nat} {sign : Bool} {r v : Int} (hr : a.Mem (.float r))
     (hv : (FloatCode.scaled v - FloatCode.scaled r).natAbs ≤ t)
     (hs : sign = true → ∀ b, a.int = some b →
       (∀ l, b.lo = some l → 0 ≤ l → 0 ≤ v) ∧ (∀ h, b.hi = some h → h ≤ 0 → v ≤ 0)) :
-    (engineVal t sign a).Mem (.int v) := by
-  obtain ⟨b, hb, hm⟩ := hr
-  refine ⟨if sign then (widen t b).meet (signHull b) else widen t b, ?_, ?_⟩
+    (engineVal t sign a).Mem (.float v) := by
+  obtain ⟨b, hb, hm, hk⟩ := hr
+  refine ⟨if sign then (widen t b).meet (signHull b) else widen t b, ?_, ?_, hk⟩
   · simp [engineVal, hb]
   · cases sign with
     | false => exact widen_mem hm hv

@@ -5,17 +5,31 @@ import SubstraitLean.Functions
 
 namespace Substrait
 
+/-- `i · 10⁻ˢ` in decimal digits (`decimalString 2 (-5)` is `-0.05`). -/
+def _root_.decimalString (s : Nat) (i : Int) : String :=
+  if s = 0 then toString i else
+    let digits := (toString i.natAbs).toList
+    let digits := List.replicate (s + 1 - digits.length) '0' ++ digits
+    let k := digits.length - s
+    (if i < 0 then "-" else "") ++ String.ofList (digits.take k) ++ "." ++ String.ofList (digits.drop k)
+
+#guard decimalString 2 (-5) == "-0.05" && decimalString 2 1234 == "12.34" && decimalString 0 7 == "7"
+#guard decimalString 3 1000 == "1.000" && decimalString 1 0 == "0.0"
+
+/-- A value by its kind (#923): a double as a double with a `d`, a decimal
+in its digits, dates and times as their integers (days, microseconds). -/
 def Value.render : Value → String
   | .null => "NULL"
   | .bool b => toString b
-  -- Past 64 bits: a double's code (SubstraitLean/Float.lean). `±2⁶³` stay
-  -- integers: the smallest BIGINT, and its negation (#619).
-  | .int i => if i.natAbs > 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
+  | .int i | .date i | .ts i | .tod i => toString i
+  | .float c => s!"{FloatCode.toFloat c}d"
+  | .dec s i => decimalString s i
   | .str s => s.quote
-  | .list vs => "[" ++ ", ".intercalate (vs.attach.map fun ⟨v, _⟩ => v.render) ++ "]"
+  | .list vs | .struct vs => "[" ++ ", ".intercalate (vs.attach.map fun ⟨v, _⟩ => v.render) ++ "]"
 
 #guard Value.render (.int (-(2 ^ 63))) == "-9223372036854775808"
 #guard Value.render (.int (2 ^ 63)) == "9223372036854775808"
+#guard Value.render (.list [.dec 1 10, .null, .dec 1 25]) == "[1.0, NULL, 2.5]"
 
 def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"

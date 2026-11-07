@@ -128,12 +128,12 @@ theorem inI64_iff (x : Int) : inI64 x = true ↔ -2 ^ 63 ≤ x ∧ x ≤ 2 ^ 63 
 theorem ref_add_int (x y : Int) (h1 : -2 ^ 63 ≤ x + y) (h2 : x + y ≤ 2 ^ 63 - 1) :
     Profile.reference.bin .add (.int x) (.int y) = .ok (.int (x + y)) := by
   have h : inI64 (x + y) = true := (inI64_iff _).mpr ⟨h1, h2⟩
-  simp [Profile.reference, raiseIf, BinFn.issue, wrapIf, h, BinFn.apply]
+  simp [Profile.reference, raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, BinFn.apply]
 
 theorem ref_sub_int (x y : Int) (h1 : -2 ^ 63 ≤ x - y) (h2 : x - y ≤ 2 ^ 63 - 1) :
     Profile.reference.bin .sub (.int x) (.int y) = .ok (.int (x - y)) := by
   have h : inI64 (x - y) = true := (inI64_iff _).mpr ⟨h1, h2⟩
-  simp [Profile.reference, raiseIf, BinFn.issue, wrapIf, h, BinFn.apply]
+  simp [Profile.reference, raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, BinFn.apply]
 
 theorem ref_idiv_int (x y : Int) (h0 : y ≠ 0) (h : inI64 (x.tdiv y) = true) :
     Profile.reference.bin .idiv (.int x) (.int y) = .ok (.int (x.tdiv y)) := by

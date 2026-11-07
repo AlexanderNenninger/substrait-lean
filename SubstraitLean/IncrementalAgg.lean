@@ -1,5 +1,6 @@
 import SubstraitLean.TouchedGroups
 import SubstraitLean.TableFormat
+import SubstraitLean.Kinds
 
 /-!
 # Delta rules for `COUNT`, `SUM` and `DISTINCT` (#248, stage 1)
@@ -56,7 +57,7 @@ argument is not NULL. -/
 def counts (m : Measure) (row : Row) : Bool := keeps m row && m.arg.eval row != .null
 
 def intOf : Value → Int
-  | .int i => i
+  | .int i | .dec _ i => i
   | _ => 0
 
 def ind (b : Bool) (x : Int) : Int := if b then x else 0
@@ -74,15 +75,58 @@ def sumIn (gs : List Expr) (m : Measure) (k : Row) (z : ZSet) : Int :=
   ZSet.lin (fun r => ind (groupKey gs r == k && counts m r) (intOf (m.arg.eval r))) z
 
 /-- A measure's value from the group's state: the count of values for
-`COUNT`; for `SUM`, NULL without values, else the sum. -/
-def finish (m : Measure) (n s : Int) : Value :=
+`COUNT`; for `SUM`, NULL without values, else the sum: a decimal of scale `s`
+where the plan's kinds give the argument that scale (`sc = some s`, #923). -/
+def finish (m : Measure) (sc : Option Nat) (n s : Int) : Value :=
   match m.fn with
   | .count => .int n
-  | _ => if n = 0 then .null else .int s
+  | _ => if n = 0 then .null else match sc with
+    | some d => .dec d s
+    | none => .int s
 
-/-- Group `k`'s output row, from the state of `z`. -/
-def outRow (gs : List Expr) (ms : List Measure) (z : ZSet) (k : Row) : Row :=
-  k ++ ms.map fun m => finish m (valuesIn gs m k z) (sumIn gs m k z)
+/-- The scale of a `SUM` of an argument of kind `k`: a decimal's, none for an
+integer. -/
+def sumScale : Kind → Option Nat
+  | .dec _ s => some s
+  | _ => none
+
+/-- The kind a `SUM`'s argument has where its scale is `sc`. -/
+def scaleKind : Option Nat → Kind
+  | some s => .dec 38 s
+  | none => .int
+
+/-- **The premise of `finish_eval`** (D29): on the rows, a `SUM`'s argument
+has the kind the plan gives it, a decimal of scale `s` where `sc = some s` and
+an integer otherwise. A kind-checked plan has it (`ArgScale.of_kindT`). -/
+def ArgScale (sc : Option Nat) (m : Measure) (rows : Relation) : Prop :=
+  m.fn = .sum → ∀ row ∈ rows, (m.arg.eval row).hasKind (scaleKind sc) = true
+
+theorem hasKind_dec_scale {p s : Nat} {v : Value} (h : v.hasKind (.dec p s) = true) :
+    v.hasKind (.dec 38 s) = true := by
+  cases v <;> simp_all [Value.hasKind]
+
+/-- A `SUM` whose argument the kind checker types as an integer or a decimal
+(`Expr.kindT`) on rows of the kinds `env` has the premise, at the scale of the
+argument's kind. -/
+theorem ArgScale.of_kindT {env : List Kind} {m : Measure} {rows : Relation} {t : KT}
+    (hr : ∀ row ∈ rows, Row.HasKinds env row) (hk : m.arg.kindT env = some t)
+    (ht : t.toKind = .int ∨ ∃ p s, t.toKind = .dec p s) :
+    ArgScale (sumScale t.toKind) m rows := fun _ row hrow => by
+  have h := Expr.kindT_sound (hr row hrow) hk
+  simp only [KT.has] at h
+  rcases ht with ht | ⟨p, s, ht⟩ <;> rw [ht] at h ⊢
+  · exact h
+  · exact hasKind_dec_scale h
+
+theorem ArgScale.mono {sc : Option Nat} {m : Measure} {rows rows' : Relation}
+    (h : ArgScale sc m rows) (hs : ∀ r ∈ rows', r ∈ rows) : ArgScale sc m rows' :=
+  fun hf r hr => h hf r (hs r hr)
+
+/-- Group `k`'s output row, from the state of `z`; `sc` gives each `SUM` its
+scale. -/
+def outRow (gs : List Expr) (ms : List Measure) (sc : Measure → Option Nat) (z : ZSet) (k : Row) :
+    Row :=
+  k ++ ms.map fun m => finish m (sc m) (valuesIn gs m k z) (sumIn gs m k z)
 
 /-! ## The state adds up -/
 
@@ -96,8 +140,8 @@ theorem sumIn_append (gs : List Expr) (m : Measure) (k : Row) (a b : ZSet) :
     sumIn gs m k (a ++ b) = sumIn gs m k a + sumIn gs m k b := ZSet.lin_append _ _ _
 
 /-- The state only depends on the weights. -/
-theorem outRow_congr {gs : List Expr} {ms : List Measure} {z z' : ZSet}
-    (h : ∀ r, z.weight r = z'.weight r) (k : Row) : outRow gs ms z k = outRow gs ms z' k := by
+theorem outRow_congr {gs : List Expr} {ms : List Measure} {sc : Measure → Option Nat} {z z' : ZSet}
+    (h : ∀ r, z.weight r = z'.weight r) (k : Row) : outRow gs ms sc z k = outRow gs ms sc z' k := by
   simp only [outRow, valuesIn, sumIn, ZSet.lin_congr _ h]
 
 theorem rowsIn_congr {gs : List Expr} {z z' : ZSet} (h : ∀ r, z.weight r = z'.weight r)
@@ -143,6 +187,32 @@ theorem intSum_eq (vs : List Value) : intSum vs = (vs.map intOf).sum := by
   | nil => rfl
   | cons v vs ih => cases v <;> simp [intSum, intOf, ih]
 
+/-- A `SUM` of non-NULL values of one kind, an integer or a decimal of scale
+`sc`: that kind's number of their sum. -/
+theorem sumOf_of_scale {sc : Option Nat} {v : Value} {vs : List Value}
+    (h : ∀ w ∈ v :: vs, w.hasKind (scaleKind sc) = true ∧ w ≠ .null) :
+    sumOf (v :: vs) = match sc with
+      | some d => .dec d (intSum (v :: vs))
+      | none => .int (intSum (v :: vs)) := by
+  cases sc with
+  | some d =>
+    have ha : allDecOf d (v :: vs) = true := by
+      simp only [allDecOf, List.isEmpty_cons, Bool.not_false, Bool.true_and]
+      exact List.all_eq_true.mpr fun w hw => by
+        obtain ⟨h1, h2⟩ := h w hw
+        cases w <;> simp_all [Value.hasKind, scaleKind, Value.isDecOf]
+    rcases sumOf_cases (v :: vs) with ⟨s, hs, e⟩ | ⟨hn, _⟩
+    · rw [e, allDecOf_scale hs ha]
+    · rw [hn d] at ha; cases ha
+  | none =>
+    rcases sumOf_cases (v :: vs) with ⟨s, hs, _⟩ | ⟨_, e⟩
+    · exfalso
+      simp only [allDecOf, List.isEmpty_cons, Bool.not_false, Bool.true_and] at hs
+      have := List.all_eq_true.mp hs v (by simp)
+      obtain ⟨h1, h2⟩ := h v (by simp)
+      cases v <;> simp_all [Value.hasKind, scaleKind, Value.isDecOf]
+    · exact e
+
 /-- The values a measure without `DISTINCT` adds up are its argument on the
 rows that count. -/
 theorem inputs_eq {m : Measure} (hd : m.distinct = false) (rows : Relation) :
@@ -162,28 +232,44 @@ theorem rowsIn_lift (gs : List Expr) (rows : Relation) (k : Row) :
     rowsIn gs k (ZSet.lift rows) = (groupRows gs rows k).length := by
   rw [rowsIn, lin_lift, sum_ind_one]; rfl
 
-/-- **The state gives the aggregate's row**, for `COUNT` and `SUM`. -/
-theorem finish_eval {gs : List Expr} {m : Measure} (hm : Linear m) (rows : Relation) (k : Row) :
-    finish m (valuesIn gs m k (ZSet.lift rows)) (sumIn gs m k (ZSet.lift rows)) =
+/-- **The state gives the aggregate's row**, for `COUNT` and `SUM`, where a
+`SUM`'s argument has the scale the plan's kinds give it (`ArgScale`, D29). -/
+theorem finish_eval {gs : List Expr} {m : Measure} (hm : Linear m) {sc : Option Nat}
+    {rows : Relation} (hsc : ArgScale sc m rows) (k : Row) :
+    finish m sc (valuesIn gs m k (ZSet.lift rows)) (sumIn gs m k (ZSet.lift rows)) =
       m.eval (groupRows gs rows k) := by
   have hs : m.fn.sorts = false := by rcases hm.1 with h | h <;> simp [h, AggFn.sorts]
   rw [Measure.eval_eq hs, inputs_eq hm.2, groupRows_filter, valuesIn, sumIn, lin_lift, lin_lift,
     sum_ind_one, sum_ind]
-  generalize hl : rows.filter (fun r => groupKey gs r == k && counts m r) = l
+  have hmem : ∀ r ∈ rows.filter (fun r => groupKey gs r == k && counts m r),
+      r ∈ rows ∧ m.arg.eval r ≠ .null := fun r hr => by
+    obtain ⟨h1, h2⟩ := List.mem_filter.mp hr
+    simp only [Bool.and_eq_true, counts, bne_iff_ne, ne_eq] at h2
+    exact ⟨h1, h2.2.2⟩
+  generalize hl : rows.filter (fun r => groupKey gs r == k && counts m r) = l at hmem
   rcases hm.1 with h | h
   · simp [finish, h, AggFn.apply]
   · simp only [finish, h, AggFn.apply]
     cases l with
     | nil => simp
-    | cons a l => simp [intSum_eq, List.map_map, Function.comp_def] <;> omega
+    | cons a l =>
+      have hk : ∀ w ∈ (a :: l).map m.arg.eval, w.hasKind (scaleKind sc) = true ∧ w ≠ .null := by
+        intro w hw
+        obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hw
+        exact ⟨hsc h r (hmem r hr).1, (hmem r hr).2⟩
+      simp only [List.map_cons] at hk ⊢
+      rw [sumOf_of_scale hk]
+      simp only [intSum_eq, List.map_cons, List.map_map, Function.comp_def]
+      cases sc <;> rfl
 
 /-- On a Z-set with the weights of a bag, a group's output row from the
 state is the aggregate's row. -/
 theorem outRow_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, Linear m)
-    {rows : Relation} {z : ZSet} (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) (k : Row) :
-    outRow gs ms z k = k ++ ms.map (·.eval (groupRows gs rows k)) := by
+    {sc : Measure → Option Nat} {rows : Relation} (hsc : ∀ m ∈ ms, ArgScale (sc m) m rows)
+    {z : ZSet} (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) (k : Row) :
+    outRow gs ms sc z k = k ++ ms.map (·.eval (groupRows gs rows k)) := by
   rw [outRow_congr hz, outRow]
-  exact congrArg (k ++ ·) (List.map_congr_left fun m hm => finish_eval (hms m hm) rows k)
+  exact congrArg (k ++ ·) (List.map_congr_left fun m hm => finish_eval (hms m hm) (hsc m hm) k)
 
 theorem mem_keys_iff {gs : List Expr} {rows : Relation} {k : Row} :
     k ∈ dedup (rows.map (groupKey gs)) ↔ 0 < rowsIn gs k (ZSet.lift rows) := by
@@ -197,14 +283,15 @@ variable {gs : List Expr} {ms : List Measure}
 /-- **The aggregate from the state**: on a Z-set `z` with the weights of the
 bag `rows`, the aggregate of `rows` is the output rows of the groups whose
 count is positive, listed once each in any order. -/
-theorem aggregate_state (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m) {rows : Relation} {z : ZSet}
+theorem aggregate_state (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m) {sc : Measure → Option Nat}
+    {rows : Relation} (hsc : ∀ m ∈ ms, ArgScale (sc m) m rows) {z : ZSet}
     (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) {ks : List Row} (hnd : ks.Nodup)
     (hks : ∀ k, k ∈ ks ↔ 0 < rowsIn gs k z) :
-    (aggregateEval gs ms rows).Perm (ks.map (outRow gs ms z)) := by
+    (aggregateEval gs ms rows).Perm (ks.map (outRow gs ms sc z)) := by
   have hge : gs.isEmpty = false := by simpa using hg
   simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte]
-  rw [show (fun k => k ++ ms.map (·.eval (groupRows gs rows k))) = outRow gs ms z from
-    funext fun k => (outRow_eq hms hz k).symm]
+  rw [show (fun k => k ++ ms.map (·.eval (groupRows gs rows k))) = outRow gs ms sc z from
+    funext fun k => (outRow_eq hms hsc hz k).symm]
   refine List.Perm.map _ ((List.perm_ext_iff_of_nodup (nodup_dedup _) hnd).mpr fun k => ?_)
   rw [mem_keys_iff, hks, rowsIn_congr hz]
 
@@ -215,7 +302,8 @@ the old aggregate's rows of the groups outside `K`, and for the groups in
 `K` that still have rows (`ks`), the output row of the old state plus the
 state of `Δ`. -/
 theorem aggregate_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m)
-    {rows rows' : Relation} {Δ : ZSet}
+    {sc : Measure → Option Nat} {rows rows' : Relation} (hsc : ∀ m ∈ ms, ArgScale (sc m) m rows)
+    (hsc' : ∀ m ∈ ms, ArgScale (sc m) m rows') {Δ : ZSet}
     (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
     {K : Row → Bool} (hK : ∀ x ∈ Δ, K (groupKey gs x.1) = true)
     {ks : List Row} (hnd : ks.Nodup)
@@ -223,7 +311,7 @@ theorem aggregate_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m)
     (aggregateEval gs ms rows').Perm
       ((aggregateEval gs ms rows).filter (fun o => !K (o.take gs.length)) ++
         ks.map fun k => k ++ ms.map fun m =>
-          finish m (valuesIn gs m k (ZSet.lift rows) + valuesIn gs m k Δ)
+          finish m (sc m) (valuesIn gs m k (ZSet.lift rows) + valuesIn gs m k Δ)
             (sumIn gs m k (ZSet.lift rows) + sumIn gs m k Δ)) := by
   have hge : gs.isEmpty = false := by simpa using hg
   let ku := (dedup (rows.map (groupKey gs))).filter fun k => !K k
@@ -231,7 +319,8 @@ theorem aggregate_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m)
   have hzero : ∀ k, K k = false → ∀ g : Row → Int, (∀ r, groupKey gs r ≠ k → g r = 0) →
       ZSet.lin g Δ = 0 := fun k hk g hg' => lin_zero fun x hx => hg' x.1 fun he => by
     have := hK x hx; rw [he, hk] at this; exact Bool.false_ne_true this
-  have hout : ∀ k, K k = false → outRow gs ms (ZSet.lift rows ++ Δ) k = outRow gs ms (ZSet.lift rows) k := by
+  have hout : ∀ k, K k = false →
+      outRow gs ms sc (ZSet.lift rows ++ Δ) k = outRow gs ms sc (ZSet.lift rows) k := by
     intro k hk
     simp only [outRow, valuesIn, sumIn, ZSet.lin_append]
     refine congrArg (k ++ ·) (List.map_congr_left fun m _ => ?_)
@@ -255,7 +344,7 @@ theorem aggregate_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m)
     cases hk : K k
     · simp [hrows k hk]
     · simp
-  have hnew := aggregate_state hg hms hΔ hnd' hmem
+  have hnew := aggregate_state hg hms hsc' hΔ hnd' hmem
   refine hnew.trans (.of_eq ?_)
   rw [List.map_append]
   congr 1
@@ -272,7 +361,7 @@ theorem aggregate_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Linear m)
     rw [hf]
     refine List.map_congr_left fun k hk => ?_
     have hk' := (List.mem_filter.mp hk).2
-    rw [hout k (by simpa using hk'), outRow_eq hms (fun _ => rfl)]
+    rw [hout k (by simpa using hk'), outRow_eq hms hsc (fun _ => rfl)]
   · refine List.map_congr_left fun k _ => ?_
     simp only [outRow, valuesIn_append, sumIn_append]
 where

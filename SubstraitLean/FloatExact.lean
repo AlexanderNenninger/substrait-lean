@@ -387,12 +387,12 @@ open FloatCode
 /-- The exact sum of the doubles among `vs`, in units of `2⁻¹⁰⁷⁴`. -/
 def exactSum : List Value → Int
   | [] => 0
-  | .int c :: vs => exact c + exactSum vs
+  | .float c :: vs => exact c + exactSum vs
   | _ :: vs => exactSum vs
 
 /-- Does a code among `vs` satisfy `p`? -/
 def anyCode (p : Int → Bool) (vs : List Value) : Bool :=
-  vs.any fun | .int c => p c | _ => false
+  vs.any fun | .float c => p c | _ => false
 
 /-- NaN, `+∞` or `-∞` for a list with a non-finite double, as IEEE 754 adds
 them: a NaN, or both infinities, give NaN. A code below `-∞` (no value of the
@@ -434,7 +434,7 @@ theorem floatAvgCR_perm {vs ws : List Value} (h : vs.Perm ws) : floatAvgCR vs = 
 theorem nan_eq : nan = 2 * maxMag + 5 := fp64.nan_eq
 
 theorem anyCode_map_false {cs : List Int} {p : Int → Bool} (h : ∀ c ∈ cs, p c = false) :
-    anyCode p (cs.map .int) = false := by
+    anyCode p (cs.map .float) = false := by
   simp only [anyCode, List.any_map, List.any_eq_false]
   intro c hc; simp [h c hc]
 
@@ -461,7 +461,7 @@ theorem nonFinite_cases (vs : List Value) :
   generalize anyCode (fun c => decide (c ≤ negInf)) vs = d
   cases a <;> cases b <;> cases d <;> simp <;> intro h <;> simp [h]
 
-theorem nonFinite_of_fin {cs : List Int} (h : ∀ c ∈ cs, IsFin c) : nonFinite (cs.map .int) = none := by
+theorem nonFinite_of_fin {cs : List Int} (h : ∀ c ∈ cs, IsFin c) : nonFinite (cs.map .float) = none := by
   have := nan_eq; have := posInf_eq; have := negInf_eq
   simp only [nonFinite]
   rw [anyCode_map_false (fun c hc => by have := h c hc; unfold IsFin at this; simp; omega),
@@ -472,7 +472,7 @@ theorem nonFinite_of_fin {cs : List Int} (h : ∀ c ∈ cs, IsFin c) : nonFinite
 /-- `k · lo ≤ Σ ≤ k · hi` for `k` values in `[lo, hi]`. -/
 theorem exactSum_bounds {cs : List Int} {lo hi : Int}
     (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
-    cs.length * lo ≤ exactSum (cs.map .int) ∧ exactSum (cs.map .int) ≤ cs.length * hi := by
+    cs.length * lo ≤ exactSum (cs.map .float) ∧ exactSum (cs.map .float) ≤ cs.length * hi := by
   induction cs with
   | nil => simp [exactSum]
   | cons c cs ih =>
@@ -483,7 +483,7 @@ theorem exactSum_bounds {cs : List Int} {lo hi : Int}
     rw [Int.add_mul, Int.add_mul]
     omega
 
-theorem exactSum_nonneg {cs : List Int} (h : ∀ c ∈ cs, 0 ≤ c) : 0 ≤ exactSum (cs.map .int) := by
+theorem exactSum_nonneg {cs : List Int} (h : ∀ c ∈ cs, 0 ≤ c) : 0 ≤ exactSum (cs.map .float) := by
   induction cs with
   | nil => simp [exactSum]
   | cons c cs ih =>
@@ -492,7 +492,7 @@ theorem exactSum_nonneg {cs : List Int} (h : ∀ c ∈ cs, 0 ≤ c) : 0 ≤ exac
     simp only [List.map_cons, exactSum, exact, scaled]
     split <;> omega
 
-theorem exactSum_nonpos {cs : List Int} (h : ∀ c ∈ cs, c ≤ 0) : exactSum (cs.map .int) ≤ 0 := by
+theorem exactSum_nonpos {cs : List Int} (h : ∀ c ∈ cs, c ≤ 0) : exactSum (cs.map .float) ≤ 0 := by
   induction cs with
   | nil => simp [exactSum]
   | cons c cs ih =>
@@ -522,8 +522,8 @@ theorem floatSumCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
     (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
     (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
     min lo (N * lo) - sumTolScaled N (max lo.natAbs hi.natAbs)
-        ≤ scaled (floatSumCR (cs.map .int)) ∧
-      scaled (floatSumCR (cs.map .int))
+        ≤ scaled (floatSumCR (cs.map .float)) ∧
+      scaled (floatSumCR (cs.map .float))
         ≤ max hi (N * hi) + sumTolScaled N (max lo.natAbs hi.natAbs) := by
   have hfin : ∀ c ∈ cs, IsFin c := fun c hc => isFin_of_scaled (by have := hb c hc; omega)
   have hk : 1 ≤ cs.length := by
@@ -532,7 +532,7 @@ theorem floatSumCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
     | cons => simp
   simp only [floatSumCR, nonFinite_of_fin hfin, Option.getD_none]
   have ⟨s1, s2⟩ := exactSum_bounds hb
-  generalize exactSum (cs.map .int) = S at s1 s2 ⊢
+  generalize exactSum (cs.map .float) = S at s1 s2 ⊢
   generalize hB : max lo.natAbs hi.natAbs = B
   generalize cs.length = k at hk hN s1 s2
   have hcast : ((N * B : Nat) : Int) = (N : Int) * (B : Int) := Int.natCast_mul _ _
@@ -568,8 +568,8 @@ set_option exponentiation.threshold 2100 in
 theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
     (_h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
     (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
-    lo - avgTolScaled N (max lo.natAbs hi.natAbs) ≤ scaled (floatAvgCR (cs.map .int)) ∧
-      scaled (floatAvgCR (cs.map .int)) ≤ hi + avgTolScaled N (max lo.natAbs hi.natAbs) := by
+    lo - avgTolScaled N (max lo.natAbs hi.natAbs) ≤ scaled (floatAvgCR (cs.map .float)) ∧
+      scaled (floatAvgCR (cs.map .float)) ≤ hi + avgTolScaled N (max lo.natAbs hi.natAbs) := by
   have hfin : ∀ c ∈ cs, IsFin c := fun c hc => isFin_of_scaled (by have := hb c hc; omega)
   have hk : 1 ≤ cs.length := by
     cases cs with
@@ -577,7 +577,7 @@ theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
     | cons => simp
   simp only [floatAvgCR, nonFinite_of_fin hfin, Option.getD_none, List.length_map]
   have ⟨s1, s2⟩ := exactSum_bounds hb
-  generalize exactSum (cs.map .int) = S at s1 s2 ⊢
+  generalize exactSum (cs.map .float) = S at s1 s2 ⊢
   generalize hB : max lo.natAbs hi.natAbs = B
   generalize cs.length = k at hk hN s1 s2 ⊢
   have hcast : ((k * B : Nat) : Int) = (k : Int) * (B : Int) := Int.natCast_mul _ _
@@ -625,26 +625,26 @@ theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
 /-- Doubles all at least `0` (at most `0`) have a `SUM` and an `AVG` at least
 `0` (at most `0`), as the retired `floatSum_sign` stated of the sequential sum. -/
 theorem floatSumCR_sign {cs : List Int} (_hne : cs ≠ []) :
-    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSumCR (cs.map .int) ∧ 0 ≤ floatAvgCR (cs.map .int)) ∧
-      ((∀ c ∈ cs, c ≤ 0) → floatSumCR (cs.map .int) ≤ 0 ∧ floatAvgCR (cs.map .int) ≤ 0) := by
+    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSumCR (cs.map .float) ∧ 0 ≤ floatAvgCR (cs.map .float)) ∧
+      ((∀ c ∈ cs, c ≤ 0) → floatSumCR (cs.map .float) ≤ 0 ∧ floatAvgCR (cs.map .float) ≤ 0) := by
   have := nan_eq; have := posInf_eq; have := negInf_eq; have := maxMag_pos
   constructor
   · intro h
     have hs := exactSum_nonneg h
-    have hf : anyCode (fun c => decide (c ≤ negInf)) (cs.map .int) = false :=
+    have hf : anyCode (fun c => decide (c ≤ negInf)) (cs.map .float) = false :=
       anyCode_map_false fun c hc => by have := h c hc; simp; omega
     unfold floatSumCR floatAvgCR
-    rcases nonFinite_cases (cs.map .int) with e | ⟨_, e2⟩ | ⟨e | e, _⟩
+    rcases nonFinite_cases (cs.map .float) with e | ⟨_, e2⟩ | ⟨e | e, _⟩
     · rw [e]; exact ⟨ofExact_nonneg hs, ofExactDiv_nonneg _ hs⟩
     · rw [hf] at e2; contradiction
     · rw [e]; simp only [Option.getD_some]; omega
     · rw [e]; simp only [Option.getD_some]; omega
   · intro h
     have hs := exactSum_nonpos h
-    have hf : anyCode (fun c => decide (posInf ≤ c)) (cs.map .int) = false :=
+    have hf : anyCode (fun c => decide (posInf ≤ c)) (cs.map .float) = false :=
       anyCode_map_false fun c hc => by have := h c hc; simp; omega
     unfold floatSumCR floatAvgCR
-    rcases nonFinite_cases (cs.map .int) with e | ⟨e, _⟩ | ⟨_, e2⟩
+    rcases nonFinite_cases (cs.map .float) with e | ⟨e, _⟩ | ⟨_, e2⟩
     · rw [e]; exact ⟨ofExactDiv_nonpos _ hs, ofExactDiv_nonpos _ hs⟩
     · rw [e]; simp only [Option.getD_some]; omega
     · rw [hf] at e2; contradiction
@@ -655,8 +655,8 @@ The expected sums are Python's `math.fsum`, which is correctly rounded. Added
 in list order, `0.1 + 0.2 + 0.3` is `0.6000000000000001`; the mean of three
 `0.1` is `0.10000000000000002`. -/
 
-private def sumOf (xs : List Float) : Int := floatSumCR (xs.map fun x => .int (ofFloat x))
-private def avgOf (xs : List Float) : Int := floatAvgCR (xs.map fun x => .int (ofFloat x))
+private def sumOf (xs : List Float) : Int := floatSumCR (xs.map fun x => .float (ofFloat x))
+private def avgOf (xs : List Float) : Int := floatAvgCR (xs.map fun x => .float (ofFloat x))
 
 #guard [([0.1, 0.2, 0.3], 0.6),
   ([0.3, 0.2, 0.1], 0.6),

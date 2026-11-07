@@ -18,7 +18,7 @@ import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
-from sverify._checker import run_checker
+from sverify._checker import decode_double, run_checker
 
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -70,6 +70,34 @@ def literal(v: object) -> dict:
     raise TypeError(f"no literal for {v!r}")
 
 
+def typed_code(t: dict, v: int) -> dict:
+    """An integer given as a column's code: a timestamp's or a time's
+    microseconds, a date's days, a double's code (`SubstraitLean/Float.lean`),
+    a decimal's unscaled integer; an integer elsewhere. The model's values
+    have their kinds, so a code alone is an integer (#923)."""
+    if "precisionTimestamp" in t or "timestamp" in t or "precisionTimestampTz" in t:
+        return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(v)}}}
+    if "date" in t:
+        return {"literal": {"date": v}}
+    if "precisionTime" in t or "time" in t:
+        return {"literal": {"precisionTime": {"precision": 6, "value": str(v)}}}
+    if "fp64" in t or "fp32" in t:
+        return literal(decode_double(v))
+    if "decimal" in t:
+        d = t["decimal"]
+        value = base64.b64encode(v.to_bytes(16, "little", signed=True)).decode()
+        return {
+            "literal": {
+                "decimal": {
+                    "value": value,
+                    "precision": d.get("precision", 38),
+                    "scale": d.get("scale", 0),
+                }
+            }
+        }
+    return literal(v)
+
+
 def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
     """Replace the reads of the tables in `rows` by virtual tables (in place)."""
 
@@ -85,6 +113,10 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
                     d = decs[i] if i < len(decs) else None
                     if isinstance(v, Decimal) and d is not None:
                         return decimal_literal(v, d.get("precision", 38), d.get("scale", 0))
+                    t = types[i] if i < len(types) and isinstance(types[i], dict) else {}
+                    if isinstance(v, int) and not isinstance(v, bool):
+                        # A value given by its code takes its column's kind (#923).
+                        return typed_code(t, v)
                     return literal(v)
 
                 exprs = [{"fields": [cell(i, v) for i, v in enumerate(row)]} for row in rows[name]]

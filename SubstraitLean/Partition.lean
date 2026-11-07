@@ -193,20 +193,8 @@ theorem Rel.eval_congr {c cat : Catalog} (ha : ∀ t, (c t).arity = (cat t).arit
 
 theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs + intSum ws
   | [], _ => by simp [intSum]
-  | .int i :: vs, ws => by simp only [List.cons_append, intSum, intSum_append vs ws]; omega
-  | .null :: vs, ws | .bool _ :: vs, ws | .str _ :: vs, ws | .list _ :: vs, ws => by
-      simp only [List.cons_append, intSum, intSum_append vs ws]
-
-theorem intSum_cons (v : Value) (vs : List Value) : intSum (v :: vs) = intSum [v] + intSum vs :=
-  intSum_append [v] vs
-
-theorem intSum_perm {vs ws : List Value} (h : vs.Perm ws) : intSum vs = intSum ws := by
-  induction h with
-  | nil => rfl
-  | cons x _ ih => rw [intSum_cons, ih, ← intSum_cons]
-  | swap x y l =>
-    rw [intSum_cons y (x :: l), intSum_cons x l, intSum_cons x (y :: l), intSum_cons y l]; omega
-  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+  | v :: vs, ws => by
+    rw [List.cons_append, intSum_cons, intSum_cons, intSum_append vs ws]; omega
 
 /-- `m` is the least element of `l` in the order `le`. -/
 def IsLeast {α : Type} (le : α → α → Bool) (m : α) (l : List α) : Prop :=
@@ -327,7 +315,7 @@ theorem AggFn.apply_perm {f : AggFn} (hf : f.decomposable = true) {vs ws : List 
     | cons v vs =>
       cases ws with
       | nil => exact absurd h.eq_nil (by simp)
-      | cons w ws => simp only [apply, intSum_perm h]
+      | cons w ws => simp only [apply, sumOf_perm h]
   · simp [decomposable] at hf
   · simp [decomposable] at hf
   · exact apply_minMax_perm (max := false) rfl h
@@ -350,26 +338,28 @@ theorem AggFn.apply_perm_of_orderFree {f : AggFn} (hf : f.orderFree = true) {vs 
           floatAvgCR_perm h, varOf_perm _ _ h, covOf_perm _ h, corrOf_perm h]
 
 theorem AggFn.apply_sum_cons (v : Value) (vs : List Value) :
-    AggFn.sum.apply (v :: vs) = .int (intSum (v :: vs)) := rfl
+    AggFn.sum.apply (v :: vs) = sumOf (v :: vs) := rfl
 
-/-- Partial sums, without the NULLs of empty parts, add up to the total. -/
+/-- Partial sums, without the NULLs of empty parts, add up to the total, and
+are decimals of a scale where all values are. -/
 theorem sum_partials : ∀ L : List (List Value),
     intSum ((L.map AggFn.sum.apply).filter (· != .null)) = intSum L.flatten ∧
-      (((L.map AggFn.sum.apply).filter (· != .null)) = [] ↔ L.flatten = [])
+      (((L.map AggFn.sum.apply).filter (· != .null)) = [] ↔ L.flatten = []) ∧
+      ∀ s, ((L.map AggFn.sum.apply).filter (· != .null)).all (Value.isDecOf s) =
+        L.flatten.all (Value.isDecOf s)
   | [] => by simp [intSum]
   | [] :: L => by
     have := sum_partials L
     simpa [AggFn.apply] using this
   | (v :: vs) :: L => by
-    obtain ⟨h₁, _⟩ := sum_partials L
+    obtain ⟨h₁, _, h₃⟩ := sum_partials L
     have hf : (((v :: vs) :: L).map AggFn.sum.apply).filter (· != .null) =
-        .int (intSum (v :: vs)) :: (L.map AggFn.sum.apply).filter (· != .null) := by
+        sumOf (v :: vs) :: (L.map AggFn.sum.apply).filter (· != .null) := by
       simp [AggFn.apply_sum_cons]
     rw [hf, List.flatten_cons]
-    refine ⟨?_, by simp⟩
-    rw [show intSum (Value.int (intSum (v :: vs)) :: (L.map AggFn.sum.apply).filter (· != .null)) =
-      intSum (v :: vs) + intSum ((L.map AggFn.sum.apply).filter (· != .null)) from rfl, h₁,
-      intSum_append]
+    refine ⟨?_, by simp, fun s => ?_⟩
+    · rw [intSum_cons, sumOf_unscaled_eq, Option.getD_some, h₁, intSum_append]
+    · rw [List.all_cons, h₃ s, List.all_append, isDecOf_sumOf (by simp) s]
 
 theorem intSum_map_length : ∀ L : List (List Value),
     intSum (L.map fun vs => Value.int vs.length) = (L.flatten.length : Int)
@@ -432,16 +422,23 @@ theorem AggFn.combine_apply {f : AggFn} (hf : f.decomposable = true) {L : List (
         obtain ⟨vs, _, rfl⟩ := List.mem_map.mp ha; simp [apply]
     rw [this]
     simp only [combine]
-    rw [List.map_cons, apply_sum_cons, ← List.map_cons (f := fun vs : List Value => Value.int vs.length),
-      intSum_map_length]
-    rfl
-  · obtain ⟨h₁, h₂⟩ := sum_partials L
+    rw [List.map_cons, apply_sum_cons, ← List.map_cons (f := fun vs : List Value => Value.int vs.length)]
+    rcases sumOf_cases ((l :: L').map fun vs : List Value => Value.int vs.length) with
+      ⟨s, h1, _⟩ | ⟨_, e⟩
+    · exfalso
+      simp only [allDecOf, Bool.and_eq_true, List.all_map, List.all_cons] at h1
+      simp [Function.comp_def, Value.isDecOf] at h1
+    · rw [e, intSum_map_length]; rfl
+  · obtain ⟨h₁, h₂, h₃⟩ := sum_partials L
     simp only [combine]
     by_cases hF : L.flatten = []
     · rw [h₂.mpr hF, hF]
     · obtain ⟨a, l, ha⟩ := List.exists_cons_of_ne_nil (mt h₂.mp hF)
       obtain ⟨b, l', hb⟩ := List.exists_cons_of_ne_nil hF
-      rw [ha, hb, apply_sum_cons, apply_sum_cons, ← ha, ← hb, h₁]
+      rw [ha, hb, apply_sum_cons, apply_sum_cons, ← ha, ← hb]
+      refine sumOf_eq_of h₁ fun s => ?_
+      simp only [allDecOf, ha, hb, List.isEmpty_cons, Bool.not_false, Bool.true_and]
+      rw [← ha, ← hb]; exact h₃ s
   · simp [decomposable] at hf
   · simp [decomposable] at hf
   · exact minMax_combine (max := false) rfl hnn
@@ -838,6 +835,7 @@ theorem Value.isTrue_iff {v : Value} : v.isTrue = true ↔ v = .bool true := by
 theorem eq_of_isTrue_eq {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) : v = w := by
   rw [Value.isTrue_iff] at h
   cases v <;> cases w <;> simp_all [BinFn.apply]
+  all_goals (split at h <;> simp_all)
 
 theorem Expr.eqFields_sound {row : Row} : ∀ {e : Expr}, (e.eval row).isTrue = true →
     ∀ p ∈ e.eqFields, row.getD p.1 .null = row.getD p.2 .null
@@ -1610,16 +1608,17 @@ def IntArgs.Sound (I : IntArgs) (cat : Catalog) : Prop :=
 /-- `IntArgs` from the tables' column types `A`, by abstract evaluation. -/
 def IntArgs.ofTypes (cat : Catalog) (A : String → List AVal) : IntArgs := fun r e =>
   let a := e.absD (r.aeval cat A (fun _ => []) WindowKeys.none) []
-  !a.tt && !a.ff && !a.str
+  !a.tt && !a.ff && !a.str && a.nk == some .int
 
 theorem AVal.intOrNull_of_mem {a : AVal} {v : Value} (h : a.Mem v) (ht : a.tt = false)
-    (hf : a.ff = false) (hs : a.str = false) : v.intOrNull = true := by
+    (hf : a.ff = false) (hs : a.str = false) (hk : a.nk = some .int) : v.intOrNull = true := by
   cases v with
   | null => rfl
   | int _ => rfl
   | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ => simp_all [AVal.Mem]
-  | list _ => simp_all [AVal.Mem]
+  | str _ | list _ | struct _ => simp_all [AVal.Mem]
+  | float _ | date _ | ts _ | tod _ | dec _ _ =>
+    obtain ⟨_, _, _, h⟩ := h; rw [hk] at h; simp at h
 
 /-- Sound for rows of the declared types. -/
 theorem IntArgs.ofTypes_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
@@ -1630,7 +1629,8 @@ theorem IntArgs.ofTypes_sound {cat : Catalog} (hcat : cat.WF) {A : String → Li
     (T := WindowKeys.none) (fun _ _ _ h _ => by simp [WindowKeys.none] at h) (sz := false) hw
     (by simp) row hrow
   exact AVal.intOrNull_of_mem
-    (Expr.absD_sound hm (by simp [FactsHold]) (by simp [KsHold]) e) h.1.1 h.1.2 h.2
+    (Expr.absD_sound hm (by simp [FactsHold]) (by simp [KsHold]) e) h.1.1.1 h.1.1.2 h.1.2
+    (by simpa using h.2)
 
 theorem ediv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (h₂ : s ≤ n * hi) :
     lo ≤ s / n ∧ s / n ≤ hi :=
@@ -1726,6 +1726,18 @@ theorem algCombine_eval (k : Nat) (ms : List Measure) (input : Rel) (C : Catalog
   simp only [algCombine, Rel.eval, List.map_map]
   rfl
 
+/-- A `SUM` of integers is an integer. -/
+theorem sumOf_ints {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v = .int i) :
+    sumOf vs = .int (intSum vs) := by
+  rcases sumOf_cases vs with ⟨s, h1, _⟩ | ⟨_, e⟩
+  · exfalso
+    simp only [allDecOf, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at h1
+    obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil vs h1.1
+    have hd := List.all_eq_true.mp h1.2 w hw
+    obtain ⟨i, rfl⟩ := h w hw
+    simp [Value.isDecOf] at hd
+  · exact e
+
 /-- **The final step**: `SUM / COUNT` of an integer `AVG`'s values is the
 `AVG`, when they are integers. -/
 theorem Measure.final_eval {m : Measure} (hm : m.fn = .iavg) {rows : Relation}
@@ -1749,7 +1761,9 @@ theorem Measure.final_eval {m : Measure} (hm : m.fn = .iavg) {rows : Relation}
   cases vs with
   | nil => rfl
   | cons v vs =>
-    simp only [AggFn.apply, BinFn.apply]
+    simp only [AggFn.apply]
+    rw [sumOf_ints hi]
+    simp only [BinFn.apply]
     rw [ite_eq_right_of_eq_false _ _ (eq_false (by simp; omega)), clampInts_mean hi (List.cons_ne_nil _ _)]
 
 theorem filterMap_getD_take {α β : Type} (f : α → Option β) (l : List α) {i : Nat}
@@ -1905,7 +1919,7 @@ def floatPartial (m : Measure) : List Measure :=
 
 /-- `|x|` of a double: `CASE WHEN x < 0 THEN -x ELSE x END`, which the writer
 writes as `abs`. -/
-def fabsExpr (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.int 0))) (.un .fneg e) e
+def fabsExpr (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .fneg e) e
 
 /-- `|x|` of a double's code. -/
 def fabsCode (c : Int) : Int := if c < 0 then FloatCode.neg c else c
@@ -1925,8 +1939,8 @@ def floatBoundParts (m : Measure) : List Measure :=
 def floatParts (ms : List Measure) : List Measure :=
   ms.flatMap floatPartial ++ ms.flatMap floatBoundParts
 
-theorem fabsExpr_eval_int {e : Expr} {row : Row} {c : Int} (h : e.eval row = .int c) :
-    (fabsExpr e).eval row = .int (fabsCode c) := by
+theorem fabsExpr_eval_float {e : Expr} {row : Row} {c : Int} (h : e.eval row = .float c) :
+    (fabsExpr e).eval row = .float (fabsCode c) := by
   by_cases hc : c < 0 <;>
     simp [fabsExpr, fabsCode, Expr.eval, h, hc, BinFn.apply, UnFn.apply, Value.isTrue]
 
@@ -1964,10 +1978,10 @@ end FloatCode
 /-- The sum of the codes `L`'s shards, each rounded once, then rounded once
 more: what `floatCombine` computes from the partial sums (D25). -/
 def twoPhaseSum (L : List (List Int)) : Int :=
-  floatSumCR (L.map fun l => Value.int (floatSumCR (l.map .int)))
+  floatSumCR (L.map fun l => Value.float (floatSumCR (l.map .float)))
 
 /-- A shard's `SUM(|x|)`, rounded once. -/
-def absSum (l : List Int) : Int := floatSumCR (l.map fun c => .int (fabsCode c))
+def absSum (l : List Int) : Int := floatSumCR (l.map fun c => .float (fabsCode c))
 
 /-- The shards' `SUM(|x|)`s, scaled, added up exactly. -/
 def absTotal (L : List (List Int)) : Nat :=
@@ -2026,7 +2040,7 @@ theorem exactSum_append (a b : List Value) : exactSum (a ++ b) = exactSum a + ex
   | nil => simp [exactSum]
   | cons v a ih => cases v <;> simp [exactSum, ih] <;> omega
 
-theorem exactSum_natAbs_le (cs : List Int) : (exactSum (cs.map .int)).natAbs ≤ absExact cs := by
+theorem exactSum_natAbs_le (cs : List Int) : (exactSum (cs.map .float)).natAbs ≤ absExact cs := by
   induction cs with
   | nil => simp [exactSum, absExact]
   | cons c cs ih =>
@@ -2043,7 +2057,7 @@ set_option exponentiation.threshold 2100 in
 /-- Codes of scaled magnitude at most `2²⁰⁹⁶` add up to their exact sum,
 rounded once. -/
 theorem floatSumCR_of_le {cs : List Int} (h : ∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096) :
-    floatSumCR (cs.map .int) = FloatCode.ofExact (exactSum (cs.map .int)) := by
+    floatSumCR (cs.map .float) = FloatCode.ofExact (exactSum (cs.map .float)) := by
   have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
   simp only [floatSumCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
     have := h c hc; omega), Option.getD_none]
@@ -2056,9 +2070,9 @@ set_option exponentiation.threshold 2100 in
 /-- The shards' exact sums against their rounded ones: within `T / 2⁵³`. -/
 theorem partials_near {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096)
     (hT : absExact L.flatten ≤ 2 ^ 2096) :
-    2 ^ 53 * (exactSum (L.map fun l => Value.int (floatSumCR (l.map .int)))
-      - exactSum (L.flatten.map .int)).natAbs ≤ absExact L.flatten ∧
-    ∀ l ∈ L, FloatCode.IsFin (floatSumCR (l.map .int)) := by
+    2 ^ 53 * (exactSum (L.map fun l => Value.float (floatSumCR (l.map .float)))
+      - exactSum (L.flatten.map .float)).natAbs ≤ absExact L.flatten ∧
+    ∀ l ∈ L, FloatCode.IsFin (floatSumCR (l.map .float)) := by
   induction L with
   | nil => simp [exactSum]
   | cons l L ih =>
@@ -2067,7 +2081,7 @@ theorem partials_near {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode
     have hl : ∀ c ∈ l, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 := fun c hc => h c (.inl hc)
     obtain ⟨ih1, ih2⟩ := ih (fun c hc => h c (.inr hc)) (by omega)
     have hS := exactSum_natAbs_le l
-    obtain ⟨hfin, hrel⟩ := FloatCode.ofExact_rel (S := exactSum (l.map .int)) (by omega)
+    obtain ⟨hfin, hrel⟩ := FloatCode.ofExact_rel (S := exactSum (l.map .float)) (by omega)
     rw [← floatSumCR_of_le hl] at hfin hrel
     refine ⟨?_, ?_⟩
     · simp only [List.map_cons, exactSum, List.flatten_cons, List.map_append, exactSum_append,
@@ -2091,8 +2105,8 @@ theorem absTotal_ge {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.s
     have ih' := ih (fun c hc => h c (.inr hc)) (by omega)
     have hl : ∀ c ∈ l, (FloatCode.scaled (fabsCode c)).natAbs ≤ 2 ^ 2096 := fun c hc => by
       rw [scaled_fabsCode]; have := h c (.inl hc); omega
-    have hmap : (l.map fun c => Value.int (fabsCode c)) = (l.map fabsCode).map .int := by simp
-    have he : exactSum ((l.map fabsCode).map .int) = absExact l := by
+    have hmap : (l.map fun c => Value.float (fabsCode c)) = (l.map fabsCode).map .float := by simp
+    have he : exactSum ((l.map fabsCode).map .float) = absExact l := by
       clear hl hmap ih' ih h hT
       induction l with
       | nil => simp [exactSum, absExact]
@@ -2117,7 +2131,7 @@ once. -/
 theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
     (hp : ws.Perm L.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
     (hov : ws.length * Bs ≤ 2 ^ 2096) :
-    (FloatCode.scaled (twoPhaseSum L) - FloatCode.scaled (floatSumCR (ws.map .int))).natAbs
+    (FloatCode.scaled (twoPhaseSum L) - FloatCode.scaled (floatSumCR (ws.map .float))).natAbs
       ≤ FloatCode.shardTolCR (absTotal L) := by
   have hT : absExact ws ≤ 2 ^ 2096 := Nat.le_trans (absExact_le hB) hov
   have hBs : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 := fun c hc => by
@@ -2132,14 +2146,14 @@ theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
   have hTL : absExact L.flatten = absExact ws := (absExact_perm hp).symm
   obtain ⟨hnear, hfin⟩ := partials_near hBL (by omega)
   have hAs := absTotal_ge hBL (by omega)
-  have hSeq : exactSum (L.flatten.map .int) = exactSum (ws.map .int) :=
+  have hSeq : exactSum (L.flatten.map .float) = exactSum (ws.map .float) :=
     (exactSum_perm (hp.map _)).symm
   have hS := exactSum_natAbs_le ws
   -- The partials are finite: their list rounds its exact sum `P` once.
   have hR : twoPhaseSum L =
-      FloatCode.ofExact (exactSum (L.map fun l => Value.int (floatSumCR (l.map .int)))) := by
-    have : L.map (fun l => Value.int (floatSumCR (l.map .int))) =
-        (L.map fun l => floatSumCR (l.map .int)).map .int := by simp
+      FloatCode.ofExact (exactSum (L.map fun l => Value.float (floatSumCR (l.map .float)))) := by
+    have : L.map (fun l => Value.float (floatSumCR (l.map .float))) =
+        (L.map fun l => floatSumCR (l.map .float)).map .float := by simp
     rw [twoPhaseSum, this]
     show (nonFinite _).getD _ = _
     rw [nonFinite_of_fin (by
@@ -2148,8 +2162,8 @@ theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
   rw [hR, floatSumCR_of_le hBs]
   rw [hSeq, hTL] at hnear
   rw [hTL] at hAs
-  generalize exactSum (L.map fun l => Value.int (floatSumCR (l.map .int))) = P at hnear ⊢
-  generalize exactSum (ws.map .int) = S at hnear hS ⊢
+  generalize exactSum (L.map fun l => Value.float (floatSumCR (l.map .float))) = P at hnear ⊢
+  generalize exactSum (ws.map .float) = S at hnear hS ⊢
   obtain ⟨-, h1⟩ := FloatCode.ofExact_rel (S := P) (by omega)
   obtain ⟨-, h2⟩ := FloatCode.ofExact_rel (S := S) (by omega)
   unfold FloatCode.shardTolCR
@@ -2210,7 +2224,7 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
     (hp : ws.Perm L.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
     (h32 : ws.length ≤ 2 ^ 32) (hov : ws.length * Bs ≤ 2 ^ 2096) :
     (FloatCode.scaled (FloatCode.lift₂ (· / ·) (twoPhaseSum L) (FloatCode.ofInt ws.length))
-        - FloatCode.scaled (floatAvgCR (ws.map .int))).natAbs
+        - FloatCode.scaled (floatAvgCR (ws.map .float))).natAbs
       ≤ FloatCode.shardAvgTolCR ws.length (absTotal L) := by
   have hn0 : 0 < ws.length := List.length_pos_iff.mpr hne
   have hT : absExact ws ≤ 2 ^ 2096 := Nat.le_trans (absExact_le hB) hov
@@ -2223,19 +2237,19 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
   have hTL : absExact L.flatten = absExact ws := (absExact_perm hp).symm
   obtain ⟨hnear, hfin⟩ := partials_near hBL (by omega)
   have hAs := absTotal_ge hBL (by omega)
-  have hSeq : exactSum (L.flatten.map .int) = exactSum (ws.map .int) :=
+  have hSeq : exactSum (L.flatten.map .float) = exactSum (ws.map .float) :=
     (exactSum_perm (hp.map _)).symm
   have hS := exactSum_natAbs_le ws
   have hR : twoPhaseSum L =
-      FloatCode.ofExact (exactSum (L.map fun l => Value.int (floatSumCR (l.map .int)))) := by
-    have : L.map (fun l => Value.int (floatSumCR (l.map .int))) =
-        (L.map fun l => floatSumCR (l.map .int)).map .int := by simp
+      FloatCode.ofExact (exactSum (L.map fun l => Value.float (floatSumCR (l.map .float)))) := by
+    have : L.map (fun l => Value.float (floatSumCR (l.map .float))) =
+        (L.map fun l => floatSumCR (l.map .float)).map .float := by simp
     rw [twoPhaseSum, this]
     show (nonFinite _).getD _ = _
     rw [nonFinite_of_fin (by
       intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc; exact hfin l hl)]
     rfl
-  have hC : floatAvgCR (ws.map .int) = FloatCode.ofExactDiv (exactSum (ws.map .int)) ws.length := by
+  have hC : floatAvgCR (ws.map .float) = FloatCode.ofExactDiv (exactSum (ws.map .float)) ws.length := by
     have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
     simp only [floatAvgCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
       have := hBs c hc; omega), Option.getD_none, List.length_map]
@@ -2254,8 +2268,8 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
   rw [hR, hC, hcount]
   rw [hSeq, hTL] at hnear
   rw [hTL] at hAs
-  generalize exactSum (L.map fun l => Value.int (floatSumCR (l.map .int))) = P at hnear ⊢
-  generalize exactSum (ws.map .int) = S at hnear hS ⊢
+  generalize exactSum (L.map fun l => Value.float (floatSumCR (l.map .float))) = P at hnear ⊢
+  generalize exactSum (ws.map .float) = S at hnear hS ⊢
   obtain ⟨hRfin, h1⟩ := FloatCode.ofExact_rel (S := P) (by omega)
   generalize hRd : FloatCode.ofExact P = R at hRfin h1
   -- The native division, within `core_div`'s error.
@@ -2304,7 +2318,7 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
 /-- Two results agree up to `τ` (scaled): two doubles within `τ`, anything
 else equal. -/
 def Value.Near (τ : Nat) : Value → Value → Prop
-  | .int a, .int b => (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤ τ
+  | .float a, .float b => (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤ τ
   | a, b => a = b
 
 theorem length_le_flatten : ∀ {L : List (List Int)}, (∀ l ∈ L, l ≠ []) → L.length ≤ L.flatten.length
@@ -2322,13 +2336,13 @@ theorem flatten_filter_ne_nil {α : Type} : ∀ L : List (List α),
   | (a :: l) :: L => by simp [flatten_filter_ne_nil L]
 
 theorem fsum_apply_ints : ∀ l : List Int,
-    AggFn.fsum.apply (l.map .int) = if l.isEmpty then .null else .int (floatSumCR (l.map .int))
+    AggFn.fsum.apply (l.map .float) = if l.isEmpty then .null else .float (floatSumCR (l.map .float))
   | [] => rfl
   | _ :: _ => rfl
 
 theorem partialSums_eq : ∀ Ls : List (List Int),
-    (Ls.map fun l => AggFn.fsum.apply (l.map .int)).filter (· != .null) =
-      (Ls.filter fun l => !l.isEmpty).map fun l => .int (floatSumCR (l.map .int))
+    (Ls.map fun l => AggFn.fsum.apply (l.map .float)).filter (· != .null) =
+      (Ls.filter fun l => !l.isEmpty).map fun l => .float (floatSumCR (l.map .float))
   | [] => rfl
   | l :: Ls => by
     rw [List.map_cons, List.filter_cons, fsum_apply_ints, partialSums_eq Ls]
@@ -2342,8 +2356,8 @@ theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {Bs : Nat}
     (hov : ws.length * Bs ≤ 2 ^ 2096) :
     let L := Ls.filter fun l => !l.isEmpty
     Value.Near (FloatCode.shardTolCR (absTotal L))
-      (AggFn.fsum.apply ((Ls.map fun l => AggFn.fsum.apply (l.map .int)).filter (· != .null)))
-      (AggFn.fsum.apply (ws.map .int)) := by
+      (AggFn.fsum.apply ((Ls.map fun l => AggFn.fsum.apply (l.map .float)).filter (· != .null)))
+      (AggFn.fsum.apply (ws.map .float)) := by
   intro L
   have hpL : ws.Perm L.flatten := by rw [flatten_filter_ne_nil]; exact hp
   have hne : ∀ l ∈ L, l ≠ [] := fun l hl => by
@@ -2363,18 +2377,19 @@ theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {Bs : Nat}
     have h := twoPhaseSum_near hpL hB hov
     obtain ⟨l, L', hLc⟩ := List.exists_cons_of_ne_nil hL0
     obtain ⟨c, ws', hwc⟩ := List.exists_cons_of_ne_nil hws
-    show Value.Near _ (AggFn.fsum.apply (L.map fun l => .int (floatSumCR (l.map .int)))) _
+    show Value.Near _ (AggFn.fsum.apply (L.map fun l => .float (floatSumCR (l.map .float)))) _
     rw [hLc] at h ⊢
     rw [hwc] at h ⊢
     simpa [AggFn.apply, Value.Near, twoPhaseSum] using h
 
-theorem intsOf_flatten (L : List (List Value)) : intsOf L.flatten = (L.map intsOf).flatten :=
+theorem floatsOf_flatten (L : List (List Value)) : floatsOf L.flatten = (L.map floatsOf).flatten :=
   List.filterMap_flatten ..
 
-theorem sum_apply_ne_nil {vs : List Value} (h : vs ≠ []) : AggFn.sum.apply vs = .int (intSum vs) := by
+theorem sum_apply_ne_nil {vs : List Value} (h : vs ≠ []) (hi : ∀ v ∈ vs, ∃ i, v = .int i) :
+    AggFn.sum.apply vs = .int (intSum vs) := by
   cases vs with
   | nil => exact absurd rfl h
-  | cons _ _ => rfl
+  | cons _ _ => exact sumOf_ints hi
 
 theorem Measure.inputs_eq_vals {m : Measure} (hd : m.distinct = false) (rows : Relation) :
     m.inputs rows = m.vals rows := by simp [Measure.inputs_eq, hd]
@@ -2389,7 +2404,7 @@ theorem Measure.inputs_flatten_perm {m : Measure} (hd : m.distinct = false) {ss 
 what the bound needs of them. -/
 structure SplitCodes (m : Measure) (ss : List Relation) (ws : Relation) (mx Bs : Nat) : Prop where
   perm : ws.Perm ss.flatten
-  codes : ∀ v ∈ m.inputs ws, ∃ c, v = .int c ∧ (FloatCode.scaled c).natAbs ≤ Bs
+  codes : ∀ v ∈ m.inputs ws, ∃ c, v = .float c ∧ (FloatCode.scaled c).natAbs ≤ Bs
   shard : ∀ s ∈ ss, (m.inputs s).length ≤ mx
   le : mx ≤ (m.inputs ws).length
   small : (m.inputs ws).length ≤ 2 ^ 32
@@ -2397,8 +2412,8 @@ structure SplitCodes (m : Measure) (ss : List Relation) (ws : Relation) (mx Bs :
 
 theorem SplitCodes.ints {m : Measure} {ss : List Relation} {ws : Relation} {mx Bs : Nat}
     (hd : m.distinct = false) (h : SplitCodes m ss ws mx Bs) :
-    (∀ v ∈ m.inputs ws, ∃ c, v = .int c) ∧ ∀ s ∈ ss, ∀ v ∈ m.inputs s, ∃ c, v = .int c := by
-  have hint : ∀ v ∈ m.inputs ws, ∃ c, v = .int c := fun v hv =>
+    (∀ v ∈ m.inputs ws, ∃ c, v = .float c) ∧ ∀ s ∈ ss, ∀ v ∈ m.inputs s, ∃ c, v = .float c := by
+  have hint : ∀ v ∈ m.inputs ws, ∃ c, v = .float c := fun v hv =>
     (h.codes v hv).imp fun _ h => h.1
   refine ⟨hint, fun s hs v hv => hint v ?_⟩
   exact (Measure.inputs_flatten_perm hd h.perm).mem_iff.mpr
@@ -2406,30 +2421,30 @@ theorem SplitCodes.ints {m : Measure} {ss : List Relation} {ws : Relation} {mx B
 
 /-- The shards' codes, those with values. -/
 def SplitCodes.parts (m : Measure) (ss : List Relation) : List (List Int) :=
-  (ss.map fun s => intsOf (m.inputs s)).filter fun l => !l.isEmpty
+  (ss.map fun s => floatsOf (m.inputs s)).filter fun l => !l.isEmpty
 
 theorem SplitCodes.apply {m : Measure} {ss : List Relation} {ws : Relation} {mx Bs : Nat}
     (hd : m.distinct = false) (h : SplitCodes m ss ws mx Bs) :
-    let ws' := intsOf (m.inputs ws)
-    let Ls := ss.map fun s => intsOf (m.inputs s)
-    m.inputs ws = ws'.map .int ∧ (∀ s ∈ ss, m.inputs s = (intsOf (m.inputs s)).map .int) ∧
+    let ws' := floatsOf (m.inputs ws)
+    let Ls := ss.map fun s => floatsOf (m.inputs s)
+    m.inputs ws = ws'.map .float ∧ (∀ s ∈ ss, m.inputs s = (floatsOf (m.inputs s)).map .float) ∧
       ws'.Perm Ls.flatten ∧ (∀ l ∈ Ls, l.length ≤ mx) ∧ mx ≤ ws'.length ∧ ws'.length ≤ 2 ^ 32 ∧
       (∀ c ∈ ws', (FloatCode.scaled c).natAbs ≤ Bs) ∧
       ws'.length * (Bs + 2 * FloatCode.tolK) ≤ 2 ^ 2096 := by
   intro ws' Ls
   obtain ⟨hint, hints⟩ := h.ints hd
-  have hws : m.inputs ws = ws'.map .int := ints_map_intsOf hint
+  have hws : m.inputs ws = ws'.map .float := floats_map_floatsOf hint
   have hlen : ws'.length = (m.inputs ws).length := by rw [hws, List.length_map]
-  refine ⟨hws, fun s hs => ints_map_intsOf (hints s hs), ?_, ?_, hlen ▸ h.le, hlen ▸ h.small,
+  refine ⟨hws, fun s hs => floats_map_floatsOf (hints s hs), ?_, ?_, hlen ▸ h.le, hlen ▸ h.small,
     ?_, hlen ▸ h.far⟩
-  · have h1 : (intsOf (m.inputs ws)).Perm (intsOf (ss.map m.inputs).flatten) :=
+  · have h1 : (floatsOf (m.inputs ws)).Perm (floatsOf (ss.map m.inputs).flatten) :=
       (Measure.inputs_flatten_perm hd h.perm).filterMap _
-    rw [intsOf_flatten, List.map_map] at h1; exact h1
+    rw [floatsOf_flatten, List.map_map] at h1; exact h1
   · intro l hl
     obtain ⟨s, hs, rfl⟩ := List.mem_map.mp hl
     exact Nat.le_trans (List.length_filterMap_le _ _) (h.shard s hs)
   · intro c hc
-    obtain ⟨c', hc', hb⟩ := h.codes _ (mem_intsOf.mp hc)
+    obtain ⟨c', hc', hb⟩ := h.codes _ (mem_floatsOf.mp hc)
     cases hc'; exact hb
 
 /-- **A split double `SUM`, measured** (#428): the measure's `SUM` on each
@@ -2446,8 +2461,8 @@ theorem floatSplit_sum {m : Measure} (hf : m.fn = .fsum) (hd : m.distinct = fals
   have hev : ∀ rows, m.eval rows = AggFn.fsum.apply (m.inputs rows) := fun rows => by
     rw [Measure.eval_eq hsort, hf]
   obtain ⟨hws, hss, hp, hm, hmn, h32, hB, hov⟩ := h.apply hd
-  have hmap : ss.map m.eval = (ss.map fun s => intsOf (m.inputs s)).map
-      fun l => AggFn.fsum.apply (l.map .int) := by
+  have hmap : ss.map m.eval = (ss.map fun s => floatsOf (m.inputs s)).map
+      fun l => AggFn.fsum.apply (l.map .float) := by
     simp only [List.map_map]
     exact List.map_congr_left fun s hs => by simp [hev, ← hss s hs]
   rw [hmap, hev ws, hws]
@@ -2472,23 +2487,23 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
       AggFn.fsum.apply (m.inputs rows) := fun rows => by rw [Measure.eval_eq rfl]; rfl
   have hcount : ∀ rows, ({ m with fn := .count } : Measure).eval rows =
       .int (m.inputs rows).length := fun rows => by rw [Measure.eval_eq rfl]; rfl
-  have hev : m.eval ws = AggFn.avg.apply ((intsOf (m.inputs ws)).map .int) := by
+  have hev : m.eval ws = AggFn.avg.apply ((floatsOf (m.inputs ws)).map .float) := by
     rw [Measure.eval_eq (by rw [hf]; rfl), hf]
     exact congrArg _ hws
   have hmap : ss.map ({ m with fn := .fsum } : Measure).eval =
-      (ss.map fun s => intsOf (m.inputs s)).map fun l => AggFn.fsum.apply (l.map .int) := by
+      (ss.map fun s => floatsOf (m.inputs s)).map fun l => AggFn.fsum.apply (l.map .float) := by
     rw [List.map_map]
     exact List.map_congr_left fun s hs => by
-      show _ = AggFn.fsum.apply ((intsOf (m.inputs s)).map .int)
+      show _ = AggFn.fsum.apply ((floatsOf (m.inputs s)).map .float)
       rw [hsum, ← hss s hs]
   have hcounts : (ss.map ({ m with fn := .count } : Measure).eval).filter (· != .null) =
-      (ss.map fun s => intsOf (m.inputs s)).map fun l => .int l.length := by
+      (ss.map fun s => floatsOf (m.inputs s)).map fun l => .int l.length := by
     rw [List.filter_eq_self.mpr (fun v hv => by
       obtain ⟨s, _, rfl⟩ := List.mem_map.mp hv; rw [hcount]; rfl), List.map_map]
     exact List.map_congr_left fun s hs => by
-      show _ = Value.int (intsOf (m.inputs s)).length
+      show _ = Value.int (floatsOf (m.inputs s)).length
       rw [hcount, (congrArg List.length (hss s hs)).trans (List.length_map ..)]
-  have hlen : (m.inputs ws).length = (intsOf (m.inputs ws)).length :=
+  have hlen : (m.inputs ws).length = (floatsOf (m.inputs ws)).length :=
     (congrArg List.length hws).trans (List.length_map ..)
   rw [hmap, partialSums_eq, hcounts, hev, hlen]
   have hn : ∀ Ls : List (List Int), intSum (Ls.map fun l => Value.int l.length) = Ls.flatten.length := by
@@ -2497,16 +2512,16 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
     | cons l Ls ih => simp only [List.map_cons, intSum, ih, List.flatten_cons, List.length_append]; omega
   have hne : ∀ l ∈ L, l ≠ [] := fun l hl => by
     have := (List.mem_filter.mp hl).2; simpa using this
-  have hpL : (intsOf (m.inputs ws)).Perm L.flatten := by
-    have := flatten_filter_ne_nil (ss.map fun s => intsOf (m.inputs s))
-    show (intsOf (m.inputs ws)).Perm (SplitCodes.parts m ss).flatten
+  have hpL : (floatsOf (m.inputs ws)).Perm L.flatten := by
+    have := flatten_filter_ne_nil (ss.map fun s => floatsOf (m.inputs s))
+    show (floatsOf (m.inputs ws)).Perm (SplitCodes.parts m ss).flatten
     unfold SplitCodes.parts; rw [this]; exact hp
-  show Value.Near _ (BinFn.apply .fdiv (AggFn.fsum.apply (L.map fun l => .int (floatSumCR (l.map .int))))
-    (UnFn.apply .itof (AggFn.sum.apply ((ss.map fun s => intsOf (m.inputs s)).map
+  show Value.Near _ (BinFn.apply .fdiv (AggFn.fsum.apply (L.map fun l => .float (floatSumCR (l.map .float))))
+    (UnFn.apply .itof (AggFn.sum.apply ((ss.map fun s => floatsOf (m.inputs s)).map
       fun l => .int l.length)))) _
-  have hNs := hn (ss.map fun s => intsOf (m.inputs s))
+  have hNs := hn (ss.map fun s => floatsOf (m.inputs s))
   rw [← hp.length_eq] at hNs
-  generalize intsOf (m.inputs ws) = W at *
+  generalize floatsOf (m.inputs ws) = W at *
   by_cases hw0 : W = []
   · -- no values: every result is NULL
     subst hw0
@@ -2526,13 +2541,14 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
       intro hL; rw [hL] at hpL; exact hw0 (List.Perm.eq_nil hpL)
     have h := twoPhaseAvg_near (L := L) hw0 hpL hB h32
       (by unfold FloatCode.tolK at hov; rw [Nat.mul_add] at hov; omega)
-    have hLs : (ss.map fun s => intsOf (m.inputs s)).map (fun l => Value.int l.length) ≠ [] := by
+    have hLs : (ss.map fun s => floatsOf (m.inputs s)).map (fun l => Value.int l.length) ≠ [] := by
       intro h
       rw [List.map_eq_nil_iff] at h
       rw [h] at hp; exact hw0 (List.Perm.eq_nil hp)
-    have hsumapp : AggFn.sum.apply ((ss.map fun s => intsOf (m.inputs s)).map
+    have hsumapp : AggFn.sum.apply ((ss.map fun s => floatsOf (m.inputs s)).map
         fun l => Value.int l.length) = .int W.length := by
-      rw [sum_apply_ne_nil hLs, hNs]
+      rw [sum_apply_ne_nil hLs (fun v hv => by
+        obtain ⟨l, _, rfl⟩ := List.mem_map.mp hv; exact ⟨_, rfl⟩), hNs]
     rw [hsumapp]
     obtain ⟨l, L', hLc⟩ := List.exists_cons_of_ne_nil hL0
     obtain ⟨c, W', hwc⟩ := List.exists_cons_of_ne_nil hw0
@@ -2542,7 +2558,7 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
 
 /-- `|v|` of a double's code; other values unchanged. -/
 def absValue : Value → Value
-  | .int c => .int (fabsCode c)
+  | .float c => .float (fabsCode c)
   | v => v
 
 theorem filter_map_absValue : ∀ vs : List Value,
@@ -2555,14 +2571,14 @@ theorem filter_map_absValue : ∀ vs : List Value,
 /-- What a shard's `SUM(|x|)` partial (`floatBoundParts`) holds: its codes'
 `absSum`, `NULL` without values. -/
 theorem absPart_eval {m : Measure} (hd : m.distinct = false) {s : Relation}
-    (hi : ∀ v ∈ m.inputs s, ∃ c, v = .int c) :
+    (hi : ∀ v ∈ m.inputs s, ∃ c, v = .float c) :
     ({ m with fn := .fsum, arg := fabsExpr m.arg } : Measure).eval s =
-      AggFn.fsum.apply ((intsOf (m.inputs s)).map fun c => .int (fabsCode c)) := by
+      AggFn.fsum.apply ((floatsOf (m.inputs s)).map fun c => .float (fabsCode c)) := by
   have hrow : ∀ row ∈ m.kept s, (fabsExpr m.arg).eval row = absValue (m.arg.eval row) := by
     intro row hrow
     cases hv : m.arg.eval row with
     | null => exact fabsExpr_eval_null hv
-    | int c => exact fabsExpr_eval_int hv
+    | float c => exact fabsExpr_eval_float hv
     | _ =>
       exfalso
       have hmem : m.arg.eval row ∈ m.inputs s := by
@@ -2582,7 +2598,7 @@ theorem absPart_eval {m : Measure} (hd : m.distinct = false) {s : Relation}
   rw [Measure.eval_eq rfl]
   show AggFn.fsum.apply _ = _
   rw [hin]
-  have h2 := congrArg (List.map absValue) (ints_map_intsOf hi)
+  have h2 := congrArg (List.map absValue) (floats_map_floatsOf hi)
   rw [h2, List.map_map]
   rfl
 
@@ -2719,13 +2735,15 @@ theorem intSum_flatten_split {L : List (List Value)} {vs : List Value} (hvs : vs
 positive), every partial sum lies between 0 and the total, so it fits in 64
 bits whenever the total does. -/
 theorem inI64_partial {L : List (List Value)}
-    (h : (∀ vs ∈ L, ∀ i, .int i ∈ vs → 0 ≤ i) ∨ (∀ vs ∈ L, ∀ i, .int i ∈ vs → i ≤ 0))
+    (h : (∀ vs ∈ L, ∀ v ∈ vs, ∀ i, v.unscaled? = some i → 0 ≤ i) ∨
+      (∀ vs ∈ L, ∀ v ∈ vs, ∀ i, v.unscaled? = some i → i ≤ 0))
     (ht : inI64 (intSum L.flatten) = true) : ∀ vs ∈ L, inI64 (intSum vs) = true := by
   intro vs hvs
   obtain ⟨s, t, ⟨hs, htl⟩, he⟩ := intSum_flatten_split hvs
-  have flat {P : Int → Prop} (hP : ∀ vs ∈ L, ∀ i, .int i ∈ vs → P i) {s : List (List Value)}
-      (hs : s ⊆ L) : ∀ i, .int i ∈ s.flatten → P i := fun i hi => by
-    obtain ⟨l, hl, hi⟩ := List.mem_flatten.mp hi; exact hP l (hs hl) i hi
+  have flat {P : Int → Prop} (hP : ∀ vs ∈ L, ∀ v ∈ vs, ∀ i, v.unscaled? = some i → P i)
+      {s : List (List Value)} (hs : s ⊆ L) : ∀ v ∈ s.flatten, ∀ i, v.unscaled? = some i → P i :=
+    fun v hv i hi => by
+      obtain ⟨l, hl, hv⟩ := List.mem_flatten.mp hv; exact hP l (hs hl) v hv i hi
   rw [he] at ht
   simp only [inI64, between, Bool.and_eq_true, FloatCode.minI64, FloatCode.maxI64] at ht ⊢
   have ht₁ := of_decide_eq_true ht.1

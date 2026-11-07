@@ -142,22 +142,22 @@ def double (s : String) : Parsed :=
   let cs := trim s.toList
   let (neg, r) := sign cs
   let w := lower r
-  if w == "inf" || w == "infinity" then .val (.int (if neg then FloatCode.negInf else FloatCode.posInf))
-  else if w == "nan" then .val (.int FloatCode.nan)
+  if w == "inf" || w == "infinity" then .val (.float (if neg then FloatCode.negInf else FloatCode.posInf))
+  else if w == "nan" then .val (.float FloatCode.nan)
   else match decimal? cs with
     | some (neg, n, e) =>
       if !tame n e then .unknown else
       let f := if e < 0 then Float.ofScientific n true (-e).toNat else Float.ofScientific n false e.toNat
-      .val (.int (FloatCode.ofFloat (if neg then -f else f)))
+      .val (.float (FloatCode.ofFloat (if neg then -f else f)))
     | none => if notANumber true cs then .bad else .unknown
 
-#guard double " 1.5 " == .val (.int (FloatCode.ofFloat 1.5)) && double "1e3" == .val (.int (FloatCode.ofFloat 1000))
-#guard double "-Infinity" == .val (.int FloatCode.negInf) && double "NaN" == .val (.int FloatCode.nan)
+#guard double " 1.5 " == .val (.float (FloatCode.ofFloat 1.5)) && double "1e3" == .val (.float (FloatCode.ofFloat 1000))
+#guard double "-Infinity" == .val (.float FloatCode.negInf) && double "NaN" == .val (.float FloatCode.nan)
 #guard double "1e400" == .unknown && double "12.3 p" == .bad && double "1,5" == .bad
-#guard double "nan(abc)" == .unknown && double "0.1" == .val (.int (FloatCode.ofFloat 0.1))
+#guard double "nan(abc)" == .unknown && double "0.1" == .val (.float (FloatCode.ofFloat 0.1))
 #guard double "T" == .bad && double "yes" == .bad && double "infin" == .unknown
 #guard double "0 0" == .bad
-#guard double "2024-13-01" == .bad && double "1.2.3" == .bad && double " -1e-5" == .val (.int (FloatCode.ofFloat (-1e-5)))
+#guard double "2024-13-01" == .bad && double "1.2.3" == .bad && double " -1e-5" == .val (.float (FloatCode.ofFloat (-1e-5)))
 
 /-- `CAST(s AS BOOLEAN)`: DuckDB's words, any case, nothing around them. -/
 def boolean (s : String) : Parsed :=
@@ -189,7 +189,7 @@ def ymd? (cs : List Char) : Option (Parsed × List Char) := do
   let i : Int := y * 12 + m - 1
   let first := Time.monthStart i
   if (d : Int) > Time.monthStart (i + 1) - first then return (.bad, r)
-  return (.val (.int (first + d - 1)), r)
+  return (.val (.date (first + d - 1)), r)
 
 /-- The runs of digits in `cs`. -/
 def runs (cs : List Char) : Nat :=
@@ -244,12 +244,12 @@ def time? (cs : List Char) : Option Parsed := do
   if !offset rest then none
   if h == 24 then return .unknown
   if h > 24 || mi > 59 || sec > 59 then return .bad
-  return .val (.int (((h * 60 + mi) * 60 + sec) * 1000000 + us))
+  return .val (.tod (((h * 60 + mi) * 60 + sec) * 1000000 + us))
 
 /-- `CAST(s AS DATE)`, as days since 1970-01-01. -/
 def date (s : String) : Parsed :=
   let cs := trim s.toList
-  if lower cs == "epoch" then .val (.int 0) else
+  if lower cs == "epoch" then .val (.date 0) else
   match ymd? cs with
   | some (p, []) => p
   -- A time after the date, which DuckDB drops.
@@ -258,40 +258,40 @@ def date (s : String) : Parsed :=
     else if notADate cs then .bad else .unknown
   | none => if notADate cs then .bad else .unknown
 
-#guard date "2024-01-05 10:00:00.5" == .val (.int 19727) && date "2024-01-05T23:59" == .val (.int 19727)
-#guard date "2024-01-05" == .val (.int 19727) && date " 2024-1-5 " == .val (.int 19727)
-#guard date "2024-02-30" == .bad && date "2023-02-29" == .bad && date "2024-02-29" == .val (.int 19782)
-#guard date "1-1-1" == .val (.int Time.dayMin) && date "9999-12-31" == .val (.int Time.dayMax)
+#guard date "2024-01-05 10:00:00.5" == .val (.date 19727) && date "2024-01-05T23:59" == .val (.date 19727)
+#guard date "2024-01-05" == .val (.date 19727) && date " 2024-1-5 " == .val (.date 19727)
+#guard date "2024-02-30" == .bad && date "2023-02-29" == .bad && date "2024-02-29" == .val (.date 19782)
+#guard date "1-1-1" == .val (.date Time.dayMin) && date "9999-12-31" == .val (.date Time.dayMax)
 #guard date "2024-13-01" == .bad && date "12024-01-01" == .unknown && date "abc" == .bad
-#guard date "2024/01/05" == .val (.int 19727) && date "2024 1 5" == .val (.int 19727)
+#guard date "2024/01/05" == .val (.date 19727) && date "2024 1 5" == .val (.date 19727)
 #guard date "/ 0" == .bad && date "0 0" == .bad
 #guard date "1" == .bad && date "-5" == .bad && date "1.5e3" == .bad && date "2024 01/05" == .unknown
-#guard date "infinity" == .unknown && date "2024-01-05 10:00" == .val (.int 19727) && date "EPOCH" == .val (.int 0)
+#guard date "infinity" == .unknown && date "2024-01-05 10:00" == .val (.date 19727) && date "EPOCH" == .val (.date 0)
 
 /-- `CAST(s AS TIMESTAMP)`, as microseconds since 1970-01-01. -/
 def timestamp (s : String) : Parsed :=
   let cs := trim s.toList
-  if lower cs == "epoch" then .val (.int 0) else
+  if lower cs == "epoch" then .val (.ts 0) else
   match ymd? cs with
   | some (p, []) => match p with
-    | .val (.int d) => .val (.int (d * Time.usPerDay))
+    | .val (.date d) => .val (.ts (d * Time.usPerDay))
     | p => p
   | some (p, c :: r) =>
     if c != ' ' && c != 'T' then (if notADate cs then .bad else .unknown) else
     match p, time? r with
-    | .val (.int d), some (.val (.int t)) => .val (.int (d * Time.usPerDay + t))
+    | .val (.date d), some (.val (.tod t)) => .val (.ts (d * Time.usPerDay + t))
     | .bad, some _ => .bad
     | .val _, some .bad => .bad
     | _, _ => .unknown
   | none => if notADate cs then .bad else .unknown
 
-#guard timestamp "2024-01-05" == .val (.int (19727 * Time.usPerDay))
-#guard timestamp "2024-01-05 10:00" == .val (.int (19727 * Time.usPerDay + 36000000000))
-#guard timestamp "2024-01-05T10:00:01.1234567" == .val (.int (19727 * Time.usPerDay + 36001123456))
-#guard timestamp "2024-01-05 10:00:00." == .val (.int (19727 * Time.usPerDay + 36000000000))
+#guard timestamp "2024-01-05" == .val (.ts (19727 * Time.usPerDay))
+#guard timestamp "2024-01-05 10:00" == .val (.ts (19727 * Time.usPerDay + 36000000000))
+#guard timestamp "2024-01-05T10:00:01.1234567" == .val (.ts (19727 * Time.usPerDay + 36001123456))
+#guard timestamp "2024-01-05 10:00:00." == .val (.ts (19727 * Time.usPerDay + 36000000000))
 #guard timestamp "2024-01-05 25:00" == .bad && timestamp "2024-01-05 23:60:00" == .bad
 #guard timestamp "2024-01-05 24:00:00" == .unknown && timestamp "2024-01-05 1:2" == .unknown
-#guard timestamp "2024-01-05 10:00+01" == .val (.int (19727 * Time.usPerDay + 36000000000))
+#guard timestamp "2024-01-05 10:00+01" == .val (.ts (19727 * Time.usPerDay + 36000000000))
 #guard timestamp "2024-05-03T01:00:02+00:00" == timestamp "2024-05-03 01:00:02" && timestamp "x" == .bad
 
 end Substrait.VarcharCasts
