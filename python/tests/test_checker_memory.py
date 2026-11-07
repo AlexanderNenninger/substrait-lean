@@ -49,3 +49,13 @@ def test_a_runaway_request_fails_alone(tmp_path: Path, monkeypatch: pytest.Monke
         assert checker.proc is not first
     finally:
         checker.close()
+
+
+def test_the_memory_reading_sees_a_process() -> None:
+    """`/proc/<pid>/statm` on Linux, `proc_pid_rusage` on macOS: this
+    process's own reading is between 1 MB and 64 GB."""
+    import os
+
+    assert _checker._RSS is not None
+    rss = _checker._RSS(os.getpid())
+    assert rss is not None and 1 << 20 < rss < 64 << 30
