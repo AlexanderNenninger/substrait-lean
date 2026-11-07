@@ -16,8 +16,8 @@ and that the input rows meet the contract's preconditions.
 
 | Guarantee | Theorem | Module |
 |---|---|---|
-| A proved postcondition is TRUE on every output row | `contract_sound` | `Contracts.lean` |
-| … in every row order the reference allows | `contract_sound_all` | `Contracts.lean` |
+| A proved postcondition is TRUE on every output row | `contract_sound` | `Contracts/Sound.lean` |
+| … in every row order the reference allows | `contract_sound_all` | `Contracts/Sound.lean` |
 | A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean` |
 | A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `Rel.mayIssues_sound` | `Safety.lean` |
@@ -162,7 +162,14 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
-| `Contracts.lean` | The abstract interpreter behind contracts; `contract_sound` |
+| `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
+| `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
+| `Contracts/Transfer.lean` | Abstract expression evaluation: `UnFn.abs`, `BinFn.abs`, `Expr.abs` |
+| `Contracts/TransferSound.lean` | Its soundness, `Expr.abs_sound` |
+| `Contracts/Refine.lean` | Refinement by filter conditions; `Expr.refine_sound` |
+| `Contracts/Facts.lean` | Relational facts through a plan; `Rel.facts_sound` |
+| `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
+| `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
 | `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound` |
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
