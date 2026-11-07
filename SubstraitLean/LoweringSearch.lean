@@ -711,8 +711,9 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
         let strictSrc := if named then "simp [Substrait.Expr.must, Substrait.Lowering.shlTemplate]"
           else "simp [Substrait.Expr.must]"
         out.modify (·.push (areaOf k.ctor,
-          -- A hand-written schema's proof gets the budget the search gave it.
-          (if written && !byHand then "set_option maxHeartbeats 800000 in\n" else "") ++
+          -- A proof gets the budget the search gave it.
+          (if byHand then "" else if written then "set_option maxHeartbeats 1600000 in\n"
+            else "set_option maxHeartbeats 800000 in\n") ++
           s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
           s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
           s!"  ⟨{← ppSource tmpl}, by {strictSrc}, {agreeName}⟩\n\n"))
@@ -728,9 +729,11 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
       | some h => all.filter (fun (c, w) => shownOf c w == h) ++ all.filter (fun (c, w) => shownOf c w != h)
       | none => all
     for (cand, written) in order do
-      -- A hand-written schema is one proof, not one of many: it gets more.
+      -- A binary template splits on 11 kinds of each argument (#923): a
+      -- candidate that passes the samples gets four times the default, a
+      -- hand-written schema, one proof rather than one of many, eight.
       let budget (ctx : Core.Context) :=
-        if written then { ctx with maxHeartbeats := ctx.maxHeartbeats * 4 } else ctx
+        { ctx with maxHeartbeats := ctx.maxHeartbeats * (if written then 8 else 4) }
       let how ← tryCatchRuntimeEx
         (withTheReader Core.Context budget (withCurrHeartbeats (attempt cand written)))
         fun _ => pure none

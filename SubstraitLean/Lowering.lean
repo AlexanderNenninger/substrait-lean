@@ -214,6 +214,14 @@ theorem Lowering.duck_raise (s : DuckDBSettings) (m : String) (x : Value) :
     (Profile.duckdb s).un (.raise m) x = .error .raised :=
   (Lowering.duck_un_ref (fun _ => rfl) x).trans (Lowering.ref_raise m x)
 
+/-- `%` by a positive constant, which the wrap-arounds compute with: the
+reference's, for every argument. -/
+theorem Lowering.duck_imod_pos (s : DuckDBSettings) (x : Value) (m : Int) (hm : 0 < m) :
+    (Profile.duckdb s).bin .imod x (.int m) = .ok (BinFn.apply .imod x (.int m)) := by
+  have h0 : m ≠ 0 := by omega
+  have h1 : m ≠ -1 := by omega
+  cases x <;> simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, h0, h1]
+
 /-- `%` by `2⁶⁴`, which the wrap-around computes with. -/
 theorem Lowering.duck_imod_pow64 (s : DuckDBSettings) (x : Value) :
     (Profile.duckdb s).bin .imod x (.int (2 ^ 64)) = .ok (BinFn.apply .imod x (.int (2 ^ 64))) := by

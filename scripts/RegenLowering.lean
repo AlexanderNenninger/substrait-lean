@@ -25,6 +25,7 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
     Lowering.apply_fit_float, Lowering.apply_fit_date, Lowering.apply_fit_ts, Lowering.apply_fit_tod,
     Lowering.apply_fit_dec, IntWidth.fit, IntWidth.lo, IntWidth.hi,
     IntWidth.half, IntWidth.modulus, Lowering.tmod_add_tmod, Profile.duckdb_imod_pos,
+    Lowering.duck_imod_pos, Lowering.duck_dadd, Lowering.duck_dsub,
     Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow,
     Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
     Lowering.apply_ffloor_str, Lowering.apply_ffloor_list, Lowering.apply_ffloor_float,
