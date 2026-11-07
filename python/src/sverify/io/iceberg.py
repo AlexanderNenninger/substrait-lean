@@ -1327,6 +1327,18 @@ class IcebergSink(_TableSink[Table]):
         text = table.properties.get(KEY)
         return None if text is None else Contract.from_json(text)
 
+    def _head_of(self, table: Table) -> tuple[int | None, Contract | None, bool]:
+        """In one walk of the current snapshot's ancestry: the app's last
+        epoch, the contract, and whether the snapshots after the app's last
+        one only rewrite files (a compaction keeps the rows)."""
+        kept = True
+        for s in _ancestry(table):
+            if s.summary is not None and s.summary.get(APP) == self.app_id:
+                return int(s.summary.get(EPOCH, "-1")), self._contract_of(table), kept
+            if s.summary is None or not _rewrites(s.summary):
+                kept = False
+        return None, None, True
+
     def _app_snapshot(self, table: Table) -> int | None:
         """The id of the last snapshot this sink's `app_id` wrote."""
         for s in _ancestry(table):

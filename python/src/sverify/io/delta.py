@@ -161,8 +161,10 @@ _SAME_ROWS = {
 
 
 def _history(dt: DeltaTable) -> Iterator[dict[str, Any]]:
-    """The commits of the log, from the latest back, read a few at a time."""
-    n, seen = 8, 0
+    """The commits of the log, from the latest back: the latest alone first,
+    which is the sink's own on a write after its own, then twice as many
+    each time."""
+    n, seen = 1, 0
     while True:
         commits = dt.history(n)
         yield from commits[seen:]
@@ -914,6 +916,13 @@ class DeltaSink(_TableSink[DeltaTable]):
 
     def _contract_of(self, table: DeltaTable) -> Contract | None:
         return _last_contract(table).record
+
+    def _head_of(self, table: DeltaTable) -> tuple[int | None, Contract | None, bool]:
+        done = self._epoch_of(table)
+        if done is None:
+            return None, None, True
+        last = _last_contract(table)
+        return done, last.record, last.kept
 
     def maintain(
         self,
