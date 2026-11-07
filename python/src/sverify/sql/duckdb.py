@@ -137,18 +137,6 @@ class DuckDBDialect(Dialect):
             f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
         )
 
-    def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
-        values = f"list({v}) FILTER (WHERE {v} IS NOT NULL) {over}"
-        start = self.cast("0", "float")
-        n = f"COUNT({v}) {over}"
-        total = f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
-        mean = f"({total} / {self.cast(n, 'float')})"
-        devs = f"list_transform({values}, lambda x: (x - {mean}) * (x - {mean}))"
-        sq = f"list_reduce(list_prepend({start}, {devs}), lambda x, y: x + y)"
-        div = self.cast(f"({n} - 1)" if sample else n, "float")
-        var = f"GREATEST({sq} / {div}, {start})"
-        return f"sqrt({var})" if sqrt else var
-
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # DuckDB orders doubles as the codes do: NaN above `+∞` (#371).
         return f"{fn}({v}) {over}" if over else f"{fn}({v})"

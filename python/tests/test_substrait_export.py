@@ -224,7 +224,9 @@ GAP_CASES = {
 def test_apply_rewrites_the_gap(case: str) -> None:
     expr, requires, option = GAP_CASES[case]
     m = read(_verify(expr, requires).to_substrait(shims="apply")).manifest
-    assert m["class"] == "exact"
+    # D30: a consumer's own variance is within the plan's bound of the
+    # reference's exact moments rounded once.
+    assert m["class"] == ("observed" if case == "ST-3" else "exact")
     assert any(s["option"] == option for s in m["shims"]), m["shims"]
     assert not m["assumptions"]
 

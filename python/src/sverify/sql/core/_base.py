@@ -887,14 +887,23 @@ class Dialect:
         return f"SUM({v}) {over}"
 
     def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
-        """`varOf` of the frame's doubles (at least one, two for a sample):
-        their mean as `floatSum` over the count, then the squared deviations
-        added left to right from 0.0, over `n - 1` or `n`, at least 0, and
-        its square root for `STDDEV`."""
-        raise Unsupported(
-            f"{self.name} does not compute a frame's variance in the reference's order, "
-            "and the rounding depends on it"
-        )
+        """`varOf` of the frame's doubles (D30): the engine's own `VAR_*` or
+        `STDDEV_*` over the frame, within the plan's bound of the exact
+        moments rounded once (`stat_algo`)."""
+        name = ("STDDEV_" if sqrt else "VAR_") + ("SAMP" if sample else "POP")
+        return f"{name}({v}) {over}"
+
+    def clamp_stat(self, fn: str, x: str) -> str:
+        """The clamp shims of D30: a variance or deviation at least `0`, a
+        correlation in `[-1, 1]`, NaN kept. The exact value lies in the
+        interval, so clamping never moves the engine's value further from it
+        (`Stat.clamp_near`, `FloatMoments.lean`)."""
+        if fn.startswith(("var", "std")):
+            return self.case_when(self.is_nan(x), x, f"GREATEST({self.float_lit(0.0)}, {x})")
+        if fn == "corr":
+            inner = f"GREATEST({self.float_lit(-1.0)}, {x})"
+            return self.case_when(self.is_nan(x), x, f"LEAST({self.float_lit(1.0)}, {inner})")
+        return x
 
     def lag(self, x: str, offset: int, default: str, over: str) -> str:
         return f"LAG({x}, {offset}, {default}) {over}"
@@ -3950,9 +3959,8 @@ class _Writer:
                     none = f"{n} <= {d.int_lit(1 if m.fn == 'covar_samp' else 0)}"
                 # Finite pairs whose result overflows (#575), kept without
                 # guards; an infinite side raises below.
-                value = self.agg_finite(
-                    d.case_when(none, d.null("float"), d.canon(d.covar(m.fn, v)))
-                )
+                stat = d.canon(d.clamp_stat(m.fn, d.covar(m.fn, v)))
+                value = self.agg_finite(d.case_when(none, d.null("float"), stat))
                 if not d.guards:
                     return value
 
@@ -3967,7 +3975,7 @@ class _Writer:
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
-                body = d.canon(d.float_var(m.fn, v))
+                body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, v)))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
                 # A NaN passes through; DuckDB's VAR_POP of one NaN is 0.0
                 # (upstream/bugs/DD-3.json).
@@ -4229,7 +4237,7 @@ class _Writer:
         d = self.d
         sample = fn.endswith("_samp")
         n = f"COUNT({v}) {w}"
-        body = d.canon(d.window_float_var(sample, fn.startswith("std"), v, w))
+        body = d.canon(d.clamp_stat(fn, d.window_float_var(sample, fn.startswith("std"), v, w)))
         none = f"{n} <= {d.int_lit(1 if sample else 0)}"
         value = self.agg_finite(d.case_when(none, d.null("float"), body))
         if not d.guards:

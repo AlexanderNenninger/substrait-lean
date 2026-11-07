@@ -305,6 +305,12 @@ class SnowflakeDialect(Dialect):
             "reference's bounds (Snowflake behaviour recorded privately)"
         )
 
+    def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
+        raise Unsupported(
+            "Snowflake's VAR_SAMP, VAR_POP and STDDEV of doubles are outside the reference's "
+            "bounds (Snowflake behaviour recorded privately)"
+        )
+
     # Strings
 
     def is_ascii(self, s: str) -> str:
