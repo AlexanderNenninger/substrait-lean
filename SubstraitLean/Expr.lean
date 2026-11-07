@@ -526,6 +526,21 @@ values (`isTrue_eq`). -/
   | .dec s a, .dec t b => if s = t then some (a, b) else none
   | _, _ => none
 
+/-- Two numbers that compare are of one kind. -/
+theorem Value.numPair_some {a b : Value} {p q : Int} (h : a.numPair b = some (p, q)) :
+    ∃ k : NumKind, a = k.val p ∧ b = k.val q := by
+  cases a <;> cases b <;> simp at h
+  all_goals first
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.int, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.float, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.date, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.ts, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.tod, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨.dec _, rfl, rfl⟩)
+
+theorem Value.numPair_self {a : Value} {p q : Int} (h : a.numPair a = some (p, q)) : p = q := by
+  cases a <;> simp at h <;> omega
+
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
 the codes of doubles and times) by value, strings by code point, `FALSE <
