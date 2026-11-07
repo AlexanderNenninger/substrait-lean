@@ -16,6 +16,7 @@ from typing import Any, Literal
 from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import WINDOW_FLOAT_AGG
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -880,21 +881,6 @@ class Dialect:
     def window_int_sum(self, v: str, over: str) -> str:
         """`SUM` of BIGINTs over a frame; must raise where it leaves 64 bits."""
         raise Unsupported(f"{self.name}: window sums are not implemented")
-
-    def window_float_sum(self, v: str, over: str) -> str:
-        """`floatSumCR` of the frame's doubles (D25): the engine's own `SUM`,
-        within the plan's bound of it."""
-        return f"SUM({v}) {over}"
-
-    def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
-        """`varOf` of the frame's doubles (at least one, two for a sample):
-        their mean as `floatSum` over the count, then the squared deviations
-        added left to right from 0.0, over `n - 1` or `n`, at least 0, and
-        its square root for `STDDEV`."""
-        raise Unsupported(
-            f"{self.name} does not compute a frame's variance in the reference's order, "
-            "and the rounding depends on it"
-        )
 
     def lag(self, x: str, offset: int, default: str, over: str) -> str:
         return f"LAG({x}, {offset}, {default}) {over}"
@@ -4200,18 +4186,10 @@ class _Writer:
                 if not isinstance(a, Dec):
                     raise Unsupported("dsum of a non-decimal")
                 return d.decimal_window_sum(v, w, dsum_kind(a))
-            case "var_samp" | "var_pop" | "std_samp" | "std_pop":
-                return self.window_var(m.fn, v, w)
+            case "var_samp" | "var_pop" | "std_samp" | "std_pop" | "fsum" | "avg":
+                raise Unsupported(WINDOW_FLOAT_AGG)
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
-            case "fsum" | "avg":
-                total = d.window_float_sum(v, w)
-                if m.fn == "avg":
-                    total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
-                total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
-                # Finite values whose sum overflows (#575), kept without guards.
-                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
-                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
         f = "MIN" if m.fn == "min" else "MAX"
         if expr_kind(m.arg, ks) == "bool":
             as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
@@ -4220,25 +4198,6 @@ class _Writer:
         if expr_kind(m.arg, ks) == "float":
             return d.float_extreme(f, v, w)
         return f"{f}({v}) {w}"
-
-    def window_var(self, fn: str, v: str, w: str) -> str:
-        """`varOf` over the frame `w` (`VARIANCE` or `STDDEV`, #54): the
-        reference's own two passes over the frame's doubles, NULL for no
-        values or a sample of one, NaN for a NaN, and raising for an infinity
-        as the aggregate does (`Rel.window`'s rows are `Rel.eval`'s)."""
-        d = self.d
-        sample = fn.endswith("_samp")
-        n = f"COUNT({v}) {w}"
-        body = d.canon(d.window_float_var(sample, fn.startswith("std"), v, w))
-        none = f"{n} <= {d.int_lit(1 if sample else 0)}"
-        value = self.agg_finite(d.case_when(none, d.null("float"), body))
-        if not d.guards:
-            return value
-        # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
-        # creates (#257); NaN sorts above `+∞`, so leave it out.
-        top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
-        bad = d.float_eq(top, d.float_lit(math.inf))
-        return d.case_when(bad, d.raise_("domain error", f"MIN({v}) {w}", "float"), value)
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,
