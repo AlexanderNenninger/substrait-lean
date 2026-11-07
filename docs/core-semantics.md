@@ -1660,7 +1660,7 @@ The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
 first rows of any order the plan allows, and `FIRST`, `LAST`,
 `ARG_MIN`/`ARG_MAX`, `STRING_AGG`, `collect` and `MODE` take the rows that
 tie in their own order in any order. `Rel.OrderAllowed`
-(`SubstraitLean/Ties.lean`) holds the results of every such order, and a
+(`SubstraitLean/OrderAllowed.lean`) holds the results of every such order, and a
 contract holds on all of them: `contract_sound_all` for postconditions,
 `Rel.keys_sound_all` for keys. An engine's own pick is one of these orders,
 so it runs natively.

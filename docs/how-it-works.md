@@ -650,7 +650,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   `Rel.eval`. So the proofs describe what an engine computes, however it breaks ties.
 * `orderFact_sound`, `winFacts_sound`, `WinFn.abs_sound`: what is known about
   `LAG`/`LEAD`/`ROW_NUMBER` columns holds. Strict order uses an oracle saying
-  which windows have a key (`WindowKeys`); `Rel.keyedWindows_sound` proves the
+  which windows have a key (`WindowKeys`); `Rel.keyedWindows_soundAll` proves the
   one computed from `Rel.keys` right, which is what `contract_sound` asks for.
 * `IoT.window_complete` ([Completeness.lean](../SubstraitLean/Completeness.lean)): the
   converse of the contracts. If both sensors have valid readings at `t` and `t + 60`,

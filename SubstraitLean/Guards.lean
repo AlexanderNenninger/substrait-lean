@@ -484,7 +484,7 @@ preconditions and the size hypothesis (`Rel.Small`: windows read fewer than
 theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     {I : Impl} (hI : I.Faithful) : r.eval cat I = r.eval cat :=
@@ -622,7 +622,7 @@ theorem okSlots_mem {es : List Expr} {ok : Expr → Bool} {i : Nat} (hi : i < es
 section
 variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
   (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-  (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+  (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
   {I : Impl} (hI : I.Faithful)
 
 include hcat hA hF hT hI in
